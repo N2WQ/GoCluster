@@ -63,7 +63,9 @@ func TestCustomSCPCleanupCandidateRefresh(t *testing.T) {
 			reopened := reopenCustomSCPCleanupTestStore(t, store)
 			requireCustomSCPCleanupRaw(t, reopened, obsKey, customSCPCleanupObservationBytes(refreshed.Unix(), 202))
 			requireCustomSCPCleanupRaw(t, reopened, metaKey, customSCPCleanupStaticBytes(refreshed.Unix()))
-			if !reopened.StaticContains(key.call) || reopened.RecentSupportCount(key.call, key.band, "CW", now) == 0 {
+			// Recovery is queried after the refreshed stored timestamp, not at
+			// the earlier deletion-capture clock when that row is still future.
+			if !reopened.StaticContains(key.call) || reopened.RecentSupportCount(key.call, key.band, "CW", refreshed) == 0 {
 				t.Fatal("refreshed static membership and recent support did not survive reopen")
 			}
 			assertCustomSCPCleanupCoupling(t, reopened)

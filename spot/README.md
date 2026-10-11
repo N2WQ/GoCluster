@@ -155,8 +155,51 @@ Local non-test `DX` self-spots are treated as operator-authoritative in the live
 - recent on-band support helps the `S` floor and some resolver gates
 - custom SCP stores persistent support evidence
 - custom SCP retention is bounded by `history_horizon_days`, `max_keys`, and `max_spotters_per_key`
-- custom SCP static membership now ages out on the same horizon as recent evidence
+- custom SCP static membership has its separate `static_horizon_days` retention horizon
 - custom SCP admission is intentionally `V`-only to avoid reinforcement loops from weaker classes
+
+### Historical receiver freshness
+
+Custom SCP keeps each receiver's newest observation for its call, band and mode
+bucket. Historical support counts that receiver only when its own observation is
+within `history_horizon_days`, is not later than the query clock and meets the
+lookup's minimum age score. Geographic diversity counts distinct nonzero H3
+cells from those same qualifying observations. One refreshed receiver cannot
+refresh other receivers or their cells.
+
+The existing score tiers are unchanged:
+
+| Observation age | Score |
+| --- | ---: |
+| Up to 12 hours | 10 |
+| Over 12 hours, up to 48 hours | 7 |
+| Over 48 hours, up to 7 days | 5 |
+| Over 7 days, up to 30 days | 3 |
+| Over 30 days, up to 90 days | 2 |
+| Over 90 days, up to 180 days | 1 |
+| Over 180 days | 0 |
+
+Age and future exclusion use stored-second precision. Each upper age boundary
+is inclusive; an observation at the query's stored second is not future. A
+future observation stays retained but cannot qualify until that clock reaches
+it. Because the store retains only the newest observation, a future newest
+timestamp does not reveal an older replacement for that receiver during lookup.
+
+For example, at minimum score 5, two receivers last observed 54 and 55 days ago
+plus one observed a minute ago provide one qualifying receiver, not three. Only
+the fresh receiver's cell contributes. The older observations may remain in
+retained history under the configured horizon and qualify for a lower-score
+lookup.
+
+Qualification filtering alone does not delete still-retained observations that
+fail a score gate or are future. Queries preserve existing observation-horizon
+pruning, empty-entry removal and expiry maintenance; periodic cleanup remains
+unchanged. Retained-state statistics and active-call counts therefore describe
+a different population from qualifying support.
+Historical recognition is also separate from the resolver's current receiver
+consensus. Neither historical counts nor these scores are calibrated correctness
+probabilities, and recency does not prove that reports belong to one RF episode.
+See [ADR-0285](../docs/decisions/ADR-0285-individual-historical-receiver-freshness.md).
 
 ## Related Files
 

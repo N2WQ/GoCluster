@@ -30,6 +30,13 @@ foreach ($name in @('GOCLUSTER_CUSTOMSCP_FIXTURE', 'GOCLUSTER_CUSTOMSCP_RUN_ID')
 $script:mode = 'pass'
 $script:commands = [Collections.Generic.List[object]]::new()
 $passed = 0
+$script:historicalStoreTests = @('package spot', '// Historical store-test fixture.', 'func historicalStoreTestFixture() {}')
+$script:historicalBenchmarks = @('package spot', '// Historical benchmark fixture.', 'func historicalBenchmarkFixture() {}')
+$script:currentSources = @{
+    'custom_scp_store_test.go' = "package spot`n// Current store tests must remain unchanged."
+    'bounded_store_bench_test.go' = "package spot`n// Current benchmarks must remain unchanged."
+    'custom_scp_freshness_test.go' = "package spot`n// Current freshness tests must remain unchanged."
+}
 
 function Assert-CustomSCPFixture([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
@@ -45,7 +52,19 @@ function Invoke-CustomSCPCommand([string]$Executable, [string[]]$Arguments, [str
         if ($Arguments[0] -eq 'rev-parse') {
             $lines = @($fixtureRepository)
         } elseif ($Arguments[0] -eq 'show') {
-            $lines = @('package spot', 'func (s *CustomSCPStore) cleanup(now time.Time) {', "`tif s.db != nil {", "`t`titer, err := s.db.NewIter(nil)", "`t`tdefer iter.Close()", "`t`tbatch := s.db.NewBatch()", "`t}", '}', 'func (s *CustomSCPStore) loadFromDB() error { return nil }')
+            if ($Arguments.Count -ne 2) { throw "Unexpected mock git show arguments: $Arguments" }
+            switch -CaseSensitive ($Arguments[1]) {
+                '4d711a4:spot/custom_scp_store.go' {
+                    $lines = @('package spot', 'func (s *CustomSCPStore) cleanup(now time.Time) {', "`tif s.db != nil {", "`t`titer, err := s.db.NewIter(nil)", "`t`tdefer iter.Close()", "`t`tbatch := s.db.NewBatch()", "`t}", '}', 'func (s *CustomSCPStore) loadFromDB() error { return nil }')
+                }
+                '4d711a4:spot/custom_scp_store_test.go' {
+                    if ($script:mode -eq 'historical-store-tests-missing') { $exitCode = 1 } else { $lines = $script:historicalStoreTests }
+                }
+                '4d711a4:spot/bounded_store_bench_test.go' {
+                    if ($script:mode -eq 'historical-benchmarks-missing') { $exitCode = 1 } else { $lines = $script:historicalBenchmarks }
+                }
+                default { throw "Unexpected mock git source: $($Arguments[1])" }
+            }
         } else { throw "Unexpected mock git operation: $Arguments" }
     } elseif ($Executable -eq 'go') {
         if ($Arguments[0] -eq 'env') {
@@ -133,6 +152,9 @@ func exerciseCustomSCPFixture(t *testing.T, s *CustomSCPStore, now time.Time, re
     foreach ($name in @('custom_scp_cleanup.go', 'custom_scp_cleanup_test.go', 'custom_scp_lifecycle_test.go', 'custom_scp_cleanup_helpers_test.go', 'custom_scp_persistence_bench_test.go')) {
         Set-Content -LiteralPath (Join-Path $fixtureRepository "spot/$name") 'package spot'
     }
+    foreach ($name in $script:currentSources.Keys) {
+        Set-Content -LiteralPath (Join-Path $fixtureRepository "spot/$name") $script:currentSources[$name]
+    }
 
     $script:commands.Clear()
     Invoke-CustomSCPRegression $fixtureRepository $false
@@ -162,9 +184,40 @@ func exerciseCustomSCPFixture(t *testing.T, s *CustomSCPStore, now time.Time, re
     Assert-CustomSCPFixture ($store.Contains("defer iter.Close()`n`t`tif customSCPFixtureAfterIterator != nil") -and $store.Contains('var customSCPFixtureAfterIterator func()')) 'Baseline hook is not immediately after the original iterator snapshot or lacks its production declaration.'
     $overlaidProducer = Get-Content -LiteralPath $overlay.Replace[(Join-Path $fixtureRepository 'spot/custom_scp_fixture_test.go')] -Raw
     Assert-CustomSCPFixture ($overlaidProducer.Contains('// Unchanged producer prefix.') -and $overlaidProducer.Contains('s.cleanup(now)') -and -not $overlaidProducer.Contains('s.applyCleanupDeletes')) 'Baseline overlay changed more than the scheduling function.'
+    $historicalTests = @{
+        'custom_scp_store_test.go' = $script:historicalStoreTests
+        'bounded_store_bench_test.go' = $script:historicalBenchmarks
+    }
+    foreach ($name in $historicalTests.Keys) {
+        $contents = @(Get-Content -LiteralPath $overlay.Replace[(Join-Path $fixtureRepository "spot/$name")])
+        Assert-CustomSCPFixture (($contents -join "`n") -ceq ($historicalTests[$name] -join "`n")) "Baseline did not preserve the exact historical source for $name."
+    }
+    $emptySources = @('custom_scp_cleanup.go', 'custom_scp_cleanup_test.go', 'custom_scp_lifecycle_test.go', 'custom_scp_cleanup_helpers_test.go', 'custom_scp_persistence_bench_test.go', 'custom_scp_freshness_test.go')
+    $expectedSources = @('custom_scp_store.go', 'custom_scp_fixture_test.go', 'custom_scp_store_test.go', 'bounded_store_bench_test.go') + $emptySources
+    Assert-CustomSCPFixture ($overlay.Replace.Count -eq $expectedSources.Count) 'Baseline overlay exceeded its exact compatibility boundary.'
+    foreach ($name in $expectedSources) {
+        Assert-CustomSCPFixture ($overlay.Replace.ContainsKey((Join-Path $fixtureRepository "spot/$name"))) "Baseline overlay is missing its expected source $name."
+    }
+    foreach ($name in $emptySources) {
+        $contents = Get-Content -LiteralPath $overlay.Replace[(Join-Path $fixtureRepository "spot/$name")] -Raw
+        Assert-CustomSCPFixture ($contents.TrimEnd([char[]]"`r`n") -ceq 'package spot') "Baseline did not isolate incompatible source $name."
+    }
+    foreach ($name in $script:currentSources.Keys) {
+        $contents = Get-Content -LiteralPath (Join-Path $fixtureRepository "spot/$name") -Raw
+        Assert-CustomSCPFixture ($contents.TrimEnd([char[]]"`r`n") -ceq $script:currentSources[$name]) "Baseline mutated current source $name instead of using an overlay."
+    }
     $consumerRuns = @($script:commands | Where-Object { $_.Arguments[0] -ceq '-test.run=^TestCustomSCPDeliveredOutput$' })
     Assert-CustomSCPFixture ($consumerRuns.Count -eq 1) 'Actual loss was rejected as setup instead of reaching the consumer.'
     $passed++
+
+    foreach ($failure in @(
+        @('historical-store-tests-missing', 'spot/custom_scp_store_test.go'),
+        @('historical-benchmarks-missing', 'spot/bounded_store_bench_test.go')
+    )) {
+        Invoke-CustomSCPExpectedFailure $failure[0] "Cannot read the defective 4d711a4 CustomSCP test source: $($failure[1])." $true
+        Assert-CustomSCPFixture (@($script:commands | Where-Object { $_.Executable -eq 'go' -and $_.Arguments[0] -eq 'test' -or $_.Executable.EndsWith('package.test.exe') }).Count -eq 0) 'Unavailable historical source built or ran test binaries.'
+        $passed++
+    }
 
     foreach ($failure in @(
         @('producer-build-fails', 'producer build failed'),

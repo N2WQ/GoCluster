@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `c06be36b9e0fd8a3`
+- Source fingerprint: `24c21eae706c59d1`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 94 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 95 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 37 | 41 |
+| `dxcluster/spot` | `spot` | 37 | 42 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -167,6 +167,7 @@ Test files:
 - `internal/cluster/correction_ambiguity_delivery_test.go`
 - `internal/cluster/correction_evidence_delivery_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
+- `internal/cluster/custom_scp_freshness_delivery_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_job_windows_test.go`
@@ -512,6 +513,7 @@ Test files:
 - `spot/custom_scp_cleanup_helpers_test.go`
 - `spot/custom_scp_cleanup_test.go`
 - `spot/custom_scp_fixture_test.go`
+- `spot/custom_scp_freshness_test.go`
 - `spot/custom_scp_lifecycle_test.go`
 - `spot/custom_scp_persistence_bench_test.go`
 - `spot/custom_scp_store_test.go`
@@ -697,6 +699,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0285](docs/decisions/ADR-0285-individual-historical-receiver-freshness.md) | Accepted | 2026-10-11 | custom_scp, historical qualification, receiver/cell accounting | `path:internal/cluster, path:spot` |
 | [ADR-0284](docs/decisions/ADR-0284-original-content-peer-publication.md) | Accepted | 2026-10-11 | peer, output ownership, forwarding fidelity | `area:peer, path:internal/cluster, path:peer, path:spot` |
 | [ADR-0283](docs/decisions/ADR-0283-ft-admission-expiry.md) | Accepted | 2026-10-11 | FT confidence, admission expiry, bounded release | `path:internal/cluster` |
 | [ADR-0282](docs/decisions/ADR-0282-temporal-release-evidence-authority.md) | Accepted | 2026-10-10 | temporal, release eligibility, confirmed history | `path:internal/cluster, path:spot` |

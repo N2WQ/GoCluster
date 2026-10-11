@@ -33,6 +33,17 @@ not infer meanings from other cluster software.
 - FT2/FT4/FT8 bursts end at the earlier quiet-gap/hard deadline. Equality and
   later arrivals start a new burst and cannot raise an expired burst's glyph.
   Existing recent-band/static S floors remain; FT glyphs have no resolver percentage.
+- Custom SCP historical corroboration counts each receiver only when its own
+  newest stored observation meets the applicable age-score requirement and is
+  not future at the query's stored second. Geographic cells count only from
+  those qualifying observations. A fresh receiver does not refresh older
+  receiver/cell evidence.
+- Retained observations and currently qualifying historical support are different
+  populations. Score/future filtering does not delete within-horizon history;
+  existing horizon pruning and cleanup remain. Retained counts alone do not prove
+  qualification. Historical/static recognition is also separate from current
+  resolver consensus and is not a calibrated correctness probability. See
+  [historical freshness](../../spot/README.md#historical-receiver-freshness).
 
 ## Must Avoid
 

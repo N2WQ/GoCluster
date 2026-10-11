@@ -117,6 +117,11 @@ stages with the race detector. `-Baseline` uses a producer-only overlay of
 Setup succeeds separately from the preservation verdict, so the consumer sees
 the actual defective database.
 
+The baseline producer uses that revision's matching private-API store tests and
+benchmarks; incompatible newer tests are isolated by the overlay. The selected
+producer checks and current consumer remain intact. Missing historical sources
+stop the run before building or executing test binaries.
+
 Each run keeps its manifest and logs under a fresh
 `.tmp/customscp-regression/<run-id>/` directory. It shares the stable Windows
 test paths and lock described above and restores fixture environment variables.

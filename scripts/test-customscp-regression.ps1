@@ -8,7 +8,8 @@
   runner lock prevents concurrent replacement or execution of these binaries.
 .PARAMETER Baseline
   Build only the producer with the defective 4d711a4 store through a temporary
-  Go overlay. A scheduling hook forces refresh after the old iterator snapshot.
+  Go overlay and its matching private-API tests. A scheduling hook forces refresh
+  after the old iterator snapshot. The selected producer remains current.
   The current consumer must reject the resulting lost-history fixture.
 .PARAMETER Race
   Compile both stages with the Go race detector, reusing the same binary paths.
@@ -128,7 +129,16 @@ func exerciseCustomSCPFixture(t *testing.T, s *CustomSCPStore, now time.Time, re
         (Join-Path $RepositoryRoot 'spot/custom_scp_store.go') = $storePath
         (Join-Path $RepositoryRoot 'spot/custom_scp_fixture_test.go') = $producerPath
     }
-    foreach ($name in @('custom_scp_cleanup.go', 'custom_scp_cleanup_test.go', 'custom_scp_lifecycle_test.go', 'custom_scp_cleanup_helpers_test.go', 'custom_scp_persistence_bench_test.go')) {
+    # The whole producer test package must compile against the historical private
+    # API. Restore its original tests rather than rewriting their assertions.
+    foreach ($name in @('custom_scp_store_test.go', 'bounded_store_bench_test.go')) {
+        $testSource = Invoke-CustomSCPCommand 'git' @('show', "4d711a4:spot/$name") $RepositoryRoot (Join-Path $FixtureRoot "baseline-$name.log") $true
+        if ($testSource.ExitCode -ne 0) { throw "Cannot read the defective 4d711a4 CustomSCP test source: spot/$name." }
+        $testPath = Join-Path $overlayDirectory $name
+        Set-Content -LiteralPath $testPath -Value ($testSource.Lines -join "`n") -Encoding utf8
+        $replacements[(Join-Path $RepositoryRoot "spot/$name")] = $testPath
+    }
+    foreach ($name in @('custom_scp_cleanup.go', 'custom_scp_cleanup_test.go', 'custom_scp_lifecycle_test.go', 'custom_scp_cleanup_helpers_test.go', 'custom_scp_persistence_bench_test.go', 'custom_scp_freshness_test.go')) {
         $path = Join-Path $RepositoryRoot "spot/$name"
         if (Test-Path -LiteralPath $path -PathType Leaf) { $replacements[$path] = $emptyPath }
     }

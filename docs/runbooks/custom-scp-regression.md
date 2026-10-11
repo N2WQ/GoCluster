@@ -15,6 +15,14 @@ callback immediately after cleanup's iterator creation. It does not check out
 or modify that revision. Fixture generation succeeds even if preservation
 fails, allowing the actual defect-bearing database to reach the consumer.
 
+The baseline overlay also restores that revision's store tests and benchmarks
+to match its private API, and excludes incompatible newer store tests from the
+producer package. The selected producer and its preservation checks remain
+current; only its scheduling function uses the historical cleanup callback.
+The consumer always builds without an overlay and retains its independent
+delivered-output expectations. Unavailable historical sources fail before
+building or executing saved binaries.
+
 Each run owns a new directory under `.tmp/customscp-regression/`. Keep its logs
 and `ready.json` when examining a failure. The manifest reports exact refreshed
 observation/static value preservation and qualified support after reopening;

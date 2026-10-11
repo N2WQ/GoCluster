@@ -10,7 +10,7 @@ Branch: `fix_correction_evidence`.
 | Patch | State | Commit/evidence |
 | --- | --- | --- |
 | B0 | Complete | Original-content peer publication; checkpoint below |
-| B1.1 | Pending | Receiver-level historical freshness |
+| B1.1 | Complete | Receiver-level historical freshness; checkpoint below |
 | B1.2 | Pending | Consumer-specific requirements |
 | B1.3 | Pending | Independent family qualification |
 | B1.4 | Pending | Capacity validation |
@@ -140,3 +140,151 @@ value ownership and actual peer/local oracles; the broader support-eval fixture
 failure remains explicitly separate. Final whitespace/staged checks precede the
 local B0 commit. No wider deployment, probability calibration or production
 performance claim follows from this checkpoint.
+
+## B1.1 design and pre-implementation review
+
+Current query construction prunes by retention, counts all retained receivers
+and cells, and scores only the newest timestamp. The public-API baseline
+regression compiled and failed behaviorally: 55/54-day observations plus one
+fresh observation returned 3 qualified receivers at minimum score 5, rather
+than 1; all 3 were retained. Stable-path command:
+`scripts/test-windows.ps1 -Packages @('./spot') -Run
+'^TestB11CustomSCPIndividualFreshness$' -Timeout 60s`, exit 1;
+`.tmp/b11-baseline-red.log` contains the actual mismatch.
+
+Separate non-steered scientific review occurred before implementation. The
+reviewer received only a neutral question and observational source locations,
+not the selected design, ledger or expected implementation results. Its
+conditional set-cardinality derivation and literal inclusive tier boundaries
+agree with the user's selected individually age-eligible policy. It also
+identified the distinction between retained history, current-event agreement
+and calibrated correctness, none of which are interchangeable. The existing
+nonpositive ingestion-time fallback, compact uint32 timestamp saturation,
+stored-second precision and process-clock admission remain unchanged. Future
+exclusion is evaluated on stored seconds; no subsecond validity claim is made.
+
+Post-approval test-strategy review was planning-context evidence, not scientific
+independence. All refinements are accepted: differing core/floor score minima,
+eligible-cell counting, literal boundary vectors, byte comparison before
+decoding/reopen, deterministic delivered FIFO barriers, static-miss floor
+controls, newest-observation/future quarantine and fully normalized concurrent
+readers. Existing retention pruning remains allowed; eligibility filtering
+alone must not delete rows inside the retained horizon.
+
+One private bounded scan will select receivers whose own score meets the
+calling rail's existing minimum and whose stored timestamp is not future.
+Cells and latest/score will describe that same eligible population. Existing
+lock/prune/index ownership and the normalized no-cache path stay intact; no new
+retained state or filtered-row slice is introduced. Default <=64 receiver cell
+scratch remains stack-based, targeting 0 query allocations; larger configured
+caps retain the existing bounded scratch-map fallback. Baseline old snapshot
+benchmark measured 0 allocations at 1/4/8/16/32 rows and approximately
+297/313/351/443/722 ns; its old future-seeded fixture is corrected for the new
+contract before final measurement. Microbenchmarks do not establish production
+capacity; any production performance acceptance still requires live profiles.
+
+Family selection, consumer coupling, capacity validation and static future
+eligibility remain their separately approved later patches.
+
+The independently seeded delivery baseline also failed behaviorally before the
+production edit. `scripts/test-windows.ps1 -Packages @('./internal/cluster')
+-Run 'TestCustomSCPFreshnessDelivered' -Timeout 120s`, exit 1, recorded in
+`.tmp/b11-delivery-baseline-red.log`: stale history bypassed the expected hold
+(`pending=0`, `ring=1`), delivered K1HST/S ahead of a positively received K1BAR/P
+FIFO barrier on normal/DIAG TCP and original-content PC61, and added the same
+extra K1HST/S row to ring/reopened archive. Observation-only static-miss history
+also delivered S rather than the required ?. Fresh positive controls passed.
+After the bounded query change, the same two delivery tests and controls passed
+unchanged (`.tmp/b11-delivery-targeted.log`, exit 0).
+
+The initial full ordinary run stopped at an older cleanup fixture that refreshed
+at `now+1 minute` but queried support at the earlier `now`. Its raw bytes were
+preserved; the lookup now correctly excludes that future row. The fixture's
+recovery query was moved to the refreshed stored time, keeping its deletion
+interleaving and raw-byte oracles unchanged. Targeted cleanup/freshness checks
+then passed (`.tmp/b11-recovery-targeted.log`). A complete ordinary rerun is
+required before this checkpoint is marked complete.
+
+The old cleanup counterexample runner's producer-only overlay also compiles
+historical source against current package tests. Private lookup signature and
+new helper usage require matching historical store/benchmark test helpers and
+excluding the new freshness tests only from that defective producer build.
+Read-only compatibility review verified the necessary historical dependencies.
+This is maintenance of the existing baseline-producer/current-consumer oracle,
+without changing selected test names, ordinary/race paths, scheduling-only hook,
+storage schema or consumer delivery expectations. Offline checks must distinguish
+the exact historical sources, reject unavailable sources before build and prove
+the ten-path overlay boundary and unchanged current consumer.
+
+### B1.1 implementation and checkpoint evidence
+
+`spot/custom_scp_store.go` passes the existing core or floor minimum into its
+private snapshot path. `eligibleCustomSCPSnapshot` filters each receiver before
+counting its receiver/cell/latest/score, preserving the same retained-row scan,
+mutex, horizon prune, expiry and interner ownership. No new retained object,
+public interface, record format or admission rule is introduced.
+
+Fresh Go quality review found no material production defect and verified the
+deferred boundaries. That review followed the separate scientific review and
+was allowed implementation context; it is not described as independent science.
+Its private-copy question was resolved by the preserved archive regression:
+archive flush explicitly clones before normalization, while RecordSpot only
+reads shared Spot fields. Fully normalized sealed inputs are positively admitted
+with real initialized H3 mappings before concurrent readers/recorders/queries and
+cleanup run; cell gates were not weakened to make the fixture pass.
+
+| Approved obligation | Implementation/validation |
+| --- | --- |
+| Individual freshness and matching cells | Eligible snapshot; `TestB11CustomSCPIndividualFreshness`, `TestB11CustomSCPEligibleCells`, core/floor rail minima |
+| Inclusive tiers and stored-second future exclusion | Literal b-1/b/b+1 age vectors, between-tier minima, same-second precision, future newest quarantine/catch-up and older-arrival refusal |
+| Retention/bytes/reopen | Byte checks before lookup/decode, retained coupling, independent reopened counts, normalized concurrent readers and preserved archive private-copy tests |
+| Actual delivered consequences | `TestCustomSCPFreshnessDeliveredStabilizer` and `TestCustomSCPFreshnessDeliveredSFloor`; independent raw seeds, normal/DIAG TCP, original peer FIFO, ring/reopened archive and fresh/static controls |
+| Bounded cost | Corrected past/current benchmark fixture plus 64/128-row mixed and overflow cases; default stack scratch |
+| Connected counterexample remains usable | Producer-only historical private-test overlay; exact ten-path/six-empty offline boundary, unavailable-source stops, actual old failure and repaired ordinary/race handoff |
+
+| Check | Command/scope | Observed result |
+| --- | --- | --- |
+| Final targeted unit/cleanup | `scripts/test-windows.ps1 -Packages @('./spot') -Run 'TestB11\|TestCustomSCPCleanupCandidateRefresh' -Timeout 180s` | Exit 0; corrected recovery clock |
+| Delivered freshness | `scripts/test-windows.ps1 -Packages @('./internal/cluster') -Run 'TestCustomSCPFreshnessDelivered' -Timeout 120s` | Exit 0; same cases failed behaviorally on baseline |
+| Full ordinary | `scripts/test-windows.ps1 -Timeout 300s` | Final rerun exit 0, 70 packages; initial cleanup fixture failure recorded above |
+| Vet / Staticcheck / lint | `go vet ./...`; `staticcheck ./...`; `golangci-lint run ./... --config=.golangci.yaml` | Each final invocation exit 0; lint 0 issues |
+| Full race | `scripts/test-windows.ps1 -Race -Timeout 600s` | Exit 0, 70 packages; zero `WARNING: DATA RACE` reports |
+| Repaired connected handoff | `scripts/test-customscp-regression.ps1`, then `-Race` | Both exit 0; actual DB/reopen/TCP handoff and missing-history hold controls |
+| Defective connected baseline | `scripts/test-customscp-regression.ps1 -Baseline` | Producer builds/runs, persists refresh, then loses exact observation/static values; reopen support 0; current consumer fails positive delivery, exit 1 as required |
+| Runner offline fixtures | `scripts/test-test-customscp-regression.ps1` | Exit 0; 16 checks, no Go commands executed |
+| Support comments / routes | Changed-only crawler entry checker; `scripts/check-support-agent.ps1` | Exit 0 |
+| Affected support eval | `scripts/evaluate-support-agent.ps1 -CaseId @('SA-006')` | Exit 0, retrieval-only; no answer scoring claimed |
+
+Logs: `.tmp/b11-full-final.log`, `b11-race.log`, `b11-vet.log`,
+`b11-staticcheck.log`, `b11-lint.log`, `b11-runner-offline.log`,
+`b11-cleanup-baseline.log`, `b11-customscp.log`, `b11-customscp-race.log`.
+The first baseline runner attempt failed compilation before any saved executable
+ran (`e16d6bf861694aedb50fb0124625b252`); this was tool compatibility failure,
+not storage-loss evidence. The corrected actual defective handoff
+`648a5f8fcda54bf6be04952ae4410b0f` records raw values present before cleanup,
+absent after cleanup/reopen, and consumer delivery failure. Repaired handoffs
+`2896a5b79921482cb1e2ad96fa858ad1` and `f560d3af6e0944cf9b748d7eae8e0883`
+pass ordinary and race respectively.
+
+Ordinary local benchmarks, 200ms, i9-10900 Windows/amd64: healthy 1/4/8/16/32/64
+receiver lookups approximately 314/336/376/475/816/1955 ns, all 0 B/0 allocs.
+Mixed 64 retained/32 eligible is 1009 ns and 128 retained/64 eligible 2442 ns,
+both 0 B/0 allocs. Configured 128 eligible distinct cells uses the existing bounded
+overflow path: 8712 ns, 2040 B, 6 allocations. The old benchmark's future inputs
+prevent strict before/after equivalence; no production p99/capacity claim is made.
+Private eligibility/unchanged encoding adds no parser surface needing new fuzzing.
+
+Support documentation impact is required and addressed in the confidence card,
+spot README and ADR-0285; runner docs reflect matching historical helpers.
+Go 1.27.1 Windows/amd64, Staticcheck 2026.2.1 (0.8.1) and golangci-lint 2.14.0
+were rechecked. Full Go source validation is unchanged by the script-only fix;
+its offline/connected lanes ran on the final scripts. Final maps/check and
+lead-owned diff review precede the local commit. No firewall rules, listening
+executable paths, deployment or external live feeds changed.
+
+Final lead-owned verification inspected the approved boundary, production scan,
+all touched test/doc/script diffs and their independence/ownership claims. Maps
+were regenerated and `go run ./cmd/codemap check -all` passed; the support checker
+passed again after generation. Staged whitespace review passes. This establishes
+the selected historical accounting repair, not field accuracy or episode
+association. The next patch may begin after the local B1.1 checkpoint commit.

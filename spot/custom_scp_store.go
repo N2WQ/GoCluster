@@ -6,7 +6,8 @@
 // interned strings.
 // Related docs: docs/decisions/ADR-0080-custom-scp-retained-heap-layout.md,
 // docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md,
-// docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md.
+// docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md,
+// docs/decisions/ADR-0285-individual-historical-receiver-freshness.md.
 // Cleanup ownership: spot/custom_scp_cleanup.go. Related tests:
 // spot/custom_scp_store_test.go, spot/custom_scp_cleanup_test.go,
 // spot/custom_scp_lifecycle_test.go, spot/custom_scp_persistence_bench_test.go.
@@ -712,7 +713,7 @@ func (s *CustomSCPStore) StatsSnapshot() CustomSCPStatsSnapshot {
 
 // HasRecentSupport implements RecentSupportStore for resolver/stabilizer rails.
 func (s *CustomSCPStore) HasRecentSupport(call, band, mode string, minUnique int, now time.Time) bool {
-	snapshot := s.snapshotFor(call, band, mode, now)
+	snapshot := s.snapshotFor(call, band, mode, now, s.opts.CoreMinScore)
 	if snapshot.score < s.opts.CoreMinScore {
 		return false
 	}
@@ -725,7 +726,7 @@ func (s *CustomSCPStore) HasRecentSupport(call, band, mode string, minUnique int
 // RecentSupportCount implements RecentSupportStore for resolver/stabilizer rails.
 // Count is returned only when core score/cell gates pass.
 func (s *CustomSCPStore) RecentSupportCount(call, band, mode string, now time.Time) int {
-	snapshot := s.snapshotFor(call, band, mode, now)
+	snapshot := s.snapshotFor(call, band, mode, now, s.opts.CoreMinScore)
 	if snapshot.score < s.opts.CoreMinScore || snapshot.uniqueCells < s.opts.CoreMinH3Cells {
 		return 0
 	}
@@ -737,7 +738,7 @@ func (s *CustomSCPStore) RecentSupportCount(call, band, mode string, now time.Ti
 // use this to avoid filling the global callsign normalization cache with
 // one-off misses; raw external callers must keep using RecentSupportCount.
 func (s *CustomSCPStore) RecentSupportCountNormalized(call, band, mode string, now time.Time) int {
-	snapshot := s.snapshotForNormalizedCall(call, band, mode, now)
+	snapshot := s.snapshotForNormalizedCall(call, band, mode, now, s.opts.CoreMinScore)
 	if snapshot.score < s.opts.CoreMinScore || snapshot.uniqueCells < s.opts.CoreMinH3Cells {
 		return 0
 	}
@@ -746,7 +747,7 @@ func (s *CustomSCPStore) RecentSupportCountNormalized(call, band, mode string, n
 
 // HasSFloorSupportExact reports exact-call support for S-floor promotion.
 func (s *CustomSCPStore) HasSFloorSupportExact(call, band, mode string, minUnique int, now time.Time) bool {
-	snapshot := s.snapshotFor(call, band, mode, now)
+	snapshot := s.snapshotFor(call, band, mode, now, s.opts.SFloorMinScore)
 	if snapshot.score < s.opts.SFloorMinScore {
 		return false
 	}
@@ -782,7 +783,7 @@ func (s *CustomSCPStore) HasSFloorSupportFamilyKeyPair(voteKey, baseKey, band, m
 }
 
 func (s *CustomSCPStore) bestSFloorFamilySnapshot(best customSCPSnapshot, call, band, mode string, now time.Time) customSCPSnapshot {
-	snap := s.snapshotFor(call, band, mode, now)
+	snap := s.snapshotFor(call, band, mode, now, s.opts.SFloorMinScore)
 	if snap.score > best.score || (snap.score == best.score && snap.uniqueSpotters > best.uniqueSpotters) {
 		return snap
 	}
@@ -822,15 +823,15 @@ func (s *CustomSCPStore) ActiveCallCountsByBand(_ time.Time) map[string]int {
 	return s.active.CountsByBand()
 }
 
-func (s *CustomSCPStore) snapshotFor(call, band, mode string, now time.Time) customSCPSnapshot {
+func (s *CustomSCPStore) snapshotFor(call, band, mode string, now time.Time, minScore int) customSCPSnapshot {
 	if s == nil {
 		return customSCPSnapshot{}
 	}
 	call = NormalizeCallsign(call)
-	return s.snapshotForNormalizedCall(call, band, mode, now)
+	return s.snapshotForNormalizedCall(call, band, mode, now, minScore)
 }
 
-func (s *CustomSCPStore) snapshotForNormalizedCall(call, band, mode string, now time.Time) customSCPSnapshot {
+func (s *CustomSCPStore) snapshotForNormalizedCall(call, band, mode string, now time.Time, minScore int) customSCPSnapshot {
 	if s == nil {
 		return customSCPSnapshot{}
 	}
@@ -857,12 +858,7 @@ func (s *CustomSCPStore) snapshotForNormalizedCall(call, band, mode string, now 
 		return customSCPSnapshot{}
 	}
 	s.markEntryForCleanupLocked(key, entry)
-	return customSCPSnapshot{
-		uniqueSpotters: len(entry.spotters),
-		uniqueCells:    countCustomSCPUniqueCells(entry),
-		latestSeenUnix: entry.lastSeen,
-		score:          scoreForTier(tierForAge(now.UTC().Unix() - entry.lastSeen)),
-	}
+	return eligibleCustomSCPSnapshot(entry, now.UTC().Unix(), minScore)
 }
 
 func (s *CustomSCPStore) loadFromDB() error {
@@ -1442,14 +1438,33 @@ func customSCPKeyLess(a, b customSCPKey) bool {
 	return a.bucket < b.bucket
 }
 
-func countCustomSCPUniqueCells(entry *customSCPEntry) int {
+// eligibleCustomSCPSnapshot describes the qualifying population after retention
+// pruning. Filtering never mutates the retained observations; a fresh receiver
+// cannot refresh other receivers, and cells come from the same eligible rows.
+func eligibleCustomSCPSnapshot(entry *customSCPEntry, nowUnix int64, minScore int) customSCPSnapshot {
+	snapshot := customSCPSnapshot{}
 	if entry == nil || len(entry.spotters) == 0 {
-		return 0
+		return snapshot
 	}
 	var cells [customSCPDefaultMaxSpotters]uint16
 	used := 0
 	var overflow map[uint16]struct{}
 	for _, spotter := range entry.spotters {
+		seenUnix := int64(spotter.seenUnix)
+		if seenUnix > nowUnix {
+			continue
+		}
+		score := scoreForTier(tierForAge(nowUnix - seenUnix))
+		if score < minScore {
+			continue
+		}
+		snapshot.uniqueSpotters++
+		if seenUnix > snapshot.latestSeenUnix {
+			snapshot.latestSeenUnix = seenUnix
+		}
+		if score > snapshot.score {
+			snapshot.score = score
+		}
 		cell := spotter.cellRes1
 		if cell == 0 {
 			continue
@@ -1480,7 +1495,9 @@ func countCustomSCPUniqueCells(entry *customSCPEntry) int {
 		overflow[cell] = struct{}{}
 	}
 	if overflow != nil {
-		return len(overflow)
+		snapshot.uniqueCells = len(overflow)
+	} else {
+		snapshot.uniqueCells = used
 	}
-	return used
+	return snapshot
 }

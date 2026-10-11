@@ -163,7 +163,7 @@ func BenchmarkCustomSCPLoadOversizedKey(b *testing.B) {
 }
 
 func BenchmarkCustomSCPSnapshotSupport(b *testing.B) {
-	for _, spotters := range []int{1, 4, 8, 16, 32} {
+	for _, spotters := range []int{1, 4, 8, 16, 32, 64} {
 		b.Run(fmt.Sprintf("spotters_%02d", spotters), func(b *testing.B) {
 			now := time.Now().UTC()
 			entry := &customSCPEntry{
@@ -172,7 +172,7 @@ func BenchmarkCustomSCPSnapshotSupport(b *testing.B) {
 			}
 			for i := 0; i < spotters; i++ {
 				entryUpsertSpotter(entry, fmt.Sprintf("N%03d", i), customSCPSpotterObs{
-					seenUnix: now.Add(time.Duration(i) * time.Second).Unix(),
+					seenUnix: now.Add(-time.Duration(i) * time.Second).Unix(),
 					cellRes1: uint16(100 + i),
 				}, spotters)
 			}
@@ -191,9 +191,58 @@ func BenchmarkCustomSCPSnapshotSupport(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				snapshot := store.snapshotFor("K1BENCH", "40m", "CW", now)
-				if snapshot.uniqueSpotters != spotters {
-					b.Fatalf("expected %d spotters, got %+v", spotters, snapshot)
+				snapshot := store.snapshotFor("K1BENCH", "40m", "CW", now, store.opts.CoreMinScore)
+				if snapshot.uniqueSpotters != spotters || snapshot.uniqueCells != spotters {
+					b.Fatalf("expected %d eligible spotters and cells, got %+v", spotters, snapshot)
+				}
+			}
+		})
+	}
+}
+
+// Mixed retained populations must keep lookup allocation tied to qualifying
+// cells, not copy every row to filter it. Configured larger caps retain the
+// preexisting bounded overflow-map path only above the 64-cell stack allowance.
+func BenchmarkB11CustomSCPEligibleSnapshot(b *testing.B) {
+	for _, fixture := range []struct {
+		name     string
+		retained int
+		mixed    bool
+	}{
+		{"mixed_64_eligible_32", 64, true},
+		{"mixed_128_eligible_64", 128, true},
+		{"fresh_128_overflow_cells", 128, false},
+	} {
+		b.Run(fixture.name, func(b *testing.B) {
+			now := time.Now().UTC().Truncate(time.Second)
+			entry := &customSCPEntry{spotters: makeCustomSCPSpotters(fixture.retained), lastSeen: now.Unix()}
+			want := fixture.retained
+			if fixture.mixed {
+				want /= 2
+			}
+			for i := 0; i < fixture.retained; i++ {
+				seen := now.Add(-time.Duration(i) * time.Second)
+				if fixture.mixed && i%2 != 0 {
+					seen = seen.Add(-55 * 24 * time.Hour)
+				}
+				entryUpsertSpotter(entry, fmt.Sprintf("N%03d", i), customSCPSpotterObs{seenUnix: seen.Unix(), cellRes1: uint16(100 + i)}, fixture.retained)
+			}
+			store := &CustomSCPStore{
+				opts:                sanitizeCustomSCPOptions(CustomSCPOptions{MaxSpottersPerKey: fixture.retained}),
+				entries:             make(map[customSCPKey]*customSCPEntry, 1),
+				entryExpiry:         newCustomSCPEntryExpiryQueue(1),
+				observationSpotters: fixture.retained,
+			}
+			store.mu.Lock()
+			key := retainCustomSCPTestEntryLocked(store, customSCPKey{call: "K1BENCH", band: "40m", bucket: "cw"}, entry)
+			store.markEntryForCleanupLocked(key, entry)
+			store.mu.Unlock()
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				got := store.snapshotForNormalizedCall("K1BENCH", "40m", "CW", now, store.opts.CoreMinScore)
+				if got.uniqueSpotters != want || got.uniqueCells != want || got.latestSeenUnix != now.Unix() || got.score != 10 {
+					b.Fatalf("eligible population changed under bounded lookup: got %+v want %d receivers/cells", got, want)
 				}
 			}
 		})

@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0285 | Individual Historical Receiver Freshness | Accepted | 2026-10-11 | custom_scp, historical qualification, receiver/cell accounting | Refines ADR-0039 qualification | none | `docs/decisions/ADR-0285-individual-historical-receiver-freshness.md` |
 | ADR-0284 | Original-Content Peer Publication | Accepted | 2026-10-11 | peer, output ownership, forwarding fidelity | ADR-0148 final peer content-sharing clause only | none | `docs/decisions/ADR-0284-original-content-peer-publication.md` |
 | ADR-0283 | FT Admission Expiry | Accepted | 2026-10-11 | FT confidence, admission expiry, bounded release | Refines ADR-0060 | none | `docs/decisions/ADR-0283-ft-admission-expiry.md` |
 | ADR-0282 | Temporal Release Evidence Authority | Accepted | 2026-10-10 | temporal, release eligibility, confirmed history | Refines ADR-0038 | none | `docs/decisions/ADR-0282-temporal-release-evidence-authority.md` |
