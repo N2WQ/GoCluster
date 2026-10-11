@@ -2032,7 +2032,7 @@ func normalizeCallCorrectionConfig(cfg *Config, presence loadRawPresence) error 
 		return err
 	}
 	normalizeCallCorrectionWeightsAndAdaptiveConfig(cfg, presence)
-	return nil
+	return cfg.CallCorrection.ValidateCustomSCPCapacity()
 }
 
 func normalizeCallCorrectionCoreConfig(cfg *Config) {

@@ -49,6 +49,11 @@ not infer meanings from other cluster software.
   member success suffices; counts/cells are never pooled. A higher-scoring failure
   cannot hide another success. Static recognition is separate, and output family
   suppression is unchanged by this historical lookup rule.
+- Enabled historical receiver/cell gates must fit
+  `call_correction.custom_scp.max_spotters_per_key`. Impossible consumed gates
+  fail configuration/runtime/replay initialization; direct boolean queries
+  return false rather than weakening the request. Disabled unused gates and the
+  separate FT store do not inherit this cap. Partial count queries remain visible.
 - Retained observations and currently qualifying historical support are different
   populations. Score/future filtering does not delete within-horizon history;
   existing horizon pruning and cleanup remain. Retained counts alone do not prove

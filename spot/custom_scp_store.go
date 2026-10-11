@@ -722,7 +722,7 @@ func (s *CustomSCPStore) HasRecentSupport(call, band, mode string, minUnique int
 	if snapshot.uniqueCells < s.opts.CoreMinH3Cells {
 		return false
 	}
-	return snapshot.uniqueSpotters >= normalizeMinUnique(minUnique, s.opts.MaxSpottersPerKey)
+	return snapshot.uniqueSpotters >= normalizeCustomSCPMinUnique(minUnique)
 }
 
 // RecentSupportCount implements RecentSupportStore for resolver/stabilizer rails.
@@ -769,12 +769,12 @@ func (s *CustomSCPStore) RecentSupportCountNormalizedWithRequirements(call, band
 }
 
 // HasRecentSupportWithRequirements applies the receiver qualification gate after
-// score/cell eligibility. Capacity normalization retains its existing contract.
+// score/cell eligibility. Storage capacity never lowers the requested minimum.
 func (s *CustomSCPStore) HasRecentSupportWithRequirements(call, band, mode string, minUnique int, requirements CustomSCPRequirements, now time.Time) bool {
 	if s == nil {
 		return false
 	}
-	return s.RecentSupportCountWithRequirements(call, band, mode, requirements, now) >= normalizeMinUnique(minUnique, s.opts.MaxSpottersPerKey)
+	return s.RecentSupportCountWithRequirements(call, band, mode, requirements, now) >= normalizeCustomSCPMinUnique(minUnique)
 }
 
 // HasSFloorSupportExact reports exact-call support for S-floor promotion.
@@ -786,7 +786,7 @@ func (s *CustomSCPStore) HasSFloorSupportExact(call, band, mode string, minUniqu
 	if snapshot.uniqueCells < s.opts.SFloorExactMinH3Cells {
 		return false
 	}
-	return snapshot.uniqueSpotters >= normalizeMinUnique(minUnique, s.opts.MaxSpottersPerKey)
+	return snapshot.uniqueSpotters >= normalizeCustomSCPMinUnique(minUnique)
 }
 
 // HasSFloorSupportFamily reports family-fallback support for S-floor promotion.
@@ -830,7 +830,7 @@ func (s *CustomSCPStore) hasSFloorFamilySupport(snapshot customSCPSnapshot, minU
 	if snapshot.uniqueCells < s.opts.SFloorFamilyMinH3Cells {
 		return false
 	}
-	return snapshot.uniqueSpotters >= normalizeMinUnique(minUnique, s.opts.MaxSpottersPerKey)
+	return snapshot.uniqueSpotters >= normalizeCustomSCPMinUnique(minUnique)
 }
 
 // ActiveCallCount returns the maintained distinct-call snapshot within the
@@ -1369,12 +1369,9 @@ func customSCPBucketForMode(mode string) (string, bool) {
 	return bucket, true
 }
 
-func normalizeMinUnique(minUnique int, max int) int {
+func normalizeCustomSCPMinUnique(minUnique int) int {
 	if minUnique <= 0 {
 		minUnique = 2
-	}
-	if max > 0 && minUnique > max {
-		return max
 	}
 	return minUnique
 }

@@ -43,6 +43,11 @@ capture that OS error separately from YAML/config diagnostics. See
   open/recovery messages.
 - If the configured system log has not opened yet, early startup diagnostics
   may be visible only through console/stderr capture.
+- An impossible enabled CustomSCP receiver/cell gate reports its requirement
+  key and `call_correction.custom_scp.max_spotters_per_key`. Inspect both in
+  `pipeline.yaml`; choose satisfiable minima or raise the existing cap explicitly.
+  Startup does not silently lower the requirement. Disabled unused gates and
+  separate FT storage are outside this capacity check.
 
 ## Must Avoid
 

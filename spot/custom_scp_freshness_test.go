@@ -476,7 +476,7 @@ func TestB12CustomSCPRequirementsNormalizedSkipsNormalizeCache(t *testing.T) {
 	}
 }
 
-func TestB12CustomSCPRequirementsPreserveExistingCoreCountAndCapCoercion(t *testing.T) {
+func TestB12CustomSCPRequirementsPreservePartialCountWithoutCapCoercion(t *testing.T) {
 	store := newCustomSCPFreshnessStore(t, CustomSCPOptions{MaxSpottersPerKey: 1})
 	now := time.Now().UTC().Truncate(time.Second)
 	store.recordObservation("K1CAP", "20m", "CW", "N0AAA", 101, 0, false, now.Add(-time.Minute))
@@ -485,11 +485,10 @@ func TestB12CustomSCPRequirementsPreserveExistingCoreCountAndCapCoercion(t *test
 		store.RecentSupportCountWithRequirements("K1CAP", "20m", "CW", req, now) != 1 {
 		t.Fatal("count compatibility must retain one eligible receiver below the default unique minimum")
 	}
-	// The separate B1.4 patch changes impossible-query behavior. B1.2 keeps
-	// today's boolean coercion to the configured receiver cap.
-	if !store.HasRecentSupport("K1CAP", "20m", "CW", 2, now) ||
-		!store.HasRecentSupportWithRequirements("K1CAP", "20m", "CW", 2, req, now) {
-		t.Fatal("consumer-specific lookup changed the existing receiver-cap coercion")
+	// B1.4 preserves B1.2 partial counts while removing Boolean cap coercion.
+	if store.HasRecentSupport("K1CAP", "20m", "CW", 2, now) ||
+		store.HasRecentSupportWithRequirements("K1CAP", "20m", "CW", 2, req, now) {
+		t.Fatal("an eligible partial count cannot satisfy an impossible Boolean minimum")
 	}
 }
 
@@ -729,6 +728,125 @@ func BenchmarkB13CustomSCPFamilyKeyPair(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				if got := store.HasSFloorSupportFamilyKeyPair(vote, base, "20m", "CW", 64, now); got != tc.want {
 					b.Fatalf("family qualification=%t want %t during timing", got, tc.want)
+				}
+			}
+		})
+	}
+}
+
+func b14CheckReceiverMinimum(t *testing.T, store *CustomSCPStore, requirements CustomSCPRequirements, minimum int, want bool, now time.Time) {
+	t.Helper()
+	for _, query := range []struct {
+		name string
+		got  bool
+	}{
+		{"default", store.HasRecentSupport("W1AW/KH6", "20m", "CW", minimum, now)},
+		{"consumer_requirements", store.HasRecentSupportWithRequirements("W1AW/KH6", "20m", "CW", minimum, requirements, now)},
+		{"exact_floor", store.HasSFloorSupportExact("W1AW/KH6", "20m", "CW", minimum, now)},
+		{"family_pair", store.HasSFloorSupportFamilyKeyPair("W1AW/KH6", "W1AW", "20m", "CW", minimum, now)},
+		{"family_slice", store.HasSFloorSupportFamily([]string{"W1AW/KH6", "W1AW"}, "20m", "CW", minimum, now)},
+	} {
+		if query.got != want {
+			t.Errorf("%s min=%d cap=%d qualification=%t want %t; storage capacity cannot lower the required receiver count", query.name, minimum, store.opts.MaxSpottersPerKey, query.got, want)
+		}
+	}
+}
+
+func TestB14CustomSCPImpossibleReceiverMinimumNeverCoerces(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	rows := append(b13FamilyRows("W1AW/KH6", "N0A", 3, 2, 101, now.Add(-time.Minute)),
+		b13FamilyRows("W1AW", "N0B", 3, 2, 201, now.Add(-time.Minute))...)
+	store := b13FamilyStore(t, rows, 3)
+	before := store.StatsSnapshot()
+	requirements := CustomSCPRequirements{MinScore: 5, MinH3Cells: 2}
+	checkRaw := func() {
+		t.Helper()
+		for _, row := range rows {
+			key := fmt.Sprintf("o|%s|20m|cw|%s", row.call, row.receiver)
+			requireCustomSCPCleanupRaw(t, store, key, customSCPCleanupObservationBytes(row.seen.Unix(), row.cell))
+		}
+	}
+	checkRaw()
+	for _, query := range []struct {
+		minimum int
+		want    bool
+	}{{3, true}, {4, false}, {0, true}, {-1, true}, {4, false}, {3, true}} {
+		b14CheckReceiverMinimum(t, store, requirements, query.minimum, query.want, now)
+	}
+	// Both members have three disjoint receivers, but none has four. Six
+	// retained family observations cannot pool into an impossible per-key gate.
+	for _, count := range []int{
+		store.RecentSupportCount("W1AW/KH6", "20m", "CW", now),
+		store.RecentSupportCountNormalized("W1AW/KH6", "20m", "CW", now),
+		store.RecentSupportCountWithRequirements("W1AW/KH6", "20m", "CW", requirements, now),
+		store.RecentSupportCountNormalizedWithRequirements("W1AW/KH6", "20m", "CW", requirements, now),
+	} {
+		if count != 3 {
+			t.Errorf("an impossible Boolean request must not erase the retained eligible partial count: got=%d want=3", count)
+		}
+	}
+	checkRaw()
+	if after := store.StatsSnapshot(); after != before || store.StaticContains("W1AW/KH6") || store.StaticContains("W1AW") {
+		t.Errorf("capacity refusal mutated observation-only retained history: before=%+v after=%+v", before, after)
+	}
+	assertCustomSCPCleanupCoupling(t, store)
+}
+
+func TestB14CustomSCPNonpositiveMinimumStillMeansTwo(t *testing.T) {
+	for _, tc := range []struct {
+		count, cap int
+		want       bool
+	}{{1, 1, false}, {1, 3, false}, {2, 3, true}} {
+		t.Run(fmt.Sprintf("receivers_%d_cap_%d", tc.count, tc.cap), func(t *testing.T) {
+			store := newCustomSCPFreshnessStore(t, CustomSCPOptions{
+				MaxSpottersPerKey: tc.cap, CoreMinScore: 5, CoreMinH3Cells: 1,
+				SFloorMinScore: 5, SFloorExactMinH3Cells: 1, SFloorFamilyMinH3Cells: 1,
+			})
+			now := time.Now().UTC().Truncate(time.Second)
+			for i := 0; i < tc.count; i++ {
+				store.recordObservation("W1AW/KH6", "20m", "CW", fmt.Sprintf("N0A%03d", i), 101, 0, false, now.Add(-time.Minute))
+			}
+			before := store.StatsSnapshot()
+			for _, minimum := range []int{0, -1} {
+				b14CheckReceiverMinimum(t, store, CustomSCPRequirements{MinScore: 5, MinH3Cells: 1}, minimum, tc.want, now)
+			}
+			if after := store.StatsSnapshot(); after != before {
+				t.Errorf("default-minimum queries changed retained population: before=%+v after=%+v", before, after)
+			}
+			assertCustomSCPCleanupCoupling(t, store)
+		})
+	}
+}
+
+func TestB14Delta2HistoryValidationRequiresDistanceTwo(t *testing.T) {
+	// Insertions/deletions cost one character in all existing call models.
+	// Verify the real gate, rather than assuming Morse/Baudot scaling can
+	// make a two-character truncation reachable at maximum distance one.
+	for _, tc := range []struct{ mode, model string }{
+		{"CW", "plain"}, {"CW", "morse"}, {"RTTY", "plain"}, {"RTTY", "baudot"},
+	} {
+		t.Run(tc.mode+"_"+tc.model, func(t *testing.T) {
+			if distance := CallDistance("K1ABC", "K1ABCDE", tc.mode, tc.model, tc.model); distance != 2 {
+				t.Fatalf("two added characters must cost two edits: %d", distance)
+			}
+			settings := CorrectionSettings{
+				MinConsensusReports: 3, MinAdvantage: 1, MinConfidencePercent: 50,
+				DistanceModelCW: tc.model, DistanceModelRTTY: tc.model,
+				FamilyPolicy: CorrectionFamilyPolicy{Configured: true, TruncationEnabled: true,
+					TruncationMaxLengthDelta: 2, TruncationMinShorterLength: 3, TruncationAllowPrefix: true},
+				TruncationAdvantagePolicy:    CorrectionTruncationAdvantagePolicy{Configured: true},
+				TruncationDelta2RailsEnabled: true, TruncationDelta2RequireCandidateValidated: true,
+			}
+			for _, maximum := range []int{1, 2} {
+				settings.MaxEditDistance = maximum
+				got := EvaluateResolverPrimaryGates("K1ABC", "K1ABCDE", "20m", tc.mode,
+					0, 3, 100, 0, 3000, settings, time.Now().UTC(), ResolverPrimaryGateOptions{})
+				want := "max_edit_distance"
+				if maximum == 2 {
+					want = "truncation_delta2_candidate_unvalidated"
+				}
+				if got.Allow || got.Reason != want {
+					t.Fatalf("max distance %d must reach only its eligible gate: %+v want reason=%s", maximum, got, want)
 				}
 			}
 		})

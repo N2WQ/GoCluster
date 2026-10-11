@@ -479,3 +479,106 @@ Evidence logs in `.tmp`: `b13-unit-baseline-red.log`,
 lead-owned diff verification confirms complete gates per member, no pooling,
 preserved visitation/pruning and exact/static precedence. No scientific claim,
 delivery suppressor change, external live-feed test, push or deployment occurred.
+
+## B1.4 - Impossible historical requirements (complete)
+
+Checkpoint base is B1.3 `3b33163`. Current source confirms receiver-cap coercion
+in four CustomSCP boolean gates; CLI gopls references confirm the helper has no
+legacy or FT callers. Configuration normalization, runtime construction and
+replay construction consume the same correction config. Runtime currently
+starts the resolver before opening history, and replay removes its scratch
+database before opening it. Capacity validation must precede both effects.
+
+Use one config-owned validator after loader defaults, before live resolver/history
+ownership, and before replay scratch removal/history ownership. Validate only
+enabled, actually consumed receiver/cell
+requirements against the effective CustomSCP cap. Exact/family floors always
+consume their dedicated gates with the custom owner; resolver validation,
+Plus1/Bayes and stabilizer/edit gates follow their existing enable predicates.
+Bayes still consumes its receiver rail with Plus1 disabled or zero prior weights.
+Raw constructors keep their existing default semantics; score units are not
+receiver capacity. Remove only CustomSCP boolean cap lowering, preserving
+default minimum two, partial count queries and snapshot visitation. No schema,
+storage cap, FT policy, new retained state or lifecycle owner changes.
+
+The lead-owned detailed falsifiability pass rejects a blanket maximum over all
+settings: it would reject unused features and incorrectly constrain FT. Literal
+equality/cap-plus-one cases cover every active receiver/cell consumer, nested
+truncation validation flags and inactive controls. Loader tests exercise actual
+normalization rather than only a helper. Runtime invalid input must leave all
+resolver/history owners absent; replay must leave an existing scratch sentinel
+unchanged. Direct capped lookup and observation-only actual delivery must refuse
+an above-cap floor while retaining raw bytes; equal-cap controls must qualify.
+These refinements stay within approved v2 and select no new policy.
+
+Defective `3b33163` source independently fails all five direct boolean query
+APIs at minimum four/cap three and the default-two minimum at cap one. Actual
+normal/DIAG TCP, ring and reopened archive wrongly contain `S` for both
+above-cap exact and family requests; equality, raw byte preservation and
+original peer fields pass. Runtime wrongly creates resolver/store owners and
+disk for invalid enabled floors. Replay wrongly creates ownership and deletes
+an existing scratch sentinel for explicit/default-cap impossible requirements.
+Loaded configuration accepts all 18 expected active above-cap cases, while
+equality, disabled, FT and score-unit controls pass.
+
+Two initial loaded fixture values (length max zero and delta2 extra confidence
+zero) failed the preexisting strict YAML positive-value checks first. They were
+replaced with valid positive loaded values before recapturing the final red
+evidence; raw zero semantics are separately checked through the direct validator.
+Fresh source review also distinguishes zero edit distance: Bayes requires
+distance one/two, and distinct truncation has positive distance, while Plus1
+still consumes zero-distance slash/plain relations. Distance-two subject-only
+validation is unused when the maximum is one. These are existing consumer
+semantics, not new correction-policy choices. Localized tests keep this
+distinction explicit instead of copying only the loaded default case.
+
+Contextual quality review caught a further lead assumption: weighted call
+distance charges insertion/deletion one per character, and slash relations are
+excluded before truncation detection. Therefore a two-character truncation
+cannot have distance one in either weighted model. Delta2-only validation is
+unused with maximum edit distance one, just as the distance-two Bayes subject
+gate is. The validator and incorrectly derived test expectation are corrected;
+the full ordinary run on the preceding state was interrupted and is not claimed
+as final evidence. The final full lane and analyzers are rerun after that fix.
+The review also found stale B1.2 capacity-deferral wording in the README; it is
+replaced with the current request-preservation contract.
+
+Implementation mapping: `config/call_correction_capacity.go` owns the pure
+validator, `config/config.go` applies it after defaults, and
+`internal/cluster/main_runtime.go` / `cmd/rbn_replay/runner.go` apply it before
+their relevant ownership/scratch effects. `spot/custom_scp_store.go` preserves
+Boolean minima; count lookup, retention, synchronization and encoding are
+unchanged. The new config and cluster capacity regressions, appended spot
+freshness cases and replay consumer cases establish those boundaries. CLI gopls
+confirms exactly those three production validator callers. The existing B1.2
+partial-count regression now checks preserved counts with an unsatisfied
+Boolean minimum instead of locking the explicitly deferred cap coercion.
+
+Final targeted checks pass in config, spot, cluster and replay, including the
+corrected raw/loaded reachability cases and actual four-model gate controls.
+The selected final lane includes full ordinary, vet, Staticcheck, lint, full
+race and connected ordinary/race because the shared config check affects
+startup ownership boundaries. No parser/protocol or retained representation
+changes require new fuzzing or performance claims. Support impact is addressed
+in the confidence and Windows-startup cards, comment-only pipeline guidance,
+README and ADR-0288. The cohesive historical test additions retain the existing
+whole-file defective-producer overlay exclusion rather than changing the runner.
+
+Final-state validation passed: all 70 ordinary packages, all 70 race packages,
+vet, Staticcheck and lint (zero issues), plus connected CustomSCP ordinary/race.
+Connected evidence directories are `8c8a05965cfd4bd1936dfe8a6a5f1f56`
+and `e3a73aea206d4d9ab4000cfa842b96e3`. The contextual review follow-up
+verified both fixes and found no further material issue; scientific independence
+is not claimed for that engineering review. Fresh lead-owned diff verification
+confirms the consumer predicates, unchanged partial counts, and early ownership
+and scratch boundaries.
+
+Evidence logs in `.tmp`: `b14-config-baseline-red.log`,
+`b14-storage-delivery-baseline-red.log`, `b14-delivery-baseline-red.log`,
+`b14-replay-baseline-red.log`, `b14-targeted-final.log`, `b14-full-final.log`,
+`b14-race-final.log`, `b14-vet-final.log`, `b14-staticcheck-final.log`,
+`b14-lint-final.log`, `b14-customscp.log`, `b14-customscp-race.log`,
+`b14-yaml.log`, `b14-support.log`, `b14-support-eval.log` and the staged
+comment/map/whitespace checks. `b14-full-interrupted.log` is superseded evidence
+from the interrupted pre-fix run, not a final pass. No firewall changes, new
+listener paths, external feed checks, push or deployment occurred.

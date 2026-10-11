@@ -187,6 +187,8 @@ call_correction:
     s_floor_min_unique_spotters_family: 5 # Family spotters required for S-floor
     s_floor_min_unique_h3_cells_family: 3 # Family geographic spread for S-floor
     max_keys: 250000                 # Hard cap on retained call/band/mode keys
+    # Enabled consumed receiver/cell minima must fit this cap; impossible gates fail startup/replay.
+    # Disabled unused gates and separate FT storage are not constrained by this cap.
     max_spotters_per_key: 12         # Hard cap on retained spotter evidence per key
     max_db_bytes: 4294967296         # Approximate Pebble size cap before cleanup pressure
     cleanup_interval_seconds: 601    # Background cleanup cadence

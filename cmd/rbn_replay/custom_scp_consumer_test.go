@@ -4,6 +4,9 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +15,59 @@ import (
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
+
+func TestB14ReplayCustomSCPCapacityBeforeScratchDeletion(t *testing.T) {
+	for _, tc := range []struct {
+		name                      string
+		cap, minimum              int
+		global, custom, wantError bool
+	}{
+		{"above_cap", 3, 4, true, true, true},
+		{"default_cap", 0, 65, true, true, true},
+		{"equal_cap", 3, 3, true, true, false},
+		{"global_disabled", 3, 4, false, true, false},
+		{"custom_disabled", 3, 4, true, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			out := t.TempDir()
+			scratch := filepath.Join(out, "custom_scp_runtime")
+			if err := os.MkdirAll(scratch, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			sentinel := filepath.Join(scratch, "existing-evidence")
+			const contents = "must survive invalid configuration"
+			if err := os.WriteFile(sentinel, []byte(contents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cfg := config.CallCorrectionConfig{Enabled: tc.global, CustomSCP: config.CallCorrectionCustomSCPConfig{
+				Enabled: tc.custom, MaxSpottersPerKey: tc.cap,
+				SFloorMinUniqueSpottersExact: tc.minimum, SFloorMinUniqueH3CellsExact: 2,
+				SFloorMinUniqueSpottersFamily: 3, SFloorMinUniqueH3CellsFamily: 3,
+			}}
+			runner := &replayRunner{cfg: &config.Config{CallCorrection: cfg}, outDir: out}
+			t.Cleanup(runner.close)
+			err := runner.openRecentBandStore()
+			if tc.wantError {
+				if err == nil || !strings.Contains(err.Error(), "s_floor_min_unique_spotters_exact") || !strings.Contains(err.Error(), "max_spotters_per_key") {
+					t.Errorf("impossible replay requirement must fail with actionable keys: %v", err)
+				}
+				if runner.recentBandStore != nil || runner.cleanupRecentBand != nil {
+					t.Error("invalid capacity created a store or cleanup owner")
+				}
+			} else if err != nil {
+				t.Fatalf("valid/disabled configuration failed: %v", err)
+			}
+			if tc.wantError || !tc.global || !tc.custom {
+				got, readErr := os.ReadFile(sentinel)
+				if readErr != nil || string(got) != contents {
+					t.Errorf("replay touched scratch before capacity validation: %q %v", got, readErr)
+				}
+			} else if runner.recentBandStore == nil || runner.cleanupRecentBand == nil {
+				t.Error("boundary-equal enabled requirement did not create its store")
+			}
+		})
+	}
+}
 
 func TestB12ReplayCustomSCPConsumerRequirementsAndStaticHorizon(t *testing.T) {
 	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(t)); err != nil {

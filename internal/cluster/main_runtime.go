@@ -671,6 +671,11 @@ func (r *clusterRuntime) initializeObservabilityState() {
 }
 
 func (r *clusterRuntime) initializeSignalResolverAndRecentStore() bool {
+	// Direct construction must reject impossible history gates before starting
+	// the resolver or creating the database and its maintenance owners.
+	if err := r.cfg.CallCorrection.ValidateCustomSCPCapacity(); err != nil {
+		return r.failStartup("Invalid call correction history capacity: %v", err)
+	}
 	if r.cfg.CallCorrection.Enabled {
 		r.signalResolver = spot.NewSignalResolver(spot.SignalResolverConfig{
 			QueueSize:                 shadowResolverQueueSize,

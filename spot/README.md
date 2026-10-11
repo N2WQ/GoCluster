@@ -167,8 +167,7 @@ uses the greater of its consumer's receiver minimum and
 add their own minima. Tightening the stabilizer does not raise resolver or FT
 requirements. Partial counts remain visible to the Bayesian prior and diagnostics;
 qualification gates still check their effective receiver minimum. Boolean store
-queries retain the existing capacity normalization until the separate capacity
-validation repair; this patch does not yet reject impossible configured minima.
+queries preserve the request instead of lowering it to the storage cap.
 
 The custom S floor uses its dedicated exact/family thresholds. The independent
 FT recent floor uses the common receiver minimum without inheriting stabilizer
@@ -181,6 +180,13 @@ receiver and cell requirement. A higher-scoring member that fails a requirement
 cannot hide another member's success. Counts and cells are never pooled across
 members; static recognition remains a separate alternative. This rule does not
 change output-pipeline family suppression.
+
+Enabled historical receiver and cell requirements must fit
+`custom_scp.max_spotters_per_key`. Loader, runtime and replay reject impossible
+consumed requirements before creating history resources. Disabled unused gates
+are ignored; the separate FT store is not constrained by this cap. Direct
+CustomSCP boolean queries return false for an above-cap minimum instead of
+lowering it. Count queries still expose eligible partial support.
 
 Custom SCP keeps each receiver's newest observation for its call, band and mode
 bucket. Historical support counts that receiver only when its own observation is

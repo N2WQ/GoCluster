@@ -350,6 +350,10 @@ func (r *replayRunner) buildReplayRuntime() error {
 // isolated from production state.
 func (r *replayRunner) openRecentBandStore() error {
 	cfg := r.cfg
+	// Validate before deleting scratch evidence or constructing store owners.
+	if err := cfg.CallCorrection.ValidateCustomSCPCapacity(); err != nil {
+		return err
+	}
 	if !cfg.CallCorrection.Enabled {
 		return nil
 	}
