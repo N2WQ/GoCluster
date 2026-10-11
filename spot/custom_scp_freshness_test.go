@@ -3,6 +3,7 @@
 package spot
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"path/filepath"
@@ -847,6 +848,314 @@ func TestB14Delta2HistoryValidationRequiresDistanceTwo(t *testing.T) {
 				}
 				if got.Allow || got.Reason != want {
 					t.Fatalf("max distance %d must reach only its eligible gate: %+v want reason=%s", maximum, got, want)
+				}
+			}
+		})
+	}
+}
+
+func b15RequireStaticRaw(t *testing.T, db *pebble.DB, want map[string][]byte) {
+	t.Helper()
+	iter, err := db.NewIter(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := iter.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
+	count := 0
+	for iter.First(); iter.Valid(); iter.Next() {
+		key := string(iter.Key())
+		expected, ok := want[key]
+		if !ok || !bytes.Equal(iter.Value(), expected) {
+			t.Errorf("static eligibility must preserve exact persisted input: key=%q got=%x want=%x", key, iter.Value(), expected)
+		}
+		count++
+	}
+	if err := iter.Error(); err != nil {
+		t.Fatal(err)
+	}
+	if count != len(want) {
+		t.Errorf("static eligibility changed persisted population: got %d keys want %d", count, len(want))
+	}
+}
+
+// Literal static-only input does not acquire observation support through an
+// admission helper. Inspect all bytes before the production decoder opens them.
+func b15StaticOnlyStore(t *testing.T, stamps map[string]int64) (*CustomSCPStore, map[string][]byte) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "scp")
+	db, err := pebble.Open(path, &pebble.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			if err := db.Close(); err != nil {
+				t.Error(err)
+			}
+		}
+	}()
+	raw := make(map[string][]byte, len(stamps))
+	for call, stamp := range stamps {
+		value := make([]byte, 8)
+		binary.BigEndian.PutUint64(value, uint64(stamp))
+		key := "m|" + call
+		raw[key] = value
+		if err := db.Set([]byte(key), value, pebble.Sync); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b15RequireStaticRaw(t, db, raw)
+	err = db.Close()
+	closed = true
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenCustomSCPStore(CustomSCPOptions{Path: path, HorizonDays: 60, StaticHorizonDays: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if stats := store.StatsSnapshot(); stats.StaticCalls != len(stamps) || stats.ObservationKeys != 0 || stats.ObservationSpotters != 0 {
+		t.Fatalf("literal fixture must retain static input without independent observation support: %+v", stats)
+	}
+	return store, raw
+}
+
+func b15ReopenStaticStore(t *testing.T, store *CustomSCPStore) *CustomSCPStore {
+	t.Helper()
+	options := store.opts
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenCustomSCPStore(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := reopened.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	return reopened
+}
+
+func TestB15CustomSCPStaticEligibilityStoredSeconds(t *testing.T) {
+	// A future marker survives load's lower-horizon pruning. Explicit clocks
+	// test both inclusive bounds at the persisted second, independently of now.
+	stamp := time.Now().UTC().Truncate(time.Second).Add(2 * time.Hour)
+	store, raw := b15StaticOnlyStore(t, map[string]int64{"K1CLOCK": stamp.Unix()})
+	queries := []struct {
+		name string
+		now  time.Time
+		want int
+	}{
+		{"before_one_second", stamp.Add(-time.Second), 0},
+		{"before_last_nanosecond", stamp.Add(-time.Nanosecond), 0},
+		{"at_stored_second", stamp, 1},
+		{"after_within_stored_second", stamp.Add(999 * time.Millisecond), 1},
+		{"after_one_second", stamp.Add(time.Second), 1},
+		{"inclusive_lower_horizon", stamp.Add(24 * time.Hour), 1},
+		{"lower_horizon_same_second", stamp.Add(24*time.Hour + 999*time.Millisecond), 1},
+		{"past_lower_horizon_second", stamp.Add(24*time.Hour + time.Second), 0},
+		{"before_again", stamp.Add(-time.Nanosecond), 0},
+	}
+	check := func(store *CustomSCPStore) {
+		t.Helper()
+		before := store.StatsSnapshot()
+		for _, query := range queries {
+			if got := store.StaticCallCount(query.now); got != query.want {
+				t.Errorf("%s static count=%d want %d at %s for stored second %d", query.name, got, query.want, query.now.Format(time.RFC3339Nano), stamp.Unix())
+			}
+			if got, want := store.staticContainsAt("K1CLOCK", query.now), query.want == 1; got != want {
+				t.Errorf("%s static membership=%t want %t at %s for stored second %d", query.name, got, want, query.now.Format(time.RFC3339Nano), stamp.Unix())
+			}
+		}
+		if store.StaticContains(" k1clock ") {
+			t.Error("process-clock recognition must exclude a retained future static marker")
+		}
+		if after := store.StatsSnapshot(); after != before || after.StaticCalls != 1 {
+			t.Errorf("eligibility clocks must not reclaim retained static input: before=%+v after=%+v", before, after)
+		}
+		b15RequireStaticRaw(t, store.db, raw)
+		assertCustomSCPCleanupCoupling(t, store)
+	}
+	check(store)
+	check(b15ReopenStaticStore(t, store))
+}
+
+func TestB15CustomSCPStaticZeroClockAndNil(t *testing.T) {
+	var nilStore *CustomSCPStore
+	if nilStore.StaticContains("K1CLOCK") || nilStore.StaticCallCount(time.Time{}) != 0 || nilStore.StaticCallCount(time.Now().UTC()) != 0 {
+		t.Fatal("nil static store must provide no recognition or count")
+	}
+	if nilStore.staticContainsAt("K1CLOCK", time.Time{}) || nilStore.staticContainsAt("K1CLOCK", time.Now().UTC()) {
+		t.Fatal("nil static store must provide no explicit-clock recognition")
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	store, raw := b15StaticOnlyStore(t, map[string]int64{
+		"K1PAST": now.Add(-time.Hour).Unix(), "K1FUTURE": now.Add(2 * time.Hour).Unix(),
+	})
+	check := func(store *CustomSCPStore) {
+		t.Helper()
+		before := store.StatsSnapshot()
+		if got := store.StaticCallCount(time.Time{}); got != 1 {
+			t.Errorf("zero query clock must use current eligibility, not the two retained markers: got %d want 1", got)
+		}
+		if !store.StaticContains(" k1past ") || store.StaticContains("K1FUTURE") || store.StaticContains("") || store.StaticContains("K1MISSING") {
+			t.Error("process-clock recognition must distinguish existing, future, empty and missing calls")
+		}
+		for _, clock := range []time.Time{time.Time{}, now} {
+			for _, query := range []struct {
+				call string
+				want bool
+			}{{"K1PAST", true}, {" k1past ", true}, {"K1FUTURE", false}, {"", false}, {" \t ", false}, {"K1MISSING", false}} {
+				if got := store.staticContainsAt(query.call, clock); got != query.want {
+					t.Errorf("static membership for %q at %s=%t want %t", query.call, clock.Format(time.RFC3339Nano), got, query.want)
+				}
+			}
+		}
+		if after := store.StatsSnapshot(); after != before || after.StaticCalls != 2 {
+			t.Errorf("zero-clock eligibility changed retained static population: before=%+v after=%+v", before, after)
+		}
+		b15RequireStaticRaw(t, store.db, raw)
+	}
+	check(store)
+	check(b15ReopenStaticStore(t, store))
+}
+
+func TestB15CustomSCPStaticConcurrentImmutableReaders(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	current := now.Add(-time.Hour)
+	future := now.Add(2 * time.Hour)
+	store, raw := b15StaticOnlyStore(t, map[string]int64{
+		"K1CURRENT": current.Unix(), "K1FUTURE": future.Unix(), "K1BOUND": current.Unix(),
+	})
+	type staticQuery struct {
+		call      string
+		now       time.Time
+		want      bool
+		wantCount int
+	}
+	queries := []staticQuery{
+		{"K1CURRENT", now, true, 2},
+		{"K1FUTURE", now, false, 2},
+		{"K1FUTURE", future, true, 3},
+		{"K1BOUND", current.Add(24 * time.Hour), true, 3},
+		{"K1BOUND", current.Add(24*time.Hour + 999*time.Millisecond), true, 3},
+		{"K1BOUND", current.Add(24*time.Hour + time.Second), false, 1},
+		{"K1BOUND", current.Add(-time.Nanosecond), false, 0},
+	}
+	for _, query := range queries {
+		if normalized := NormalizeCallsign(query.call); normalized != query.call {
+			t.Fatalf("concurrent fixture call %q is not fully normalized: %q", query.call, normalized)
+		}
+	}
+	unchangedQueries := append([]staticQuery(nil), queries...)
+	check := func(store *CustomSCPStore) {
+		t.Helper()
+		before := store.StatsSnapshot()
+		const workers, passes = 8, 128
+		start := make(chan struct{})
+		failures := make(chan error, workers)
+		var readers sync.WaitGroup
+		readers.Add(workers)
+		for worker := 0; worker < workers; worker++ {
+			go func(worker int) {
+				defer readers.Done()
+				<-start
+				for pass := 0; pass < passes; pass++ {
+					for _, query := range queries {
+						if got := store.staticContainsAt(query.call, query.now); got != query.want {
+							failures <- fmt.Errorf("reader %d pass %d static membership for %s at %s=%t want %t", worker, pass, query.call, query.now.Format(time.RFC3339Nano), got, query.want)
+							return
+						}
+						if got := store.StaticCallCount(query.now); got != query.wantCount {
+							failures <- fmt.Errorf("reader %d pass %d static count at %s=%d want %d", worker, pass, query.now.Format(time.RFC3339Nano), got, query.wantCount)
+							return
+						}
+					}
+				}
+			}(worker)
+		}
+		close(start)
+		readers.Wait()
+		close(failures)
+		for err := range failures {
+			t.Error(err)
+		}
+		for i, query := range queries {
+			if query != unchangedQueries[i] {
+				t.Errorf("concurrent query %d mutated: before=%+v after=%+v", i, unchangedQueries[i], query)
+			}
+		}
+		if after := store.StatsSnapshot(); after != before || after.StaticCalls != 3 {
+			t.Errorf("concurrent eligibility queries changed retained state: before=%+v after=%+v", before, after)
+		}
+		b15RequireStaticRaw(t, store.db, raw)
+		assertCustomSCPCleanupCoupling(t, store)
+	}
+	check(store)
+	check(b15ReopenStaticStore(t, store))
+}
+
+func TestB15CustomSCPFutureVStaticAdmissionRemainsRetained(t *testing.T) {
+	store := newCustomSCPFreshnessStore(t, CustomSCPOptions{HorizonDays: 60, StaticHorizonDays: 1})
+	stamp := time.Now().UTC().Truncate(time.Second).Add(2 * time.Hour)
+	source := NewSpot("K1LEARN", "N0AAA", 14020, "CW")
+	source.Confidence, source.Time = "V", stamp
+	store.RecordSpot(source)
+	check := func(store *CustomSCPStore) {
+		t.Helper()
+		before := store.StatsSnapshot()
+		if before.StaticCalls != 1 || before.ObservationSpotters != 1 {
+			t.Fatalf("existing admission must retain the future V timestamp normally: %+v", before)
+		}
+		if store.StaticContains("K1LEARN") || store.StaticCallCount(time.Time{}) != 0 {
+			t.Error("a learned future marker must remain retained without providing current static recognition")
+		}
+		if got := store.RecentSupportCount("K1LEARN", "20m", "CW", time.Now().UTC()); got != 0 {
+			t.Errorf("future observation remains a separate ineligible population: got %d want 0", got)
+		}
+		requireCustomSCPCleanupRaw(t, store, "m|K1LEARN", customSCPCleanupStaticBytes(stamp.Unix()))
+		requireCustomSCPCleanupRaw(t, store, "o|K1LEARN|20m|cw|N0AAA", customSCPCleanupObservationBytes(stamp.Unix(), 0))
+		if after := store.StatsSnapshot(); after != before {
+			t.Errorf("recognition queries changed future admitted ownership: before=%+v after=%+v", before, after)
+		}
+		assertCustomSCPCleanupCoupling(t, store)
+	}
+	check(store)
+	check(b15ReopenStaticStore(t, store))
+}
+
+func BenchmarkB15CustomSCPStaticContains(b *testing.B) {
+	for _, tc := range []struct {
+		name string
+		age  time.Duration
+		want bool
+	}{{"current", time.Hour, true}, {"future", -2 * time.Hour, false}} {
+		b.Run(tc.name, func(b *testing.B) {
+			stamp := time.Now().UTC().Add(-tc.age).Unix()
+			store := &CustomSCPStore{
+				opts:   sanitizeCustomSCPOptions(CustomSCPOptions{StaticHorizonDays: 1}),
+				static: map[string]int64{"K1BENCH": stamp},
+			}
+			if got := store.StaticContains("K1BENCH"); got != tc.want {
+				b.Fatalf("warm static query=%t want %t", got, tc.want)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if got := store.StaticContains("K1BENCH"); got != tc.want {
+					b.Fatalf("static query changed during measurement: got %t want %t", got, tc.want)
 				}
 			}
 		})

@@ -582,3 +582,81 @@ Evidence logs in `.tmp`: `b14-config-baseline-red.log`,
 comment/map/whitespace checks. `b14-full-interrupted.log` is superseded evidence
 from the interrupted pre-fix run, not a final pass. No firewall changes, new
 listener paths, external feed checks, push or deployment occurred.
+
+## B1.5 - Future static-membership eligibility (complete)
+
+Checkpoint base is B1.4 `0b4006d`. Current source and callers confirm
+`StaticContains` uses the process clock and only a lower static-horizon bound;
+`StaticCallCount(now)` also checks only that lower bound. Loading, refresh,
+cleanup and expiry heaps intentionally retain future timestamps under existing
+retention. The S floor treats static recognition as an alternative to exact or
+family history, so a future static marker must not veto valid independent history.
+
+Preserve the public process-clock API and delegate membership lookup to a private
+clock-taking helper. Membership and eligible count require the inclusive interval
+`[static horizon cutoff, query stored second]`. No exported clock contract, cache,
+clock override, retained-state mutation, encoding or cleanup change is needed.
+The lead-owned design probe rejects deleting future records and changing callers'
+clocks because those violate approved retention/process-clock boundaries. A private
+helper is a local testability choice, not a new architecture.
+
+The detailed falsifiability pass requires literal persisted static-only bytes;
+otherwise historical observations could conceal the defect. Public explicit-clock
+counts and actual future-only delivery must fail the baseline. Private helper
+checks then establish exact membership boundaries, including fractional stored
+seconds and the inclusive lower bound. Retained cardinality and raw bytes are
+checked before decoding and after query/reopen; eligible counts are separate.
+A future-marker plus independently qualifying history control must still emit S.
+Actual normal/DIAG TCP, original peer fields, ring and reopened archive remain
+the delivered-output oracles. No percentage or correction is invented.
+
+The defective checkpoint fails all three public unit cases: future count and
+recognition, zero-clock retained/eligible separation, and a future V observation's
+learned membership. The corrected delivery oracle shows future-only `S` instead
+of `?` on actual normal/DIAG TCP, ring and reopened archive. The past and
+independent exact/family-history delivered S controls and original PC61 bytes
+remain correct; their historical query-before-timestamp checks expose the same
+lower-bound-only defect. Exact stored bytes and retained counts remain intact.
+
+The preliminary delivery run additionally had a fixture error: it expected the
+normal line on DIAG CONF. The final baseline recapture explicitly expects the
+existing `--%` representation for unavailable DIAG confidence and is the red
+delivery evidence. Source now adds only the upper eligibility bound and private
+clock helper. Initial targeted spot/cluster checks pass; deterministic private
+membership and concurrent-reader checks are then added before the final lane.
+
+Select full ordinary plus all analyzers, full spot race, targeted actual delivery
+race and connected ordinary/race. The change adds no synchronization, lifecycle
+or retained representation, so another all-package race run is not needed.
+Preserve zero allocation on the warmed membership lookup; no latency or live
+capacity improvement is claimed. The historical test file's size was reviewed:
+these cohesive byte/clock tests share helpers and the existing defective-producer
+whole-file overlay exclusion, avoiding a separate runner compatibility change.
+
+Final-state targeted checks, all 70 ordinary packages, vet, Staticcheck and lint
+(zero issues), full spot race, targeted actual delivery race, and connected
+CustomSCP ordinary/race all passed. Handoff directories are
+`38daf5ab0db844849478bb5aac6f2f31` and `599c0af894d34590bcfb6c14d17e13d9`.
+The warmed public membership benchmark reports 64.65 ns/op current and 66.85
+ns/op future, both zero bytes and allocations. This validates the local allocation
+contract, not production latency or capacity. Joined concurrent readers use fully
+normalized calls and independently controlled query clocks before and after
+reopen; inputs, retained stats and exact persisted bytes remain unchanged.
+
+Implementation mapping: `spot/custom_scp_store.go` owns the private clock helper
+and membership/count upper bounds; appended `spot/custom_scp_freshness_test.go`
+cases lock clock, publication and persistence behavior; the separate cluster
+static-future regression checks four actual delivery outcomes. README, confidence
+support card, ADR-0289 and its index state eligible versus retained membership.
+Contextual engineering review found no material helper issue. Fresh lead-owned
+diff review verifies unchanged owner, locks, retention, encoding and public
+process-clock API; no independent scientific review is claimed for this pass.
+
+Logs in `.tmp`: `b15-unit-baseline-red.log`,
+`b15-delivery-baseline-red-final.log`, `b15-targeted-final.log`, `b15-full.log`,
+`b15-vet.log`, `b15-staticcheck.log`, `b15-lint.log`, `b15-spot-race.log`,
+`b15-delivery-race.log`, `b15-customscp.log`, `b15-customscp-race.log`,
+`b15-bench.log`, `b15-support.log`, `b15-support-eval.log` and final map/comment/
+whitespace checks. The preliminary `b15-delivery-baseline-red.log` includes the
+DIAG fixture error and is superseded. No firewall, listener path, external feed,
+push or deployment changes occurred.

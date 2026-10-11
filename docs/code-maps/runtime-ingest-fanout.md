@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `25c4a678dc1a6a30`
+- Source fingerprint: `5c798af809c145c4`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 98 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 99 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 37 | 42 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
@@ -171,6 +171,7 @@ Test files:
 - `internal/cluster/custom_scp_delivery_regression_test.go`
 - `internal/cluster/custom_scp_family_delivery_test.go`
 - `internal/cluster/custom_scp_freshness_delivery_test.go`
+- `internal/cluster/custom_scp_static_future_delivery_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_job_windows_test.go`

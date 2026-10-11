@@ -188,6 +188,13 @@ are ignored; the separate FT store is not constrained by this cap. Direct
 CustomSCP boolean queries return false for an above-cap minimum instead of
 lowering it. Count queries still expose eligible partial support.
 
+Learned static membership qualifies only from the inclusive static-horizon cutoff
+through the query's stored second. A future membership timestamp remains retained
+but cannot supply static recognition or the S floor until the clock catches up.
+`StaticContains` keeps its process-clock contract; explicit-clock eligible counts
+are distinct from retained `StatsSnapshot().StaticCalls`. Independent historical
+support can still qualify the S floor while static membership is future.
+
 Custom SCP keeps each receiver's newest observation for its call, band and mode
 bucket. Historical support counts that receiver only when its own observation is
 within `history_horizon_days`, is not later than the query clock and meets the

@@ -54,6 +54,9 @@ not infer meanings from other cluster software.
   fail configuration/runtime/replay initialization; direct boolean queries
   return false rather than weakening the request. Disabled unused gates and the
   separate FT store do not inherit this cap. Partial count queries remain visible.
+- Future learned static membership is retained but cannot
+  supply recognition or the S floor before its stored second. Eligible static
+  counts differ from retained cardinality; independent history can still qualify.
 - Retained observations and currently qualifying historical support are different
   populations. Score/future filtering does not delete within-horizon history;
   existing horizon pruning and cleanup remain. Retained counts alone do not prove

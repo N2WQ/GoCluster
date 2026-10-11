@@ -649,8 +649,15 @@ func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spott
 	s.deleteObservationSpottersLocked(key, entry, removed, nil)
 }
 
-// StaticContains reports whether call is in persisted custom SCP membership.
+// StaticContains reports process-clock eligible persisted custom SCP membership.
+// Future membership remains retained but cannot authorize recognition yet.
 func (s *CustomSCPStore) StaticContains(call string) bool {
+	return s.staticContainsAt(call, time.Now().UTC())
+}
+
+// staticContainsAt keeps eligibility clock-testable without changing callers'
+// process-clock contract. Queries never reclaim retained membership.
+func (s *CustomSCPStore) staticContainsAt(call string, now time.Time) bool {
 	if s == nil {
 		return false
 	}
@@ -664,12 +671,15 @@ func (s *CustomSCPStore) StaticContains(call string) bool {
 	if !ok {
 		return false
 	}
-	return seen >= s.staticHorizonCutoffUnix(time.Now().UTC())
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	return seen >= s.staticHorizonCutoffUnix(now) && seen <= now.Unix()
 }
 
 // StaticCallCount returns the number of static custom-SCP calls that are still
-// valid within the configured static horizon. It intentionally does not mutate
-// or prune retained state; cleanup owns reclamation.
+// eligible between the configured static cutoff and the query's stored second.
+// It does not mutate or prune retained state; cleanup owns reclamation.
 func (s *CustomSCPStore) StaticCallCount(now time.Time) int {
 	if s == nil {
 		return 0
@@ -678,11 +688,12 @@ func (s *CustomSCPStore) StaticCallCount(now time.Time) int {
 		now = time.Now().UTC()
 	}
 	cutoff := s.staticHorizonCutoffUnix(now.UTC())
+	querySecond := now.Unix()
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	total := 0
 	for _, seen := range s.static {
-		if seen >= cutoff {
+		if seen >= cutoff && seen <= querySecond {
 			total++
 		}
 	}
