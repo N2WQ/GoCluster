@@ -220,6 +220,14 @@ func TestFormatToxicitySummaryExposesBoundedCounters(t *testing.T) {
 		t.Fatal("timed out waiting for classifier result")
 	}
 
+	// Receiving a result transfers ownership before the publishing worker's
+	// deferred pending decrement. Join it before asserting terminal counters.
+	classifier.Stop()
+	wantStats := toxicity.Stats{SafeBypass: 1, AICalls: 1, Toxic: 1, CacheEntries: 1}
+	if got := classifier.Snapshot(); got != wantStats {
+		t.Fatalf("joined classifier counters: got %+v want %+v", got, wantStats)
+	}
+
 	line := formatToxicitySummary(classifier)
 	for _, want := range []string{"Toxicity:", "(AI)", "(L)", "(H)", "(T)", "(U)", "q=0", "cache=", "err"} {
 		if !strings.Contains(line, want) {

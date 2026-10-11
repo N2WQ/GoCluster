@@ -82,6 +82,18 @@ Tags: shutdown, classifier, cancellation, bounded-queues
 - Rollback triggers: stranded workers/references, Add/Wait races, incorrect
   outcome counters or changed ordinary classification behavior.
 
+## Follow-up: summary test receipt versus worker retirement
+
+2026-10-11: `TestFormatToxicitySummaryExposesBoundedCounters` sometimes asserted
+`q=0` immediately after receiving the result, before the publishing worker's
+deferred pending decrement. Diagnostic repetitions observed 5/1,000 ordinary
+and 2/1,000 race assertion failures, without a race-detector report. Receipt
+transfers result ownership but does not join its producer. The approved T0
+test-only repair calls `Stop()` after receiving/applying the result, then checks
+exact terminal counters and summary redaction. Production pending semantics,
+including blocked result publication, remain unchanged. Checkpoint validation
+is recorded in [delivery execution](../call-correction-delivery-execution.md).
+
 ## References
 - Issue(s): approved v3 scope ledger, checkpoint 20a.
 - PR(s): none.
