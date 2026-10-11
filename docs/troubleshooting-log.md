@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0081 | Temporal Saved Authority | Monitoring | 2026-10-10 | temporal, fresh release, delivered correction | ADR-0282 | `docs/troubleshooting/TSR-0081-temporal-saved-authority.md` |
 | TSR-0080 | Archive Shared Snapshot Normalization | Monitoring | 2026-10-10 | archive, spot, final fanout, peer | ADR-0281 | `docs/troubleshooting/TSR-0080-archive-shared-snapshot-normalization.md` |
 | TSR-0079 | Resolver Receiver Accounting | Monitoring | 2026-10-10 | resolver, receiver union, delivered confidence | ADR-0280 | `docs/troubleshooting/TSR-0079-resolver-receiver-accounting.md` |
 | TSR-0078 | Custom SCP Stale Deletion and Close | Resolved | 2026-10-10 | custom_scp, cleanup, persistence, shutdown | ADR-0279 | `docs/troubleshooting/TSR-0078-custom-scp-stale-deletion-and-close.md` |

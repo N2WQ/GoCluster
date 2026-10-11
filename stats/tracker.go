@@ -55,13 +55,16 @@ type Tracker struct {
 	stabImmediateReason  sync.Map // string -> *atomic.Uint64
 	stabDelayedByReason  sync.Map // string -> *atomic.Uint64
 	stabSuppressedReason sync.Map // string -> *atomic.Uint64
-	temporalPending      atomic.Int64
-	temporalCommitted    atomic.Uint64
-	temporalFallback     atomic.Uint64
-	temporalAbstain      atomic.Uint64
-	temporalBypass       atomic.Uint64
-	temporalPathSwitches atomic.Uint64
-	temporalLatency      sync.Map // string(bucket) -> *atomic.Uint64
+
+	temporalPending         atomic.Int64
+	temporalProposed        atomic.Uint64
+	temporalHandoffAttempts atomic.Uint64
+	temporalCommitted       atomic.Uint64
+	temporalFallback        atomic.Uint64
+	temporalAbstain         atomic.Uint64
+	temporalBypass          atomic.Uint64
+	temporalPathSwitches    atomic.Uint64
+	temporalLatency         sync.Map // string(bucket) -> *atomic.Uint64
 }
 
 // NewTracker creates a new stats tracker with a start timestamp.
@@ -225,6 +228,8 @@ func (t *Tracker) Reset() {
 		return true
 	})
 	t.temporalPending.Store(0)
+	t.temporalProposed.Store(0)
+	t.temporalHandoffAttempts.Store(0)
 	t.temporalCommitted.Store(0)
 	t.temporalFallback.Store(0)
 	t.temporalAbstain.Store(0)
@@ -620,7 +625,25 @@ func (t *Tracker) DecrementTemporalPending() {
 	}
 }
 
-// IncrementTemporalCommitted records one temporal apply commit.
+// IncrementTemporalProposed records one decoder Apply proposal before current
+// correction gates decide whether it may change the spot identity.
+func (t *Tracker) IncrementTemporalProposed() {
+	if t == nil {
+		return
+	}
+	t.temporalProposed.Add(1)
+}
+
+// IncrementTemporalHandoffAttempt records a temporal request's first consumer
+// call, including a refused publication. It does not establish receipt.
+func (t *Tracker) IncrementTemporalHandoffAttempt() {
+	if t == nil {
+		return
+	}
+	t.temporalHandoffAttempts.Add(1)
+}
+
+// IncrementTemporalCommitted records an accepted temporal identity mutation.
 func (t *Tracker) IncrementTemporalCommitted() {
 	if t == nil {
 		return
@@ -695,7 +718,24 @@ func (t *Tracker) TemporalPending() int64 {
 	return t.temporalPending.Load()
 }
 
-// TemporalCommitted returns committed temporal apply count.
+// TemporalProposed returns decoder Apply proposal count.
+func (t *Tracker) TemporalProposed() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalProposed.Load()
+}
+
+// TemporalHandoffAttempts returns first consumer-call attempts for temporal
+// requests, including refused publications; it does not count client receipts.
+func (t *Tracker) TemporalHandoffAttempts() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.temporalHandoffAttempts.Load()
+}
+
+// TemporalCommitted returns accepted temporal identity mutation count.
 func (t *Tracker) TemporalCommitted() uint64 {
 	if t == nil {
 		return 0

@@ -92,58 +92,36 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 	if p.telnet == nil || s.IsBeacon {
 		return true
 	}
-	skipResolverApply := false
+	now := time.Now().UTC()
 	var resolverEvidence spot.ResolverEvidence
 	var hasResolverEvidence bool
+	skipResolverApply := false
 	if temporalRelease != nil {
 		pending := temporalRelease.pending
-		resolverEvidence = pending.evidence
-		hasResolverEvidence = pending.hasEvidence
-		ctx.stabilizerResolverKey = pending.stabilizerResolverKey
-		ctx.hasStabilizerResolverKey = pending.hasStabilizerResolverKey
+		resolverEvidence, hasResolverEvidence = pending.evidence, pending.hasEvidence
+		ctx.stabilizerResolverKey, ctx.hasStabilizerResolverKey = pending.stabilizerResolverKey, pending.hasStabilizerResolverKey
 		ctx.stabilizerEvidenceEnqueued = pending.stabilizerEvidenceEnqueued
-		p.recordRuntimeTemporalDecision(temporalRelease.decision)
-		switch temporalRelease.decision.Action {
-		case correctionflow.TemporalDecisionActionApply:
-			selection := temporalRelease.decision.Selection
-			if maybeApplyResolverCorrectionWithSelectionOverride(
-				s,
-				p.signalResolver,
-				resolverEvidence,
-				hasResolverEvidence,
-				p.correctionCfg,
-				ctx.ctyDB,
-				p.metaCache,
-				p.tracker,
-				p.dash,
-				p.recentBandStore,
-				p.adaptiveMinReports,
-				p.spotterReliability,
-				p.spotterReliabilityCW,
-				p.spotterReliabilityRTTY,
-				p.confusionModel,
-				&selection,
-			) {
-				return false
-			}
-		case correctionflow.TemporalDecisionActionAbstain:
+		if !temporalRelease.releaseAt.IsZero() {
+			now = temporalRelease.releaseAt
+		}
+		var decoder *correctionflow.TemporalDecoder
+		if p.temporal != nil {
+			decoder = p.temporal.decoder
+		}
+		ctx.temporalResult = &runtimeTemporalResult{decoder: decoder, key: resolverEvidence.Key, tracker: p.tracker}
+		selection := correctionflow.SelectTemporalReleaseSnapshot(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(s), temporalRelease.decision, now)
+		ctx.resolverSelectionOverride, ctx.resolverReleaseAt = &selection, now
+		if temporalRelease.decision.Action == correctionflow.TemporalDecisionActionAbstain {
+			setResolverConfidence(s, selection.Snapshot, selection.SnapshotOK, normalizedDXCall(s))
 			skipResolverApply = true
-			setResolverConfidence(
-				s,
-				temporalRelease.pending.selection.Snapshot,
-				temporalRelease.pending.selection.SnapshotOK,
-				normalizedDXCall(s),
-			)
 		}
 	} else {
-		now := time.Now().UTC()
 		resolverEvidence, hasResolverEvidence = buildResolverEvidenceSnapshot(s, p.correctionCfg, p.adaptiveMinReports, now)
 		if hasResolverEvidence && p.signalResolver != nil && p.signalResolver.Enqueue(resolverEvidence) {
 			ctx.stabilizerEvidenceEnqueued = true
 		}
 		if hasResolverEvidence {
-			ctx.stabilizerResolverKey = resolverEvidence.Key
-			ctx.hasStabilizerResolverKey = true
+			ctx.stabilizerResolverKey, ctx.hasStabilizerResolverKey = resolverEvidence.Key, true
 		}
 		held, skip := p.maybeHoldTemporalSpot(ctx, now, resolverEvidence, hasResolverEvidence)
 		if held {
@@ -151,45 +129,19 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 		}
 		skipResolverApply = skip
 	}
-	if !skipResolverApply && temporalRelease == nil {
-		if maybeApplyResolverCorrection(
-			s,
-			p.signalResolver,
-			resolverEvidence,
-			hasResolverEvidence,
-			p.correctionCfg,
-			ctx.ctyDB,
-			p.metaCache,
-			p.tracker,
-			p.dash,
-			p.recentBandStore,
-			p.adaptiveMinReports,
-			p.spotterReliability,
-			p.spotterReliabilityCW,
-			p.spotterReliabilityRTTY,
-			p.confusionModel,
-		) {
-			return false
+	if !skipResolverApply {
+		var suppress bool
+		if ctx.resolverSelectionOverride == nil {
+			suppress = maybeApplyResolverCorrection(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
+				p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
+				p.spotterReliability, p.spotterReliabilityCW, p.spotterReliabilityRTTY, p.confusionModel)
+		} else {
+			suppress = maybeApplyResolverCorrectionWithSelectionOverride(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
+				p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
+				p.spotterReliability, p.spotterReliabilityCW, p.spotterReliabilityRTTY, p.confusionModel,
+				ctx.resolverSelectionOverride, ctx.resolverReleaseAt, ctx.temporalResult)
 		}
-	}
-	if !skipResolverApply && temporalRelease != nil && temporalRelease.decision.Action != correctionflow.TemporalDecisionActionApply {
-		if maybeApplyResolverCorrection(
-			s,
-			p.signalResolver,
-			resolverEvidence,
-			hasResolverEvidence,
-			p.correctionCfg,
-			ctx.ctyDB,
-			p.metaCache,
-			p.tracker,
-			p.dash,
-			p.recentBandStore,
-			p.adaptiveMinReports,
-			p.spotterReliability,
-			p.spotterReliabilityCW,
-			p.spotterReliabilityRTTY,
-			p.confusionModel,
-		) {
+		if suppress {
 			return false
 		}
 	}
@@ -248,11 +200,14 @@ func (p *outputPipeline) maybeHoldTemporalSpot(
 		Reason:        reason,
 		CommitLatency: 0,
 	}
+	fresh := correctionflow.SelectResolverPrimarySnapshotForCallAt(p.signalResolver, resolverEvidence.Key, p.correctionCfg, subject, now)
+	ctx.resolverSelectionOverride, ctx.resolverReleaseAt = &fresh, now
+	ctx.temporalResult = &runtimeTemporalResult{decoder: p.temporal.decoder, key: resolverEvidence.Key, tracker: p.tracker}
 	switch p.correctionCfg.TemporalDecoder.OverflowAction {
 	case "abstain":
 		overflowDecision.Action = correctionflow.TemporalDecisionActionAbstain
 		p.recordRuntimeTemporalDecision(overflowDecision)
-		setResolverConfidence(ctx.spot, selection.Snapshot, selection.SnapshotOK, subject)
+		setResolverConfidence(ctx.spot, fresh.Snapshot, fresh.SnapshotOK, subject)
 		return false, true
 	case "bypass":
 		overflowDecision.Action = correctionflow.TemporalDecisionActionBypass
@@ -502,15 +457,12 @@ func (p *outputPipeline) recordRuntimeTemporalDecision(decision correctionflow.T
 	p.tracker.ObserveTemporalCommitLatency(decision.CommitLatency)
 	switch decision.Action {
 	case correctionflow.TemporalDecisionActionApply:
-		p.tracker.IncrementTemporalCommitted()
+		p.tracker.IncrementTemporalProposed()
 	case correctionflow.TemporalDecisionActionFallbackResolver:
 		p.tracker.IncrementTemporalFallbackResolver()
 	case correctionflow.TemporalDecisionActionAbstain:
 		p.tracker.IncrementTemporalAbstainLowMargin()
 	case correctionflow.TemporalDecisionActionBypass:
 		p.tracker.IncrementTemporalOverflowBypass()
-	}
-	if decision.PathSwitched {
-		p.tracker.IncrementTemporalPathSwitch()
 	}
 }

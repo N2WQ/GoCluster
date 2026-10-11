@@ -87,12 +87,24 @@ Legacy comparison artifacts were removed from replay artifacts. Removed fields i
 - `resolver.bayes_advantage_*`
 - `stabilizer_delay_proxy.*`
 - `temporal.pending`
+- `temporal.proposed`
 - `temporal.committed`
+- `temporal.handoff_attempts`
 - `temporal.fallback_resolver`
 - `temporal.abstain_low_margin`
 - `temporal.overflow_bypass`
 - `temporal.path_switches`
 - `temporal.commit_latency_ms.*`
+- `temporal.confirmed_history_keys`
+- `temporal.confirmed_history_evictions`
+
+Proposed means a decoder Apply suggestion; committed means an accepted identity
+mutation after current eligible evidence and ordinary gates. Path switches follow
+accepted identities only. Handoff attempts count the replay output boundary,
+without claiming network receipt. The legacy latency field measures terminal
+decision latency, including rejected proposals. Force retirement selects every
+pending hold at the existing EOF clock, even when its deadline lies later.
+Fresh evidence in the existing key/window does not establish a common RF episode.
 
 `stability` now represents resolver-applied winner follow-on stability for the emitted output path.
 

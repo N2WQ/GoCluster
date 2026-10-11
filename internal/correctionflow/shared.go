@@ -39,6 +39,7 @@ type ResolverPrimarySelection struct {
 	// snapshot behavior; synthesized neighborhoods constrain replacements while
 	// CandidateRanks still carry every admitted dissenting receiver's tally.
 	replacementCalls []string
+	exactWinner      string // Same-generation witness for the final neighborhood rail.
 	// NeighborhoodExcluded* count neighborhood winner candidates excluded from
 	// competition due to comparability rails.
 	NeighborhoodExcludedUnrelated int
@@ -188,13 +189,30 @@ func SelectResolverPrimarySnapshot(resolver *spot.SignalResolver, key spot.Resol
 //     anchor when available.
 //   - If no anchor can be established, selection fails closed to exact snapshot.
 func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string) ResolverPrimarySelection {
+	return selectResolverPrimarySnapshotForCall(resolver, key, cfg, anchorCall, time.Time{})
+}
+
+// SelectResolverPrimarySnapshotForCallAt uses only rows eligible at release.
+// It does not wait for ingestion or advance resolver hysteresis.
+func SelectResolverPrimarySnapshotForCallAt(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, now time.Time) ResolverPrimarySelection {
+	return selectResolverPrimarySnapshotForCall(resolver, key, cfg, anchorCall, now)
+}
+
+func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, now time.Time) ResolverPrimarySelection {
 	selection := ResolverPrimarySelection{}
 	if resolver == nil {
 		return selection
 	}
-	exact, exactOK := resolver.Lookup(key)
+	lookup := func(k spot.ResolverSignalKey) (spot.ResolverSnapshot, bool) {
+		if now.IsZero() {
+			return resolver.Lookup(k)
+		}
+		return resolver.LookupEligible(k, now)
+	}
+	exact, exactOK := lookup(key)
 	selection.Snapshot = exact
 	selection.SnapshotOK = exactOK
+	selection.exactWinner = exact.Winner
 	// A qualifying exact split protects its own population. Neighboring bucket
 	// winners cannot discard that dissent; a later owner publication reevaluates
 	// protection when exact eligible evidence changes, so this is not a latch.
@@ -226,7 +244,10 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 	for offset := -radius; offset <= radius; offset++ {
 		neighborKey := key
 		neighborKey.Bucket += int64(offset)
-		snap, ok := resolver.Lookup(neighborKey)
+		snap, ok := exact, exactOK
+		if offset != 0 {
+			snap, ok = lookup(neighborKey)
+		}
 		if !ok {
 			continue
 		}
@@ -403,6 +424,27 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		}
 	}
 	return selection
+}
+
+// SelectTemporalReleaseSnapshot treats the decoded identity as a proposal.
+// Current eligible, settled evidence supplies all counts and ambiguity gates;
+// an unsupported proposal falls back to the current ordinary selection.
+func SelectTemporalReleaseSnapshot(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, subject string, decision TemporalDecision, now time.Time) ResolverPrimarySelection {
+	selection := SelectResolverPrimarySnapshotForCallAt(resolver, key, cfg, subject, now)
+	if decision.Action != TemporalDecisionActionApply || !selection.SnapshotOK || selection.NeighborhoodSplit ||
+		(selection.Snapshot.State != spot.ResolverStateConfident && selection.Snapshot.State != spot.ResolverStateProbable) {
+		return selection
+	}
+	winner := spot.NormalizeSpotDXCallsign(decision.Winner)
+	if winner == "" || !selection.allowsReplacement(winner) || ResolverSupportForCall(selection.Snapshot, winner) == 0 {
+		return selection
+	}
+	if selection.replacementCalls != nil && selection.exactWinner != "" && selection.exactWinner != winner {
+		if comparable, _ := resolverNeighborhoodComparable(selection.exactWinner, winner, key.Mode, cfg); !comparable {
+			return selection
+		}
+	}
+	return selectionForTemporalWinner(selection, winner)
 }
 
 func resolverNeighborhoodComparable(anchorCall, candidateCall, mode string, cfg config.CallCorrectionConfig) (bool, string) {

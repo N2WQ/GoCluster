@@ -24,6 +24,9 @@ not infer meanings from other cluster software.
 - Split protection survives neighborhood and temporal selection. The narrow
   guard uses the closest eligible frequency pair; conflicting equal-time
   frequency metadata causes conservative abstention until superseded or expired.
+- Temporal release uses current eligible timestamped evidence; saved counts
+  cannot authorize correction. Proposed, accepted identity changes and attempted
+  handoffs are separate counts. A handoff attempt is not a client receipt.
 
 ## Must Avoid
 

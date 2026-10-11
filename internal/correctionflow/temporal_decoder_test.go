@@ -8,7 +8,7 @@ import (
 	"dxcluster/spot"
 )
 
-func TestTemporalDecoderAppliesLateEvidence(t *testing.T) {
+func TestTemporalDecoderProposesLateEvidence(t *testing.T) {
 	decoder := NewTemporalDecoder(config.CallCorrectionConfig{
 		DistanceModelCW:   "morse",
 		DistanceModelRTTY: "baudot",
@@ -65,10 +65,13 @@ func TestTemporalDecoderAppliesLateEvidence(t *testing.T) {
 
 	decision := decoder.Evaluate(1, start.Add(2*time.Second), false)
 	if decision.Action != TemporalDecisionActionApply {
-		t.Fatalf("expected apply decision, got action=%s reason=%s", decision.Action, decision.Reason)
+		t.Fatalf("expected Apply proposal, got action=%s reason=%s", decision.Action, decision.Reason)
 	}
 	if decision.Winner != "K1ABC" {
-		t.Fatalf("expected late evidence to commit K1ABC, got %q", decision.Winner)
+		t.Fatalf("expected late evidence to propose K1ABC, got %q", decision.Winner)
+	}
+	if decision.Key != key || decision.Reason != "proposal" || decoder.ConfirmedHistoryMetrics().Keys != 0 {
+		t.Fatalf("late evidence claimed a confirmation or lost its key: %+v", decision)
 	}
 }
 
@@ -203,6 +206,9 @@ func TestTemporalDecoderDeterministicTieBreakUsesLexicalOrder(t *testing.T) {
 	}
 	if decision.Winner != "K1ABC" {
 		t.Fatalf("expected lexical tie-break winner K1ABC, got %q", decision.Winner)
+	}
+	if decision.Key != key || decision.Reason != "proposal" || decoder.ConfirmedHistoryMetrics().Keys != 0 {
+		t.Fatal("lexical proposal lost its request key or wrote confirmed history")
 	}
 }
 

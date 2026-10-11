@@ -242,8 +242,9 @@ FT all-due retirement avoids stale-heap generation buildup; replay EOF explicit.
 - P1: complete. Distinct accounting, metadata ownership, compact temporal
   retention and actual delivery regressions pass; full checkpoint passed on
   the archive-repaired state. Local commit `457bfd5`.
-- P2: complete; binding ambiguity and connected output checkpoint passed.
-- P3: pending.
+- P2: complete at `37a9d0d`; binding ambiguity and connected output checkpoint passed.
+- P3: complete; fresh authority, acceptance/history accounting and connected
+  delivery checkpoint passed.
 - P4: pending.
 - P5: pending.
 
@@ -420,3 +421,102 @@ checks and diff whitespace checks passed. Fresh lead diff verification found no
 remaining checkpoint blocker or waiver.
 P3 will address evidence that changes after temporal
 capture; this checkpoint does not claim fresh release authority.
+
+### P3 fresh release authority and acceptance accounting
+
+Production mapping: `spot/resolver_fresh.go` projects the latest immutable
+publication at the actual release clock. `internal/correctionflow/shared.go`
+shares fresh selection across runtime and replay, retaining ambiguity and the
+exact-winner comparability rail. Runtime release, stabilization retries and
+overflow use that selection before the existing correction gates. Ordinary
+immediate selection and temporal scoring retain their previous semantics.
+Replay forced retirement now removes all requests, including future deadlines,
+without changing its existing EOF clock.
+
+`TemporalDecoder.ConfirmCorrection` owns deterministic bounded confirmation
+history; proposal evaluation no longer changes it. `temporal_result.go` carries
+request-owned acceptance and first-handoff accounting through runtime output
+and scheduler retries. Every accepted normalized identity mutation counts;
+unchanged retries, rejected proposals and early drops do not. Two actual identity
+mutations on one context count separately. The first consumer call counts once,
+including refusal, and is explicitly not evidence of receipt. Replay confirms
+only applied outcomes and reads history cardinality/evictions from its owner.
+Stats, dashboard and replay metrics distinguish proposals, acceptance and
+handoff attempts. No server-lifetime request identity registry was added.
+
+Before production changes at `37a9d0d`, existing-API probes reproduced confirmed
+history written by proposal evaluation, stale A/C/75% output after its support
+expired, saved-candidate selection despite freshly settled C, erasure of a fresh
+split, stale retained-call support on configured abstention, rejected/unchanged
+proposals counted as commits, and forced replay retirement stranding requests
+beyond EOF+24h. Behavioral red logs are `p3/red-decoder.log`, `red-delivery.log`
+and `red-replay.log` under the ignored log directory. An initial replay fixture
+placed its new candidate in another frequency bucket and failed its publication
+precondition; that failure is excluded from behavior evidence. Its corrected
+same-bucket 400 Hz fixture distinguishes fresh A=37% from saved A=75% while
+preserving the narrow guard and the valid A proposal against ordinary C=50%.
+
+Projection regressions cover inclusive lower cutoff, exclusion of future rows,
+no resurrection of superseded rows, union/weighted accounting, zero-weight
+membership, conflict and split changes, owner tie provenance, immutable
+concurrent reads, no read-side hysteresis advancement and fail-closed compact
+input. Runtime/replay checks cover current proposal support, newer settled
+fallback, changed ambiguity, ordinary gates, CTY, suppression, actual scheduler
+retry, all configured overflow actions and force-before-deadline retirement.
+Positive ownership barriers establish actual overflow and retry paths. Connected
+checks inspect normal/DIAG TCP, PC61 receipt, sealed ring and reopened archive;
+only DIAG and the ring carry the percentage contract. Confirmation-history
+tests exercise normalization, invalid keys, deterministic refresh/eviction,
+concurrent confirmation, rejected proposal churn and capacity.
+
+Fresh lead and separate read-only source-quality reviews refined the zero-weight
+receiver union, same-generation exact comparability, actual runtime overflow
+coverage and ordinary-selection compatibility. These are in-scope corrections;
+no scoring, timing, default, field or association policy changed. The projection
+function's approximately 140-line length is justified by its single linear
+immutable transformation and explicit authority checks; splitting it into
+stateful helpers would obscure the publication/eligibility invariant.
+
+Canonical ordinary Windows measurements (three 100 ms runs) were: Lookup
+49.16-60.04 ns/op, zero allocations; all-fresh projection 112.5-119.0 ns for six
+rows and 7.64-10.33 us for 1024 rows, zero allocations; all-expired projection
+110.2-125.9 ns and 5.14-5.51 us, zero allocations. Partially eligible projection
+measured 1.03-1.06 us, 680 B/eight allocations for the typical fixture and
+70.49-73.83 us, 108328 B/28 allocations for the capped fixture. Confirmed-history
+eviction measured 200.9-208.7 ns at capacity two and 53.26-54.17 us at default
+capacity 6000, both zero allocations, with cardinality assertions.
+
+The capped partial CPU profile attributes 55.13% cumulative sampled CPU to
+projection, with map work and garbage collection visible. Its allocation
+profile assigns 730.56 MB of 747.86 MB historical allocation to projection;
+the post-GC live profile contains no projection sample. This establishes
+temporary allocation and reclamation in that benchmark, not production live
+heap or latency. Bounded ownership follows the explicit owner/capacity and
+concurrent-publication tests. The partial projection allocation cost is an
+explicit residual cost, not a performance improvement claim.
+
+Full Windows ordinary passed 70 package builds (53 test, 17 build-only).
+Final targeted ordinary checks cover later overflow, forced-retirement and
+test-helper refinements. Final vet, Staticcheck and golangci-lint exit 0 (zero
+lint issues). Final affected Linux ordinary/race passed `spot`,
+`internal/correctionflow`, `internal/cluster`, `cmd/rbn_replay`,
+`cmd/callcorr_reveng_rebuilt` and `stats`; a subsequent Linux ordinary/race
+extension also passed the runtime overflow/force cases.
+
+An earlier Linux race run failed unchanged
+`TestFormatToxicitySummaryExposesBoundedCounters` with pending=1 instead of zero.
+The inspected worker sends its result before a deferred pending decrement; this
+suggests an existing test synchronization timing issue, not a confirmed P3
+runtime defect. Twenty isolated race repetitions and the clean final affected
+Linux ordinary/race run passed. The initial failure remains in the logs and was
+not waived or repaired in this batch. Connected CustomSCP ordinary passed run
+`c7bde1ab51ab4981a72133517a5e98b2` on its established executable paths.
+
+ADR-0282 and TSR-0081 record fresh authority and the saved-authority failure.
+ADR-0038, replay/spot guidance and the confidence support card were updated.
+Support-agent impact: confidence/temporal troubleshooting changes, reflected in
+the existing card; no new protocol or archive field. Full Windows race passed
+all 70 package builds (53 test, 17 build-only). Connected CustomSCP race passed
+run `e11de45230c64bcb94cd62030c931275`. Final troubleshooting and support-agent
+checks passed. Final map generation/check and direct diff/whitespace review
+complete the checkpoint; no waiver or remaining P3 blocker. P4/P5 remain pending.

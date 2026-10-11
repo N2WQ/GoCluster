@@ -53,6 +53,10 @@ type replayResolverApplyOutcome struct {
 	Selection     correctionflow.ResolverPrimarySelection
 	Gate          spot.ResolverPrimaryGateResult
 	GateEvaluated bool
+	// Temporal output ownership lasts through this synchronous outcome only.
+	// No request-ID table or retained handoff marker is needed by replay.
+	temporal    bool
+	temporalKey spot.ResolverSignalKey
 }
 
 // normalizedDXCall exists to keep replay code visually aligned with the runtime

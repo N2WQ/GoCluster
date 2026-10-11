@@ -27,8 +27,9 @@ type runtimeTemporalPending struct {
 }
 
 type runtimeTemporalRelease struct {
-	pending  runtimeTemporalPending
-	decision correctionflow.TemporalDecision
+	pending   runtimeTemporalPending
+	decision  correctionflow.TemporalDecision
+	releaseAt time.Time
 }
 
 type runtimeTemporalItem struct {
@@ -79,6 +80,7 @@ func (h *runtimeTemporalHeap) Pop() any {
 		return nil
 	}
 	item := old[n-1]
+	old[n-1] = nil
 	*h = old[:n-1]
 	return item
 }
@@ -207,8 +209,9 @@ func (c *runtimeTemporalController) Drain(now time.Time, force bool) []runtimeTe
 		}
 		delete(c.pending, item.id)
 		releases = append(releases, runtimeTemporalRelease{
-			pending:  pending,
-			decision: decision,
+			pending:   pending,
+			decision:  decision,
+			releaseAt: now,
 		})
 	}
 	return releases

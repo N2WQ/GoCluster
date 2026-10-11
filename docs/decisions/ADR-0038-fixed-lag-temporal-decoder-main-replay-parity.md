@@ -102,6 +102,11 @@ Tags: resolver-primary, temporal-decoder, replay-parity, bounded-resources, dete
 
 ## References
 
+The accepted [ADR-0282](ADR-0282-temporal-release-evidence-authority.md)
+refinement makes decoding a proposal: current eligible evidence and ordinary gates
+authorize release, accepted mutations own confirmed history, and forced replay
+retirement consumes future holds at the unchanged EOF clock.
+
 - Issue(s): n/a
 - PR(s): n/a
 - Commit(s): n/a

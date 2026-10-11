@@ -53,6 +53,11 @@ receiver evidence is published immutably; temporal scoring retains compact
 tallies. See [ADR-0280](../docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md).
 
 An exact split remains protected through neighborhood and temporal selection.
+Temporal release filters the latest immutable rows at its current clock, keeps
+the inclusive recency cutoff and excludes future observations. Saved proposals
+carry no support authority. Current settled evidence and ordinary correction
+gates authorize a changed identity; confirmed history counts accepted changes.
+Fresh evidence in a key/window does not prove the same RF transmission episode.
 The narrow ambiguity guard uses the closest eligible cross-candidate frequency
 pair, with its other support, overlap and family conditions unchanged. Conflicting
 equal-time frequency metadata causes abstention until superseded or expired.

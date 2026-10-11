@@ -8,9 +8,10 @@ import (
 	"dxcluster/spot"
 )
 
-// replayTemporalPending preserves the resolver evidence and selected snapshot
-// for a held observation so lag-release scoring can use the same inputs runtime
-// saw at hold time.
+// replayTemporalPending owns one held observation until decoder retirement.
+// Its compact saved selection supports proposal decoding; release authority
+// comes from current eligible publications. Cardinality is bounded by decoder
+// MaxPending, and each owned request has one heap item until final release.
 type replayTemporalPending struct {
 	id          uint64
 	spot        *spot.Spot
@@ -58,21 +59,22 @@ func (h *replayTemporalHeap) Pop() any {
 		return nil
 	}
 	item := old[n-1]
+	old[n-1] = nil
 	*h = old[:n-1]
 	return item
 }
 
-// popReplayTemporalDue returns every item due at the replay timestamp. Stale or
-// missing pending IDs are handled by the caller because the decoder owns the
-// final decision state.
-func popReplayTemporalDue(h *replayTemporalHeap, now time.Time) []*replayTemporalItem {
+// popReplayTemporalDue returns due items, or every owned heap item when force
+// retires EOF holds. Force does not advance the supplied evidence clock. Pop
+// clears retired pointers even when the bounded heap backing array is reused.
+func popReplayTemporalDue(h *replayTemporalHeap, now time.Time, force bool) []*replayTemporalItem {
 	if h == nil || h.Len() == 0 {
 		return nil
 	}
 	out := make([]*replayTemporalItem, 0, 8)
 	for h.Len() > 0 {
 		head := (*h)[0]
-		if head == nil || head.due.After(now) {
+		if head == nil || !force && head.due.After(now) {
 			break
 		}
 		itemAny := heap.Pop(h)

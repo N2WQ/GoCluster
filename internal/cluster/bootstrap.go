@@ -594,9 +594,11 @@ func formatTemporalSummary(tracker *stats.Tracker) string {
 		return "Temporal: n/a"
 	}
 	return fmt.Sprintf(
-		"Temporal: pending %s | committed %s | fallback %s | abstain %s | bypass %s",
+		"Temporal: pending %s | proposed %s | accepted %s | handoff %s | fallback %s | abstain %s | bypass %s",
 		humanize.Comma(tracker.TemporalPending()),
+		humanize.Comma(int64(tracker.TemporalProposed())),
 		humanize.Comma(int64(tracker.TemporalCommitted())),
+		humanize.Comma(int64(tracker.TemporalHandoffAttempts())),
 		humanize.Comma(int64(tracker.TemporalFallbackResolver())),
 		humanize.Comma(int64(tracker.TemporalAbstainLowMargin())),
 		humanize.Comma(int64(tracker.TemporalOverflowBypass())),
@@ -2098,6 +2100,8 @@ func maybeApplyResolverCorrection(
 		spotterReliabilityRTTY,
 		confusionModel,
 		nil,
+		time.Time{},
+		nil,
 	)
 }
 
@@ -2119,6 +2123,8 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 	spotterReliabilityRTTY spot.SpotterReliability,
 	confusionModel *spot.ConfusionModel,
 	selectionOverride *correctionflow.ResolverPrimarySelection,
+	now time.Time,
+	temporalResult *runtimeTemporalResult,
 ) bool {
 	if spotEntry == nil {
 		return false
@@ -2208,7 +2214,9 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		subjectBand = spot.FreqToBand(spotEntry.Frequency)
 	}
 
-	now := time.Now().UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
 	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, true)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
 		Cfg:             cfg,
@@ -2271,6 +2279,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 			}
 			spotEntry.DXCall = winnerCall
 			spotEntry.DXCallNorm = winnerCall
+			temporalResult.confirm(preCorrectionCall, winnerCall)
 			spotEntry.Confidence = "C"
 			spotEntry.ConfidencePercent = winnerConfidence
 			spotEntry.ConfidencePercentOK = true
@@ -2300,6 +2309,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 	}
 	spotEntry.DXCall = winnerCall
 	spotEntry.DXCallNorm = winnerCall
+	temporalResult.confirm(preCorrectionCall, winnerCall)
 	spotEntry.Confidence = "C"
 	spotEntry.ConfidencePercent = winnerConfidence
 	spotEntry.ConfidencePercentOK = true

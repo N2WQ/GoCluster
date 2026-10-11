@@ -12,7 +12,7 @@ import (
 
 const temporalEmissionScale = 10000
 
-// TemporalDecisionAction describes the decoder commit action for one request.
+// TemporalDecisionAction describes the decoder proposal action for one request.
 type TemporalDecisionAction string
 
 const (
@@ -36,6 +36,7 @@ type TemporalObservation struct {
 // TemporalDecision is the decoder verdict for one observation id.
 type TemporalDecision struct {
 	ID             uint64
+	Key            spot.ResolverSignalKey
 	Action         TemporalDecisionAction
 	Winner         string
 	Selection      ResolverPrimarySelection
@@ -43,8 +44,19 @@ type TemporalDecision struct {
 	MarginScore    int
 	CandidateCount int
 	Reason         string
-	PathSwitched   bool
 	CommitLatency  time.Duration
+}
+
+// TemporalConfirmedHistoryMetrics exposes the independently bounded history of
+// accepted temporal identity mutations, which outlives pending decoder events.
+type TemporalConfirmedHistoryMetrics struct {
+	Keys      int
+	Evictions uint64
+}
+
+type temporalConfirmedIdentity struct {
+	call     string
+	sequence uint64
 }
 
 type temporalRequest struct {
@@ -74,11 +86,16 @@ type TemporalDecoder struct {
 	distanceModelRTTY string
 	familyPolicy      spot.CorrectionFamilyPolicy
 
-	mu            sync.Mutex
-	active        bool
-	requests      map[uint64]temporalRequest
-	keyStates     map[spot.ResolverSignalKey]*temporalKeyState
-	lastCommitted map[spot.ResolverSignalKey]string
+	mu        sync.Mutex
+	active    bool
+	requests  map[uint64]temporalRequest
+	keyStates map[spot.ResolverSignalKey]*temporalKeyState
+
+	// mu owns confirmed history and its sequence. Confirmation is separate from
+	// proposal evaluation; MaxActiveKeys bounds this map independently of events.
+	lastCommitted             map[spot.ResolverSignalKey]temporalConfirmedIdentity
+	confirmationSequence      uint64
+	confirmedHistoryEvictions uint64
 }
 
 // NewTemporalDecoder builds a temporal decoder from call-correction config.
@@ -99,7 +116,7 @@ func NewTemporalDecoder(cfg config.CallCorrectionConfig) *TemporalDecoder {
 		active:        temporalCfg.Enabled,
 		requests:      make(map[uint64]temporalRequest, 64),
 		keyStates:     make(map[spot.ResolverSignalKey]*temporalKeyState, 64),
-		lastCommitted: make(map[spot.ResolverSignalKey]string, 64),
+		lastCommitted: make(map[spot.ResolverSignalKey]temporalConfirmedIdentity, min(64, max(0, temporalCfg.MaxActiveKeys))),
 	}
 }
 
@@ -143,6 +160,63 @@ func (d *TemporalDecoder) PendingCount() int {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return len(d.requests)
+}
+
+// ConfirmCorrection records an identity mutation only after the caller has
+// accepted and applied it. It returns whether a retained confirmed identity for
+// this key changed. First confirmations and repeated winners are not switches.
+// Every valid confirmation refreshes its order; at the hard cap a new key evicts
+// the oldest confirmation. No pending request or event lifetime owns this map.
+func (d *TemporalDecoder) ConfirmCorrection(key spot.ResolverSignalKey, winner string) bool {
+	if d == nil || !d.active || d.cfg.MaxActiveKeys <= 0 || strings.TrimSpace(key.Band) == "" || strings.TrimSpace(key.Mode) == "" {
+		return false
+	}
+	winner = spot.NormalizeSpotDXCallsign(winner)
+	if winner == "" {
+		return false
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	previous, exists := d.lastCommitted[key]
+	if !exists && len(d.lastCommitted) >= d.cfg.MaxActiveKeys {
+		var oldestKey spot.ResolverSignalKey
+		var oldestSequence uint64
+		found := false
+		for candidateKey, candidate := range d.lastCommitted {
+			if !found || candidate.sequence < oldestSequence || candidate.sequence == oldestSequence && temporalConfirmationKeyLess(candidateKey, oldestKey) {
+				oldestKey, oldestSequence, found = candidateKey, candidate.sequence, true
+			}
+		}
+		delete(d.lastCommitted, oldestKey)
+		d.confirmedHistoryEvictions++
+	}
+	d.confirmationSequence++
+	d.lastCommitted[key] = temporalConfirmedIdentity{call: winner, sequence: d.confirmationSequence}
+	return exists && previous.call != winner
+}
+
+// ConfirmedHistoryMetrics returns a consistent history cardinality and eviction
+// count without exposing mutable entries or coupling history to pending events.
+func (d *TemporalDecoder) ConfirmedHistoryMetrics() TemporalConfirmedHistoryMetrics {
+	if d == nil {
+		return TemporalConfirmedHistoryMetrics{}
+	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return TemporalConfirmedHistoryMetrics{Keys: len(d.lastCommitted), Evictions: d.confirmedHistoryEvictions}
+}
+
+func temporalConfirmationKeyLess(left, right spot.ResolverSignalKey) bool {
+	if left.Band != right.Band {
+		return left.Band < right.Band
+	}
+	if left.Mode != right.Mode {
+		return left.Mode < right.Mode
+	}
+	if left.ToleranceHz != right.ToleranceHz {
+		return left.ToleranceHz < right.ToleranceHz
+	}
+	return left.Bucket < right.Bucket
 }
 
 // ShouldHoldSelection reports whether a selection should be routed through lag
@@ -256,6 +330,7 @@ func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) Tempora
 		decision.Reason = "missing_request"
 		return decision
 	}
+	decision.Key = req.key
 	decision.CommitLatency = clampDurationNonNegative(now.Sub(req.observedAt))
 
 	lagAt := req.observedAt.Add(d.LagDuration())
@@ -313,12 +388,7 @@ func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) Tempora
 	}
 	if thresholdPass {
 		decision.Action = TemporalDecisionActionApply
-		decision.Reason = "committed"
-		last := strings.TrimSpace(d.lastCommitted[req.key])
-		if last != "" && last != winner {
-			decision.PathSwitched = true
-		}
-		d.lastCommitted[req.key] = winner
+		decision.Reason = "proposal"
 		delete(d.requests, req.id)
 		if !d.hasPendingKeyLocked(req.key) {
 			delete(d.keyStates, req.key)

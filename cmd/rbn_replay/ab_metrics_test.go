@@ -237,7 +237,6 @@ func TestObserveTemporalDecisionCounters(t *testing.T) {
 	metrics.Temporal.ObservePending()
 	metrics.Temporal.ObserveDecision(correctionflow.TemporalDecision{
 		Action:        correctionflow.TemporalDecisionActionApply,
-		PathSwitched:  true,
 		CommitLatency: 1200 * time.Millisecond,
 	})
 	metrics.Temporal.ObserveDecision(correctionflow.TemporalDecision{
@@ -255,8 +254,13 @@ func TestObserveTemporalDecisionCounters(t *testing.T) {
 	if metrics.Temporal.Pending != 1 {
 		t.Fatalf("expected temporal pending=1, got %d", metrics.Temporal.Pending)
 	}
-	if metrics.Temporal.Committed != 1 {
-		t.Fatalf("expected temporal committed=1, got %d", metrics.Temporal.Committed)
+	if metrics.Temporal.Proposed != 1 || metrics.Temporal.Committed != 0 || metrics.Temporal.PathSwitches != 0 {
+		t.Fatalf("proposal counted as accepted mutation: %+v", metrics.Temporal)
+	}
+	metrics.Temporal.ObserveAccepted(false)
+	metrics.Temporal.ObserveAccepted(true)
+	if metrics.Temporal.Proposed != 1 || metrics.Temporal.Committed != 2 {
+		t.Fatalf("expected one proposal and two accepted mutations: %+v", metrics.Temporal)
 	}
 	if metrics.Temporal.FallbackResolver != 1 {
 		t.Fatalf("expected temporal fallback_resolver=1, got %d", metrics.Temporal.FallbackResolver)

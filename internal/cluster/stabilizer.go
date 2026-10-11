@@ -27,6 +27,7 @@ type telnetStabilizerItem struct {
 	resolverKey      spot.ResolverSignalKey
 	hasResolverKey   bool
 	evidenceEnqueued bool
+	temporalResult   *runtimeTemporalResult
 }
 
 // telnetStabilizerEnvelope carries the minimum context needed to retry a held
@@ -40,6 +41,7 @@ type telnetStabilizerEnvelope struct {
 	resolverKey      spot.ResolverSignalKey
 	hasResolverKey   bool
 	evidenceEnqueued bool
+	temporalResult   *runtimeTemporalResult
 }
 
 type telnetStabilizerHeap []*telnetStabilizerItem
@@ -194,6 +196,13 @@ func (s *telnetSpotStabilizer) EnqueueWithContext(
 	hasResolverKey bool,
 	evidenceEnqueued bool,
 ) bool {
+	return s.enqueueWithTemporalResult(sp, checksCompleted, delayReason, resolverKey, hasResolverKey, evidenceEnqueued, nil)
+}
+
+func (s *telnetSpotStabilizer) enqueueWithTemporalResult(
+	sp *spot.Spot, checksCompleted int, delayReason string, resolverKey spot.ResolverSignalKey,
+	hasResolverKey, evidenceEnqueued bool, temporalResult *runtimeTemporalResult,
+) bool {
 	if s == nil || sp == nil {
 		return false
 	}
@@ -216,6 +225,7 @@ func (s *telnetSpotStabilizer) EnqueueWithContext(
 		resolverKey:      resolverKey,
 		hasResolverKey:   hasResolverKey,
 		evidenceEnqueued: evidenceEnqueued,
+		temporalResult:   temporalResult,
 	}:
 		return true
 	default:
@@ -331,6 +341,7 @@ func (s *telnetSpotStabilizer) run() {
 				resolverKey:      envelope.resolverKey,
 				hasResolverKey:   envelope.hasResolverKey,
 				evidenceEnqueued: envelope.evidenceEnqueued,
+				temporalResult:   envelope.temporalResult,
 			})
 			nextID++
 		case <-timerC:
@@ -354,6 +365,7 @@ func (s *telnetSpotStabilizer) run() {
 					resolverKey:      item.resolverKey,
 					hasResolverKey:   item.hasResolverKey,
 					evidenceEnqueued: item.evidenceEnqueued,
+					temporalResult:   item.temporalResult,
 				}:
 				case <-s.stop:
 					return

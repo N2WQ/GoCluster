@@ -328,13 +328,17 @@ func (m *replayTemporalCommitLatencyMetrics) Observe(latency time.Duration) {
 }
 
 type replayTemporalABMetrics struct {
-	Pending          uint64                             `json:"pending"`
-	Committed        uint64                             `json:"committed"`
-	FallbackResolver uint64                             `json:"fallback_resolver"`
-	AbstainLowMargin uint64                             `json:"abstain_low_margin"`
-	OverflowBypass   uint64                             `json:"overflow_bypass"`
-	PathSwitches     uint64                             `json:"path_switches"`
-	CommitLatencyMS  replayTemporalCommitLatencyMetrics `json:"commit_latency_ms"`
+	Pending                   uint64                             `json:"pending"`
+	Proposed                  uint64                             `json:"proposed"`
+	Committed                 uint64                             `json:"committed"`
+	HandoffAttempts           uint64                             `json:"handoff_attempts"`
+	FallbackResolver          uint64                             `json:"fallback_resolver"`
+	AbstainLowMargin          uint64                             `json:"abstain_low_margin"`
+	OverflowBypass            uint64                             `json:"overflow_bypass"`
+	PathSwitches              uint64                             `json:"path_switches"`
+	CommitLatencyMS           replayTemporalCommitLatencyMetrics `json:"commit_latency_ms"`
+	ConfirmedHistoryKeys      int                                `json:"confirmed_history_keys"`
+	ConfirmedHistoryEvictions uint64                             `json:"confirmed_history_evictions"`
 }
 
 func (m *replayTemporalABMetrics) ObservePending() {
@@ -344,15 +348,15 @@ func (m *replayTemporalABMetrics) ObservePending() {
 	m.Pending++
 }
 
-// ObserveDecision maps temporal-decoder actions to replay counters so output
-// can distinguish committed corrections from overflow and low-margin paths.
+// ObserveDecision counts proposals and terminal actions. An Apply proposal
+// becomes committed only after ordinary gates actually mutate the output call.
 func (m *replayTemporalABMetrics) ObserveDecision(decision correctionflow.TemporalDecision) {
 	if m == nil {
 		return
 	}
 	switch decision.Action {
 	case correctionflow.TemporalDecisionActionApply:
-		m.Committed++
+		m.Proposed++
 	case correctionflow.TemporalDecisionActionFallbackResolver:
 		m.FallbackResolver++
 	case correctionflow.TemporalDecisionActionAbstain:
@@ -360,11 +364,20 @@ func (m *replayTemporalABMetrics) ObserveDecision(decision correctionflow.Tempor
 	case correctionflow.TemporalDecisionActionBypass:
 		m.OverflowBypass++
 	}
-	if decision.PathSwitched {
-		m.PathSwitches++
-	}
 	if decision.Action != correctionflow.TemporalDecisionActionDefer {
 		m.CommitLatencyMS.Observe(decision.CommitLatency)
+	}
+}
+
+// ObserveAccepted records one actual identity mutation, independently of the
+// decoder action that proposed or fell back to its winner.
+func (m *replayTemporalABMetrics) ObserveAccepted(pathSwitched bool) {
+	if m == nil {
+		return
+	}
+	m.Committed++
+	if pathSwitched {
+		m.PathSwitches++
 	}
 }
 

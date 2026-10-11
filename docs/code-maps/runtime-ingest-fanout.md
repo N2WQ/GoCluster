@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `0146dcb4001bf770`
+- Source fingerprint: `411b102985fdf0f4`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 82 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 27 | 86 |
 | `dxcluster/peer` | `peer` | 62 | 131 |
-| `dxcluster/spot` | `spot` | 36 | 39 |
+| `dxcluster/spot` | `spot` | 37 | 41 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -155,6 +155,7 @@ Source files:
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/telnet_family_suppressor.go`
+- `internal/cluster/temporal_result.go`
 - `internal/cluster/temporal_runtime.go`
 
 Test files:
@@ -237,6 +238,10 @@ Test files:
 - `internal/cluster/stabilizer_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_test.go`
+- `internal/cluster/temporal_acceptance_delivery_test.go`
+- `internal/cluster/temporal_fresh_delivery_test.go`
+- `internal/cluster/temporal_overflow_delivery_test.go`
+- `internal/cluster/temporal_result_test.go`
 - `internal/cluster/temporal_retirement_test.go`
 - `internal/cluster/temporal_runtime_test.go`
 - `internal/cluster/toxicity_config_contract_test.go`
@@ -471,6 +476,7 @@ Source files:
 - `spot/reliability.go`
 - `spot/resolver_ambiguity.go`
 - `spot/resolver_evidence.go`
+- `spot/resolver_fresh.go`
 - `spot/self_spot.go`
 - `spot/signal_resolver.go`
 - `spot/signal_resolver_driver.go`
@@ -510,6 +516,8 @@ Test files:
 - `spot/recent_band_test.go`
 - `spot/resolver_ambiguity_population_test.go`
 - `spot/resolver_evidence_test.go`
+- `spot/resolver_fresh_projection_bench_test.go`
+- `spot/resolver_fresh_projection_test.go`
 - `spot/self_spot_test.go`
 - `spot/signal_resolver_bench_test.go`
 - `spot/signal_resolver_driver_test.go`
@@ -678,6 +686,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0282](docs/decisions/ADR-0282-temporal-release-evidence-authority.md) | Accepted | 2026-10-10 | temporal, release eligibility, confirmed history | `path:internal/cluster, path:spot` |
 | [ADR-0281](docs/decisions/ADR-0281-archive-worker-private-normalization.md) | Accepted | 2026-10-10 | archive, immutable fanout, normalization | `path:internal/cluster` |
 | [ADR-0280](docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md) | Accepted | 2026-10-10 | resolver, receiver union, immutable publication | `path:internal/cluster, path:spot` |
 | [ADR-0279](docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md) | Accepted | 2026-10-10 | custom_scp, cleanup, persistence, database lifetime | `path:internal/cluster, path:spot` |

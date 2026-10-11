@@ -3,6 +3,7 @@
 package cluster
 
 import (
+	"dxcluster/internal/correctionflow"
 	"strings"
 	"time"
 
@@ -56,7 +57,8 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		resolverEvidence, hasResolverEvidence = buildResolverEvidenceSnapshot(delayed, p.correctionCfg, p.adaptiveMinReports, now)
 	}
 	resolverEvidenceEnqueued := envelope.evidenceEnqueued
-	if maybeApplyResolverCorrection(
+	selection := correctionflow.SelectResolverPrimarySnapshotForCallAt(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(delayed), now)
+	if maybeApplyResolverCorrectionWithSelectionOverride(
 		delayed,
 		p.signalResolver,
 		resolverEvidence,
@@ -72,6 +74,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		p.spotterReliabilityCW,
 		p.spotterReliabilityRTTY,
 		p.confusionModel,
+		&selection, now, envelope.temporalResult,
 	) {
 		return
 	}
@@ -83,17 +86,18 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	}
 	delaySnapshot, delaySnapshotOK := spot.ResolverSnapshot{}, false
 	if hasResolverEvidence && p.signalResolver != nil {
-		delaySnapshot, delaySnapshotOK = p.signalResolver.Lookup(resolverEvidence.Key)
+		delaySnapshot, delaySnapshotOK = p.signalResolver.LookupEligible(resolverEvidence.Key, now)
 	}
 	delayDecision := evaluateTelnetStabilizerDelay(delayed, p.recentBandStore, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK)
 	if shouldRetryTelnetByStabilizer(delayDecision, checksCompleted) {
-		if p.telnetStabilizer.EnqueueWithContext(
+		if p.telnetStabilizer.enqueueWithTemporalResult(
 			delayed,
 			checksCompleted,
 			delayDecision.Reason.String(),
 			resolverEvidence.Key,
 			hasResolverEvidence,
 			resolverEvidenceEnqueued,
+			envelope.temporalResult,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()
@@ -117,7 +121,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	recordRecentBandObservation(delayed, p.recentBandStore, p.customSCPStore, p.correctionCfg)
 	recordWhoSpotsMeObservation(delayed, p.whoSpotsMeStore, time.Now().UTC())
 	plan := p.buildFinalDeliveryPlan(delayed, delaySnapshot, delaySnapshotOK, time.Now().UTC())
-	releaseCtx := outputSpotContext{spot: delayed}
+	releaseCtx := outputSpotContext{spot: delayed, temporalResult: envelope.temporalResult}
 	if !plan.normalFanoutAllowed() {
 		p.emitSpot(&releaseCtx, plan)
 		return
@@ -247,13 +251,14 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 	delayDecision := evaluateTelnetStabilizerDelay(s, p.recentBandStore, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK)
 	if delayDecision.ShouldDelay {
 		delayed := cloneSpotForTelnetStabilizer(s)
-		if delayed != nil && p.telnetStabilizer.EnqueueWithContext(
+		if delayed != nil && p.telnetStabilizer.enqueueWithTemporalResult(
 			delayed,
 			0,
 			delayDecision.Reason.String(),
 			ctx.stabilizerResolverKey,
 			ctx.hasStabilizerResolverKey,
 			ctx.stabilizerEvidenceEnqueued,
+			ctx.temporalResult,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()
@@ -316,21 +321,26 @@ func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPla
 		return
 	}
 	if p.buf != nil && plan.normalFanoutAllowed() && shouldBufferSpot(shared) {
+		ctx.temporalResult.observeHandoff()
 		p.buf.AddOwned(shared)
 	}
 	emittedNow := false
 	if p.archiveWriter != nil && plan.allowMed && shouldArchiveSpot(shared) {
+		ctx.temporalResult.observeHandoff()
 		p.archiveWriter.EnqueueOwned(archiveSnapshotForSpot(shared))
 		emittedNow = true
 	}
 	if plan.telnetDeliverNow && plan.normalFanoutAllowed() {
+		ctx.temporalResult.observeHandoff()
 		p.telnet.BroadcastSpotOwned(shared, plan.allowFast, plan.allowMed, plan.allowSlow)
 		emittedNow = true
 	}
 	if plan.telnetDeliverSelf {
+		ctx.temporalResult.observeHandoff()
 		p.telnet.DeliverSelfSpotOwned(normalizedDXCall(shared), shared)
 	}
 	if p.peerManager != nil && plan.allowMed {
+		ctx.temporalResult.observeHandoff()
 		if p.peerManager.PublishDXWithComment(shared, peerPublishComment(shared)) {
 			emittedNow = true
 		}

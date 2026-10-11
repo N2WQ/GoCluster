@@ -18,6 +18,7 @@ import (
 	"dxcluster/config"
 	"dxcluster/cty"
 	"dxcluster/dedup"
+	"dxcluster/internal/correctionflow"
 	"dxcluster/internal/qualificationstage"
 	"dxcluster/internal/toxicity"
 	"dxcluster/pathreliability"
@@ -109,6 +110,9 @@ type outputSpotContext struct {
 	stabilizerResolverKey      spot.ResolverSignalKey
 	hasStabilizerResolverKey   bool
 	stabilizerEvidenceEnqueued bool
+	temporalResult             *runtimeTemporalResult
+	resolverSelectionOverride  *correctionflow.ResolverPrimarySelection
+	resolverReleaseAt          time.Time
 }
 
 // newOutputPipeline wires optional runtime stages from config. Disabled stages
@@ -298,6 +302,9 @@ func (p *outputPipeline) processSpot(s *spot.Spot, temporalRelease *runtimeTempo
 			log.Printf("processOutputSpots panic: %v\n%s", r, debug.Stack())
 		}
 	}()
+	if temporalRelease != nil {
+		p.recordRuntimeTemporalDecision(temporalRelease.decision)
+	}
 	p.processSpotBody(s, temporalRelease)
 }
 

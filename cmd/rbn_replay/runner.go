@@ -593,27 +593,23 @@ func (r *replayRunner) maybeHoldTemporal(
 	}
 	overflowDecision := correctionflow.TemporalDecision{
 		ID:            id,
+		Key:           resolverEvidence.Key,
 		Reason:        reason,
 		CommitLatency: 0,
 	}
 	switch r.cfg.CallCorrection.TemporalDecoder.OverflowAction {
 	case "abstain":
 		overflowDecision.Action = correctionflow.TemporalDecisionActionAbstain
-		r.abMetrics.Temporal.ObserveDecision(overflowDecision)
-		spotEntry.Confidence = correctionflow.ResolverConfidenceGlyphForCall(selection.Snapshot, selection.SnapshotOK, subject)
-		r.processOutcome(spotEntry, replayResolverApplyOutcome{
-			Selection:  selection,
-			Confidence: replayConfidenceOutcome{Final: normalizeConfidenceGlyph(spotEntry.Confidence)},
-		}, now)
-		r.driver.Step(now)
-		return true
 	case "bypass":
 		overflowDecision.Action = correctionflow.TemporalDecisionActionBypass
 	default:
 		overflowDecision.Action = correctionflow.TemporalDecisionActionFallbackResolver
 	}
 	r.abMetrics.Temporal.ObserveDecision(overflowDecision)
-	return false
+	outcome := r.temporalReleaseOutcome(spotEntry, resolverEvidence, hasResolverEvidence, overflowDecision, now)
+	r.processOutcome(spotEntry, outcome, now)
+	r.driver.Step(now)
+	return true
 }
 
 // emitSample captures resolver pressure at fixed wall-clock replay intervals.
@@ -651,6 +647,15 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 	if outcome.Suppress {
 		return
 	}
+	if outcome.temporal {
+		if outcome.Applied {
+			switched := r.temporalDecoder.ConfirmCorrection(outcome.temporalKey, normalizedDXCall(spotEntry))
+			r.abMetrics.Temporal.ObserveAccepted(switched)
+		}
+		// This is the replay output boundary, not a network receipt claim.
+		r.abMetrics.Temporal.HandoffAttempts++
+		r.observeTemporalHistory()
+	}
 	r.abMetrics.ObserveAppliedOutput(outcome.Confidence)
 	r.abMetrics.ObserveResolverSelection(outcome.Selection)
 	r.abMetrics.ObserveResolverSnapshot(outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
@@ -680,7 +685,7 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 	if r.temporalDecoder == nil || !r.temporalDecoder.Enabled() {
 		return
 	}
-	due := popReplayTemporalDue(&r.temporalQueue, now)
+	due := popReplayTemporalDue(&r.temporalQueue, now, force)
 	for _, item := range due {
 		if item == nil {
 			continue
@@ -707,50 +712,38 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 		delete(r.temporalPending, item.id)
 		r.abMetrics.Temporal.ObserveDecision(decision)
 
-		var outcome replayResolverApplyOutcome
-		switch decision.Action {
-		case correctionflow.TemporalDecisionActionApply:
-			selection := decision.Selection
-			outcome = maybeApplyResolverCorrectionReplayWithSelectionOverride(
-				pending.spot,
-				r.resolver,
-				pending.evidence,
-				pending.hasEvidence,
-				r.cfg.CallCorrection,
-				r.ctyDB,
-				r.tracker,
-				r.adaptiveMinReports,
-				r.recentBandStore,
-				now,
-				&selection,
-			)
-		case correctionflow.TemporalDecisionActionAbstain:
-			outcome = replayResolverApplyOutcome{
-				Selection:  pending.selection,
-				Confidence: replayConfidenceOutcome{Final: normalizeConfidenceGlyph(pending.spot.Confidence)},
-			}
-			pending.spot.Confidence = correctionflow.ResolverConfidenceGlyphForCall(
-				pending.selection.Snapshot,
-				pending.selection.SnapshotOK,
-				normalizedDXCall(pending.spot),
-			)
-			outcome.Confidence.Final = normalizeConfidenceGlyph(pending.spot.Confidence)
-		default:
-			outcome = maybeApplyResolverCorrectionReplay(
-				pending.spot,
-				r.resolver,
-				pending.evidence,
-				pending.hasEvidence,
-				r.cfg.CallCorrection,
-				r.ctyDB,
-				r.tracker,
-				r.adaptiveMinReports,
-				r.recentBandStore,
-				now,
-			)
-		}
+		outcome := r.temporalReleaseOutcome(pending.spot, pending.evidence, pending.hasEvidence, decision, now)
 		r.processOutcome(pending.spot, outcome, now)
 	}
+}
+
+// temporalReleaseOutcome reads one fresh selection for every terminal action.
+// A saved Apply winner is a proposal; the shared selector admits it only from
+// current eligible settled evidence. Ordinary correction gates run once.
+func (r *replayRunner) temporalReleaseOutcome(s *spot.Spot, evidence spot.ResolverEvidence, hasEvidence bool, decision correctionflow.TemporalDecision, now time.Time) replayResolverApplyOutcome {
+	selection := correctionflow.SelectTemporalReleaseSnapshot(r.resolver, evidence.Key, r.cfg.CallCorrection, normalizedDXCall(s), decision, now)
+	var outcome replayResolverApplyOutcome
+	if decision.Action == correctionflow.TemporalDecisionActionAbstain {
+		s.Confidence = correctionflow.ResolverConfidenceGlyphForCall(selection.Snapshot, selection.SnapshotOK, normalizedDXCall(s))
+		outcome = replayResolverApplyOutcome{Selection: selection,
+			Confidence: replayConfidenceOutcome{Final: normalizeConfidenceGlyph(s.Confidence)}}
+	} else {
+		outcome = maybeApplyResolverCorrectionReplayWithSelectionOverride(s, r.resolver, evidence, hasEvidence,
+			r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now, &selection)
+	}
+	outcome.temporal, outcome.temporalKey = true, decision.Key
+	return outcome
+}
+
+// observeTemporalHistory publishes the independently bounded confirmed-call
+// state into replay artifacts without retaining a second key collection.
+func (r *replayRunner) observeTemporalHistory() {
+	if r.temporalDecoder == nil {
+		return
+	}
+	history := r.temporalDecoder.ConfirmedHistoryMetrics()
+	r.abMetrics.Temporal.ConfirmedHistoryKeys = history.Keys
+	r.abMetrics.Temporal.ConfirmedHistoryEvictions = history.Evictions
 }
 
 // finalize writes derived interval, gate, manifest, and run-history artifacts in
@@ -765,6 +758,7 @@ func (r *replayRunner) finalize() error {
 		return fmt.Errorf("need at least 2 resolver samples, got %d", len(r.samples))
 	}
 
+	r.observeTemporalHistory()
 	intervals, hits, gates := computeIntervalsAndGates(r.samples, shadowResolverQueueSize)
 	stabilitySummary := r.stabilityCollector.Evaluate(r.dayStart.Unix())
 	gates.Overall.Stability = stabilitySummary
