@@ -100,27 +100,27 @@ func TestMakeUnlicensedReporterEmitsPlainTextToSurface(t *testing.T) {
 	}
 }
 
-func TestPeerPublishCommentAddsModeWhenCommentEmpty(t *testing.T) {
+func TestOriginalPeerPublicationDoesNotInventModeComment(t *testing.T) {
 	src := spot.NewSpot("K1ABC", "W1XYZ", 7074.0, "")
 	src.Mode = "FT8"
 	src.Comment = ""
 
-	comment := peerPublishComment(src)
-	if comment != "FT8" {
-		t.Fatalf("expected comment to carry inferred mode, got %q", comment)
+	comment := captureOriginalPeerPublication(src).publicationSpot().Comment
+	if comment != "" {
+		t.Fatalf("expected original empty comment, got %q", comment)
 	}
 	if src.Comment != "" {
 		t.Fatalf("expected original comment to remain empty, got %q", src.Comment)
 	}
 }
 
-func TestPeerPublishCommentPassthroughWhenCommentPresent(t *testing.T) {
+func TestOriginalPeerPublicationPreservesExactComment(t *testing.T) {
 	src := spot.NewSpot("K1ABC", "W1XYZ", 7074.0, "")
 	src.Mode = "FT8"
-	src.Comment = "cq test"
+	src.Comment = "  cq\ttest  "
 
-	comment := peerPublishComment(src)
-	if comment != "cq test" {
+	comment := captureOriginalPeerPublication(src).publicationSpot().Comment
+	if comment != "  cq\ttest  " {
 		t.Fatalf("expected passthrough comment, got %q", comment)
 	}
 }

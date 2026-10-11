@@ -181,6 +181,7 @@ func (p *outputPipeline) maybeHoldTemporalSpot(
 		subject,
 		runtimeTemporalPending{
 			spot:                       ctx.spot,
+			peerOriginal:               ctx.peerOriginal,
 			evidence:                   resolverEvidence,
 			hasEvidence:                hasResolverEvidence,
 			stabilizerResolverKey:      ctx.stabilizerResolverKey,

@@ -40,7 +40,7 @@ func TestRuntimeTemporalOverflowDeliveredFreshAuthority(t *testing.T) {
 				if due, ok := controller.NextDue(); !ok || !due.After(time.Now().UTC()) {
 					t.Fatal("overflow filler is already due")
 				}
-				want := correctionEvidenceDeliveryCase{wantCall: "K1ABD", wantGlyph: "?"}
+				want := correctionEvidenceDeliveryCase{subject: "K1ABD", wantCall: "K1ABD", wantGlyph: "?"}
 				if population == "fresh_new_settled" {
 					fresh := time.Now().UTC()
 					temporalDeliveryRetirePopulation(t, r, driver, key, fresh, "K1ABE")
@@ -129,5 +129,5 @@ func TestRuntimeTemporalForceBeforeDeadlineDelivered(t *testing.T) {
 	if len(controller.pending) != 0 || len(controller.queue) != 0 || controller.decoder.PendingCount() != 0 {
 		t.Fatal("forced actual-time delivery stranded pending ownership")
 	}
-	temporalDeliveryCheckWithoutPercent(t, fixture, correctionEvidenceDeliveryCase{wantCall: "K1ABD", wantGlyph: "?"}, at, true)
+	temporalDeliveryCheckWithoutPercent(t, fixture, correctionEvidenceDeliveryCase{subject: "K1ABD", wantCall: "K1ABD", wantGlyph: "?"}, at, true)
 }

@@ -34,17 +34,31 @@ func readNativePeerSpotWriter(t *testing.T, destination *session, remote net.Con
 	t.Cleanup(reader.release)
 	line, err := reader.ReadLine(time.Now().Add(3 * time.Second))
 	if err != nil {
-		t.Fatalf("receiving native reader failed: %v (wire=%q)", err, recorded.wire.String())
+		wire := recorded.wire.String()
+		t.Fatalf("receiving native reader failed: %v (wireBytes=%d prefix=%q)", err, len(wire), wire[:min(len(wire), 100)])
 	}
 	frame, err := ParseFrame(line)
 	if err != nil {
-		t.Fatalf("receiving frame parser failed: %v (line=%q)", err, line)
+		t.Fatalf("receiving frame parser failed: %v (lineBytes=%d prefix=%q)", err, len(line), line[:min(len(line), 100)])
 	}
 	if _, err := validateOriginalPeerSpot(frame); err != nil {
 		t.Fatalf("relay did not retain original validity: %v", err)
 	}
-	if !strings.HasSuffix(recorded.wire.String(), "^~\r\n") {
-		t.Fatalf("production writer lost its terminal marker or CRLF: %q", recorded.wire.String())
+	// Native admission can finish at ~ before the writer's separate CRLF
+	// flush is read, notably when the payload fills the 4 KiB read boundary.
+	// Complete only that missing terminator before asserting full wire bytes.
+	if wire := recorded.wire.String(); strings.HasSuffix(wire, "^~") || strings.HasSuffix(wire, "^~\r") {
+		remaining := 2
+		if strings.HasSuffix(wire, "\r") {
+			remaining = 1
+		}
+		var terminator [2]byte
+		if _, err := io.ReadFull(recorded, terminator[:remaining]); err != nil {
+			t.Fatalf("production writer did not complete CRLF: %v (wireBytes=%d)", err, recorded.wire.Len())
+		}
+	}
+	if wire := recorded.wire.String(); !strings.HasSuffix(wire, "^~\r\n") {
+		t.Fatalf("production writer lost its terminal marker or CRLF: bytes=%d tail=%q", len(wire), wire[max(0, len(wire)-100):])
 	}
 	return recorded.wire.String(), frame
 }

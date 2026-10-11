@@ -48,7 +48,9 @@ func TestP4FTExpiryDeliveredBeforeLateArrival(t *testing.T) {
 			for i, receiver := range []string{"N0AAA", "N0BBB"} {
 				ctx := p4FTContext("K1ABC", receiver, "FT8", base.Add(time.Duration(i)*time.Second))
 				ctx.spot.SourceType = spot.SourceManual
+				ctx.spot.Comment, ctx.spot.SpotterIP = " ", "192.0.2.1"
 				prepared, ok := p.prepareSpotContext(ctx.spot)
+				prepared.peerOriginal = captureOriginalPeerPublication(ctx.spot)
 				if !ok || p.applyFTConfidenceStage(&prepared, base.Add(time.Duration(i)*time.Second)) {
 					t.Fatal("delivery fixture failed to hold old two-receiver burst")
 				}
@@ -62,7 +64,9 @@ func TestP4FTExpiryDeliveredBeforeLateArrival(t *testing.T) {
 			retireAt := old.due
 			lateCtx := p4FTContext("K1ABC", "N0CCC", "FT8", retireAt)
 			lateCtx.spot.SourceType = spot.SourceManual
+			lateCtx.spot.Comment, lateCtx.spot.SpotterIP = " ", "192.0.2.1"
 			late, ok := p.prepareSpotContext(lateCtx.spot)
+			late.peerOriginal = captureOriginalPeerPublication(lateCtx.spot)
 			if !ok || p.applyFTConfidenceStage(&late, retireAt) {
 				t.Fatal("late current report did not enter its new held burst")
 			}

@@ -11,7 +11,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
-	"strconv"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -208,17 +208,7 @@ func checkCorrectionEvidenceDelivery(t *testing.T, tc correctionEvidenceDelivery
 			t.Errorf("%s received output:\n got %q\nwant %q", dst.name, got, want)
 		}
 	}
-	frame := peerAdmissionReadSpot(t, recipient)
-	fields := strings.Split(frame, "^")
-	if len(fields) < 9 {
-		t.Errorf("received peer frame lacks delivered fields: %q", frame)
-	} else {
-		freq, parseErr := strconv.ParseFloat(fields[1], 64)
-		if fields[0] != "PC61" || parseErr != nil || freq != 14020 || fields[2] != tc.wantCall ||
-			fields[3] != at.Format("02-Jan-2006") || fields[4] != at.Format("1504Z") || fields[6] != "N0AAA" || fields[7] != "N0CALL-1" {
-			t.Errorf("received peer identity/frequency/date/DE/origin mismatch: %q", frame)
-		}
-	}
+	correctionEvidenceAssertOriginalPeer(t, recipient, tc.subject, at)
 	recent := ring.GetRecent(2)
 	if len(recent) != 1 {
 		t.Errorf("buffered output count=%d want 1", len(recent))
@@ -360,6 +350,15 @@ func correctionEvidenceReadDX(t *testing.T, conn net.Conn, reader *bufio.Reader)
 	}
 	t.Fatal("positive DX receipt exceeded fixture bound")
 	return ""
+}
+
+func correctionEvidenceAssertOriginalPeer(t *testing.T, recipient *peerAdmissionSocket, originalCall string, at time.Time) {
+	t.Helper()
+	frame, err := peer.ParseFrame(peerAdmissionReadSpot(t, recipient))
+	want := []string{"14020", originalCall, at.Format("02-Jan-2006"), at.Format("1504Z"), " ", "N0AAA", "N0CALL-1", "192.0.2.1"}
+	if err != nil || frame.Type != "PC61" || !reflect.DeepEqual(frame.Fields, want) {
+		t.Errorf("actual peer fields must match independent original input: frame=%+v err=%v want=%q", frame, err, want)
+	}
 }
 
 func correctionEvidenceAssertSpot(t *testing.T, destination string, s *spot.Spot, tc correctionEvidenceDeliveryCase, at time.Time, percentage bool) {

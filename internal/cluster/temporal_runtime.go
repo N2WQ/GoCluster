@@ -17,6 +17,7 @@ import (
 type runtimeTemporalPending struct {
 	id                         uint64
 	spot                       *spot.Spot
+	peerOriginal               *originalPeerPublication
 	evidence                   spot.ResolverEvidence
 	hasEvidence                bool
 	stabilizerResolverKey      spot.ResolverSignalKey

@@ -68,7 +68,7 @@ func TestCallCorrectionTemporalDeliveredAcceptanceHistory(t *testing.T) {
 				t.Errorf("rejected/unchanged proposal updated accepted history counters: commits=%d switches=%d corrections=%d",
 					p.tracker.TemporalCommitted(), p.tracker.TemporalPathSwitches(), p.tracker.CallCorrections())
 			}
-			want := correctionEvidenceDeliveryCase{wantCall: subject, wantGlyph: "B"}
+			want := correctionEvidenceDeliveryCase{subject: subject, wantCall: subject, wantGlyph: "B"}
 			if mode == "early_age_exit" || suppressed {
 				if suppressed {
 					reason := resolverDecisionCTYMiss
@@ -131,7 +131,7 @@ func TestCallCorrectionTemporalDeliveredAcceptanceHistory(t *testing.T) {
 				t.Errorf("first accepted mutation inherited rejected history: commits=%d switches=%d want 1,0",
 					p.tracker.TemporalCommitted(), p.tracker.TemporalPathSwitches())
 			}
-			second.check(t, correctionEvidenceDeliveryCase{wantCall: "K1ABD", wantGlyph: "C", wantPercent: 75, wantCorrections: 1}, secondAt)
+			second.check(t, correctionEvidenceDeliveryCase{subject: "K1ABE", wantCall: "K1ABD", wantGlyph: "C", wantPercent: 75, wantCorrections: 1}, secondAt)
 		})
 	}
 }
@@ -188,7 +188,7 @@ func TestCallCorrectionTemporalDeliveredRetryAcceptsOnce(t *testing.T) {
 	if len(controller.Drain(time.Now().UTC(), true)) != 0 || len(controller.pending) != 0 || p.telnetStabilizer.Pending() != 0 {
 		t.Fatal("accepted held request retained release ownership after final mutation")
 	}
-	fixture.check(t, correctionEvidenceDeliveryCase{wantCall: "K1ABC", wantGlyph: "C", wantPercent: 66, wantCorrections: 1}, at)
+	fixture.check(t, correctionEvidenceDeliveryCase{subject: "K1ABD", wantCall: "K1ABC", wantGlyph: "C", wantPercent: 66, wantCorrections: 1}, at)
 }
 
 func TestCallCorrectionTemporalResultAcceptsDistinctMutations(t *testing.T) {

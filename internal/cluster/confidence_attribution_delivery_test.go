@@ -132,7 +132,7 @@ func TestCallCorrectionTemporalDeliveredRetryRejectedConfidenceAttribution(t *te
 		len(controller.Drain(time.Now().UTC(), true)) != 0 || len(controller.pending) != 0 || controller.decoder.PendingCount() != 0 {
 		t.Fatal("rejected held request retained ownership after its one actual final delivery")
 	}
-	f.check(t, correctionEvidenceDeliveryCase{wantCall: tc.original, wantGlyph: "B", wantPercent: 33}, at)
+	f.check(t, correctionEvidenceDeliveryCase{subject: tc.original, wantCall: tc.original, wantGlyph: "B", wantPercent: 33}, at)
 }
 
 func TestCallCorrectionDeliveredCTYHitConfidenceAttribution(t *testing.T) {
@@ -166,7 +166,7 @@ func TestCallCorrectionDeliveredCTYHitConfidenceAttribution(t *testing.T) {
 		f.pipeline.tracker.CorrectionDecisionReasons()[resolverDecisionInvalidBaseCall] != 0 {
 		t.Error("positive CTY hit reached a candidate rejection branch")
 	}
-	f.check(t, correctionEvidenceDeliveryCase{wantCall: tc.winner, wantGlyph: "C", wantPercent: 66, wantCorrections: 1}, at)
+	f.check(t, correctionEvidenceDeliveryCase{subject: tc.original, wantCall: tc.winner, wantGlyph: "C", wantPercent: 66, wantCorrections: 1}, at)
 }
 
 func confidenceAttributionDeliveryCase(t *testing.T, tc confidenceAttributionCase, path string) {
@@ -224,7 +224,7 @@ func confidenceAttributionDeliveryCase(t *testing.T, tc confidenceAttributionCas
 		p.telnetStabilizer = newTelnetSpotStabilizer(time.Nanosecond, 1)
 		p.telnetStabilizer.Start()
 		t.Cleanup(p.telnetStabilizer.Stop)
-		p.handleStabilizerRelease(&telnetStabilizerEnvelope{spot: s, resolverKey: key,
+		p.handleStabilizerRelease(&telnetStabilizerEnvelope{spot: s, peerOriginal: captureOriginalPeerPublication(s), resolverKey: key,
 			hasResolverKey: true, evidenceEnqueued: true, delayReason: stabilizerDelayReasonAmbiguous.String()})
 		if f.ring.GetCount() != 0 || p.tracker.StabilizerHeld() != 1 {
 			t.Fatal("retry fixture did not retain ownership before first actual scheduler publication")
@@ -242,7 +242,7 @@ func confidenceAttributionDeliveryCase(t *testing.T, tc confidenceAttributionCas
 	default:
 		t.Fatal("unknown attribution path")
 	}
-	want := correctionEvidenceDeliveryCase{wantCall: tc.original, wantGlyph: "B", wantPercent: tc.wantPercent}
+	want := correctionEvidenceDeliveryCase{subject: tc.original, wantCall: tc.original, wantGlyph: "B", wantPercent: tc.wantPercent}
 	if tc.rejection == "" {
 		want.wantCall, want.wantGlyph, want.wantCorrections = tc.winner, "C", 1
 	} else {

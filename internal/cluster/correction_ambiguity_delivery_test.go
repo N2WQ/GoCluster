@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -100,7 +98,7 @@ func TestCallCorrectionMethodDeliveredAmbiguity(t *testing.T) {
 				fixture.pipeline.processSpotBody(s, nil)
 			case "stabilizer":
 				fixture.pipeline.handleStabilizerRelease(&telnetStabilizerEnvelope{
-					spot: s, resolverKey: key, hasResolverKey: true, evidenceEnqueued: true,
+					spot: s, peerOriginal: captureOriginalPeerPublication(s), resolverKey: key, hasResolverKey: true, evidenceEnqueued: true,
 				})
 			case "temporal_apply", "temporal_fallback":
 				cfg.TemporalDecoder = runtimeTemporalTestConfig(0).TemporalDecoder
@@ -113,7 +111,7 @@ func TestCallCorrectionMethodDeliveredAmbiguity(t *testing.T) {
 				fixture.pipeline.temporal = controller
 				selection := correctionflow.SelectResolverPrimarySnapshotForCall(resolver, key, cfg, "K1ABD")
 				accepted, _, reason := controller.Observe(at, key, "K1ABD", runtimeTemporalPending{
-					spot: s, evidence: spot.ResolverEvidence{Key: key}, hasEvidence: true,
+					spot: s, peerOriginal: captureOriginalPeerPublication(s), evidence: spot.ResolverEvidence{Key: key}, hasEvidence: true,
 					stabilizerResolverKey: key, hasStabilizerResolverKey: true,
 					stabilizerEvidenceEnqueued: true, selection: selection,
 				})
@@ -137,6 +135,7 @@ func TestCallCorrectionMethodDeliveredAmbiguity(t *testing.T) {
 				t.Fatal("unknown delivery fixture path")
 			}
 			want := correctionEvidenceDeliveryCase{
+				subject:  "K1ABD",
 				wantCall: tc.wantCall, wantGlyph: tc.wantGlyph, wantPercent: tc.wantPercent,
 				wantCorrections: tc.wantCorrections,
 			}
@@ -207,9 +206,10 @@ func TestCallCorrectionMethodDeliveredAmbiguityRetry(t *testing.T) {
 			}
 			p.handleStabilizerRelease(&telnetStabilizerEnvelope{
 				spot: s, resolverKey: key, hasResolverKey: true, evidenceEnqueued: true,
-				delayReason: stabilizerDelayReasonAmbiguous.String(),
+				peerOriginal: captureOriginalPeerPublication(s),
+				delayReason:  stabilizerDelayReasonAmbiguous.String(),
 			})
-			want := correctionEvidenceDeliveryCase{wantCall: "K1ABD", wantGlyph: "P", wantPercent: 40}
+			want := correctionEvidenceDeliveryCase{subject: "K1ABD", wantCall: "K1ABD", wantGlyph: "P", wantPercent: 40}
 			switch mode {
 			case "unchanged_retry", "changed_retry":
 				// This synchronous stage must return without fanout after
@@ -401,16 +401,7 @@ func (f ambiguityDeliveryFixture) check(t *testing.T, want correctionEvidenceDel
 			t.Errorf("%s delivered:\n got %q\nwant %q", dst.name, got, expected)
 		}
 	}
-	fields := strings.Split(peerAdmissionReadSpot(t, f.peer), "^")
-	if len(fields) < 9 {
-		t.Errorf("peer receipt lacked PC61 fields: %v", fields)
-	} else {
-		frequency, err := strconv.ParseFloat(fields[1], 64)
-		if err != nil || fields[0] != "PC61" || frequency != 14020 || fields[2] != want.wantCall ||
-			fields[3] != at.Format("02-Jan-2006") || fields[4] != at.Format("1504Z") || fields[6] != "N0AAA" || fields[7] != "N0CALL-1" {
-			t.Errorf("actual peer delivered identity/date/DE/origin: %v", fields)
-		}
-	}
+	correctionEvidenceAssertOriginalPeer(t, f.peer, want.subject, at)
 	rows := f.ring.GetRecent(2)
 	if len(rows) != 1 {
 		t.Errorf("buffer count=%d want 1", len(rows))

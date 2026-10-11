@@ -70,13 +70,14 @@ func TestArchiveImmutableFanoutDelivered(t *testing.T) {
 	for i := 0; i < 16; i++ {
 		s := newDeliveryTestSpot("K1ABC", "N0AAA", at.Add(time.Duration(i)*time.Millisecond))
 		s.SourceType, s.Confidence, s.ConfidencePercent, s.ConfidencePercentOK = spot.SourceManual, "V", 64, true
-		pipeline.deliverSpot(&outputSpotContext{spot: s})
+		pipeline.deliverSpot(&outputSpotContext{spot: s, peerOriginal: captureOriginalPeerPublication(s)})
 		archiveFanoutReadDX(t, normal, normalReader, "CW", at)
 		archiveFanoutReadDX(t, diag, diagReader, "CW 64%", at)
 		frame := peerAdmissionReadSpot(t, recipient)
 		fields := strings.Split(frame, "^")
-		if len(fields) < 9 || fields[0] != "PC61" || fields[1] != "14020.0" || fields[2] != "K1ABC" ||
-			fields[3] != at.Format("02-Jan-2006") || fields[4] != at.Format("1504Z") || fields[6] != "N0AAA" || fields[7] != "N0CALL-1" {
+		if len(fields) < 9 || fields[0] != "PC61" || fields[1] != "14020" || fields[2] != "K1ABC" ||
+			fields[3] != at.Format("02-Jan-2006") || fields[4] != at.Format("1504Z") || fields[5] != " " ||
+			fields[6] != "N0AAA" || fields[7] != "N0CALL-1" || fields[8] != "192.0.2.1" {
 			t.Fatalf("actual peer receipt: %q", frame)
 		}
 	}

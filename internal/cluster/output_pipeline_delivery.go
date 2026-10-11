@@ -98,6 +98,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 			hasResolverEvidence,
 			resolverEvidenceEnqueued,
 			envelope.temporalResult,
+			envelope.peerOriginal,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()
@@ -121,7 +122,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	recordRecentBandObservation(delayed, p.recentBandStore, p.customSCPStore, p.correctionCfg)
 	recordWhoSpotsMeObservation(delayed, p.whoSpotsMeStore, time.Now().UTC())
 	plan := p.buildFinalDeliveryPlan(delayed, delaySnapshot, delaySnapshotOK, time.Now().UTC())
-	releaseCtx := outputSpotContext{spot: delayed, temporalResult: envelope.temporalResult}
+	releaseCtx := outputSpotContext{spot: delayed, peerOriginal: envelope.peerOriginal, temporalResult: envelope.temporalResult}
 	if !plan.normalFanoutAllowed() {
 		p.emitSpot(&releaseCtx, plan)
 		return
@@ -259,6 +260,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			ctx.hasStabilizerResolverKey,
 			ctx.stabilizerEvidenceEnqueued,
 			ctx.temporalResult,
+			ctx.peerOriginal,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()
@@ -309,9 +311,8 @@ func (p *outputPipeline) updateGridCache(s *spot.Spot) {
 	}
 }
 
-// emitSpot seals a single immutable snapshot for all asynchronous consumers.
-// This avoids support-confusing races where archive, peer, and telnet could see
-// different versions of the same corrected spot.
+// emitSpot seals local output for ring/archive/telnet. Peer publication uses the
+// separately owned original tuple, under the same final MED and timing gates.
 func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPlan) {
 	if ctx == nil || ctx.spot == nil {
 		return
@@ -339,9 +340,10 @@ func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPla
 		ctx.temporalResult.observeHandoff()
 		p.telnet.DeliverSelfSpotOwned(normalizedDXCall(shared), shared)
 	}
-	if p.peerManager != nil && plan.allowMed {
+	if p.peerManager != nil && plan.allowMed && ctx.peerOriginal != nil && p.peerManager.ShouldPublishLocalSpot(shared) {
+		original := ctx.peerOriginal.publicationSpot()
 		ctx.temporalResult.observeHandoff()
-		if p.peerManager.PublishDXWithComment(shared, peerPublishComment(shared)) {
+		if p.peerManager.PublishDX(&original) {
 			emittedNow = true
 		}
 	}

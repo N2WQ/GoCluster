@@ -104,6 +104,7 @@ type outputPipeline struct {
 // visible in one object instead of hiding them in package-level state.
 type outputSpotContext struct {
 	spot                       *spot.Spot
+	peerOriginal               *originalPeerPublication
 	ctyDB                      *cty.CTYDatabase
 	dirty                      bool
 	modeUpper                  string
@@ -314,10 +315,19 @@ func (p *outputPipeline) processSpotBody(s *spot.Spot, temporalRelease *runtimeT
 	if !p.applyToxicityStage(s) {
 		return
 	}
+	var peerOriginal *originalPeerPublication
+	if temporalRelease != nil {
+		// Reentry restores the first admission's payload, including an absent
+		// record. Never grant a saved proposal a newly captured local identity.
+		peerOriginal = temporalRelease.pending.peerOriginal
+	} else if p.peerManager != nil && p.peerManager.ShouldPublishLocalSpot(s) {
+		peerOriginal = captureOriginalPeerPublication(s)
+	}
 	ctx, ok := p.prepareSpotContext(s)
 	if !ok {
 		return
 	}
+	ctx.peerOriginal = peerOriginal
 	if !p.applyResolverStage(&ctx, temporalRelease) {
 		return
 	}

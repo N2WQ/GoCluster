@@ -309,11 +309,13 @@ func TestPublishDXReceiveOnlyStillPublishesManualSpot(t *testing.T) {
 	}
 	m := &Manager{
 		cfg:       config.PeeringConfig{ForwardSpots: false, HopCount: 3},
-		localCall: "LOCAL",
+		localCall: "N0LOCAL",
 		sessions:  sessionTestIndex(map[string]*session{"dst": dst}),
 	}
 
 	sp := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")
+	sp.Comment = "CQ"
+	sp.SpotterIP = "192.0.2.1"
 	if !m.PublishDX(sp) {
 		t.Fatal("expected manual DX spot to publish in receive-only mode")
 	}
@@ -331,7 +333,7 @@ func TestPublishDXReceiveOnlyStillPublishesManualSpot(t *testing.T) {
 	}
 }
 
-func TestPublishDXWithCommentFallsBackToManualMode(t *testing.T) {
+func TestPublishDXDoesNotInventBlankManualComment(t *testing.T) {
 	dst := &session{
 		id:         "dst",
 		remoteCall: "DST",
@@ -341,23 +343,16 @@ func TestPublishDXWithCommentFallsBackToManualMode(t *testing.T) {
 	}
 	m := &Manager{
 		cfg:       config.PeeringConfig{ForwardSpots: true, HopCount: 2},
-		localCall: "LOCAL",
+		localCall: "N0LOCAL",
 		sessions:  sessionTestIndex(map[string]*session{"dst": dst}),
 	}
 
 	sp := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")
+	sp.SpotterIP = "192.0.2.1"
 	sp.Comment = ""
-	if !m.PublishDXWithComment(sp, "FT8") {
-		t.Fatal("expected manual DX spot to publish with override comment")
-	}
-
-	select {
-	case got := <-dst.writeCh:
-		if !strings.Contains(got, "^FT8^") {
-			t.Fatalf("expected override comment in PC61 publish, got %q", got)
-		}
-	default:
-		t.Fatal("expected DX publish to destination peer")
+	m.PublishDX(sp)
+	if len(dst.writeCh) != 0 {
+		t.Fatalf("blank original comment was rewritten and published: %q", <-dst.writeCh)
 	}
 }
 

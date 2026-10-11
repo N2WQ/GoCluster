@@ -186,6 +186,10 @@ func newDeliveryTestArchiveWriter(t *testing.T) *archive.Writer {
 
 func newDeliveryTestSpot(dx, de string, at time.Time) *spot.Spot {
 	s := spot.NewSpot(dx, de, 14020.0, "CW")
+	// Complete accepted input for positive PC61 fixtures. Empty comments/IPs
+	// are refusal cases, not evidence that a receiving peer can admit a spot.
+	s.Comment = " " // Representable peer whitespace; local display still infers CW.
+	s.SpotterIP = "192.0.2.1"
 	s.Time = at
 	s.Confidence = "?"
 	s.DEMetadata.ADIF = 291

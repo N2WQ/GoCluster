@@ -62,6 +62,7 @@ type ftConfidencePendingGroup struct {
 // held FT spot without rerunning upstream resolver stages.
 type ftConfidencePendingContext struct {
 	spot                       *spot.Spot
+	peerOriginal               *originalPeerPublication
 	ctyDB                      *cty.CTYDatabase
 	modeUpper                  string
 	stabilizerResolverKey      spot.ResolverSignalKey
@@ -72,6 +73,7 @@ type ftConfidencePendingContext struct {
 func newFTConfidencePendingContext(ctx outputSpotContext) ftConfidencePendingContext {
 	return ftConfidencePendingContext{
 		spot:                       ctx.spot,
+		peerOriginal:               ctx.peerOriginal,
 		ctyDB:                      ctx.ctyDB,
 		modeUpper:                  ctx.modeUpper,
 		stabilizerResolverKey:      ctx.stabilizerResolverKey,
@@ -83,6 +85,7 @@ func newFTConfidencePendingContext(ctx outputSpotContext) ftConfidencePendingCon
 func (ctx ftConfidencePendingContext) outputContext() outputSpotContext {
 	return outputSpotContext{
 		spot:                       ctx.spot,
+		peerOriginal:               ctx.peerOriginal,
 		ctyDB:                      ctx.ctyDB,
 		modeUpper:                  ctx.modeUpper,
 		stabilizerResolverKey:      ctx.stabilizerResolverKey,

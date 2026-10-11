@@ -109,7 +109,7 @@ func TestArchiveSnapshotForBlankBeaconDoesNotMutatePeerComment(t *testing.T) {
 	if shared.Comment != "" {
 		t.Fatalf("expected shared peer/telnet snapshot comment to remain blank, got %q", shared.Comment)
 	}
-	if comment := peerPublishComment(shared); comment != "" {
+	if comment := captureOriginalPeerPublication(shared).publicationSpot().Comment; comment != "" {
 		t.Fatalf("expected peer comment to remain blank for non-manual beacon, got %q", comment)
 	}
 	if got := shared.FormatDXCluster(); !strings.Contains(got, "CW NCDXF BEACON") {

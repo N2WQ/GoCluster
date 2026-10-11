@@ -104,6 +104,31 @@ dedupe, topology cache, or private peer configuration.
   Source-derived failure explanation and verification status:
   [TSR-0039](../../docs/troubleshooting/TSR-0039-peer-normalized-relay-and-telnet-iac.md).
 
+## Locally Published Spots
+
+- Separate native received-frame transit from locally generated publication.
+  Both preserve original input content; local display, ring history and archive
+  can contain a corrected identity. A corrected local line alone is not the
+  expected PC11/PC61 payload.
+- For a local `DX` spot, original means the accepted source `Spot` after primary
+  normalization and completed toxicity classification, before output changes.
+  It does not mean literal command-line whitespace, case or pre-parser frequency
+  precision. A compact immutable record follows existing temporal, FT and
+  stabilizer holds; release does not recapture the corrected spot.
+- Exact representable comments reach peers without inferred-mode fallback,
+  trimming or sanitization. An empty comment, caret or prohibited byte refuses
+  that destination variant while local delivery can still proceed. Permitted
+  tabs and nonempty whitespace are valid. Numeric frequency receives no
+  additional one-decimal rounding; valid captured IP spelling is preserved.
+- Modern PC61 and legacy PC11 validate independently. Missing/invalid IP may
+  refuse PC61 without refusing a valid legacy PC11; no new modern-to-legacy
+  fallback repairs it. Existing source, forwarding, shared MED, suppression,
+  queue and delivery timing gates still apply. PC11/PC61 do not carry local
+  confidence percentages or rejection reasons.
+- Compare original accepted fields, local corrected delivery, onward bytes and
+  receiver admission separately. See [publishing rules](../../peer/README.md#publishing-rules)
+  and [ADR-0284](../../docs/decisions/ADR-0284-original-content-peer-publication.md).
+
 ## Must Avoid
 
 - Do not expose private peer hosts or passwords in examples.

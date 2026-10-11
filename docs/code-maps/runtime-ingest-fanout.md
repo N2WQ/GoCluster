@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `aeac8ef178d1bc6f`
+- Source fingerprint: `c06be36b9e0fd8a3`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,8 +12,8 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 27 | 91 |
-| `dxcluster/peer` | `peer` | 62 | 131 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 94 |
+| `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 37 | 41 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
@@ -152,6 +152,7 @@ Source files:
 - `internal/cluster/output_pipeline_stages.go`
 - `internal/cluster/path_cells.go`
 - `internal/cluster/path_report_metrics.go`
+- `internal/cluster/peer_publication.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/telnet_family_suppressor.go`
@@ -231,6 +232,9 @@ Test files:
 - `internal/cluster/pc92_runtime_stage_service_test.go`
 - `internal/cluster/pc92_runtime_warm_oracle_test.go`
 - `internal/cluster/pc92_runtime_warm_test.go`
+- `internal/cluster/peer_original_delivery_test.go`
+- `internal/cluster/peer_original_hold_delivery_test.go`
+- `internal/cluster/peer_publication_bench_test.go`
 - `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/peer_spot_admission_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
@@ -336,6 +340,8 @@ Test files:
 - `peer/inbound_handshake_test.go`
 - `peer/inbound_listener_test.go`
 - `peer/keys_test.go`
+- `peer/local_spot_publication_fuzz_test.go`
+- `peer/local_spot_publication_test.go`
 - `peer/manager_drop_test.go`
 - `peer/manager_legacy_test.go`
 - `peer/manager_test.go`
@@ -691,6 +697,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0284](docs/decisions/ADR-0284-original-content-peer-publication.md) | Accepted | 2026-10-11 | peer, output ownership, forwarding fidelity | `area:peer, path:internal/cluster, path:peer, path:spot` |
 | [ADR-0283](docs/decisions/ADR-0283-ft-admission-expiry.md) | Accepted | 2026-10-11 | FT confidence, admission expiry, bounded release | `path:internal/cluster` |
 | [ADR-0282](docs/decisions/ADR-0282-temporal-release-evidence-authority.md) | Accepted | 2026-10-10 | temporal, release eligibility, confirmed history | `path:internal/cluster, path:spot` |
 | [ADR-0281](docs/decisions/ADR-0281-archive-worker-private-normalization.md) | Accepted | 2026-10-10 | archive, immutable fanout, normalization | `path:internal/cluster` |

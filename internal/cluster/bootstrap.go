@@ -1776,27 +1776,6 @@ func lookupGridUnified(call string, gridLookupSync func(string) (string, bool, b
 	return "", false, false
 }
 
-// peerPublishComment ensures manual spots carry an inferred mode to peers even
-// when the user omitted a comment. Peers only see the comment field in PC61/PC11
-// frames, so we fall back to the inferred mode when the comment is blank.
-func peerPublishComment(src *spot.Spot) string {
-	if src == nil {
-		return ""
-	}
-	comment := strings.TrimSpace(src.Comment)
-	if src.SourceType != spot.SourceManual {
-		return comment
-	}
-	if comment != "" {
-		return comment
-	}
-	mode := strings.TrimSpace(src.Mode)
-	if mode == "" {
-		return comment
-	}
-	return mode
-}
-
 // applyLicenseGate checks the final corrected DX identity against FCC or ISED data.
 // Purpose: Enrich the final DX base call and optionally enforce licensing (DE checked at ingest).
 // Key aspects: Jurisdiction is derived from the normalized base call; reporter callback on drops.

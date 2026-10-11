@@ -79,3 +79,7 @@ remain accepted.
   both scheduler and released fanout while preserving normal delivery gates.
 - Supersedes / superseded by: partially supersedes archive/peer side-rail
   clauses in ADR-0013, ADR-0020, ADR-0029, and ADR-0138
+- Partially superseded by
+  [ADR-0284](ADR-0284-original-content-peer-publication.md): peer publication
+  preserves accepted source content instead of sharing the final local identity.
+  Shared post-stabilizer timing, MED admission and delivery gates remain accepted.

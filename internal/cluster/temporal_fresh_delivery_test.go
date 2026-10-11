@@ -34,7 +34,7 @@ func TestCallCorrectionTemporalDeliveredFreshAuthority(t *testing.T) {
 			controller := newRuntimeTemporalController(cfg)
 			p.temporal = controller
 			temporalDeliveryObserve(t, controller, old, key, s, saved)
-			want := correctionEvidenceDeliveryCase{wantCall: "K1ABD", wantGlyph: "?"}
+			want := correctionEvidenceDeliveryCase{subject: "K1ABD", wantCall: "K1ABD", wantGlyph: "?"}
 			if mode != "expired_unswept_publication" {
 				fresh := time.Now().UTC()
 				freshWinner := "K1ABC"
@@ -119,7 +119,7 @@ func TestCallCorrectionTemporalDeliveredAbstainUsesFreshConfidence(t *testing.T)
 	if fixture.pipeline.tracker.TemporalCommitted() != 0 || fixture.pipeline.tracker.TemporalPathSwitches() != 0 {
 		t.Error("abstained proposal updated confirmed history counters")
 	}
-	fixture.check(t, correctionEvidenceDeliveryCase{wantCall: "K1ABD", wantGlyph: "V", wantPercent: 75}, at)
+	fixture.check(t, correctionEvidenceDeliveryCase{subject: "K1ABD", wantCall: "K1ABD", wantGlyph: "V", wantPercent: 75}, at)
 }
 
 func temporalDeliveryDirectory(t *testing.T) {
@@ -194,7 +194,7 @@ func temporalDeliveryRetirePopulation(t *testing.T, r *spot.SignalResolver, driv
 func temporalDeliveryObserve(t *testing.T, c *runtimeTemporalController, observed time.Time, key spot.ResolverSignalKey, s *spot.Spot, selection correctionflow.ResolverPrimarySelection) {
 	t.Helper()
 	accepted, _, reason := c.Observe(observed, key, s.DXCallNorm, runtimeTemporalPending{
-		spot: s, evidence: spot.ResolverEvidence{Key: key}, hasEvidence: true,
+		spot: s, peerOriginal: captureOriginalPeerPublication(s), evidence: spot.ResolverEvidence{Key: key}, hasEvidence: true,
 		stabilizerResolverKey: key, hasStabilizerResolverKey: true, stabilizerEvidenceEnqueued: true, selection: selection,
 	})
 	if !accepted {
@@ -241,10 +241,7 @@ func temporalDeliveryCheckWithoutPercent(t *testing.T, f ambiguityDeliveryFixtur
 			t.Errorf("DIAG retained identity/glyph/time fields disagree: %q", got)
 		}
 	}
-	fields := strings.Split(peerAdmissionReadSpot(t, f.peer), "^")
-	if len(fields) < 9 || fields[0] != "PC61" || fields[2] != want.wantCall || fields[6] != "N0AAA" || fields[7] != "N0CALL-1" {
-		t.Errorf("peer retained identity/DE/origin mismatch: %v", fields)
-	}
+	correctionEvidenceAssertOriginalPeer(t, f.peer, want.subject, at)
 	rows := f.ring.GetRecent(2)
 	if len(rows) != 1 {
 		t.Errorf("retained buffer row count=%d", len(rows))

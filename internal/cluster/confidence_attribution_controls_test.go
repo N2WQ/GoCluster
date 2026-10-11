@@ -82,6 +82,7 @@ func TestCallCorrectionDeliveredAttributionControls(t *testing.T) {
 			if unavailable {
 				want.wantPercent = 0
 			}
+			want.subject = s.DXCall
 			if mode == "temporal_abstain" {
 				controller := newRuntimeTemporalController(cfg)
 				f.pipeline.temporal = controller
@@ -127,8 +128,12 @@ func confidenceAttributionCheckOwnedRail(t *testing.T, f ambiguityDeliveryFixtur
 			t.Errorf("owned %s rail TCP diag=%t: got %q want %q", mode, diag, got, expected)
 		}
 	}
+	peerComment := " "
+	if comment == "CW BEACON" {
+		peerComment = "BEACON"
+	}
 	fields := strings.Split(peerAdmissionReadSpot(t, f.peer), "^")
-	if len(fields) < 9 || fields[0] != "PC61" || fields[2] != want.wantCall || fields[6] != "N0AAA" || fields[7] != "N0CALL-1" {
+	if len(fields) < 9 || fields[0] != "PC61" || fields[2] != want.subject || fields[5] != peerComment || fields[6] != "N0AAA" || fields[7] != "N0CALL-1" {
 		t.Errorf("owned %s rail peer fields: %v", mode, fields)
 	}
 	rows := f.ring.GetRecent(2)

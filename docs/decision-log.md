@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0284 | Original-Content Peer Publication | Accepted | 2026-10-11 | peer, output ownership, forwarding fidelity | ADR-0148 final peer content-sharing clause only | none | `docs/decisions/ADR-0284-original-content-peer-publication.md` |
 | ADR-0283 | FT Admission Expiry | Accepted | 2026-10-11 | FT confidence, admission expiry, bounded release | Refines ADR-0060 | none | `docs/decisions/ADR-0283-ft-admission-expiry.md` |
 | ADR-0282 | Temporal Release Evidence Authority | Accepted | 2026-10-10 | temporal, release eligibility, confirmed history | Refines ADR-0038 | none | `docs/decisions/ADR-0282-temporal-release-evidence-authority.md` |
 | ADR-0281 | Archive Worker Private Normalization | Accepted | 2026-10-10 | archive, immutable fanout, normalization | Refines ADR-0148/0275 worker ownership | none | `docs/decisions/ADR-0281-archive-worker-private-normalization.md` |
@@ -159,7 +160,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0152 | Stable Active Log Filenames With Date-Only Archives | Accepted | 2026-06-07 | logging, propagation reports, operations | ADR-0093 active filename shape; ADR-0123 active filename shape | - | `docs/decisions/ADR-0152-stable-active-log-filenames-with-date-only-archives.md` |
 | ADR-0151 | Archive Range Deletion Cleanup | Accepted | 2026-06-06 | archive, config, hot path, profiling | ADR-0149 cleanup implementation | - | `docs/decisions/ADR-0151-archive-range-deletion-cleanup.md` |
 | ADR-0149 | Single-Window Archive Retention | Accepted | 2026-06-06 | archive, config, spot taxonomy, hot path | ADR-0069 archive retention class | - | `docs/decisions/ADR-0149-single-window-archive-retention.md` |
-| ADR-0148 | Post-Stabilizer Shared Secondary Fanout | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | ADR-0013 archive/peer side rail; ADR-0020 archive/peer unchanged clause; ADR-0029 archive/peer unchanged clause; ADR-0138 archive/peer MED side rail | - | `docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md` |
+| ADR-0148 | Post-Stabilizer Shared Secondary Fanout | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | ADR-0013 archive/peer side rail; ADR-0020 archive/peer unchanged clause; ADR-0029 archive/peer unchanged clause; ADR-0138 archive/peer MED side rail | ADR-0284 (peer content-sharing only; timing/gates preserved) | `docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md` |
 | ADR-0147 | Generated Code Map Freshness Gate | Accepted | 2026-06-05 | workflow, docs/code-maps, scripts, CI, release | - | ADR-0229 (selected clauses) | `docs/decisions/ADR-0147-generated-code-map-freshness-gate.md` |
 | ADR-0146 | H3 Path Cell Duplicate Work Removal | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | - | - | `docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md` |
 | ADR-0145 | PSKReporter Fast Payload Parser | Accepted | 2026-06-05 | pskreporter, mqtt, parser, hot path | - | - | `docs/decisions/ADR-0145-pskreporter-fast-payload-parser.md` |

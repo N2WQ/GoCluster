@@ -20,6 +20,7 @@ const (
 
 type telnetStabilizerItem struct {
 	spot             *spot.Spot
+	peerOriginal     *originalPeerPublication
 	due              time.Time
 	seq              uint64
 	checksCompleted  int
@@ -36,6 +37,7 @@ type telnetStabilizerItem struct {
 // during overflow or shutdown investigations.
 type telnetStabilizerEnvelope struct {
 	spot             *spot.Spot
+	peerOriginal     *originalPeerPublication
 	checksCompleted  int
 	delayReason      string
 	resolverKey      spot.ResolverSignalKey
@@ -196,12 +198,13 @@ func (s *telnetSpotStabilizer) EnqueueWithContext(
 	hasResolverKey bool,
 	evidenceEnqueued bool,
 ) bool {
-	return s.enqueueWithTemporalResult(sp, checksCompleted, delayReason, resolverKey, hasResolverKey, evidenceEnqueued, nil)
+	return s.enqueueWithTemporalResult(sp, checksCompleted, delayReason, resolverKey, hasResolverKey, evidenceEnqueued, nil, nil)
 }
 
 func (s *telnetSpotStabilizer) enqueueWithTemporalResult(
 	sp *spot.Spot, checksCompleted int, delayReason string, resolverKey spot.ResolverSignalKey,
 	hasResolverKey, evidenceEnqueued bool, temporalResult *runtimeTemporalResult,
+	peerOriginal *originalPeerPublication,
 ) bool {
 	if s == nil || sp == nil {
 		return false
@@ -220,6 +223,7 @@ func (s *telnetSpotStabilizer) enqueueWithTemporalResult(
 	select {
 	case s.in <- &telnetStabilizerEnvelope{
 		spot:             sp,
+		peerOriginal:     peerOriginal,
 		checksCompleted:  checksCompleted,
 		delayReason:      delayReason,
 		resolverKey:      resolverKey,
@@ -334,6 +338,7 @@ func (s *telnetSpotStabilizer) run() {
 			}
 			heap.Push(&queue, &telnetStabilizerItem{
 				spot:             envelope.spot,
+				peerOriginal:     envelope.peerOriginal,
 				due:              time.Now().UTC().Add(s.delay),
 				seq:              nextID,
 				checksCompleted:  envelope.checksCompleted,
@@ -360,6 +365,7 @@ func (s *telnetSpotStabilizer) run() {
 				select {
 				case s.release <- &telnetStabilizerEnvelope{
 					spot:             item.spot,
+					peerOriginal:     item.peerOriginal,
 					checksCompleted:  item.checksCompleted,
 					delayReason:      item.delayReason,
 					resolverKey:      item.resolverKey,

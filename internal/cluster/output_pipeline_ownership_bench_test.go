@@ -48,7 +48,7 @@ func BenchmarkOutputPipelineEmitSpotOwnership(b *testing.B) {
 		shared.ID = uint64(i + 1)
 		archiveSnapshot := shared
 		telnetSnapshot := shared
-		peerComment := peerPublishComment(shared)
+		peerComment := src.Comment
 		runtime.KeepAlive(shared)
 		runtime.KeepAlive(archiveSnapshot)
 		runtime.KeepAlive(telnetSnapshot)

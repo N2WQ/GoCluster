@@ -207,6 +207,36 @@ The runtime is intentionally conservative about what it republishes to peers.
 - skimmer-origin spots are not blindly republished as local human traffic
 - local `DX` command spots remain the operator-authored exception
 
+Eligible local publication preserves the accepted source `Spot` after primary
+normalization and completion of toxicity classification, before local output
+preparation, call correction or frequency averaging. It does not preserve the
+literal command line: command parsing may already normalize calls, comment
+spacing and frequency. A local display can show corrected B while peers receive
+original A. Ring history and archive retain the local result; PC11/PC61 do not
+carry its local confidence percentage or rejection reason.
+
+Comments are exact when representable under the field rules above. Blank
+comments are not replaced with inferred mode, spaces are not trimmed, and
+delimiters are not sanitized. Empty comments, carets and prohibited bytes refuse
+peer publication for that destination; local delivery can still proceed.
+Nonempty whitespace and permitted tabs remain valid. Captured numeric frequency
+is encoded without additional one-decimal rounding, and valid captured IP text
+is preserved. UTC date/minute encoding, the configured local origin and hop
+framing remain unchanged.
+
+Each existing destination variant must pass its field grammar and sentence-size
+limit. A missing or invalid IP can refuse modern PC61 while an independently
+valid legacy PC11 remains publishable. This does not introduce a modern-to-legacy
+fallback. Native received-frame transit still uses the original-field relay
+path above, not this local publisher.
+
+An immutable compact source record follows the existing temporal, FT and
+stabilizer pending owners through retry, overflow and shutdown. Source
+eligibility, shared final MED admission, suppression, queue limits and
+post-stabilizer timing remain unchanged. A refused variant is not repaired,
+truncated or retried automatically. See
+[ADR-0284](../docs/decisions/ADR-0284-original-content-peer-publication.md).
+
 ## Control Plane
 
 Configured peer family drives startup:

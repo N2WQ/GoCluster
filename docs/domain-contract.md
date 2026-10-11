@@ -230,6 +230,36 @@ These rules must be explicit, deterministic, and testable.
 - A node that is shedding inbound peer spots locally must not continue acting as
   a transit hop for those same frames.
 
+### Original-content local peer publication
+
+- Peer publication of locally accepted human/manual spots uses their accepted
+  source fields, not the final locally corrected spot. Capture after primary
+  normalization and completion of toxicity classification, before output
+  preparation, call correction or frequency averaging. This is the accepted
+  `Spot` boundary, not a promise to preserve literal DX command-line spelling,
+  whitespace or frequency precision already consumed by the command parser.
+- Own a compact immutable publication record. Carry it with the existing
+  temporal, FT and stabilizer pending owners through release, retry, overflow
+  and shutdown; never reconstruct it from the mutated local spot. No provenance
+  map, worker, queue or persisted field is added.
+- Preserve representable comment bytes exactly. Do not infer a mode for a blank
+  comment, trim spaces, replace delimiters or sanitize content. Empty comments,
+  carets and bytes forbidden by the existing peer grammar refuse that output
+  variant; local delivery can still proceed. Nonempty whitespace and permitted
+  tabs remain representable.
+- Encode captured finite frequency without additional one-decimal rounding;
+  preserve valid captured IP text. Use existing UTC date/minute, origin and hop
+  framing. Validate each existing destination variant independently, including
+  its size limit. A refused modern PC61 does not gain a new PC11 fallback.
+- Preserve source eligibility, `forward_spots`, shared post-stabilizer MED
+  admission, suppression, queue and delivery timing. Local display, ring history
+  and archive may contain corrected B while peer publication contains original
+  A. PC11/PC61 carry no local confidence percentage or rejection reason.
+- Native received-frame relay remains the separate original-field path above;
+  locally republishing a received peer spot must not duplicate that relay.
+  See [peer publishing rules](../peer/README.md#publishing-rules) and
+  [ADR-0284](decisions/ADR-0284-original-content-peer-publication.md).
+
 ### Sustained slow consumer policy
 
 If the spot drop rate exceeds 5% over a rolling 30-second window, with a
