@@ -344,19 +344,25 @@ func TestPeerOriginalFinalSuppressionGatesActualPeer(t *testing.T) {
 				t.Fatal("gate fixture must be eligible for local peer publication")
 			}
 			p.handleStabilizerRelease(&telnetStabilizerEnvelope{spot: denied, peerOriginal: captureOriginalPeerPublication(denied)})
-			if f.ring.GetCount() != 1 {
-				t.Fatal("denied final delivery gate reached normal local fanout")
-			}
 			if gate == "secondary_med" {
+				if f.ring.GetCount() != 1 {
+					t.Fatal("denied final MED gate reached normal local fanout")
+				}
 				processed, duplicates, _ := p.secondaryMed.GetStats()
 				if processed != 2 || duplicates != 1 {
 					t.Fatalf("release must actually encounter final MED duplicate refusal: processed=%d duplicates=%d", processed, duplicates)
 				}
-			} else if p.familySuppressor.totalEntries != 1 {
-				t.Fatal("suppressed bare family member must not become delivered history")
+			} else {
+				if f.ring.GetCount() != 2 || p.familySuppressor.totalEntries != 1 {
+					t.Fatal("family hiding must preserve ring output without teaching hidden telnet history")
+				}
+				peerOriginalAssertFields(t, f.peer, []string{
+					"14030", deniedCall, denied.Time.Format("02-Jan-2006"), denied.Time.Format("1504Z"),
+					"denied peer gate", "N0AAA", "N0CALL-1", "192.0.2.1",
+				})
 			}
-			// If either denial bypasses the peer gate, its frame arrives before
-			// this valid unrelated source on the same native recipient session.
+			// MED refusal stays shared; family hiding affects telnet alone. A
+			// following source proves neither path leaves an extra peer frame.
 			peerOriginalDeliveryBarrier(t, f, at)
 		})
 	}

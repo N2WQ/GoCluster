@@ -193,9 +193,6 @@ func (p *outputPipeline) buildFinalDeliveryPlan(
 		return plan
 	}
 	if p.familySuppressor != nil && p.familySuppressor.ShouldSuppressWithResolver(s, p.correctionCfg, now, familySnapshot, familySnapshotOK) {
-		plan.allowFast = false
-		plan.allowMed = false
-		plan.allowSlow = false
 		plan.telnetDeliverNow = false
 		plan.telnetDeliverSelf = p.telnet != nil
 	}
@@ -283,7 +280,9 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			p.tracker.IncrementStabilizerReleasedImmediateReason(stabilizerDelayReasonNone.String())
 		}
 	}
-	if shouldRecordRecentBandInMainLoop(p.stabilizerEnabled, !plan.telnetDeliverNow) {
+	// Family display hiding is not pending stabilizer ownership. Once release
+	// or overflow resolves that ownership, shared gates govern history admission.
+	if shouldRecordRecentBandInMainLoop(p.stabilizerEnabled, !plan.normalFanoutAllowed()) {
 		recordRecentBandObservation(s, p.recentBandStore, p.customSCPStore, p.correctionCfg)
 		recordWhoSpotsMeObservation(s, p.whoSpotsMeStore, time.Now().UTC())
 		p.recordFTRecentBandObservation(s)

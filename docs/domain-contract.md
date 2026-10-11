@@ -252,7 +252,10 @@ These rules must be explicit, deterministic, and testable.
   framing. Validate each existing destination variant independently, including
   its size limit. A refused modern PC61 does not gain a new PC11 fallback.
 - Preserve source eligibility, `forward_spots`, shared post-stabilizer MED
-  admission, suppression, queue and delivery timing. Local display, ring history
+  admission, actual hold/timeout suppression, queue and delivery timing.
+  Family display hiding is telnet-only: it does not clear shared ring/archive/peer
+  permissions or skip eligible history admission after hold ownership resolves.
+  Local display, ring history
   and archive may contain corrected B while peer publication contains original
   A. PC11/PC61 carry no local confidence percentage or rejection reason.
 - Native received-frame relay remains the separate original-field path above;

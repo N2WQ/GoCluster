@@ -41,11 +41,13 @@ additional production hooks or behavior.
 
 ## Remaining ordered checkpoints
 
-T0 and T1 are complete. F1 destination isolation and F2 fresh per-lane family
-arbitration remain pending. No implementation of a later checkpoint precedes
+T0, T1 and F1 are complete. F2 fresh per-lane family arbitration remains
+pending. No implementation of a later checkpoint precedes
 the preceding checkpoint's complete validation and commit.
 
 ## T1 - temporal final-request retirement
+
+Commit: `0665ede`.
 
 Baseline `42f0e0f`: `TestTemporalRetirementReclaimsFinalEvictedRequest` compiled
 and failed for fallback_resolver, abstain and bypass when the newer request
@@ -111,3 +113,62 @@ Read-only Go quality review found no material defect. Its two refinements are
 accepted: exact command selection is recorded above, and concurrent workers now
 report errors and return without calling the test goroutine's `FailNow` helper.
 The affected targeted check reran and passed after the full checkpoint.
+
+## F1 - telnet-only destination isolation
+
+Baseline `0665ede`: loaded-config production-constructor regressions compiled
+and failed on missing original PC61, sealed ring, raw archive records and
+independently reopened archive for the hidden base call. Immediate and overflow
+history assertions also failed; CustomSCP byte checks showed the older membership
+timestamp and absent new receiver observation. Actual delayed ownership and
+timeout-suppression controls executed. Evidence:
+`.tmp/temporal-family-delivery/F1-baseline.log`.
+
+The production change preserves shared secondary flags when family display
+hiding rejects telnet output. After actual immediate or overflow disposition,
+normal fanout eligibility governs historical admission. Real pending holds,
+risky timeout suppression and all-secondary-denied behavior are retained.
+Legacy and CustomSCP recording are tested separately, with raw bytes checked
+before independent reopening; original peer fields and SELF policy have separate
+actual recipients. The prior peer regression's family expectation is corrected;
+its shared MED-refusal control remains unchanged.
+
+Decision disposition: restore ADR-0014's telnet-only destination contract;
+TSR-0086 records the two source causes and destination/history counterexamples.
+F2 arbitration remains unimplemented until this checkpoint passes and commits.
+
+F1 targeted ordinary/race passed with:
+
+```powershell
+& .\scripts\test-windows.ps1 -Packages './internal/cluster' -Run 'FamilyDelivery|PeerOriginal(FinalSuppression|Refusal)|OutputPipeline(Stabilizer|FinalMed|.*Secondary)|TelnetFamilySuppressor|FTConfidence' -Timeout 180s
+```
+
+Then the same command with `-Race`. Existing peer source-publication controls
+also passed both modes, selecting `^TestShouldPublishLocalSpot` in `./peer`.
+Evidence: `F1-targeted.log`, `F1-targeted-race.log`, `F1-source-controls.log`,
+`F1-source-controls-race.log` under `.tmp/temporal-family-delivery/`.
+The baseline used the same ordinary runner and timeout, selecting
+`^TestFamilyDelivery(ImmediateDestinationsAndHistory|SchedulerOwnershipAndHistory)$`.
+
+The loaded no-telnet constructor control independently passed with both
+historical owners. The connected fixture and literal persistence cohort stay
+in one test file to keep their ownership and expected source fields reviewable.
+Read-only Go quality review found no material defect; its closeout refinements
+are accepted (record this cohesion and stage only owned shared-document hunks).
+
+Complete F1 package validation passed: all 70 packages ordinary (576.6s) and
+race (943.1s), vet and Staticcheck. Configured lint initially reported a
+tagged-switch suggestion and an unnecessary initial test-counter assignment.
+Both test-only style issues were repaired; all `^TestFamilyDelivery` cases
+reran ordinary/race and passed, and lint then reported zero issues. The style
+changes do not invalidate the broader production/package results. Evidence:
+`F1-post-lint.log`, `F1-post-lint-race.log`; the original lint failure remains
+in `F1/lint.log`.
+
+Connected CustomSCP ordinary and race passed with run identities
+`1eeba2573e8c4decab9761b96b3fa79b` and
+`68b041c51b774902a22ea7e92bb49cbd`. Final troubleshooting-record checks passed;
+the changed-only crawler checker inspected one support-critical production
+file and passed. Fresh final diff review confirmed the small shared-gate repair
+and preserved the unrelated profiling hunks. Codemap generation/check is the
+final write/check before the F1 local commit.
