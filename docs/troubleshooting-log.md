@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0085 | Temporal Event Key Retirement | Monitoring | 2026-10-11 | temporal request/event ownership, active-key capacity, delivery | none | `docs/troubleshooting/TSR-0085-temporal-event-key-retirement.md` |
 | TSR-0083 | Rejected Correction Confidence Attribution | Monitoring | 2026-10-11 | resolver confidence, rejected correction, delivered percentage | none | `docs/troubleshooting/TSR-0083-rejected-correction-confidence-attribution.md` |
 | TSR-0082 | FT Expired Burst Admission | Monitoring | 2026-10-11 | FT confidence, expiry, delivered glyphs | ADR-0283 | `docs/troubleshooting/TSR-0082-ft-expired-burst-admission.md` |
 | TSR-0081 | Temporal Saved Authority | Monitoring | 2026-10-10 | temporal, fresh release, delivered correction | ADR-0282 | `docs/troubleshooting/TSR-0081-temporal-saved-authority.md` |

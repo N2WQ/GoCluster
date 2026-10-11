@@ -1,3 +1,5 @@
+// File role: Bounded temporal proposals and request-owned event keys. Terminal
+// retirement reclaims event state; separately bounded accepted history survives.
 package correctionflow
 
 import (
@@ -345,14 +347,14 @@ func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) Tempora
 	if st == nil {
 		decision.Action = d.fallbackActionLocked()
 		decision.Reason = "missing_key_state"
-		delete(d.requests, req.id)
+		d.retireRequestLocked(req)
 		return decision
 	}
 	startIdx := findTemporalEventIndex(st.events, req.id)
 	if startIdx < 0 {
 		decision.Action = d.fallbackActionLocked()
 		decision.Reason = "event_evicted"
-		delete(d.requests, req.id)
+		d.retireRequestLocked(req)
 		return decision
 	}
 
@@ -397,19 +399,23 @@ func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) Tempora
 	if thresholdPass {
 		decision.Action = TemporalDecisionActionApply
 		decision.Reason = "proposal"
-		delete(d.requests, req.id)
-		if !d.hasPendingKeyLocked(req.key) {
-			delete(d.keyStates, req.key)
-		}
+		d.retireRequestLocked(req)
 		return decision
 	}
 	decision.Action = d.fallbackActionLocked()
 	decision.Reason = temporalGateReason(winner, bestScore, marginScore, d.cfg.MinScore, d.cfg.MinMarginScore)
+	d.retireRequestLocked(req)
+	return decision
+}
+
+// retireRequestLocked couples every terminal request to its event-key owner.
+// Call with d.mu held; the existing MaxPending-bounded scan preserves other
+// same-key requests. Confirmed identity history has an independent lifetime.
+func (d *TemporalDecoder) retireRequestLocked(req temporalRequest) {
 	delete(d.requests, req.id)
 	if !d.hasPendingKeyLocked(req.key) {
 		delete(d.keyStates, req.key)
 	}
-	return decision
 }
 
 func (d *TemporalDecoder) fallbackActionLocked() TemporalDecisionAction {
