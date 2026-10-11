@@ -244,6 +244,28 @@ are accepted by GoCluster but rejected by the pinned receiver's narrower IP
 predicate. Use a fresh fixture/key for each positive IP case because existing
 dedupe identity excludes IP text.
 
+## Local runtime profiling
+
+After building `gocluster.exe` in the repository root, run:
+
+```powershell
+pwsh -NoProfile -File scripts/run-with-profiling.ps1
+```
+
+The launch window starts a separate visible profiling controller and can then
+be closed. The controller owns the cluster launch and capture loop; keep its
+window open while collecting profiles. Closing the controller stops profiling,
+but the GoCluster console may remain running.
+
+The controller log is `logs/profiling-run-<timestamp>.log`. It records startup,
+capture success, and capture failures. Profiles and process samples are written
+under `logs/` (`cpu-*.pprof`, `heap-*.pprof`, `allocs-*.pprof`, `block-*.pprof`,
+`mutex-*.pprof`, `goroutine-*.txt`, `trace-*.out`, and `os-process-*.csv`). If
+captures do not appear, check that the controller window is open, read its run
+log, and verify that the configured local pprof port `localhost:6061` is
+reachable. The runner uses the repository's `data/config` directory and
+requires that port to be free before launch.
+
 ## Diagnostic startup wrapper
 
 After building `gocluster.exe` in the repository root, run from that root:

@@ -3,10 +3,10 @@
 	Launch GoCluster with pprof enabled and collect recurring runtime profiles.
 
 .DESCRIPTION
-	Starts gocluster.exe in a separate PowerShell window with profiling-related
-	environment variables, waits for the pprof endpoint, and periodically captures
-	CPU, heap, allocs, block, mutex, goroutine, trace, retained-state, and OS
-	process samples until the target process exits.
+	Starts a separate PowerShell controller window, which launches gocluster.exe
+	and periodically captures CPU, heap, allocs, block, mutex, goroutine, trace,
+	retained-state, and OS process samples until the target process exits. The
+	controller is independent of the PowerShell window used to start this script.
 
 .NOTES
 	Prerequisites: gocluster.exe, active config directory, PowerShell, and a
@@ -16,6 +16,11 @@
 	Safety: intended for local/profiling runs; verify config paths and profiling
 	overhead before using results for production claims.
 #>
+[CmdletBinding()]
+param(
+    [switch]$Controller,
+    [string]$LaunchTimestamp
+)
 
 $repoRoot        = "C:\src\gocluster"
 $exePath         = Join-Path $repoRoot "gocluster.exe"
@@ -33,7 +38,14 @@ $mapLogInterval  = "60s"   # retained-state cardinality log cadence
 # Ensure logs directory exists
 New-Item -ItemType Directory -Path $logsDir -Force | Out-Null
 
-$launchTs = Get-Date -Format "yyyyMMdd-HHmmss"
+if ($Controller) {
+    if ($LaunchTimestamp -notmatch '^\d{8}-\d{6}$') {
+        throw "Controller mode requires a launch timestamp in yyyyMMdd-HHmmss format."
+    }
+    $launchTs = $LaunchTimestamp
+} else {
+    $launchTs = Get-Date -Format "yyyyMMdd-HHmmss"
+}
 $controllerLogPath = Join-Path $logsDir ("profiling-run-$launchTs.log")
 
 function Write-ProfilerInfo {
@@ -53,6 +65,23 @@ function Write-ProfilerWarning {
 function Quote-PowerShellLiteral {
     param([string]$Value)
     return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function Start-ProfilerController {
+    param(
+        [Parameter(Mandatory)][string]$ScriptPath,
+        [Parameter(Mandatory)][string]$Timestamp,
+        [Parameter(Mandatory)][string]$WorkingDirectory,
+        [string]$PowerShellPath,
+        [System.Diagnostics.ProcessWindowStyle]$WindowStyle = [System.Diagnostics.ProcessWindowStyle]::Normal
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PowerShellPath)) {
+        $engineName = if ($PSVersionTable.PSEdition -eq "Core") { "pwsh.exe" } else { "powershell.exe" }
+        $PowerShellPath = Join-Path $PSHOME $engineName
+    }
+    $arguments = '-NoLogo -ExecutionPolicy Bypass -File "{0}" -Controller -LaunchTimestamp "{1}"' -f $ScriptPath, $Timestamp
+    Start-Process -FilePath $PowerShellPath -ArgumentList $arguments -WorkingDirectory $WorkingDirectory -WindowStyle $WindowStyle -PassThru -ErrorAction Stop
 }
 
 function Read-GoRuntimeSettings {
@@ -154,6 +183,26 @@ function Get-ClusterProcessByParent {
     }
     return $null
 }
+
+# The invocation window only starts the controller. The controller owns both
+# cluster launch and capture lifetime, so closing the invocation window cannot
+# leave a cluster running without its profiler.
+if (-not $Controller) {
+    try {
+        $controllerProc = Start-ProfilerController -ScriptPath $PSCommandPath -Timestamp $launchTs -WorkingDirectory $repoRoot
+        if (-not $controllerProc) {
+            throw "PowerShell did not return a profiling controller process."
+        }
+        Write-ProfilerInfo "Profiling controller window launched (PID=$($controllerProc.Id)); controller log -> $controllerLogPath"
+        Write-Host "Profiling continues in the separate controller window; this launch window may be closed."
+        exit 0
+    } catch {
+        Write-ProfilerWarning "Failed to start profiling controller window: $_"
+        exit 1
+    }
+}
+
+Write-ProfilerInfo "Profiling controller started (PID=$PID)."
 
 $runtimeYamlPath = Join-Path $configDir "runtime.yaml"
 try {
