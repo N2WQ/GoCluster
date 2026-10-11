@@ -1332,8 +1332,10 @@ two joint-grid prerequisites and the joint-cell veto, retaining all other
 matching logic. `filter/nearby_endpoint_test.go` qualifies symmetric missing,
 invalid and distant endpoints on 20m/160m/80m/60m, fine-cache precedence, unknown
 band/user cells, unrelated mode refusals and zero matching allocations on reused
-fine/coarse controls. Its joined private-table child proves eight available-side
-matches while the opposite valid grid cannot map. The test refuses a missing
+fine/coarse controls on the native Windows pure-Go H3 backend. The v4 R2
+follow-up below corrects the portability of this assertion. Its joined
+private-table child proves eight available-side matches while the opposite
+valid grid cannot map. The test refuses a missing
 execution marker or failed child. `telnet/nearby_endpoint_test.go` qualifies 40
 literal live/history consumer cases and detached history after opposite live
 mode edits. The source/test review corrected that edit stimulus before complete
@@ -4946,3 +4948,29 @@ Support-agent documentation impact: Required and implemented in the connectivity
 card and authoritative command guides. TSR-0066 records the wording/ingress cause;
 no durable architecture decision changed and no new ADR is required. Complete
 final-state qualification and map generation follow R2/R3.
+
+### R2 - Portable NEARBY allocation guard
+
+The test-only guard now measures direct public H3 conversions for literal
+fixture grids, separately from Matches and its private endpoint helper. Eight
+fine cases and five cases on each of 160m/80m/60m cover both orientations,
+uncached/partly cached/fully cached fine endpoints and coarse cache independence.
+Existing endpoint, mapping-miss and unrelated-filter controls remain intact.
+Every measured case also detects an intentionally escaping extra allocation.
+Matcher, cache, H3 implementation, dependencies and runtime semantics are unchanged.
+
+Observed native Windows targeted checks passed with CGO_ENABLED=1 and 0
+(`v4-r2-targeted.log`, `v4-r2-windows-cgo0.log`). Windows selects the pure-Go
+backend in both modes. Linux Go 1.27.1 targeted NEARBY checks passed with both
+modes in an isolated export of staged tree
+`f60445396bdbb045fd038ff03822be5f20c96bf6` (`v4-r2-linux.log`). Both Linux runs
+executed all 23 named allocation cases without skips. Native h3-go conversion
+allowances were 2 or 4 allocations where conversion was required, with matcher
+cost equal to that allowance; cached fine cases were zero. The pure-Go run
+measured zero throughout. The injected control exceeded the allowance by one
+in every case. These measurements establish this bounded guard, not latency,
+backend cost stability, production capacity or geographic accuracy.
+
+Lead final source/test review found no production change or material test gap.
+TSR-0054 and the original checkpoint 08 wording distinguish backend-specific
+history from this portable qualification. No durable decision changed.

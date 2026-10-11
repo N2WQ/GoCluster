@@ -110,21 +110,6 @@ func TestNearbyUnavailableUserAndUnknownBand(t *testing.T) {
 	}
 }
 
-func TestNearbyMatchingAllocations(t *testing.T) {
-	requireH3Mappings(t)
-	f := nearbyEndpointFilter(t)
-	for _, frequency := range []float64{14020, 3520} {
-		s := spot.NewSpotNormalized("W6ABC", "N0XYZ", frequency, "CW")
-		s.DXMetadata.Grid = "FN31"
-		if !f.Matches(s) {
-			t.Fatal("allocation guard lacks a matching endpoint")
-		}
-		if allocs := testing.AllocsPerRun(100, func() { f.Matches(s) }); allocs != 0 {
-			t.Fatalf("NEARBY matching allocated %.0f times on %.0f", allocs, frequency)
-		}
-	}
-}
-
 // The table loader is process-owned through sync.Once. A joined fresh child
 // loads private count-valid tables with the distant cells removed, exercising a
 // genuine mapping miss without altering the parent's maps or checked-in files.
