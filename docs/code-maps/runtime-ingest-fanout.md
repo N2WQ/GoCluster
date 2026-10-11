@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `a0a90e1e26110f01`
+- Source fingerprint: `0782933a383f4d29`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 101 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 102 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 37 | 45 |
+| `dxcluster/spot` | `spot` | 37 | 47 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -168,6 +168,7 @@ Test files:
 - `internal/cluster/correction_evidence_delivery_test.go`
 - `internal/cluster/correction_numeric_delivery_test.go`
 - `internal/cluster/correction_numeric_runtime_test.go`
+- `internal/cluster/correction_snr_delivery_test.go`
 - `internal/cluster/custom_scp_capacity_delivery_test.go`
 - `internal/cluster/custom_scp_consumer_delivery_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
@@ -514,6 +515,7 @@ Test files:
 - `spot/comment_parser_stream_test.go`
 - `spot/comment_parser_test.go`
 - `spot/confusion_model_test.go`
+- `spot/confusion_snr_domain_test.go`
 - `spot/correction_distance_test.go`
 - `spot/correction_family_test.go`
 - `spot/custom_scp_cleanup_helpers_test.go`
@@ -540,6 +542,7 @@ Test files:
 - `spot/resolver_evidence_test.go`
 - `spot/resolver_fresh_projection_bench_test.go`
 - `spot/resolver_fresh_projection_test.go`
+- `spot/resolver_snr_presence_test.go`
 - `spot/self_spot_test.go`
 - `spot/signal_resolver_bench_test.go`
 - `spot/signal_resolver_driver_test.go`

@@ -63,6 +63,14 @@ counts, invalid edges and overflowing int64 totals are refused; accepted finite
 clamps and model results remain. The offline `callcorr_reveng_rebuilt` evaluator
 uses the same failure contract. See [numerical inputs](../spot/README.md#numerical-inputs-and-configured-assets).
 
+Accepted CSV reports are present, including zero and negative values. Blank,
+unparseable, nonfinite or nonrepresentable floating reports reject the row.
+Integer parsing remains first; the float fallback keeps its existing
+`int(value+0.5)` behavior, including negative-decimal asymmetry and binary64
+precision. Both offline tools check the transformed value before conversion.
+Resolver model scoring omits missing or out-of-domain SNR without removing its
+receiver support; valid bins remain `(lower, upper]`.
+
 ## Output artifacts
 
 Outputs:

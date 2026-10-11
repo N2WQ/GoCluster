@@ -455,8 +455,8 @@ func TestSignalResolverConfusionTieBreakEnabled(t *testing.T) {
 	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
 	now := time.Now().UTC()
 	evs := []ResolverEvidence{
-		{ObservedAt: now, Key: key, DXCall: "AA1AA", Spotter: "K1AAA", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
-		{ObservedAt: now, Key: key, DXCall: "ZZ1ZZ", Spotter: "K1AAB", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "AA1AA", Spotter: "K1AAA", Report: 10, HasReport: true, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "ZZ1ZZ", Spotter: "K1AAB", Report: 10, HasReport: true, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
 	}
 	for _, ev := range evs {
 		if ok := resolver.Enqueue(ev); !ok {
@@ -492,8 +492,8 @@ func TestSignalResolverConfusionTieBreakDisabledUsesFallbackOrder(t *testing.T) 
 	key := NewResolverSignalKey(7010.0, "40m", "CW", 500)
 	now := time.Now().UTC()
 	evs := []ResolverEvidence{
-		{ObservedAt: now, Key: key, DXCall: "AA1AA", Spotter: "K1AAA", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
-		{ObservedAt: now, Key: key, DXCall: "ZZ1ZZ", Spotter: "K1AAB", Report: 10, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "AA1AA", Spotter: "K1AAA", Report: 10, HasReport: true, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
+		{ObservedAt: now, Key: key, DXCall: "ZZ1ZZ", Spotter: "K1AAB", Report: 10, HasReport: true, FrequencyKHz: 7010.0, RecencyWindow: 30 * time.Second},
 	}
 	for _, ev := range evs {
 		if ok := resolver.Enqueue(ev); !ok {

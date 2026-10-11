@@ -1229,7 +1229,18 @@ func parseRBNRecord(record []string, h rbnHeader) (rbnRow, rbnRecordStatus) {
 	if v, err := strconv.Atoi(dbRaw); err == nil {
 		report = v
 	} else if v, err := strconv.ParseFloat(dbRaw, 64); err == nil {
-		report = int(v + 0.5)
+		if math.IsNaN(v) || math.IsInf(v, 0) {
+			return rbnRow{}, rbnRecordInvalid
+		}
+		// Conversion truncates toward zero. Check that result against exact
+		// signed-int bounds while preserving historical negative rounding.
+		rounded := v + 0.5
+		truncated := math.Trunc(rounded)
+		limit := math.Ldexp(1, strconv.IntSize-1)
+		if truncated < -limit || truncated >= limit {
+			return rbnRow{}, rbnRecordInvalid
+		}
+		report = int(rounded)
 	} else {
 		return rbnRow{}, rbnRecordInvalid
 	}

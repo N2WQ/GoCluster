@@ -89,6 +89,15 @@ and model weights are checked before clamps, while unused model weights remain
 unused. Borrowed reliability maps must remain immutable while a resolver uses
 them. See [ADR-0290](../docs/decisions/ADR-0290-correction-numerical-asset-integrity.md).
 
+Confusion scoring requires a present report within the model's SNR domain.
+Missing reports, nonfinite SNR and out-of-domain SNR add no model contribution;
+their receiver evidence still counts. Reported zero is present and contributes
+when it belongs to a configured `(lower, upper]` bin. The candidate's newest
+timestamped report remains its representative, with later receipt winning at
+equal timestamps; a missing newest report supersedes an earlier present one.
+No per-receiver SNR averaging or newest-present fallback is performed. See
+[ADR-0291](../docs/decisions/ADR-0291-correction-snr-presence-and-domain.md).
+
 These checks establish input integrity. They do not establish training validity,
 field accuracy or calibrated probabilities.
 

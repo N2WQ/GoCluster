@@ -26,6 +26,10 @@ not infer meanings from other cluster software.
   counts, invalid edges and overflowing totals are refused. Weight zero still
   requires a valid enabled model; disabled models ignore their path. Valid finite
   inputs retain existing clamps/ranking, without proving scientific validity.
+- Missing report metadata and SNR outside a model's `(lower, upper]` bins add no
+  confusion contribution but still count as receiver evidence. Reported zero is
+  present. The newest timestamped representative report is used, with later
+  receipt winning at equal timestamps; no newest-present fallback is invented.
 - Percentages describe the emitted call. A rejected candidate leaves `B` and
   the retained call's own weighted share; no eligible support displays `--%`
   in DIAG CONF. Accepted `C` output carries the replacement's share.

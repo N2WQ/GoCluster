@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -249,7 +250,18 @@ func (c *rbnHistoryCSV) Read() (rbnHistoryRow, bool, error) {
 	report, err := strconv.Atoi(reportRaw)
 	if err != nil {
 		if v, floatErr := strconv.ParseFloat(reportRaw, 64); floatErr == nil {
-			report = int(v + 0.5)
+			if math.IsNaN(v) || math.IsInf(v, 0) {
+				return rbnHistoryRow{}, false, nil
+			}
+			// Conversion truncates toward zero. Check that result against exact
+			// signed-int bounds while preserving historical negative rounding.
+			rounded := v + 0.5
+			truncated := math.Trunc(rounded)
+			limit := math.Ldexp(1, strconv.IntSize-1)
+			if truncated < -limit || truncated >= limit {
+				return rbnHistoryRow{}, false, nil
+			}
+			report = int(rounded)
 		} else {
 			return rbnHistoryRow{}, false, nil
 		}

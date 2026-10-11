@@ -92,6 +92,7 @@ type ResolverEvidence struct {
 	DXCall        string
 	Spotter       string
 	Report        int
+	HasReport     bool // Presence is independent of a reported zero.
 	FrequencyKHz  float64
 	RecencyWindow time.Duration
 }
@@ -217,12 +218,13 @@ type SignalResolver struct {
 }
 
 type resolverCandidate struct {
-	lastSeen    time.Time
-	lastReport  int
-	lastFreqKHz float64
-	reporters   map[string]resolverReporterObservation
-	identity    correctionCallIdentity
-	callRunes   []rune
+	lastSeen      time.Time
+	lastReport    int
+	lastHasReport bool
+	lastFreqKHz   float64
+	reporters     map[string]resolverReporterObservation
+	identity      correctionCallIdentity
+	callRunes     []rune
 }
 
 type resolverKeyState struct {
@@ -257,6 +259,7 @@ type rankedResolverCandidate struct {
 	confusionScore       float64
 	lastSeen             time.Time
 	lastReport           int
+	lastHasReport        bool
 	lastFreqKHz          float64
 	reporters            map[string]resolverReporterObservation
 	identity             correctionCallIdentity
@@ -494,9 +497,12 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 		removeResolverReporter(st, candidate, evictReporter)
 		r.evictedReporters.Add(1)
 	}
+	// Presence follows the existing newest timestamp/later equal-time receipt
+	// policy too: missing newest metadata must not reuse an older present SNR.
 	if !ev.ObservedAt.Before(candidate.lastSeen) {
 		candidate.lastSeen = ev.ObservedAt
 		candidate.lastReport = ev.Report
+		candidate.lastHasReport = ev.HasReport
 		candidate.lastFreqKHz = ev.FrequencyKHz
 	}
 	upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, ev.FrequencyKHz, reporterWeightMilli)
@@ -711,6 +717,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 			weightedSupportMilli: weightedSupportForResolverCandidate(candidate, st.reporterRefs),
 			lastSeen:             candidate.lastSeen,
 			lastReport:           candidate.lastReport,
+			lastHasReport:        candidate.lastHasReport,
 			lastFreqKHz:          candidate.lastFreqKHz,
 			reporters:            candidate.reporters,
 			identity:             candidate.identity,
@@ -1009,6 +1016,7 @@ func normalizeResolverEvidence(e ResolverEvidence) (ResolverEvidence, bool) {
 		DXCall:        call,
 		Spotter:       spotter,
 		Report:        e.Report,
+		HasReport:     e.HasReport,
 		FrequencyKHz:  e.FrequencyKHz,
 		RecencyWindow: window,
 	}, true
@@ -1064,6 +1072,9 @@ func resolverConfusionAggregateScore(
 	score := 0.0
 	for i := range cohort {
 		observed := &cohort[i]
+		if !observed.lastHasReport {
+			continue
+		}
 		if strings.EqualFold(observed.call, candidate.call) {
 			continue
 		}

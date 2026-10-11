@@ -224,6 +224,7 @@ func sumConfusionCounts(counts []int64) (int64, error) {
 
 // ScoreCandidate returns a log-likelihood-style score for observing `observed`
 // given candidate true call `candidate` for a mode and SNR. Higher is better.
+// Nonfinite or out-of-domain SNR contributes zero; valid bins are (lower, upper].
 func (m *ConfusionModel) ScoreCandidate(observed, candidate, mode string, snr float64) float64 {
 	if m == nil {
 		return 0
@@ -243,6 +244,9 @@ func (m *ConfusionModel) scorePreparedCandidate(observedRunes, candidateRunes []
 		return 0
 	}
 	bandIdx := m.snrBandIndex(snr)
+	if bandIdx < 0 {
+		return 0
+	}
 	trueRunes := candidateRunes
 	obsRunes := observedRunes
 	if len(trueRunes) == 0 || len(obsRunes) == 0 {
@@ -288,13 +292,15 @@ func (m *ConfusionModel) charIdx(r rune) int {
 }
 
 func (m *ConfusionModel) snrBandIndex(snr float64) int {
-	last := len(m.snrEdges) - 2
+	if math.IsNaN(snr) || math.IsInf(snr, 0) {
+		return -1
+	}
 	for i := 0; i < len(m.snrEdges)-1; i++ {
 		if m.snrEdges[i] < snr && snr <= m.snrEdges[i+1] {
 			return i
 		}
 	}
-	return last
+	return -1
 }
 
 func alignConfusionCallsWithWorkspace(trueRunes, obsRunes []rune, workspace *confusionAlignmentWorkspace) []confusionOp {

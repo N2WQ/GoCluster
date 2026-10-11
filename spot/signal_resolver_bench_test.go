@@ -89,9 +89,10 @@ func BenchmarkSignalResolverEvaluateConfusionTie(b *testing.B) {
 			weightMilli: resolverReliabilityScale,
 		}
 		st.candidates[call] = &resolverCandidate{
-			lastSeen:    now,
-			lastReport:  10,
-			lastFreqKHz: 7010.0,
+			lastSeen:      now,
+			lastReport:    10,
+			lastHasReport: true,
+			lastFreqKHz:   7010.0,
 			reporters: map[string]resolverReporterObservation{
 				reporter: {observedAt: now},
 			},

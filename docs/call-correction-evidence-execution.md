@@ -15,8 +15,8 @@ Branch: `fix_correction_evidence`.
 | B1.3 | Complete | `3b33163`; independent family qualification |
 | B1.4 | Complete | `0b4006d`; capacity validation |
 | B1.5 | Complete | `4d6df11`; future static membership |
-| B2.1 | Complete | Numerical/assets; checkpoint below |
-| B2.2 | Pending | SNR presence/domain |
+| B2.1 | Complete | `ae2d504`; numerical/assets |
+| B2.2 | Complete | This checkpoint; SNR presence/domain |
 | B3.1 | Pending | Cap-loss authority/retirement |
 | B3.2 | Pending | Diagnostic meaning |
 
@@ -811,3 +811,120 @@ Fresh lead diff/quality verification found no unresolved material finding.
 Contextual engineering review was separate from the actual independent numerical
 oracle. Maps, crawler headers and whitespace are checked at staging. No firewall
 rules, listener executable paths, external feeds, push or deployment changed.
+
+## B2.2 - SNR presence and domain handling
+
+Checkpoint base is B2.1 `ae2d504`. Current source confirms the shared runtime/
+replay evidence builder copies the integer report but drops `Spot.HasReport`.
+The candidate's representative report uses the newest timestamp, with later
+receipt winning at equal timestamps. Carry presence through that same branch,
+normalization and ranking; missing metadata must supersede earlier present
+metadata according to that existing rule. Do not select a different report or
+introduce per-receiver SNR aggregation.
+
+Both public and prepared model scoring currently send unmatched SNR to the last
+bin. Return no contribution for nonfinite or unmatched SNR; preserve each valid
+`(lower, upper]` bin. Missing observations still provide receiver support and
+the same evidence denominator. A missing nonzero stored report must not score;
+a present zero report must score if zero is in the configured domain.
+
+The separate non-steered numerical oracle established the boundary vectors:
+with edges `[-25,-5,15]`, -25 is outside, -5 uses the first bin, and 15 the second.
+Adjacent representable controls distinguish strict lower from inclusive upper
+boundaries. These are model-input integrity vectors, not empirical RF truth.
+
+Both offline CSV readers first try integer parsing, then preserve the existing
+`int(v+0.5)` conversion, including its negative-decimal asymmetry. Reject
+nonfinite floats and truncated transformed values outside the signed native-int interval
+before conversion. The upper power-of-two bound is exclusive; the lower is
+inclusive. Preserve integer-first behavior, accepted zero/negative inputs and
+existing entire-row rejection of blank/unparseable reports. No presence column,
+CSV schema, live-ingress admission change or persisted Spot encoding is added.
+Lead review checked Go's [numeric conversion contract](https://go.dev/ref/spec#Conversions_between_numeric_types):
+the fraction is discarded toward zero. A fractional transformed value just below
+MinInt can still yield valid MinInt, so checking the untruncated float would
+unnecessarily reject a compatible finite result on 32-bit systems. Check the
+truncated value before casting; literal boundary vectors cover this distinction.
+
+Postapproval test design requires actual builder-to-resolver-to-delivery checks,
+not only public model API assertions: tied four-receiver support and a literal
+asymmetric model distinguish missing from present zero, outer edges, latest
+missing and both equal-time receipt orders. Check independently expected local
+TCP, DIAG share, ring and reopened archive while original PC61 fields remain
+unchanged. Valid positives prevent disabling the model or dropping whole
+observations from passing. CSV tests use accepted finite controls and rejected
+conversion boundaries; fixtures keep existing rounding rather than silently
+replacing it with mathematical round-to-nearest.
+
+Select full ordinary/analyzers, full race for the shared immutable evidence
+contract, connected ordinary/race, bounded offline parser fuzzing and existing
+confusion-evaluation allocation checks. No new owner, retained collection,
+worker, synchronization primitive or model calibration is intended.
+
+Baseline counterexamples were captured before their relevant production fixes:
+
+| Surface | Actual defective behavior | Capture |
+| --- | --- | --- |
+| Public/prepared/workspace model scoring | NaN, infinities, the exclusive outer lower edge and values outside the outer edges used the last bin rather than contributing zero | `.tmp/b22-spot-baseline-red.log` |
+| Builder-to-delivery | Missing zero/nonzero, excluded lower/outside values and latest missing metadata selected B; actual normal/DIAG TCP, ring and reopened archive delivered B/C with unchanged 50%, while original PC61 remained A | `.tmp/b22-cluster-baseline-red.log` |
+| Replay CSV | NaN/infinities and finite values outside native-int range were accepted as MinInt on this Windows amd64 machine | `.tmp/b22-replay-baseline-red.log` |
+| Offline evaluator CSV | Same invalid acceptance, including incorrect accepted-row classification | `.tmp/b22-reveng-baseline-red.log` |
+
+Production maps to shared `BuildResolverEvidenceSnapshot`, normalized evidence,
+candidate/ranked representative metadata and observed-only aggregate scoring;
+both public/prepared scoring use the same domain gate. The two CSV readers add
+bounded inline numerical guards. No new retained structure is added: scalar
+presence fields remain bounded by the existing queue/candidate/ranking caps.
+Existing positive model fixtures explicitly declare their reports present.
+
+`confusion_snr_domain_test.go` checks literal substitution/deletion/insertion
+scores and adjacent representable bin boundaries. `resolver_snr_presence_test.go`
+checks mixed presence, actual queue admission, timestamp precedence, preserved
+support, immutable old publications, Compact and partial fresh projection.
+The immutable ranking oracle includes literal retained B-first order rather
+than relying only on two aliases of one slice. When B was settled before its
+model margin disappears, existing hysteresis keeps B uncertain; the test checks
+withdrawn authority instead of forcing an unrelated winner-policy change.
+
+`correction_snr_delivery_test.go` uses eleven builder-to-delivery cases with
+literal model direction and four distinct receivers. Batching isolates presence
+from intermediate hysteresis. Tests check actual normal/DIAG TCP, full original
+PC61, accepted-correction counts, sealed ring, and independently reopened archive
+identity/glyph/report fields. Archive percentages are not invented. Each tool's
+`snr_conversion_test.go` has literal conversion/classification controls; replay
+also checks accepted zero and missing zero through the actual shared builder.
+Bounded token fuzzing derives a truncated quotient using exact rational/integer
+arithmetic after the existing float64 addition, without a float-to-int reference
+cast. Native-int endpoint tests are separate from model-domain eligibility.
+
+Contextual final code/test review found no unresolved material finding; it is
+not independent scientific evidence. The earlier non-steered numerical oracle
+supplies the scientific input-contract evidence. Lint caught a direct EOF
+comparison in a new test; it was changed to `errors.Is`, preserving the oracle.
+
+Final checkpoint validation used the existing saved Windows binaries serially:
+
+| Check | Observed result | Evidence |
+| --- | --- | --- |
+| Focused presence/domain, delivery and both CSV tools | Pass in all four affected packages; final immutable-ranking refinement also passes | `.tmp/b22-targeted-final.log`, `.tmp/b22-spot-final-rerun.log` |
+| Full ordinary and full race | Both pass, 70 packages each | `.tmp/b22-ordinary-final.log`, `.tmp/b22-race-final.log` |
+| Vet, Staticcheck, lint | Pass; zero lint issues | `.tmp/b22-vet-final.log`, `.tmp/b22-staticcheck-final.log`, `.tmp/b22-lint-final.log` |
+| CSV token fuzzing | Both 20-second budgets pass: replay 20,869 executions; evaluator 6,903 | `.tmp/b22-extras-final.log` |
+| Windows 386 conversion boundaries | Both tools compiled and directly executed successfully at their same saved paths | `.tmp/b22-extras-final.log`, `.tmp/b22-extras.ps1` |
+| Connected CustomSCP ordinary/race | Both real database handoffs pass | `.tmp/b22-connected-ordinary-final.log`, `.tmp/b22-connected-race-final.log` |
+| Local support smoke and SA006 retrieval | Pass | `.tmp/b22-support-smoke-final.log`, `.tmp/b22-support-retrieval-final.log` |
+| Confusion evaluation allocation comparison | Baseline and current both 736 B/op, 7 allocs/op | `.tmp/b22-bench-compare-final.log` |
+
+Connected handoff IDs are `4366bb2e1f3e4809943f6cc121d80b85` (ordinary) and
+`e65221229ce64dbb85b73580b6c17200` (race). The allocation comparison builds an
+ignored overlay of B2.1 `ae2d504` and then current source at the same saved spot
+executable. Two baseline samples measured 2,303/2,390 ns/op; current samples
+2,234/2,326 ns/op. These small local samples establish unchanged allocation cost,
+not a production performance improvement or capacity result.
+
+Fresh lead source/diff and claim verification found no unresolved material
+finding. The separate numerical oracle actually occurred; contextual engineering
+reviews are not independent scientific evidence. Maps, crawler entries and
+whitespace are verified at staging. No firewall rules, listener paths, external
+feeds, push or deployment changed. Calibration and wider episode association
+remain outside this checkpoint's claims.

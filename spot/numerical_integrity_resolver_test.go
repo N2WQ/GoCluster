@@ -28,7 +28,7 @@ func b21ResolverDriver(t *testing.T, cfg SignalResolverConfig) (*SignalResolver,
 
 func b21Evidence(key ResolverSignalKey, call, receiver string, at time.Time) ResolverEvidence {
 	return ResolverEvidence{ObservedAt: at, Key: key, DXCall: call, Spotter: receiver,
-		Report: 5, FrequencyKHz: 14020, RecencyWindow: time.Minute}
+		Report: 5, HasReport: true, FrequencyKHz: 14020, RecencyWindow: time.Minute}
 }
 
 func b21RequireReceiverAdmission(t *testing.T, cfg SignalResolverConfig, mode string, allowed bool, wantWeight int) {
@@ -158,8 +158,8 @@ func TestB21ConfusionTieRejectsNonfiniteWeightWithoutMutation(t *testing.T) {
 	for _, weight := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
 		t.Run(fmt.Sprint(weight), func(t *testing.T) {
 			ranked := []rankedResolverCandidate{
-				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5},
-				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5},
+				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
+				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
 			}
 			before := append([]rankedResolverCandidate(nil), ranked...)
 			var workspace confusionAlignmentWorkspace
@@ -179,8 +179,8 @@ func TestB21ConfusionTiePreservesFiniteOrdering(t *testing.T) {
 	}{{-2, "AA1AA"}, {0, "AA1AA"}, {math.SmallestNonzeroFloat64, "ZZ1ZZ"}, {1, "ZZ1ZZ"}, {math.MaxFloat64, "ZZ1ZZ"}} {
 		t.Run(fmt.Sprint(query.weight), func(t *testing.T) {
 			ranked := []rankedResolverCandidate{
-				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5},
-				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5},
+				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
+				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
 			}
 			var workspace confusionAlignmentWorkspace
 			applyResolverConfusionTieBreak(ranked, "CW", model, query.weight, &workspace)
