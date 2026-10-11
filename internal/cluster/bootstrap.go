@@ -2167,6 +2167,8 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		snapshot = selection.Snapshot
 		snapshotOK = selection.SnapshotOK
 	}
+	// Rejection retains this identity's percentage; only an accepted identity
+	// change below replaces it with the winner's support share.
 	setResolverConfidence(spotEntry, snapshot, snapshotOK, preCorrectionCall)
 	if !snapshotOK {
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNoSnapshot, 0)
@@ -2265,8 +2267,6 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 			return true
 		}
 		spotEntry.Confidence = "B"
-		spotEntry.ConfidencePercent = winnerConfidence
-		spotEntry.ConfidencePercentOK = true
 		return false
 	}
 
@@ -2296,8 +2296,6 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 				return true
 			}
 			spotEntry.Confidence = "B"
-			spotEntry.ConfidencePercent = winnerConfidence
-			spotEntry.ConfidencePercentOK = true
 		}
 		return false
 	}

@@ -247,8 +247,11 @@ FT all-due retirement avoids stale-heap generation buildup; replay EOF explicit.
   delivery checkpoint passed. Local commit `3b828d5`.
 - P4: complete; admission expiry, actual output and resource checks pass;
   full Windows ordinary/race, analyzers, affected Linux and connected storage
-  checks passed. Checkpoint commit follows final map/diff verification.
-- P5: pending.
+  checks passed. Map/diff verification passed; local commit `bf38280`.
+- P5: complete; delivered baseline reproduced, attribution and bypass controls
+  passed, and full Windows ordinary/race, analyzers, final affected Linux and
+  connected storage checks passed. Final docs/map/diff checks passed. This
+  record is included in its local commit.
 
 Logs: ignored `.tmp/call-correction/`. Results will be recorded only after
 observed execution. No live deployment, RF labels or production-load testing.
@@ -619,3 +622,112 @@ is not a completion barrier for that assertion. Both failures remain in
 The subsequent full affected Linux ordinary/race suite passed both cluster and
 stats (`linux-final-suite.log`). This does not establish that the unrelated
 timing-sensitive test is repaired.
+
+### P5 emitted-identity confidence attribution
+
+Production mapping: `internal/cluster/bootstrap.go` preserves the original-call
+percentage already assigned by `setResolverConfidence` in the invalid-base and
+CTY-miss broadcast branches. Only four overwriting assignments are removed;
+successful identity changes still assign winner confidence after changing DX.
+Rejection B, suppression, gates, scoring, retry ownership, FT/beacon/self rails,
+formats and archive schema are unchanged. No new state, loop or allocation was
+introduced; no performance improvement is claimed.
+
+Before production changes at `bf38280`, compiled actual-output probes reproduced
+A/B66% instead of A/B33% for rejected B2/A1 on immediate, actual temporal Apply
+and actual scheduler-retry paths. Weighted controls reproduced 64% instead of
+35% for retained weight 1000/2850, and 68% instead of 31% for weight 900/2850.
+An unsupported retained call incorrectly displayed 66% instead of unavailable.
+Qualified red evidence is `p5/red-delivery-eligible.log`: all population,
+eligibility, rejection, scheduler and acceptance prerequisites passed; only
+the donated percentages/availability failed. Normal call/glyph, PC61 identity
+and reopened archive outcomes were already correct. DIAG TCP and sealed ring
+expose the percentage defect; archive and PC61 do not carry that field.
+
+Initial retry fixtures placed the new observations one microsecond after an
+observed clock. Their initial uncertain outputs did not reach the requested
+rejection, so those cases in `red-delivery.log` are excluded from attribution
+evidence. The corrected fixture uses the already observed timestamp and checks
+`LookupEligible` at the actual current clock before release; no sleep or
+production eligibility tolerance was added.
+
+Read-only falsifiability review identified two in-scope evidence refinements:
+an actual temporal Apply-to-pipeline-hold-to-scheduler-retry rejection chain,
+and an allowed CTY-hit correction control. The new chain checks both actual
+envelopes, the same request marker, proposed=1/accepted=0/handoff=1/history=0,
+no early output, and empty final ownership before checking A/B33%. CTY-hit
+success positively verifies tiny local CTY and FCC fixtures and delivers B/C66%.
+Existing P3 suppression cases explicitly remain in the targeted selection,
+with positive rejection barriers, zero handoff/ring output and empty reopened
+archive, rather than treating an arbitrary quiet connection as proof.
+
+The 14 connected attribution cases and nine controls cover equal/unequal
+weights, unavailable original support, successful nil-CTY/CTY-hit changes,
+ordinary report-gate rejection, same winner, split, configured temporal abstain,
+missing publication with stale input percentage, correction disabled, local
+self-spot, FT-owned and beacon-owned output. Every delivered case uses actual
+normal/DIAG TCP, PC61 receipt, sealed ring and reopened archive. FT8 is admitted
+through real command replies; beacon's normal/DIAG comment differences are
+literal formatter-contract oracles. Suppression and accepted temporal retry
+checks reuse the completed P3 regressions.
+
+TSR-0083 records the failure and fixture qualification. No new ADR is needed:
+this restores the existing emitted-call percentage contract without a new
+durable policy. Spot guidance and the confidence support card clarify B/C
+attribution and unavailable support. Support-agent impact: material confidence
+troubleshooting, reflected in the existing card.
+
+Final P5 checkpoint on unchanged production/test Go state:
+
+- `scripts/test-windows.ps1 -Packages ./internal/cluster -Run
+  'Attribution|TestCallCorrectionTemporalDeliveredAcceptanceHistory|TestCallCorrectionTemporalDeliveredRetryAcceptsOnce'
+  -Timeout 240s`, ordinary and with `-Race`, passed. The explicit existing
+  suppression and accepted-retry selection passed alongside the new cases.
+- `scripts/test-windows.ps1 -Timeout 240s`, ordinary and with `-Race`, each
+  passed 70 builds: 53 test packages and 17 build-only packages. Both final logs
+  have 53 package PASS results and no failed test or data-race report.
+- `go vet ./...`, `staticcheck ./...`, and
+  `golangci-lint run ./... --config=.golangci.yaml` exited zero; lint reported
+  zero issues.
+- WSL Ubuntu-24.04, Go 1.27.1: `go test -count=1` ordinary and with `-race`
+  passed `./archive ./spot ./internal/correctionflow ./internal/cluster
+  ./cmd/rbn_replay ./cmd/callcorr_reveng_rebuilt ./stats ./telnet`. Both runs
+  passed all eight packages, including archive's normalized concurrent-reader
+  and pre-decode persisted-byte regressions.
+- `scripts/test-customscp-regression.ps1` passed ordinary fixture
+  `3de9c0e4605f4bf29db98251f13830a8`; `-Race` passed
+  `92d0f779267342f1bae608bf1bb16d30`. These connect persisted producer state,
+  reopened recovery and actual consumer delivery, not separate fixture success.
+- `scripts/check-troubleshooting-records.ps1` and
+  `scripts/check-support-agent.ps1` passed. Final
+  `go run ./cmd/codemap generate -all`, `go run ./cmd/codemap check -all`, and
+  direct diff/whitespace review passed. Maps include both new delivery files.
+
+Separate read-only Go quality review found no remaining P5 blocker. It used
+inherited context and is not independent scientific evidence. The lead verified
+its findings, current rejection/acceptance branches, qualified red evidence,
+connected output oracles, final source diff and checkpoint results. No P5 waiver.
+
+### Final batch verification
+
+All five approved method patches and the separately approved private-copy
+archive prerequisite passed their sequential checkpoints. The final combined
+verification is lead-owned: distinct support/dissent and immutable bounded
+publication, binding ambiguity with legitimate reevaluation, fresh release
+authority and accepted-only history/counters, exclusive FT admission expiry,
+and emitted-identity percentage attribution remain mapped to source and actual
+output checks above. Archive normalization operates on a real private clone;
+fully normalized concurrent readers and raw persisted bytes before decoding
+remain covered on the combined final state.
+
+The final Windows ordinary/race and affected Linux ordinary/race suites passed.
+Earlier unrelated file-lock and toxicity-summary failures are preserved in the
+preceding execution history; those passing reruns do not establish repairs to
+the unrelated tests. All native Windows tests used the established executable
+paths, with no firewall changes or interactive approval requests. Work remains
+on the local `fix_call_correction` branch.
+
+The scientific limits remain material: support shares are not calibrated
+correctness probabilities; fresh evidence inside the existing key/window does
+not establish the original RF episode; wider signal association, field accuracy
+and production-load effectiveness have not been validated by this batch.

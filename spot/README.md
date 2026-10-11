@@ -83,6 +83,13 @@ Two glyphs represent correction outcomes rather than raw confidence:
 - `C`: correction applied and validated
 - `B`: correction attempted, but the candidate failed base-call or CTY validation, so the original call stayed on the spot
 
+The percentage describes the call on that spot. A rejected replacement keeps
+`B` and the retained original's support share; an accepted `C` uses the new call's
+share. No eligible support means the percentage is unavailable (`--%` in DIAG
+CONF). Equal weights with one receiver for the retained call and two for the
+rejected candidate give 33%; unequal weights use the retained call's weighted
+share. The glyph records the outcome separately from that support percentage.
+
 ### FT2, FT4, And FT8
 
 FT modes use a separate corroboration stage in the main output pipeline.
