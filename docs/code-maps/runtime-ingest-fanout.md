@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `60d5c0b4ef4a0ef2`
+- Source fingerprint: `e7269d1ca8fcb11a`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 96 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 97 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 37 | 42 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
@@ -168,6 +168,7 @@ Test files:
 - `internal/cluster/correction_evidence_delivery_test.go`
 - `internal/cluster/custom_scp_consumer_delivery_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
+- `internal/cluster/custom_scp_family_delivery_test.go`
 - `internal/cluster/custom_scp_freshness_delivery_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
@@ -700,6 +701,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0287](docs/decisions/ADR-0287-independent-historical-family-qualification.md) | Accepted | 2026-10-11 | custom_scp, historical family floor | `path:internal/cluster, path:spot` |
 | [ADR-0286](docs/decisions/ADR-0286-consumer-specific-historical-requirements.md) | Accepted | 2026-10-11 | custom_scp, resolver/stabilizer isolation, replay | `path:internal/cluster, path:spot` |
 | [ADR-0285](docs/decisions/ADR-0285-individual-historical-receiver-freshness.md) | Accepted | 2026-10-11 | custom_scp, historical qualification, receiver/cell accounting | `path:internal/cluster, path:spot` |
 | [ADR-0284](docs/decisions/ADR-0284-original-content-peer-publication.md) | Accepted | 2026-10-11 | peer, output ownership, forwarding fidelity | `area:peer, path:internal/cluster, path:peer, path:spot` |

@@ -44,6 +44,11 @@ not infer meanings from other cluster software.
   eligible counts remain visible in Bayesian diagnostics. Stabilizer settings
   do not silently raise resolver or FT requirements. The custom S floor retains
   its dedicated thresholds.
+- The custom S floor checks exact support first, then independently qualifies
+  each relevant family member against all family requirements. Any complete
+  member success suffices; counts/cells are never pooled. A higher-scoring failure
+  cannot hide another success. Static recognition is separate, and output family
+  suppression is unchanged by this historical lookup rule.
 - Retained observations and currently qualifying historical support are different
   populations. Score/future filtering does not delete within-horizon history;
   existing horizon pruning and cleanup remain. Retained counts alone do not prove

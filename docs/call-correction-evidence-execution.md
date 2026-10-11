@@ -407,3 +407,75 @@ spot README, comment-only pipeline guidance and ADR-0286. The final maps/check,
 staged crawler/whitespace checks and fresh lead-owned closeout review precede
 the local checkpoint commit. No firewall policy or listening executable path
 changed; no push, merge, deployment or external live-feed test occurred.
+
+## B1.3 - Independent family-member qualification (complete)
+
+Checkpoint base is B1.2 commit `4f40cc0`. Current-source and CLI gopls references
+confirm the only production family-floor caller is bootstrap's S-floor fallback;
+the exact query remains first and static recognition remains an independent
+alternative. The existing pair-versus-slice test has one trivial qualifier and
+cannot expose ranking-before-gating. Both APIs currently pick the highest score,
+then count, before checking all family requirements. A higher-ranked failure can
+therefore conceal an independently qualifying member.
+
+The user's selected any-independently-qualifying-member policy is explicit in
+approved v2; no new policy is selected here. Design is a boolean OR of each
+member's complete score/cell/receiver qualification, with no pooled or ranked
+snapshot. Query every member previously visited, including after an earlier
+success, to preserve query-driven horizon pruning. Retain the slice-free key-pair
+path, duplicate-key handling, thresholds, current capacity coercion and owner.
+No new state, lifecycle, encoding, admission or caller contract is introduced.
+
+Postapproval falsifiability review requires fresh count/cell failures hiding an
+older success, tied score/count with differing cells in both orders, missing and
+score-ineligible populations, split gate successes and collectively sufficient
+but individually failing support. Delivery seeds observation-only bytes with no
+static membership, so independent recognition cannot hide the historical defect.
+Exact-positive/family-negative and static-positive/history-zero controls preserve
+the distinct contracts. Peer output asserts original fields, never a local glyph
+or percentage. A targeted two-member benchmark must retain zero allocations.
+Delivery family suppression and future static eligibility remain deferred.
+
+Defective B1.2 source fails four unit qualification cases, including order-sensitive
+score/count ties, and the static-negative delivered case. Actual normal/DIAG TCP,
+ring and independently reopened archive contain `?` instead of required `S` for
+W1AW/KH6 despite a qualifying older W1AW member. Original PC61 fidelity, negative
+nonpooling, exact precedence and static-only controls remain green. Patched
+targeted spot/cluster checks pass. Raw record comparisons run before decoding and
+after both query/reopen cycles; no current percentage or accepted correction is
+invented by recognition.
+
+The source change is independent boolean qualification instead of snapshot
+ranking. Snapshot visitation, mutexes, pruning, lifecycle and retained layout are
+unchanged. Full ordinary/all analyzers plus full spot race, targeted family
+delivery race and connected ordinary/race were selected; an additional all-package
+race run would add no changed concurrency surface. Contextual Go quality review
+found no material issue and agreed with this selection; it is not independent
+scientific evidence. Final fresh verification remains lead-owned.
+
+The historical regression file exceeds the code-quality review trigger and was
+reviewed explicitly. Its family cases share historical byte/retention helpers and
+the defective cleanup producer's existing whole-file overlay exclusion. Keeping
+the cohesive historical checks there avoids another private-baseline compatibility
+and runner patch. Production remains one small store-file change and actual
+delivery has its own bounded test file.
+
+Final-state validation passed: all 70 packages in the ordinary lane, vet,
+Staticcheck, lint (zero issues), all spot tests under race, targeted actual
+family-delivery tests under race, and connected CustomSCP ordinary/race handoffs.
+The handoff evidence directories are `bad0d80d117b4e85b36dd4931d46f47d`
+and `e740254d376b4cea8f2d8927b7150b9a`. These checks use the same stable
+executables and do not require firewall changes. The warmed two-member pair
+benchmark reports 2272 ns/op for the later qualifying member and 1923 ns/op for
+neither qualifying, both zero bytes/allocations; these are different outcome
+fixtures, not a before/after or production-capacity comparison.
+
+Evidence logs in `.tmp`: `b13-unit-baseline-red.log`,
+`b13-delivery-baseline-red.log`, `b13-targeted.log`, `b13-full.log`,
+`b13-vet.log`, `b13-staticcheck.log`, `b13-lint.log`, `b13-spot-race.log`,
+`b13-delivery-race.log`, `b13-customscp.log`, `b13-customscp-race.log`,
+`b13-bench.log`, `b13-comments.log`, `b13-support.log` and
+`b13-support-eval.log`. Source maps and final staged checks follow. Fresh
+lead-owned diff verification confirms complete gates per member, no pooling,
+preserved visitation/pruning and exact/static precedence. No scientific claim,
+delivery suppressor change, external live-feed test, push or deployment occurred.

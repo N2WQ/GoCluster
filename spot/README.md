@@ -175,6 +175,13 @@ FT recent floor uses the common receiver minimum without inheriting stabilizer
 settings. Replay supplies both configured observation and static horizons;
 its historical clock behavior remains unchanged.
 
+For the custom S floor, exact-call support is checked first. A family fallback
+qualifies when any one member independently meets every family age-score,
+receiver and cell requirement. A higher-scoring member that fails a requirement
+cannot hide another member's success. Counts and cells are never pooled across
+members; static recognition remains a separate alternative. This rule does not
+change output-pipeline family suppression.
+
 Custom SCP keeps each receiver's newest observation for its call, band and mode
 bucket. Historical support counts that receiver only when its own observation is
 within `history_horizon_days`, is not later than the query clock and meets the

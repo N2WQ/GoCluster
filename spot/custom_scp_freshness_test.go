@@ -3,6 +3,7 @@
 package spot
 
 import (
+	"encoding/binary"
 	"fmt"
 	"path/filepath"
 	"runtime"
@@ -12,6 +13,8 @@ import (
 
 	"dxcluster/internal/testsupport"
 	"dxcluster/pathreliability"
+
+	"github.com/cockroachdb/pebble"
 )
 
 func newCustomSCPFreshnessStore(t *testing.T, opts CustomSCPOptions) *CustomSCPStore {
@@ -524,6 +527,208 @@ func BenchmarkB12CustomSCPRequirementsNormalized(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				if got := store.RecentSupportCountNormalizedWithRequirements("K1BENCH", "20m", "CW", query.req, now); got != query.want {
 					b.Fatalf("explicit normalized requirements count=%d want %d", got, query.want)
+				}
+			}
+		})
+	}
+}
+
+type b13FamilyRow struct {
+	call, receiver string
+	seen           time.Time
+	cell           uint16
+}
+
+func b13FamilyRows(call, receiverPrefix string, count, cells int, firstCell uint16, seen time.Time) []b13FamilyRow {
+	rows := make([]b13FamilyRow, count)
+	for i := range rows {
+		rows[i] = b13FamilyRow{call, fmt.Sprintf("%s%03d", receiverPrefix, i), seen, firstCell + uint16(i%cells)}
+	}
+	return rows
+}
+
+// Observation-only disk input avoids RecordSpot/recordObservation creating
+// independent static membership or mirroring slash evidence into both keys.
+func b13FamilyStore(t testing.TB, rows []b13FamilyRow, maxSpotters int) *CustomSCPStore {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "scp")
+	db, err := pebble.Open(path, &pebble.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		var value [10]byte
+		binary.BigEndian.PutUint64(value[:8], uint64(row.seen.Unix()))
+		binary.BigEndian.PutUint16(value[8:], row.cell)
+		key := fmt.Sprintf("o|%s|20m|cw|%s", row.call, row.receiver)
+		if err := db.Set([]byte(key), value[:], pebble.Sync); err != nil {
+			_ = db.Close()
+			t.Fatal(err)
+		}
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err := OpenCustomSCPStore(CustomSCPOptions{
+		Path: path, HorizonDays: 60, StaticHorizonDays: 395, MaxSpottersPerKey: maxSpotters,
+		CoreMinScore: 5, CoreMinH3Cells: 2,
+		SFloorMinScore: 5, SFloorExactMinH3Cells: 2, SFloorFamilyMinH3Cells: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := store.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if got := store.StatsSnapshot(); got.ObservationSpotters != len(rows) || got.StaticCalls != 0 {
+		t.Fatalf("raw fixture must recover every observation without static membership: %+v rows=%d", got, len(rows))
+	}
+	return store
+}
+
+func TestB13CustomSCPFamilyMembersQualifyIndependently(t *testing.T) {
+	const vote, base = "W1AW/KH6", "W1AW"
+	for _, tc := range []struct {
+		name                 string
+		voteCount, voteCells int
+		baseCount, baseCells int
+		voteAge, baseAge     time.Duration
+		want                 bool
+	}{
+		{"higher_score_fails_receivers", 2, 2, 3, 2, time.Minute, 24 * time.Hour, true},
+		{"higher_score_fails_cells", 3, 1, 3, 2, time.Minute, 24 * time.Hour, true},
+		{"same_score_higher_count_fails_cells", 4, 1, 3, 2, 24 * time.Hour, 24 * time.Hour, true},
+		{"score_and_count_tie_fails_cells", 3, 1, 3, 2, 24 * time.Hour, 24 * time.Hour, true},
+		{"receivers_cannot_pool", 2, 2, 2, 2, time.Minute, time.Minute, false},
+		{"cells_cannot_pool", 3, 1, 3, 1, time.Minute, time.Minute, false},
+		{"different_gates_cannot_pool", 3, 1, 2, 2, time.Minute, time.Minute, false},
+		{"fresh_score_cannot_refresh_other_member", 2, 2, 3, 2, time.Minute, 20 * 24 * time.Hour, false},
+		{"both_scores_ineligible", 3, 2, 3, 2, 20 * 24 * time.Hour, 20 * 24 * time.Hour, false},
+		{"missing_vote_qualifying_base", 0, 2, 3, 2, time.Minute, time.Minute, true},
+		{"both_members_missing", 0, 2, 0, 2, time.Minute, time.Minute, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			now := time.Now().UTC().Truncate(time.Second)
+			rows := append(b13FamilyRows(vote, "N0A", tc.voteCount, tc.voteCells, 101, now.Add(-tc.voteAge)),
+				b13FamilyRows(base, "N0B", tc.baseCount, tc.baseCells, 201, now.Add(-tc.baseAge))...)
+			store := b13FamilyStore(t, rows, 8)
+			before := store.StatsSnapshot()
+			for _, calls := range [][]string{{vote, base}, {base, vote}} {
+				if got := store.HasSFloorSupportFamily(calls, "20m", "CW", 3, now); got != tc.want {
+					t.Errorf("slice order=%q independent member qualification=%t want %t", calls, got, tc.want)
+				}
+				if got := store.HasSFloorSupportFamilyKeyPair(calls[0], calls[1], "20m", "CW", 3, now); got != tc.want {
+					t.Errorf("pair order=%q independent member qualification=%t want %t", calls, got, tc.want)
+				}
+			}
+			if after := store.StatsSnapshot(); after != before || store.StaticContains(vote) || store.StaticContains(base) {
+				t.Fatalf("within-horizon qualification changed retained observations or static recognition: before=%+v after=%+v", before, after)
+			}
+			for _, row := range rows {
+				key := fmt.Sprintf("o|%s|20m|cw|%s", row.call, row.receiver)
+				requireCustomSCPCleanupRaw(t, store, key, customSCPCleanupObservationBytes(row.seen.Unix(), row.cell))
+			}
+			assertCustomSCPCleanupCoupling(t, store)
+		})
+	}
+}
+
+func TestB13CustomSCPFamilyEmptyAndRepeatedMembers(t *testing.T) {
+	var nilStore *CustomSCPStore
+	now := time.Now().UTC().Truncate(time.Second)
+	if nilStore.HasSFloorSupportFamily([]string{"W1AW"}, "20m", "CW", 3, now) ||
+		nilStore.HasSFloorSupportFamilyKeyPair("W1AW", "", "20m", "CW", 3, now) {
+		t.Fatal("nil family store must return no support")
+	}
+	for _, count := range []int{2, 3} {
+		t.Run(fmt.Sprintf("receivers_%d", count), func(t *testing.T) {
+			store := b13FamilyStore(t, b13FamilyRows("W1AW", "N0A", count, 2, 101, now.Add(-time.Minute)), 8)
+			if store.HasSFloorSupportFamily(nil, "20m", "CW", 3, now) ||
+				store.HasSFloorSupportFamily([]string{"", "K1MISS"}, "20m", "CW", 3, now) ||
+				store.HasSFloorSupportFamilyKeyPair("", "", "20m", "CW", 3, now) {
+				t.Fatal("empty or missing family identities must return no support")
+			}
+			for _, calls := range [][]string{{"W1AW", "W1AW"}, {"", "W1AW"}, {"W1AW", ""}} {
+				want := count == 3
+				if got := store.HasSFloorSupportFamily(calls, "20m", "CW", 3, now); got != want {
+					t.Errorf("repeated/empty slice members cannot multiply receiver evidence: calls=%q got=%t want=%t", calls, got, want)
+				}
+				if got := store.HasSFloorSupportFamilyKeyPair(calls[0], calls[1], "20m", "CW", 3, now); got != want {
+					t.Errorf("repeated/empty pair members cannot multiply receiver evidence: calls=%q got=%t want=%t", calls, got, want)
+				}
+			}
+		})
+	}
+}
+
+func TestB13CustomSCPFamilyVisitsExpiredMemberAfterSuccess(t *testing.T) {
+	const vote, base = "W1AW/KH6", "W1AW"
+	for _, api := range []string{"slice", "pair"} {
+		t.Run(api, func(t *testing.T) {
+			now := time.Now().UTC().Truncate(time.Second)
+			rows := append(b13FamilyRows(vote, "N0A", 3, 2, 101, now.Add(-time.Minute)),
+				b13FamilyRows(base, "N0B", 3, 2, 201, now.Add(-59*24*time.Hour))...)
+			store := b13FamilyStore(t, rows, 8)
+			if store.StatsSnapshot().ObservationKeys != 2 || !store.HasSFloorSupportExact(vote, "20m", "CW", 3, now) {
+				t.Fatal("fixture must start with two retained keys and an independently qualifying first member")
+			}
+			queryAt := now.Add(2 * 24 * time.Hour)
+			var got bool
+			if api == "slice" {
+				got = store.HasSFloorSupportFamily([]string{vote, base}, "20m", "CW", 3, queryAt)
+			} else {
+				got = store.HasSFloorSupportFamilyKeyPair(vote, base, "20m", "CW", 3, queryAt)
+			}
+			if !got {
+				t.Error("first member must still qualify independently at age two days")
+			}
+			if stats := store.StatsSnapshot(); stats.ObservationKeys != 1 || stats.ObservationSpotters != 3 {
+				t.Fatalf("successful first member must not prevent the previously visited second member's 60-day horizon pruning: %+v", stats)
+			}
+			assertCustomSCPCleanupCoupling(t, store)
+		})
+	}
+}
+
+func TestB13CustomSCPExactQualificationRemainsSeparate(t *testing.T) {
+	const vote, base = "W1AW/KH6", "W1AW"
+	now := time.Now().UTC().Truncate(time.Second)
+	store := b13FamilyStore(t, b13FamilyRows(vote, "N0A", 3, 2, 101, now.Add(-time.Minute)), 8)
+	if !store.HasSFloorSupportExact(vote, "20m", "CW", 3, now) {
+		t.Fatal("exact threshold three must remain independently satisfied")
+	}
+	if store.HasSFloorSupportFamily([]string{vote, base}, "20m", "CW", 4, now) ||
+		store.HasSFloorSupportFamilyKeyPair(vote, base, "20m", "CW", 4, now) {
+		t.Fatal("family threshold four must remain unsatisfied without vetoing exact qualification")
+	}
+}
+
+func BenchmarkB13CustomSCPFamilyKeyPair(b *testing.B) {
+	const vote, base = "W1AW/KH6", "W1AW"
+	for _, tc := range []struct {
+		name      string
+		baseCells int
+		want      bool
+	}{{"later_member_qualifies", 2, true}, {"neither_qualifies", 1, false}} {
+		b.Run(tc.name, func(b *testing.B) {
+			now := time.Now().UTC().Truncate(time.Second)
+			rows := append(b13FamilyRows(vote, "N0A", 64, 1, 101, now.Add(-time.Minute)),
+				b13FamilyRows(base, "N0B", 64, tc.baseCells, 201, now.Add(-24*time.Hour))...)
+			store := b13FamilyStore(b, rows, 64)
+			if store.HasSFloorSupportExact(vote, "20m", "CW", 64, now) ||
+				store.HasSFloorSupportExact(base, "20m", "CW", 64, now) != tc.want {
+				b.Fatal("benchmark must exercise two retained 64-receiver members with literal separate cell qualification")
+			}
+			if got := store.HasSFloorSupportFamilyKeyPair(vote, base, "20m", "CW", 64, now); got != tc.want {
+				b.Fatalf("family qualification=%t want %t before timing", got, tc.want)
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				if got := store.HasSFloorSupportFamilyKeyPair(vote, base, "20m", "CW", 64, now); got != tc.want {
+					b.Fatalf("family qualification=%t want %t during timing", got, tc.want)
 				}
 			}
 		})

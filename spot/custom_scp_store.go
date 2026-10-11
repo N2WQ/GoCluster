@@ -9,6 +9,7 @@
 // docs/decisions/ADR-0279-custom-scp-cleanup-and-database-ownership.md,
 // docs/decisions/ADR-0285-individual-historical-receiver-freshness.md.
 // Consumer query requirements: docs/decisions/ADR-0286-consumer-specific-historical-requirements.md.
+// Family qualification: docs/decisions/ADR-0287-independent-historical-family-qualification.md.
 // Cleanup ownership: spot/custom_scp_cleanup.go. Related tests:
 // spot/custom_scp_store_test.go, spot/custom_scp_cleanup_test.go,
 // spot/custom_scp_lifecycle_test.go, spot/custom_scp_persistence_bench_test.go.
@@ -793,11 +794,16 @@ func (s *CustomSCPStore) HasSFloorSupportFamily(calls []string, band, mode strin
 	if s == nil {
 		return false
 	}
-	best := customSCPSnapshot{}
+	supported := false
+	// Qualify each member independently; visit every key so an earlier success
+	// does not skip the existing query-driven horizon pruning of later members.
 	for _, call := range calls {
-		best = s.bestSFloorFamilySnapshot(best, call, band, mode, now)
+		snapshot := s.snapshotFor(call, band, mode, now, s.opts.SFloorMinScore)
+		if s.hasSFloorFamilySupport(snapshot, minUnique) {
+			supported = true
+		}
 	}
-	return s.hasSFloorFamilySupport(best, minUnique)
+	return supported
 }
 
 // HasSFloorSupportFamilyKeyPair reports family-fallback support without forcing
@@ -806,29 +812,25 @@ func (s *CustomSCPStore) HasSFloorSupportFamilyKeyPair(voteKey, baseKey, band, m
 	if s == nil {
 		return false
 	}
-	best := s.bestSFloorFamilySnapshot(customSCPSnapshot{}, voteKey, band, mode, now)
+	snapshot := s.snapshotFor(voteKey, band, mode, now, s.opts.SFloorMinScore)
+	supported := s.hasSFloorFamilySupport(snapshot, minUnique)
 	if baseKey != "" && baseKey != voteKey {
-		best = s.bestSFloorFamilySnapshot(best, baseKey, band, mode, now)
+		snapshot = s.snapshotFor(baseKey, band, mode, now, s.opts.SFloorMinScore)
+		if s.hasSFloorFamilySupport(snapshot, minUnique) {
+			supported = true
+		}
 	}
-	return s.hasSFloorFamilySupport(best, minUnique)
+	return supported
 }
 
-func (s *CustomSCPStore) bestSFloorFamilySnapshot(best customSCPSnapshot, call, band, mode string, now time.Time) customSCPSnapshot {
-	snap := s.snapshotFor(call, band, mode, now, s.opts.SFloorMinScore)
-	if snap.score > best.score || (snap.score == best.score && snap.uniqueSpotters > best.uniqueSpotters) {
-		return snap
-	}
-	return best
-}
-
-func (s *CustomSCPStore) hasSFloorFamilySupport(best customSCPSnapshot, minUnique int) bool {
-	if best.score < s.opts.SFloorMinScore {
+func (s *CustomSCPStore) hasSFloorFamilySupport(snapshot customSCPSnapshot, minUnique int) bool {
+	if snapshot.score < s.opts.SFloorMinScore {
 		return false
 	}
-	if best.uniqueCells < s.opts.SFloorFamilyMinH3Cells {
+	if snapshot.uniqueCells < s.opts.SFloorFamilyMinH3Cells {
 		return false
 	}
-	return best.uniqueSpotters >= normalizeMinUnique(minUnique, s.opts.MaxSpottersPerKey)
+	return snapshot.uniqueSpotters >= normalizeMinUnique(minUnique, s.opts.MaxSpottersPerKey)
 }
 
 // ActiveCallCount returns the maintained distinct-call snapshot within the
