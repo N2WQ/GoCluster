@@ -85,6 +85,15 @@ after it lands, but it cannot prevent that commit from temporarily reaching
 replace race validation triggered locally by concurrency, shared-state,
 lifecycle, cancellation, queue, timer, or shutdown changes.
 
+Both workflows also run the connected Custom SCP producer-to-consumer regression:
+ordinary execution in push/manual CI and race execution in nightly/manual CI.
+The stages run sequentially with one fresh database and matching run identity,
+without test-result caching. Exact test-selection checks reject missing tests,
+and either stage's failure fails the job. Plain `go test ./...` exercises those
+tests with independent fixtures and does not establish the connected handoff.
+See the [Custom SCP regression runbook](runbooks/custom-scp-regression.md) for
+readback, delivery evidence and the native Windows runner.
+
 CI path filters and filenames cannot determine semantic engineering risk. They
 do not replace targeted tests during implementation or the Scope Ledger's
 selection of fuzzing, benchmarks, pprof, runtime-config checks,

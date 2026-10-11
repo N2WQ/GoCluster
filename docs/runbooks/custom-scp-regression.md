@@ -40,6 +40,21 @@ request preservation, genuine expiry/overflow removal across chunks, derived
 state coupling, concurrent lookup/write/cleanup, and deterministic lifecycle
 overlap. The full validation lane is in [dev-runbook](../dev-runbook.md).
 
+The [push/manual CI workflow](../../.github/workflows/ci.yml) runs the connected
+regression on Ubuntu after the unit suite. The
+[nightly/manual race workflow](../../.github/workflows/nightly-race.yml) runs the
+same handoff with both stages compiled using `-race`. Each creates a fresh
+runner-temporary directory, exports its absolute path and unique run identity,
+checks that both exact test names exist, then runs the producer before the
+consumer with `-count=1` and a two-minute test timeout. Setup or delivery failure
+fails the job; verbose logs include preservation, reopen and actual TCP output.
+These CI steps exercise the repaired code. The intentional defective-baseline
+check remains available through the Windows runner's `-Baseline` mode.
+
+Plain `go test ./...` still runs both tests with independent fixtures; its pass
+does not establish the producer's database reached the consumer. Native Windows
+connected validation continues to use the dedicated stable-path runner above.
+
 Passing these checks establishes this storage repair. It does not establish
 field call accuracy, independent receiver errors, probability calibration,
 live peer wire delivery, power-loss durability or 24/7 production performance.

@@ -40,6 +40,20 @@ jobs:
       - name: Run unit tests
         run: go test ./...
 
+      - name: Run connected Custom SCP regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_root=$(mktemp -d "${RUNNER_TEMP}/customscp.XXXXXX")
+          export GOCLUSTER_CUSTOMSCP_FIXTURE="$fixture_root"
+          export GOCLUSTER_CUSTOMSCP_RUN_ID="${fixture_root##*/}"
+          # A renamed or excluded test must fail instead of matching no tests.
+          go test -list '^TestCustomSCPCleanupFixtureProducer$' ./spot | grep -Fx 'TestCustomSCPCleanupFixtureProducer'
+          go test -list '^TestCustomSCPDeliveredOutput$' ./internal/cluster | grep -Fx 'TestCustomSCPDeliveredOutput'
+          # Separate processes share this run's database; the producer must finish first.
+          go test -count=1 -timeout=2m -v -run '^TestCustomSCPCleanupFixtureProducer$' ./spot
+          go test -count=1 -timeout=2m -v -run '^TestCustomSCPDeliveredOutput$' ./internal/cluster
+
       - name: Run go vet
         run: go vet ./...
 

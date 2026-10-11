@@ -25,3 +25,17 @@ jobs:
 
       - name: Run race suite
         run: go test -race -count=1 ./...
+
+      - name: Run connected Custom SCP race regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture_root=$(mktemp -d "${RUNNER_TEMP}/customscp.XXXXXX")
+          export GOCLUSTER_CUSTOMSCP_FIXTURE="$fixture_root"
+          export GOCLUSTER_CUSTOMSCP_RUN_ID="${fixture_root##*/}"
+          # Select from the same race build that will execute each stage.
+          go test -race -list '^TestCustomSCPCleanupFixtureProducer$' ./spot | grep -Fx 'TestCustomSCPCleanupFixtureProducer'
+          go test -race -list '^TestCustomSCPDeliveredOutput$' ./internal/cluster | grep -Fx 'TestCustomSCPDeliveredOutput'
+          # Separate processes share this run's database; the producer must finish first.
+          go test -race -count=1 -timeout=2m -v -run '^TestCustomSCPCleanupFixtureProducer$' ./spot
+          go test -race -count=1 -timeout=2m -v -run '^TestCustomSCPDeliveredOutput$' ./internal/cluster
