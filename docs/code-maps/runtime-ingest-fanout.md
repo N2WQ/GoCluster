@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `411b102985fdf0f4`
+- Source fingerprint: `896a84cf95172b8c`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 27 | 86 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 27 | 89 |
 | `dxcluster/peer` | `peer` | 62 | 131 |
 | `dxcluster/spot` | `spot` | 37 | 41 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
@@ -176,6 +176,9 @@ Test files:
 - `internal/cluster/fcc_runtime_state_test.go`
 - `internal/cluster/fcc_state_test.go`
 - `internal/cluster/ft_confidence_runtime_test.go`
+- `internal/cluster/ft_expiry_bench_test.go`
+- `internal/cluster/ft_expiry_delivery_test.go`
+- `internal/cluster/ft_expiry_observe_test.go`
 - `internal/cluster/gc_window_test.go`
 - `internal/cluster/go_runtime_tuning_test.go`
 - `internal/cluster/grid_lookup_test.go`
@@ -686,6 +689,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0283](docs/decisions/ADR-0283-ft-admission-expiry.md) | Accepted | 2026-10-11 | FT confidence, admission expiry, bounded release | `path:internal/cluster` |
 | [ADR-0282](docs/decisions/ADR-0282-temporal-release-evidence-authority.md) | Accepted | 2026-10-10 | temporal, release eligibility, confirmed history | `path:internal/cluster, path:spot` |
 | [ADR-0281](docs/decisions/ADR-0281-archive-worker-private-normalization.md) | Accepted | 2026-10-10 | archive, immutable fanout, normalization | `path:internal/cluster` |
 | [ADR-0280](docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md) | Accepted | 2026-10-10 | resolver, receiver union, immutable publication | `path:internal/cluster, path:spot` |

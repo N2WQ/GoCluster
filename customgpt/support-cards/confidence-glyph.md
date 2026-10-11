@@ -27,6 +27,9 @@ not infer meanings from other cluster software.
 - Temporal release uses current eligible timestamped evidence; saved counts
   cannot authorize correction. Proposed, accepted identity changes and attempted
   handoffs are separate counts. A handoff attempt is not a client receipt.
+- FT2/FT4/FT8 bursts end at the earlier quiet-gap/hard deadline. Equality and
+  later arrivals start a new burst and cannot raise an expired burst's glyph.
+  Existing recent-band/static S floors remain; FT glyphs have no resolver percentage.
 
 ## Must Avoid
 

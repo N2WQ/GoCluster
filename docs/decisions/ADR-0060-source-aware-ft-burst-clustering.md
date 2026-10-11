@@ -23,6 +23,11 @@ Tags: ft8, ft4, ft2, confidence, burst-clustering, output-pipeline
 
 ## Decision
 
+Accepted refinement (2026-10-11): [ADR-0283](ADR-0283-ft-admission-expiry.md)
+enforces the same exclusive expiry at admission and drain. Arrivals at or after
+the earlier quiet/hard deadline start a new burst; all due groups retire before
+admission, without changing timing values, thresholds or pending limits.
+
 - Keep the bounded main-loop FT corroboration architecture from ADR-0057 and the canonical dial-frequency model from ADR-0058.
 - Supersede ADR-0059's slot-identity grouping with source-agnostic active burst clustering:
   - key FT corroboration by normalized DX call, exact FT mode, and canonical dial frequency

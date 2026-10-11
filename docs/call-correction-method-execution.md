@@ -244,8 +244,10 @@ FT all-due retirement avoids stale-heap generation buildup; replay EOF explicit.
   the archive-repaired state. Local commit `457bfd5`.
 - P2: complete at `37a9d0d`; binding ambiguity and connected output checkpoint passed.
 - P3: complete; fresh authority, acceptance/history accounting and connected
-  delivery checkpoint passed.
-- P4: pending.
+  delivery checkpoint passed. Local commit `3b828d5`.
+- P4: complete; admission expiry, actual output and resource checks pass;
+  full Windows ordinary/race, analyzers, affected Linux and connected storage
+  checks passed. Checkpoint commit follows final map/diff verification.
 - P5: pending.
 
 Logs: ignored `.tmp/call-correction/`. Results will be recorded only after
@@ -520,3 +522,100 @@ all 70 package builds (53 test, 17 build-only). Connected CustomSCP race passed
 run `e11de45230c64bcb94cd62030c931275`. Final troubleshooting and support-agent
 checks passed. Final map generation/check and direct diff/whitespace review
 complete the checkpoint; no waiver or remaining P3 blocker. P4/P5 remain pending.
+
+### P4 admission expiry and shared FT release
+
+Production mapping: `internal/cluster/ft_confidence_runtime.go` retires all due
+groups at the arrival clock before key lookup or capacity admission. Observe
+returns detached groups on every enabled return path; the existing output owner
+releases them synchronously through `releaseFTGroups`, shared with timer and
+shutdown retirement. Equality and later arrivals start a new generation.
+Due/sequence ordering, stale-node validation, pending limits, FT taxonomy/timing,
+thresholds, support floors and formats are unchanged. Retired scratch references
+are cleared and empty-heap traversal retains reusable bounded capacity.
+
+At baseline `3b828d5`, compiled existing-API probes reproduced equality and +1 ns
+late receivers joining an expired singleton, including duplicate receivers.
+The final admitted connected baseline is `p4/red-delivered-admitted.log`: late
+third-receiver admission delivered V for old two-receiver spots that should be
+P and for the new singleton that should be ? or the unchanged recent-band S
+floor. Normal/DIAG TCP, sealed ring and reopened archive all expose the wrong
+glyph. PC61 confirms identity, date, receiver and order; it carries no glyph.
+
+Initial TCP fixtures excluded FT8 under the default human mode selection. A
+later setup attempt expected a resumed reply when the client was not paused.
+Those timeouts are fixture failures, not firewall or wire-level defect evidence.
+The corrected fixture enables FT8 through real client commands, synchronizes
+on their replies and then checks actual DX receipts before production repair.
+All launches use the established native test executable paths.
+
+Boundary regressions cover FT2/FT4/FT8, default/nondefault timing, quiet/hard
+expiry at -1 ns/equality/+1 ns, and source-time independence. Additional checks
+exercise late normalized duplicates, all-due due/sequence ordering, unrelated
+stale heads, live replacement survival, exactly-once retirement, reclaimed group
+and spot capacity, separate live group/spot limits, nil/unsupported input returns,
+256-generation churn, cleared heap/scratch and timer/force convergence.
+Connected output verifies old P/new ? or S without a fabricated percentage;
+nondefault P=3/V=4 thresholds are exercised for every supported FT mode.
+
+The existing hard-cap test incorrectly admitted beyond its original deadline
+without Drain and then expected that expired deadline. It now positively checks
+the old generation's equality retirement and the new deadline. An old overflow
+fixture constructed zero timing policy; it now uses the real factory policy to
+test live capacity. These obsolete fixtures were corrected, with no timing or
+fail-open production-policy change. Initial targeted selection found no FT
+tests in `stats`; that warning is not a stats test pass. Final P4 targeted
+selection explicitly runs the owning cluster package.
+
+Separate read-only source quality review found no production correctness blocker
+and identified two resource-evidence refinements. The capped benchmark expected
+GetCount=16, although that API counts lifetime writes; its initial assertion
+failure is excluded from release-cost evidence. The successful oracle checks
+30000 writes and 16 retained slots separately. The admission-side empty Drain
+initially discarded constructor scratch, raising the existing controller fixture
+from 14 to 17 allocations; preserving scratch restores its 14 allocations.
+An initial stale-age hypothesis for the capped failure was retracted after
+inspection established the fixture's zero MaxAge policy and total-write contract.
+
+Canonical ordinary measurements (three 100 ms runs): the valid existing
+controller Observe/Drain fixture measured 3.86-4.47 us, 4872 B/14 allocations
+before P4 and 3.15-5.03 us, the same B/allocations after refinement. Typical
+no-due third-report admission measured 1.43-1.56 us, 352 B/one allocation.
+Capped synchronous retirement/release of 12000 groups/30000 contexts measured
+17.27-19.09 ms, approximately 4.56 MB/22 allocations, with real ring-write and
+retention assertions. This measures pipeline/ring work, not external fanout or
+production capacity. Churn of 256 bursts measured 311.64-319.48 us,
+160160 B/1281 allocations, and converged to zero pending groups, contexts and heap.
+
+The previous pipeline hold/release benchmark drained historical Spot.Time+30s
+although admission used actual wall time, so it measured holding without release.
+It now uses NextDue and asserts actual three-spot output. Its final measured
+10.49-12.40 us, 20960-20961 B/42 allocations cannot be compared to that invalid
+old fixture as a speed improvement. The additional glyph-asserting pipeline
+fixture measures 10.33-21.34 us including its verification work.
+
+Churn profiling attributes 106.02 MB of 134.43 MB cumulative historical allocation
+to Observe and 67.86% cumulative sampled CPU to it. The post-GC live sample has
+no FT-controller entry; 17.53 MB belongs to unrelated ULS initialization. This
+shows benchmark-end reclamation, not live production heap. Retention claims
+rest on the explicit churn/capacity/cleared-reference checks.
+
+ADR-0283/TSR-0082 and ADR-0060's accepted refinement record the boundary. Spot
+guidance and the confidence support card explain it. Support-agent impact:
+material FT confidence troubleshooting, covered in the existing card. Targeted
+ordinary/race, corrected benchmarks and profiles pass. Full Windows ordinary
+and race each passed all 70 package builds (53 test, 17 build-only). Final vet,
+Staticcheck and golangci-lint exited zero, with zero lint issues. Connected
+CustomSCP ordinary passed `944d8db2a1d44a2896729fbd65e63a38`; race passed
+`a3967b7675de4c98821c6bd45c66a89d`. Troubleshooting and support-agent checkers
+passed. Final map generation/check and direct diff/whitespace review complete
+the checkpoint before the local commit. No P4 waiver or remaining blocker.
+
+The first refreshed Linux race run and a 20-repeat isolated attempt failed the
+unchanged toxicity-summary test with pending=1 instead of zero. Current source
+receives the worker result before its deferred pending decrement, so receiving
+is not a completion barrier for that assertion. Both failures remain in
+`p4/linux-final.log` and `linux-final-retry.log`; no unrelated code was changed.
+The subsequent full affected Linux ordinary/race suite passed both cluster and
+stats (`linux-final-suite.log`). This does not establish that the unrelated
+timing-sensitive test is repaired.

@@ -175,7 +175,7 @@ func (h *ftConfidenceHeap) siftDown(index int) {
 
 func popFTConfidenceDue(h *ftConfidenceHeap, now time.Time, force bool, scratch []ftConfidenceItem) []ftConfidenceItem {
 	if h == nil || h.Len() == 0 {
-		return nil
+		return scratch[:0]
 	}
 	out := scratch[:0]
 	for h.Len() > 0 {
@@ -277,25 +277,30 @@ func (c *ftConfidenceController) Enabled() bool {
 	return c != nil && c.enabled
 }
 
-// Observe either appends a spot to a bounded corroboration burst or declines to
-// hold it. Declines are fail-open: the caller assigns a glyph immediately so
-// memory pressure cannot suppress telnet output.
-func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (bool, int) {
-	if !c.Enabled() || ctx.spot == nil {
-		return false, 1
+// Observe retires every due burst before looking up or admitting the current
+// report. Expiry is exclusive: arrival at due starts a new generation. The
+// single owner must release the returned groups synchronously, even on a
+// fail-open decline, before continuing output for the current report.
+func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (bool, int, []*ftConfidencePendingGroup) {
+	if !c.Enabled() {
+		return false, 1, nil
 	}
 	if now.IsZero() {
 		now = time.Now().UTC()
 	} else {
 		now = now.UTC()
 	}
+	retired := c.Drain(now, false)
+	if ctx.spot == nil {
+		return false, 1, retired
+	}
 	key, spotter, ok := buildFTConfidenceKey(ctx.spot)
 	if !ok {
-		return false, 1
+		return false, 1, retired
 	}
 	timing, ok := ftConfidenceTimingForMode(key.mode, c.policy)
 	if !ok {
-		return false, 1
+		return false, 1, retired
 	}
 	group := c.pending[key]
 	if group != nil {
@@ -306,7 +311,7 @@ func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (
 			}
 		}
 		if c.maxPendingSpots > 0 && c.pendingSpots >= c.maxPendingSpots {
-			return false, uniqueCount
+			return false, uniqueCount, retired
 		}
 		group.contexts = append(group.contexts, newFTConfidencePendingContext(ctx))
 		if spotter != "" {
@@ -318,14 +323,14 @@ func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (
 		group.lastSeen = now
 		c.advanceGroupDue(group, timing)
 		c.pendingSpots++
-		return true, uniqueCount
+		return true, uniqueCount, retired
 	}
 
 	if c.maxPendingGroups > 0 && len(c.pending) >= c.maxPendingGroups {
-		return false, 1
+		return false, 1, retired
 	}
 	if c.maxPendingSpots > 0 && c.pendingSpots >= c.maxPendingSpots {
-		return false, 1
+		return false, 1, retired
 	}
 
 	due := ftConfidenceBurstDue(now, now.Add(timing.hardCap), timing)
@@ -347,7 +352,7 @@ func (c *ftConfidenceController) Observe(now time.Time, ctx outputSpotContext) (
 	c.pushDueItem(group)
 	c.seq++
 	c.pendingSpots++
-	return true, 1
+	return true, 1, retired
 }
 
 // Drain releases only the current heap entries for each group; stale heap
@@ -382,6 +387,7 @@ func (c *ftConfidenceController) Drain(now time.Time, force bool) []*ftConfidenc
 		}
 		out = append(out, group)
 	}
+	clear(items) // Scratch capacity must not pin retired key strings.
 	return out
 }
 
@@ -543,7 +549,8 @@ func (p *outputPipeline) applyFTConfidenceStage(ctx *outputSpotContext, now time
 		p.assignFTConfidence(ctx, 1)
 		return true
 	}
-	held, uniqueCount := p.ftConfidence.Observe(now, *ctx)
+	held, uniqueCount, retired := p.ftConfidence.Observe(now, *ctx)
+	p.releaseFTGroups(retired)
 	if held {
 		return false
 	}
@@ -575,8 +582,13 @@ func (p *outputPipeline) releaseDueFT(now time.Time, force bool) {
 	if p == nil || p.ftConfidence == nil || !p.ftConfidence.Enabled() {
 		return
 	}
-	releases := p.ftConfidence.Drain(now, force)
-	for _, group := range releases {
+	p.releaseFTGroups(p.ftConfidence.Drain(now, force))
+}
+
+// releaseFTGroups is shared by arrival, timer and shutdown retirement. Groups
+// are already detached from the controller, and no additional queue retains them.
+func (p *outputPipeline) releaseFTGroups(groups []*ftConfidencePendingGroup) {
+	for _, group := range groups {
 		if group == nil {
 			continue
 		}

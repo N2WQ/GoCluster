@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0283 | FT Admission Expiry | Accepted | 2026-10-11 | FT confidence, admission expiry, bounded release | Refines ADR-0060 | none | `docs/decisions/ADR-0283-ft-admission-expiry.md` |
 | ADR-0282 | Temporal Release Evidence Authority | Accepted | 2026-10-10 | temporal, release eligibility, confirmed history | Refines ADR-0038 | none | `docs/decisions/ADR-0282-temporal-release-evidence-authority.md` |
 | ADR-0281 | Archive Worker Private Normalization | Accepted | 2026-10-10 | archive, immutable fanout, normalization | Refines ADR-0148/0275 worker ownership | none | `docs/decisions/ADR-0281-archive-worker-private-normalization.md` |
 | ADR-0280 | Resolver Receiver Evidence Ownership | Accepted | 2026-10-10 | resolver, receiver union, immutable publication | none | none | `docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md` |

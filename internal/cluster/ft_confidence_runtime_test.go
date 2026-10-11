@@ -90,7 +90,7 @@ func TestOutputPipelineFTBurstUsesConfiguredThresholdsAndTiming(t *testing.T) {
 	controller := newFTConfidenceController(cfg)
 	base := time.Unix(1_700_000_000, 0).UTC()
 	firstCtx := outputSpotContext{spot: spot.NewSpot("K1CFG", "N0AAA", 14074.1, "FT8"), modeUpper: "FT8"}
-	if held, uniqueCount := controller.Observe(base, firstCtx); !held || uniqueCount != 1 {
+	if held, uniqueCount, _ := controller.Observe(base, firstCtx); !held || uniqueCount != 1 {
 		t.Fatalf("expected first configured FT spot to be held with unique count 1, got held=%v unique=%d", held, uniqueCount)
 	}
 	if due, ok := controller.NextDue(); !ok || !due.Equal(base.Add(7*time.Second)) {
@@ -230,7 +230,7 @@ func TestFTConfidenceControllerExtendsDueWithinBurst(t *testing.T) {
 	first.Time = base
 	second.Time = base.Add(14 * time.Second)
 
-	firstHeld, firstUnique := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"})
+	firstHeld, firstUnique, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"})
 	if !firstHeld || firstUnique != 1 {
 		t.Fatalf("expected first FT8 spot to be held with unique count 1, got held=%v unique=%d", firstHeld, firstUnique)
 	}
@@ -243,7 +243,7 @@ func TestFTConfidenceControllerExtendsDueWithinBurst(t *testing.T) {
 	}
 
 	secondArrived := base.Add(1500 * time.Millisecond)
-	secondHeld, secondUnique := controller.Observe(secondArrived, outputSpotContext{spot: second, modeUpper: "FT8"})
+	secondHeld, secondUnique, _ := controller.Observe(secondArrived, outputSpotContext{spot: second, modeUpper: "FT8"})
 	if !secondHeld || secondUnique != 2 {
 		t.Fatalf("expected second FT8 spot to extend the burst, got held=%v unique=%d", secondHeld, secondUnique)
 	}
@@ -261,11 +261,11 @@ func TestFTConfidenceControllerFlushesOnHardCap(t *testing.T) {
 	base := time.Unix(1_700_000_000, 0).UTC()
 	timing := ftTestBurstTiming(t)
 
-	for i := 0; i < 12; i++ {
+	for i := 0; i < 8; i++ {
 		s := spot.NewSpot("K1CAP", "N0AAA", 14074.0, "FT8")
 		arrivedAt := base.Add(time.Duration(i) * 1500 * time.Millisecond)
 		s.Time = arrivedAt
-		held, _ := controller.Observe(arrivedAt, outputSpotContext{spot: s, modeUpper: "FT8"})
+		held, _, _ := controller.Observe(arrivedAt, outputSpotContext{spot: s, modeUpper: "FT8"})
 		if !held {
 			t.Fatalf("expected observation %d to be held", i)
 		}
@@ -276,6 +276,20 @@ func TestFTConfidenceControllerFlushesOnHardCap(t *testing.T) {
 	}
 	if want := base.Add(timing.hardCap); !nextDue.Equal(want) {
 		t.Fatalf("expected hard-cap due %s, got %s", want, nextDue)
+	}
+	late := spot.NewSpot("K1CAP", "N0BBB", 14074.0, "FT8")
+	key, _, ok := buildFTConfidenceKey(late)
+	if !ok {
+		t.Fatal("hard-cap fixture has no group key")
+	}
+	old := controller.pending[key]
+	held, unique, retired := controller.Observe(nextDue, outputSpotContext{spot: late, modeUpper: "FT8"})
+	if !held || unique != 1 || len(retired) != 1 || retired[0] != old || len(old.contexts) != 8 ||
+		len(old.spotters) != 1 || controller.pending[key] == old || controller.pendingSpots != 1 {
+		t.Fatal("hard-cap equality did not retire old support before admitting the new receiver")
+	}
+	if due, available := controller.NextDue(); !available || !due.Equal(nextDue.Add(timing.quietGap)) {
+		t.Fatal("replacement generation did not receive its own quiet deadline")
 	}
 }
 
@@ -289,14 +303,14 @@ func TestFTConfidenceControllerStartsNewBurstAfterQuietGap(t *testing.T) {
 	first.Time = base
 	second.Time = base.Add(10 * time.Second)
 
-	if held, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
+	if held, _, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
 		t.Fatal("expected first burst spot to be held")
 	}
 	releases := controller.Drain(base.Add(timing.quietGap), false)
 	if len(releases) != 1 || len(releases[0].spotters) != 1 {
 		t.Fatalf("expected first burst release before split, got %+v", releases)
 	}
-	if held, uniqueCount := controller.Observe(base.Add(timing.quietGap+100*time.Millisecond), outputSpotContext{spot: second, modeUpper: "FT8"}); !held || uniqueCount != 1 {
+	if held, uniqueCount, _ := controller.Observe(base.Add(timing.quietGap+100*time.Millisecond), outputSpotContext{spot: second, modeUpper: "FT8"}); !held || uniqueCount != 1 {
 		t.Fatalf("expected second observation to start a new burst, got held=%v unique=%d", held, uniqueCount)
 	}
 }
@@ -313,11 +327,11 @@ func TestFTConfidenceControllerIgnoresObservedTimeForPSKReporterBursting(t *test
 	second.SourceType = spot.SourcePSKReporter
 	second.Time = base.Add(14 * time.Second)
 
-	if held, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
+	if held, _, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
 		t.Fatal("expected first PSKReporter FT8 spot to be held")
 	}
 	secondArrived := base.Add(1200 * time.Millisecond)
-	held, uniqueCount := controller.Observe(secondArrived, outputSpotContext{spot: second, modeUpper: "FT8"})
+	held, uniqueCount, _ := controller.Observe(secondArrived, outputSpotContext{spot: second, modeUpper: "FT8"})
 	if !held || uniqueCount != 2 {
 		t.Fatalf("expected second PSKReporter FT8 spot to share arrival burst, got held=%v unique=%d", held, uniqueCount)
 	}
@@ -337,10 +351,10 @@ func TestFTConfidenceControllerAllowsCrossSourceBurstCorroboration(t *testing.T)
 	second := spot.NewSpot("K1XSR", "N0BBB", 14074.0, "FT8")
 	second.SourceType = spot.SourceFT8
 
-	if held, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
+	if held, _, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
 		t.Fatal("expected first cross-source FT8 spot to be held")
 	}
-	held, uniqueCount := controller.Observe(base.Add(800*time.Millisecond), outputSpotContext{spot: second, modeUpper: "FT8"})
+	held, uniqueCount, _ := controller.Observe(base.Add(800*time.Millisecond), outputSpotContext{spot: second, modeUpper: "FT8"})
 	if !held || uniqueCount != 2 {
 		t.Fatalf("expected cross-source corroboration, got held=%v unique=%d", held, uniqueCount)
 	}
@@ -351,25 +365,21 @@ func TestFTConfidenceControllerAllowsCrossSourceBurstCorroboration(t *testing.T)
 }
 
 func TestFTConfidenceControllerOverflowFailsOpen(t *testing.T) {
-	controller := &ftConfidenceController{
-		enabled:          true,
-		maxPendingGroups: 1,
-		maxPendingSpots:  1,
-		pending:          make(map[ftConfidenceKey]*ftConfidencePendingGroup),
-	}
+	controller := newFTConfidenceController(config.CallCorrectionConfig{})
+	controller.maxPendingGroups, controller.maxPendingSpots = 1, 1
 
 	base := time.Unix(1_700_000_000, 0).UTC()
 	firstSpot := spot.NewSpot("K1OVR", "N0AAA", 14074.1, "FT8")
 	firstSpot.Time = base
 	firstCtx := outputSpotContext{spot: firstSpot, modeUpper: "FT8"}
-	if held, _ := controller.Observe(base, firstCtx); !held {
+	if held, _, _ := controller.Observe(base, firstCtx); !held {
 		t.Fatalf("expected first FT spot to be held")
 	}
 
 	secondSpot := spot.NewSpot("K1OVR", "N0BBB", 14074.1, "FT8")
 	secondSpot.Time = base.Add(300 * time.Millisecond)
 	secondCtx := outputSpotContext{spot: secondSpot, modeUpper: "FT8"}
-	held, uniqueCount := controller.Observe(base.Add(300*time.Millisecond), secondCtx)
+	held, uniqueCount, _ := controller.Observe(base.Add(300*time.Millisecond), secondCtx)
 	if held {
 		t.Fatalf("expected overflow path to fail open on second pending FT spot")
 	}
@@ -410,10 +420,10 @@ func TestFTConfidenceControllerDrainClearsPendingStateAfterReschedule(t *testing
 
 	first := spot.NewSpot("K1CLR", "N0AAA", 14074.0, "FT8")
 	second := spot.NewSpot("K1CLR", "N0BBB", 14074.0, "FT8")
-	if held, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
+	if held, _, _ := controller.Observe(base, outputSpotContext{spot: first, modeUpper: "FT8"}); !held {
 		t.Fatal("expected first observation to be held")
 	}
-	if held, _ := controller.Observe(base.Add(time.Second), outputSpotContext{spot: second, modeUpper: "FT8"}); !held {
+	if held, _, _ := controller.Observe(base.Add(time.Second), outputSpotContext{spot: second, modeUpper: "FT8"}); !held {
 		t.Fatal("expected second observation to be held")
 	}
 
@@ -455,7 +465,14 @@ func BenchmarkOutputPipelineFTHoldAndRelease(b *testing.B) {
 		pipeline.processSpotBody(first, nil)
 		pipeline.processSpotBody(second, nil)
 		pipeline.processSpotBody(third, nil)
-		pipeline.releaseDueFT(baseTime.Add(30*time.Second), false)
+		due, ok := pipeline.ftConfidence.NextDue()
+		if !ok || rb.GetCount() != 0 {
+			b.Fatal("FT benchmark did not hold its three reports")
+		}
+		pipeline.releaseDueFT(due, false)
+		if rb.GetCount() != 3 || pipeline.ftConfidence.pendingSpots != 0 {
+			b.Fatal("FT benchmark did not actually release its three reports")
+		}
 	}
 }
 

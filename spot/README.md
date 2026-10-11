@@ -121,6 +121,13 @@ With the current shipped defaults:
 
 The runtime can corroborate across PSKReporter and RBN-digital if the burst key matches and the spotter calls differ.
 
+A burst expires at the earlier of the quiet-gap and hard deadline. A report
+arriving exactly at expiry or later starts a new burst, even if timer draining
+was delayed. It cannot promote spots in the expired burst. New singletons can
+still receive the existing recent-band/static `S` floor. FT glyphs describe
+distinct receiver corroboration; they do not carry a resolver percentage or
+prove that receivers heard the same transmission episode.
+
 ## Config Boundary
 
 The FT `p_min_unique_spotters`, `v_min_unique_spotters`, quiet-gap seconds, and
