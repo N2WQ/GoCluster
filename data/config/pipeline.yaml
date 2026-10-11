@@ -144,7 +144,7 @@ call_correction:
   # Purpose: Improve candidate ordering/eligibility for near-threshold cases.
   # ---------------------------------------------------------------------------
   confusion_model_enabled: true       # Optional confusion-based ranking for tied top-support candidates
-  confusion_model_file: "data/rbn/priors/confusion_model.json" # RBN confusion model JSON path
+  confusion_model_file: "data/rbn/priors/confusion_model.json" # Enabled asset must be valid, including at weight zero; invalid asset fails startup/replay
   confusion_model_weight: 1           # Additive weight for confusion score in tie ranking (0 disables effect)
 
   recent_band_bonus_enabled: false           # Enable recent-on-band validation cache (same call+band+mode)
@@ -241,9 +241,9 @@ call_correction:
   # 10) Spotter reliability weights
   # Purpose: Down-weight/ignore corroborators from less reliable spotters.
   # ---------------------------------------------------------------------------
-  spotter_reliability_file: "data/rbn/priors/spotter_reliability.txt" # Optional global path with spotter weights (SPOTTER WEIGHT 0-1)
-  spotter_reliability_file_cw: "data/rbn/priors/spotter_reliability_cw.txt" # Optional CW override weights (falls back to global when missing)
-  spotter_reliability_file_rtty: "data/rbn/priors/spotter_reliability_rtty.txt" # Optional RTTY override weights (falls back to global when missing)
+  spotter_reliability_file: "data/rbn/priors/spotter_reliability.txt" # Global SPOTTER WEIGHT table; nonfinite/invalid configured assets fail startup/replay
+  spotter_reliability_file_cw: "data/rbn/priors/spotter_reliability_cw.txt" # CW override; absent receiver uses global, invalid configured asset fails
+  spotter_reliability_file_rtty: "data/rbn/priors/spotter_reliability_rtty.txt" # RTTY override; absent receiver uses global, invalid configured asset fails
   min_spotter_reliability: 0.87       # Ignore reporters below this reliability weight
 
   # ---------------------------------------------------------------------------

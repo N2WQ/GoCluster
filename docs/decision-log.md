@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0290 | Correction Numerical Asset Integrity | Accepted | 2026-10-11 | reliability, confusion model, startup, replay | Refines numerical and configured-asset failure handling | none | `docs/decisions/ADR-0290-correction-numerical-asset-integrity.md` |
 | ADR-0289 | Future Static Membership Eligibility | Accepted | 2026-10-11 | custom_scp, static recognition, S floor | Refines ADR-0285 static eligibility | none | `docs/decisions/ADR-0289-future-static-membership-eligibility.md` |
 | ADR-0288 | Historical Requirements Respect Storage Capacity | Accepted | 2026-10-11 | custom_scp, config, startup, replay | Refines ADR-0286/0287 capacity qualification | none | `docs/decisions/ADR-0288-historical-requirements-respect-storage-capacity.md` |
 | ADR-0287 | Independent Historical Family Qualification | Accepted | 2026-10-11 | custom_scp, historical family floor | Refines ADR-0285/0286 member qualification | none | `docs/decisions/ADR-0287-independent-historical-family-qualification.md` |

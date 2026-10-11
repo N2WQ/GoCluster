@@ -1,16 +1,23 @@
+// File role: Loads immutable receiver reliability tables for correction evidence.
+// Crawler notes: Invalid numerical assets must fail their startup/replay owner;
+// finite clamps and unrelated malformed-line skipping preserve the text contract.
+// Related docs: spot/README.md, docs/decisions/ADR-0290-correction-numerical-asset-integrity.md.
+// Related tests: spot/numerical_integrity*_test.go.
 package spot
 
 import (
 	"bufio"
 	"dxcluster/strutil"
 	"fmt"
+	"math"
 	"os"
 	"strconv"
 	"strings"
 )
 
 // SpotterReliability holds per-spotter weights (0..1). Reporters below the configured
-// minimum are ignored by call correction consensus.
+// minimum are ignored by call correction consensus. Callers must not mutate a
+// borrowed table while a resolver uses it; loaded tables are read-only assets.
 type SpotterReliability map[string]float64
 
 // LoadSpotterReliability loads per-spotter reliability weights from a text file.
@@ -33,7 +40,9 @@ func LoadSpotterReliability(path string) (SpotterReliability, int, error) {
 	out := make(SpotterReliability)
 	applied := 0
 	scanner := bufio.NewScanner(f)
+	lineNumber := 0
 	for scanner.Scan() {
+		lineNumber++
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -47,6 +56,11 @@ func LoadSpotterReliability(path string) (SpotterReliability, int, error) {
 			continue
 		}
 		weight, err := strconv.ParseFloat(fields[1], 64)
+		// ParseFloat range overflow returns infinity together with ErrRange.
+		// Refuse it before the unrelated malformed-token skip or finite clamps.
+		if math.IsNaN(weight) || math.IsInf(weight, 0) {
+			return nil, 0, fmt.Errorf("reliability line %d (%s): weight must be finite", lineNumber, spotter)
+		}
 		if err != nil {
 			continue
 		}

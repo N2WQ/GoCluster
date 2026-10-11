@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -285,6 +286,19 @@ func (r *replayRunner) configureExternalDependencies() error {
 // it behind unbounded analysis-only state.
 func (r *replayRunner) buildReplayRuntime() error {
 	cfg := r.cfg
+	// Replay always constructs a resolver, including with correction disabled.
+	// Check direct constructor inputs before conversion, asset loading, or
+	// scratch deletion can hide invalid numerical evidence behind a fallback.
+	minimum := cfg.CallCorrection.MinSpotterReliability
+	if math.IsNaN(minimum) || math.IsInf(minimum, 0) {
+		return fmt.Errorf("call_correction.min_spotter_reliability must be finite (got %v)", minimum)
+	}
+	if cfg.CallCorrection.ConfusionModelEnabled {
+		weight := cfg.CallCorrection.ConfusionModelWeight
+		if math.IsNaN(weight) || math.IsInf(weight, 0) {
+			return fmt.Errorf("call_correction.confusion_model_weight must be finite (got %v)", weight)
+		}
+	}
 
 	spot.ConfigureMorseWeights(cfg.CallCorrection.MorseWeights.Insert, cfg.CallCorrection.MorseWeights.Delete, cfg.CallCorrection.MorseWeights.Sub, cfg.CallCorrection.MorseWeights.Scale)
 	spot.ConfigureBaudotWeights(cfg.CallCorrection.BaudotWeights.Insert, cfg.CallCorrection.BaudotWeights.Delete, cfg.CallCorrection.BaudotWeights.Sub, cfg.CallCorrection.BaudotWeights.Scale)

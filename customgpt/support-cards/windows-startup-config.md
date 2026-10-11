@@ -48,6 +48,13 @@ capture that OS error separately from YAML/config diagnostics. See
   `pipeline.yaml`; choose satisfiable minima or raise the existing cap explicitly.
   Startup does not silently lower the requirement. Disabled unused gates and
   separate FT storage are outside this capacity check.
+- An invalid configured correction asset reports
+  `call_correction.spotter_reliability_file` (or its CW/RTTY variant) or
+  `call_correction.confusion_model_file` and the path. Check the named file;
+  startup no longer continues with unit weights or a disabled model after a
+  load error. Nonfinite weights, negative counts, invalid edges and overflowing
+  totals fail. An enabled model still loads at weight zero. Disabling the model
+  is a separate explicit setting, not an automatic recovery action.
 
 ## Must Avoid
 

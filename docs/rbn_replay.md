@@ -55,6 +55,14 @@ All other dependencies are local snapshots and must already exist when enabled:
 - `fcc_uls.db_path`
 - optional confusion model and spotter-reliability files
 
+Invalid applicable configured assets stop initialization before history scratch
+replacement or resolver ownership. Every nonblank reliability path is attempted;
+the model's own enabled flag requires a valid asset even at weight zero. Errors
+identify the configuration key and path. Nonfinite reliability, negative model
+counts, invalid edges and overflowing int64 totals are refused; accepted finite
+clamps and model results remain. The offline `callcorr_reveng_rebuilt` evaluator
+uses the same failure contract. See [numerical inputs](../spot/README.md#numerical-inputs-and-configured-assets).
+
 ## Output artifacts
 
 Outputs:

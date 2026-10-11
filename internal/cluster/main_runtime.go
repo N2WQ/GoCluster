@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -471,7 +472,9 @@ func (r *clusterRuntime) initializeCallCacheAndMeta() {
 
 func (r *clusterRuntime) initializeReferenceData() bool {
 	r.initializeULSAndCTY()
-	r.initializeCorrectionModels()
+	if !r.initializeCorrectionModels() {
+		return false
+	}
 	r.initializeObservabilityState()
 	if !r.initializeSignalResolverAndRecentStore() {
 		return false
@@ -587,7 +590,17 @@ func (r *clusterRuntime) initializeULSAndCTY() {
 	}
 }
 
-func (r *clusterRuntime) initializeCorrectionModels() {
+func (r *clusterRuntime) initializeCorrectionModels() bool {
+	// Scalar knobs are used only by active correction. Explicit reliability
+	// assets and an enabled model keep their existing load predicates even when
+	// correction is off; invalid assets must fail before downstream owners start.
+	cfg := r.cfg.CallCorrection
+	if cfg.Enabled && (math.IsNaN(cfg.MinSpotterReliability) || math.IsInf(cfg.MinSpotterReliability, 0)) {
+		return r.failStartup("Invalid call_correction.min_spotter_reliability %v: must be finite", cfg.MinSpotterReliability)
+	}
+	if cfg.Enabled && cfg.ConfusionModelEnabled && (math.IsNaN(cfg.ConfusionModelWeight) || math.IsInf(cfg.ConfusionModelWeight, 0)) {
+		return r.failStartup("Invalid call_correction.confusion_model_weight %v: must be finite", cfg.ConfusionModelWeight)
+	}
 	spot.ConfigureMorseWeights(
 		r.cfg.CallCorrection.MorseWeights.Insert,
 		r.cfg.CallCorrection.MorseWeights.Delete,
@@ -601,20 +614,28 @@ func (r *clusterRuntime) initializeCorrectionModels() {
 		r.cfg.CallCorrection.BaudotWeights.Scale,
 	)
 
-	r.spotterReliability = loadSpotterReliabilityWithLog(r.cfg.CallCorrection.SpotterReliabilityFile, "")
-	r.spotterReliabilityCW = loadSpotterReliabilityWithLog(r.cfg.CallCorrection.SpotterReliabilityFileCW, "CW ")
-	r.spotterReliabilityRTTY = loadSpotterReliabilityWithLog(r.cfg.CallCorrection.SpotterReliabilityFileRTTY, "RTTY ")
+	var err error
+	r.spotterReliability, err = loadSpotterReliabilityWithLog(cfg.SpotterReliabilityFile, "")
+	if err != nil {
+		return r.failStartup("Invalid call_correction.spotter_reliability_file %q: %v", strings.TrimSpace(cfg.SpotterReliabilityFile), err)
+	}
+	r.spotterReliabilityCW, err = loadSpotterReliabilityWithLog(cfg.SpotterReliabilityFileCW, "CW ")
+	if err != nil {
+		return r.failStartup("Invalid call_correction.spotter_reliability_file_cw %q: %v", strings.TrimSpace(cfg.SpotterReliabilityFileCW), err)
+	}
+	r.spotterReliabilityRTTY, err = loadSpotterReliabilityWithLog(cfg.SpotterReliabilityFileRTTY, "RTTY ")
+	if err != nil {
+		return r.failStartup("Invalid call_correction.spotter_reliability_file_rtty %q: %v", strings.TrimSpace(cfg.SpotterReliabilityFileRTTY), err)
+	}
 
-	if r.cfg.CallCorrection.ConfusionModelEnabled {
-		modelPath := strings.TrimSpace(r.cfg.CallCorrection.ConfusionModelFile)
-		if modelPath == "" {
-			log.Printf("Warning: call correction confusion model enabled but confusion_model_file is empty")
-		} else if loaded, err := spot.LoadConfusionModel(modelPath); err != nil {
-			log.Printf("Warning: failed to load confusion model from %s: %v", modelPath, err)
-		} else {
-			r.confusionModel = loaded
-			log.Printf("Loaded call correction confusion model from %s", modelPath)
+	if cfg.ConfusionModelEnabled {
+		modelPath := strings.TrimSpace(cfg.ConfusionModelFile)
+		loaded, err := spot.LoadConfusionModel(modelPath)
+		if err != nil {
+			return r.failStartup("Invalid call_correction.confusion_model_file %q: %v", modelPath, err)
 		}
+		r.confusionModel = loaded
+		log.Printf("Loaded call correction confusion model from %s", modelPath)
 	}
 
 	r.adaptiveMinReports = spot.NewAdaptiveMinReports(r.cfg.CallCorrection)
@@ -622,20 +643,21 @@ func (r *clusterRuntime) initializeCorrectionModels() {
 	if r.refresher != nil {
 		r.refresher.Start()
 	}
+	return true
 }
 
-func loadSpotterReliabilityWithLog(path, label string) spot.SpotterReliability {
+//nolint:nilnil // An absent optional path has no table; default receiver weights remain applicable.
+func loadSpotterReliabilityWithLog(path, label string) (spot.SpotterReliability, error) {
 	relPath := strings.TrimSpace(path)
 	if relPath == "" {
-		return nil
+		return nil, nil
 	}
 	rel, n, err := spot.LoadSpotterReliability(relPath)
 	if err != nil {
-		log.Printf("Warning: failed to load %sspotter reliability from %s: %v", label, relPath, err)
-		return nil
+		return nil, err
 	}
 	log.Printf("Loaded %d %sspotter reliability weights from %s", n, label, relPath)
-	return rel
+	return rel, nil
 }
 
 func (r *clusterRuntime) initializeObservabilityState() {

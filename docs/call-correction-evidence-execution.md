@@ -9,13 +9,13 @@ Branch: `fix_correction_evidence`.
 
 | Patch | State | Commit/evidence |
 | --- | --- | --- |
-| B0 | Complete | Original-content peer publication; checkpoint below |
-| B1.1 | Complete | Receiver-level historical freshness; checkpoint below |
-| B1.2 | Pending | Consumer-specific requirements |
-| B1.3 | Pending | Independent family qualification |
-| B1.4 | Pending | Capacity validation |
-| B1.5 | Pending | Future static membership |
-| B2.1 | Pending | Numerical/assets |
+| B0 | Complete | `5a53983`; original-content peer publication |
+| B1.1 | Complete | `290674d`; receiver-level historical freshness |
+| B1.2 | Complete | `4f40cc0`; consumer-specific requirements |
+| B1.3 | Complete | `3b33163`; independent family qualification |
+| B1.4 | Complete | `0b4006d`; capacity validation |
+| B1.5 | Complete | `4d6df11`; future static membership |
+| B2.1 | Complete | Numerical/assets; checkpoint below |
 | B2.2 | Pending | SNR presence/domain |
 | B3.1 | Pending | Cap-loss authority/retirement |
 | B3.2 | Pending | Diagnostic meaning |
@@ -660,3 +660,154 @@ Logs in `.tmp`: `b15-unit-baseline-red.log`,
 whitespace checks. The preliminary `b15-delivery-baseline-red.log` includes the
 DIAG fixture error and is superseded. No firewall, listener path, external feed,
 push or deployment changes occurred.
+
+## B2.1 - Numerical and configured-asset integrity (complete)
+
+Checkpoint base is B1.5 `4d6df11`. Current source and semantic loader references
+identify three applicable consumers: live startup, `rbn_replay`, and the offline
+`callcorr_reveng_rebuilt` evaluator that declares production-gate parity. Live
+startup and the evaluator warn and substitute missing weights/models; replay
+already returns loader errors before history scratch deletion. Nonblank reliability
+paths are attempted independently of global correction enablement. Confusion
+loading follows its own enabled flag, including weight zero. Preserve those
+predicates and disabled-model behavior; introduce no automatic asset paths.
+
+The scientific-model-oracle review actually occurred in a separate, non-steered
+context, without the preferred implementation, ledger or derived test answers.
+The lead verified its material arithmetic findings against current source and
+primary Go authorities: [signed overflow](https://go.dev/ref/spec#Arithmetic_operators),
+[rounding](https://pkg.go.dev/math#Round), and
+[float parsing](https://pkg.go.dev/strconv#ParseFloat). Integer overflow does not
+provide a panic guard; finite parsing must be checked before conversion or clamps.
+Add-one count scores require nonnegative counts and representable int64 totals.
+Preserve accepted finite results, including floating-point precision above 2^53;
+do not mislabel representable large counts as integer overflow.
+
+Independent vectors include a four-symbol substitution row `[5,1,0,2]` whose
+target-one score is `-1.791759469228055`, zero-row score `-1.3862943611198906`,
+and a three-symbol deletion population `[4,1,0]` whose first score is
+`-0.4700036292457356`. Receiver weights 900+950 versus 1000 give the retained
+weighted share 64%, independent of repeated bucket membership. These are
+arithmetic/ranking potentials and evidence shares, not correctness probabilities.
+No held-out RF truth, training validity or calibration benefit is established.
+
+The lead dispositions the giant hand-built percentage-overflow vector as outside
+the runtime retained population: 16 candidates x64 receivers x1000 milliweight
+per key, and at most five neighborhood keys, keep even share numerators within
+32-bit integer range. This patch repairs model-count accumulation and nonfinite
+weights, not arbitrary fabricated snapshot counts or runtime cap policy. Existing
+duplicate mode/alphabet and dimension validation is preserved, with no extra
+text-format cleanup or model tuning. SNR presence/domain changes stay in B2.2.
+
+Design: reject nonfinite parsed reliability before the parse-error skip path
+(numeric range overflow returns infinity plus an error), retaining unrelated
+malformed-line skipping and finite clamping. Check every raw edge's finiteness
+and strict ordering; accumulate each substitution row/deletion/insertion total
+with a nonnegative checked addition at load time. Reject a selected nonfinite
+receiver-map value before conversion or fallback, including invalid mode overrides
+with valid fallback entries. Loaded maps/models remain immutable; no new retained
+state is needed.
+
+Raw active reliability floors and confusion weights also need finiteness checks
+before clamps. The direct resolver's existing pointer-returning API can preserve
+its contract while refusing evidence under invalid active weight parameters.
+A missing model makes its weight unused. Live startup checks those scalar inputs
+when it will construct a resolver; replay always constructs one. YAML already
+rejects nonfinite scalar floats before defaults. Preserve finite sign/clamp
+semantics and unused direct parameters rather than mechanically imposing one
+global-enable predicate on all consumers. No shared validator abstraction or
+constructor-signature change is needed.
+
+Contextual design/Go review found no demonstrated ordering defect in the finite
+positive equal-support blend: its raw-score fallback resolves rounded/overflowed
+ties. Leave that accepted-input calculation unchanged; guard nonfinite weights
+before it. This is engineering review, distinct from the independent oracle.
+
+Live model errors propagate through `initializeReferenceData` before refresher,
+observability, resolver, history or output ownership. Earlier ULS/Canadian/logging
+resources remain owned by existing deferred close. Regressions must show error
+propagation and deterministic cancellation/join/file-close behavior; do not claim
+every CTY/solar loop is joined where only cancellation was inspected. The offline
+evaluator must exit on invalid assets before producing evaluation artifacts;
+its existing output-directory creation remains unchanged.
+
+The postapproval falsifiability matrix includes every nonfinite weight class,
+numeric parse overflow versus unrelated syntax skips, negatives hidden by positive
+model totals, each sum class at exact MaxInt64/overflow, raw nonfinite first/last
+edges that standard JSON cannot encode, active/unused raw parameters and selected
+mode overrides. Startup/replay checks precede ownership/scratch effects. Actual
+offline-main tests need otherwise valid tiny input, not another failure that would
+make both versions exit unsuccessfully. Delivered checks must expose invalid
+receiver corroboration with independently expected identity/percentage, plus the
+valid unequal-weight repeated-bucket control and original peer fields.
+
+Select full ordinary, all analyzers, full race for the startup/failure ownership
+surface, and connected ordinary/race. Concurrent read-only model/map/publication
+checks use bounded joined readers; no test mutates supplied immutable maps.
+
+Baseline RED was captured before the relevant production mutations:
+
+| Surface | Actual defective result | Capture |
+| --- | --- | --- |
+| Direct resolver/loaders | Infinite selected receiver accepted; invalid active scalars accepted; negative counts, nonfinite raw edges and overflowing totals accepted | `.tmp/b21-spot-baseline-red.log` |
+| Delivered output | +Inf corroboration changed A to B; normal/DIAG TCP, ring and reopened archive carried B with C glyph and 66% instead of retained A with P glyph and 50%; original PC61 stayed A | `.tmp/b21-cluster-baseline-red-final.log` |
+| Live initialization | Configured invalid assets/scalars did not propagate startup failure before downstream ownership | Same cluster capture |
+| Replay | Invalid numeric assets could replace history scratch/create owners; existing parser errors lacked the responsible asset key; raw invalid parameters were hidden by a later asset failure | `.tmp/b21-tools-baseline-red.log` |
+| Actual offline evaluator main | Invalid assets exited 0 and produced all four evaluation artifacts; missing/malformed assets warned and continued | `.tmp/b21-reveng-baseline-red-final.log` |
+
+The separate baseline positive-only evaluator run passed
+(`.tmp/b21-reveng-baseline-positive.log`): valid private assets, one consumed CW
+row, one parsed positive label and four nonempty artifacts. Its first capture
+was discarded because empty fixture paths violated existing YAML nonempty
+requirements before model loading. An initial cluster regex selected no tests
+and is also discarded. A repeated-bucket positive fixture originally regressed
+the event clock between buckets; it now advances monotonically. Those setup
+failures do not count as numerical counterexamples. Windows quoted-path checks
+compare the exact quoted path rather than expecting unescaped backslashes.
+
+Implementation maps B2.1 to `spot/reliability.go` (finite parse boundary),
+`spot/confusion_model.go` (edges/checked counts), `spot/signal_resolver.go`
+(direct admission/active parameters), `internal/cluster/main_runtime.go`
+(early fatal propagation), and both offline consumers' startup paths. New
+numerical tests cover loader/direct/constructor/output boundaries; the public
+loader fuzzer bounds each body to 4096 bytes and rejects successful nonfinite
+maps. Its literal finite control prevents a reject-all implementation passing.
+
+The shutdown test uses the actual earlier ULS/Canadian completion channels with
+controlled completion tails and checks both release orders, log openness while
+either tail is held, and closure afterward. Review caught that one release order
+alone could miss an omitted ULS join; it was corrected. No CTY/solar join claim
+is made. The existing larger model builder/startup/tool files remain cohesive
+linear ownership/validation entry points; this bounded change adds no broad
+split/refactor. New test files remain below 500 lines.
+
+Support impact is material startup/confidence troubleshooting: update the spot
+contract, replay guide, confidence/startup cards, route index and comment-only
+pipeline guidance. ADR-0290 records the durable invalid-asset failure decision.
+No model calibration, evidence cap, percentage formula, SNR policy or format
+change is included here.
+
+Final validation passed using saved executable paths, with every test runner
+serialized through the existing lock:
+
+| Check | Observed result | Evidence |
+| --- | --- | --- |
+| Focused numerical checks in spot, cluster and both tools | Pass | `.tmp/b21-targeted-final.log` |
+| Final two-order shutdown synchronization regression | Pass after its final test-only barrier refinement | `.tmp/b21-close-targeted-final.log` |
+| Full ordinary lane | 70 packages pass; the affected shutdown check was rerun after the barrier refinement | `.tmp/b21-ordinary-final.log` |
+| Full race lane on final tests | 70 packages pass | `.tmp/b21-race-final.log` |
+| Vet, Staticcheck, lint | All pass; lint reports zero issues | `.tmp/b21-vet-final.log`, `.tmp/b21-staticcheck-final.log`, `.tmp/b21-lint-final.log` |
+| Public reliability loader fuzzing | 20-second budget, 909 executions, pass | `.tmp/b21-fuzz-final.log` |
+| Connected CustomSCP ordinary/race | Both pass with real producer-to-consumer database handoff | `.tmp/b21-connected-ordinary-final.log`, `.tmp/b21-connected-race-final.log` |
+| Local support smoke and SA006 retrieval | Pass | `.tmp/b21-support-smoke-final.log`, `.tmp/b21-support-retrieval-final.log` |
+| Comment-only YAML validation | 20 headers pass; configuration tokens unchanged | `.tmp/b21-yaml-final.log` |
+
+Connected handoff IDs are `17b286331672478bb0bf38d903f7d417` (ordinary) and
+`3b14d05d93cc461c952f1f84d15de85a` (race). The fuzzer checks the successful-map
+invariant; explicit unit tests establish rejection rather than silent skipping
+of nonfinite inputs. It does not establish complete parser correctness.
+
+Fresh lead diff/quality verification found no unresolved material finding.
+Contextual engineering review was separate from the actual independent numerical
+oracle. Maps, crawler headers and whitespace are checked at staging. No firewall
+rules, listener executable paths, external feeds, push or deployment changed.

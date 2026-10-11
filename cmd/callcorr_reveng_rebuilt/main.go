@@ -302,7 +302,7 @@ func main() {
 	var confusionModel *spot.ConfusionModel
 	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFile); relPath != "" {
 		if rel, n, loadErr := spot.LoadSpotterReliability(relPath); loadErr != nil {
-			log.Printf("Warning: failed to load spotter reliability from %s: %v", relPath, loadErr)
+			log.Fatalf("call_correction.spotter_reliability_file invalid %s: %v", relPath, loadErr)
 		} else {
 			spotterReliability = rel
 			log.Printf("Loaded %d spotter reliability weights from %s", n, relPath)
@@ -310,7 +310,7 @@ func main() {
 	}
 	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFileCW); relPath != "" {
 		if rel, n, loadErr := spot.LoadSpotterReliability(relPath); loadErr != nil {
-			log.Printf("Warning: failed to load CW spotter reliability from %s: %v", relPath, loadErr)
+			log.Fatalf("call_correction.spotter_reliability_file_cw invalid %s: %v", relPath, loadErr)
 		} else {
 			spotterReliabilityCW = rel
 			log.Printf("Loaded %d CW spotter reliability weights from %s", n, relPath)
@@ -318,7 +318,7 @@ func main() {
 	}
 	if relPath := strings.TrimSpace(cfg.CallCorrection.SpotterReliabilityFileRTTY); relPath != "" {
 		if rel, n, loadErr := spot.LoadSpotterReliability(relPath); loadErr != nil {
-			log.Printf("Warning: failed to load RTTY spotter reliability from %s: %v", relPath, loadErr)
+			log.Fatalf("call_correction.spotter_reliability_file_rtty invalid %s: %v", relPath, loadErr)
 		} else {
 			spotterReliabilityRTTY = rel
 			log.Printf("Loaded %d RTTY spotter reliability weights from %s", n, relPath)
@@ -327,9 +327,9 @@ func main() {
 	if cfg.CallCorrection.ConfusionModelEnabled {
 		modelPath := strings.TrimSpace(cfg.CallCorrection.ConfusionModelFile)
 		if modelPath == "" {
-			log.Printf("Warning: call correction confusion model enabled but confusion_model_file is empty")
+			log.Fatal("call_correction.confusion_model_file is empty while call_correction.confusion_model_enabled=true")
 		} else if loaded, loadErr := spot.LoadConfusionModel(modelPath); loadErr != nil {
-			log.Printf("Warning: failed to load confusion model from %s: %v", modelPath, loadErr)
+			log.Fatalf("call_correction.confusion_model_file invalid %s: %v", modelPath, loadErr)
 		} else {
 			confusionModel = loaded
 			log.Printf("Loaded call correction confusion model from %s", modelPath)

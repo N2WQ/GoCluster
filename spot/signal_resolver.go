@@ -176,6 +176,7 @@ type SignalResolverConfig struct {
 	ConfusionModel             *ConfusionModel
 	ConfusionWeight            float64
 	minSpotterReliabilityMilli int
+	invalidWeightParameters    bool
 }
 
 // SignalResolver performs signal-level shadow resolution from pre-correction evidence.
@@ -955,6 +956,11 @@ func normalizeSignalResolverConfig(cfg SignalResolverConfig) SignalResolverConfi
 	if cfg.FreqGuardRunnerUpRatio <= 0 {
 		cfg.FreqGuardRunnerUpRatio = defaultSignalResolverFreqGuardRunnerUpRatio
 	}
+	// Preserve the constructor API while refusing evidence under invalid active
+	// raw parameters. Check before finite clamps hide infinities; a missing model
+	// makes its weight unused. No invalid float may reach integer conversion.
+	cfg.invalidWeightParameters = math.IsNaN(cfg.MinSpotterReliability) || math.IsInf(cfg.MinSpotterReliability, 0) ||
+		(cfg.ConfusionModel != nil && (math.IsNaN(cfg.ConfusionWeight) || math.IsInf(cfg.ConfusionWeight, 0)))
 	if cfg.MinSpotterReliability < 0 {
 		cfg.MinSpotterReliability = 0
 	}
@@ -964,7 +970,9 @@ func normalizeSignalResolverConfig(cfg SignalResolverConfig) SignalResolverConfi
 	if cfg.ConfusionWeight < 0 {
 		cfg.ConfusionWeight = 0
 	}
-	cfg.minSpotterReliabilityMilli = reliabilityToMilli(cfg.MinSpotterReliability)
+	if !cfg.invalidWeightParameters {
+		cfg.minSpotterReliabilityMilli = reliabilityToMilli(cfg.MinSpotterReliability)
+	}
 	cfg.FamilyPolicy = normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
 	return cfg
 }
@@ -1007,7 +1015,7 @@ func normalizeResolverEvidence(e ResolverEvidence) (ResolverEvidence, bool) {
 }
 
 func applyResolverConfusionTieBreak(ranked []rankedResolverCandidate, mode string, model *ConfusionModel, weight float64, workspace *confusionAlignmentWorkspace) {
-	if len(ranked) < 2 || model == nil || weight <= 0 {
+	if len(ranked) < 2 || model == nil || weight <= 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {
 		return
 	}
 	tieEnd := 1
@@ -1232,7 +1240,15 @@ func chooseResolverReporterEviction(reporters map[string]resolverReporterObserva
 }
 
 func resolverSpotterWeightMilli(cfg SignalResolverConfig, mode string, reporter string) (int, bool) {
+	if cfg.invalidWeightParameters {
+		return 0, false
+	}
 	weight := reliabilityForMode(cfg.SpotterReliability, cfg.SpotterReliabilityCW, cfg.SpotterReliabilityRTTY, mode, reporter)
+	// A present invalid mode override is a refusal, not an absent entry eligible
+	// for global fallback. Floor zero must not admit a substituted zero weight.
+	if math.IsNaN(weight) || math.IsInf(weight, 0) {
+		return 0, false
+	}
 	weightMilli := reliabilityToMilli(weight)
 	if weightMilli < cfg.minSpotterReliabilityMilli {
 		return 0, false

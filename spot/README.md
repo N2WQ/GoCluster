@@ -65,6 +65,33 @@ The strict floating-point threshold has no tolerance: nominal boundary values
 can differ slightly by band. See
 [ADR-0021](../docs/decisions/ADR-0021-call-correction-ambiguity-guard-and-quality-rail.md).
 
+### Numerical inputs and configured assets
+
+Reliability files preserve finite clamping to 0..1 and existing unrelated
+malformed-line skipping. NaN, infinity and numeric parsing overflow invalidate
+the asset. A direct resolver also refuses a receiver whose selected weight is
+nonfinite; an invalid present mode override cannot use the global fallback.
+
+Confusion models require finite strictly ascending SNR edges, nonnegative
+counts and representable int64 substitution-row/deletion/insertion totals.
+Valid finite scores retain the existing add-one arithmetic and ranking. Large
+representable counts can still lose integer precision when converted to float64.
+These scores are ranking potentials, not full observation probabilities.
+
+Live startup, `rbn_replay` and `callcorr_reveng_rebuilt` fail on invalid applicable
+configured assets. Every nonblank reliability path is attempted, including when
+global correction is disabled. The model's own enabled flag controls loading;
+weight zero disables its ranking effect, but still requires a valid enabled
+asset. A disabled model ignores its path. Existing YAML required/nonempty keys
+remain in force. Errors name the responsible key and path; they no longer quietly
+substitute unit weights or disable an enabled model. Active raw numerical floors
+and model weights are checked before clamps, while unused model weights remain
+unused. Borrowed reliability maps must remain immutable while a resolver uses
+them. See [ADR-0290](../docs/decisions/ADR-0290-correction-numerical-asset-integrity.md).
+
+These checks establish input integrity. They do not establish training validity,
+field accuracy or calibrated probabilities.
+
 ### The `S` floor
 
 `S` is not produced by `FormatConfidence`.

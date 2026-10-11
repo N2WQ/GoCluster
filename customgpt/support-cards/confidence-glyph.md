@@ -21,6 +21,11 @@ not infer meanings from other cluster software.
   buckets do not add receivers; losing candidates still contribute dissent.
 - Support shares are not calibrated probabilities. Current key/window evidence
   does not establish that receivers heard the same transmission episode.
+- Invalid applicable configured reliability/model assets fail startup or offline
+  evaluation with the responsible key/path. Nonfinite weights, negative model
+  counts, invalid edges and overflowing totals are refused. Weight zero still
+  requires a valid enabled model; disabled models ignore their path. Valid finite
+  inputs retain existing clamps/ranking, without proving scientific validity.
 - Percentages describe the emitted call. A rejected candidate leaves `B` and
   the retained call's own weighted share; no eligible support displays `--%`
   in DIAG CONF. Accepted `C` output carries the replacement's share.

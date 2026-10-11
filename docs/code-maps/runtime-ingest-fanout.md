@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `5c798af809c145c4`
+- Source fingerprint: `a0a90e1e26110f01`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 99 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 101 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 37 | 42 |
+| `dxcluster/spot` | `spot` | 37 | 45 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -166,6 +166,8 @@ Test files:
 - `internal/cluster/confidence_attribution_delivery_test.go`
 - `internal/cluster/correction_ambiguity_delivery_test.go`
 - `internal/cluster/correction_evidence_delivery_test.go`
+- `internal/cluster/correction_numeric_delivery_test.go`
+- `internal/cluster/correction_numeric_runtime_test.go`
 - `internal/cluster/custom_scp_capacity_delivery_test.go`
 - `internal/cluster/custom_scp_consumer_delivery_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
@@ -530,7 +532,10 @@ Test files:
 - `spot/iaru_region_test.go`
 - `spot/mode_infer_test.go`
 - `spot/mode_region_test.go`
+- `spot/numerical_integrity_resolver_test.go`
+- `spot/numerical_integrity_test.go`
 - `spot/recent_band_test.go`
+- `spot/reliability_integrity_fuzz_test.go`
 - `spot/resolver_ambiguity_population_test.go`
 - `spot/resolver_evidence_test.go`
 - `spot/resolver_fresh_projection_bench_test.go`
@@ -703,6 +708,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0290](docs/decisions/ADR-0290-correction-numerical-asset-integrity.md) | Accepted | 2026-10-11 | reliability, confusion model, startup, replay | `path:spot` |
 | [ADR-0287](docs/decisions/ADR-0287-independent-historical-family-qualification.md) | Accepted | 2026-10-11 | custom_scp, historical family floor | `path:internal/cluster, path:spot` |
 | [ADR-0286](docs/decisions/ADR-0286-consumer-specific-historical-requirements.md) | Accepted | 2026-10-11 | custom_scp, resolver/stabilizer isolation, replay | `path:internal/cluster, path:spot` |
 | [ADR-0285](docs/decisions/ADR-0285-individual-historical-receiver-freshness.md) | Accepted | 2026-10-11 | custom_scp, historical qualification, receiver/cell accounting | `path:internal/cluster, path:spot` |

@@ -89,8 +89,11 @@ func buildConfusionModel(raw confusionModelFile) (*ConfusionModel, error) {
 	if len(raw.SNREdges) < 2 {
 		return nil, fmt.Errorf("confusion model: snr_band_edges must contain at least 2 values")
 	}
-	for i := 0; i < len(raw.SNREdges)-1; i++ {
-		if raw.SNREdges[i] >= raw.SNREdges[i+1] {
+	for i, edge := range raw.SNREdges {
+		if math.IsNaN(edge) || math.IsInf(edge, 0) {
+			return nil, fmt.Errorf("confusion model: snr_band_edges[%d] must be finite", i)
+		}
+		if i > 0 && raw.SNREdges[i-1] >= edge {
 			return nil, fmt.Errorf("confusion model: snr_band_edges must be strictly ascending")
 		}
 	}
@@ -167,16 +170,21 @@ func buildConfusionModel(raw confusionModelFile) (*ConfusionModel, error) {
 		for b := 0; b < bandCount; b++ {
 			subRowSums[m][b] = make([]int64, alphaCount)
 			for t := 0; t < alphaCount; t++ {
-				var rowSum int64
-				for o := 0; o < alphaCount; o++ {
-					rowSum += raw.SubCounts[m][b][t][o]
+				rowSum, err := sumConfusionCounts(raw.SubCounts[m][b][t])
+				if err != nil {
+					return nil, fmt.Errorf("confusion model: sub_counts (mode=%d band=%d row=%d): %w", m, b, t, err)
 				}
 				subRowSums[m][b][t] = rowSum
 			}
-			for t := 0; t < alphaCount; t++ {
-				delSums[m][b] += raw.DelCounts[m][b][t]
-				insSums[m][b] += raw.InsCounts[m][b][t]
+			delSum, err := sumConfusionCounts(raw.DelCounts[m][b])
+			if err != nil {
+				return nil, fmt.Errorf("confusion model: del_counts (mode=%d band=%d): %w", m, b, err)
 			}
+			insSum, err := sumConfusionCounts(raw.InsCounts[m][b])
+			if err != nil {
+				return nil, fmt.Errorf("confusion model: ins_counts (mode=%d band=%d): %w", m, b, err)
+			}
+			delSums[m][b], insSums[m][b] = delSum, insSum
 		}
 	}
 
@@ -195,6 +203,23 @@ func buildConfusionModel(raw confusionModelFile) (*ConfusionModel, error) {
 		delSums:     delSums,
 		insSums:     insSums,
 	}, nil
+}
+
+// sumConfusionCounts validates individual counts before checked accumulation.
+// A nonnegative total alone cannot detect a negative count hidden by others.
+// This load-time check preserves immutable, finite add-one scoring inputs.
+func sumConfusionCounts(counts []int64) (int64, error) {
+	var total int64
+	for i, count := range counts {
+		if count < 0 {
+			return 0, fmt.Errorf("count[%d] must be nonnegative", i)
+		}
+		if count > math.MaxInt64-total {
+			return 0, fmt.Errorf("count total overflows int64 at index %d", i)
+		}
+		total += count
+	}
+	return total, nil
 }
 
 // ScoreCandidate returns a log-likelihood-style score for observing `observed`

@@ -44,7 +44,7 @@ func loadSpotterReliability(cfg config.CallCorrectionConfig) (base spot.SpotterR
 		}
 		rel, _, loadErr := spot.LoadSpotterReliability(relPath)
 		if loadErr != nil {
-			return nil, nil, nil, loadErr
+			return nil, nil, nil, fmt.Errorf("call_correction.spotter_reliability_file invalid %s: %w", relPath, loadErr)
 		}
 		base = rel
 	}
@@ -54,7 +54,7 @@ func loadSpotterReliability(cfg config.CallCorrectionConfig) (base spot.SpotterR
 		}
 		rel, _, loadErr := spot.LoadSpotterReliability(relPath)
 		if loadErr != nil {
-			return nil, nil, nil, loadErr
+			return nil, nil, nil, fmt.Errorf("call_correction.spotter_reliability_file_cw invalid %s: %w", relPath, loadErr)
 		}
 		cw = rel
 	}
@@ -64,7 +64,7 @@ func loadSpotterReliability(cfg config.CallCorrectionConfig) (base spot.SpotterR
 		}
 		rel, _, loadErr := spot.LoadSpotterReliability(relPath)
 		if loadErr != nil {
-			return nil, nil, nil, loadErr
+			return nil, nil, nil, fmt.Errorf("call_correction.spotter_reliability_file_rtty invalid %s: %w", relPath, loadErr)
 		}
 		rtty = rel
 	}
@@ -81,14 +81,14 @@ func loadConfusionModel(cfg config.CallCorrectionConfig) (*spot.ConfusionModel, 
 	}
 	modelPath := strings.TrimSpace(cfg.ConfusionModelFile)
 	if modelPath == "" {
-		return nil, errors.New("call_correction.confusion_model_enabled=true but confusion_model_file is empty")
+		return nil, errors.New("call_correction.confusion_model_file is empty while call_correction.confusion_model_enabled=true")
 	}
 	if _, err := os.Stat(modelPath); err != nil {
 		return nil, fmt.Errorf("call_correction.confusion_model_file missing/unreadable %s: %w", modelPath, err)
 	}
 	loaded, err := spot.LoadConfusionModel(modelPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("call_correction.confusion_model_file invalid %s: %w", modelPath, err)
 	}
 	return loaded, nil
 }
