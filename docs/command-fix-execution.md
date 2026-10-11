@@ -1332,8 +1332,10 @@ two joint-grid prerequisites and the joint-cell veto, retaining all other
 matching logic. `filter/nearby_endpoint_test.go` qualifies symmetric missing,
 invalid and distant endpoints on 20m/160m/80m/60m, fine-cache precedence, unknown
 band/user cells, unrelated mode refusals and zero matching allocations on reused
-fine/coarse controls. Its joined private-table child proves eight available-side
-matches while the opposite valid grid cannot map. The test refuses a missing
+fine/coarse controls on the native Windows pure-Go H3 backend. The v4 R2
+follow-up below corrects the portability of this assertion. Its joined
+private-table child proves eight available-side matches while the opposite
+valid grid cannot map. The test refuses a missing
 execution marker or failed child. `telnet/nearby_endpoint_test.go` qualifies 40
 literal live/history consumer cases and detached history after opposite live
 mode edits. The source/test review corrected that edit stimulus before complete
@@ -4909,3 +4911,142 @@ disposition index agrees with all 22 current utility entrypoints and the literal
 29-family inventory. This supplies completed-work evidence while 28a/32 await
 policy and implementation. Checkpoint 35's final reconciliation and the full
 command-fix program remain open; the completed count stays 43 of 46.
+
+## V4 review follow-ups
+
+Authority: `Approved v4`, with explicit branch creation/switching and implementation
+on `fix_commands_review` from `fix_commands` at `4d711a4`. The
+[approved ledger](command-fix-scope-ledger-v4.md) contains the detailed test matrix.
+These follow-ups do not close 28a, 32 or final checkpoint 35.
+
+### R1 - DX comment guidance
+
+HELP DX and the command/telnet/operator guides now enumerate the existing ASCII
+comment alphabet and whole edited command-byte limit, excluding line endings.
+Only HELP wording changes in production Go; ingress and posting remain unchanged.
+The literal reader tests cover every printable byte through both actual codecs
+and both DX orders, representative UTF-8 refusals, default/non-default byte
+limits and editing/recovery. The checkout driver checks both dialects with
+accepted archive identities and refused labels absent after a FIFO archive
+barrier, and keeps required-case/order qualification strict (138 cases).
+
+Observed targeted commands/telnet checks passed (`v4-r1-targeted.log`), offline
+runner checks passed all 85 (`v4-r1-offline.log`), and the ordinary checkout passed
+138 cases across six profiles/12 children with zero wire/cleanup errors
+(`20261010-201835-38093adf/results.json`). All paths are under `.tmp/command-fixes`.
+The candidate build has its captured source manifest; this does not establish
+production pipeline or independent compiler qualification.
+
+Initial checker failures required updating both literal case totals, serializing
+tests that own the same runner lock, and pausing the archive observer to prevent
+unsolicited live output from interleaving strict reply checks. The corrected
+checks passed; no runtime repair was needed. Lead review and a bounded informed
+separate-context reader/runner review found no material gap. This is technical
+test review, not independent scientific validation.
+
+Support-agent documentation impact: Required and implemented in the connectivity
+card and authoritative command guides. TSR-0066 records the wording/ingress cause;
+no durable architecture decision changed and no new ADR is required. Complete
+final-state qualification and map generation follow R2/R3.
+
+### R2 - Portable NEARBY allocation guard
+
+The test-only guard now measures direct public H3 conversions for literal
+fixture grids, separately from Matches and its private endpoint helper. Eight
+fine cases and five cases on each of 160m/80m/60m cover both orientations,
+uncached/partly cached/fully cached fine endpoints and coarse cache independence.
+Existing endpoint, mapping-miss and unrelated-filter controls remain intact.
+Every measured case also detects an intentionally escaping extra allocation.
+Matcher, cache, H3 implementation, dependencies and runtime semantics are unchanged.
+
+Observed native Windows targeted checks passed with CGO_ENABLED=1 and 0
+(`v4-r2-targeted.log`, `v4-r2-windows-cgo0.log`). Windows selects the pure-Go
+backend in both modes. Linux Go 1.27.1 targeted NEARBY checks passed with both
+modes in an isolated export of staged tree
+`f60445396bdbb045fd038ff03822be5f20c96bf6` (`v4-r2-linux.log`). Both Linux runs
+executed all 23 named allocation cases without skips. Native h3-go conversion
+allowances were 2 or 4 allocations where conversion was required, with matcher
+cost equal to that allowance; cached fine cases were zero. The pure-Go run
+measured zero throughout. The injected control exceeded the allowance by one
+in every case. These measurements establish this bounded guard, not latency,
+backend cost stability, production capacity or geographic accuracy.
+
+Lead final source/test review found no production change or material test gap.
+TSR-0054 and the original checkpoint 08 wording distinguish backend-specific
+history from this portable qualification. No durable decision changed.
+
+### R3 - Portable blocked-parent output assertions
+
+Only prop_report tests changed. The two regular-file-parent cases accept
+errors matching absence or ENOTDIR; ordinary absent-output checks retain
+IsNotExist. Nine literal classification controls reject nil, permission, I/O
+and invalid-argument errors. Actual-main tests verify the unchanged regular
+blocker and its original bytes, nonzero causal failure and no success stdout.
+JSON-parent failure has neither output; report-parent failure retains the
+independently parsed earlier JSON and no Markdown. Existing success,
+directory-parent, hard-input, closed-output and optional local-request controls
+remain intact. Production output order, status and fallback are unchanged.
+
+Observed native Windows complete prop_report checks passed
+(`v4-r3-targeted.log`). The full affected-package Linux suites (commands,
+telnet, filter and cmd/prop_report) passed on Go 1.27.1 with CGO_ENABLED=1 and 0
+from isolated staged tree `54bc4c13c2f373ca5418055e285b0db51c95d7f9`.
+`v4-final-linux.log` and `v4-final-linux-qualification.json` reconcile all eight
+package executions, all 23 allocation cases per mode, 380 DX ASCII cases and
+12 DX boundary cases per mode, and all ten prop_report hard outcomes/nine
+classification controls per mode. These are actual local fixtures; no external
+LLM or production service was used. Artifacts are under `.tmp/command-fixes`.
+
+Lead final review confirmed that the error allowance is limited to the intended
+two cases and that the saved JSON/status/order witnesses remain strict.
+TSR-0073 records the cross-platform assertion cause. No durable decision changed;
+existing support routing to that record remains applicable.
+
+### Final selected lane and closeout
+
+The three implementation patches are separate commits:
+
+| Item | Commit | Implementation and falsifying evidence |
+|---|---|---|
+| R1 | `e5b48ed` | HELP DX, guides/support card, literal reader/wording tests and actual checkout archive/recovery checks |
+| R2 | `b6695d2` | Independent public-conversion allocation baseline, 23 semantic fixtures and extra-allocation controls on both backends |
+| R3 | `f3f6250` | Narrow blocked-child error classification, original-blocker witnesses and actual-main status/JSON/Markdown checks |
+
+The complete native Windows ordinary stable-path lane passed 70 unique
+packages: 53 test suites executed and 17 packages without tests build-checked.
+Root reconciled the full package inventory and all 1,217 unchanged Go/module
+hashes (`v4-final-windows.log`, `v4-final-windows-qualification.json`,
+`v4-final-source.json`). The affected-package Linux runs described above
+tested identical tracked Go/module content. Vet and Staticcheck exited zero;
+golangci-lint reported zero issues. Logs are `v4-final-vet.log`,
+`v4-final-staticcheck.log` and `v4-final-lint.log`. Tools were Go 1.27.1,
+Staticcheck 2026.2.1 and golangci-lint 2.14.0.
+
+Fresh offline runner/collector checks passed 85/29 tests
+(`v4-final-offline-runner.log`, `v4-final-offline-collector.log`). The final
+ordinary checkout run passed all 138 required cases across six profiles,
+with zero wire/cleanup errors and twelve joined, gracefully retired children
+(`20261010-203535-dcf96d3e/results.json`). Root reconciled exact case names and
+order, every PASS result, both new DX archive cases, source/config/binary
+identities, child execution/PASS markers and all retirement receipts
+(`v4-final-checkout-qualification.json`). The captured build commit was
+`f3f625044500b135e1ef55a7a2451bec99d13d11`; all 1,217 source hashes match the
+Windows lane snapshot and current files. Source digest:
+`674f6146d77de241ca4ddce61aedfcc6d481d820609a8ba736c074fab3e98fc5`.
+Artifacts are under `.tmp/command-fixes`. Parent pre/post-build manifests are
+provenance evidence; echoed child hashes are correlation, not an independent
+compiler audit. Private local fixtures do not qualify production load or model
+accuracy.
+
+The selected ordinary lane follows v4: production Go changed only HELP text;
+no runtime concurrency, parser, matcher, model or lifecycle implementation
+changed. No additional race or fuzz campaign was required. Lead-owned fresh
+final verification reviewed approved scope, test oracles, code/diff and claim
+limits; it is not independent scientific review. Support documentation and
+TSR-0054/0066/0073 are updated, with no durable decision or ADR change.
+Troubleshooting-record consistency and changed local Markdown links passed.
+Map generation/checking and direct final diff/whitespace review finish after
+this record; their observed result belongs to the closeout response.
+
+All three approved v4 fixes are implemented and qualified. They do not close
+the original v3 checkpoints 28a, 32 or final 35, which remain open.

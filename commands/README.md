@@ -84,6 +84,12 @@ syntax and the loaded supported values. See
 
 ## Manual DX Admission
 
+Comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _`.
+Other punctuation and non-ASCII characters are rejected before DX dispatch.
+The node's command byte limit applies to the whole edited command, excluding
+its line ending; the default is 128 bytes. Mode/report tokens may be parsed
+from the comment. See `HELP DX` for both supported argument orders.
+
 Plain decimal frequencies are in kHz. Before admission, the effective value is
 rounded to the nearest 10 Hz (0.01 kHz), using the same rounding as Spot
 construction, and checked for finiteness and the inclusive Spot bounds:

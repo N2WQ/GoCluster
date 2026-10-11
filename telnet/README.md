@@ -192,6 +192,11 @@ preserve interior spaces and punctuation. Quotes, commas, `*`, `?`, `ALL`, and
 COMMENT arguments permit printable ASCII punctuation specifically; other
 command and login character restrictions remain unchanged.
 
+Manual DX comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _`.
+Other punctuation and non-ASCII characters are rejected before posting. The
+whole edited DX command uses the node's command-byte limit (128 by default),
+excluding its line ending. Mode/report tokens may be parsed from the comment.
+
 Each list admits at most 32 retained entries, and each phrase contains 1-64
 printable ASCII bytes with at least one non-space character. The independent
 configured command-line ceiling still applies to the whole command. Invalid or

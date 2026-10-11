@@ -70,6 +70,24 @@ Tags: tools, CLI, exit-status, output, persistence
   Narrative fixtures use synthetic credentials and private loopback requests;
   they do not establish external LLM availability or report model validity.
 
+### V4 blocked-parent test portability
+
+The original prop_report output test used IsNotExist when a regular file was
+the requested output's parent. Linux reports ENOTDIR for this child lookup;
+Windows commonly reports an absent path. That difference failed the assertion
+after the command had already produced its intended nonzero status.
+
+Only the two regular-file-parent cases now admit absence or ENOTDIR. Literal
+error controls reject a successful lookup, permission failure, I/O failure and
+invalid-argument error. Both actual-main cases require the blocker to remain a
+regular file with unchanged bytes. JSON-parent failure produces neither output;
+report-parent failure retains independently parsed JSON and no Markdown, as
+required by the existing write order. Other absence assertions stay strict.
+
+The complete local prop_report suite passed on native Windows and Linux with
+cgo enabled and disabled; the execution record links the observed artifacts.
+No production command, output ordering, fallback or model contract changed.
+
 ## References
 - Issue(s): approved v3 operator-tool checkpoints.
 - PR(s): none.

@@ -2,12 +2,44 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
+
+// A child of a regular file cannot exist. Windows commonly reports absence;
+// Unix reports ENOTDIR. This allowance belongs only to the blocked-parent cases.
+func propBlockedChildAbsent(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
+
+func TestPropBlockedChildAbsenceErrors(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"absent", os.ErrNotExist, true},
+		{"not-directory", syscall.ENOTDIR, true},
+		{"stat-absent", &os.PathError{Op: "stat", Path: "blocked/child", Err: os.ErrNotExist}, true},
+		{"stat-not-directory", &os.PathError{Op: "stat", Path: "blocked/child", Err: syscall.ENOTDIR}, true},
+		{"successful-lookup", nil, false},
+		{"permission", os.ErrPermission, false},
+		{"stat-permission", &os.PathError{Op: "stat", Path: "blocked/child", Err: syscall.EACCES}, false},
+		{"io-failure", &os.PathError{Op: "stat", Path: "blocked/child", Err: syscall.EIO}, false},
+		{"invalid", os.ErrInvalid, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := propBlockedChildAbsent(tc.err); got != tc.want {
+				t.Fatalf("blocked child error %v classified absent=%v, want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
 
 func assertPropJSON(t *testing.T, f propFixture) []byte {
 	t.Helper()
@@ -41,6 +73,8 @@ func TestPropHardFailureOutcomes(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			f := newPropFixture(t)
 			mode, expected, diagnostic := "run", 1, "prop report generation failed"
+			var blocked string
+			const blockerContents = "not a directory"
 			switch kind {
 			case "success":
 				expected, diagnostic = 0, ""
@@ -56,8 +90,8 @@ func TestPropHardFailureOutcomes(t *testing.T) {
 				}
 				diagnostic = "token too long"
 			case "json-parent", "report-parent":
-				blocked := filepath.Join(t.TempDir(), "blocked")
-				if err := os.WriteFile(blocked, []byte("not a directory"), 0o600); err != nil {
+				blocked = filepath.Join(t.TempDir(), "blocked")
+				if err := os.WriteFile(blocked, []byte(blockerContents), 0o600); err != nil {
 					t.Fatal(err)
 				}
 				if kind == "json-parent" {
@@ -87,11 +121,26 @@ func TestPropHardFailureOutcomes(t *testing.T) {
 			if code != expected || diagnostic != "" && !strings.Contains(diag, diagnostic) {
 				t.Fatalf("status=%d stdout=%q stderr=%q; want %d/%q", code, out, diag, expected, diagnostic)
 			}
+			if blocked != "" {
+				info, err := os.Lstat(blocked)
+				if err != nil || !info.Mode().IsRegular() {
+					t.Fatalf("output failure did not preserve regular blocker: %v", err)
+				}
+				body, err := os.ReadFile(blocked)
+				if err != nil || string(body) != blockerContents {
+					t.Fatalf("output failure changed blocker: %q / %v", body, err)
+				}
+			}
 			jsonSaved := kind == "success" || kind == "report-parent" || kind == "report-directory" || kind == "closed-output"
 			if jsonSaved {
 				assertPropJSON(t, f)
 			} else if kind != "json-directory" {
-				if _, err := os.Stat(f.json); !os.IsNotExist(err) {
+				_, err := os.Stat(f.json)
+				absent := os.IsNotExist(err)
+				if kind == "json-parent" {
+					absent = propBlockedChildAbsent(err)
+				}
+				if !absent {
 					t.Fatalf("unexpected early JSON output: %v", err)
 				}
 			}
@@ -101,7 +150,12 @@ func TestPropHardFailureOutcomes(t *testing.T) {
 					t.Fatalf("local report absent/changed: %s / %v", body, err)
 				}
 			} else if kind != "report-directory" {
-				if _, err := os.Stat(f.report); !os.IsNotExist(err) {
+				_, err := os.Stat(f.report)
+				absent := os.IsNotExist(err)
+				if kind == "report-parent" {
+					absent = propBlockedChildAbsent(err)
+				}
+				if !absent {
 					t.Fatalf("unexpected Markdown effect: %v", err)
 				}
 			}

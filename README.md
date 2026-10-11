@@ -112,6 +112,10 @@ DX 7001.0 K1ABC CW heard well
 Frequency is in **kHz**, so enter `7001.0` for 7.001 MHz. Replace the example
 with the station and frequency you actually heard. `HELP DX` explains the syntax.
 
+Comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _`.
+Other punctuation and non-ASCII characters are rejected. The entire edited
+command must fit the node's byte limit (128 by default), excluding its line ending.
+
 ## Filter Examples
 
 Filters let you choose which reports to see. Different categories work

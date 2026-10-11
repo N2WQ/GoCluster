@@ -53,6 +53,15 @@ These tests do not qualify production enrichment, a separate unpaused socket
 delivery stream, geographic model accuracy, or production load. The allocation
 guard is a bounded-cost check, not a comparative performance measurement.
 
+V4 portability follow-up: the original zero-total-allocation assertion qualified
+Windows' pure-Go backend, but Linux with cgo uses h3-go conversions that allocate.
+Measure the public conversions independently for explicit fixture grids and
+require matching to add no further allocations. Fully cached fine matching
+still requires zero; coarse matching derives both grids even when fine cache IDs
+exist. Positive/negative matching controls and an escaping-allocation control
+guard against a skipped matcher or a weakened measurement. This does not
+establish the backend's absolute allocation stability or production latency.
+
 ## Decision Disposition And Verification
 
 The [execution record](../command-fix-execution.md#checkpoint-08-independent-nearby-endpoints)

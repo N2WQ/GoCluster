@@ -42,6 +42,14 @@ DX help describes plain decimal frequencies, valid login and TEST prerequisites,
 optional shared station reputation and bounded queue outcomes. Spot queued
 confirms intake; processing and filtering still determine delivery.
 
+V4 review follow-up: the remaining "free text" DX comment promise was inaccurate.
+DX uses the restricted ASCII command alphabet, including taxonomy underscores;
+only recognized COMMENT phrases admit the wider printable alphabet. HELP now
+enumerates the DX characters and explains the whole-command byte limit (default
+128), excluding line endings. Literal alphabet/boundary checks use both actual
+codecs; checkout cases require accepted archive identities and refused labels
+absent after a queued processing barrier. Runtime admission is unchanged.
+
 ## Checker Boundaries
 
 Independent literal inventories check all 29 families and 73 mailing codes,
