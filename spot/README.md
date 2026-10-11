@@ -52,6 +52,14 @@ prove that all reports belong to the original transmission episode. Resolver
 receiver evidence is published immutably; temporal scoring retains compact
 tallies. See [ADR-0280](../docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md).
 
+An exact split remains protected through neighborhood and temporal selection.
+The narrow ambiguity guard uses the closest eligible cross-candidate frequency
+pair, with its other support, overlap and family conditions unchanged. Conflicting
+equal-time frequency metadata causes abstention until superseded or expired.
+The strict floating-point threshold has no tolerance: nominal boundary values
+can differ slightly by band. See
+[ADR-0021](../docs/decisions/ADR-0021-call-correction-ambiguity-guard-and-quality-rail.md).
+
 ### The `S` floor
 
 `S` is not produced by `FormatConfidence`.

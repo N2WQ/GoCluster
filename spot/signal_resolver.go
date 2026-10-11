@@ -792,8 +792,10 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	}
 	st.candidateRanksScratch = candidateRanksScratch[:0]
 
-	split := false
-	if hasRunner {
+	// Conflicting equal-time metadata cannot supply an invented witness. Its
+	// protected state survives compact temporal selection just like a split.
+	split := resolverEvidenceHasFrequencyConflict(snapshot.ReceiverEvidence())
+	if !split && hasRunner {
 		winnerIdentity := top.identity
 		runnerIdentity := runner.identity
 		related := false
@@ -802,11 +804,12 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		}
 		distance := correctionDistance(winnerIdentity, runnerIdentity, st.key.Mode, r.cfg.DistanceModelCW, r.cfg.DistanceModelRTTY)
 		overlap := timedReporterSetOverlapCount(top.reporters, runner.reporters)
-		split = shouldRejectAsAmbiguousMultiSignal(
+		winnerFrequency, runnerFrequency, witnessed := closestResolverFrequencyPair(snapshot.ReceiverEvidence(), top.call, runner.call)
+		split = witnessed && shouldRejectAsAmbiguousMultiSignal(
 			top.support,
 			runner.support,
-			top.lastFreqKHz,
-			runner.lastFreqKHz,
+			winnerFrequency,
+			runnerFrequency,
 			r.cfg.FreqGuardMinSeparationKHz,
 			r.cfg.FreqGuardRunnerUpRatio,
 			overlap,

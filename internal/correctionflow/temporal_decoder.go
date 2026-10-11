@@ -409,6 +409,11 @@ func selectionForTemporalWinner(base ResolverPrimarySelection, winner string) Re
 	if !base.SnapshotOK {
 		return base
 	}
+	if base.NeighborhoodSplit || base.Snapshot.State == spot.ResolverStateSplit {
+		base.Snapshot.State = spot.ResolverStateSplit
+		base.Snapshot.Winner = ""
+		return base
+	}
 	if winner == "" {
 		return base
 	}

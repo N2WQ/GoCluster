@@ -195,6 +195,12 @@ func SelectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 	exact, exactOK := resolver.Lookup(key)
 	selection.Snapshot = exact
 	selection.SnapshotOK = exactOK
+	// A qualifying exact split protects its own population. Neighboring bucket
+	// winners cannot discard that dissent; a later owner publication reevaluates
+	// protection when exact eligible evidence changes, so this is not a latch.
+	if exactOK && exact.State == spot.ResolverStateSplit {
+		return selection
+	}
 	if !cfg.ResolverNeighborhoodEnabled {
 		return selection
 	}

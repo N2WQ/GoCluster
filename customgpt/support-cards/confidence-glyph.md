@@ -21,6 +21,9 @@ not infer meanings from other cluster software.
   buckets do not add receivers; losing candidates still contribute dissent.
 - Support shares are not calibrated probabilities. Current key/window evidence
   does not establish that receivers heard the same transmission episode.
+- Split protection survives neighborhood and temporal selection. The narrow
+  guard uses the closest eligible frequency pair; conflicting equal-time
+  frequency metadata causes conservative abstention until superseded or expired.
 
 ## Must Avoid
 

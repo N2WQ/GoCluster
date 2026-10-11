@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `7fd74852b7f5c517`
+- Source fingerprint: `0146dcb4001bf770`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 81 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 26 | 82 |
 | `dxcluster/peer` | `peer` | 62 | 131 |
-| `dxcluster/spot` | `spot` | 35 | 38 |
+| `dxcluster/spot` | `spot` | 36 | 39 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -160,6 +160,7 @@ Source files:
 Test files:
 - `internal/cluster/archive_fanout_delivery_test.go`
 - `internal/cluster/canadian_state_test.go`
+- `internal/cluster/correction_ambiguity_delivery_test.go`
 - `internal/cluster/correction_evidence_delivery_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
@@ -468,6 +469,7 @@ Source files:
 - `spot/recent_band.go`
 - `spot/recent_support_store.go`
 - `spot/reliability.go`
+- `spot/resolver_ambiguity.go`
 - `spot/resolver_evidence.go`
 - `spot/self_spot.go`
 - `spot/signal_resolver.go`
@@ -506,6 +508,7 @@ Test files:
 - `spot/mode_infer_test.go`
 - `spot/mode_region_test.go`
 - `spot/recent_band_test.go`
+- `spot/resolver_ambiguity_population_test.go`
 - `spot/resolver_evidence_test.go`
 - `spot/self_spot_test.go`
 - `spot/signal_resolver_bench_test.go`

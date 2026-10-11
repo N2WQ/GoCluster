@@ -63,6 +63,26 @@ Tags: call-correction, ambiguity, quality-anchors, observability
   - Continue toward signal-level resolver + policy separation in later phases.
 
 ## Validation
+### 2026-10-10 resolver refinement
+
+The approved method batch preserves the narrow guard: the closest pair of
+eligible receiver frequencies from the two candidates must be strictly below
+the configured separation. The existing support, ratio, overlap, edit-distance
+and family conditions still apply. A distant later report cannot erase an
+otherwise qualifying close conflict. An outlier can consequently retain a
+split; wider signal association is deferred.
+
+Conflicting frequencies at the same newest receiver/candidate timestamp cause
+abstention until a newer observation supersedes them or they expire. Published
+exact splits bind neighborhood and temporal selectors. Changed evidence may
+legitimately clear protection; selector traversal alone cannot.
+
+The binary64 comparison is unchanged. Nominal 300 Hz separation can fall on
+different sides near 7 and 14 MHz because of representation error; this batch
+adds neither tolerance nor quantization. Current key/window membership does not
+prove a common transmission episode. Fresh release authority is a separate P3
+checkpoint. See [the execution record](../call-correction-method-execution.md).
+
 - Unit coverage added for:
   - ambiguous split rejection,
   - high-overlap non-rejection,

@@ -241,8 +241,8 @@ FT all-due retirement avoids stale-heap generation buildup; replay EOF explicit.
   analyzers, affected Linux and connected storage checks passed; no waiver.
 - P1: complete. Distinct accounting, metadata ownership, compact temporal
   retention and actual delivery regressions pass; full checkpoint passed on
-  the archive-repaired state. Local commit recorded in branch history.
-- P2: pending.
+  the archive-repaired state. Local commit `457bfd5`.
+- P2: complete; binding ambiguity and connected output checkpoint passed.
 - P3: pending.
 - P4: pending.
 - P5: pending.
@@ -368,3 +368,55 @@ checker and diff whitespace checks passed. Fresh lead verification and separate
 read-only Go quality review found no remaining P1 blocker; review refinements
 (third candidate, capped cost, fallback reset, lint) were implemented and checked.
 No waiver, production-load claim or accuracy claim. P2-P5 remain pending.
+
+### P2 ambiguity evidence
+
+Production mapping: `spot/resolver_ambiguity.go` scans immutable witnesses;
+`spot/signal_resolver.go` uses the closest candidate pair and equal-time conflict
+protection; `internal/correctionflow/shared.go` retains an exact split before
+neighborhood arbitration; `temporal_decoder.go` preserves exact and neighborhood
+protection. The pipeline YAML change is comment-only. ADR-0021, TSR-0002,
+spot guidance and the confidence support card explain the selected contract.
+
+Before implementation at `457bfd5`, existing-API overlay regressions reproduced
+report-order-dependent splits, unprotected equal-time conflicts, neighborhood
+erasure and temporal erasure. An initial missing-key fixture failure is not
+behavior evidence; `.tmp/call-correction/p2/red-unit-final.log` records the
+corrected behavioral counterexamples. Connected baseline outputs are recorded
+in `delivered-ambiguity-red.log`: A/C/100% for immediate/neighborhood/fallback
+paths, A/C/60% for exact temporal, and A/C/75% for conflicting metadata. These
+reach normal/DIAG TCP, actual PC61 receipt, sealed ring and reopened archive.
+The legitimate changed-population A/C/66% control already passed.
+
+Regressions now cover all 120 report permutations, a unique closest interior
+pair that endpoint representatives miss, support/ratio/overlap/family/distance
+rails, strict threshold and real stored binary64 boundary values, newer metadata
+supersession, inclusive-cutoff conflict expiry, and protection without a permanent
+latch. Selector tests include flag-only neighborhood protection. Seven connected
+delivery cases plus four scheduler cases verify unchanged protection, fresh owner
+resolution, real retry context, timeout suppression and queue-full fail-open.
+
+Targeted stable-path Windows ordinary and race checks passed. Full ordinary
+Windows passed 70 package builds; affected Linux ordinary/race passed `spot`,
+`internal/correctionflow`, `internal/cluster`, `cmd/rbn_replay` and
+`cmd/callcorr_reveng_rebuilt`. Vet, Staticcheck and golangci-lint exit 0 (zero lint
+issues). Full Windows race also passed 70 package builds (53 test packages,
+17 build-only); final ordinary/race runs cover the added interior-pair, flag-only
+and expiry controls. Connected CustomSCP ordinary/race passed with producer and
+consumer sharing actual databases, runs `0139a7ecdccc4ac28184db64d9c38158` and
+`8bda6eb37a724cc1bf83374f1150634f`.
+
+Separate read-only Go quality review found no production blocker; its suggested
+interior-pair, flag-only and expiry tests are included. Race-instrumented closest
+pair benchmarks measured 473-477 ns/op for 3x3 and 147652-148776 ns/op for 64x64,
+both 0 B/0 allocs. Ordinary measurements are 29.01-29.34 ns/op for 3x3 and
+6659-6782 ns/op for 64x64, both zero allocations. Lookup measured 45.37-66.98
+ns/op, zero allocations. Existing owner-evaluation benchmark measured
+14809-16435 ns/op (474-475 B, four allocations) versus P1's roughly 12.95 us
+median; this is an explicit bounded computation cost, not a performance win.
+Instrumentation and local microbenchmarks are not production latency.
+Codemap generate/check, TSR index/RCA checker, support-agent checks, YAML header
+checks and diff whitespace checks passed. Fresh lead diff verification found no
+remaining checkpoint blocker or waiver.
+P3 will address evidence that changes after temporal
+capture; this checkpoint does not claim fresh release authority.

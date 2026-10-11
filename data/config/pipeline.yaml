@@ -88,7 +88,7 @@ call_correction:
   # 4) Frequency guard and resolver neighborhood rails
   # Purpose: Prevent merging distinct nearby signals with comparable support.
   # ---------------------------------------------------------------------------
-  freq_guard_min_separation_khz: 0.3  # Skip corrections when winner/runner-up are separated by at least this kHz
+  freq_guard_min_separation_khz: 0.3  # Narrow ambiguity guard: closest eligible pair strictly below this kHz (other rails also apply)
   freq_guard_runnerup_ratio: 0.5      # Runner-up must have at least this fraction of winner supporters to block correction
   resolver_neighborhood_enabled: true  # Resolver-primary: compete adjacent resolver buckets before winner apply
   resolver_neighborhood_bucket_radius: 1 # Adjacent bucket radius for neighborhood competition (1 = +/-1 bucket)

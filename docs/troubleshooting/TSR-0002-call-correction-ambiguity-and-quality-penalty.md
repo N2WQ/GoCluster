@@ -74,6 +74,25 @@ Tags: call-correction, ambiguity, quality-anchors, deterministic-behavior
   - This changes correction behavior, rejection reasons, and quality-update semantics in a shared hot path and requires durable documentation.
 
 ## Decision Linkage
+### 2026-10-10 selector follow-up
+
+At the P1 checkpoint, permutations of the same five receiver observations
+changed the resolver split verdict. Neighborhood synthesis and temporal
+selection could also erase an exact split. Connected baseline regressions
+delivered A/C/100% through immediate, neighborhood-temporal and fallback paths,
+and A/C/60% through exact temporal selection, instead of protected B/P/40%.
+Equal-time frequency conflicts delivered A/C/75% instead of B/P/25%.
+These were checked on normal/DIAG TCP, actual PC61 receipt, sealed ring and
+reopened archive; the changed-evidence A/C/66% control passed.
+
+The repair evaluates the closest retained frequency pair, abstains on conflicting
+equal-time metadata, and carries split protection through selectors. Targeted
+ordinary/race regressions pass, including scheduler retry, timeout suppression,
+queue-full release, and legitimate changed-population recovery. Final lane
+results and scope limits are in
+[the execution record](../call-correction-method-execution.md). This establishes
+ambiguity integrity, not field accuracy or broader transmission association.
+
 - ADR created/updated:
   - Created `ADR-0021`.
 - Decision delta summary:
