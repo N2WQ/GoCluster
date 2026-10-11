@@ -1,3 +1,6 @@
+// File role: Drives the resolver's single owner synchronously for offline tools
+// and deterministic tests. Observation/query clocks remain separate from the
+// optional process-idle clock; do not combine this driver with Start ownership.
 package spot
 
 import (
@@ -44,6 +47,36 @@ func NewSignalResolverDriver(resolver *SignalResolver) (*SignalResolverDriver, e
 		resolver: resolver,
 		states:   make(map[ResolverSignalKey]*resolverKeyState, sizeHint),
 	}, nil
+}
+
+// SetProcessElapsed selects deterministic process-idle time without changing
+// Step/Sweep's observation clock. Select manual mode before the first admitted
+// owner receipt; subsequent advances are nonnegative and nondecreasing. Like
+// Drain/Step, this method requires the driver's single owner.
+func (d *SignalResolverDriver) SetProcessElapsed(elapsed time.Duration) error {
+	if d == nil || d.resolver == nil {
+		return errors.New("signal resolver driver: resolver is nil")
+	}
+	r := d.resolver
+	if r.started.Load() {
+		return errors.New("signal resolver driver: resolver already started")
+	}
+	if elapsed < 0 {
+		return errors.New("signal resolver driver: process elapsed must be nonnegative")
+	}
+	if !r.processClock.manual.Load() {
+		if r.ownerAdmitted.Load() {
+			return errors.New("signal resolver driver: select process clock before owner admission")
+		}
+		r.processClock.elapsed.Store(int64(elapsed))
+		r.processClock.manual.Store(true)
+		return nil
+	}
+	if elapsed < time.Duration(r.processClock.elapsed.Load()) {
+		return errors.New("signal resolver driver: process elapsed cannot decrease")
+	}
+	r.processClock.elapsed.Store(int64(elapsed))
+	return nil
 }
 
 // Drain consumes all currently queued evidence and applies it to resolver state.

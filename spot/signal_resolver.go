@@ -100,6 +100,8 @@ type ResolverEvidence struct {
 // ResolverSnapshot is the latest shadow verdict for a ResolverSignalKey.
 type ResolverSnapshot struct {
 	Key                        ResolverSignalKey
+	Generation                 uint64 // Lifecycle identity; retained by Compact.
+	EvidenceLoss               bool   // Known discarded evidence may still be eligible.
 	EvaluatedAt                time.Time
 	State                      ResolverState
 	Winner                     string
@@ -113,6 +115,11 @@ type ResolverSnapshot struct {
 	TotalWeightedSupportMilli  int
 	CandidateRanks             []ResolverCandidateSupport
 	receiverEvidence           *ResolverEvidenceView
+	lossMinAt                  time.Time
+	lossMaxAt                  time.Time
+	lossWindow                 time.Duration
+	ordinaryWinner             string
+	ordinaryState              ResolverState
 }
 
 // ResolverCandidateSupport captures one candidate support tally from the latest
@@ -199,6 +206,9 @@ type SignalResolver struct {
 
 	snapshots          sync.Map // ResolverSignalKey -> *resolverSnapshotCell
 	confusionWorkspace confusionAlignmentWorkspace
+	processClock       resolverProcessClock
+	nextGeneration     uint64 // Single owner; never retained outside current cells.
+	ownerAdmitted      atomic.Bool
 
 	activeKeys atomic.Int64
 
@@ -228,7 +238,13 @@ type resolverCandidate struct {
 }
 
 type resolverKeyState struct {
-	key ResolverSignalKey
+	key            ResolverSignalKey
+	cell           *resolverSnapshotCell
+	generation     uint64
+	lossMinAt      time.Time
+	lossMaxAt      time.Time
+	ordinaryWinner string
+	ordinaryState  ResolverState
 
 	recencyWindow time.Duration
 	candidates    map[string]*resolverCandidate
@@ -272,17 +288,21 @@ type resolverReporterRef struct {
 }
 
 type resolverSnapshotCell struct {
-	snapshot atomic.Pointer[ResolverSnapshot]
+	snapshot     atomic.Pointer[ResolverSnapshot]
+	activity     atomic.Int64
+	lossAffected atomic.Bool
+	terminal     atomic.Bool
 }
 
 // NewSignalResolver builds a resolver. Call Start to activate the owner goroutine.
 func NewSignalResolver(cfg SignalResolverConfig) *SignalResolver {
 	cfg = normalizeSignalResolverConfig(cfg)
 	return &SignalResolver{
-		cfg:    cfg,
-		input:  make(chan ResolverEvidence, cfg.QueueSize),
-		stopCh: make(chan struct{}),
-		doneCh: make(chan struct{}),
+		cfg:          cfg,
+		processClock: resolverProcessClock{epoch: time.Now()},
+		input:        make(chan ResolverEvidence, cfg.QueueSize),
+		stopCh:       make(chan struct{}),
+		doneCh:       make(chan struct{}),
 	}
 }
 
@@ -331,17 +351,11 @@ func (r *SignalResolver) Enqueue(e ResolverEvidence) bool {
 
 // Lookup returns the latest snapshot for key when present.
 func (r *SignalResolver) Lookup(key ResolverSignalKey) (ResolverSnapshot, bool) {
-	if r == nil {
+	snapshot, cell, ok := r.lookupSnapshot(key)
+	if !ok || !r.cellCurrent(cell) {
 		return ResolverSnapshot{}, false
 	}
-	if value, ok := r.snapshots.Load(key); ok {
-		if cell, valid := value.(*resolverSnapshotCell); valid && cell != nil {
-			if snap := cell.snapshot.Load(); snap != nil {
-				return *snap, true
-			}
-		}
-	}
-	return ResolverSnapshot{}, false
+	return snapshot, true
 }
 
 // MetricsSnapshot returns a point-in-time snapshot of resolver observability.
@@ -437,105 +451,142 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 		r.dropReliability.Add(1)
 		return
 	}
-	st := states[ev.Key]
-	if st == nil {
-		if len(states) >= r.cfg.MaxActiveKeys {
-			r.dropMaxKeys.Add(1)
-			return
+	for {
+		st := states[ev.Key]
+		if st == nil {
+			if len(states) >= r.cfg.MaxActiveKeys {
+				r.dropMaxKeys.Add(1)
+				return
+			}
+			st = &resolverKeyState{
+				key:           ev.Key,
+				recencyWindow: ev.RecencyWindow,
+				candidates:    make(map[string]*resolverCandidate, r.cfg.MaxCandidatesPerKey),
+				reporterRefs:  make(map[string]resolverReporterRef, r.cfg.MaxReportersPerCand),
+				lastSeen:      ev.ObservedAt,
+			}
+			states[ev.Key] = st
 		}
-		st = &resolverKeyState{
-			key:           ev.Key,
-			recencyWindow: ev.RecencyWindow,
-			candidates:    make(map[string]*resolverCandidate, r.cfg.MaxCandidatesPerKey),
-			reporterRefs:  make(map[string]resolverReporterRef, r.cfg.MaxReportersPerCand),
-			lastSeen:      ev.ObservedAt,
+		r.attachKeyGeneration(st)
+		if r.cellIdleExpired(st.cell, r.processElapsed()) {
+			r.retireKey(states, ev.Key, st)
+			continue
 		}
-		states[ev.Key] = st
-	}
+		windowChanged, capDiscard := false, false
 
-	if ev.RecencyWindow > 0 {
-		if st.recencyWindow != ev.RecencyWindow {
-			st.receiverEvidenceDirty = true
+		if ev.RecencyWindow > 0 {
+			if st.recencyWindow != ev.RecencyWindow {
+				st.receiverEvidenceDirty = true
+				windowChanged = true
+			}
+			st.recencyWindow = ev.RecencyWindow
 		}
-		st.recencyWindow = ev.RecencyWindow
-	}
-	if ev.ObservedAt.After(st.lastSeen) {
-		st.lastSeen = ev.ObservedAt
-	}
+		if ev.ObservedAt.After(st.lastSeen) {
+			st.lastSeen = ev.ObservedAt
+		}
 
-	r.pruneKeyState(st, ev.ObservedAt)
+		r.pruneKeyState(st, ev.ObservedAt)
 
-	candidate := st.candidates[ev.DXCall]
-	if candidate == nil {
-		if len(st.candidates) >= r.cfg.MaxCandidatesPerKey {
-			r.capPressureCandidates.Add(1)
-			evictCall, ok := chooseResolverCandidateEviction(st.candidates)
+		candidate := st.candidates[ev.DXCall]
+		if candidate == nil {
+			if len(st.candidates) >= r.cfg.MaxCandidatesPerKey {
+				r.capPressureCandidates.Add(1)
+				evictCall, ok := chooseResolverCandidateEviction(st.candidates)
+				if !ok {
+					r.dropMaxCandidates.Add(1)
+					recordResolverCapLoss(st, ev.ObservedAt)
+					r.publishLossControl(st, ev.ObservedAt)
+					r.activeKeys.Store(int64(len(states)))
+					return
+				}
+				if victim := st.candidates[evictCall]; victim != nil {
+					for _, observation := range victim.reporters {
+						recordResolverCapLoss(st, observation.observedAt)
+						capDiscard = true
+					}
+				}
+				removeResolverCandidate(st, evictCall)
+				r.evictedCandidates.Add(1)
+			}
+			candidate = &resolverCandidate{
+				reporters: make(map[string]resolverReporterObservation, r.cfg.MaxReportersPerCand),
+				identity:  normalizeCorrectionCallIdentity(ev.DXCall),
+				callRunes: []rune(ev.DXCall),
+			}
+			st.candidates[ev.DXCall] = candidate
+		}
+		updateAtomicMax(&r.highWaterCandidates, uint64(len(st.candidates)))
+		if _, exists := candidate.reporters[ev.Spotter]; !exists && len(candidate.reporters) >= r.cfg.MaxReportersPerCand {
+			r.capPressureReporters.Add(1)
+			evictReporter, ok := chooseResolverReporterEviction(candidate.reporters)
 			if !ok {
-				r.dropMaxCandidates.Add(1)
+				r.dropMaxReporters.Add(1)
+				recordResolverCapLoss(st, ev.ObservedAt)
+				r.publishLossControl(st, ev.ObservedAt)
 				r.activeKeys.Store(int64(len(states)))
 				return
 			}
-			removeResolverCandidate(st, evictCall)
-			r.evictedCandidates.Add(1)
+			recordResolverCapLoss(st, candidate.reporters[evictReporter].observedAt)
+			capDiscard = true
+			removeResolverReporter(st, candidate, evictReporter)
+			r.evictedReporters.Add(1)
 		}
-		candidate = &resolverCandidate{
-			reporters: make(map[string]resolverReporterObservation, r.cfg.MaxReportersPerCand),
-			identity:  normalizeCorrectionCallIdentity(ev.DXCall),
-			callRunes: []rune(ev.DXCall),
+		// Admission is complete after refusal checks, before evaluation. Sampling
+		// again here prevents expensive quota work from reviving an idle generation.
+		// A fresh retry has no prior cap loss, so this loop can retire at most once.
+		admittedAt := r.processElapsed()
+		if r.cellIdleExpired(st.cell, admittedAt) {
+			r.retireKey(states, ev.Key, st)
+			continue
 		}
-		st.candidates[ev.DXCall] = candidate
-	}
-	updateAtomicMax(&r.highWaterCandidates, uint64(len(st.candidates)))
-	if _, exists := candidate.reporters[ev.Spotter]; !exists && len(candidate.reporters) >= r.cfg.MaxReportersPerCand {
-		r.capPressureReporters.Add(1)
-		evictReporter, ok := chooseResolverReporterEviction(candidate.reporters)
-		if !ok {
-			r.dropMaxReporters.Add(1)
-			r.activeKeys.Store(int64(len(states)))
-			return
+		st.cell.activity.Store(int64(admittedAt))
+		r.ownerAdmitted.Store(true)
+		// Presence follows the existing newest timestamp/later equal-time receipt
+		// policy too: missing newest metadata must not reuse an older present SNR.
+		if !ev.ObservedAt.Before(candidate.lastSeen) {
+			candidate.lastSeen = ev.ObservedAt
+			candidate.lastReport = ev.Report
+			candidate.lastHasReport = ev.HasReport
+			candidate.lastFreqKHz = ev.FrequencyKHz
 		}
-		removeResolverReporter(st, candidate, evictReporter)
-		r.evictedReporters.Add(1)
-	}
-	// Presence follows the existing newest timestamp/later equal-time receipt
-	// policy too: missing newest metadata must not reuse an older present SNR.
-	if !ev.ObservedAt.Before(candidate.lastSeen) {
-		candidate.lastSeen = ev.ObservedAt
-		candidate.lastReport = ev.Report
-		candidate.lastHasReport = ev.HasReport
-		candidate.lastFreqKHz = ev.FrequencyKHz
-	}
-	upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, ev.FrequencyKHz, reporterWeightMilli)
-	updateAtomicMax(&r.highWaterReporters, uint64(len(candidate.reporters)))
+		upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, ev.FrequencyKHz, reporterWeightMilli)
+		updateAtomicMax(&r.highWaterReporters, uint64(len(candidate.reporters)))
 
-	st.dirty = true
-	if st.nextEvalAt.IsZero() || !ev.ObservedAt.Before(st.nextEvalAt) {
-		r.evaluateKey(st, ev.ObservedAt)
-		st.nextEvalAt = ev.ObservedAt.Add(r.cfg.EvalMinInterval)
-		st.dirty = false
-	}
+		st.dirty = true
+		if st.nextEvalAt.IsZero() || !ev.ObservedAt.Before(st.nextEvalAt) {
+			r.evaluateKey(st, ev.ObservedAt)
+			st.nextEvalAt = ev.ObservedAt.Add(r.cfg.EvalMinInterval)
+			st.dirty = false
+		} else if capDiscard || (windowChanged && st.cell.lossAffected.Load()) {
+			r.publishLossControl(st, ev.ObservedAt)
+		}
 
-	r.activeKeys.Store(int64(len(states)))
+		r.activeKeys.Store(int64(len(states)))
+		return
+	}
 }
 
 func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, now time.Time) {
 	for key, st := range states {
 		if st == nil {
-			delete(states, key)
-			r.snapshots.Delete(key)
+			r.retireKey(states, key, st)
 			continue
 		}
+		if r.cellIdleExpired(st.cell, r.processElapsed()) {
+			r.retireKey(states, key, st)
+			continue
+		}
+		loss := ResolverSnapshot{lossMinAt: st.lossMinAt, lossMaxAt: st.lossMaxAt, lossWindow: st.recencyWindow}
+		lossActive := resolverSnapshotLossEligible(loss, now)
 
-		if now.Sub(st.lastSeen) > r.cfg.InactiveTTL {
-			delete(states, key)
-			r.snapshots.Delete(key)
+		if !lossActive && now.Sub(st.lastSeen) > r.cfg.InactiveTTL {
+			r.retireKey(states, key, st)
 			continue
 		}
 
 		r.pruneKeyState(st, now)
-		if len(st.candidates) == 0 {
-			delete(states, key)
-			r.snapshots.Delete(key)
+		if len(st.candidates) == 0 && !lossActive {
+			r.retireKey(states, key, st)
 			continue
 		}
 
@@ -545,6 +596,8 @@ func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, n
 				st.nextEvalAt = now.Add(r.cfg.EvalMinInterval)
 				st.dirty = false
 			}
+		} else if st.cell != nil && st.cell.lossAffected.Load() && st.receiverEvidenceDirty {
+			r.publishLossControl(st, now)
 		}
 	}
 	r.activeKeys.Store(int64(len(states)))
@@ -675,6 +728,7 @@ func invalidateResolverWinnerState(st *resolverKeyState, call string) {
 		st.stableWinner = ""
 		st.pendingWinner = ""
 		st.pendingWins = 0
+		st.ordinaryWinner, st.ordinaryState = "", ResolverStateUncertain
 		return
 	}
 	if st.pendingWinner == call {
@@ -699,6 +753,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	if st == nil {
 		return
 	}
+	r.attachKeyGeneration(st)
 	r.pruneKeyState(st, now)
 	st.lastEvalAt = now
 
@@ -738,7 +793,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		st.pendingWins = 0
 		clear(ranked)
 		st.rankedScratch = ranked[:0]
-		r.publishSnapshot(st.key, snapshot)
+		r.publishKeySnapshot(st, snapshot, now, true)
 		return
 	}
 	if st.stableWinner != "" && !resolverRankedContainsCall(ranked, st.stableWinner) {
@@ -843,7 +898,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		snapshot.CandidateRanks = candidateRanks
 		clear(ranked)
 		st.rankedScratch = ranked[:0]
-		r.publishSnapshot(st.key, snapshot)
+		r.publishKeySnapshot(st, snapshot, now, true)
 		return
 	}
 
@@ -905,7 +960,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	snapshot.CandidateRanks = candidateRanks
 	clear(ranked)
 	st.rankedScratch = ranked[:0]
-	r.publishSnapshot(st.key, snapshot)
+	r.publishKeySnapshot(st, snapshot, now, true)
 }
 
 func (r *SignalResolver) publishSnapshot(key ResolverSignalKey, snapshot ResolverSnapshot) {

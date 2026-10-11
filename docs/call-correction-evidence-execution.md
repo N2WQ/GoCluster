@@ -16,8 +16,8 @@ Branch: `fix_correction_evidence`.
 | B1.4 | Complete | `0b4006d`; capacity validation |
 | B1.5 | Complete | `4d6df11`; future static membership |
 | B2.1 | Complete | `ae2d504`; numerical/assets |
-| B2.2 | Complete | This checkpoint; SNR presence/domain |
-| B3.1 | Pending | Cap-loss authority/retirement |
+| B2.2 | Complete | `336eda7`; SNR presence/domain |
+| B3.1 | Complete | Cap-loss authority/retirement; checkpoint below |
 | B3.2 | Pending | Diagnostic meaning |
 
 Implementation and validation advance sequentially. Full lanes use existing
@@ -928,3 +928,132 @@ reviews are not independent scientific evidence. Maps, crawler entries and
 whitespace are verified at staging. No firewall rules, listener paths, external
 feeds, push or deployment changed. Calibration and wider episode association
 remain outside this checkpoint's claims.
+
+## B3.1 - Cap-loss authority and retirement
+
+Checkpoint base is B2.2 `336eda7`. The current owner removes actual cap victims
+without publishing evidence-loss authority. Existing snapshot cells can remain
+readable until sweeping, and observation timestamps govern the ordinary idle
+cleanup. These are separate from queue-full/whole-key admission loss, which
+remain deferred.
+
+The postapproval retained-state/design and test-strategy reviews are contextual
+engineering evidence. Their material findings are dispositioned as follows:
+
+- Couple constant loss timestamp bounds, lifecycle UID and activity to the
+  existing bounded key/cell owners. No identity tombstones or new registry.
+- Use monotonic process elapsed time, independently of observation/query clocks.
+  The deterministic driver may select a nonnegative, nondecreasing manual process
+  clock before its first owner-admitted receipt. Completed admitted stale and
+  duplicate receipts count as activity; enqueue and refused reports do not.
+- A captured cell checks its own terminal/activity state before returning.
+  Retirement marks it terminal before deleting owner/publication references;
+  a new generation never reuses that cell. This is not an ingestion barrier.
+- Publish cap-loss controls immediately even behind a future next-evaluation
+  timestamp. Recompute complete current retained rows/tallies and share the pure
+  freshness guard/authority projection. Do not clone old counts onto new rows.
+- Preserve a constant last-ordinary settled-identity hint across control/freshness
+  projections. Only that still-leading identity may recover; controls cannot
+  settle a new winner or advance hysteresis. Clear the hint when the owner
+  invalidates its winner. An uncertain control latch would prevent legitimate
+  recovery indefinitely behind a future ordinary evaluation and is rejected.
+- Record five scalar neighborhood generation witnesses, not row references.
+  Temporal decisions merge witnesses across their entire decoded window; a
+  conflicting or retired witness cannot authorize an override. Fresh ordinary
+  selection can still qualify independently.
+- Inspect known loss before neighborhood state/support/comparability filters.
+  Retain an already accepted B during a later existing evaluation, withdraw its
+  current-consensus share, and block another correction. No new acceptance gate
+  or retroactive reversal is added.
+
+Tests distinguish actual candidate/receiver eviction, legitimate evidence expiry,
+inactive/active loss under window changes, rowless/Compact controls, future-time
+recovery, exact process idle equality without sweeping, accepted versus rejected
+activity, terminal old-cell reads, key-cap refusal/reclamation and repeated churn.
+Literal old rows/ranks guard immutable publication. Existing stabilizer delivery
+uses an explicitly injected scheduler-owned accepted-B envelope; this does not
+claim C-glyph spots naturally enter that hold path. Actual delivered output and
+accepted-only temporal counters/history are independent oracles.
+
+The existing 6,000-key refusal remains; continuous owner-admitted traffic may
+keep a loss-affected generation live. Its metadata has fixed size per existing
+key, and hard 10-minute process-idle retirement bounds idle quarantine even with
+future observation timestamps. Retirement declares a new retained population;
+it does not preserve loss protection across restart or retired generations.
+
+Approved-item mapping:
+
+| Obligation | Implementation | Falsifying regression |
+| --- | --- | --- |
+| Actual cap loss and prompt coherent publication | `spot/resolver_loss.go`, `spot/signal_resolver.go` | `resolver_loss_test.go`, `resolver_loss_control_test.go`: actual victims, literal counts/rows, long/future evaluation cadence, no model/hysteresis advancement |
+| Generation/activity/retirement and bounded reclamation | `spot/resolver_loss.go`, `spot/signal_resolver_driver.go` | `resolver_loss_lifecycle_test.go`: exact deadline without sweep, stale/duplicate versus refused/enqueued activity, fresh UID, rowless controls and five churn batches |
+| Immutable readers and existing allocation contracts | `spot/resolver_fresh.go`, existing immutable publication owner | `resolver_loss_concurrency_test.go`: four reader acknowledgments for active/inactive/reactivated publications; `resolver_loss_bench_test.go`: zero-allocation reads and no duplicate republishing |
+| Neighborhood/temporal authority | `internal/correctionflow/shared.go`, `resolver_generations.go`, `temporal_decoder.go`, `stabilizer.go` | Actual generations/cap victims in `resolver_generation_test.go`, `temporal_generation_test.go`; all-window union, conflicts, foreign/missing anchors, old excluded neighbors, fresh fallback |
+| Runtime/replay refusal and retained accepted identity | `internal/cluster/bootstrap.go`, both offline evaluators | `correction_loss_delivery_test.go` and both `resolver_loss_test.go`: actual TCP, DIAG, full original peer fields, sealed ring, reopened archive, accepted-only history/counters |
+
+The actual delivered baseline counterexample is `.tmp/b31-cluster-baseline-red.log`:
+candidate loss manufactured a B66% correction; receiver loss still allowed B66%
+under an incomplete population; incomparable-neighbor loss disappeared before
+selection; later accepted B changed again to C with two commits and a path switch.
+Fatal preconditions independently established the declared real eviction, retained
+counts and absence of other drops. Current delivery preserves A/--% or accepted
+B/--%, with independent static-only/history-only A/S controls. Their persisted
+bytes are compared before decoding and after delivery shutdown. These S controls
+were added after baseline reproduction and are not claimed as baseline failures.
+
+The first five-package targeted command used `TestB31` for the spot package,
+which selected no core spot tests. The explicit core regex subsequently passed
+in `.tmp/b31-core-targeted.log`; final full lanes include the strengthened
+four-reader handshake and helper lint correction. Initial lint's one unused
+helper parameter was removed without production changes. An initial support
+eval used `SA006` and selected no cases; the corrected `SA-006` retrieval passed
+in `.tmp/b31-support-eval-final.log`. Neither initial selection gap is a behavior
+pass. Contextual source review found no unresolved production defect; it is not
+independent scientific evidence.
+
+Support-agent impact is Required: confidence documentation/card now distinguish
+cap-loss authority, recognition, process-idle generation retirement and deferred
+loss populations. ADR-0292 records the durable contract. Replay evidence/temporal
+windows still use CSV time, but cap-loss process idle is an explicit exception to
+the former event-time-only claim. A paused offline job can retire after 10 idle
+minutes; production replay is not silently frozen at a manual zero clock.
+
+Final observed validation:
+
+| Check | Scope/result | Evidence |
+| --- | --- | --- |
+| Targeted output and both tools | Five affected packages; pass (core selection gap separately resolved) | `.tmp/b31-targeted.log`, `.tmp/b31-core-targeted.log` |
+| Full ordinary | All 70 packages; exit 0 on final tests including reader refinement | `.tmp/b31-ordinary-final.log` |
+| Full race | All 70 packages; exit 0, no race report | `.tmp/b31-race-final.log` |
+| Vet, Staticcheck, lint | All packages; exit 0, lint zero issues | `.tmp/b31-vet-final.log`, `.tmp/b31-staticcheck-final.log`, `.tmp/b31-lint-final.log` |
+| Connected real-database handoff | Ordinary and race producer/consumer pass | `.tmp/b31-connected-ordinary-final.log`, `.tmp/b31-connected-race-final.log` |
+| Bounded lookup/control costs | Direct canonical saved spot executable; correctness preconditions and two 500ms samples pass | `.tmp/b31-bench-final.log`, ignored runner `.tmp/b31-bench.ps1` |
+| Local support smoke and confidence retrieval | Pass; retrieval-only SA-006 | `.tmp/b31-support-smoke.log`, `.tmp/b31-support-eval-final.log` |
+
+Full commands were `scripts/test-windows.ps1` and the same runner `-Race` with
+the existing native GCC path. Connected handoff IDs are
+`587a4949e7dd4db1a611af141b98d60d` (ordinary) and
+`caae919f852c4915872d635689c03ca0` (race). No test-result cache or new executable
+path substitutes for execution. The smoke/eval does not establish deployed
+support-agent behavior or answer quality.
+
+Raw and all-fresh eligible healthy/loss lookups remain 0 B/op, 0 allocs/op;
+duplicate owner-admitted activity is also 0 B/op, 0 allocs/op and retains the
+same publication pointer. Actual full controls measured 4,435/4,469 ns at 2x4,
+1,520 B/op and 18 allocations, and 260,005/262,680 ns at 16x64, approximately
+82,744 B/op and 77 allocations. Each timed admission must produce one actual
+receiver eviction, and the name pool is fixed at receiver-cap+1. Common confusion
+evaluation remains seven allocations, now 848 B/op; B2.2's earlier recorded
+samples were 736 B/op before the additional publication metadata. This is a
+bounded correctness cost, not a performance improvement or production capacity
+claim. All-fresh/expired P3 projection allocation contracts also pass.
+
+Fresh lead verification of final source, tests, scope and claims found no
+unresolved material finding. Contextual review's reader-phase gap was fixed and
+the final full ordinary/race lanes include it. New cohesive files remain below
+the 500-line review target; existing larger resolver/flow/bootstrap owners retain
+their established responsibilities. No new registry, worker, timer, persisted
+encoding, network format or configuration value was introduced. Maps, crawler
+comments and whitespace are checked before staging/commit. No firewall rules,
+external feeds, push or deployment changed. RF episode association, deferred
+loss populations and calibration remain outside these passing checks.

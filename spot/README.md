@@ -65,6 +65,18 @@ The strict floating-point threshold has no tolerance: nominal boundary values
 can differ slightly by band. See
 [ADR-0021](../docs/decisions/ADR-0021-call-correction-ambiguity-guard-and-quality-rail.md).
 
+Known candidate/receiver-cap loss blocks correction and current-consensus
+promotion while discarded evidence could still be eligible. The entering call
+has no support percentage; independent static/history recognition can still
+provide S. Loss is checked before neighborhood comparability filters and is
+retained through compact/rowless publications. A window change can deactivate
+or reactivate it. A loss-affected key generation loses authority after 10 minutes
+without an owner-admitted receipt, using process elapsed time rather than report
+timestamps. Delayed sweeping cannot extend that authority. Temporal proposals
+cannot reuse retired generations; fresh evidence can qualify independently.
+An already accepted identity is retained during a later loss evaluation.
+See [ADR-0292](../docs/decisions/ADR-0292-resolver-cap-loss-authority.md).
+
 ### Numerical inputs and configured assets
 
 Reliability files preserve finite clamping to 0..1 and existing unrelated

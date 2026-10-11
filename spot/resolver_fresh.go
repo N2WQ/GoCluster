@@ -11,10 +11,32 @@ import (
 // publication is the only evidence source: this is not an ingest barrier. A
 // compact snapshot cannot authorize release because it lacks timestamped rows.
 func (r *SignalResolver) LookupEligible(key ResolverSignalKey, now time.Time) (ResolverSnapshot, bool) {
-	snap, ok := r.Lookup(key)
-	if !ok || snap.receiverEvidence == nil || snap.receiverEvidence.window <= 0 {
+	snap, cell, ok := r.lookupSnapshot(key)
+	if !ok {
 		return ResolverSnapshot{}, false
 	}
+	snap.EvidenceLoss = resolverSnapshotLossEligible(snap, now)
+	if snap.receiverEvidence == nil || snap.receiverEvidence.window <= 0 {
+		if snap.EvidenceLoss && r.cellCurrent(cell) {
+			return resolverProjectionBase(snap), true
+		}
+		return ResolverSnapshot{}, false
+	}
+	projected := r.projectEligibleSnapshot(snap, now)
+	if !r.cellCurrent(cell) {
+		return ResolverSnapshot{}, false
+	}
+	return projected, true
+}
+
+func resolverProjectionBase(snapshot ResolverSnapshot) ResolverSnapshot {
+	return ResolverSnapshot{Key: snapshot.Key, Generation: snapshot.Generation, EvidenceLoss: snapshot.EvidenceLoss,
+		EvaluatedAt: snapshot.EvaluatedAt, State: ResolverStateUncertain,
+		lossMinAt: snapshot.lossMinAt, lossMaxAt: snapshot.lossMaxAt, lossWindow: snapshot.lossWindow,
+		ordinaryWinner: snapshot.ordinaryWinner, ordinaryState: snapshot.ordinaryState}
+}
+
+func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time.Time) ResolverSnapshot {
 	view := snap.receiverEvidence
 	cutoff := now.Add(-view.window)
 	eligible := func(row ResolverReceiverObservation) bool {
@@ -29,11 +51,11 @@ func (r *SignalResolver) LookupEligible(key ResolverSignalKey, now time.Time) (R
 		}
 	}
 	if count == view.count {
-		return snap, true
+		return snap
 	}
-	projected := ResolverSnapshot{Key: snap.Key, EvaluatedAt: snap.EvaluatedAt, State: ResolverStateUncertain}
+	projected := resolverProjectionBase(snap)
 	if count == 0 {
-		return projected, true
+		return projected
 	}
 	fresh := &ResolverEvidenceView{window: view.window, count: count,
 		candidates: make([]resolverEvidenceCandidate, 0, len(view.candidates))}
@@ -79,8 +101,19 @@ func (r *SignalResolver) LookupEligible(key ResolverSignalKey, now time.Time) (R
 		return left.Support > right.Support
 	})
 	if len(projected.CandidateRanks) == 0 {
-		return projected, true
+		return projected
 	}
+	return r.projectResolverAuthority(projected, snap)
+}
+
+// projectResolverAuthority reuses only current tallies and ambiguity guards.
+// A control/fresh projection can retain the same ordinary settled identity,
+// never settle a new winner or advance the owner's model/hysteresis state.
+func (r *SignalResolver) projectResolverAuthority(projected, previous ResolverSnapshot) ResolverSnapshot {
+	if len(projected.CandidateRanks) == 0 {
+		return projected
+	}
+	fresh := projected.ReceiverEvidence()
 	top := projected.CandidateRanks[0]
 	projected.WinnerSupport, projected.WinnerWeightedSupportMilli = top.Support, top.WeightedSupportMilli
 	projected.Margin = top.Support
@@ -117,20 +150,24 @@ func (r *SignalResolver) LookupEligible(key ResolverSignalKey, now time.Time) (R
 		}
 		split = split || witnessed && shouldRejectAsAmbiguousMultiSignal(top.Support, runner.Support,
 			a, b, r.cfg.FreqGuardMinSeparationKHz, r.cfg.FreqGuardRunnerUpRatio, overlap,
-			correctionDistance(left, right, key.Mode, r.cfg.DistanceModelCW, r.cfg.DistanceModelRTTY), r.cfg.MaxEditDistance, related)
+			correctionDistance(left, right, projected.Key.Mode, r.cfg.DistanceModelCW, r.cfg.DistanceModelRTTY), r.cfg.MaxEditDistance, related)
 	}
 	if split {
 		projected.State = ResolverStateSplit
-		return projected, true
+		return projected
 	}
 	// Removal may revoke authority, but a reader cannot settle a new winner or
 	// advance the owner's pending hysteresis. Only a still-leading settled
 	// published identity may retain authority with its newly computed share.
-	if snap.Winner == top.Call {
+	winner, state := previous.Winner, previous.State
+	if previous.ordinaryState != "" {
+		winner, state = previous.ordinaryWinner, previous.ordinaryState
+	}
+	if winner == top.Call {
 		projected.Winner = top.Call
-		if snap.State == ResolverStateConfident || snap.State == ResolverStateProbable {
+		if state == ResolverStateConfident || state == ResolverStateProbable {
 			projected.State = classifyResolverState(top.WeightedSupportMilli, projected.TotalWeightedSupportMilli)
 		}
 	}
-	return projected, true
+	return projected
 }

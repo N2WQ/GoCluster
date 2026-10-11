@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `0782933a383f4d29`
+- Source fingerprint: `244dee53a47d3dd6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 102 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 28 | 103 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 37 | 47 |
+| `dxcluster/spot` | `spot` | 38 | 52 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -166,6 +166,7 @@ Test files:
 - `internal/cluster/confidence_attribution_delivery_test.go`
 - `internal/cluster/correction_ambiguity_delivery_test.go`
 - `internal/cluster/correction_evidence_delivery_test.go`
+- `internal/cluster/correction_loss_delivery_test.go`
 - `internal/cluster/correction_numeric_delivery_test.go`
 - `internal/cluster/correction_numeric_runtime_test.go`
 - `internal/cluster/correction_snr_delivery_test.go`
@@ -496,6 +497,7 @@ Source files:
 - `spot/resolver_ambiguity.go`
 - `spot/resolver_evidence.go`
 - `spot/resolver_fresh.go`
+- `spot/resolver_loss.go`
 - `spot/self_spot.go`
 - `spot/signal_resolver.go`
 - `spot/signal_resolver_driver.go`
@@ -542,6 +544,11 @@ Test files:
 - `spot/resolver_evidence_test.go`
 - `spot/resolver_fresh_projection_bench_test.go`
 - `spot/resolver_fresh_projection_test.go`
+- `spot/resolver_loss_bench_test.go`
+- `spot/resolver_loss_concurrency_test.go`
+- `spot/resolver_loss_control_test.go`
+- `spot/resolver_loss_lifecycle_test.go`
+- `spot/resolver_loss_test.go`
 - `spot/resolver_snr_presence_test.go`
 - `spot/self_spot_test.go`
 - `spot/signal_resolver_bench_test.go`

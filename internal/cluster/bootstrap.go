@@ -2146,6 +2146,10 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNoSnapshot, 0)
 		return false
 	}
+	if snapshot.EvidenceLoss {
+		observeResolverPrimaryDecision(tracker, "rejected", "resolver_evidence_loss", 0)
+		return false
+	}
 	if selection.NeighborhoodSplit {
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNeighborConflict, 0)
 		return false

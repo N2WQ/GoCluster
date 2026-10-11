@@ -100,7 +100,7 @@ func EvaluateStabilizerDelay(
 		return decision
 	}
 
-	if resolverSnapshotOK && (resolverSnapshot.State == spot.ResolverStateSplit || resolverSnapshot.State == spot.ResolverStateUncertain) {
+	if resolverSnapshotOK && (resolverSnapshot.EvidenceLoss || resolverSnapshot.State == spot.ResolverStateSplit || resolverSnapshot.State == spot.ResolverStateUncertain) {
 		decision.ShouldDelay = true
 		decision.Reason = StabilizerDelayReasonAmbiguous
 		decision.MaxChecks = normalizeStabilizerChecks(cfg.StabilizerAmbiguousMaxChecks, decision.MaxChecks)

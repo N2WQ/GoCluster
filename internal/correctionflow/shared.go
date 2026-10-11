@@ -40,6 +40,10 @@ type ResolverPrimarySelection struct {
 	// CandidateRanks still carry every admitted dissenting receiver's tally.
 	replacementCalls []string
 	exactWinner      string // Same-generation witness for the final neighborhood rail.
+	// Each nonzero slot witnesses a contributing key lifecycle at offsets -2..2.
+	// Temporal retention copies these scalars rather than receiver rows/cells.
+	generationWitnesses [5]uint64
+	generationConflict  bool
 	// NeighborhoodExcluded* count neighborhood winner candidates excluded from
 	// competition due to comparability rails.
 	NeighborhoodExcludedUnrelated int
@@ -126,6 +130,9 @@ func ResolverWeightedSupportForCall(snapshot spot.ResolverSnapshot, call string)
 // ResolverCallConfidencePercent computes call-specific confidence percentage.
 // It prefers weighted support when available and falls back to reporter support.
 func ResolverCallConfidencePercent(snapshot spot.ResolverSnapshot, call string) (int, bool) {
+	if snapshot.EvidenceLoss {
+		return 0, false
+	}
 	if snapshot.TotalWeightedSupportMilli > 0 {
 		support := ResolverWeightedSupportForCall(snapshot, call)
 		if support > 0 {
@@ -153,7 +160,7 @@ func ResolverWinnerConfidence(snapshot spot.ResolverSnapshot) int {
 // ResolverConfidenceGlyphForCall maps resolver snapshot evidence to output glyph
 // semantics for the call that will actually be emitted.
 func ResolverConfidenceGlyphForCall(snapshot spot.ResolverSnapshot, snapshotOK bool, emittedCall string) string {
-	if !snapshotOK {
+	if !snapshotOK || snapshot.EvidenceLoss {
 		return "?"
 	}
 	if snapshot.State == spot.ResolverStateSplit || snapshot.State == spot.ResolverStateUncertain {
@@ -213,6 +220,41 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 	selection.Snapshot = exact
 	selection.SnapshotOK = exactOK
 	selection.exactWinner = exact.Winner
+	if exactOK {
+		selection.generationWitnesses[2] = exact.Generation
+	}
+	// Read the bounded neighborhood once. Known loss protects the declared
+	// population before state/support/replacement comparability can hide it.
+	// Raw reads preserve owner-clock semantics; release reads use their clock.
+	radius := 0
+	if cfg.ResolverNeighborhoodEnabled {
+		radius = min(2, max(1, cfg.ResolverNeighborhoodBucketRadius))
+	}
+	var snapshots [5]spot.ResolverSnapshot
+	var present [5]bool
+	snapshots[2], present[2] = exact, exactOK
+	lost := exactOK && exact.EvidenceLoss
+	for offset := -radius; offset <= radius; offset++ {
+		if offset == 0 {
+			continue
+		}
+		neighborKey := key
+		neighborKey.Bucket += int64(offset)
+		snap, ok := lookup(neighborKey)
+		snapshots[offset+2], present[offset+2] = snap, ok
+		if ok && snap.EvidenceLoss {
+			lost = true
+			selection.generationWitnesses[offset+2] = snap.Generation
+		}
+	}
+	if lost {
+		selection.Snapshot.Key = key
+		selection.Snapshot.EvidenceLoss = true
+		selection.Snapshot.State = spot.ResolverStateUncertain
+		selection.Snapshot.Winner = ""
+		selection.SnapshotOK = true
+		return selection
+	}
 	// A qualifying exact split protects its own population. Neighboring bucket
 	// winners cannot discard that dissent; a later owner publication reevaluates
 	// protection when exact eligible evidence changes, so this is not a latch.
@@ -231,23 +273,10 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		return selection
 	}
 
-	radius := cfg.ResolverNeighborhoodBucketRadius
-	if radius <= 0 {
-		radius = 1
-	}
-	if radius > 2 {
-		radius = 2
-	}
-
 	aggregates := make(map[string]*neighborhoodCandidate, (radius*2)+1)
 	receivers := make(map[string]int)
 	for offset := -radius; offset <= radius; offset++ {
-		neighborKey := key
-		neighborKey.Bucket += int64(offset)
-		snap, ok := exact, exactOK
-		if offset != 0 {
-			snap, ok = lookup(neighborKey)
-		}
+		snap, ok := snapshots[offset+2], present[offset+2]
 		if !ok {
 			continue
 		}
@@ -283,6 +312,7 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 			}
 			continue
 		}
+		selection.generationWitnesses[offset+2] = snap.Generation
 		addNeighborhoodEvidence(aggregates, receivers, snap)
 	}
 
@@ -336,6 +366,7 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 	// receiver view as their provenance. Fresh selection rereads publications.
 	synth := top.best.Compact()
 	synth.Key = key
+	synth.Generation = 0 // Several keys contributed; their five witnesses own provenance.
 	synth.Winner = top.call
 	synth.WinnerSupport = top.support
 	synth.WinnerWeightedSupportMilli = top.weighted
@@ -431,8 +462,11 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 // an unsupported proposal falls back to the current ordinary selection.
 func SelectTemporalReleaseSnapshot(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, subject string, decision TemporalDecision, now time.Time) ResolverPrimarySelection {
 	selection := SelectResolverPrimarySnapshotForCallAt(resolver, key, cfg, subject, now)
-	if decision.Action != TemporalDecisionActionApply || !selection.SnapshotOK || selection.NeighborhoodSplit ||
+	if decision.Action != TemporalDecisionActionApply || !selection.SnapshotOK || selection.Snapshot.EvidenceLoss || selection.NeighborhoodSplit ||
 		(selection.Snapshot.State != spot.ResolverStateConfident && selection.Snapshot.State != spot.ResolverStateProbable) {
+		return selection
+	}
+	if !resolverGenerationWitnessesCurrent(resolver, key, decision.Selection) {
 		return selection
 	}
 	winner := spot.NormalizeSpotDXCallsign(decision.Winner)

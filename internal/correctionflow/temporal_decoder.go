@@ -378,6 +378,14 @@ func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) Tempora
 	decision.CandidateCount = candidateCount
 	decision.Winner = winner
 	decision.Selection = selectionForTemporalWinner(window[0].selection, winner)
+	if decision.Selection.Snapshot.Key.Band == "" || decision.Selection.Snapshot.Key.Mode == "" {
+		decision.Selection.Snapshot.Key = req.key
+	}
+	// Every decoded window can contribute generation authority. Preserve those
+	// scalar witnesses even when a later selection no longer visits a bucket.
+	for i := range window {
+		mergeResolverGenerationWitnesses(&decision.Selection, window[i].selection)
+	}
 
 	thresholdPass := winner != "" && bestScore >= d.cfg.MinScore && marginScore >= d.cfg.MinMarginScore
 	timedOut := force || !now.Before(maxAt)
@@ -477,6 +485,10 @@ func temporalGateReason(winner string, bestScore int, marginScore int, minScore 
 
 func selectionForTemporalWinner(base ResolverPrimarySelection, winner string) ResolverPrimarySelection {
 	if !base.SnapshotOK {
+		return base
+	}
+	if base.Snapshot.EvidenceLoss {
+		base.Snapshot.State = spot.ResolverStateUncertain
 		return base
 	}
 	if base.NeighborhoodSplit || base.Snapshot.State == spot.ResolverStateSplit {

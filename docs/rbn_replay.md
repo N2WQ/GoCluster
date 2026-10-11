@@ -33,11 +33,19 @@ Replay config:
 
 ## Determinism model
 
-- Event-time only: replay is driven by row timestamps from the RBN CSV.
+- Evidence eligibility is driven by row timestamps from the RBN CSV.
 - Resolver is driven by deterministic driver stepping (`observe-before-drain` ordering).
 - Temporal decoder decisions are also event-time only (hold/defer/commit windows use CSV timestamps, not wall clock).
 - Runbook sample cadence is fixed at 60 seconds.
 - Replay fails fast on timestamp regressions, out-of-day records, resolver enqueue failures, and resolver hard-drop counters.
+
+Cap-loss generation idle retirement uses monotonic process elapsed time, not CSV
+timestamps. At 10 minutes without owner-admitted evidence a loss-affected
+generation loses authority, even if sweeping is delayed; a paused offline job
+can therefore begin a new retained population when it resumes. Temporal hold
+and evidence windows remain event-time based. Deterministic tests can select the
+driver's manual process clock before its first owner-admitted receipt. This does
+not redesign historical CustomSCP query clocks.
 
 ## Inputs and dependency model
 

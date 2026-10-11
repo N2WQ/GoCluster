@@ -652,6 +652,11 @@ func evaluateResolverPrimaryDecision(
 		incrementCount(st.counters.RejectedReasonCounts, "resolver_no_snapshot")
 		return resolverDecision{Reason: "resolver_no_snapshot"}
 	}
+	if snapshot.EvidenceLoss {
+		st.counters.Rejected++
+		incrementCount(st.counters.RejectedReasonCounts, "resolver_evidence_loss")
+		return resolverDecision{Reason: "resolver_evidence_loss"}
+	}
 	if selection.NeighborhoodSplit {
 		st.counters.Rejected++
 		st.counters.RejectedNeighborhoodConflict++

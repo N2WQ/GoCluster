@@ -252,6 +252,11 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNoSnapshot, 0)
 		return outcome
 	}
+	if snapshot.EvidenceLoss {
+		spotEntry.ConfidencePercent, spotEntry.ConfidencePercentOK = 0, false
+		observeResolverPrimaryDecision(tracker, "rejected", "resolver_evidence_loss", 0)
+		return outcome
+	}
 	if outcome.Selection.NeighborhoodSplit {
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionNeighborConflict, 0)
 		return outcome
