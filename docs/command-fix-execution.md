@@ -4909,3 +4909,40 @@ disposition index agrees with all 22 current utility entrypoints and the literal
 29-family inventory. This supplies completed-work evidence while 28a/32 await
 policy and implementation. Checkpoint 35's final reconciliation and the full
 command-fix program remain open; the completed count stays 43 of 46.
+
+## V4 review follow-ups
+
+Authority: `Approved v4`, with explicit branch creation/switching and implementation
+on `fix_commands_review` from `fix_commands` at `4d711a4`. The
+[approved ledger](command-fix-scope-ledger-v4.md) contains the detailed test matrix.
+These follow-ups do not close 28a, 32 or final checkpoint 35.
+
+### R1 - DX comment guidance
+
+HELP DX and the command/telnet/operator guides now enumerate the existing ASCII
+comment alphabet and whole edited command-byte limit, excluding line endings.
+Only HELP wording changes in production Go; ingress and posting remain unchanged.
+The literal reader tests cover every printable byte through both actual codecs
+and both DX orders, representative UTF-8 refusals, default/non-default byte
+limits and editing/recovery. The checkout driver checks both dialects with
+accepted archive identities and refused labels absent after a FIFO archive
+barrier, and keeps required-case/order qualification strict (138 cases).
+
+Observed targeted commands/telnet checks passed (`v4-r1-targeted.log`), offline
+runner checks passed all 85 (`v4-r1-offline.log`), and the ordinary checkout passed
+138 cases across six profiles/12 children with zero wire/cleanup errors
+(`20261010-201835-38093adf/results.json`). All paths are under `.tmp/command-fixes`.
+The candidate build has its captured source manifest; this does not establish
+production pipeline or independent compiler qualification.
+
+Initial checker failures required updating both literal case totals, serializing
+tests that own the same runner lock, and pausing the archive observer to prevent
+unsolicited live output from interleaving strict reply checks. The corrected
+checks passed; no runtime repair was needed. Lead review and a bounded informed
+separate-context reader/runner review found no material gap. This is technical
+test review, not independent scientific validation.
+
+Support-agent documentation impact: Required and implemented in the connectivity
+card and authoritative command guides. TSR-0066 records the wording/ingress cause;
+no durable architecture decision changed and no new ADR is required. Complete
+final-state qualification and map generation follow R2/R3.

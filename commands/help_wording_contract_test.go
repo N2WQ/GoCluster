@@ -23,6 +23,10 @@ func TestHelpWordingDXAdmissionAndOutcome(t *testing.T) {
 			"Frequency is in kHz (e.g., 7001.0).",
 			"Use plain decimal numbers; exponent notation is not accepted.",
 			"Values in gaps between bands remain accepted.",
+			"Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _.",
+			"Other punctuation and non-ASCII characters are rejected.",
+			"The whole command has a node-configured byte limit (default 128).",
+			"Mode/report may be parsed from the comment.",
 			"Rejects invalid callsigns and CTY-unknown DX when CTY is enabled.",
 			"Requires a valid logged-in callsign.",
 			"Logins ending TEST require a CTY-known baseline callsign.",
@@ -35,7 +39,7 @@ func TestHelpWordingDXAdmissionAndOutcome(t *testing.T) {
 				t.Fatalf("%s HELP DX lacks admission/outcome contract %q: %q", dialect, required, response)
 			}
 		}
-		for _, unsupported := range []string{"guarantees delivery", "bypasses reputation", "SSID has its own allowance", "FCC license required to post"} {
+		for _, unsupported := range []string{"free text", "guarantees delivery", "bypasses reputation", "SSID has its own allowance", "FCC license required to post"} {
 			if strings.Contains(flat, unsupported) {
 				t.Fatalf("%s HELP DX invented admission/delivery claim %q", dialect, unsupported)
 			}

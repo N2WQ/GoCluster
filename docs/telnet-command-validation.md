@@ -79,12 +79,17 @@ frequency and label identities, rather than acknowledgements or nonempty
 output. No additional DX stimuli are sent.
 
 Raw ingress has two distinct contracts: ordinary DX input retains the command
-reader's safe character list, while recognized COMMENT prefixes admit printable
+reader's safe character list (ASCII letters, digits, spaces and `/ # @ - . , * ? _`),
+while recognized COMMENT prefixes admit printable
 ASCII in their phrase. Submitted DX fixtures therefore use `up-5?`; `:` and `!`
 would be rejected before DX dispatch. The matching history query uses `up-5?`,
 and its negative punctuation query uses `up-5!`, which is legal after SHOW
 COMMENT but differs from the archived phrase. Collector-only fixtures bypass
 raw ingress; actual Go reader fixtures validate both emitted DX command orders.
+
+The default 128-byte limit covers the entire edited DX command, excluding its
+line ending. Node configuration can change that limit; it is not a separate
+comment-length allowance.
 
 Selections require comma-separated lists (spaces around commas are allowed),
 OR within each list and AND across BAND, MODE and COMMENT. Crossed 10m/FT8

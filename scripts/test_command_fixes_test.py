@@ -93,6 +93,10 @@ def discovery_help_literal(key, dialect):
         lines = ["DX - Post a spot (human entry).", "Usage: DX <freq_khz> <callsign> [comment]",
                  "       DX <callsign> <freq_khz> [comment]", "Notes:"]
         notes = ["Frequency is in kHz (e.g., 7001.0).", "Use plain decimal numbers; exponent notation is not accepted.",
+                 "Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _.",
+                 "Other punctuation and non-ASCII characters are rejected.",
+                 "The whole command has a node-configured byte limit (default 128).",
+                 "Mode/report may be parsed from the comment.",
                  "Values in gaps between bands remain accepted.", "Rejects invalid callsigns and CTY-unknown DX when CTY is enabled.",
                  "Requires a valid logged-in callsign.", "Logins ending TEST require a CTY-known baseline callsign.",
                  "When enabled, station reputation admission is shared across numeric SSIDs.", "Posting admission may respond Spot rejected.",
@@ -136,6 +140,14 @@ def discovery_help_literal(key, dialect):
 
 
 class DriverControls(unittest.TestCase):
+    def test_dx_input_archive_requires_positive_exact_identity(self):
+        driver.require_dx_input_archive([HISTORY_ROW], "LABEL", 14074)
+        for rows, label, frequency in (([], "LABEL", 14074), ([HISTORY_ROW] * 2, "LABEL", 14074),
+                                       ([HISTORY_ROW], "OTHER", 14074), ([HISTORY_ROW], "LABEL", 14075),
+                                       ([HISTORY_ROW.replace("CW", "FT8")], "LABEL", 14074)):
+            with self.assertRaises(ValueError):
+                driver.require_dx_input_archive(rows, label, frequency)
+
     def test_hold_matrix_and_registrations_keep_case_space_arity_and_alias_boundaries(self):
         self.assertEqual(driver.HOLD_VALID_QUERIES, ("SHOW HOLD", "show hold", "  ShOw   HoLd  ", "SHOW    HOLD"))
         expected = {"SHOW HOLD EXTRA": "Usage: SHOW HOLD", "show  hold  10": "Usage: SHOW HOLD",
@@ -162,8 +174,8 @@ class DriverControls(unittest.TestCase):
                 self.assertEqual([value for value in titles if "HOLD" in value],
                                  ["/0: HOLD controls preserve countdown counters and delivery",
                                   "/1: HOLD preferences and delivery survive fresh child"])
-        self.assertEqual(counts, [54, 7, 7])
-        self.assertEqual(sum(counts) * 2, 136)
+        self.assertEqual(counts, [55, 7, 7])
+        self.assertEqual(sum(counts) * 2, 138)
         calls = [node for node in ast.walk(functions["profile"]) if isinstance(node, ast.Call) and
                  isinstance(node.func, ast.Name) and node.func.id == "hold_command_cases"]
         self.assertEqual(len(calls), 2)
@@ -612,9 +624,12 @@ class DriverControls(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError, "block-before-pass"):
                         driver.require_discovery_help(bad, key, dialect)
                 if key == "DX":
-                    for note in ("station reputation admission", "Spot queued confirms", "Posting admission may", "Requires a valid logged", "Logins ending TEST"):
+                    for note in ("station reputation admission", "Spot queued confirms", "Posting admission may", "Requires a valid logged", "Logins ending TEST",
+                                 "Comment: ASCII", "Other punctuation", "whole command", "Mode/report may"):
                         with self.assertRaises(ValueError):
                             driver.require_discovery_help([line for line in lines if note not in line], key, dialect)
+                    with self.assertRaises(ValueError):
+                        driver.require_discovery_help([*lines, "Comment is free text."], key, dialect)
                 if key.startswith("SHOW"):
                     with self.assertRaises(ValueError):
                         driver.require_discovery_help([line.replace("US/Canadian registered mailing", "FCC mailing-address") for line in lines], key, dialect)

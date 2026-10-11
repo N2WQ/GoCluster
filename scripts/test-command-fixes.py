@@ -1032,6 +1032,7 @@ def profile(binary, root, source, transport):
                 f"{transport}/0: CC HELP grammar agrees with saved command outcomes",
                 f"{transport}/0: HELP routes existing aliases without preference effects",
                 f"{transport}/0: filter discovery and HELP wording preserve all owners",
+                f"{transport}/0: DX comment alphabet and whole-command limit reach archive",
                 f"{transport}/0: HOLD controls preserve countdown counters and delivery",
                 f"{transport}/1: held endpoint and loaded consumers",
                 f"{transport}: preferences and archive survive fresh child",
@@ -1498,6 +1499,8 @@ def profile(binary, root, source, transport):
                      lambda: help_routing_cases(suite, root, generation, saved_help_routes))
                 case(f"{transport}/0: filter discovery and HELP wording preserve all owners",
                      lambda: filter_discovery_cases(suite, root, generation, saved_discovery))
+                case(f"{transport}/0: DX comment alphabet and whole-command limit reach archive",
+                     lambda: dx_input_contract_cases(suite, root))
                 case(f"{transport}/0: HOLD controls preserve countdown counters and delivery",
                      lambda: hold_command_cases(suite, root, generation, saved_hold, session))
             else:
@@ -2722,6 +2725,10 @@ def require_discovery_help(lines, key, dialect):
         required = ("Frequency is in kHz (e.g., 7001.0).",
                     "Use plain decimal numbers; exponent notation is not accepted.",
                     "Values in gaps between bands remain accepted.",
+                    "Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _.",
+                    "Other punctuation and non-ASCII characters are rejected.",
+                    "The whole command has a node-configured byte limit (default 128).",
+                    "Mode/report may be parsed from the comment.",
                     "Rejects invalid callsigns and CTY-unknown DX when CTY is enabled.",
                     "Requires a valid logged-in callsign.",
                     "Logins ending TEST require a CTY-known baseline callsign.",
@@ -2729,7 +2736,7 @@ def require_discovery_help(lines, key, dialect):
                     "Posting admission may respond Spot rejected.",
                     "Spot queued confirms intake; filtering and processing determine delivery.",
                     "A missing or full input queue refuses the spot with an explicit response.")
-        forbidden = ("guarantees delivery", "bypasses reputation", "SSID has its own allowance", "FCC license required to post")
+        forbidden = ("free text", "guarantees delivery", "bypasses reputation", "SSID has its own allowance", "FCC license required to post")
     elif key in ("OVERVIEW", "PASS", "REJECT"):
         required = ("Filter categories have their own selection rules; see HELP PASS/REJECT.",
                     "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name.",
@@ -3004,6 +3011,63 @@ def hold_live_readback(current, frequency):
         current.suite.log.write(receipt)
         current.suite.log.flush()
     return complete_reply_config(current, received, "HOLD fresh delivery")
+
+
+def require_dx_input_archive(rows, label, frequency):
+    require(len(rows) == 1 and label in rows[0] and
+            re.search(r"\b" + re.escape(str(frequency)) + r"\.00\s+W6ABC\s+CW\b", rows[0]),
+            "DX input control lacks its exact archive identity")
+
+
+def dx_input_contract_cases(suite, root):
+    limit = stored_document((root / "config/runtime.yaml").read_bytes())["telnet"]["command_line_limit"]
+    require(type(limit) is int and limit == 128, "DX input fixture lacks its loaded 128-byte command bound")
+    for index, dialect in enumerate(("go", "cc")):
+        current = harness.Session(suite, "VE3ABC-" + str(70079 + index))
+        current.human("DIALECT " + dialect)
+        current.human("PASS NOFILTER", "All filters disabled")
+        current.human("PAUSE 300", "Live spots paused for 300s.")
+        before = current.get()
+        require(before["configuration"]["settings"]["dialect"] == dialect and
+                before["status"]["session"]["pause_active"] is True,
+                "DX input fixture lost its selected dialect")
+        record = root / "users" / (current.call + ".yaml")
+        saved = record.read_bytes()
+        base = 14321 + index * 10
+        accepted = literal_archive_label(suite, dialect.upper() + "D")
+        discovery_readback(current, f"DX {base} W6ABC CW {accepted} /#@-.,*?_", "Spot queued.")
+
+        def archived(label, frequency):
+            deadline = min(suite.deadline, time.monotonic() + 5)
+            while True:
+                rows = archive_rows(current, label)
+                if rows:
+                    require_dx_input_archive(rows, label, frequency)
+                    return
+                require(time.monotonic() < deadline, "accepted DX input absent from archive")
+                time.sleep(.025)
+
+        archived(accepted, base)
+        refused = []
+        for offset, suffix in enumerate((":POTA", "!CQ", "LONG"), 1):
+            label = literal_archive_label(suite, dialect.upper() + str(offset))
+            refused.append(label)
+            query = f"DX {base + offset} W6ABC CW {label} "
+            query += ("X" * (limit + 1 - len(query))) if suffix == "LONG" else suffix
+            identifier = suite.identifier()
+            sync = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+            current.send(query + "\r\nSHOW OWN\r\n" + sync + "\r\n")
+            after, prefix = current.frame("CONFIG", identifier, 4, "DX input refusal and following command")
+            diagnostic = b"Command input is too long" if suffix == "LONG" else b"Command input may only contain"
+            require(diagnostic in prefix and prefix.count(b"Own call: VE3ABC") == 1 and b"Spot queued" not in prefix,
+                    "DX refusal missing, dispatched a spot, or lost the following valid command")
+            require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
+                    record.read_bytes() == saved, "DX input changed preferences or saved state")
+        barrier = literal_archive_label(suite, dialect.upper() + "B")
+        discovery_readback(current, f"DX W6ABC {base + 4} CW {barrier}", "Spot queued.")
+        archived(barrier, base + 4)  # FIFO fixture archive witness after every refused command.
+        for label in refused:
+            require(not archive_rows(current, label), "refused DX input reached the archive")
 
 
 def hold_command_cases(suite, root, generation, saved_hold, poster):

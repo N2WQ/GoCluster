@@ -27,6 +27,10 @@ rejection/disconnect log first; use the recovery contract in `telnet/README.md`.
 - A partial read can disconnect even after Ctrl-U/backspace erases the text.
   Empty logged-in idle timeouts remain retryable. Machine uploads use separate
   framing limits; do not apply human recovery advice to a rejected upload.
+- For manual DX comments, ASCII letters, digits, spaces and `/ # @ - . , * ? _`
+  are accepted. Other punctuation and non-ASCII input is refused. The whole
+  edited command uses the node's byte limit (default 128), excluding its ending.
+  Route details to `commands/README.md` and `HELP DX`.
 
 ## Must Avoid
 
