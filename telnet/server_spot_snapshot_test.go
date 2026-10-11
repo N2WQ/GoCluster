@@ -67,6 +67,41 @@ func TestBroadcastSpotOwnedReusesSnapshot(t *testing.T) {
 	}
 }
 
+func TestTryBroadcastSpotOwnedAdmissionAndRefusal(t *testing.T) {
+	var absent *Server
+	snapshot := spot.NewSpot("K1ABC", "W1XYZ", 14020, "CW").SealForAsync()
+	if absent.TryBroadcastSpotOwned(snapshot, true, true, true) {
+		t.Fatal("nil server cannot admit a broadcast")
+	}
+	srv := NewServer(ServerOptions{BroadcastQueue: 1}, nil)
+	if srv.TryBroadcastSpotOwned(nil, true, true, true) {
+		t.Fatal("nil snapshot cannot admit a broadcast")
+	}
+	if !srv.TryBroadcastSpotOwned(snapshot, true, false, true) {
+		t.Fatal("free queue refused its immutable snapshot")
+	}
+	if srv.TryBroadcastSpotOwned(snapshot, false, true, false) {
+		t.Fatal("full queue claimed admission")
+	}
+	if queue, clients, senders := srv.BroadcastMetricSnapshot(); queue != 1 || clients != 0 || senders != 0 {
+		t.Fatalf("refusal changed drop ownership: %d/%d/%d", queue, clients, senders)
+	}
+	payload := <-srv.broadcast
+	if payload.spot != snapshot || !payload.allowFast || payload.allowMed || !payload.allowSlow || payload.enqueueAt.IsZero() {
+		t.Fatalf("admitted payload changed pointer, lane mask or enqueue clock: %+v", payload)
+	}
+	// Existing void callers retain admission and exact refusal accounting.
+	srv.BroadcastSpotOwned(snapshot, false, true, false)
+	srv.BroadcastSpotOwned(snapshot, true, true, true)
+	if queue, _, _ := srv.BroadcastMetricSnapshot(); queue != 2 {
+		t.Fatalf("void compatibility path counted refusal %d times, want 2 total", queue)
+	}
+	payload = <-srv.broadcast
+	if payload.spot != snapshot || payload.allowFast || !payload.allowMed || payload.allowSlow {
+		t.Fatal("void wrapper changed its admitted payload")
+	}
+}
+
 func TestDeliverSelfSpotSnapshotsPayload(t *testing.T) {
 	srv := NewServer(ServerOptions{ClientBuffer: 1}, nil)
 	f := filter.NewFilter()

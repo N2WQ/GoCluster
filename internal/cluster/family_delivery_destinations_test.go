@@ -82,10 +82,9 @@ func TestFamilyDeliveryImmediateDestinationsAndHistory(t *testing.T) {
 				if self {
 					selfWant = []familyDeliveryInput{incoming, barrier}
 				}
-				// F1 retains the old absent-evidence display rule. F2 may change
-				// only these ordinary TCP expectations; destination/history
-				// preservation remains independently required.
-				f.assertReceipts(t, []familyDeliveryInput{barrier}, selfWant, []familyDeliveryInput{incoming, barrier}, barrier.call)
+				// Missing fresh evidence provides no hiding authority. The saved
+				// destinations/history remain the independent F1 contract.
+				f.assertReceipts(t, []familyDeliveryInput{incoming, barrier}, selfWant, []familyDeliveryInput{incoming, barrier}, barrier.call)
 				if f.pipeline.telnetStabilizer.Pending() != 0 || f.pipeline.tracker.StabilizerHeld() != 0 {
 					t.Error("authoritative local self V must not acquire stabilizer ownership")
 				}
@@ -193,7 +192,11 @@ func TestFamilyDeliverySchedulerOwnershipAndHistory(t *testing.T) {
 				if admitted {
 					peerWant, rows = []familyDeliveryInput{incoming, barrier}, []familyDeliveryInput{seed, incoming, barrier}
 				}
-				f.assertReceipts(t, []familyDeliveryInput{barrier}, []familyDeliveryInput{barrier}, peerWant, barrier.call)
+				normalWant := []familyDeliveryInput{barrier}
+				if admitted {
+					normalWant = []familyDeliveryInput{incoming, barrier}
+				}
+				f.assertReceipts(t, normalWant, []familyDeliveryInput{barrier}, peerWant, barrier.call)
 				f.assertHistory(t, admitted, false)
 				if counts := f.who.CountryCountsByContinent("K1HOLD", "20m", time.Now().UTC()); len(counts) != 0 {
 					t.Error("an unreleased filler taught acceptance history")

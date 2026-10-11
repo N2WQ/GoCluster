@@ -3,10 +3,10 @@
 package cluster
 
 import (
-	"dxcluster/internal/correctionflow"
 	"strings"
 	"time"
 
+	"dxcluster/internal/correctionflow"
 	"dxcluster/internal/qualificationstage"
 	"dxcluster/spot"
 )
@@ -17,8 +17,6 @@ type outputDeliveryPlan struct {
 	allowSlow         bool
 	telnetDeliverNow  bool
 	telnetDeliverSelf bool
-	familySnapshot    spot.ResolverSnapshot
-	familySnapshotOK  bool
 }
 
 func (p outputDeliveryPlan) normalFanoutAllowed() bool {
@@ -121,8 +119,9 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	}
 	recordRecentBandObservation(delayed, p.recentBandStore, p.customSCPStore, p.correctionCfg)
 	recordWhoSpotsMeObservation(delayed, p.whoSpotsMeStore, time.Now().UTC())
-	plan := p.buildFinalDeliveryPlan(delayed, delaySnapshot, delaySnapshotOK, time.Now().UTC())
-	releaseCtx := outputSpotContext{spot: delayed, peerOriginal: envelope.peerOriginal, temporalResult: envelope.temporalResult}
+	plan := p.buildFinalDeliveryPlan(delayed)
+	releaseCtx := outputSpotContext{spot: delayed, peerOriginal: envelope.peerOriginal, temporalResult: envelope.temporalResult,
+		stabilizerResolverKey: resolverEvidence.Key, hasStabilizerResolverKey: hasResolverEvidence}
 	if !plan.normalFanoutAllowed() {
 		p.emitSpot(&releaseCtx, plan)
 		return
@@ -172,29 +171,18 @@ func (p *outputPipeline) computeSecondaryAllows(s *spot.Spot) (bool, bool, bool)
 	return allowFast, allowMed, allowSlow
 }
 
-func (p *outputPipeline) buildFinalDeliveryPlan(
-	s *spot.Spot,
-	familySnapshot spot.ResolverSnapshot,
-	familySnapshotOK bool,
-	now time.Time,
-) outputDeliveryPlan {
+func (p *outputPipeline) buildFinalDeliveryPlan(s *spot.Spot) outputDeliveryPlan {
 	allowFast, allowMed, allowSlow := p.computeSecondaryAllows(s)
 	plan := outputDeliveryPlan{
 		allowFast:        allowFast,
 		allowMed:         allowMed,
 		allowSlow:        allowSlow,
 		telnetDeliverNow: p.telnet != nil,
-		familySnapshot:   familySnapshot,
-		familySnapshotOK: familySnapshotOK,
 	}
 	if !plan.normalFanoutAllowed() {
 		plan.telnetDeliverNow = false
 		plan.telnetDeliverSelf = p.telnet != nil
 		return plan
-	}
-	if p.familySuppressor != nil && p.familySuppressor.ShouldSuppressWithResolver(s, p.correctionCfg, now, familySnapshot, familySnapshotOK) {
-		plan.telnetDeliverNow = false
-		plan.telnetDeliverSelf = p.telnet != nil
 	}
 	return plan
 }
@@ -233,10 +221,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 		recordRecentBandObservation(s, p.recentBandStore, p.customSCPStore, p.correctionCfg)
 		recordWhoSpotsMeObservation(s, p.whoSpotsMeStore, time.Now().UTC())
 		p.recordFTRecentBandObservation(s)
-		if ctx.hasStabilizerResolverKey && p.signalResolver != nil {
-			plan.familySnapshot, plan.familySnapshotOK = p.signalResolver.Lookup(ctx.stabilizerResolverKey)
-		}
-		plan = p.buildFinalDeliveryPlan(s, plan.familySnapshot, plan.familySnapshotOK, time.Now().UTC())
+		plan = p.buildFinalDeliveryPlan(s)
 		return plan, true
 	}
 
@@ -245,7 +230,6 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 	if ctx.hasStabilizerResolverKey && p.signalResolver != nil {
 		delaySnapshot, delaySnapshotOK = p.signalResolver.Lookup(ctx.stabilizerResolverKey)
 	}
-	plan.familySnapshot, plan.familySnapshotOK = delaySnapshot, delaySnapshotOK
 	delayDecision := evaluateTelnetStabilizerDelay(s, p.recentBandStore, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK)
 	if delayDecision.ShouldDelay {
 		delayed := cloneSpotForTelnetStabilizer(s)
@@ -265,7 +249,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			}
 			return plan, false
 		}
-		plan = p.buildFinalDeliveryPlan(s, plan.familySnapshot, plan.familySnapshotOK, time.Now().UTC())
+		plan = p.buildFinalDeliveryPlan(s)
 		if p.tracker != nil {
 			p.tracker.IncrementStabilizerOverflowRelease()
 			if stabilizerImmediateCountEligible(s) {
@@ -274,7 +258,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			}
 		}
 	} else {
-		plan = p.buildFinalDeliveryPlan(s, plan.familySnapshot, plan.familySnapshotOK, time.Now().UTC())
+		plan = p.buildFinalDeliveryPlan(s)
 		if p.tracker != nil && stabilizerImmediateCountEligible(s) {
 			p.tracker.IncrementStabilizerReleasedImmediate()
 			p.tracker.IncrementStabilizerReleasedImmediateReason(stabilizerDelayReasonNone.String())
@@ -331,9 +315,25 @@ func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPla
 		emittedNow = true
 	}
 	if plan.telnetDeliverNow && plan.normalFanoutAllowed() {
-		ctx.temporalResult.observeHandoff()
-		p.telnet.BroadcastSpotOwned(shared, plan.allowFast, plan.allowMed, plan.allowSlow)
-		emittedNow = true
+		lanes := familyLanes{plan.allowFast, plan.allowMed, plan.allowSlow}
+		publish := func(offered familyLanes) bool {
+			ctx.temporalResult.observeHandoff()
+			emittedNow = true // Preserve attempted-broadcast health/accounting.
+			return p.telnet.TryBroadcastSpotOwned(shared, offered.fast, offered.med, offered.slow)
+		}
+		if p.familySuppressor != nil {
+			lanes = p.familySuppressor.handoff(shared, p.correctionCfg, time.Time{}, lanes,
+				func(now time.Time) correctionflow.ResolverPrimarySelection {
+					return p.selectFamilyEvidenceAt(ctx, shared, now)
+				}, publish)
+		} else {
+			publish(lanes)
+		}
+		// Queue refusal has an attempted ordinary lane and must not gain a
+		// direct SELF retry. Partial masks already deliver SELF once in broadcast.
+		if !lanes.any() {
+			plan.telnetDeliverSelf = true
+		}
 	}
 	if plan.telnetDeliverSelf {
 		ctx.temporalResult.observeHandoff()
@@ -349,6 +349,23 @@ func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPla
 	if emittedNow && p.lastOutput != nil {
 		p.lastOutput.Store(time.Now().UTC().UnixNano())
 	}
+}
+
+// selectFamilyEvidenceAt reads one existing eligible selection for the final
+// literal identity. Called inside family arbitration's mutex after its decision
+// clock is sampled; this is neither an ingest barrier nor another observation.
+func (p *outputPipeline) selectFamilyEvidenceAt(ctx *outputSpotContext, shared *spot.Spot, now time.Time) correctionflow.ResolverPrimarySelection {
+	key, hasKey := ctx.stabilizerResolverKey, ctx.hasStabilizerResolverKey
+	if !hasKey {
+		// Authoritative local SELF bypasses resolver mutation but can still use
+		// the existing key derivation for a read-only family comparison.
+		evidence, ok := buildResolverEvidenceSnapshot(shared, p.correctionCfg, p.adaptiveMinReports, now)
+		key, hasKey = evidence.Key, ok
+	}
+	if !hasKey {
+		return correctionflow.ResolverPrimarySelection{}
+	}
+	return correctionflow.SelectResolverPrimarySnapshotForCallAt(p.signalResolver, key, p.correctionCfg, normalizedDXCall(shared), now)
 }
 
 func archiveSnapshotForSpot(shared *spot.Spot) *spot.Spot {

@@ -6,6 +6,11 @@ Decision Makers: Cluster maintainers
 Technical Area: spot/correction, main/telnet fan-out
 Tags: call-correction, telnet, precedence, bounded-state
 
+Telnet display clauses are partially superseded by
+[ADR-0295](ADR-0295-fresh-admitted-family-display.md): fresh percentages and
+successfully admitted per-policy history now govern hiding. Correction clauses
+remain accepted.
+
 ## Context
 - Operators reported repeated dual-output cases where both a less-specific and a more-specific call variant were emitted to telnet users.
 - Two high-impact families were identified:

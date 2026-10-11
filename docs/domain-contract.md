@@ -255,6 +255,13 @@ These rules must be explicit, deterministic, and testable.
   admission, actual hold/timeout suppression, queue and delivery timing.
   Family display hiding is telnet-only: it does not clear shared ring/archive/peer
   permissions or skip eligible history admission after hold ownership resolves.
+  Hiding uses one fresh eligible receiver population and the existing whole
+  support percentages. Higher support wins; usable slash/base ties favor slash,
+  other ties show both. Missing, split, uncertain or incomplete evidence has no
+  authority. Only successful ordinary broadcast admission records separate
+  FAST/MED/SLOW literal/time/frequency witnesses; failed attempts never refresh
+  or delete rivals. Queue admission is an offer, not client receipt. See
+  [ADR-0295](decisions/ADR-0295-fresh-admitted-family-display.md).
   Local display, ring history
   and archive may contain corrected B while peer publication contains original
   A. PC11/PC61 carry no local confidence percentage or rejection reason.

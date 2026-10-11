@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0087 | Family Display Admission Authority | Monitoring | 2026-10-11 | fresh family shares, admitted FAST/MED/SLOW history, queue refusal | ADR-0295 | `docs/troubleshooting/TSR-0087-family-display-admission-authority.md` |
 | TSR-0086 | Family Delivery Destination Isolation | Monitoring | 2026-10-11 | family telnet gates, archive/peer/history admission | none | `docs/troubleshooting/TSR-0086-family-delivery-destination-isolation.md` |
 | TSR-0085 | Temporal Event Key Retirement | Monitoring | 2026-10-11 | temporal request/event ownership, active-key capacity, delivery | none | `docs/troubleshooting/TSR-0085-temporal-event-key-retirement.md` |
 | TSR-0083 | Rejected Correction Confidence Attribution | Monitoring | 2026-10-11 | resolver confidence, rejected correction, delivered percentage | none | `docs/troubleshooting/TSR-0083-rejected-correction-confidence-attribution.md` |

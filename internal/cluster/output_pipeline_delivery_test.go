@@ -149,7 +149,7 @@ func BenchmarkOutputPipelineBuildFinalDeliveryPlan(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		s.Time = s.Time.Add(time.Nanosecond)
-		plan := pipeline.buildFinalDeliveryPlan(s, spot.ResolverSnapshot{}, false, time.Now().UTC())
+		plan := pipeline.buildFinalDeliveryPlan(s)
 		if !plan.allowMed && i == 0 {
 			b.Fatalf("expected first final delivery plan to allow MED")
 		}

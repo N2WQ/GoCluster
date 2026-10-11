@@ -42,7 +42,7 @@ call_correction:
   # ---------------------------------------------------------------------------
   # 2.5) Call family policy (shared resolver rails)
   # Purpose: Configure slash-vs-bare precedence, truncation matching, and
-  #          telnet output suppression for less-specific family variants.
+  #          telnet-only hiding by fresh support and admitted delivery policy.
   # ---------------------------------------------------------------------------
   family_policy:
     slash_precedence_min_reports: 2   # Slash-vs-bare precedence threshold (unique slash reporters needed)
@@ -68,9 +68,9 @@ call_correction:
         require_candidate_validated: true # Candidate must be SCP/recent-on-band validated
         require_subject_unvalidated: false # Optional stricter rail; keep false unless needed
     telnet_suppression:
-      enabled: true                   # Hide less-specific family variants in telnet output only
-      edit_neighbor_enabled: true     # Resolver-contested late-variant suppression for distance-1 neighbors
-      window_seconds: 180             # Recency window for suppression cache entries
+      enabled: true                   # Hide weaker related calls using fresh whole support percentages; slash wins usable base ties
+      edit_neighbor_enabled: true     # Include distance-1 neighbors only with usable fresh support for both calls
+      window_seconds: 180             # Inclusive protection window per successfully admitted FAST/MED/SLOW lane
       max_entries: 20000              # Bounded cache entries across all mode/frequency buckets
       frequency_tolerance_fallback_hz: 1000 # Fallback bucket width when mode tolerance is invalid/missing
 

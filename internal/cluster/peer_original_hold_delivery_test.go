@@ -353,9 +353,10 @@ func TestPeerOriginalFinalSuppressionGatesActualPeer(t *testing.T) {
 					t.Fatalf("release must actually encounter final MED duplicate refusal: processed=%d duplicates=%d", processed, duplicates)
 				}
 			} else {
-				if f.ring.GetCount() != 2 || p.familySuppressor.totalEntries != 1 {
-					t.Fatal("family hiding must preserve ring output without teaching hidden telnet history")
+				if f.ring.GetCount() != 2 || p.familySuppressor.totalEntries != 2 {
+					t.Fatal("missing fresh family evidence must preserve ordinary offers and ring output")
 				}
+				peerOriginalAssertTCP(t, f, deniedCall, "?")
 				peerOriginalAssertFields(t, f.peer, []string{
 					"14030", deniedCall, denied.Time.Format("02-Jan-2006"), denied.Time.Format("1504Z"),
 					"denied peer gate", "N0AAA", "N0CALL-1", "192.0.2.1",

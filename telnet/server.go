@@ -2451,8 +2451,15 @@ func (s *Server) BroadcastSpot(spot *spot.Spot, allowFast, allowMed, allowSlow b
 // BroadcastSpotOwned enqueues a caller-owned immutable spot snapshot for
 // broadcast. Callers must guarantee the spot will not be mutated after handoff.
 func (s *Server) BroadcastSpotOwned(snapshot *spot.Spot, allowFast, allowMed, allowSlow bool) {
+	s.TryBroadcastSpotOwned(snapshot, allowFast, allowMed, allowSlow)
+}
+
+// TryBroadcastSpotOwned reports nonblocking queue admission of an immutable
+// caller-owned snapshot. Success establishes an offer to the selected policy
+// lanes, not client receipt. Refusal retains the existing drop/log contract.
+func (s *Server) TryBroadcastSpotOwned(snapshot *spot.Spot, allowFast, allowMed, allowSlow bool) bool {
 	if s == nil || snapshot == nil {
-		return
+		return false
 	}
 	payload := &broadcastPayload{
 		spot:      snapshot,
@@ -2464,11 +2471,13 @@ func (s *Server) BroadcastSpotOwned(snapshot *spot.Spot, allowFast, allowMed, al
 	qualificationstage.Observe(qualificationstage.BroadcastReady, snapshot.Comment, -1)
 	select {
 	case s.broadcast <- payload:
+		return true
 	default:
 		drops := atomic.AddUint64(&s.metrics.queueDrops, 1)
 		if _, ok := s.queueDropLog.Inc(); ok {
 			log.Printf("Broadcast channel full (%d/%d buffered), dropping spot (total queue drops=%d)", len(s.broadcast), cap(s.broadcast), drops)
 		}
+		return false
 	}
 }
 

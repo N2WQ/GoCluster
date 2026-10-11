@@ -1207,10 +1207,10 @@ type CallCorrectionTruncationDelta2RailsConfig struct {
 type CallCorrectionTelnetFamilySuppressionConfig struct {
 	// Enabled toggles telnet-only family suppression.
 	Enabled bool `yaml:"enabled"`
-	// EditNeighborEnabled toggles resolver-contested edit-neighbor suppression
-	// for late-arriving variants in the same mode/frequency neighborhood.
+	// EditNeighborEnabled includes distance-one neighbors when both calls have
+	// usable fresh support in the same selected population.
 	EditNeighborEnabled bool `yaml:"edit_neighbor_enabled"`
-	// WindowSeconds is the recency window for family suppression cache entries.
+	// WindowSeconds is the inclusive protection window per admitted delivery lane.
 	WindowSeconds int `yaml:"window_seconds"`
 	// MaxEntries bounds total cache entries across all mode/frequency buckets.
 	MaxEntries int `yaml:"max_entries"`

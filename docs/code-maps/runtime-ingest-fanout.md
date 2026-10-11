@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `54aafb41ca4c6b38`
+- Source fingerprint: `2708aa0d2fc83a8f`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 108 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 111 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 53 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
@@ -188,7 +188,10 @@ Test files:
 - `internal/cluster/drop_log_dedupe_test.go`
 - `internal/cluster/dropped_call_log_test.go`
 - `internal/cluster/event_file_log_test.go`
+- `internal/cluster/family_admission_delivery_test.go`
+- `internal/cluster/family_admission_qualification_test.go`
 - `internal/cluster/family_delivery_destinations_test.go`
+- `internal/cluster/family_evidence_test.go`
 - `internal/cluster/fcc_resolver_state_test.go`
 - `internal/cluster/fcc_runtime_state_test.go`
 - `internal/cluster/fcc_state_test.go`
@@ -725,6 +728,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0295](docs/decisions/ADR-0295-fresh-admitted-family-display.md) | Accepted | 2026-10-11 | family display, fresh evidence, telnet queue admission | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0290](docs/decisions/ADR-0290-correction-numerical-asset-integrity.md) | Accepted | 2026-10-11 | reliability, confusion model, startup, replay | `path:spot` |
 | [ADR-0287](docs/decisions/ADR-0287-independent-historical-family-qualification.md) | Accepted | 2026-10-11 | custom_scp, historical family floor | `path:internal/cluster, path:spot` |
 | [ADR-0286](docs/decisions/ADR-0286-consumer-specific-historical-requirements.md) | Accepted | 2026-10-11 | custom_scp, resolver/stabilizer isolation, replay | `path:internal/cluster, path:spot` |

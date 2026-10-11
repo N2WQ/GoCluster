@@ -8,6 +8,11 @@ Decision Origin: Troubleshooting chat
 Troubleshooting Record(s): TSR-0006
 Tags: resolver-primary, neighborhood, stabilizer, suppression, replay-parity
 
+Edit-neighbor telnet display clauses are partially superseded by
+[ADR-0295](ADR-0295-fresh-admitted-family-display.md): usable fresh evidence and
+admitted per-policy history replace cached contested support and arrival ties.
+Neighborhood and stabilizer clauses remain accepted.
+
 ## Context
 
 - Resolver-primary is the long-term authority path, but one-character variants could still leak under bucket-boundary and timing conditions.

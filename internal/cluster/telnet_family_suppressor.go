@@ -1,3 +1,6 @@
+// File role: Owns bounded telnet-only family offer history. Fresh shared
+// evidence decides hiding; nonblocking queue admission commits per-policy
+// witnesses under the same mutex. No spot or resolver population is retained.
 package cluster
 
 import (
@@ -17,23 +20,31 @@ type telnetFamilyBucket struct {
 	freqBin int
 }
 
-// telnetFamilyEntry is the short-lived memory of a call already emitted to
-// telnet. It stores support/contested state because suppression is a user
-// display choice, not an archive or peer mutation.
-type telnetFamilyEntry struct {
-	bucket    telnetFamilyBucket
-	key       string
-	freqKHz   float64
-	seenAt    time.Time
-	support   int
-	contested bool
-	prev      *telnetFamilyEntry
-	next      *telnetFamilyEntry
+type familyLanes struct{ fast, med, slow bool }
+
+func (l familyLanes) any() bool { return l.fast || l.med || l.slow }
+
+type telnetFamilyWitness struct {
+	call    string // Owned normalized literal; canonical aliases do not pool votes.
+	freqKHz float64
+	at      time.Time
 }
 
-// telnetFamilySuppressor tracks recently emitted calls in small mode/frequency
-// buckets so less-specific family variants can be suppressed for telnet output.
-// This is output-only: archive/peer behavior is unchanged.
+// telnetFamilyEntry retains at most three compact successful ordinary offers.
+// The global cap couples entries, bucket maps and LRU nodes; seenAt is the
+// newest lane offer, while each lane expires independently and inclusively.
+type telnetFamilyEntry struct {
+	bucket telnetFamilyBucket
+	key    string
+	seenAt time.Time
+	lanes  [3]telnetFamilyWitness
+	prev   *telnetFamilyEntry
+	next   *telnetFamilyEntry
+}
+
+// telnetFamilySuppressor tracks admitted ordinary lanes in mode/frequency
+// buckets. Evidence and publishing callbacks are request-local, never retained.
+// Archive, ring and peer gates are independent of its returned telnet mask.
 type telnetFamilySuppressor struct {
 	window     time.Duration
 	maxEntries int
@@ -64,104 +75,132 @@ func newTelnetFamilySuppressor(window time.Duration, maxEntries int, familyPolic
 	}
 }
 
-// ShouldSuppress returns true when the spot call is less specific than a recent
-// call in the same family bucket and should be hidden from telnet output.
-func (s *telnetFamilySuppressor) ShouldSuppress(sp *spot.Spot, cfg config.CallCorrectionConfig, now time.Time) bool {
-	return s.ShouldSuppressWithResolver(sp, cfg, now, spot.ResolverSnapshot{}, false)
-}
-
-// ShouldSuppressWithResolver returns true when the spot should be hidden from
-// telnet output due to family precedence or resolver-contested edit-neighbor
-// suppression policy.
-func (s *telnetFamilySuppressor) ShouldSuppressWithResolver(sp *spot.Spot, cfg config.CallCorrectionConfig, now time.Time, resolverSnapshot spot.ResolverSnapshot, resolverSnapshotOK bool) bool {
-	if s == nil || sp == nil {
-		return false
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
+// handoff serializes fresh arbitration, nonblocking publication and commitment
+// across main and stabilizer consumers. publish must not block in production.
+// Its returned mask records attempts even on queue refusal, preventing a SELF
+// fallback; only a successful admission teaches ordinary offer history.
+func (s *telnetFamilySuppressor) handoff(sp *spot.Spot, cfg config.CallCorrectionConfig, now time.Time, allowed familyLanes,
+	selectEvidence func(time.Time) correctionflow.ResolverPrimarySelection, publish func(familyLanes) bool) familyLanes {
+	if sp == nil || !allowed.any() {
+		return allowed
 	}
 	bucket, key, toleranceKHz, ok := telnetFamilyBucketForSpot(sp, cfg, s.fallbackHz)
-	if !ok {
-		return false
-	}
-	incomingSupport := 0
-	incomingContested := false
-	if resolverSnapshotOK {
-		incomingSupport = correctionflow.ResolverSupportForCall(resolverSnapshot, key)
-		incomingContested = resolverSnapshot.State == spot.ResolverStateSplit || resolverSnapshot.State == spot.ResolverStateUncertain
-		if !incomingContested && incomingSupport > 0 {
-			incomingContested = hasComparableEditNeighborCandidate(resolverSnapshot, key, bucket.mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+	literal := normalizedDXCall(sp)
+	if !ok || literal == "" {
+		// Unsupported modes retain the ordinary path without acquiring family
+		// history ownership or extending this mutex to FT broadcast traffic.
+		if publish != nil {
+			publish(allowed)
 		}
+		return allowed
 	}
-
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
+	// Resolve a zero production clock after acquiring ownership, so waiting
+	// consumers cannot compare evidence at an obsolete pre-lock time.
 	now = s.monotonicNowLocked(now)
 	s.pruneExpiredLocked(now)
-	if calls := s.buckets[bucket]; calls != nil {
-		if entry, exists := calls[key]; exists {
-			entry.support = incomingSupport
-			entry.contested = incomingContested
-			s.touchEntryLocked(entry, now)
-			return false
+	var selection correctionflow.ResolverPrimarySelection
+	if selectEvidence != nil {
+		selection = selectEvidence(now)
+	}
+	offered := allowed
+	if selection.SnapshotOK && !selection.NeighborhoodSplit && !selection.Snapshot.EvidenceLoss &&
+		(selection.Snapshot.State == spot.ResolverStateConfident || selection.Snapshot.State == spot.ResolverStateProbable) {
+		if percent, usable := familyPercent(selection.Snapshot, literal); usable {
+			offered = s.compareLanesLocked(sp, cfg, bucket, key, toleranceKHz, now, offered, selection.Snapshot, percent)
 		}
 	}
+	if offered.any() && publish != nil && publish(offered) {
+		s.recordOfferLocked(bucket, key, literal, sp.Frequency, now, offered)
+	}
+	return offered
+}
 
-	suppress := false
-	minBin := bucket.freqBin - 1
-	maxBin := bucket.freqBin + 1
-	for bin := minBin; bin <= maxBin; bin++ {
-		binBucket := telnetFamilyBucket{mode: bucket.mode, freqBin: bin}
-		calls := s.buckets[binBucket]
-		if calls == nil {
+// compareLanesLocked changes only the request-local mask. A stronger independent
+// rival can protect a lane even if another comparison is tied/unavailable;
+// dominance never deletes an earlier admitted witness.
+func (s *telnetFamilySuppressor) compareLanesLocked(sp *spot.Spot, cfg config.CallCorrectionConfig, bucket telnetFamilyBucket,
+	key string, toleranceKHz float64, now time.Time, offered familyLanes, snapshot spot.ResolverSnapshot, incomingPercent int) familyLanes {
+	lanes := [3]bool{offered.fast, offered.med, offered.slow}
+	cutoff := now.Add(-s.window)
+	// Only identities represented in this bounded fresh publication can hide.
+	// Lookup their canonical entries directly rather than scanning up to 20,000
+	// unrelated historical calls. Winner/runner fallback remains authoritative
+	// only when familyPercent accepts it; ranked zero support still overrides it.
+	for index := 0; index < len(snapshot.CandidateRanks)+2; index++ {
+		literal := snapshot.Winner
+		switch {
+		case index < len(snapshot.CandidateRanks):
+			literal = snapshot.CandidateRanks[index].Call
+		case index == len(snapshot.CandidateRanks)+1:
+			literal = snapshot.RunnerUp
+		}
+		percent, usable := familyPercent(snapshot, literal)
+		if !usable || percent < incomingPercent {
 			continue
 		}
-		for existingKey, existingEntry := range calls {
-			if math.Abs(existingEntry.freqKHz-sp.Frequency) > toleranceKHz {
+		existingKey := spot.CorrectionVoteKey(literal)
+		if existingKey == "" || existingKey == key {
+			continue
+		}
+		var relation spot.CorrectionFamilyRelation
+		related, relationChecked := false, false
+		for bin := bucket.freqBin - 1; bin <= bucket.freqBin+1; bin++ {
+			entry := s.buckets[telnetFamilyBucket{mode: bucket.mode, freqBin: bin}][existingKey]
+			if entry == nil {
 				continue
 			}
-			relation, related := spot.DetectCorrectionFamilyWithPolicy(existingKey, key, s.family)
-			if related {
-				if relation.MoreSpecific == existingKey && relation.LessSpecific == key {
-					suppress = true
-					break
-				}
-				if relation.MoreSpecific == key && relation.LessSpecific == existingKey {
-					s.removeEntryLocked(existingEntry)
-				}
-			}
-			if cfg.FamilyPolicy.TelnetSuppression.EditNeighborEnabled &&
-				(incomingContested || existingEntry.contested) &&
-				isEditNeighborPair(existingKey, key, bucket.mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY) {
-				if existingEntry.support > incomingSupport {
-					suppress = true
-					break
-				}
-				if existingEntry.support < incomingSupport {
-					s.removeEntryLocked(existingEntry)
+			for lane, witness := range entry.lanes {
+				if !lanes[lane] || witness.call != literal || witness.at.IsZero() || witness.at.Before(cutoff) ||
+					math.Abs(witness.freqKHz-sp.Frequency) > toleranceKHz {
 					continue
 				}
-				// Deterministic tie-break: earlier emitted spot wins.
-				suppress = true
-				break
+				if !relationChecked {
+					// Canonical relationship is shared across the three literal
+					// lane witnesses; classify once after fresh support qualifies.
+					relation, related = spot.DetectCorrectionFamilyWithPolicy(existingKey, key, s.family)
+					if !related && cfg.FamilyPolicy.TelnetSuppression.EditNeighborEnabled {
+						related = isEditNeighborPair(existingKey, key, bucket.mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
+					}
+					relationChecked = true
+				}
+				if related && (percent > incomingPercent ||
+					(relation.Kind == spot.CorrectionFamilySlash && relation.MoreSpecific == existingKey)) {
+					lanes[lane] = false
+				}
 			}
 		}
-		if suppress {
-			break
-		}
 	}
-	if suppress {
-		return true
-	}
+	return familyLanes{lanes[0], lanes[1], lanes[2]}
+}
 
-	s.addEntryLocked(bucket, key, sp.Frequency, incomingSupport, incomingContested, now)
-	for s.totalEntries > s.maxEntries {
-		if !s.evictHeadLocked() {
+// familyPercent enforces one score basis before using the unchanged percentage
+// helper. Direct literal lookup is bounded by published candidates and avoids
+// normalizing thousands of absent retained history calls on dense scans.
+func familyPercent(snapshot spot.ResolverSnapshot, literal string) (int, bool) {
+	if literal == "" || snapshot.TotalReporters <= 0 {
+		return 0, false
+	}
+	raw, weighted, found := 0, 0, false
+	for _, candidate := range snapshot.CandidateRanks {
+		if candidate.Call == literal {
+			raw, weighted, found = candidate.Support, candidate.WeightedSupportMilli, true
 			break
 		}
 	}
-	return false
+	if !found {
+		switch literal {
+		case snapshot.Winner:
+			raw, weighted = snapshot.WinnerSupport, snapshot.WinnerWeightedSupportMilli
+		case snapshot.RunnerUp:
+			raw, weighted = snapshot.RunnerSupport, snapshot.RunnerWeightedSupportMilli
+		}
+	}
+	if raw <= 0 || (snapshot.TotalWeightedSupportMilli > 0 && weighted <= 0) {
+		return 0, false
+	}
+	return correctionflow.ResolverCallConfidencePercent(snapshot, literal)
 }
 
 func (s *telnetFamilySuppressor) monotonicNowLocked(now time.Time) time.Time {
@@ -175,40 +214,50 @@ func (s *telnetFamilySuppressor) monotonicNowLocked(now time.Time) time.Time {
 	return now
 }
 
-// touchEntryLocked moves repeated calls to the hot end of the LRU list so
-// eviction favors stale display history instead of currently active families.
-func (s *telnetFamilySuppressor) touchEntryLocked(entry *telnetFamilyEntry, now time.Time) {
+// recordOfferLocked owns small strings only after admission. Copying prevents
+// uppercase substring identities from retaining a full received frame. Repeats
+// reuse owned literals; the fixed three witnesses add no unbounded history.
+func (s *telnetFamilySuppressor) recordOfferLocked(bucket telnetFamilyBucket, key, literal string, freqKHz float64, now time.Time, offered familyLanes) {
+	calls := s.buckets[bucket]
+	entry := calls[key]
 	if entry == nil {
-		return
+		bucket.mode, key = strings.Clone(bucket.mode), strings.Clone(key)
+		if calls == nil {
+			calls = make(map[string]*telnetFamilyEntry, 4)
+			s.buckets[bucket] = calls
+		}
+		entry = &telnetFamilyEntry{bucket: bucket, key: key}
+		calls[key] = entry
+		s.appendTailLocked(entry)
+		s.totalEntries++
+	}
+	ownedLiteral := entry.key
+	if literal != entry.key {
+		ownedLiteral = ""
+		for _, witness := range entry.lanes {
+			if witness.call == literal {
+				ownedLiteral = witness.call
+				break
+			}
+		}
+		if ownedLiteral == "" {
+			ownedLiteral = strings.Clone(literal)
+		}
+	}
+	for lane, admitted := range [3]bool{offered.fast, offered.med, offered.slow} {
+		if admitted {
+			entry.lanes[lane] = telnetFamilyWitness{ownedLiteral, freqKHz, now}
+		}
 	}
 	entry.seenAt = now
 	s.moveToTailLocked(entry)
-}
-
-// addEntryLocked records a call only after the suppressor decides it should be
-// visible. This preserves the operator-facing invariant that hidden weaker
-// variants do not teach the suppressor to hide later stronger evidence.
-func (s *telnetFamilySuppressor) addEntryLocked(bucket telnetFamilyBucket, key string, freqKHz float64, support int, contested bool, now time.Time) {
-	calls := s.buckets[bucket]
-	if calls == nil {
-		calls = make(map[string]*telnetFamilyEntry, 4)
-		s.buckets[bucket] = calls
+	for s.totalEntries > s.maxEntries {
+		s.evictHeadLocked()
 	}
-	entry := &telnetFamilyEntry{
-		bucket:    bucket,
-		key:       key,
-		freqKHz:   freqKHz,
-		seenAt:    now,
-		support:   support,
-		contested: contested,
-	}
-	calls[key] = entry
-	s.appendTailLocked(entry)
-	s.totalEntries++
 }
 
 // pruneExpiredLocked enforces the time window before size eviction so support
-// questions can be answered in terms of "recently emitted" rather than
+// questions can be answered in terms of "recently admitted offers" rather than
 // arbitrary memory pressure.
 func (s *telnetFamilySuppressor) pruneExpiredLocked(now time.Time) {
 	cutoff := now.Add(-s.window)
@@ -218,7 +267,7 @@ func (s *telnetFamilySuppressor) pruneExpiredLocked(now time.Time) {
 }
 
 // evictHeadLocked is the hard-size fallback when traffic exceeds the windowed
-// expectation; oldest visible history is the least risky information to drop.
+// expectation; retiring the oldest admitted offer conservatively shows more.
 func (s *telnetFamilySuppressor) evictHeadLocked() bool {
 	if s.head == nil {
 		return false
@@ -321,26 +370,6 @@ func telnetFamilyBucketForSpot(sp *spot.Spot, cfg config.CallCorrectionConfig, f
 	}
 	freqBin := int(math.Floor(sp.Frequency/widthKHz + 0.5))
 	return telnetFamilyBucket{mode: mode, freqBin: freqBin}, key, widthKHz, true
-}
-
-func hasComparableEditNeighborCandidate(snapshot spot.ResolverSnapshot, call string, mode, cwModel, rttyModel string) bool {
-	if strings.TrimSpace(call) == "" || len(snapshot.CandidateRanks) == 0 {
-		return false
-	}
-	callSupport := correctionflow.ResolverSupportForCall(snapshot, call)
-	for _, candidate := range snapshot.CandidateRanks {
-		candidateCall := spot.CorrectionVoteKey(candidate.Call)
-		if candidateCall == "" || strings.EqualFold(candidateCall, call) {
-			continue
-		}
-		if candidate.Support < callSupport {
-			continue
-		}
-		if isEditNeighborPair(call, candidateCall, mode, cwModel, rttyModel) {
-			return true
-		}
-	}
-	return false
 }
 
 func isEditNeighborPair(left, right, mode, cwModel, rttyModel string) bool {

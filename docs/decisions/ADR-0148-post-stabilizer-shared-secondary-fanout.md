@@ -4,6 +4,11 @@
 - Date: 2026-06-06
 - Decision Origin: Design
 
+Family display thinning is refined by
+[ADR-0295](ADR-0295-fresh-admitted-family-display.md): shared secondary gates
+still own saved/peer fanout, while fresh per-policy family arbitration affects
+ordinary telnet only. Stabilizer timing and holds remain accepted.
+
 ## Context
 The output pipeline previously kept a separate archive/peer secondary dedupe
 rail when the stabilizer was enabled. That side rail was introduced to preserve
