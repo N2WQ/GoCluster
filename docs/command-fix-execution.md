@@ -5001,3 +5001,52 @@ Lead final review confirmed that the error allowance is limited to the intended
 two cases and that the saved JSON/status/order witnesses remain strict.
 TSR-0073 records the cross-platform assertion cause. No durable decision changed;
 existing support routing to that record remains applicable.
+
+### Final selected lane and closeout
+
+The three implementation patches are separate commits:
+
+| Item | Commit | Implementation and falsifying evidence |
+|---|---|---|
+| R1 | `e5b48ed` | HELP DX, guides/support card, literal reader/wording tests and actual checkout archive/recovery checks |
+| R2 | `b6695d2` | Independent public-conversion allocation baseline, 23 semantic fixtures and extra-allocation controls on both backends |
+| R3 | `f3f6250` | Narrow blocked-child error classification, original-blocker witnesses and actual-main status/JSON/Markdown checks |
+
+The complete native Windows ordinary stable-path lane passed 70 unique
+packages: 53 test suites executed and 17 packages without tests build-checked.
+Root reconciled the full package inventory and all 1,217 unchanged Go/module
+hashes (`v4-final-windows.log`, `v4-final-windows-qualification.json`,
+`v4-final-source.json`). The affected-package Linux runs described above
+tested identical tracked Go/module content. Vet and Staticcheck exited zero;
+golangci-lint reported zero issues. Logs are `v4-final-vet.log`,
+`v4-final-staticcheck.log` and `v4-final-lint.log`. Tools were Go 1.27.1,
+Staticcheck 2026.2.1 and golangci-lint 2.14.0.
+
+Fresh offline runner/collector checks passed 85/29 tests
+(`v4-final-offline-runner.log`, `v4-final-offline-collector.log`). The final
+ordinary checkout run passed all 138 required cases across six profiles,
+with zero wire/cleanup errors and twelve joined, gracefully retired children
+(`20261010-203535-dcf96d3e/results.json`). Root reconciled exact case names and
+order, every PASS result, both new DX archive cases, source/config/binary
+identities, child execution/PASS markers and all retirement receipts
+(`v4-final-checkout-qualification.json`). The captured build commit was
+`f3f625044500b135e1ef55a7a2451bec99d13d11`; all 1,217 source hashes match the
+Windows lane snapshot and current files. Source digest:
+`674f6146d77de241ca4ddce61aedfcc6d481d820609a8ba736c074fab3e98fc5`.
+Artifacts are under `.tmp/command-fixes`. Parent pre/post-build manifests are
+provenance evidence; echoed child hashes are correlation, not an independent
+compiler audit. Private local fixtures do not qualify production load or model
+accuracy.
+
+The selected ordinary lane follows v4: production Go changed only HELP text;
+no runtime concurrency, parser, matcher, model or lifecycle implementation
+changed. No additional race or fuzz campaign was required. Lead-owned fresh
+final verification reviewed approved scope, test oracles, code/diff and claim
+limits; it is not independent scientific review. Support documentation and
+TSR-0054/0066/0073 are updated, with no durable decision or ADR change.
+Troubleshooting-record consistency and changed local Markdown links passed.
+Map generation/checking and direct final diff/whitespace review finish after
+this record; their observed result belongs to the closeout response.
+
+All three approved v4 fixes are implemented and qualified. They do not close
+the original v3 checkpoints 28a, 32 or final 35, which remain open.
