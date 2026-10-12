@@ -11,24 +11,6 @@ import (
 	"dxcluster/spot"
 )
 
-func TestHandlePathSettingsNoiseIndustrial(t *testing.T) {
-	cfg := pathreliability.DefaultConfig()
-	server := &Server{
-		noiseModel: cfg.NoiseModel(),
-	}
-	client := &Client{}
-	resp, handled := server.handlePathSettingsCommand(client, "SET NOISE INDUSTRIAL")
-	if !handled {
-		t.Fatalf("expected SET NOISE to be handled")
-	}
-	if !strings.Contains(resp, "Noise class set to INDUSTRIAL") {
-		t.Fatalf("unexpected response: %q", resp)
-	}
-	if client.noiseClass != "INDUSTRIAL" {
-		t.Fatalf("expected noise class INDUSTRIAL, got %q", client.noiseClass)
-	}
-}
-
 func TestHandlePathSettingsPathSamplesStricterThanDefault(t *testing.T) {
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinObservationCount = 19

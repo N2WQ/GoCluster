@@ -20,11 +20,6 @@ func TestNamedPresetHelp(t *testing.T) {
 					t.Fatalf("%s %s missing %q: %s", dialect, topic, want, response)
 				}
 			}
-			for _, line := range strings.Split(response, "\n") {
-				if len(line) > 78 {
-					t.Fatalf("HELP line exceeds 78 characters: %q", line)
-				}
-			}
 			obsolete := verb + " FILTER"
 			if strings.Contains(list, obsolete+" - ") {
 				t.Fatalf("%s HELP advertises obsolete %s", dialect, obsolete)

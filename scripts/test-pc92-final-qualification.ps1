@@ -94,7 +94,7 @@ function Restore-FinalFixture {
         $run = [pscustomobject]@{ family = $parts[0]; profile = $parts[1]; status = 'measured'; diagnostic = $false;
             measurement_passed = $true; provenance_passed = $true; profile_accepted = $true; exit_code = 0;
             failure_reasons = @(); repository_root = $root; runtime_settings = 'GOMAXPROCS=2 GOGC=50 GOMEMLIMIT=1536MiB';
-            go_version = 'go version go1.26.4 windows/amd64'; external_inputs = @($externalInputs); executable = $binary;
+            go_version = (Get-PC92QualificationGoVersion); external_inputs = @($externalInputs); executable = $binary;
             helper_executable = $helper; executable_sha256 = (Get-FileHash -LiteralPath $binary).Hash;
             helper_executable_sha256 = (Get-FileHash -LiteralPath $helper).Hash; test_log_sha256 = (Get-FileHash -LiteralPath $log).Hash;
             observations_sha256 = ''; run_id = $runID; elapsed_seconds = $plan.minimum_seconds;
@@ -203,4 +203,5 @@ Invoke-FinalFixture source-changed-during-finalization {
 Invoke-FinalFixture external-changed-during-finalization {
     $script:finalFixtureBeforeRecheck = { Add-Content -LiteralPath (Join-Path $referenceRoot 'perl/Fixture.pm') -Value 'CHANGED' }
 } 'inputs_changed_during_finalization'
+Invoke-FinalFixture 'obsolete compiler rejected' { Edit-FinalFixtureRun 'runtime/q1' { param($r) $r.go_version = 'go version go1.26.4 windows/amd64' } } 'run_environment_mismatch'
 Write-Host "PASS $passed final reconciliation fixtures; synthetic artifacts: $base"

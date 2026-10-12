@@ -1570,13 +1570,22 @@ class DriverControls(unittest.TestCase):
         raw = (command + "\r\nFirst refusal line\r\nLast refusal line\r\n").encode()
         session.reader.line.side_effect = raw.splitlines(keepends=True)
 
-        def get_after_receipt():
-            self.assertTrue(session.suite.log.getvalue().endswith(raw))
-            return {"checked": True}
-
-        session.get.side_effect = get_after_receipt
-        self.assertEqual(driver.exact_human_reply(session, command, reply), (reply, {"checked": True}))
-        session.send.assert_called_once_with(command + "\r\n")
+        document = dict(resource="CONFIG", request_id="End-1", schema_version=4, revision="r", configuration={}, status={})
+        session.suite.identifier.return_value = "End-1"
+        session.reader.remote_echo = True
+        for prefix in (b"", b"hidden row\r\n", b"GET YAML CONFIG SCHEMA 4 ID Other\r\n"):
+            session.reader.line.side_effect = raw.splitlines(keepends=True)
+            session.suite.log = io.BytesIO()
+            def framed(*args):
+                self.assertTrue(session.suite.log.getvalue().endswith(raw))
+                return document, prefix
+            session.frame.side_effect = framed
+            if not prefix:
+                self.assertEqual(driver.exact_human_reply(session, command, reply), (reply, document))
+            else:
+                with self.assertRaisesRegex(ValueError, "trailing response content"):
+                    driver.exact_human_reply(session, command, reply)
+        session.get.assert_not_called()
         session.human.assert_not_called()
         for bad in (b"GET YAML First refusal line\r\n", b"First refusal line EXTRA\r\n",
                     b"First refusal line\n", b"X" * (driver.harness.MAX_FRAME + 1) + b"\r\n"):
@@ -1619,18 +1628,29 @@ class DriverControls(unittest.TestCase):
         expected_receipt = ("\n[N0CALL-1] " + query + "\n" + query + "\r\n" + row +
                             "\r\nEnd of retained history search.\r\n").encode()
 
-        def get_after_receipt():
+        session.suite.identifier.return_value = "End-1"
+        session.reader.remote_echo = True
+        document = dict(resource="CONFIG", request_id="End-1", schema_version=4, revision="r", configuration={}, status={})
+        def framed(*args):
             self.assertEqual(raw_log.getvalue(), expected_receipt)
             session.suite.log.flush.assert_called_once()
-            events.append(("get",))
-
-        session.get.side_effect = get_after_receipt
+            events.append(("frame",))
+            return document, b""
+        session.frame.side_effect = framed
         self.assertEqual(driver.archive_rows(session, "LABEL"), [row])
         self.assertEqual(events, [("send", query + "\r\n"),
                                   ("line", (query + "\r\n").encode()),
                                   ("line", (row + "\r\n").encode()),
-                                  ("line", b"End of retained history search.\r\n"), ("get",)])
+                                  ("line", b"End of retained history search.\r\n"),
+                                  ("send", "GET YAML CONFIG SCHEMA 4 ID End-1\r\n"), ("frame",)])
         session.human.assert_not_called()
+
+        for prefix in (b"DX de EXTRA: additional row\r\n", b"\n"):
+            session.reader.line.side_effect = [b"No matching retained spots.\r\n"]
+            session.frame.side_effect = None
+            session.frame.return_value = document, prefix
+            with self.assertRaises(ValueError):
+                driver.archive_rows(session, "LABEL")
 
     def test_history_row_oracle_rejects_valid_prefix_corruption(self):
         self.assertEqual(len(HISTORY_ROW), 78)
@@ -1975,6 +1995,9 @@ class DriverControls(unittest.TestCase):
         log = io.BytesIO()
         with tempfile.TemporaryDirectory(dir=support.ROOT / ".tmp") as directory:
             root = Path(directory)
+            (root / "h3").mkdir()
+            for asset in ("cty.plist", "h3/res1.bin", "h3/res2.bin"):
+                (root / asset).write_bytes(b"fixture")
             # Keep real spec admission, then substitute only the process log.
             original_open = Path.open
 
@@ -1991,13 +2014,18 @@ class DriverControls(unittest.TestCase):
 
     def test_failed_child_readiness_retires_process(self):
         with tempfile.TemporaryDirectory(dir=support.ROOT / ".tmp") as directory:
+            root = Path(directory)
+            (root / "h3").mkdir()
+            for asset in ("cty.plist", "h3/res1.bin", "h3/res2.bin"):
+                (root / asset).write_bytes(b"readiness-fixture")
             # Python is deliberately not a Go test binary: these flags fail.
             with self.assertRaisesRegex(ValueError, "fixture exited early"):
-                support.Child(Path(sys.executable), Path(directory), {"digest": "source"})
+                support.Child(Path(sys.executable), root, {"digest": "source"})
 
     def test_readiness_sharing_retry_is_bounded(self):
-        for expires in (False, True):
-            with self.subTest(expires=expires), tempfile.TemporaryDirectory(dir=support.ROOT / ".tmp") as directory:
+        for fault in (None, "deadline", "assets"):
+            expires = fault == "deadline"
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory(dir=support.ROOT / ".tmp") as directory:
                 root = Path(directory)
                 (root / "config").mkdir()
                 process = mock.Mock(pid=123)
@@ -2010,7 +2038,7 @@ class DriverControls(unittest.TestCase):
                 reads = [PermissionError("sharing publication"), receipt]
                 with mock.patch.object(support.uuid, "uuid4", return_value=mock.Mock(hex="fixed")), \
                         mock.patch.object(support.subprocess, "Popen", return_value=process), \
-                        mock.patch.object(support, "digest", return_value="binary"), \
+                        mock.patch.object(support, "digest", return_value="binary", side_effect=["binary"] * 4 + ["changed", "binary", "binary"] if fault == "assets" else None), \
                         mock.patch.object(Path, "read_text", side_effect=reads) as reading, \
                         mock.patch.object(support.time, "monotonic", side_effect=([0, 0, 46] if expires else [0, 0, 1])), \
                         mock.patch.object(support.time, "sleep"):
@@ -2019,6 +2047,10 @@ class DriverControls(unittest.TestCase):
                             support.Child(Path("fixture.exe"), root, {"digest": "source"})
                         process.kill.assert_called_once()
                         self.assertEqual(reading.call_count, 1)
+                    elif fault == "assets":
+                        with self.assertRaisesRegex(ValueError, "assets changed during startup"):
+                            support.Child(Path("fixture.exe"), root, {"digest": "source"})
+                        process.kill.assert_called_once()
                     else:
                         child = support.Child(Path("fixture.exe"), root, {"digest": "source"})
                         self.assertEqual(child.port, 12345)

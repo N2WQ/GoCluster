@@ -1,18 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
+
+	"dxcluster/internal/testsupport"
 )
 
 func TestReappearanceMainChild(t *testing.T) {
@@ -40,32 +37,7 @@ func TestReappearanceMainChild(t *testing.T) {
 // command's unsuccessful status, and Run must return before fixture deletion.
 func reappearanceMainAt(t *testing.T, directory, mode string, args ...string) (int, string, string) {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	commandArgs := append([]string{"-test.run=^TestReappearanceMainChild$", "--"}, args...)
-	cmd := exec.CommandContext(ctx, exe, commandArgs...)
-	cmd.Dir = directory
-	cmd.Env = append(os.Environ(), "DXC_REAPPEARANCE_MAIN_CHILD="+mode)
-	cmd.WaitDelay = 2 * time.Second
-	var output, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &output, &stderr
-	err = cmd.Run()
-	if ctx.Err() != nil {
-		t.Fatalf("actual main missed execution/join bound: %v", ctx.Err())
-	}
-	code := 0
-	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			t.Fatalf("child launch/join failure: %v", err)
-		}
-		code = exitErr.ExitCode()
-	}
-	return code, output.String(), stderr.String()
+	return testsupport.RunMain(t, "TestReappearanceMainChild", directory, []string{"DXC_REAPPEARANCE_MAIN_CHILD=" + mode}, args...)
 }
 
 func reappearanceMainResult(t *testing.T, path, mode string, extraArgs ...string) (int, string, string) {

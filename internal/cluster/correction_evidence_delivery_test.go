@@ -10,20 +10,15 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
-	"dxcluster/archive"
-	"dxcluster/buffer"
 	"dxcluster/config"
 	"dxcluster/internal/correctionflow"
 	"dxcluster/peer"
 	"dxcluster/spot"
-	"dxcluster/stats"
-	"dxcluster/telnet"
 )
 
 type correctionEvidenceDeliveryCase struct {
@@ -37,16 +32,7 @@ type correctionEvidenceDeliveryCase struct {
 }
 
 func TestCallCorrectionMethodDeliveredAccounting(t *testing.T) {
-	t.Chdir(t.TempDir()) // Login and diagnostic settings remain fixture-owned.
-	previousLayout := spot.CurrentDXClusterLayout()
-	if err := spot.SetDXClusterLineLength(78); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := spot.SetDXClusterLineLength(previousLayout.LineLength); err != nil {
-			t.Error(err)
-		}
-	})
+	temporalDeliveryDirectory(t)
 	weights := spot.SpotterReliability{"N0AAA": 0.900, "N0BBB": 0.950, "N0CCC": 1.000}
 	pair := []string{"N0AAA", "N0BBB"}
 	cases := []correctionEvidenceDeliveryCase{
@@ -83,7 +69,11 @@ func TestCallCorrectionMethodDeliveredAccounting(t *testing.T) {
 		},
 	}
 	for _, tc := range cases {
-		for _, buckets := range []int{1, 2} {
+		bucketsToCheck := []int{1}
+		if tc.name == "duplicate_receivers_do_not_authorize_correction" || tc.name == "ineligible_replacement_dissent_keeps_its_weight" {
+			bucketsToCheck = append(bucketsToCheck, 2)
+		}
+		for _, buckets := range bucketsToCheck {
 			t.Run(fmt.Sprintf("%s/buckets=%d", tc.name, buckets), func(t *testing.T) {
 				checkCorrectionEvidenceDelivery(t, tc, buckets)
 			})
@@ -125,42 +115,6 @@ func checkCorrectionEvidenceDelivery(t *testing.T, tc correctionEvidenceDelivery
 	if tc.dissent == "DL9ZZZ" && spot.CallDistance("K1ABC", tc.dissent, "CW", "morse", "baudot") <= cfg.ResolverNeighborhoodMaxDistance {
 		t.Fatal("unrelated dissent fixture unexpectedly qualifies as a replacement")
 	}
-	ring := buffer.NewRingBuffer(4)
-	archiveCfg := config.ArchiveConfig{
-		DBPath: filepath.Join(t.TempDir(), "archive"), QueueSize: 4, BatchSize: 1, BatchIntervalMS: 1,
-	}
-	writer, err := archive.NewWriter(archiveCfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writer.Start()
-	t.Cleanup(writer.Stop)
-	port := runtimeQualificationPort(t)
-	srv := telnet.NewServer(telnet.ServerOptions{
-		Port: port, LoginPrompt: "login: ", LoginGreeting: "ACCOUNTING_READY\n",
-		MaxConnections: 4, BroadcastWorkers: 1, BroadcastQueue: 4, WorkerQueue: 4, ClientBuffer: 8,
-		BroadcastBatchIntervalSet: true,
-	}, nil)
-	if err := srv.Start(); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(srv.Stop)
-	// Login helper cleanup closes sockets first. Join their unregister/profile
-	// writes before this fixture's working directory is restored, including on
-	// failed delivery assertions; Server.Stop alone does not join the handlers.
-	t.Cleanup(func() {
-		deadline := time.Now().Add(3 * time.Second)
-		for len(srv.ListClientCallsigns()) != 0 {
-			if time.Now().After(deadline) {
-				t.Error("accounting clients did not retire")
-				return
-			}
-			time.Sleep(time.Millisecond)
-		}
-	})
-	normalConn, normalReader := correctionEvidenceLogin(t, port, "DL1ABC", "OFF")
-	diagConn, diagReader := correctionEvidenceLogin(t, port, "DL2ABC", "CONF")
-	manager, recipient := correctionEvidencePeer(t)
 	at := time.Now().UTC().Truncate(time.Second)
 	resolver, key := correctionEvidenceResolver(t, tc, buckets, at)
 	selection := correctionflow.SelectResolverPrimarySnapshotForCall(resolver, key, cfg, tc.subject)
@@ -177,64 +131,19 @@ func checkCorrectionEvidenceDelivery(t *testing.T, tc correctionEvidenceDelivery
 			snapshot.WinnerWeightedSupportMilli, snapshot.TotalWeightedSupportMilli,
 			len(tc.aReceivers), wantTotal, tc.wantWinnerWeight, tc.wantTotalWeight)
 	}
-	tracker := stats.NewTracker()
-	pipeline := newDeliveryTestPipeline(ring, writer, srv)
-	pipeline.signalResolver, pipeline.correctionCfg = resolver, cfg
-	pipeline.spotterReliability, pipeline.tracker, pipeline.peerManager = tc.weights, tracker, manager
+	f := newAmbiguityDeliveryFixture(t, resolver, cfg)
+	pipeline := f.pipeline
+	pipeline.spotterReliability = tc.weights
 	s := newDeliveryTestSpot(tc.subject, "N0AAA", at)
 	s.SourceType = spot.SourceManual // Non-self local input is eligible for peer publication.
 	// The driver owns publication and is not concurrent with the output stage.
 	// Its live enqueue uses an already-seeded receiver; this test deliberately
 	// evaluates the latest published evidence without inventing an ingest barrier.
 	pipeline.processSpotBody(s, nil)
-	if got := tracker.CallCorrections(); got != tc.wantCorrections {
-		t.Errorf("accepted corrections=%d want %d", got, tc.wantCorrections)
+	if tc.subject != "K1ABC" && tc.wantCorrections == 0 && pipeline.tracker.CorrectionDecisionReasons()["resolver_gate_min_reports"] != 1 {
+		t.Errorf("duplicate population must reject specifically at min_reports: %v", pipeline.tracker.CorrectionDecisionReasons())
 	}
-	if tc.subject != "K1ABC" && tc.wantCorrections == 0 && tracker.CorrectionDecisionReasons()["resolver_gate_min_reports"] != 1 {
-		t.Errorf("duplicate population must reject specifically at min_reports: %v", tracker.CorrectionDecisionReasons())
-	}
-	for _, dst := range []struct {
-		name    string
-		conn    net.Conn
-		reader  *bufio.Reader
-		comment string
-	}{
-		{"normal TCP", normalConn, normalReader, "CW"},
-		{"DIAG TCP", diagConn, diagReader, fmt.Sprintf("CW %d%%", tc.wantPercent)},
-	} {
-		got := correctionEvidenceReadDX(t, dst.conn, dst.reader)
-		want := correctionEvidenceWire(tc.wantCall, tc.wantGlyph, dst.comment, at)
-		if got != want {
-			t.Errorf("%s received output:\n got %q\nwant %q", dst.name, got, want)
-		}
-	}
-	correctionEvidenceAssertOriginalPeer(t, recipient, tc.subject, at)
-	recent := ring.GetRecent(2)
-	if len(recent) != 1 {
-		t.Errorf("buffered output count=%d want 1", len(recent))
-	} else {
-		correctionEvidenceAssertSpot(t, "sealed ring", recent[0], tc, at, true)
-		if recent[0].SnapshotForAsync() != recent[0] {
-			t.Error("buffered output was not sealed before async fanout")
-		}
-	}
-	// Stop joins archive insertion and flushes its queued work. Reopening proves
-	// persistence independently of the live queue or writer's in-process reads.
-	writer.Stop()
-	reopened, err := archive.NewWriter(archiveCfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(reopened.Stop)
-	rows, err := reopened.Recent(2)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 1 {
-		t.Errorf("reopened archive rows=%d want 1", len(rows))
-	} else {
-		correctionEvidenceAssertSpot(t, "reopened archive", rows[0], tc, at, false)
-	}
+	f.check(t, tc, at)
 }
 
 func correctionEvidenceResolver(t *testing.T, tc correctionEvidenceDeliveryCase, buckets int, at time.Time) (*spot.SignalResolver, spot.ResolverSignalKey) {

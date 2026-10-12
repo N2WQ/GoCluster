@@ -91,7 +91,7 @@ def archive_rows(session, label, selection=""):
             receipt += b"\n[history receipt truncated at 65536 bytes]\n"
         session.suite.log.write(receipt)
         session.suite.log.flush()
-    session.get()  # Mandatory strict resource/schema/request-ID validation.
+    complete_reply_config(session, received, "history")
     return rows
 
 
@@ -223,7 +223,7 @@ def exact_human_reply(session, command, reply):
             receipt += b"\n[human receipt truncated at 65536 bytes]\n"
         session.suite.log.write(receipt)
         session.suite.log.flush()
-    return reply, session.get()
+    return reply, complete_reply_config(session, received, "human refusal")
 
 
 def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
@@ -298,39 +298,7 @@ def require_command_refusal(session, command, record, exact_feedback):
             record.read_bytes() == saved, "malformed filter arguments changed live or saved state")
 
 
-def require_remote_logout(session, verb):
-    received, raw, farewell = 0, bytearray(), False
-    try:
-        session.send(verb + "\r\n")
-        while True:
-            try:
-                line = session.reader.line()
-            except EOFError:
-                require(farewell and not session.reader.buffer and session.reader.state == "data",
-                        "logout lacks farewell or has partial trailing bytes")
-                return  # Remote EOF is observed before any local socket close.
-            received += len(line)
-            raw.extend(line[:harness.MAX_FRAME - len(raw)])
-            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
-                    "logout reply exceeds its bound or has invalid CRLF")
-            text = line[:-2].decode("ascii", "strict")
-            if not farewell and text == "73!":
-                farewell = True
-            else:
-                require(text == "" or (not farewell and text == verb.upper()), "unexpected logout output")
-    finally:
-        try:
-            pending = session.reader.buffer
-            received += len(pending)
-            raw.extend(pending[:harness.MAX_FRAME - len(raw)])
-            receipt = f"\n[{session.call}] {verb} [remote logout]\n".encode() + bytes(raw)
-            if received > len(raw):
-                receipt += b"\n[logout receipt truncated at 65536 bytes]\n"
-            session.suite.log.write(receipt)
-            session.suite.log.flush()
-        finally:
-            session.sock.close()
-            session.closed = True
+require_remote_logout = harness.remote_logout
 
 
 def require_setting_argument_refusal(session, command, record, feedback):
@@ -1729,7 +1697,7 @@ def profile(binary, root, source, transport):
                     for session in suite.sessions:
                         try:
                             session.close()
-                        except (OSError, ValueError, EOFError) as error:
+                        except Exception as error:
                             suite.cleanup_errors.append(str(error))
                     suite.log.close()
                     results.extend(suite.results)
@@ -1738,7 +1706,7 @@ def profile(binary, root, source, transport):
                 if child:
                     try:
                         child.stop()
-                    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+                    except Exception as error:
                         cleanup.append(str(error))
             finally:
                 try:
@@ -3427,7 +3395,7 @@ def dedupe_profile(binary, root, source, transport):
                     for current in suite.sessions:
                         try:
                             current.close()
-                        except (OSError, ValueError, EOFError) as error:
+                        except Exception as error:
                             suite.cleanup_errors.append(str(error))
                     suite.log.close()
                     results.extend(suite.results)
@@ -3437,7 +3405,7 @@ def dedupe_profile(binary, root, source, transport):
                 if child:
                     try:
                         child.stop()
-                    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+                    except Exception as error:
                         cleanup.append(str(error))
     report = {"transport": transport, "profile": "dedupe", "required": required, "results": results,
               "wire_failures": wire, "cleanup_errors": cleanup, "children": children}
@@ -3565,7 +3533,7 @@ def reputation_profile(binary, root, source, transport):
                     for current in suite.sessions:
                         try:
                             current.close()
-                        except (OSError, ValueError, EOFError) as error:
+                        except Exception as error:
                             suite.cleanup_errors.append(str(error))
                     suite.log.close()
                     results.extend(suite.results)
@@ -3575,7 +3543,7 @@ def reputation_profile(binary, root, source, transport):
                 if child:
                     try:
                         child.stop()
-                    except (OSError, ValueError, subprocess.TimeoutExpired) as error:
+                    except Exception as error:
                         cleanup.append(str(error))
     report = {"transport": transport, "profile": "reputation", "required": required,
               "results": results, "wire_failures": wire, "cleanup_errors": cleanup,
@@ -3607,8 +3575,8 @@ def main():
                 dedupe_root = stage(run / (transport + "-dedupe"), transport, dedupe_fast_only=True, solar_enabled=False)
                 report["profiles"].append(dedupe_profile(binary, dedupe_root, source, transport))
         report["result"] = "PASS"
-    except (OSError, ValueError, EOFError, TimeoutError, subprocess.TimeoutExpired, harness.yaml.YAMLError) as error:
-        report["error"] = str(error)
+    except Exception as error:
+        report["error"] = f"{type(error).__name__}: {error}"
     finally:
         (run / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     print(json.dumps({"result": report["result"], "output": str(run), "error": report.get("error")}, indent=2))

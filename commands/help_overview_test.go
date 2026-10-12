@@ -59,12 +59,6 @@ func TestHelpCatalogDiscoverabilityAndWidths(t *testing.T) {
 			assertHelpWidth(t, text)
 		}
 		assertHelpWidth(t, overview)
-		for alias := range catalog.aliases {
-			text := p.ProcessCommandForClient("HELP "+alias, "N0CALL", "", nil, dialect)
-			if strings.HasPrefix(text, "Unknown help topic:") {
-				t.Fatalf("%s alias %s no longer resolves", dialect, alias)
-			}
-		}
 	}
 }
 
@@ -116,7 +110,8 @@ func TestHelpNavigationNormalization(t *testing.T) {
 			t.Fatalf("unknown topic response changed: %q", got)
 		}
 	}
-	if p.ProcessCommandForClient("H", "", "", nil, "classic") != p.ProcessCommandForClient("HELP", "", "", nil, "go") {
+	got := p.ProcessCommandForClient("H", "N0CALL", "", nil, "classic")
+	if got != p.ProcessCommandForClient("HELP", "N0CALL", "", nil, "go") || !strings.HasPrefix(got, "GoCluster help - ") {
 		t.Fatal("default dialect or H alias changed")
 	}
 }

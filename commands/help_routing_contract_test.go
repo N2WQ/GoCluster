@@ -53,7 +53,7 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"SHOW FILTER COMMENT", "SHOW FILTER COMMENT", "SHOW FILTER COMMENT"},
 		{"SHOW/FILTER COMMENT", "SHOW FILTER COMMENT", "SHOW FILTER COMMENT"},
 		{"SH/FILTER COMMENT", "SHOW FILTER COMMENT", "SHOW FILTER COMMENT"},
-		{"SHOW SETTINGS", "SHOW SETTINGS", "SHOW SETTINGS"},
+		{"SHOW SETTINGS", "SHOW SETTINGS", "Usage: SHOW SETTINGS"},
 		{"PASS", allow, allow + " <"}, {"REJECT", block, block + " <"},
 		{"PASS BAND 20", allow, allow + " <"}, {"REJECT MODE FT8", block, block + " <"},
 		{"PASS PC93 ALL", allow, allow + " <"}, {"REJECT SELF", block, block + " <"},
@@ -62,8 +62,8 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"REMOVE PASS COMMENT CQ DX", "REMOVE PASS COMMENT", "REMOVE PASS COMMENT <phrase>"},
 		{"REMOVE REJECT COMMENT QRT", "REMOVE REJECT COMMENT", "REMOVE REJECT COMMENT <phrase>"},
 		{"RESET FILTER COMMENT PASS", "RESET FILTER COMMENT", "RESET FILTER COMMENT [PASS|REJECT]"},
-		{"PASS MINSNR CW 10", "PASS MINSNR", "PASS MINSNR <mode[,mode...]|ALL>"},
-		{"REJECT MINSNR CW NONE", "REJECT MINSNR", "REJECT MINSNR <mode[,mode...]|ALL>"},
+		{"PASS MINSNR CW 10", "PASS MINSNR", "Usage: PASS MINSNR <mode[,mode...]|ALL>"},
+		{"REJECT MINSNR CW NONE", "REJECT MINSNR", "Usage: REJECT MINSNR <mode[,mode...]|ALL>"},
 		{"PASS NEARBY ON", "PASS NEARBY", "PASS NEARBY ON|OFF"},
 		{"REJECT NEARBY OFF", "PASS NEARBY", "PASS NEARBY ON|OFF"},
 		{"RESET FILTER", "RESET FILTER", "RESET FILTER"},
@@ -110,7 +110,7 @@ func TestHelpRoutingDispatchDerivedFamilies(t *testing.T) {
 		}
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
 			topic := "GET YAML " + resource
-			assertHelpRouting(t, p, dialect, helpRoutingCase{topic, topic, topic + " [SCHEMA 2|3|4] [ID <id>]"})
+			assertHelpRouting(t, p, dialect, helpRoutingCase{topic, topic, "Usage: " + topic + " [SCHEMA 2|3|4] [ID <id>]"})
 			assertHelpRouting(t, p, dialect, helpRoutingCase{topic + " SCHEMA 4 ID Read-1", topic, topic + " [SCHEMA 2|3|4] [ID <id>]"})
 		}
 		for _, verb := range []string{"PUT", "PATCH"} {

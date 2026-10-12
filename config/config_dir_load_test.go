@@ -44,6 +44,9 @@ dedup:
 	if cfg.CTY.Enabled {
 		t.Fatalf("expected cty.enabled=false from app.yaml, got true")
 	}
+	if cfg.Telnet.SkipHandshake != TelnetHandshakeMinimal || cfg.Archive.RetentionSeconds != DefaultArchiveRetentionSeconds || cfg.Archive.Synchronous != "off" {
+		t.Fatalf("shipped handshake/archive settings changed: handshake=%q retention=%d synchronous=%q", cfg.Telnet.SkipHandshake, cfg.Archive.RetentionSeconds, cfg.Archive.Synchronous)
+	}
 }
 
 func TestLoadRejectsSingleFilePath(t *testing.T) {
@@ -124,11 +127,18 @@ func TestLoadReportsAllMissingStartupConfigInputs(t *testing.T) {
 }
 
 func TestLoadRejectsMissingRequiredRuntimeSetting(t *testing.T) {
-	dir := testConfigDir(t)
-	removeTestConfigKey(t, dir, "runtime.yaml", "telnet", "port")
-	_, err := Load(dir)
-	if err == nil || !strings.Contains(err.Error(), `required YAML setting "telnet.port" is missing`) {
-		t.Fatalf("expected missing telnet.port error, got %v", err)
+	for _, tc := range []struct{ file, key string }{
+		{"runtime.yaml", "telnet.port"}, {"runtime.yaml", "telnet.skip_handshake"},
+		{"archive.yaml", "archive.retention_seconds"}, {"archive.yaml", "archive.synchronous"},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			dir := testConfigDir(t)
+			removeTestConfigKey(t, dir, tc.file, strings.Split(tc.key, ".")...)
+			_, err := Load(dir)
+			if err == nil || !strings.Contains(err.Error(), `required YAML setting "`+tc.key+`" is missing`) {
+				t.Fatalf("expected missing %s error, got %v", tc.key, err)
+			}
+		})
 	}
 }
 

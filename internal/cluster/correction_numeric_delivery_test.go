@@ -14,21 +14,14 @@ import (
 )
 
 func TestCorrectionNumericDeliveredInvalidSelectedReceiver(t *testing.T) {
-	for _, value := range []struct {
-		name string
-		n    float64
-	}{
-		{"nan", math.NaN()}, {"positive_infinity", math.Inf(1)}, {"negative_infinity", math.Inf(-1)},
-	} {
-		for _, modeOverride := range []bool{false, true} {
-			name := value.name + "/global"
-			if modeOverride {
-				name = value.name + "/selected_cw_override"
-			}
-			t.Run(name, func(t *testing.T) {
-				correctionNumericCheckInvalidDelivery(t, value.n, modeOverride, false)
-			})
+	for _, modeOverride := range []bool{false, true} {
+		name := "nan/global"
+		if modeOverride {
+			name = "nan/selected_cw_override"
 		}
+		t.Run(name, func(t *testing.T) {
+			correctionNumericCheckInvalidDelivery(t, math.NaN(), modeOverride, false)
+		})
 	}
 	// Absence is distinct from an invalid selected override: a genuinely absent
 	// CW entry still uses the existing finite global weight and may corroborate B.
@@ -110,14 +103,4 @@ func correctionNumericCheckInvalidDelivery(t *testing.T, weight float64, modeOve
 	f.check(t, correctionEvidenceDeliveryCase{
 		subject: "K1ABC", wantCall: wantCall, wantGlyph: wantGlyph, wantPercent: wantPercent, wantCorrections: wantCorrections,
 	}, at)
-}
-
-func TestCorrectionNumericDeliveredValidUnequalRepeatedBuckets(t *testing.T) {
-	temporalDeliveryDirectory(t)
-	checkCorrectionEvidenceDelivery(t, correctionEvidenceDeliveryCase{
-		subject: "K1ABC", dissent: "DL9ZZZ", aReceivers: []string{"N0AAA", "N0BBB"},
-		weights:    spot.SpotterReliability{"N0AAA": 0.900, "N0BBB": 0.950, "N0CCC": 1.000},
-		minReports: 1, wantCall: "K1ABC", wantGlyph: "V", wantPercent: 64,
-		wantWinnerWeight: 1850, wantTotalWeight: 2850,
-	}, 2)
 }

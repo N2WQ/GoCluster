@@ -6,7 +6,6 @@ import (
 	"bufio"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -40,16 +39,7 @@ type customSCPDeliveryReady struct {
 // actual TCP delivery and persisted archive readback. Reported producer state
 // is diagnostic; the positive oracle always requires both retained observers.
 func TestCustomSCPDeliveredOutput(t *testing.T) {
-	t.Chdir(t.TempDir()) // Telnet login records must remain inside this fixture.
-	previousLayout := spot.CurrentDXClusterLayout()
-	if err := spot.SetDXClusterLineLength(78); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := spot.SetDXClusterLineLength(previousLayout.LineLength); err != nil {
-			t.Error(err)
-		}
-	})
+	temporalDeliveryDirectory(t)
 	path, at, ready := customSCPDeliveryFixture(t)
 	t.Run("preserved_observation_delivers", func(t *testing.T) {
 		store := customSCPDeliveryOpen(t, path)
@@ -192,6 +182,7 @@ func customSCPDeliveryCheck(t *testing.T, store *spot.CustomSCPStore, at time.Ti
 		t.Fatal(err)
 	}
 	t.Cleanup(srv.Stop)
+	familyAdmissionJoinClients(t, srv)
 	conn, reader := runtimeQualificationLogin(t, net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), "", "DL1ABC")
 	customSCPDeliveryAwaitLogin(t, srv, conn, reader)
 	pipeline := newDeliveryTestPipeline(ring, writer, srv)
@@ -209,8 +200,9 @@ func customSCPDeliveryCheck(t *testing.T, store *spot.CustomSCPStore, at time.Ti
 		t.Fatalf("same static membership must promote both cases from ? to S, got %q", s.Confidence)
 	}
 	pipeline.deliverSpot(&ctx)
+	wantCall, wantReceiver, wantGlyph := customSCPDeliveryCall, "W2TT", "S"
+	var wantPending int64
 	if !deliver {
-		customSCPDeliveryNoDX(t, conn, reader)
 		rows, err := writer.Recent(2)
 		if err != nil {
 			t.Fatal(err)
@@ -219,7 +211,13 @@ func customSCPDeliveryCheck(t *testing.T, store *spot.CustomSCPStore, at time.Ti
 			t.Fatalf("missing observation must hold before all fanout: pending=%d ring=%d archive=%d",
 				pipeline.telnetStabilizer.Pending(), ring.GetCount(), len(rows))
 		}
-		return
+		// An independently eligible self V traverses the same delivery stage
+		// and FIFO broadcast queue. Its receipt proves the held row is absent
+		// without treating a socket timeout as evidence of non-delivery.
+		wantCall, wantReceiver, wantGlyph, wantPending = "K1BAR", "K1BAR", "V", 1
+		barrier := newDeliveryTestSpot(wantCall, wantReceiver, at)
+		barrier.Confidence = "V"
+		pipeline.deliverSpot(&outputSpotContext{spot: barrier, modeUpper: "CW"})
 	}
 	if err := conn.SetReadDeadline(time.Now().Add(3 * time.Second)); err != nil {
 		t.Fatal(err)
@@ -231,14 +229,14 @@ func customSCPDeliveryCheck(t *testing.T, store *spot.CustomSCPStore, at time.Ti
 			tcpErr, lineBytes, pipeline.telnetStabilizer.Pending(), ring.GetCount(), len(rows), archiveErr)
 	}
 	line := string(lineBytes)
-	if want := customSCPDeliveryWire(at); line != want {
+	if want := customSCPDeliveryWire(wantCall, wantReceiver, wantGlyph, at); line != want {
 		t.Fatalf("delivered TCP line mismatch:\n got %q\nwant %q", line, want)
 	}
 	t.Logf("received exact TCP line %q", line)
-	if pipeline.telnetStabilizer.Pending() != 0 || ring.GetCount() != 1 {
+	if pipeline.telnetStabilizer.Pending() != wantPending || ring.GetCount() != 1 {
 		t.Fatalf("preserved observation must deliver once: pending=%d ring=%d", pipeline.telnetStabilizer.Pending(), ring.GetCount())
 	}
-	customSCPDeliveryAssertSpot(t, "ring", ring.GetRecent(1)[0], at)
+	customSCPDeliveryAssertSpot(t, "ring", ring.GetRecent(1)[0], wantCall, wantReceiver, wantGlyph, at)
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		rows, err := writer.Recent(2)
@@ -249,7 +247,7 @@ func customSCPDeliveryCheck(t *testing.T, store *spot.CustomSCPStore, at time.Ti
 			if len(rows) != 1 {
 				t.Fatalf("expected exactly one persisted archive row, got %d", len(rows))
 			}
-			customSCPDeliveryAssertSpot(t, "persisted archive", rows[0], at)
+			customSCPDeliveryAssertSpot(t, "persisted archive", rows[0], wantCall, wantReceiver, wantGlyph, at)
 			return
 		}
 		if time.Now().After(deadline) {
@@ -291,22 +289,10 @@ func customSCPDeliveryReadLine(t *testing.T, reader *bufio.Reader) string {
 	return string(line)
 }
 
-func customSCPDeliveryNoDX(t *testing.T, conn net.Conn, reader *bufio.Reader) {
+func customSCPDeliveryAssertSpot(t *testing.T, source string, s *spot.Spot, call, receiver, glyph string, at time.Time) {
 	t.Helper()
-	if err := conn.SetReadDeadline(time.Now().Add(150 * time.Millisecond)); err != nil {
-		t.Fatal(err)
-	}
-	line, err := reader.ReadSlice('\n')
-	var timeout net.Error
-	if len(line) != 0 || !errors.As(err, &timeout) || !timeout.Timeout() {
-		t.Fatalf("held spot must produce no TCP output, got %q err=%v", line, err)
-	}
-}
-
-func customSCPDeliveryAssertSpot(t *testing.T, source string, s *spot.Spot, at time.Time) {
-	t.Helper()
-	if s.DXCallNorm != customSCPDeliveryCall || s.DECallNorm != "W2TT" || s.Frequency != 14020 ||
-		s.ModeNorm != "CW" || s.Confidence != "S" || !s.Time.Equal(at) {
+	if s.DXCallNorm != call || s.DECallNorm != receiver || s.Frequency != 14020 ||
+		s.ModeNorm != "CW" || s.Confidence != glyph || !s.Time.Equal(at) {
 		t.Fatalf("%s lost delivered fields: DX=%q DE=%q frequency=%v mode=%q confidence=%q time=%s",
 			source, s.DXCallNorm, s.DECallNorm, s.Frequency, s.ModeNorm, s.Confidence, s.Time)
 	}
@@ -314,12 +300,12 @@ func customSCPDeliveryAssertSpot(t *testing.T, source string, s *spot.Spot, at t
 
 // This byte-position oracle comes from the 78-column wire contract, independently
 // of Spot.FormatDXCluster and the delivered object's cached formatting.
-func customSCPDeliveryWire(at time.Time) string {
+func customSCPDeliveryWire(call, receiver, glyph string, at time.Time) string {
 	line := []byte(strings.Repeat(" ", 78))
-	copy(line, "DX de W2TT:      14020.00")
-	copy(line[27:], customSCPDeliveryCall)
+	copy(line, fmt.Sprintf("DX de %-11s14020.00", receiver+":"))
+	copy(line[27:], call)
 	copy(line[39:], "CW")
-	line[71] = 'S'
+	line[71] = glyph[0]
 	copy(line[73:], at.UTC().Format("1504Z"))
 	return fmt.Sprintf("%s\r\n", line)
 }

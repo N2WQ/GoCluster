@@ -5,6 +5,7 @@ only as recv chunks, allowing the reader to prove its framing and IAC handling.
 """
 
 import importlib.util
+import io
 from pathlib import Path
 import socket
 import sys
@@ -26,9 +27,11 @@ class FakeSocket:
         self.chunks = list(chunks)
         self.sent = []
         self.timeouts = []
+        self.events = []
 
     def recv(self, size):
         if not self.chunks:
+            self.events.append("remote EOF")
             return b""
         item = self.chunks.pop(0)
         if isinstance(item, BaseException):
@@ -43,6 +46,9 @@ class FakeSocket:
 
     def sendall(self, data):
         self.sent.append(data)
+
+    def close(self):
+        self.events.append("local close")
 
 
 def reader(chunks, deadline=None):
@@ -149,6 +155,9 @@ class FrameFixtures(unittest.TestCase):
             with self.subTest(resource=resource, request_id=request_id, version=version):
                 with self.assertRaises((ValueError, RuntimeError, AssertionError)):
                     HARNESS.decode_frame(frame(), resource, request_id, version)
+        for scalar in ("true", '"1"'):
+            with self.subTest(schema=scalar), self.assertRaisesRegex(ValueError, "schema_version"):
+                HARNESS.decode_frame(frame(f"schema_version: {scalar}\nrequest_id: Case-1\nresource: CONFIG\n"), "CONFIG", "Case-1", 1)
 
     def test_duplicate_top_level_and_nested_yaml_keys_rejected(self):
         for body in (
@@ -183,12 +192,37 @@ class FrameFixtures(unittest.TestCase):
 
 
 class HumanEchoFixtures(unittest.TestCase):
+    def test_cleanup_pause_drains_queued_rows_before_strict_logout_and_closes_on_failure(self):
+        for fault in (None, "pause", "log"):
+            with self.subTest(fault=fault):
+                value = object.__new__(HARNESS.Session)
+                value.call, value.closed = "FIXTURE", False
+                value.suite = SimpleNamespace(identifier=lambda: "Close-1", commands=0, log=io.BytesIO(),
+                                              wire_failures=[], deadline=time.monotonic() + 10, args=SimpleNamespace(timeout=1))
+                body = "schema_version: 4\nrequest_id: Close-1\nresource: CAPABILITIES\nrevision: r\nconfiguration: {}\nstatus:\n  session:\n    pause_active: " + ("false" if fault == "pause" else "true") + "\n"
+                value.reader, value.sock = reader([b"DX de K1ABC: 14179.00 W6ABC CW|CMT\r\n" + frame(body), b"73!\r\n"])
+                if fault == "log":
+                    def failed_receipt(raw):
+                        raise OSError("receipt failed")
+                    value.suite.log = SimpleNamespace(write=failed_receipt, flush=lambda: None)
+                if fault:
+                    with self.assertRaises((ValueError, OSError)):
+                        value.close()
+                    self.assertEqual(len(value.sock.sent), 1, "failed pause must not start logout")
+                else:
+                    value.close()
+                    self.assertEqual(value.sock.sent, [b"PAUSE 300\r\nGET YAML CAPABILITIES SCHEMA 4 ID Close-1\r\n", b"BYE\r\n"])
+                    self.assertEqual(value.sock.events, ["remote EOF", "local close"])
+                    self.assertIn(b"CW|CMT\r\n", value.suite.log.getvalue())
+                self.assertTrue(value.closed)
+                self.assertEqual(value.sock.events[-1], "local close")
+
     def session(self, prefix, remote_echo=True):
         value = object.__new__(HARNESS.Session)
         value.suite = SimpleNamespace(identifier=lambda: "Echo-1", commands=0)
         value.reader = SimpleNamespace(remote_echo=remote_echo)
         value.send = lambda data: None
-        value.frame = lambda *args: ({"configuration": {}, "status": {}}, prefix)
+        value.frame = lambda *args: ({"configuration": {}, "status": {}, "revision": "fixed"}, prefix)
         return value
 
     def test_exact_response_equal_to_command_survives_single_echo_removal(self):
@@ -196,6 +230,12 @@ class HumanEchoFixtures(unittest.TestCase):
         prefix = (command + "\r\n" + command + "\r\nGET YAML CONFIG SCHEMA 4 ID Echo-1\r\n").encode()
         text, _ = self.session(prefix).human(command, command)
         self.assertEqual(text, command)
+        for field, bad in (("configuration", []), ("status", []), ("revision", True), ("revision", "")):
+            value = self.session(prefix)
+            document = {"configuration": {}, "status": {}, "revision": "fixed", field: bad}
+            value.frame = lambda *args: (document, prefix)
+            with self.subTest(field=field, value=bad), self.assertRaises(AssertionError):
+                value.human(command, command)
 
     def test_echo_only_never_satisfies_expected_response(self):
         command = "PASS DXSTATE ALL"
@@ -209,13 +249,74 @@ class HumanEchoFixtures(unittest.TestCase):
         self.assertEqual(text, command)
 
     def test_human_wire_anomaly_remains_failure_before_normalization(self):
-        command = "SHOW FILTER BAND"
+        command = "HELP"
         response = b"User          FIXTURE\r\r\nBands\r\r\n  PASS: ALL\r\r\nMissed spots are not replayed.\r\r\n"
         value = self.session(response, remote_echo=False)
         value.call = "FIXTURE"
         value.suite.wire_failures = []
         value.human(command, "PASS: ALL")
         self.assertTrue(value.suite.wire_failures)
+
+
+class QualificationAccountingFixtures(unittest.TestCase):
+    def test_family_aggregates_failed_and_unexpected_children_and_requires_every_leaf(self):
+        for fault in (None, "failure", "exception", "missing", "duplicate", "blocked"):
+            value = object.__new__(HARNESS.Suite)
+            value.results = []
+            def family():
+                def operation():
+                    if fault == "failure":
+                        raise AssertionError("wrong output")
+                    if fault == "exception":
+                        raise KeyError("unexpected")
+                    if fault == "blocked":
+                        raise HARNESS.BlockedPrerequisite("not admitted")
+                if fault != "missing":
+                    value.case("leaf", operation)
+                if fault == "duplicate":
+                    value.case("leaf", lambda: None)
+            value.case("family", family, ["leaf"])
+            value.account_required(["leaf"])
+            self.assertEqual(value.results[-1]["result"] == "PASS", fault is None)
+            if fault == "missing":
+                self.assertEqual(value.results[-1]["result"], "UNEXECUTED")
+
+    def test_independent_inventory_matches_actual_family_leaf_selection(self):
+        value = object.__new__(HARNESS.Suite)
+        value.token, value.args, value.deadline = "ABCDEF01", SimpleNamespace(call="K1ABC", timeout=1), time.monotonic() + 10
+        selected = []
+        value.case = lambda name, operation: selected.append(name) is None
+        text = "DX de K1ABC: 28201 VA3UXA TABCDEF01-0\nDX de K1ABC: 21201 VA3UXA TABCDEF01-1\nH1" + "A" * 32 + " Older retained history page:"
+        configuration = {"configuration": {"settings": {"dialect": "go"}}, "revision": "fixed"}
+        def human(command, expected=None):
+            if command.startswith("DIALECT "):
+                configuration["configuration"]["settings"]["dialect"] = command.split()[1].lower()
+            return text, configuration
+        session = SimpleNamespace(human=human, get=lambda: configuration)
+        inventory = HARNESS.required_live_cases(value.token, value.args.call)
+        for family, execute in (("human commands and filters", lambda: value.reads_and_filters(session)),
+                                ("pause and machine commands", lambda: value.pause_and_machine(session)),
+                                ("history and read commands", lambda: value.history(session)),
+                                ("terminal inputs", lambda: value.terminal_inputs("unused"))):
+            selected.clear()
+            with patch.object(value, "history_result", return_value=text), patch.object(value, "unchanged"):
+                execute()
+            self.assertEqual(set(selected), set(inventory[family]), family)
+            self.assertEqual(len(selected), len(inventory[family]), family)
+
+    def test_frame_failure_retains_bounded_raw_partial_receipt(self):
+        for fault in ("eof", "deadline", "buffer"):
+            value = object.__new__(HARNESS.Session)
+            value.call = "FIXTURE"
+            value.suite = SimpleNamespace(log=io.BytesIO(), wire_failures=[])
+            raw = b"---\r\npartial" if fault != "buffer" else b"X" * (HARNESS.MAX_BUFFER + 1)
+            value.reader, _ = reader([raw], deadline=10)
+            with patch.object(HARNESS.time, "monotonic", side_effect=[1, 11] if fault == "deadline" else lambda: 1):
+                with self.assertRaises((EOFError, TimeoutError, ValueError)):
+                    value.frame("CONFIG", "fixed", 4, "GET")
+            receipt = value.suite.log.getvalue()
+            self.assertIn(raw[:HARNESS.MAX_BUFFER], receipt)
+            self.assertLessEqual(len(receipt), HARNESS.MAX_BUFFER + 100)
 
 
 class SyntheticHistorySession:
@@ -320,11 +421,12 @@ class HistoryOracleFixtures(unittest.TestCase):
         for base, target in (("VA3UXA", "K1ABC"), ("K1ABC", "VA3UXA")):
             with self.subTest(base=base):
                 value, commands = self.suite(), []
-                value.args = SimpleNamespace(call=base)
+                value.args = SimpleNamespace(call=base, timeout=1)
+                value.deadline = time.monotonic() + 10
                 document = {"configuration": {}, "revision": "fixture"}
                 def human(command, expected=None):
                     commands.append(command)
-                    text = expected or (f"DX de W1AW: 28201.0 {target} fixture" if command.startswith("SHOW DX") else "")
+                    text = expected or (f"DX de W1AW: 28201.0 {target} TABCDEF01-0\nDX de W1AW: 21201.0 {target} TABCDEF01-1" if command.startswith("SHOW DX") else "")
                     return text, document
                 session = SimpleNamespace(human=human, get=lambda: document)
                 with patch.object(HARNESS.time, "sleep"), patch.object(value, "history_result", side_effect=RuntimeError("fixture boundary")):

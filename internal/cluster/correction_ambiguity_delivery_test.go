@@ -363,16 +363,7 @@ func newAmbiguityDeliveryFixture(t *testing.T, resolver *spot.SignalResolver, cf
 	t.Cleanup(srv.Stop)
 	// Login helpers close sockets first; wait for their final profile writes
 	// before the parent restores its fixture-owned working directory.
-	t.Cleanup(func() {
-		deadline := time.Now().Add(3 * time.Second)
-		for len(srv.ListClientCallsigns()) != 0 {
-			if time.Now().After(deadline) {
-				t.Error("ambiguity clients did not retire")
-				return
-			}
-			time.Sleep(time.Millisecond)
-		}
-	})
+	familyAdmissionJoinClients(t, srv)
 	f.normalConn, f.normalReader = correctionEvidenceLogin(t, port, "DL1ABC", "OFF")
 	f.diagConn, f.diagReader = correctionEvidenceLogin(t, port, "DL2ABC", "CONF")
 	manager, recipient := correctionEvidencePeer(t)

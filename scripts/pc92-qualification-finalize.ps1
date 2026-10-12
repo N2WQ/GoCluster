@@ -116,7 +116,7 @@ function Assert-PC92FinalRun([string]$Directory, [string]$ID, [string]$Root, [st
         ($run.exit_code -isnot [int] -and $run.exit_code -isnot [long]) -or $run.exit_code -ne 0 -or
         $run.failure_reasons -isnot [array] -or $run.failure_reasons.Count -ne 0) { throw "run_not_accepted: $ID" }
     if ($run.repository_root -cne $Root -or $run.runtime_settings -cne 'GOMAXPROCS=2 GOGC=50 GOMEMLIMIT=1536MiB' -or
-        $run.go_version -cne 'go version go1.26.4 windows/amd64') { throw "run_environment_mismatch: $ID" }
+        $run.go_version -cne (Get-PC92QualificationGoVersion)) { throw "run_environment_mismatch: $ID" }
     Assert-PC92FinalExternalInputs $run
     $current = Get-PC92InputManifest $Root $parts[0] $run.external_inputs
     foreach ($name in @('source-before.json', 'source-after-build.json', 'source-after-run.json')) {

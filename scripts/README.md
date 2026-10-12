@@ -49,6 +49,10 @@ fixtures, failure ordering, output ownership, and caller-state restoration.
 
 ## Windows Tests With Stable Firewall Paths
 
+See the [testing architecture runbook](../docs/runbooks/testing-architecture.md)
+for supported nested modules, tags and exact `-RequireCases` identities. Required
+subtests must actually RUN then PASS; a parent PASS or skip is insufficient.
+
 Use PowerShell 7 and the native Windows Go toolchain from this checkout:
 
 ```powershell

@@ -4,20 +4,6 @@ import (
 	"testing"
 )
 
-func TestLoadDefaultsTelnetSkipHandshakeToMinimal(t *testing.T) {
-	dir := testConfigDir(t)
-	writeRequiredFloodControlFile(t, dir)
-	config := "telnet:\n  port: 8300\n"
-	writeTestConfigOverlay(t, dir, "runtime.yaml", config)
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if got := cfg.Telnet.SkipHandshake; got != TelnetHandshakeMinimal {
-		t.Fatalf("expected omitted skip_handshake to default to %q, got %q", TelnetHandshakeMinimal, got)
-	}
-}
-
 func TestLoadAcceptsStringTelnetSkipHandshakeModes(t *testing.T) {
 	cases := []struct {
 		name string

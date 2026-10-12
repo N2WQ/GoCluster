@@ -153,7 +153,29 @@ func TestConfigurationClosedOwnerFinalSave(t *testing.T) {
 	c.configurationInitialized = true
 	s.registerClient(c)
 	c.interrupt()
-	s.unregisterClient(c)
+	entered, release, retired := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	var releaseOnce sync.Once
+	t.Cleanup(func() {
+		releaseOnce.Do(func() { close(release) })
+		waitConfigurationTest(t, retired)
+	})
+	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
+		close(entered)
+		<-release
+		return prepared.Commit()
+	}
+	go func() { s.unregisterClient(c); close(retired) }()
+	waitConfigurationTest(t, entered)
+	if calls := s.ListClientCallsigns(); len(calls) != 1 || calls[0] != c.callsign {
+		t.Fatalf("registry retired before final save completed: %v", calls)
+	}
+	select {
+	case <-retired:
+		t.Fatal("unregistration returned before final save completed")
+	default:
+	}
+	releaseOnce.Do(func() { close(release) })
+	waitConfigurationTest(t, retired)
 	data, err := os.ReadFile(filepath.Join(filter.UserDataDir, "W1ABC-2.yaml"))
 	if err != nil || !strings.Contains(string(data), "noise_class: URBAN") {
 		t.Fatalf("closed current-owner save: %s, %v", data, err)

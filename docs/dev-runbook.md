@@ -79,6 +79,12 @@ for paths, prerequisites, helper binaries, locking, and policy limitations.
 
 ## CI Backstops
 
+The [testing architecture runbook](runbooks/testing-architecture.md) owns explicit
+command and maintained-module selections, required case identities, fixture
+isolation and reduction accounting. Root `./...` does not run local Paho/SQLite
+module tests. Windows product/command and dependency jobs extend the backstop
+without replacing risk-triggered local validation.
+
 Push-to-`main` CI is post-push verification. It can detect an invalid commit
 after it lands, but it cannot prevent that commit from temporarily reaching
 `main`. The nightly full race suite is a broad regression backstop; it does not

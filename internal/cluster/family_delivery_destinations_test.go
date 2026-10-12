@@ -51,12 +51,13 @@ func (in familyDeliveryInput) spot() *spot.Spot {
 
 type familyDeliveryFixture struct {
 	ambiguityDeliveryFixture
-	selfConn   net.Conn
-	selfReader *bufio.Reader
-	recent     spot.RecentSupportStore
-	custom     *spot.CustomSCPStore
-	customOpts spot.CustomSCPOptions
-	who        *spot.WhoSpotsMeStore
+	selfConn     net.Conn
+	selfReader   *bufio.Reader
+	recent       spot.RecentSupportStore
+	custom       *spot.CustomSCPStore
+	customOpts   spot.CustomSCPOptions
+	who          *spot.WhoSpotsMeStore
+	deduplicator *dedup.Deduplicator
 }
 
 func TestFamilyDeliveryImmediateDestinationsAndHistory(t *testing.T) {
@@ -263,7 +264,17 @@ func familyDeliveryLoadedConfig(t *testing.T, source string, custom bool, delay,
 
 func newFamilyDeliveryFixture(t *testing.T, source string, custom, self bool, delay, capacity int, timeout string, withTelnet bool) familyDeliveryFixture {
 	t.Helper()
+	return newFamilyDeliveryFixtureWithResolver(t, source, custom, self, delay, capacity, timeout, withTelnet, nil)
+}
+
+func newFamilyDeliveryFixtureWithResolver(t *testing.T, source string, custom, self bool, delay, capacity int, timeout string, withTelnet bool, resolver *spot.SignalResolver) familyDeliveryFixture {
+	t.Helper()
 	cfg := familyDeliveryLoadedConfig(t, source, custom, delay, capacity, timeout)
+	if resolver != nil {
+		// This running-loop witness isolates stabilizer scheduling; contested
+		// temporal policy keeps its separate exhaustive and composed owners.
+		cfg.CallCorrection.TemporalDecoder.Enabled = false
+	}
 	if !cfg.CallCorrection.Enabled || !cfg.CallCorrection.StabilizerEnabled || !cfg.CallCorrection.FamilyPolicy.TelnetSuppression.Enabled {
 		t.Fatal("loaded fixture must retain enabled correction/stabilizer/family switches")
 	}
@@ -296,8 +307,9 @@ func newFamilyDeliveryFixture(t *testing.T, source string, custom, self bool, de
 	}
 	manager, recipient := correctionEvidencePeer(t)
 	f.peer = recipient
-	f.pipeline = newOutputPipeline(dedup.NewDeduplicator(0, false, 8), nil, nil, nil, nil, nil,
-		f.ring, srv, manager, stats.NewTracker(), nil, cfg.CallCorrection, func() *cty.CTYDatabase { return nil },
+	f.deduplicator = dedup.NewDeduplicator(0, false, 8)
+	f.pipeline = newOutputPipeline(f.deduplicator, nil, nil, nil, nil, nil,
+		f.ring, srv, manager, stats.NewTracker(), resolver, cfg.CallCorrection, func() *cty.CTYDatabase { return nil },
 		nil, nil, cfg.Harmonics, nil, cfg.SpotPolicy, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
 		f.recent, f.custom, f.who, false, f.writer, nil, nil, nil, nil, nil)
 	if withTelnet && (!f.pipeline.stabilizerEnabled || f.pipeline.telnetStabilizer == nil || f.pipeline.familySuppressor == nil) {
@@ -319,16 +331,7 @@ func (f *familyDeliveryFixture) startTelnet(t *testing.T, self bool) *telnet.Ser
 		t.Fatal(err)
 	}
 	t.Cleanup(srv.Stop)
-	t.Cleanup(func() {
-		deadline := time.Now().Add(3 * time.Second)
-		for len(srv.ListClientCallsigns()) != 0 {
-			if time.Now().After(deadline) {
-				t.Error("family delivery clients did not retire before restoring the fixture directory")
-				return
-			}
-			time.Sleep(time.Millisecond)
-		}
-	})
+	familyAdmissionJoinClients(t, srv)
 	f.normalConn, f.normalReader = correctionEvidenceLogin(t, port, "DL1ABC", "OFF")
 	f.diagConn, f.diagReader = correctionEvidenceLogin(t, port, "DL2ABC", "CONF")
 	f.selfConn, f.selfReader = correctionEvidenceLogin(t, port, "N2WQ", "OFF")

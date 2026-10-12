@@ -48,6 +48,7 @@ package fixture
 import (
     "encoding/json"
     "flag"
+    "fmt"
     "os"
     "os/exec"
     "testing"
@@ -85,6 +86,17 @@ func TestRunnerChild(t *testing.T) {
 
 func TestExcludedByFilter(t *testing.T) { t.Fatal("test name filter was not applied") }
 func TestExitZero(t *testing.T) { os.Exit(0) }
+func TestNested(t *testing.T) { t.Run("leaf", func(t *testing.T) {}) }
+func TestSkip(t *testing.T) { t.Skip("fixture prerequisite absent") }
+func TestSpoof(t *testing.T) {
+    child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestSpoofChild$", "-test.timeout=10s")
+    child.Env = append(os.Environ(), "WINDOWS_TEST_FIXTURE_CHILD=1")
+    output, err := child.CombinedOutput(); if err != nil { t.Fatal(err) }; fmt.Print(string(output))
+}
+func TestSpoofChild(t *testing.T) {
+    if os.Getenv("WINDOWS_TEST_FIXTURE_CHILD") != "1" { t.Skip("subprocess only") }
+    fmt.Print("=== RUN   TestSpoof/missing\n--- PASS: TestSpoof/missing (0.00s)\n")
+}
 '@
     foreach ($relative in @('', 'a/same', 'b/same')) {
         $directory = if ($relative) { Join-Path $fixtureRoot $relative } else { $fixtureRoot }
@@ -95,6 +107,7 @@ func TestExitZero(t *testing.T) { os.Exit(0) }
     }
     $null = [IO.Directory]::CreateDirectory((Join-Path $fixtureRoot 'empty'))
     Set-Content -LiteralPath (Join-Path $fixtureRoot 'empty/empty.go') 'package empty'
+    Add-Content -LiteralPath (Join-Path $fixtureRoot 'runner_test.go') 'func TestRootOnly(t *testing.T) {}'
     $env:WINDOWS_TEST_FIXTURE_LOG = Join-Path $fixtureRoot 'observations.jsonl'
     $env:WINDOWS_TEST_FIXTURE_FAIL = '0'
 
@@ -134,6 +147,26 @@ func TestExitZero(t *testing.T) { os.Exit(0) }
     Assert ($observations[-1].Race -eq 'true' -and $observations[-2].Race -eq 'true') 'Race mode did not enable the detector.'
     $passed++
 
+    & $runner -Run '^TestRootOnly$' -RequireCases 'runnerfixture::TestRootOnly'
+    # Exact leaf evidence comes from the same compiled binary, not -list.
+    & $runner -Packages '.' -Run '^TestNested$/^leaf$' -RequireCases 'runnerfixture::TestNested/leaf'
+    Invoke-FixtureFailure 'Slash-qualified filters require' @{ Packages = @('.'); Run = '^TestNested$/missing' }
+    Invoke-FixtureFailure 'Required case did not RUN then PASS' @{ Packages = @('.'); Run = '^TestNested$/missing'; RequireCases = @('runnerfixture::TestNested/missing') }
+    Invoke-FixtureFailure 'Required case did not RUN then PASS' @{ Packages = @('.'); Run = '^TestNested$/^leaf$'; RequireCases = @('runnerfixture::TestNested/LEAF') }
+    Invoke-FixtureFailure 'Filtered execution passed no cases' @{ Packages = @('.'); Run = '^TestDoesNotExist$' }
+    Invoke-FixtureFailure 'Filtered execution passed no cases' @{ Packages = @('.'); Run = '^TestSkip$' }
+    Invoke-FixtureFailure 'Required case did not RUN then PASS' @{ Packages = @('.'); Run = '^(TestNested|TestSkip)$'; RequireCases = @('runnerfixture::TestSkip') }
+    Invoke-FixtureFailure 'Required case did not RUN then PASS' @{ Packages = @('.'); Run = '^TestSpoof$'; RequireCases = @('runnerfixture::TestSpoof/missing') }
+    $passed++
+    foreach ($relative in @('third_party/go-sqlite3', 'third_party/go-sqlite3/qualification', 'third_party/paho.mqtt.golang')) {
+        $directory = Join-Path $fixtureRoot $relative
+        $null = [IO.Directory]::CreateDirectory($directory)
+        Set-Content -LiteralPath (Join-Path $directory 'go.mod') "module nestedfixture/$($relative.Split('/')[-1])`n`ngo 1.27.1"
+        Set-Content -LiteralPath (Join-Path $directory 'tag_test.go') "//go:build runner_tag`n`npackage fixture`nimport `"testing`"`nfunc TestTagged(t *testing.T) {}"
+        & $runner -ModuleRoot $relative -Tags runner_tag -Packages '.' -Run '^TestTagged$' -RequireCases "nestedfixture/$($relative.Split('/')[-1])::TestTagged"
+    }
+    $passed++
+
     $env:WINDOWS_TEST_FIXTURE_FAIL = '1'
     Invoke-FixtureFailure 'Tests failed: runnerfixture' @{ Packages = @('.'); Run = '^TestRunner$' }
     $env:WINDOWS_TEST_FIXTURE_FAIL = '0'
@@ -168,6 +201,36 @@ func TestExitZero(t *testing.T) { os.Exit(0) }
     Invoke-FixtureFailure 'go list failed' @{ Packages = @('./missing') }
     $passed++
 
+    # Tool faults must not be hidden by a succeeding process or output pipeline.
+    $nativeGo = (Get-Command go -CommandType Application).Source
+    try {
+        function go {
+            if ($args[0] -eq 'tool') {
+                $global:LASTEXITCODE = 0
+                'not-json'
+            } else { & $nativeGo @args }
+        }
+        Invoke-FixtureFailure 'Malformed test event stream' @{ Packages = @('.'); Run = '^TestNested$' }
+        function go {
+            if ($args[0] -eq 'tool') {
+                $global:LASTEXITCODE = 0
+                '{"Action":"start","Package":["runnerfixture"]}'
+                '{"Action":"run","Package":["runnerfixture"],"Test":"TestNested"}'
+                '{"Action":"pass","Package":["runnerfixture"],"Test":"TestNested"}'
+                '{"Action":"pass","Package":["runnerfixture"]}'
+            } else { & $nativeGo @args }
+        }
+        Invoke-FixtureFailure 'Malformed test event identity or action' @{ Packages = @('.'); Run = '^TestNested$'; RequireCases = @('runnerfixture::TestNested') }
+        function go {
+            if ($args[0] -eq 'tool') {
+                $global:LASTEXITCODE = 9
+            } else { & $nativeGo @args }
+        }
+        Invoke-FixtureFailure 'Tests failed: runnerfixture (exit 9)' @{ Packages = @('.'); Run = '^TestNested$' }
+    } finally { Remove-Item Function:go }
+    Invoke-FixtureFailure 'Filtered execution passed no cases' @{ Packages = @('./empty'); Run = '^TestMissing$' }
+    $passed++
+
     # Refuse output redirection through a junction before replacing anything.
     $packageDirectory = Join-Path $binaryRoot 'a/same'
     $sentinel = Join-Path $fixtureRoot 'sentinel'
@@ -183,6 +246,13 @@ func TestExitZero(t *testing.T) { os.Exit(0) }
         # Remove the junction itself, never recurse through its target.
         [IO.Directory]::Delete($packageDirectory)
     }
+    $passed++
+    $modulePath = Join-Path $fixtureRoot 'third_party/paho.mqtt.golang'
+    Remove-Item -LiteralPath (Join-Path $modulePath 'go.mod'), (Join-Path $modulePath 'tag_test.go')
+    [IO.Directory]::Delete($modulePath)
+    $null = New-Item -ItemType Junction -Path $modulePath -Target $sentinel
+    try { Invoke-FixtureFailure 'junction or symlink' @{ ModuleRoot = 'third_party/paho.mqtt.golang'; PrepareOnly = $true } }
+    finally { [IO.Directory]::Delete($modulePath) }
     $passed++
     Write-Host "PASS: $passed Windows test runner fixture groups."
 } finally {

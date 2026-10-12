@@ -1,5 +1,13 @@
 # PC18/PC92 qualification contract and evidence
 
+**Current-source environment:** [ADR-0299](decisions/ADR-0299-test-ownership-and-current-source-qualification.md)
+requires Go 1.27.1 for fresh full qualification. The former compiler identity is
+historical. All original profiles, rates, durations, latency/resource gates,
+platform proofs and pinned references remain binding. Synthetic fixture passes
+do not qualify the current source. Finish docs/maps before capture and retain
+raw-byte source identity with outside-checkout evidence; acceptance remains open
+until the complete fresh bundle passes.
+
 **Current authority:** [approved v15](pc18-pc92-scope-ledger-v15.md) consolidates
 the demonstrated shared-dedupe corrections, measured latency work and remaining
 context/diagnostic/SQLite ownership proofs. Its

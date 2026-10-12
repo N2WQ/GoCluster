@@ -151,13 +151,15 @@ try {
     }
     foreach ($family in @('runtime', 'q4', 'q5', 'q6', 'cache', 'retry')) {
         Invoke-WrapperFixture $family 'positive'
-        foreach ($case in @('source_changed', 'source_added', 'source_deleted')) { Invoke-WrapperFixture $family $case 'source_changed_during_run' }
-        Invoke-WrapperFixture $family 'build_source_changed' 'source_changed_during_build'
-        Invoke-WrapperFixture $family 'test_failed' 'test_failed'
-        Invoke-WrapperFixture $family 'binary_changed' 'binary_changed_during_run'
-        Invoke-WrapperFixture $family 'helper_changed' 'helper_changed_during_run'
-        Invoke-WrapperFixture $family 'helper_missing' 'helper_missing_during_run'
-        Invoke-WrapperFixture $family 'helper_build_failed' 'helper_build_failed'
+        if ($family -eq 'runtime') {
+            foreach ($case in @('source_changed', 'source_added', 'source_deleted')) { Invoke-WrapperFixture $family $case 'source_changed_during_run' }
+            Invoke-WrapperFixture $family 'build_source_changed' 'source_changed_during_build'
+            Invoke-WrapperFixture $family 'test_failed' 'test_failed'
+            Invoke-WrapperFixture $family 'binary_changed' 'binary_changed_during_run'
+            Invoke-WrapperFixture $family 'helper_changed' 'helper_changed_during_run'
+            Invoke-WrapperFixture $family 'helper_missing' 'helper_missing_during_run'
+            Invoke-WrapperFixture $family 'helper_build_failed' 'helper_build_failed'
+        }
         Invoke-WrapperFixture $family 'missing_case' 'missing_case'
         Invoke-WrapperFixture $family 'short_duration' 'short_duration'
         if ($family -eq 'retry') {

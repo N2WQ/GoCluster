@@ -219,20 +219,18 @@ func (x *helpOwnerSession) assertHelpHasNoEffects(t *testing.T, ziutek bool) {
 	before := captureHistoryCommentAliasState(t, c)
 	files, runtime, next := helpOwnerFiles(t), c.pathSnapshot(), c.solarNextSummaryAt
 	diag, writes, reads := c.getDiagMode(), x.writes, x.reads
-	filterTopic, historyTopic, allowTopic := "SHOW FILTER", "SHOW DX", "PASS"
+	filterTopic, allowTopic := "SHOW FILTER", "PASS"
 	if c.dialect == DialectCC {
-		filterTopic, historyTopic, allowTopic = "SHOW/FILTER", "SHOW/DX", "SET/FILTER"
+		filterTopic, allowTopic = "SHOW/FILTER", "SET/FILTER"
 	}
+	// Exhaustive aliases belong to commands' routing inventory. These witnesses
+	// cover each interceptor class with both codecs and dialects.
 	for _, tc := range []struct{ topic, canonical, content string }{
-		{"SH BUILD", "SHOW BUILD", "Usage: SHOW BUILD"}, {"SH OWN", "SHOW OWN", "Usage: SHOW OWN"},
-		{"SH MYDX 1", "SHOW MYDX", "SHOW MYDX NEXT <cursor>"}, {"SH DX 1", historyTopic, historyTopic + " NEXT <cursor>"},
-		{"SHOW/FILTER BAND", filterTopic, filterTopic + " <category>"}, {"SH/FILTER COMMENT", "SHOW FILTER COMMENT", "SHOW FILTER COMMENT"},
-		{"SHOW SETTINGS", "SHOW SETTINGS", "Usage: SHOW SETTINGS"}, {"PASS BAND 20", allowTopic, allowTopic + " <"},
-		{"PASS MINSNR CW 10", "PASS MINSNR", "PASS MINSNR <mode[,mode...]|ALL>"},
-		{"REJECT NEARBY OFF", "PASS NEARBY", "PASS NEARBY ON|OFF"},
+		{"SH MYDX 1", "SHOW MYDX", "SHOW MYDX NEXT <cursor>"},
+		{"SHOW/FILTER BAND", filterTopic, filterTopic + " <category>"},
+		{"PASS BAND 20", allowTopic, allowTopic + " <"},
 		{"SET SOLAR 60", "SET SOLAR", "SET SOLAR <15|30|60|OFF>"},
 		{"SAVE PRESET WOULD-WRITE", "SAVE PRESET", "SAVE PRESET <name>"},
-		{"LOAD PRESET BASE", "LOAD PRESET", "LOAD PRESET <name>"}, {"DELETE PRESET BASE", "DELETE PRESET", "DELETE PRESET <name>"},
 		{"GET YAML CONFIG SCHEMA 4 ID help-18", "GET YAML CONFIG", "GET YAML CONFIG [SCHEMA 2|3|4] [ID <id>]"},
 	} {
 		line := helpOwnerInput(t, "HELP "+tc.topic, ziutek)

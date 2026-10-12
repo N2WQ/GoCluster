@@ -9,6 +9,13 @@
   Repository package selectors. Defaults to ./...; external packages are refused.
 .PARAMETER Run
   Optional Go test name regular expression.
+.PARAMETER ModuleRoot
+  One supported repository module root. Defaults to the first-party root.
+.PARAMETER Tags
+  Optional comma-separated build tags.
+.PARAMETER RequireCases
+  Exact Package::Test/subtest identities that must RUN then PASS. Slash-qualified
+  filters require explicit identities; preparation only compiles these selections.
 .PARAMETER Timeout
   Per-package Go test timeout. Defaults to 10m.
 .PARAMETER Race
@@ -26,6 +33,10 @@
 param(
     [ValidateNotNullOrEmpty()][string[]]$Packages = @('./...'),
     [string]$Run = '',
+    [ValidateSet('.', 'third_party/go-sqlite3', 'third_party/go-sqlite3/qualification', 'third_party/paho.mqtt.golang')]
+    [string]$ModuleRoot = '.',
+    [ValidatePattern('^[A-Za-z0-9_.,-]*$')][string]$Tags = '',
+    [string[]]$RequireCases = @(),
     [ValidatePattern('^(0|([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+)$')]
     [string]$Timeout = '10m',
     [switch]$Race,
@@ -41,6 +52,8 @@ if ($PSVersionTable.PSVersion.Major -lt 7 -or -not $IsWindows) {
 
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $outputRoot = Join-Path $repoRoot '.tmp/windows-tests'
+$moduleDirectory = [IO.Path]::GetFullPath((Join-Path $repoRoot $ModuleRoot))
+if ($Run.Contains('/') -and $RequireCases.Count -eq 0) { throw 'Slash-qualified filters require exact Package::Test/subtest identities in -RequireCases.' }
 
 function Assert-PlainOutputPath([string]$Path) {
     # Never replace binaries through a junction/symlink, including one above a
@@ -63,7 +76,8 @@ function Assert-PlainOutputPath([string]$Path) {
 
 $lock = $null
 $originalPath = $env:PATH
-Push-Location -LiteralPath $repoRoot
+if ($moduleDirectory -ne $repoRoot) { Assert-PlainOutputPath $moduleDirectory }
+Push-Location -LiteralPath $moduleDirectory
 try {
     Assert-PlainOutputPath $outputRoot
     $null = [IO.Directory]::CreateDirectory($outputRoot)
@@ -83,19 +97,22 @@ try {
     }
     # Match go test's toolchain selection for tests that spawn the go command.
     $env:PATH = (Join-Path $goEnvironment.GOROOT 'bin') + [IO.Path]::PathSeparator + $originalPath
-    $rows = @(& go list -f '{{.ImportPath}}|{{.Dir}}|{{if or .TestGoFiles .XTestGoFiles}}tests{{end}}' @Packages)
+    $listArguments = @('list', '-f', '{{.ImportPath}}|{{.Dir}}|{{if or .TestGoFiles .XTestGoFiles}}tests{{end}}|{{if .Module}}{{.Module.Dir}}{{end}}')
+    if ($Tags) { $listArguments += @('-tags', $Tags) }
+    $rows = @(& go @listArguments @Packages)
     if ($LASTEXITCODE -ne 0) { throw 'go list failed.' }
     if ($rows.Count -eq 0) { throw 'No repository packages matched.' }
 
     $targets = @{}
     $selected = @(foreach ($row in $rows) {
         $fields = $row.Split('|')
-        if ($fields.Count -ne 3) { throw "Unexpected go list output: $row" }
-        $importPath, $directory, $hasTests = $fields
+        if ($fields.Count -ne 4) { throw "Unexpected go list output: $row" }
+        $importPath, $directory, $hasTests, $listedModule = $fields
         $directory = [IO.Path]::GetFullPath($directory)
-        if ($directory -ne $repoRoot -and -not $directory.StartsWith($repoRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        if ($listedModule -ne $moduleDirectory -or ($directory -ne $moduleDirectory -and -not $directory.StartsWith($moduleDirectory + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) {
             throw "External package is not supported: $importPath ($directory)"
         }
+        if ($directory -ne $repoRoot) { Assert-PlainOutputPath $directory }
         # Full import paths distinguish packages sharing a basename, including
         # the module root. Restrict components to unambiguous Windows names.
         foreach ($component in $importPath.Split('/')) {
@@ -111,16 +128,27 @@ try {
         [pscustomobject]@{ ImportPath = $importPath; Directory = $directory; Binary = $binary; HasTests = ($hasTests -eq 'tests') }
     })
 
+    $requirements = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+    foreach ($identity in $RequireCases) {
+        $parts = $identity.Split('::', [StringSplitOptions]::None)
+        if ($parts.Count -ne 2 -or $parts[1] -cnotmatch '^Test[^/]*(/[^/]+)*$' -or $requirements.ContainsKey($identity) -or $parts[0] -cnotin $selected.ImportPath) {
+            throw "Invalid, duplicate or unselected required case: $identity"
+        }
+        $requirements[$identity] = $false
+    }
+    $executed = 0; $buildOnly = 0; $passedCases = 0; $skippedCases = 0
     foreach ($package in $selected) {
         $null = [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($package.Binary))
         $buildArguments = @('test', '-c', '-o', $package.Binary)
         if ($Race) { $buildArguments += '-race' }
+        if ($Tags) { $buildArguments += @('-tags', $Tags) }
         $buildArguments += $package.ImportPath
         Write-Host "BUILD $($package.ImportPath) -> $($package.Binary)"
         & go @buildArguments
         if ($LASTEXITCODE -ne 0) { throw "Test build failed: $($package.ImportPath)" }
         if (-not $package.HasTests) {
-            Write-Host "SKIP $($package.ImportPath) [no test files; build checked]"
+            $buildOnly++
+            Write-Host "BUILD-ONLY $($package.ImportPath) [no test files; build checked]"
             continue
         }
         if (-not (Test-Path -LiteralPath $package.Binary -PathType Leaf)) {
@@ -138,19 +166,49 @@ try {
         }
         if ($PrepareOnly) { continue }
 
-        # Preserve go test's safeguard against tests silently exiting early.
-        $testArguments = @('-test.count=1', '-test.paniconexit0', "-test.timeout=$Timeout")
+        # test2json executes this saved binary itself. Its marker mode prevents
+        # child stdout containing ordinary PASS/RUN-looking text from qualifying.
+        $testArguments = @('-test.v=test2json', '-test.count=1', '-test.paniconexit0', "-test.timeout=$Timeout")
         if ($Run) { $testArguments += "-test.run=$Run" }
         Write-Host "RUN $($package.ImportPath)"
         Push-Location -LiteralPath $package.Directory
         try {
-            & $package.Binary @testArguments
-            if ($LASTEXITCODE -ne 0) { throw "Tests failed: $($package.ImportPath) (exit $LASTEXITCODE)" }
-        } finally {
-            Pop-Location
-        }
+            $runs = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+            $passes = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal); $packageStarted = $false; $packagePassed = $false
+            & go tool test2json -t -p $package.ImportPath $package.Binary @testArguments 2>&1 | ForEach-Object {
+                try { $event = "$_" | ConvertFrom-Json -ErrorAction Stop } catch { throw "Malformed test event stream: $_" }
+                if ($event -isnot [pscustomobject] -or -not $event.PSObject.Properties['Action'] -or $event.Action -isnot [string] -or
+                    -not $event.PSObject.Properties['Package'] -or $event.Package -isnot [string] -or $event.Package -cne $package.ImportPath -or
+                    $event.Action -cnotin @('start', 'run', 'pause', 'cont', 'pass', 'bench', 'fail', 'skip', 'output')) {
+                    throw 'Malformed test event identity or action.'
+                }
+                $name = if ($event.PSObject.Properties['Test']) { $event.Test } else { '' }
+                if ($name -isnot [string]) { throw 'Malformed test event name.' }
+                if ($event.Action -ceq 'start') { if ($packageStarted) { throw 'Duplicate package start.' }; $packageStarted = $true }
+                if (-not $packageStarted -or $packagePassed) { throw 'Test event outside package execution.' }
+                if ($event.Action -ceq 'output') { Write-Host $event.Output -NoNewline }
+                if ($name -and $event.Action -ceq 'run') {
+                    if ($runs.ContainsKey($name)) { throw "Duplicate case RUN: $name" }; $runs[$name] = $true
+                }
+                if ($name -and $event.Action -ceq 'pass') {
+                    if (-not $runs.ContainsKey($name) -or $passes.ContainsKey($name)) { throw "Case PASS without unique RUN: $name" }
+                    $passes[$name] = $true; $passedCases++
+                    $identity = "$($package.ImportPath)::$name"
+                    if ($requirements.ContainsKey($identity)) { $requirements[$identity] = $true }
+                }
+                if ($name -and $event.Action -ceq 'skip') { $skippedCases++ }
+                if (-not $name -and $event.Action -ceq 'pass') { $packagePassed = $true }
+            }
+            if ($LASTEXITCODE -ne 0 -or -not $packagePassed) { throw "Tests failed: $($package.ImportPath) (exit $LASTEXITCODE)" }
+            $executed++
+        } finally { Pop-Location }
+
     }
-    Write-Host "Windows tests complete: $($selected.Count) packages; prepare-only=$($PrepareOnly.IsPresent); race=$($Race.IsPresent)."
+    if (-not $PrepareOnly) {
+        if ($Run -and $passedCases -eq 0) { throw 'Filtered execution passed no cases across selected packages.' }
+        foreach ($identity in $requirements.Keys) { if (-not $requirements[$identity]) { throw "Required case did not RUN then PASS: $identity" } }
+    }
+    Write-Host "Windows tests complete: executed=$executed; build-only=$buildOnly; passed-cases=$passedCases; skipped-cases=$skippedCases; $($selected.Count) packages; prepare-only=$($PrepareOnly.IsPresent); race=$($Race.IsPresent)."
 } finally {
     $env:PATH = $originalPath
     if ($null -ne $lock) { $lock.Dispose() }

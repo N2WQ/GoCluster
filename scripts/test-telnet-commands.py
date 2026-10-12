@@ -52,7 +52,7 @@ def decode_frame(raw, resource, request_id, version):
     if not isinstance(document, dict):
         raise ValueError("YAML envelope is not a mapping")
     for key, expected in (("resource", resource), ("request_id", request_id), ("schema_version", version)):
-        if document.get(key) != expected:
+        if type(document.get(key)) is not type(expected) or document.get(key) != expected:
             raise ValueError(f"{key}: expected {expected!r}, got {document.get(key)!r}")
     return document, errors
 
@@ -146,24 +146,32 @@ class Session:
 
     def frame(self, resource, identifier, version, command):
         prefix, frame = bytearray(), bytearray()
-        while not frame:
-            line = self.reader.line()
-            if line.rstrip(b"\r\n") == b"---":
-                frame.extend(line)
-            else:
-                prefix.extend(line)
-            if len(prefix) > MAX_BUFFER:
-                raise ValueError("no frame within prefix limit")
-        while frame[-1:] != b"\n" or frame.split(b"\n")[-2].rstrip(b"\r") != b"...":
-            frame.extend(self.reader.line())
-            if len(frame) > MAX_BUFFER:
-                raise ValueError("frame recovery limit exceeded")
-        self.suite.log.write(f"\n[{self.call}] {command}\n".encode() + bytes(prefix) + bytes(frame))
-        self.suite.log.flush()
-        document, errors = decode_frame(bytes(frame), resource, identifier, version)
-        if errors:
-            self.suite.wire_failures.append({"call": self.call, "command": command, "errors": errors})
-        return document, bytes(prefix)
+        complete = False
+        try:
+            while not frame:
+                line = self.reader.line()
+                if line.rstrip(b"\r\n") == b"---":
+                    frame.extend(line)
+                else:
+                    prefix.extend(line)
+                if len(prefix) > MAX_BUFFER:
+                    raise ValueError("no frame within prefix limit")
+            while frame.split(b"\n")[-2].rstrip(b"\r") != b"...":
+                frame.extend(self.reader.line())
+                if len(frame) > MAX_BUFFER:
+                    raise ValueError("frame recovery limit exceeded")
+            document, errors = decode_frame(bytes(frame), resource, identifier, version)
+            if errors:
+                self.suite.wire_failures.append({"call": self.call, "command": command, "errors": errors})
+            complete = True
+            return document, bytes(prefix)
+        finally:
+            # On refusal/EOF/deadline retain the decoded partial suffix as well.
+            raw = bytes(prefix) + bytes(frame) + (b"" if complete else bytes(self.reader.buffer))
+            self.suite.log.write(f"\n[{self.call}] {command}\n".encode() + raw[:MAX_BUFFER])
+            if len(raw) > MAX_BUFFER:
+                self.suite.log.write(b"\n[frame receipt truncated at 262144 bytes]\n")
+            self.suite.log.flush()
 
     def get(self, resource="CONFIG", version=4):
         identifier = self.suite.identifier()
@@ -175,20 +183,15 @@ class Session:
         assert isinstance(document.get("revision"), str) and document["revision"]
         return document
 
-    def human(self, command, expected=None):
+    def human(self, command, expected=None, *, resource="CONFIG"):
         identifier = self.suite.identifier()
-        sync = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+        sync = f"GET YAML {resource} SCHEMA 4 ID {identifier}"
         self.send(command + "\r\n" + sync + "\r\n")
         self.suite.commands += 1
-        document, prefix = self.frame("CONFIG", identifier, 4, command)
-        if command.startswith(("SHOW FILTER", "SHOW/FILTER", "SH/FILTER", "SHOW SETTINGS")):
-            start = prefix.find(b"User          ")
-            end = prefix.find(b"Missed spots are not replayed.")
-            if start >= 0 and end > start:
-                raw = prefix[start:prefix.find(b"\n", end) + 1]
-                lines = raw.split(b"\n")[:-1]
-                if len(raw) > MAX_FRAME or any(not line.endswith(b"\r") or b"\r" in line[:-1] for line in lines):
-                    self.suite.wire_failures.append({"call": self.call, "command": command, "errors": ["human readback violates CRLF/size contract"]})
+        document, prefix = self.frame(resource, identifier, 4, command)
+        if len(prefix) > MAX_FRAME or (prefix and not prefix.endswith(b"\r\n")) or any(
+                not line.endswith(b"\r") or b"\r" in line[:-1] for line in prefix.split(b"\n")[:-1]):
+            self.suite.wire_failures.append({"call": self.call, "command": command, "errors": ["human reply violates CRLF/size contract"]})
         text = prefix.replace(b"\r\r\n", b"\r\n").decode("ascii", "strict")
         # Remove only the exact input echo. Never let echoed input satisfy an oracle.
         lines = text.splitlines()
@@ -200,6 +203,8 @@ class Session:
         if expected is not None:
             assert expected in text, f"{command}: missing {expected!r}: {text[:1000]}"
         assert "error" not in document, document.get("error")
+        assert type(document.get("configuration")) is dict and type(document.get("status")) is dict
+        assert type(document.get("revision")) is str and document["revision"]
         return text, document
 
     def upload(self, verb, resource, configuration, version=4, revision=None, raw_body=None, error_id=False):
@@ -219,11 +224,107 @@ class Session:
         if self.closed:
             return
         try:
-            self.send(verb + "\r\n")
-            self.reader.until(b"73!")
+            # Drain queued live rows through a correlated paused-state fence.
+            # The strict logout collector then owns a quiet stream and EOF.
+            # CAPABILITIES avoids full filters and a second copy of oversized
+            # saved settings; the same correlated status carries the pause.
+            _, document = self.human("PAUSE 300", resource="CAPABILITIES")
+            check(document["status"]["session"]["pause_active"] is True, "logout did not establish a pause")
+            remote_logout(self, verb)
         finally:
-            self.sock.close()
-            self.closed = True
+            if not self.closed:
+                try:
+                    self.sock.close()
+                finally:
+                    self.closed = True
+
+
+def check(condition, message):
+    if not condition:
+        raise ValueError(message)
+
+
+def remote_logout(session, verb):
+    received, raw, farewell = 0, bytearray(), False
+    try:
+        session.send(verb + "\r\n")
+        while True:
+            try:
+                line = session.reader.line()
+            except EOFError:
+                check(farewell and not session.reader.buffer and session.reader.state == "data",
+                      "logout lacks farewell or has partial trailing bytes")
+                return  # Remote EOF is observed before any local socket close.
+            received += len(line)
+            raw.extend(line[:MAX_FRAME - len(raw)])
+            check(received <= MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
+                  "logout reply exceeds its bound or has invalid CRLF")
+            text = line[:-2].decode("ascii", "strict")
+            if not farewell and text == "73!":
+                farewell = True
+            else:
+                check(text == "" or (not farewell and text == verb.upper()), "unexpected logout output")
+    finally:
+        try:
+            pending = session.reader.buffer
+            received += len(pending)
+            raw.extend(pending[:MAX_FRAME - len(raw)])
+            receipt = f"\n[{session.call}] {verb} [remote logout]\n".encode() + bytes(raw)
+            if received > len(raw):
+                receipt += b"\n[logout receipt truncated at 65536 bytes]\n"
+            session.suite.log.write(receipt)
+            session.suite.log.flush()
+        finally:
+            session.sock.close()
+            session.closed = True
+
+class BlockedPrerequisite(RuntimeError):
+    """Required evidence is unavailable; this never qualifies as a pass."""
+
+
+def required_live_cases(token, call):
+    """Independent leaf inventory, deliberately separate from execution loops."""
+    reads = []
+    categories = "BAND MODE MINSNR COMMENT SOURCE EVENT CONFIDENCE PATH DXCONT DECONT DXZONE DEZONE DXGRID2 DEGRID2 DXDXCC DEDXCC DXSTATE DESTATE DXCALL DECALL BEACON WWV WCY ANNOUNCE SELF TOXIC NEARBY".split()
+    for dialect, allow, block in (("go", "PASS", "REJECT"), ("cc", "SET/FILTER", "UNSET/FILTER")):
+        prefix = dialect + " "
+        reads += [prefix + f"COMMENT step {i}" for i in range(9)] + [prefix + "COMMENT overlong"]
+        reads += [prefix + c for c in ("HELP", "H", "DIALECT LIST", "SHOW BUILD", "SHOW OWN", "SHOW DEDUPE", "SHOW DXCC VE", "WHOSPOTSME", "WHOSPOTSME 20M")]
+        head = "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"
+        reads += [prefix + head + (" " + c if c else "") for c in ["", "FULL"] + categories + ["CONF", "PC93"]]
+        reads += [prefix + "SHOW SETTINGS"]
+        reads += [prefix + v + " " + d for d in ("BAND", "MODE", "SOURCE", "EVENT", "DXZONE", "DXGRID2", "DXDXCC", "DXCALL", "DECALL", "ANNOUNCE") for v in (allow, block)]
+        reads += [prefix + "atomic " + c for c in (allow + " DXSTATE ON,ZZ", block + " DESTATE NY,ZZ", allow + " DXGRID2 FN,SS", block + " DXDXCC VE,ZZZZ", allow + " MINSNR CW,BOGUS 10")]
+        reads += [prefix + c for c in (allow + " MINSNR CW,RTTY 0", block + " MINSNR FT8,FT4 -10", allow + " MINSNR ALL 7", allow + " MINSNR CW ALL", block + " MINSNR ALL NONE")]
+        reads += [prefix + v + " " + d + " ALL" for d in ("DXSTATE", "DESTATE") for v in (block, allow)]
+        reads += [prefix + "configured detail " + c for c in ("MINSNR", "DXSTATE", "DXGRID2")]
+    reads += ["SET GRID FN31", "SET NOISE URBAN", "SET PATHSAMPLES 1000", "SET SOLAR 30", "SET DEDUPE FAST"]
+    reads += ["SET DIAG " + mode for mode in ("OFF", "DEDUPE", "SOURCE", "CONF", "PATH", "MODE")]
+    reads += ["SET/" + alias for alias in ("ANN", "NOANN", "BEACON", "NOBEACON", "WWV", "NOWWV", "WCY", "NOWCY", "SELF", "NOSELF", "SKIMMER", "NOSKIMMER", "FT8", "NOFT8", "FILTER DXBM/PASS 20", "FILTER DXBM/REJECT 20", "NOFILTER")]
+    machine = ["PAUSE", "PAUSE 300", "PAUSE 1", "PAUSE 0", "PAUSE 301", "PAUSE BAD", "PAUSE 3 EXTRA", "SHOW HOLD"]
+    machine += [f"GET FILTER schema {v}" for v in (1, 2, 3, 4)] + [f"GET {r} schema 4" for r in ("SETTINGS", "CONFIG", "CAPABILITIES")]
+    machine += [f"PUT {action} {r}" for r in ("FILTER", "SETTINGS", "CONFIG") for action in ("unchanged", "changed")]
+    machine += ["PATCH " + r for r in ("SETTINGS", "FILTER", "CONFIG")]
+    machine += ["VALIDATE read-only", "stale revision atomic rejection", "invalid YAML {'noise_class': None}", "invalid YAML {'unexpected': True}", "old schema writes preserve newer fields", "RESUME immediate state"]
+    history = ["DX valid syntax 0", "DX valid syntax 1", "DX invalid input"]
+    history += ["history selection " + q for q in ("BAND 10m", "BAND 15", "MODE cw", "MODE FT8", "BAND 10m,15m", "BAND 10, 15", "MODE CW,FT8", "MODE CW, FT8", "BAND 10m,10 MODE CW,CW", "BAND 10,15 MODE CW", "MODE CW, FT8 BAND 15m", "BAND 10 MODE FT8", "MODE UNKNOWN", "BAND 10 MODE CW")]
+    history += [f"history selection literal T{token}-0 up-5{ending}" for ending in ("?", "!")]
+    history += ["history narrows saved BAND", "history narrows saved MODE", "history selection NEXT and invalid preservation"]
+    target = "K1ABC" if call.upper() == "VA3UXA" else "VA3UXA"
+    target_prefix = "K" if target == "K1ABC" else "VE"
+    for dialect in ("go", "cc"):
+        history += [dialect + " " + c for c in ("SHOW DX 1", "SH DX 1", f"SHOW MYDX {target} 2", f"SH MYDX 2 {target}", f"SHOW DX {target_prefix} 1")]
+        if dialect == "cc":
+            history += ["cc SHOW/DX 1", "cc SH/DX 1"]
+        history += [dialect + " selection " + c for c in ("SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX")]
+        if dialect == "cc":
+            history += ["cc selection SHOW/DX", "cc selection SH/DX"]
+        history += [dialect + " invalid " + c for c in ("SHOW DX 0", "SHOW MYDX 251")]
+    history += ["SHOW PROP syntax", "SHOW PROP forecast"]
+    return {"human commands and filters": reads, "pause and machine commands": machine,
+            "original preset regression plus state/SNR": ["original preset regression plus state/SNR"],
+            "history and read commands": history,
+            "terminal inputs": ["terminal upload " + k for k in ("header", "oversize", "deadline", "incomplete")] + ["disconnect " + v for v in ("BYE", "QUIT", "EXIT")]}
 
 
 class Suite:
@@ -242,13 +343,35 @@ class Suite:
         self.sequence += 1
         return f"Test-{self.sequence}"
 
-    def case(self, name, operation):
+    def case(self, name, operation, required=None):
+        start, result, detail = len(self.results), "PASS", None
         try:
             operation()
-            self.results.append({"case": name, "result": "PASS"})
-        except (AssertionError, ValueError, EOFError, OSError, yaml.YAMLError) as error:
-            self.results.append({"case": name, "result": "FAIL", "detail": str(error)})
-            print(f"FAIL {name}: {str(error)[:220]}", flush=True)
+            if required is not None:
+                children = self.results[start:]
+                check(len(children) == len(required) and {r["case"] for r in children} == set(required),
+                      "required family leaves missing, duplicated or unexpected")
+                check(all(r["result"] == "PASS" for r in children), "required child failed or blocked")
+        except Exception as error:
+            result = "BLOCKED" if isinstance(error, BlockedPrerequisite) else "FAIL"
+            detail = f"{type(error).__name__}: {error}"
+            print(f"{result} {name}: {detail[:220]}", flush=True)
+        row = {"case": name, "result": result}
+        if required is not None:
+            row["kind"] = "family"
+        if detail:
+            row["detail"] = detail
+        self.results.append(row)
+        return result == "PASS"
+
+    def account_required(self, required):
+        leaves = [row for row in self.results if row.get("kind") != "family"]
+        names = [row["case"] for row in leaves]
+        for name in required:
+            if name not in names:
+                self.results.append({"case": name, "result": "UNEXECUTED", "detail": "required leaf was not reached"})
+        if len(names) != len(set(names)) or set(names) - set(required):
+            self.results.append({"case": "required inventory", "result": "FAIL", "detail": "duplicate or unexpected leaf identities"})
 
     def unchanged(self, session, command, expected):
         before = session.get()
@@ -265,7 +388,7 @@ class Suite:
             _, selected = a.human("DIALECT " + dialect)
             assert selected["configuration"]["settings"]["dialect"] == dialect
             a.human("PAUSE 300")
-            for command, allow, block in (
+            for step, (command, allow, block) in enumerate((
                 ("RESET FILTER COMMENT", [], []),
                 ("PASS COMMENT up  5: please!", ["UP  5: PLEASE!"], []),
                 ("PASS COMMENT up  5: please!", ["UP  5: PLEASE!"], []),
@@ -275,14 +398,14 @@ class Suite:
                 ("RESET FILTER COMMENT REJECT", [], []),
                 ("PASS COMMENT " + "A" * 64, ["A" * 64], []),
                 ("RESET FILTER COMMENT PASS", [], []),
-            ):
+            )):
                 def comment_rule(c=command, pa=allow, re=block):
                     _, doc = a.human(c)
                     fields = doc["configuration"]["filters"]
                     assert fields["comments"] == pa and fields["block_comments"] == re
-                self.case(dialect + " " + command, comment_rule)
+                self.case(f"{dialect} COMMENT step {step}", comment_rule)
             self.case(dialect + " COMMENT overlong", lambda: self.unchanged(a, "PASS COMMENT " + "A" * 65, "Usage:"))
-            for command, expected in (("HELP", "Available commands:"), ("H", "Available commands:"), ("DIALECT LIST", "GO"), ("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call: " + self.args.call.upper()), ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"), ("WHOSPOTSME", "WHOSPOTSME"), ("WHOSPOTSME 20M", "WHOSPOTSME")):
+            for command, expected in (("HELP", "GoCluster help - "), ("H", "GoCluster help - "), ("DIALECT LIST", "GO"), ("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call: " + self.args.call.upper()), ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"), ("WHOSPOTSME", "WHOSPOTSME"), ("WHOSPOTSME 20M", "WHOSPOTSME")):
                 self.case(dialect + " " + command, lambda c=command, e=expected: a.human(c, e))
             for category in ["", "FULL"] + CATEGORIES + ["CONF", "PC93"]:
                 command = ("SHOW FILTER" if dialect == "go" else "SHOW/FILTER") + (" " + category if category else "")
@@ -299,7 +422,9 @@ class Suite:
                 self.case(dialect + " " + command, human_view)
             self.case(dialect + " SHOW SETTINGS", lambda: a.human("SHOW SETTINGS", "Session only"))
             pass_verb, reject_verb = ("PASS", "REJECT") if dialect == "go" else ("SET/FILTER", "UNSET/FILTER")
-            domains = {"BAND": ("20M", "bands", "20m"), "MODE": ("CW", "modes", "CW"), "SOURCE": ("HUMAN", "sources", "HUMAN"), "EVENT": ("POTA", "events", "POTA"), "CONFIDENCE": ("C", "confidence", "C"), "PATH": ("HIGH", "path_classes", "HIGH"), "DXCONT": ("NA", "dx_continents", "NA"), "DECONT": ("EU", "de_continents", "EU"), "DXZONE": ("5", "dx_zones", 5), "DEZONE": ("14", "de_zones", 14), "DXGRID2": ("FN20", "dx_grid2", "FN"), "DEGRID2": ("IO", "de_grid2", "IO"), "DXDXCC": ("VE", "dx_dxcc", 1), "DEDXCC": ("291", "de_dxcc", 291), "DXSTATE": ("ON,NY", "dx_states", "ON"), "DESTATE": ("QC,CA", "de_states", "QC")}
+            # Exhaustive categories remain in the owner tests. These witnesses
+            # cover named, scalar, grid-canonicalization and prefix-lookup paths.
+            domains = {"BAND": ("20M", "bands", "20m"), "MODE": ("CW", "modes", "CW"), "SOURCE": ("HUMAN", "sources", "HUMAN"), "EVENT": ("POTA", "events", "POTA"), "DXZONE": ("5", "dx_zones", 5), "DXGRID2": ("FN20", "dx_grid2", "FN"), "DXDXCC": ("VE", "dx_dxcc", 1)}
             a.human("RESET FILTER", "Filters reset")
             for domain, (value, field, key) in domains.items():
                 for verb, collection in ((pass_verb, "allow"), (reject_verb, "block")):
@@ -313,7 +438,7 @@ class Suite:
                         _, doc = a.human(f"{v} {d} VA3*")
                         assert "VA3*" in doc["configuration"]["filters"][f]
                     self.case(f"{dialect} {verb} {domain}", pattern)
-            for domain, field in (("BEACON", "include_beacons"), ("WWV", "allow_wwv"), ("WCY", "allow_wcy"), ("ANNOUNCE", "allow_announce"), ("SELF", "allow_self"), ("TOXIC", "allow_toxic")):
+            for domain, field in (("ANNOUNCE", "allow_announce"),):
                 for verb, value in ((pass_verb, True), (reject_verb, False)):
                     def toggle(v=verb, d=domain, f=field, expected=value):
                         _, doc = a.human(f"{v} {d}")
@@ -386,7 +511,7 @@ class Suite:
             self.case(command, bad_pause)
         self.case("SHOW HOLD", lambda: a.human("SHOW HOLD", "Live spots paused"))
         for version in (1, 2, 3, 4):
-            for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"):
+            for resource in (("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES") if version == 4 else ("FILTER",)):
                 def projection(r=resource, v=version):
                     doc = a.get(r, v)
                     data = doc["configuration"]
@@ -612,17 +737,26 @@ class Suite:
         target = "K1ABC" if self.args.call.upper() == "VA3UXA" else "VA3UXA"
         target_prefix = "K" if target == "K1ABC" else "VE"
         frequencies = [28200 + offset, 21200 + offset]
+        admitted = []
         for index in range(2):
             # DX retains the ordinary reader safe list. Only explicit COMMENT
             # commands admit printable punctuation such as ':' and '!'.
             command = f"DX {frequencies[0]} {target} CW T{self.token}-0 up-5?" if index == 0 else f"DX {target} {frequencies[1]} FT8 T{self.token}-1 up-5?"
-            self.case(f"DX valid syntax {index}", lambda c=command: a.human(c, "Spot queued."))
-            time.sleep(1)
+            admitted.append(self.case(f"DX valid syntax {index}", lambda c=command: a.human(c, "Spot queued.")))
         self.case("DX invalid input", lambda: self.unchanged(a, "DX NOTAFREQ VA3UXA", "Invalid frequency"))
         # Both fixtures must survive admission/dedupe for selection coverage.
         # The separate unrestricted paging check also uses older retained data.
-        time.sleep(.5)
-        exact, _ = a.human(f"SHOW DX {target} 2")
+        if not all(admitted):
+            raise BlockedPrerequisite("history stimuli were not both admitted")
+        deadline = min(self.deadline, time.monotonic() + self.args.timeout)
+        while True:
+            exact, _ = a.human(f"SHOW DX {target} 2 COMMENT T{self.token}")
+            if len(re.findall(r"\bT" + self.token + r"-[01]\b", exact)) == 2:
+                self.history_result(a, f"SHOW DX {target} 2 COMMENT T{self.token}", target, frequencies, [0, 1])
+                break
+            if time.monotonic() >= deadline:
+                raise BlockedPrerequisite("admitted labeled rows did not both reach retained history")
+            time.sleep(.025)
         rows = re.findall(r"^DX de\s+\S+:\s+[0-9.]+\s+(\S+)", exact, re.MULTILINE)
         assert rows and all(call == target for call in rows), "exact-call response lacks exclusively matching rows"
         self.history_result(a, f"SHOW DX {target} 2 COMMENT T" + self.token, target, frequencies, [0, 1])
@@ -709,13 +843,15 @@ class Suite:
                 verify = Session(self, call)
                 assert verify.get()["configuration"] == baseline["configuration"], "baseline did not survive reconnect"
                 verify.close()
-            except (AssertionError, ValueError, EOFError, OSError, yaml.YAMLError) as error:
+            except Exception as error:
                 self.cleanup_errors.append({"call": call, "detail": str(error)})
         for session in self.sessions:
             session.sock.close()
             session.closed = True
 
     def run(self):
+        inventory = required_live_cases(self.token, self.args.call)
+        required = [name for family in inventory.values() for name in family]
         try:
             main = Session(self, self.args.call.upper())
             original = main.get()
@@ -729,21 +865,26 @@ class Suite:
                 assert baseline["status"]["session"]["temporary_defaults"] is False
                 self.baselines[c.call] = baseline
             (self.args.output / "baselines.json").write_text(json.dumps(self.baselines, indent=2), encoding="utf-8")
-            self.case("human commands and filters", lambda: self.reads_and_filters(a))
-            self.case("pause and machine commands", lambda: self.pause_and_machine(a))
+            self.case("human commands and filters", lambda: self.reads_and_filters(a), inventory["human commands and filters"])
+            self.case("pause and machine commands", lambda: self.pause_and_machine(a), inventory["pause and machine commands"])
             self.case("original preset regression plus state/SNR", lambda: self.presets(a, b))
             a = Session(self, self.calls[0])
-            self.case("history and read commands", lambda: self.history(a))
+            self.case("history and read commands", lambda: self.history(a), inventory["history and read commands"])
             a.close()
             self.terminal_inputs(self.calls[0])
-        except (AssertionError, ValueError, EOFError, OSError, yaml.YAMLError) as error:
+        except Exception as error:
             self.results.append({"case": "setup/run", "result": "FAIL", "detail": str(error)})
         finally:
-            self.cleanup()
-            report = {"host": self.args.host, "port": self.args.port, "remote_build": getattr(self, "remote_build", "unknown"), "commands_including_GET_barriers": self.commands, "results": self.results, "wire_failures": self.wire_failures, "cleanup_errors": self.cleanup_errors, "remaining_owned_presets": sorted(self.owned), "residual_remote_test_profiles": list(self.baselines), "test_spot_comment": "T" + self.token}
+            try:
+                self.cleanup()
+            except Exception as error:
+                self.cleanup_errors.append({"detail": f"{type(error).__name__}: {error}"})
+            self.account_required(required)
+            counts = {status: sum(row["result"] == status and row.get("kind") != "family" and row["case"] in required for row in self.results) for status in ("PASS", "FAIL", "BLOCKED", "UNEXECUTED")}
+            report = {"host": self.args.host, "port": self.args.port, "remote_build": getattr(self, "remote_build", "unknown"), "commands_including_GET_barriers": self.commands, "required": required, "required_leaf_results": counts, "results": self.results, "wire_failures": self.wire_failures, "cleanup_errors": self.cleanup_errors, "remaining_owned_presets": sorted(self.owned), "residual_remote_test_profiles": list(self.baselines), "test_spot_comment": "T" + self.token}
             (self.args.output / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             self.log.close()
-        failures = sum(row["result"] == "FAIL" for row in self.results)
+        failures = sum(row["result"] != "PASS" for row in self.results)
         print(json.dumps({"commands": self.commands, "semantic_cases": len(self.results), "semantic_failures": failures, "wire_failures": len(self.wire_failures), "cleanup_errors": self.cleanup_errors, "output": str(self.args.output)}, indent=2))
         return int(bool(failures or self.wire_failures or self.cleanup_errors or self.owned))
 

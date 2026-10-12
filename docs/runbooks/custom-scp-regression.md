@@ -1,5 +1,11 @@
 # Custom SCP Storage and Delivery Regression
 
+Delivery cleanup waits for final client profile saves before restoring its
+working directory. The held negative control uses an independently eligible
+FIFO spot while retaining pending/ring/archive assertions. See the
+[testing architecture runbook](testing-architecture.md) for execution and
+isolation boundaries.
+
 Run from the repository root on native Windows:
 
 ```powershell

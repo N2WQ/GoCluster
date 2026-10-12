@@ -1,18 +1,16 @@
 package main
 
 import (
-	"bytes"
-	"context"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
+
+	"dxcluster/internal/testsupport"
 )
 
 func TestDistance3MainChild(t *testing.T) {
@@ -39,31 +37,7 @@ func TestDistance3MainChild(t *testing.T) {
 // and its deliberate exit is not launched with -test.paniconexit0.
 func distance3MainResult(t *testing.T, path, mode string) (int, string, string) {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, exe, "-test.run=^TestDistance3MainChild$", "--", "-db", path)
-	cmd.Dir = t.TempDir()
-	cmd.Env = append(os.Environ(), "DXC_DISTANCE3_MAIN_CHILD="+mode)
-	cmd.WaitDelay = 2 * time.Second
-	var out, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &out, &stderr
-	err = cmd.Run()
-	if ctx.Err() != nil {
-		t.Fatalf("actual main missed execution/join bound: %v", ctx.Err())
-	}
-	code := 0
-	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			t.Fatalf("child launch/join failure: %v", err)
-		}
-		code = exitErr.ExitCode()
-	}
-	return code, out.String(), stderr.String()
+	return testsupport.RunMain(t, "TestDistance3MainChild", t.TempDir(), []string{"DXC_DISTANCE3_MAIN_CHILD=" + mode}, []string{"-db", path}...)
 }
 
 func TestDistance3ActualMainMixedAndEmpty(t *testing.T) {

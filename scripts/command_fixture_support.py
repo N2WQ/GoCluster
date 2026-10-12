@@ -129,7 +129,11 @@ def command(args, *, timeout=180, cwd=ROOT):
 
 def source_manifest():
     names = command(["git", "ls-files", "--cached", "--others", "--exclude-standard",
-                     "--", "*.go", "go.mod", "go.sum"]).splitlines()
+                     "--", "*.go", "go.mod", "go.sum", "scripts/test-command-fixes.py",
+                     "scripts/test-telnet-commands.py", "scripts/command_fixture_support.py",
+                     "scripts/command_fixture_process.py", "scripts/test_command_fixes_test.py",
+                     "scripts/test_telnet_commands_test.py", "data/config", "data/h3/res1.bin",
+                     "data/h3/res2.bin"]).splitlines()
     hashes = {name: digest(ROOT / name) for name in sorted(set(names))}
     return {"commit": command(["git", "rev-parse", "HEAD"]), "files": hashes,
             "digest": hashlib.sha256(json.dumps(hashes, sort_keys=True).encode()).hexdigest()}
@@ -265,6 +269,8 @@ class Child:
         self.ready = root / ("ready-" + self.nonce + ".json")
         self.receipt = root / ("stopped-" + self.nonce + ".json")
         self.log_path = root / ("child-" + self.nonce + ".log")
+        assets = ("cty.plist", "h3/res1.bin", "h3/res2.bin")
+        self.assets = {name: digest(root / name) for name in assets}
         spec = root / ("spec-" + self.nonce + ".json")
         spec.write_text(json.dumps({"root": str(root), "nonce": self.nonce,
                                     "source_digest": source["digest"],
@@ -305,6 +311,8 @@ class Child:
             host, port = value["address"].rsplit(":", 1)
             require(host == "127.0.0.1" and 0 < int(port) <= 65535, "non-loopback fixture endpoint refused")
             self.host, self.port = host, int(port)
+            require(self.assets == {name: digest(root / name) for name in assets}, "fixture assets changed during startup")
+            value["asset_hashes"] = self.assets
             self.identity = value
         except BaseException:
             self.abort()

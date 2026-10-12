@@ -1,18 +1,15 @@
 package main
 
 import (
-	"bytes"
-	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
-	"time"
+
+	"dxcluster/internal/testsupport"
 )
 
 func TestDistanceAnalysisMainChild(t *testing.T) {
@@ -45,32 +42,7 @@ func oneCMainResult(t *testing.T, path, mode string) (int, string, string) {
 // failure must not masquerade as the command's own unsuccessful exit status.
 func oneCMainAt(t *testing.T, directory, mode string, commandArgs ...string) (int, string, string) {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
-	defer cancel()
-	args := append([]string{"-test.run=^TestDistanceAnalysisMainChild$", "--"}, commandArgs...)
-	cmd := exec.CommandContext(ctx, exe, args...)
-	cmd.Dir = directory
-	cmd.Env = append(os.Environ(), "DXC_ONE_C_MAIN_CHILD="+mode)
-	cmd.WaitDelay = 2 * time.Second
-	var output, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &output, &stderr
-	err = cmd.Run()
-	if ctx.Err() != nil {
-		t.Fatalf("actual main missed execution/join bound: %v", ctx.Err())
-	}
-	code := 0
-	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			t.Fatalf("child launch/join failure: %v", err)
-		}
-		code = exitErr.ExitCode()
-	}
-	return code, output.String(), stderr.String()
+	return testsupport.RunMain(t, "TestDistanceAnalysisMainChild", directory, []string{"DXC_ONE_C_MAIN_CHILD=" + mode}, commandArgs...)
 }
 
 func TestDistanceAnalysisActualMainMixedEmptyAndAbsentStatistics(t *testing.T) {

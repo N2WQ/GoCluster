@@ -1,4 +1,4 @@
-// Frozen pre-v16 harmonic behavior oracle. Only type/constructor names differ.
+// Frozen pre-v16 harmonic decision oracle. Unused lifecycle methods are omitted.
 // Source SHA-256: 7f312e4fb54259df2910c4c5833569d86b377d8895b2f06a06f5d3d7efc78fa3
 // This compatibility reference is supplemented by literal boundary tests.
 package spot
@@ -33,8 +33,6 @@ type v16ReferenceDetector struct {
 	mu       sync.Mutex
 	entries  map[string][]v16ReferenceEntry
 	lastSeen map[string]time.Time
-
-	sweepQuit chan struct{}
 }
 
 // newV16ReferenceDetector constructs a harmonic detector with configured thresholds.
@@ -177,7 +175,7 @@ func (hd *v16ReferenceDetector) prune(call string, now time.Time) {
 
 // Purpose: Drop inactive calls beyond the recency window.
 // Key aspects: Removes entries when lastSeen is too old.
-// Upstream: ShouldDrop and StartCleanup.
+// Upstream: ShouldDrop.
 // Downstream: map deletes.
 // cleanup drops inactive calls entirely when their last seen time is outside the recency window.
 func (hd *v16ReferenceDetector) cleanup(now time.Time) {
@@ -191,35 +189,4 @@ func (hd *v16ReferenceDetector) cleanup(now time.Time) {
 			delete(hd.entries, call)
 		}
 	}
-}
-
-// StartCleanup starts periodic cleanup of harmonic entries.
-// Key aspects: Guards against multiple starts and uses quit channel.
-// Upstream: main startup.
-// Downstream: cleanup and time.NewTicker.
-// StartCleanup starts a periodic sweep to evict inactive calls even when new spots are sparse.
-func (hd *v16ReferenceDetector) StartCleanup(interval time.Duration) {
-	if hd == nil {
-		return
-	}
-	if interval <= 0 {
-		interval = time.Minute
-	}
-	startPeriodicCleanup(&hd.mu, &hd.sweepQuit, interval, func() {
-		hd.mu.Lock()
-		hd.cleanup(time.Now().UTC())
-		hd.mu.Unlock()
-	})
-}
-
-// StopCleanup stops the periodic cleanup goroutine.
-// Key aspects: Closes quit channel and clears it.
-// Upstream: main shutdown.
-// Downstream: channel close only.
-// StopCleanup stops the periodic cleanup goroutine.
-func (hd *v16ReferenceDetector) StopCleanup() {
-	if hd == nil {
-		return
-	}
-	stopPeriodicCleanup(&hd.mu, &hd.sweepQuit)
 }

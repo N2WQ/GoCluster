@@ -163,6 +163,18 @@ func TestHumanPreferenceSettingsRefusalAndFilterlessCallers(t *testing.T) {
 	if !handled || response != "Noise class set to INDUSTRIAL\n" || c.noiseClass != "INDUSTRIAL" || c.filter != nil || c.callsign != "" {
 		t.Fatal("filterless lightweight settings behavior changed")
 	}
+	for _, tc := range []struct {
+		command, reply string
+		minutes        int
+	}{
+		{"SET SOLAR 15", "Solar cadence: 15 minutes; unavailable on this server\n", 15},
+		{"SET SOLAR OFF", "Solar summaries: OFF\n", 0},
+	} {
+		response, handled := s.handleSolarCommand(c, tc.command)
+		if !handled || response != tc.reply || c.getSolarSummaryMinutes() != tc.minutes || c.filter != nil || c.callsign != "" {
+			t.Fatalf("filterless SOLAR publication changed: %q -> %q", tc.command, response)
+		}
+	}
 }
 
 func TestHumanPreferenceWarningArgumentsAreLiteral(t *testing.T) {

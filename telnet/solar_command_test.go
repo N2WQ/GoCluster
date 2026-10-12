@@ -39,28 +39,3 @@ func TestNextSolarSummaryAt(t *testing.T) {
 		t.Fatalf("expected %v, got %v", want, got)
 	}
 }
-
-func TestHandleSolarCommand(t *testing.T) {
-	server := &Server{}
-	client := &Client{}
-	resp, handled := server.handleSolarCommand(client, "SET SOLAR 15")
-	if !handled {
-		t.Fatalf("expected handled")
-	}
-	if resp == "" {
-		t.Fatalf("expected response")
-	}
-	if got := client.getSolarSummaryMinutes(); got != 15 {
-		t.Fatalf("expected 15, got %d", got)
-	}
-	resp, handled = server.handleSolarCommand(client, "SET SOLAR OFF")
-	if !handled {
-		t.Fatalf("expected handled")
-	}
-	if resp == "" {
-		t.Fatalf("expected response")
-	}
-	if got := client.getSolarSummaryMinutes(); got != 0 {
-		t.Fatalf("expected 0, got %d", got)
-	}
-}

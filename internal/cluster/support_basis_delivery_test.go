@@ -216,6 +216,9 @@ func TestSupportBasisRuntimeZeroWeightedDelivery(t *testing.T) {
 	source := acceptedLearningPathsConfigSource(t)
 	for _, custom := range []bool{false, true} {
 		for _, path := range []string{"immediate", "retry_release", "retry_suppress", "temporal_apply", "temporal_abstain"} {
+			if !custom && (path == "retry_suppress" || path == "temporal_abstain") {
+				continue // Both history owners are exercised on every admitting path.
+			}
 			t.Run(fmt.Sprintf("custom_%t/%s", custom, path), func(t *testing.T) {
 				temporalDeliveryDirectory(t)
 				f := newSupportBasisRuntimeFixture(t, source, custom, path)

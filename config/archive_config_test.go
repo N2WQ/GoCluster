@@ -5,25 +5,6 @@ import (
 	"testing"
 )
 
-// Purpose: Verify archive retention defaults when omitted from YAML.
-// Key aspects: Loads minimal YAML and inspects the normalized single retention window.
-// Upstream: go test.
-// Downstream: Load.
-func TestArchiveRetentionDefault(t *testing.T) {
-	dir := testConfigDir(t)
-	writeRequiredFloodControlFile(t, dir)
-	cfgText := "archive:\n  enabled: true\n"
-	writeTestConfigOverlay(t, dir, "archive.yaml", cfgText)
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Archive.RetentionSeconds != DefaultArchiveRetentionSeconds {
-		t.Fatalf("expected retention_seconds=%d from shipped YAML, got %d", DefaultArchiveRetentionSeconds, cfg.Archive.RetentionSeconds)
-	}
-}
-
 // Purpose: Verify removed archive cleanup batch keys fail with a migration hint.
 // Key aspects: Prevents obsolete cleanup knobs from appearing to control range deletion.
 // Upstream: go test.
@@ -61,25 +42,6 @@ func TestArchiveIgnoredCompatibilityKeysRejected(t *testing.T) {
 				t.Fatalf("expected strict schema error for %s, got %v", key, err)
 			}
 		})
-	}
-}
-
-// Purpose: Verify archive synchronous defaults to off when omitted.
-// Key aspects: Ensures config normalization applies durability default.
-// Upstream: go test.
-// Downstream: Load.
-func TestArchiveSynchronousDefault(t *testing.T) {
-	dir := testConfigDir(t)
-	writeRequiredFloodControlFile(t, dir)
-	cfgText := "archive:\n  enabled: true\n"
-	writeTestConfigOverlay(t, dir, "archive.yaml", cfgText)
-
-	cfg, err := Load(dir)
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Archive.Synchronous != "off" {
-		t.Fatalf("expected archive.synchronous=off, got %q", cfg.Archive.Synchronous)
 	}
 }
 

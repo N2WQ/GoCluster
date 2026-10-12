@@ -102,3 +102,103 @@ jobs:
             AFTER_SHA="HEAD"
           fi
           git diff --check "$base" "$AFTER_SHA" --
+
+  windows-product:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Verify native compiler and run Windows product tests
+        shell: pwsh
+        run: |
+          if ((go env CGO_ENABLED) -ne '1') { throw 'Native CGO is required for Windows race qualification.' }
+          gcc --version
+          if ($LASTEXITCODE) { throw 'Native Windows C compiler unavailable.' }
+          ./scripts/test-windows.ps1
+          ./scripts/test-test-windows.ps1
+      - name: Run command oracles and source-bound integration
+        shell: pwsh
+        run: |
+          python -m venv .tmp/telnet-test-venv
+          if ($LASTEXITCODE) { throw 'Python environment creation failed.' }
+          $python = '.tmp/telnet-test-venv/Scripts/python.exe'
+          & $python -m pip install PyYAML==6.0.3
+          if ($LASTEXITCODE) { throw 'Pinned dependency installation failed.' }
+          & $python -m unittest discover -s scripts -p 'test*_test.py'
+          if ($LASTEXITCODE) { throw 'Command oracle tests failed.' }
+          & $python scripts/test-command-fixes.py
+          if ($LASTEXITCODE) { throw 'Source-bound command qualification failed.' }
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: windows-command-receipts
+          path: .tmp/command-fixes/**
+          retention-days: 7
+
+  maintained-modules:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Test maintained forks and bounded SQLite interoperability
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $false
+          if ((go env CGO_ENABLED) -ne '1') { throw 'Native CGO is required.' }
+          gcc --version
+          if ($LASTEXITCODE) { throw 'Native C compiler unavailable.' }
+          go -C third_party/go-sqlite3/engine build ./...
+          if ($LASTEXITCODE) { throw 'SQLite engine build failed.' }
+          $groups = @(
+            @{ root='third_party/go-sqlite3'; package='./...'; tags=''; names=@() },
+            @{ root='third_party/go-sqlite3/qualification'; package='.'; tags='sqlite3_qualification'; names=@('TestV15SQLiteWALProcessLocksAndCoherence','TestV15SQLiteWALMultipleIndexPages','TestV15SQLiteWALCrashAndReopen','TestV15SQLiteWALLiveWriterReadProbes') },
+            @{ root='third_party/paho.mqtt.golang'; package='.'; tags=''; names=@('TestMatchAndDispatchWorkerPoolAllowsParallel','TestEnqueueInboundPublishDropsQoS0WhenFull','TestEnqueueInboundPublishTimesOutQoS12WhenFull','TestEnqueueInboundPublishOkWhenSpace','TestCustomConnectionFunction','TestGetBackoffSleepTime') },
+            @{ root='third_party/paho.mqtt.golang'; package='./packets'; tags=''; names=@() }
+          )
+          foreach ($race in @($false, $true)) {
+            foreach ($group in $groups) {
+              $run = if ($group.names.Count) { '^(' + ($group.names -join '|') + ')$' } else { '' }
+              $package = go -C $group.root list "-tags=$($group.tags)" .
+              if ($LASTEXITCODE) { throw 'Module package identity failed.' }
+              $required = @($group.names | ForEach-Object { "${package}::$_" })
+              if ($IsWindows) {
+                ./scripts/test-windows.ps1 -ModuleRoot $group.root -Packages $group.package -Tags $group.tags -Run $run -RequireCases $required -Race:$race
+              } else {
+                $arguments = @('-C', $group.root, 'test', '-count=1', '-timeout=10m', '-json')
+                if ($race) { $arguments += '-race' }
+                if ($group.tags) { $arguments += @('-tags', $group.tags) }
+                if ($run) { $arguments += @('-run', $run) }
+                $started = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+                $passed = [Collections.Generic.Dictionary[string,bool]]::new([StringComparer]::Ordinal)
+                & go @arguments $group.package | ForEach-Object {
+                  $event = $_ | ConvertFrom-Json -ErrorAction Stop
+                  if ($event -isnot [pscustomobject] -or $event.Package -isnot [string] -or $event.Action -isnot [string] -or
+                      ($event.PSObject.Properties['Test'] -and $event.Test -isnot [string])) { throw 'Malformed module test event identity.' }
+                  if ($event.Test) {
+                    $identity = "$($event.Package)::$($event.Test)"
+                    if ($event.Action -ceq 'run') { $started[$identity] = $true }
+                    if ($event.Action -ceq 'pass' -and $started.ContainsKey($identity)) { $passed[$identity] = $true }
+                  }
+                  Write-Host $_
+                }
+                if ($LASTEXITCODE) { throw 'Maintained module tests failed.' }
+                foreach ($identity in $required) { if (-not $passed.ContainsKey($identity)) { throw "Missing required RUN/PASS: $identity" } }
+              }
+            }
+          }

@@ -10,33 +10,6 @@ import (
 	"dxcluster/spot"
 )
 
-func TestHandleDiagCommandToggle(t *testing.T) {
-	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
-
-	resp, handled := server.handleDiagCommand(client, "SET DIAG DEDUPE")
-	if !handled {
-		t.Fatalf("expected SET DIAG DEDUPE to be handled")
-	}
-	if !strings.Contains(resp, "DEDUPE") {
-		t.Fatalf("expected DEDUPE response, got %q", resp)
-	}
-	if client.getDiagMode() != diagModeDedupe {
-		t.Fatalf("expected diag mode DEDUPE")
-	}
-
-	resp, handled = server.handleDiagCommand(client, "SET DIAG OFF")
-	if !handled {
-		t.Fatalf("expected SET DIAG OFF to be handled")
-	}
-	if !strings.Contains(resp, "OFF") {
-		t.Fatalf("expected OFF response, got %q", resp)
-	}
-	if client.getDiagMode() != diagModeOff {
-		t.Fatalf("expected diag mode OFF")
-	}
-}
-
 func TestHandleDiagCommandOnRejected(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
 	client := &Client{}
@@ -50,22 +23,6 @@ func TestHandleDiagCommandOnRejected(t *testing.T) {
 	}
 	if client.getDiagMode() != diagModeOff {
 		t.Fatalf("expected diag mode OFF")
-	}
-}
-
-func TestHandleDiagCommandMode(t *testing.T) {
-	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
-
-	resp, handled := server.handleDiagCommand(client, "SET DIAG MODE")
-	if !handled {
-		t.Fatalf("expected SET DIAG MODE to be handled")
-	}
-	if !strings.Contains(resp, "MODE") {
-		t.Fatalf("expected MODE response, got %q", resp)
-	}
-	if client.getDiagMode() != diagModeMode {
-		t.Fatalf("expected diag mode MODE")
 	}
 }
 
@@ -244,325 +201,43 @@ func TestDiagPathInsufficientLowCountReason(t *testing.T) {
 	}
 }
 
-func TestDiagPathTagShowsCappedAndRawCountsWhenLimited(t *testing.T) {
-	prediction := pathPrediction{
-		result: pathreliability.Result{
-			Source:        pathreliability.SourceCombined,
-			Weight:        19,
-			Count:         19,
-			RawCount:      19,
-			CappedCount:   5,
-			CappedWeight:  5,
-			AgeSec:        12,
-			CapLimited:    true,
-			CapWouldBlock: true,
-		},
-	}
-	got := diagPathTag(prediction, true)
-	if got != "n19/c5|w5|a12" {
-		t.Fatalf("unexpected capped path diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathTagShowsVOACAPSelectedHour(t *testing.T) {
-	prediction := pathPrediction{
-		result: pathreliability.Result{
-			Source:         pathreliability.SourceVOACAPClosed,
-			VOACAPFT8SNRDB: -34,
-			VOACAPHourUTC:  3,
-			VOACAPSSN:      147,
-			VOACAPAgeSec:   9,
-		},
-	}
-	got := diagPathTag(prediction, true)
-	if got != "vcap|-34|h03|s147" {
-		t.Fatalf("unexpected VOACAP path diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathTagShowsVOACAPAlignedSparseP50(t *testing.T) {
-	prediction := pathPrediction{
-		result: pathreliability.Result{
-			Source:         pathreliability.SourceVOACAPAligned,
-			P50DB:          -14.5,
-			VOACAPFT8SNRDB: -15,
-			VOACAPHourUTC:  20,
-			VOACAPSSN:      112,
-		},
-	}
-	got := diagPathTag(prediction, true)
-	if got != "valn|-15/-15h20s112" {
-		t.Fatalf("unexpected VOACAP-aligned path diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathTagShowsVOACAPReliabilityGatedFallbacks(t *testing.T) {
-	sparseUpgrade := pathPrediction{
-		result: pathreliability.Result{
-			Source:                     pathreliability.SourceVOACAPSparseUpgrade,
-			P50DB:                      -19,
-			VOACAPFT8SNRDB:             -15,
-			VOACAPHourUTC:              20,
-			VOACAPSSN:                  112,
-			VOACAPReqSNRReliability:    0.84,
-			VOACAPHasReqSNRReliability: true,
-		},
-	}
-	if got := diagPathTag(sparseUpgrade, true); got != "vup|-19/-15r84s112" {
-		t.Fatalf("unexpected VOACAP sparse-upgrade path diagnostic: %q", got)
-	}
-
-	openNoP50 := pathPrediction{
-		result: pathreliability.Result{
-			Source:                     pathreliability.SourceVOACAPOpen,
-			VOACAPFT8SNRDB:             -19,
-			VOACAPHourUTC:              20,
-			VOACAPSSN:                  112,
-			VOACAPReqSNRReliability:    0.75,
-			VOACAPHasReqSNRReliability: true,
-		},
-	}
-	if got := diagPathTag(openNoP50, true); got != "vop|-19r75h20s112" {
-		t.Fatalf("unexpected VOACAP no-p50 open path diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathTagShowsNative160Closed(t *testing.T) {
-	closed := pathPrediction{
-		result: pathreliability.Result{
-			Source:                     pathreliability.SourceNative160,
-			Class:                      filter.PathClassClosed,
-			Native160CivilDarkFraction: 0.12,
-		},
-	}
-	if got := diagPathTag(closed, true); got != "n160c|d12" {
-		t.Fatalf("unexpected native 160 closed diagnostic: %q", got)
-	}
-
-	beaconClosed := pathPrediction{
-		result: pathreliability.Result{
-			Source:                     pathreliability.SourceNative160,
-			Class:                      filter.PathClassClosed,
-			BeaconRX:                   true,
-			Native160CivilDarkFraction: 0.05,
-		},
-	}
-	if got := diagPathTag(beaconClosed, true); got != "bn160c|d05" {
-		t.Fatalf("unexpected beacon native 160 closed diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathTagShowsNative160EndpointReason(t *testing.T) {
-	tests := []struct {
-		name string
-		res  pathreliability.Result
-		want string
-	}{
-		{
-			name: "user daylight closed",
-			res: pathreliability.Result{
-				Source:                     pathreliability.SourceNative160,
-				Class:                      filter.PathClassClosed,
-				Native160UserDaylight:      true,
-				Native160CivilDarkFraction: 0.82,
-			},
-			want: "n160c|uD|d82",
-		},
-		{
-			name: "dx twilight unlikely",
-			res: pathreliability.Result{
-				Source:                     pathreliability.SourceNative160,
-				Class:                      filter.PathClassUnlikely,
-				Native160DXTwilight:        true,
-				Native160CivilDarkFraction: 0.54,
-			},
-			want: "n160|xT|d54",
-		},
-		{
-			name: "beacon both daylight closed",
-			res: pathreliability.Result{
-				Source:                     pathreliability.SourceNative160,
-				Class:                      filter.PathClassClosed,
-				BeaconRX:                   true,
-				Native160UserDaylight:      true,
-				Native160DXDaylight:        true,
-				Native160CivilDarkFraction: 0.05,
-			},
-			want: "bn160c|bD|d05",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := diagPathTag(pathPrediction{result: tt.res}, true); got != tt.want {
-				t.Fatalf("unexpected native 160 endpoint diagnostic: %q", got)
-			}
-		})
-	}
-}
-
-func TestDiagPathTagShowsSparseVOACAPMissReason(t *testing.T) {
-	delayed := pathPrediction{
-		result: pathreliability.Result{
-			Source:             pathreliability.SourceInsufficient,
-			InsufficientReason: pathreliability.InsufficientNoSample,
-		},
-		sparseVOACAPTrace: sparseP50VOACAPTrace{
-			Active:    true,
-			NoP50:     true,
-			Status:    pathreliability.VOACAPForecastCheckDelayWait,
-			CacheMiss: true,
-		},
-	}
-	if got := diagPathTag(delayed, true); got != "n0|none|vdly" {
-		t.Fatalf("unexpected delayed sparse VOACAP diagnostic: %q", got)
-	}
-
-	staleHour := pathPrediction{
-		result: pathreliability.Result{
-			Source:             pathreliability.SourceInsufficient,
-			InsufficientReason: pathreliability.InsufficientNoSample,
-		},
-		sparseVOACAPTrace: sparseP50VOACAPTrace{
-			Active:        true,
-			NoP50:         true,
-			Status:        pathreliability.VOACAPForecastCheckDelayWait,
-			CacheMiss:     true,
-			NoCurrentHour: true,
-		},
-	}
-	if got := diagPathTag(staleHour, true); got != "n0|none|vcur" {
-		t.Fatalf("unexpected no-current-hour sparse VOACAP diagnostic: %q", got)
-	}
-
+func TestDiagPathTagLiteralFormatting(t *testing.T) {
 	for _, tc := range []struct {
-		name   string
-		reason pathreliability.VOACAPInvalidRequestReason
-		want   string
+		name       string
+		prediction pathPrediction
+		want       string
 	}{
-		{name: "unsupported band", reason: pathreliability.VOACAPInvalidUnsupportedBand, want: "n0|none|vband"},
-		{name: "empty unknown band", reason: pathreliability.VOACAPInvalidEmptyUnknownBand, want: "n0|none|vnbnd"},
-		{name: "user grid", reason: pathreliability.VOACAPInvalidUserGrid, want: "n0|none|vugrd"},
-		{name: "DX grid", reason: pathreliability.VOACAPInvalidDXGrid, want: "n0|none|vdgrd"},
-		{name: "user cell", reason: pathreliability.VOACAPInvalidUserCell, want: "n0|none|vucel"},
-		{name: "DX cell", reason: pathreliability.VOACAPInvalidDXCell, want: "n0|none|vdcel"},
+		{"combined capped counts", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceCombined, Weight: 19, Count: 19, RawCount: 19, CappedCount: 5, CappedWeight: 5, AgeSec: 12, CapLimited: true, CapWouldBlock: true}}, "n19/c5|w5|a12"},
+		{"VOACAP selected hour", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPClosed, VOACAPFT8SNRDB: -34, VOACAPHourUTC: 3, VOACAPSSN: 147, VOACAPAgeSec: 9}}, "vcap|-34|h03|s147"},
+		{"VOACAP aligned sparse p50", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPAligned, P50DB: -14.5, VOACAPFT8SNRDB: -15, VOACAPHourUTC: 20, VOACAPSSN: 112}}, "valn|-15/-15h20s112"},
+		{"VOACAP sparse upgrade", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPSparseUpgrade, P50DB: -19, VOACAPFT8SNRDB: -15, VOACAPHourUTC: 20, VOACAPSSN: 112, VOACAPReqSNRReliability: 0.84, VOACAPHasReqSNRReliability: true}}, "vup|-19/-15r84s112"},
+		{"VOACAP open without p50", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPOpen, VOACAPFT8SNRDB: -19, VOACAPHourUTC: 20, VOACAPSSN: 112, VOACAPReqSNRReliability: 0.75, VOACAPHasReqSNRReliability: true}}, "vop|-19r75h20s112"},
+		{"native 160 closed", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceNative160, Class: filter.PathClassClosed, Native160CivilDarkFraction: 0.12}}, "n160c|d12"},
+		{"beacon native 160 closed", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceNative160, Class: filter.PathClassClosed, BeaconRX: true, Native160CivilDarkFraction: 0.05}}, "bn160c|d05"},
+		{"user daylight closed", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceNative160, Class: filter.PathClassClosed, Native160UserDaylight: true, Native160CivilDarkFraction: 0.82}}, "n160c|uD|d82"},
+		{"DX twilight unlikely", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceNative160, Class: filter.PathClassUnlikely, Native160DXTwilight: true, Native160CivilDarkFraction: 0.54}}, "n160|xT|d54"},
+		{"beacon both daylight closed", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceNative160, Class: filter.PathClassClosed, BeaconRX: true, Native160UserDaylight: true, Native160DXDaylight: true, Native160CivilDarkFraction: 0.05}}, "bn160c|bD|d05"},
+		{"sparse delayed", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckDelayWait, CacheMiss: true}}, "n0|none|vdly"},
+		{"sparse staleHour", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckDelayWait, CacheMiss: true, NoCurrentHour: true}}, "n0|none|vcur"},
+		{"sparse unsupported band", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckInvalidRequest, InvalidReason: pathreliability.VOACAPInvalidUnsupportedBand}}, "n0|none|vband"},
+		{"sparse empty unknown band", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckInvalidRequest, InvalidReason: pathreliability.VOACAPInvalidEmptyUnknownBand}}, "n0|none|vnbnd"},
+		{"sparse user grid", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckInvalidRequest, InvalidReason: pathreliability.VOACAPInvalidUserGrid}}, "n0|none|vugrd"},
+		{"sparse DX grid", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckInvalidRequest, InvalidReason: pathreliability.VOACAPInvalidDXGrid}}, "n0|none|vdgrd"},
+		{"sparse user cell", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckInvalidRequest, InvalidReason: pathreliability.VOACAPInvalidUserCell}}, "n0|none|vucel"},
+		{"sparse DX cell", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, InsufficientReason: pathreliability.InsufficientNoSample}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckInvalidRequest, InvalidReason: pathreliability.VOACAPInvalidDXCell}}, "n0|none|vdcel"},
+		{"sparse relFail", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient}, sparseVOACAPTrace: sparseP50VOACAPTrace{Active: true, NoP50: true, Status: pathreliability.VOACAPForecastCheckReady, Outcome: sparseP50VOACAPOutcomeOpenRELFail}}, "n0|none|vrel"},
+		{"beacon p50", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceCombined, BeaconRX: true, Weight: 11, Count: 11, AgeSec: 12}}, "brx|n11|w11|a12"},
+		{"beacon insufficient", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceInsufficient, BeaconRX: true, Count: 10, InsufficientReason: pathreliability.InsufficientLowCount}}, "brx|n10|lown"},
+		{"beacon closed", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPClosed, BeaconRX: true, VOACAPFT8SNRDB: -34, VOACAPHourUTC: 3, VOACAPSSN: 147}}, "bvcap|-34|h03|s147"},
+		{"beacon aligned", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPAligned, BeaconRX: true, P50DB: -14.5, VOACAPFT8SNRDB: -15, VOACAPHourUTC: 20, VOACAPSSN: 112}}, "bvaln|-15/-15h20s112"},
+		{"beacon sparseUpgrade", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPSparseUpgrade, BeaconRX: true, P50DB: -19, VOACAPFT8SNRDB: -15, VOACAPHourUTC: 20, VOACAPSSN: 112, VOACAPReqSNRReliability: 0.84, VOACAPHasReqSNRReliability: true}}, "bvup|-19/-15r84s112"},
+		{"beacon open", pathPrediction{result: pathreliability.Result{Source: pathreliability.SourceVOACAPOpen, BeaconRX: true, VOACAPFT8SNRDB: -19, VOACAPHourUTC: 20, VOACAPSSN: 112, VOACAPReqSNRReliability: 0.75, VOACAPHasReqSNRReliability: true}}, "bvop|-19r75h20s112"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			invalid := pathPrediction{
-				result: pathreliability.Result{
-					Source:             pathreliability.SourceInsufficient,
-					InsufficientReason: pathreliability.InsufficientNoSample,
-				},
-				sparseVOACAPTrace: sparseP50VOACAPTrace{
-					Active:        true,
-					NoP50:         true,
-					Status:        pathreliability.VOACAPForecastCheckInvalidRequest,
-					InvalidReason: tc.reason,
-				},
-			}
-			if got := diagPathTag(invalid, true); got != tc.want {
-				t.Fatalf("unexpected invalid sparse VOACAP diagnostic: %q", got)
+			if got := diagPathTag(tc.prediction, true); got != tc.want {
+				t.Fatalf("path diagnostic: got %q, want %q", got, tc.want)
 			}
 		})
-	}
-
-	relFail := pathPrediction{
-		result: pathreliability.Result{
-			Source: pathreliability.SourceInsufficient,
-		},
-		sparseVOACAPTrace: sparseP50VOACAPTrace{
-			Active:  true,
-			NoP50:   true,
-			Status:  pathreliability.VOACAPForecastCheckReady,
-			Outcome: sparseP50VOACAPOutcomeOpenRELFail,
-		},
-	}
-	if got := diagPathTag(relFail, true); got != "n0|none|vrel" {
-		t.Fatalf("unexpected REL-failed sparse VOACAP diagnostic: %q", got)
-	}
-}
-
-func TestDiagPathTagShowsBeaconRXProvenance(t *testing.T) {
-	p50 := pathPrediction{
-		result: pathreliability.Result{
-			Source:   pathreliability.SourceCombined,
-			BeaconRX: true,
-			Weight:   11,
-			Count:    11,
-			AgeSec:   12,
-		},
-	}
-	if got := diagPathTag(p50, true); got != "brx|n11|w11|a12" {
-		t.Fatalf("unexpected beacon RX p50 diagnostic: %q", got)
-	}
-
-	insufficient := pathPrediction{
-		result: pathreliability.Result{
-			Source:             pathreliability.SourceInsufficient,
-			BeaconRX:           true,
-			Count:              10,
-			InsufficientReason: pathreliability.InsufficientLowCount,
-		},
-	}
-	if got := diagPathTag(insufficient, true); got != "brx|n10|lown" {
-		t.Fatalf("unexpected beacon RX insufficient diagnostic: %q", got)
-	}
-
-	closed := pathPrediction{
-		result: pathreliability.Result{
-			Source:         pathreliability.SourceVOACAPClosed,
-			BeaconRX:       true,
-			VOACAPFT8SNRDB: -34,
-			VOACAPHourUTC:  3,
-			VOACAPSSN:      147,
-		},
-	}
-	if got := diagPathTag(closed, true); got != "bvcap|-34|h03|s147" {
-		t.Fatalf("unexpected beacon RX VOACAP closed diagnostic: %q", got)
-	}
-
-	aligned := pathPrediction{
-		result: pathreliability.Result{
-			Source:         pathreliability.SourceVOACAPAligned,
-			BeaconRX:       true,
-			P50DB:          -14.5,
-			VOACAPFT8SNRDB: -15,
-			VOACAPHourUTC:  20,
-			VOACAPSSN:      112,
-		},
-	}
-	if got := diagPathTag(aligned, true); got != "bvaln|-15/-15h20s112" {
-		t.Fatalf("unexpected beacon RX VOACAP aligned diagnostic: %q", got)
-	}
-
-	sparseUpgrade := pathPrediction{
-		result: pathreliability.Result{
-			Source:                     pathreliability.SourceVOACAPSparseUpgrade,
-			BeaconRX:                   true,
-			P50DB:                      -19,
-			VOACAPFT8SNRDB:             -15,
-			VOACAPHourUTC:              20,
-			VOACAPSSN:                  112,
-			VOACAPReqSNRReliability:    0.84,
-			VOACAPHasReqSNRReliability: true,
-		},
-	}
-	if got := diagPathTag(sparseUpgrade, true); got != "bvup|-19/-15r84s112" {
-		t.Fatalf("unexpected beacon RX VOACAP sparse-upgrade diagnostic: %q", got)
-	}
-
-	open := pathPrediction{
-		result: pathreliability.Result{
-			Source:                     pathreliability.SourceVOACAPOpen,
-			BeaconRX:                   true,
-			VOACAPFT8SNRDB:             -19,
-			VOACAPHourUTC:              20,
-			VOACAPSSN:                  112,
-			VOACAPReqSNRReliability:    0.75,
-			VOACAPHasReqSNRReliability: true,
-		},
-	}
-	if got := diagPathTag(open, true); got != "bvop|-19r75h20s112" {
-		t.Fatalf("unexpected beacon RX VOACAP open diagnostic: %q", got)
 	}
 }
 

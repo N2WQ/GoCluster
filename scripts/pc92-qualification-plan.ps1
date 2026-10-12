@@ -1,3 +1,5 @@
+function Get-PC92QualificationGoVersion { 'go version go1.27.1 windows/amd64' }
+
 # Fixed evidence plans shared by the public wrappers. These values are the
 # approved workload, not caller-adjustable duration or rate overrides.
 function Get-PC92QualificationPlan([string]$Family, [string]$Profile) {
