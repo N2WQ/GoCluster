@@ -84,6 +84,9 @@ cost measurements; production load and RF accuracy remain unverified.
 
 ## Links
 
+- [ADR-0297](ADR-0297-core-accepted-observation-learning.md) governs learned
+  call/FT history and WhoSpotsMe before output eligibility. Successful family
+  lane witnesses and saved-output gates in this record remain accepted.
 - Related tests: `internal/cluster/telnet_family_suppressor_test.go`,
   `internal/cluster/family_admission_delivery_test.go`,
   `internal/cluster/family_admission_qualification_test.go`,

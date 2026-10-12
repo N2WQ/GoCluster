@@ -101,6 +101,13 @@ not infer meanings from other cluster software.
   resolver consensus and is not a calibrated correctness probability. See
   [historical freshness](../../spot/README.md#historical-receiver-freshness).
 
+- Learned call/FT history and WhoSpotsMe count eligible core-accepted observations
+  once after holds resolve. Secondary thinning, family hiding and output queue
+  pressure do not control that learning. Work pending, reheld, suppressed or
+  discarded before acceptance does not learn; accepted shutdown releases can.
+  Preserve CustomSCP V-only and
+  the separate successful-lane rule for family display witnesses.
+
 ## Must Avoid
 
 - Do not claim compatibility with DXSpider or other cluster software unless

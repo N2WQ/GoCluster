@@ -666,13 +666,6 @@ func (p *outputPipeline) scheduleFTTimer(now time.Time) {
 	p.ftTimerCh = p.ftTimer.C
 }
 
-// recordFTRecentBandObservation feeds the FT-only support floor after a spot
-// has earned a display glyph, keeping future uncertain FT bursts from starting
-// cold on the same band/call.
-func (p *outputPipeline) recordFTRecentBandObservation(s *spot.Spot) {
-	p.recordFTRecentBandObservationAt(s, time.Now().UTC())
-}
-
 // recordFTRecentBandObservationAt shares the legacy admission clock contract;
 // zero source timestamps resolve to the same supplied acceptance clock.
 func (p *outputPipeline) recordFTRecentBandObservationAt(s *spot.Spot, now time.Time) {

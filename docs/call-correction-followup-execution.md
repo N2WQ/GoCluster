@@ -182,3 +182,94 @@ only owner-specific validation precedes construction. Support-critical comments,
 config header/key explanations, ADR/TSR/index links and claimed evidence are
 consistent with the approved slice. Final map generation/check and direct staged
 diff review precede commit. Subsequent slices remain pending.
+
+S2 final maps/check, staged diff and whitespace passed. Checkpoint commit:
+`7e43cbec378f71f58c3024c8f486e2bb44f87ec8`. Only the two unrelated YAML values
+remained dirty; all approved S2 changes were committed before S3 began.
+
+## S3: accepted-observation learning
+
+Postapproval detailed test-strategy review completed before Go edits. Accepted
+refinements: positive WhoSpotsMe controls require291/NA metadata and an isolated
+exactly-one record through the same actual pipeline; natural V/C cannot prove
+overflow because they bypass holding; compare store-eligible deltas and separately
+prove actual delayed promotion to V. Disk expectations include accepted hidden/
+refused eligible observations, independently from delivered/archive rows.
+Shutdown tests distinguish discard from actual buffered transfer and forced
+temporal/FT acceptance, without adding a stop guard or changing ownership.
+
+Implemented one existing-recorder group on one acceptance clock, called before
+secondary decisions by immediate, overflow, delayed and non-stabilized paths.
+Pending/rehold/suppression returns precede it. Store-specific filters remain;
+family lane witnesses/output metrics remain separately owned. The obsolete
+main-loop pending predicate is now test-fixture code rather than an unused
+production gate. No new retained state, worker, config or protocol is added.
+
+The first targeted run exposed fixture assumptions: no eligible configured SLOW
+client lanes, and a disabled legacy S-floor bonus in the later-support probe.
+These are repaired in the new fixtures through actual lane configuration/
+readback and enabled bonus before control/learning. The failed log remains
+`S3-first-targeted.log`. Shutdown and existing shared delivery cases passed in
+that run; final targeted and complete S3 checkpoints remain pending.
+
+The subsequent identity fixture also used an empty CTY database that erased
+receiver metadata during the production license refresh. The corrected private
+database rejects the proposed replacement while retaining the N0 receiver and
+K1CTL positive control. Both failed runs remain recorded. Final acceptance
+ordinary and combined delivery/family/output race checks passed, including
+actual final C/B identity, hidden families, queue refusal, pending/rehold,
+discarded shutdown work, buffered transfers and forced temporal/FT releases.
+
+An ignored build overlay restores only the old stabilized output-dependent
+learning gate. The exact immediate/all-denied regression passes its positive
+control, then fails on the target's missing WhoSpotsMe occurrence as expected.
+This falsifier is retained in `S3-old-output-gate-expected-red.log`.
+
+Recording benchmarks passed qualified occurrence/receiver controls: legacy CW
+1044ns/16B/2allocs, FT1052ns/16B/2allocs, CustomSCP1204ns/8B/1alloc. These
+repeat one receiver with a fixed source timestamp; CustomSCP measures duplicate
+recording, not fresh persistent writes. No production capacity claim follows.
+Fresh review found no acceptance wiring defect and clarified pre-acceptance
+discard wording; the newly unused FT wrapper was removed. The review inherited
+context and is not independent. TSR/index and changed-source crawler checks pass.
+
+The complete S3 checkpoint uses the verified approved source in
+`S3-scoped-worktree`, preserving the separate dirty5/6 YAML settings outside
+the source under test. Canonical executable/lock paths and runner safeguards
+remain unchanged. Tagged checks and the full seven-check lane are in progress;
+S4 remains read-only until this checkpoint passes and is committed.
+
+Initial complete S3 ordinary passed70 packages in691.8s. Race stopped at the
+cluster package after729.4s on the preexisting overflow-admission fixture, not
+a race or logging failure. It captured its query clock before NewSpot supplied
+the observation timestamp; S2 correctly excludes that later observation at the
+earlier query clock. Four related old fixtures now explicitly stamp observations
+at their declared query clock. This test-only clock correction retains their
+admission assertions. Initial results remain in `S3-scoped-initial/`; repeated
+targeted clock checks and the complete seven-check lane rerun on the final state.
+
+Final-state complete S3 checkpoint passed: ordinary599.3s/race1050.3s,
+70 packages (53 test/17 build-only), vet4.9s, Staticcheck10.7s, configured
+lint16.9s, connected CustomSCP ordinary10.3s/race16.7s. Commands/results are
+in `S3-scoped/checks.json`. The four clock fixtures passed200 repetitions each
+ordinary/race. Tagged concurrent admission/queue refusal passed count3
+ordinary/race and tagged vet/lint. Both logging cases passed in the complete
+final ordinary/race runs; no logger repair, exclusion or waiver was applied.
+
+Approved-item mapping: the four mutually exclusive acceptance sites and shared
+clock -> `output_pipeline_delivery.go`; store safeguards -> unchanged recorder
+admission in `bootstrap.go`/`ft_confidence_runtime.go`; all paths and positive
+occurrence controls -> `accepted_learning_paths_test.go`/hold fixtures; final
+identity -> identity fixtures; family/lane/queue independence -> output-gate
+fixtures and actual TCP/disk readbacks; discard/transfer/forced acceptance ->
+shutdown fixtures; duplicate recording cost -> benchmark. ADR-0297/TSR-0090,
+prior-decision links, spot README and confidence support card carry the contract.
+
+Fresh final lead verification confirms all pending/rehold/core-suppression
+returns precede recording and no accepted path records twice. Source clocks,
+CustomSCP V-only, output counters, family lane witnesses, bounded store ownership
+and shutdown sequencing remain intact. Reviewed documentation distinguishes
+pre-acceptance discard from output refusal. Relative links41, TSR/index and
+changed-source crawler checks pass. Source in the isolated checkpoint matches
+approved Go files; separate YAML5/6 values remain excluded and preserved.
+Final map generation/check, whitespace and direct staged review precede commit.

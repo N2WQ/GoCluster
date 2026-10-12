@@ -583,7 +583,7 @@ func familyDeliveryExpectedSCPBytes(inputs []familyDeliveryInput) map[string][]b
 			continue // Preserve production V-only admission for S/? releases.
 		}
 		calls := []string{in.call}
-		if in.call == "KP4/N2WQ" {
+		if in.call == "KP4/N2WQ" || in.call == "N2WQ/KP4" {
 			calls = []string{"N2WQ/KP4", "N2WQ"}
 		}
 		for _, call := range calls {

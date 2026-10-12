@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0090 | Accepted Observation Learning Boundary | Monitoring | 2026-10-11 | learning before output gates, eligible occurrence oracle, shutdown dispositions | ADR-0297 | `docs/troubleshooting/TSR-0090-accepted-observation-learning-boundary.md` |
 | TSR-0089 | Legacy History Clock and Capacity | Monitoring | 2026-10-11 | future admission, actual-owner capacity, replay cleanup clock | ADR-0296 | `docs/troubleshooting/TSR-0089-legacy-history-clock-and-capacity.md` |
 | TSR-0088 | Stabilizer Selected Loss Propagation | Monitoring | 2026-10-11 | selected neighborhood loss, initial/retry/temporal stabilization | none | `docs/troubleshooting/TSR-0088-stabilizer-selected-loss-propagation.md` |
 | TSR-0087 | Family Display Admission Authority | Monitoring | 2026-10-11 | fresh family shares, admitted FAST/MED/SLOW history, queue refusal | ADR-0295 | `docs/troubleshooting/TSR-0087-family-display-admission-authority.md` |

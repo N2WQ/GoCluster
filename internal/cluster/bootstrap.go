@@ -1207,13 +1207,6 @@ func shouldRetryTelnetByStabilizer(decision stabilizerDelayDecision, checksCompl
 	return correctionflow.ShouldRetryStabilizerDelay(decision, checksCompleted)
 }
 
-// shouldRecordRecentBandInMainLoop controls recent-on-band admission timing for
-// the main output path. Delayed spots must only contribute after delay
-// resolution in the stabilizer release path.
-func shouldRecordRecentBandInMainLoop(stabilizerEnabled bool, delayedQueued bool) bool {
-	return !stabilizerEnabled || !delayedQueued
-}
-
 // shouldRecordRecentBandAfterStabilizerDelay controls recent-on-band admission
 // for delayed spots. If a delayed spot is still risky and timeout action is
 // suppress, it must not reinforce recent-on-band support.

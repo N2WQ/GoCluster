@@ -38,6 +38,10 @@ This supersedes only the archive/peer side-rail portions of ADR-0013, ADR-0020,
 ADR-0029, and ADR-0138. The stabilizer itself and the telnet policy controls
 remain accepted.
 
+[ADR-0297](ADR-0297-core-accepted-observation-learning.md) separately governs
+learned call/FT history and WhoSpotsMe at core acceptance before output gates.
+The ring/archive/peer/telnet output and hold boundaries here remain accepted.
+
 ## Alternatives considered
 1. Keep the separate archive/peer secondary rail.
    - Rejected because it preserves a pre-stabilizer output path that no longer

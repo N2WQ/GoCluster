@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0297 | Core Accepted Observation Learning | Accepted | 2026-10-11 | call/FT history, WhoSpotsMe, acceptance, shutdown | Learned-history admission interpretations of ADR-0148/0295 only | none | `docs/decisions/ADR-0297-core-accepted-observation-learning.md` |
 | ADR-0296 | Legacy History Clock and Capacity | Accepted | 2026-10-11 | legacy/FT history, owner capacity, replay maintenance | Refines ADR-0019 replay legacy maintenance | none | `docs/decisions/ADR-0296-legacy-history-clock-and-capacity.md` |
 | ADR-0295 | Fresh Evidence and Admitted Lanes for Family Display | Accepted | 2026-10-11 | family display, fresh evidence, telnet queue admission | Family-display clauses of ADR-0014/0033/0148 | none | `docs/decisions/ADR-0295-fresh-admitted-family-display.md` |
 | ADR-0294 | Independent Profiling Controller | Accepted | 2026-10-11 | local profiling, process lifecycle, observability | none | none | `docs/decisions/ADR-0294-independent-profiling-controller.md` |

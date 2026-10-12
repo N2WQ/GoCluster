@@ -1057,6 +1057,13 @@ func TestApplySupportFloorPromotesViaSlashFamilyRecentSupport(t *testing.T) {
 	}
 }
 
+// Legacy fixture predicate models pending ownership only. Production now
+// reaches its accepted recorder by returning early on pending/suppressed work;
+// secondary eligibility is tested through actual delivery paths separately.
+func shouldRecordRecentBandInMainLoop(stabilizerEnabled bool, delayedQueued bool) bool {
+	return !stabilizerEnabled || !delayedQueued
+}
+
 func TestRecentBandAdmissionDelayedReleaseWaitsForOutcome(t *testing.T) {
 	store := newRecentBandStoreForStabilizerAdmissionTests()
 	cfg := config.CallCorrectionConfig{
@@ -1064,6 +1071,7 @@ func TestRecentBandAdmissionDelayedReleaseWaitsForOutcome(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
+	s.Time = now // Query at the observation clock, not before construction.
 
 	if shouldRecordRecentBandInMainLoop(true, true) {
 		recordRecentBandObservation(s, store, nil, cfg)
@@ -1088,6 +1096,7 @@ func TestRecentBandAdmissionDelayedSuppressSkipsRecord(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	s := spot.NewSpot("K1RISK", "W2TT", 7010.0, "CW")
+	s.Time = now // Query at the observation clock, not before construction.
 
 	if shouldRecordRecentBandInMainLoop(true, true) {
 		recordRecentBandObservation(s, store, nil, cfg)
@@ -1111,6 +1120,7 @@ func TestRecentBandAdmissionOverflowReleaseRecordsInMainPath(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	s := spot.NewSpot("K1OVR", "W2TT", 7010.0, "CW")
+	s.Time = now // Query at the observation clock, not before construction.
 
 	if !shouldRecordRecentBandInMainLoop(true, false) {
 		t.Fatalf("expected overflow fail-open path to record in main loop")
@@ -1128,6 +1138,7 @@ func TestRecentBandAdmissionNonStabilizerRecordsInMainPath(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	s := spot.NewSpot("K1MAIN", "W2TT", 7010.0, "CW")
+	s.Time = now // Query at the observation clock, not before construction.
 
 	if !shouldRecordRecentBandInMainLoop(false, false) {
 		t.Fatalf("expected non-stabilizer path to record in main loop")

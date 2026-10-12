@@ -123,8 +123,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		}
 		return
 	}
-	recordRecentBandObservation(delayed, p.recentBandStore, p.customSCPStore, p.correctionCfg)
-	recordWhoSpotsMeObservation(delayed, p.whoSpotsMeStore, time.Now().UTC())
+	p.recordAcceptedObservation(delayed)
 	plan := p.buildFinalDeliveryPlan(delayed)
 	releaseCtx := outputSpotContext{spot: delayed, peerOriginal: envelope.peerOriginal, temporalResult: envelope.temporalResult,
 		stabilizerResolverKey: resolverEvidence.Key, hasStabilizerResolverKey: hasResolverEvidence}
@@ -212,6 +211,17 @@ func (p *outputPipeline) deliverSpot(ctx *outputSpotContext) {
 	p.emitSpot(ctx, plan)
 }
 
+// recordAcceptedObservation is called once by the path that resolves core
+// acceptance, before secondary/output gates. Pending, reheld, suppressed and
+// discarded work returns before this point. Each store retains its own admission
+// rules, including CustomSCP V-only; family display witnesses remain lane-owned.
+func (p *outputPipeline) recordAcceptedObservation(s *spot.Spot) {
+	now := time.Now().UTC()
+	recordRecentBandObservationAt(s, p.recentBandStore, p.customSCPStore, p.correctionCfg, now)
+	recordWhoSpotsMeObservation(s, p.whoSpotsMeStore, now)
+	p.recordFTRecentBandObservationAt(s, now)
+}
+
 // resolveDeliveryPlan decides whether a spot reaches final fanout now, waits in
 // the stabilizer, or is reduced to a telnet self-echo. Secondary dedupe is the
 // final shared thinning gate after stabilizer processing.
@@ -224,9 +234,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 		telnetDeliverNow: p.telnet != nil,
 	}
 	if !p.stabilizerEnabled {
-		recordRecentBandObservation(s, p.recentBandStore, p.customSCPStore, p.correctionCfg)
-		recordWhoSpotsMeObservation(s, p.whoSpotsMeStore, time.Now().UTC())
-		p.recordFTRecentBandObservation(s)
+		p.recordAcceptedObservation(s)
 		plan = p.buildFinalDeliveryPlan(s)
 		return plan, true
 	}
@@ -259,6 +267,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			}
 			return plan, false
 		}
+		p.recordAcceptedObservation(s)
 		plan = p.buildFinalDeliveryPlan(s)
 		if p.tracker != nil {
 			p.tracker.IncrementStabilizerOverflowRelease()
@@ -268,18 +277,12 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			}
 		}
 	} else {
+		p.recordAcceptedObservation(s)
 		plan = p.buildFinalDeliveryPlan(s)
 		if p.tracker != nil && stabilizerImmediateCountEligible(s) {
 			p.tracker.IncrementStabilizerReleasedImmediate()
 			p.tracker.IncrementStabilizerReleasedImmediateReason(stabilizerDelayReasonNone.String())
 		}
-	}
-	// Family display hiding is not pending stabilizer ownership. Once release
-	// or overflow resolves that ownership, shared gates govern history admission.
-	if shouldRecordRecentBandInMainLoop(p.stabilizerEnabled, !plan.normalFanoutAllowed()) {
-		recordRecentBandObservation(s, p.recentBandStore, p.customSCPStore, p.correctionCfg)
-		recordWhoSpotsMeObservation(s, p.whoSpotsMeStore, time.Now().UTC())
-		p.recordFTRecentBandObservation(s)
 	}
 	return plan, true
 }

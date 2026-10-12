@@ -221,6 +221,16 @@ Local non-test `DX` self-spots are treated as operator-authoritative in the live
 - custom SCP static membership has its separate `static_horizon_days` retention horizon
 - custom SCP admission is intentionally `V`-only to avoid reinforcement loops from weaker classes
 
+Eligible call/FT history and WhoSpotsMe learn once when core validation and
+holds resolve to acceptance, before secondary thinning, family hiding or output
+queue admission. Work pending, reheld, suppressed or discarded before acceptance
+does not learn. An accepted correction teaches its final identity; rejected alternatives
+teach the retained identity if accepted. Store-specific safeguards remain,
+including CustomSCP V-only. Accepted transferred/forced shutdown releases can
+learn once; there is no blanket no-learning-after-stop rule. Family display
+history still records successful lane admission separately. See
+[ADR-0297](../docs/decisions/ADR-0297-core-accepted-observation-learning.md).
+
 ### Historical receiver freshness
 
 Legacy recent-band history (including the separate FT store) admits against wall

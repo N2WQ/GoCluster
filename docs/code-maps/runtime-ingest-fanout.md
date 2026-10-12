@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `9c1a8a67d509c6c1`
+- Source fingerprint: `66148e072b59df01`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 114 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 120 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 55 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
@@ -161,6 +161,12 @@ Source files:
 - `internal/cluster/temporal_runtime.go`
 
 Test files:
+- `internal/cluster/accepted_learning_bench_test.go`
+- `internal/cluster/accepted_learning_hold_test.go`
+- `internal/cluster/accepted_learning_identity_test.go`
+- `internal/cluster/accepted_learning_output_gates_test.go`
+- `internal/cluster/accepted_learning_paths_test.go`
+- `internal/cluster/accepted_learning_shutdown_test.go`
 - `internal/cluster/archive_fanout_delivery_test.go`
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
@@ -733,6 +739,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0297](docs/decisions/ADR-0297-core-accepted-observation-learning.md) | Accepted | 2026-10-11 | call/FT history, WhoSpotsMe, acceptance, shutdown | `path:peer` |
 | [ADR-0295](docs/decisions/ADR-0295-fresh-admitted-family-display.md) | Accepted | 2026-10-11 | family display, fresh evidence, telnet queue admission | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0290](docs/decisions/ADR-0290-correction-numerical-asset-integrity.md) | Accepted | 2026-10-11 | reliability, confusion model, startup, replay | `path:spot` |
 | [ADR-0287](docs/decisions/ADR-0287-independent-historical-family-qualification.md) | Accepted | 2026-10-11 | custom_scp, historical family floor | `path:internal/cluster, path:spot` |
@@ -814,7 +821,7 @@ Test files:
 | [ADR-0162](docs/decisions/ADR-0162-voacap-hourly-forecast-window-cache.md) | Accepted | 2026-06-09 | voacap, pathreliability, retained-state, operations | `path:telnet` |
 | [ADR-0161](docs/decisions/ADR-0161-voacap-closed-only-path-fallback.md) | Accepted | 2026-06-09 | voacap, pathreliability, config, operations | `path:internal/cluster, path:telnet` |
 | [ADR-0149](docs/decisions/ADR-0149-single-window-archive-retention.md) | Accepted | 2026-06-06 | archive, config, spot taxonomy, hot path | `area:spot, path:spot` |
-| [ADR-0148](docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md) | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | `area:internal/cluster, area:peer, path:internal/cluster` |
+| [ADR-0148](docs/decisions/ADR-0148-post-stabilizer-shared-secondary-fanout.md) | Accepted | 2026-06-06 | internal/cluster, stabilizer, dedupe, archive, peer, hot path | `area:internal/cluster, area:peer, path:internal/cluster, path:peer` |
 | [ADR-0146](docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md) | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | `area:internal/cluster, area:spot, path:internal/cluster, path:spot` |
 | [ADR-0143](docs/decisions/ADR-0143-custom-scp-support-lookup-duplicate-work-removal.md) | Accepted | 2026-06-05 | spot, internal/correctionflow, custom_scp, hot path | `area:spot, path:spot` |
 | [ADR-0141](docs/decisions/ADR-0141-go-runtime-max-procs-yaml-control.md) | Accepted | 2026-06-04 | config, startup, runtime scheduler, operations | `path:internal/cluster` |
