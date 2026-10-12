@@ -351,43 +351,9 @@ func main() {
 		log.Fatal(err)
 	}
 
-	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
-		QueueSize:                 resolverQueueSize,
-		MaxActiveKeys:             resolverMaxActiveKeys,
-		MaxCandidatesPerKey:       resolverMaxCandidatesPerKey,
-		MaxReportersPerCand:       resolverMaxReportersPerCand,
-		InactiveTTL:               resolverInactiveTTL,
-		EvalMinInterval:           resolverEvalMinInterval,
-		SweepInterval:             resolverSweepInterval,
-		HysteresisWindows:         resolverHysteresisWindows,
-		FreqGuardMinSeparationKHz: cfg.CallCorrection.FreqGuardMinSeparationKHz,
-		FreqGuardRunnerUpRatio:    cfg.CallCorrection.FreqGuardRunnerUpRatio,
-		MaxEditDistance:           cfg.CallCorrection.MaxEditDistance,
-		DistanceModelCW:           cfg.CallCorrection.DistanceModelCW,
-		DistanceModelRTTY:         cfg.CallCorrection.DistanceModelRTTY,
-		SpotterReliability:        spotterReliability,
-		SpotterReliabilityCW:      spotterReliabilityCW,
-		SpotterReliabilityRTTY:    spotterReliabilityRTTY,
-		MinSpotterReliability:     cfg.CallCorrection.MinSpotterReliability,
-		ConfusionModel:            confusionModel,
-		ConfusionWeight:           cfg.CallCorrection.ConfusionModelWeight,
-		FamilyPolicy: spot.CorrectionFamilyPolicy{
-			Configured:                 true,
-			TruncationEnabled:          cfg.CallCorrection.FamilyPolicy.Truncation.Enabled,
-			TruncationMaxLengthDelta:   cfg.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta,
-			TruncationMinShorterLength: cfg.CallCorrection.FamilyPolicy.Truncation.MinShorterLength,
-			TruncationAllowPrefix:      cfg.CallCorrection.FamilyPolicy.Truncation.AllowPrefixMatch,
-			TruncationAllowSuffix:      cfg.CallCorrection.FamilyPolicy.Truncation.AllowSuffixMatch,
-		},
-	})
-	driver, err := spot.NewSignalResolverDriver(resolver)
+	resolver, driver, recentBandStore, err := newRevengHistoryOwners(cfg.CallCorrection, spotterReliability, spotterReliabilityCW, spotterReliabilityRTTY, confusionModel)
 	if err != nil {
 		log.Fatal(err)
-	}
-
-	var recentBandStore *spot.RecentBandStore
-	if cfg.CallCorrection.Enabled && (cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled) {
-		recentBandStore = spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
 	}
 
 	state := &runState{
@@ -586,7 +552,7 @@ func processRBNRow(st *runState, row rbnRow, evalNeg int) {
 	}
 
 	if !decision.Suppress {
-		recordRecentBandObservation(spotEntry, st.recentBand, st.cfg.CallCorrection)
+		recordRecentBandObservation(spotEntry, st.recentBand, st.cfg.CallCorrection, now)
 	}
 	st.driver.Step(now)
 }
@@ -980,7 +946,7 @@ func recordNegativeSample(st *runState, limit int, applied bool) {
 // recordRecentBandObservation mirrors runtime support-memory admission after an
 // unsuppressed decision so recent-band gates are evaluated against replayed
 // output, not raw candidate input.
-func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig) {
+func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg config.CallCorrectionConfig, now time.Time) {
 	if s == nil || store == nil || s.IsBeacon {
 		return
 	}
@@ -1010,7 +976,7 @@ func recordRecentBandObservation(s *spot.Spot, store *spot.RecentBandStore, cfg 
 	if reporter == "" {
 		reporter = s.DECall
 	}
-	store.Record(call, band, mode, reporter, s.Time)
+	store.RecordAt(call, band, mode, reporter, s.Time, now)
 }
 
 // loadOtherLabels extracts corrected-call labels from other-cluster logs. These

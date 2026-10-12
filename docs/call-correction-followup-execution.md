@@ -82,5 +82,103 @@ loss/stabilizer explanation, without a new percentage meaning.
 Fresh final lead review confirms narrow production changes, exact delay-input
 preservation, request-local scalar ownership, no saved loss or new retained
 state, qualified regressions and correctly scoped cost/coverage claims. Final
-codemap generation/check and direct diff review precede the local S1 commit.
-Later patch work has not begun.
+codemap generation/check and direct diff review passed. S1 checkpoint commit:
+`b0d780cdde27940377fa23d40d1c83a001194419`; tree clean before S2 began.
+
+## S2: legacy history clocks and capacity
+
+Postapproval detailed test-strategy review completed before production edits.
+The accepted matrix covers untouched physical state/reference coupling, future
+refusal under receiver/shard pressure, exact zero normalization, inclusive
+nanosecond boundaries, before/after-wall caller clocks, actual owner startup
+fences, actual maintenance dispatch/cadence and delivered floor consequences.
+Consumers were confirmed in current source: live general floor/stabilizer/
+resolver, replay stabilizer/resolver, reveng resolver only, live FT floor even
+with global correction off. Reveng remains legacy with CustomSCP selected.
+
+Initial targeted config tests exposed an incorrect fixture assumption: explicit
+zero YAML values are already rejected before normalization, and these keys are
+required rather than defaulted when omitted. The fixture now supplies positive
+required YAML and preserves explicit-zero rejection; raw direct-constructor
+sentinels are tested separately. No loader/default change was made. Failed runs
+remain in `S2-config-targeted.log` and `S2-config-targeted-final.log`; subsequent
+results are recorded separately.
+
+Two externally changed `pipeline.yaml` values (stabilizer delay/check count)
+were discovered after S1. They are preserved and excluded from this patch's
+checkpoint commit; S2 owns only required setting explanations.
+
+Implemented `RecentBandStore.RecordAt`/`CleanupAt`, inclusive upper query bounds
+and preserved Boolean minima. Live wrappers use wall UTC; offline callers supply
+evaluation time. Config's pure consumer validator runs before actual relevant
+owners; reveng's extracted construction retains its previous resolver settings
+and legacy backend. Replay removes legacy wall maintenance and uses one scalar
+deadline from rows, samples and terminal drain, without workers/catch-up bursts.
+
+Final targeted ordinary/race passes cover 10 new store tests (plus existing
+store controls), four config tests, seven replay tests, two reveng tests and
+three runtime tests plus existing FT/Custom capacity controls. Logs use
+`S2-{spot,config,replay,reveng,cluster}-*.log`. The first delivery run's incorrect
+DIAG assertion and FT client mode exclusion were repaired in the new fixture;
+`S2-cluster-targeted.log` retains that failure and `*-final.log` the passing run.
+Normal output has no numerical share; DIAG legitimately shows unavailable `--%`.
+
+Tagged family qualification ordinary/race count3 passed. Fresh inherited-context
+Go quality review found no material source/scope defect; it did not run checks
+and was not independent. Preexisting replay terminal-clock advancement followed
+by remaining earlier samples is preserved; no reconstruction of pruned history
+is claimed. Final review confirms actual-owner predicates and deletion coupling.
+
+Local cost: raw/normalized full queries16 took 1110/936ns and64 took2764/2767ns,
+all8B/1allocation. A matching query-only overlay that restores the old retained-
+length return took683/656ns and1829/1754ns with the same allocation. This isolates
+the added bounded upper-filter pass; it is not a full old/new runtime comparison.
+Future rejection16.5ns/0allocations; existing/overflow admission1allocation;
+key churn439B/3allocations. Replay not-due dispatch5-6ns and due32-key sweeps
+15.8/54.1us (16/64 receivers), all0allocations. No production latency claim.
+
+Tool/package inventory refreshed: Go1.27.1, Staticcheck2026.2.1/v0.8.1,
+golangci-lint2.14.0; 70 packages,53 test/17 build-only. YAML changes are comments
+only for approved work, with the five-line header intact and positive required
+keys/loader contracts unchanged. Support impact: confidence card and historical
+freshness/replay docs updated. ADR-0296/TSR-0089 record the policy and diagnosis,
+with relevant prior-record links. Relative file links34 and TSR/RCA/index passed.
+
+Initial complete S2 run stopped at config after128.6s: the preexisting shipped-
+YAML test requires delay15/checks5, while separate workspace edits supply5/6.
+The failed ordinary log/checks.json remain in `S2/`. No test was excluded or
+changed to accept unrelated values, and those user edits remain intact.
+
+The approved staged patch is reproduced in the detached ignored worktree
+`.tmp/call-correction-followup/S2-scoped-worktree`, with original15/5 values and
+only approved YAML comments. Ignored copies of the Windows/connected runners
+change only source/output-root routing: build/run from that source worktree,
+use original canonical `.tmp/windows-tests/.../package.test.exe` paths and shared
+lock, retain path safety/native-target/count/paniconexit0/stale-build controls.
+Tracked workflow scripts are unchanged. The formerly blocked exact shipped-YAML
+test passes there. This proves the approved patch state, not the unrelated dirty
+YAML combination. The full seven checks are rerun from that worktree; results go
+to `S2-scoped/checks.json`. S3/S4 production edits have not begun.
+
+Complete scoped S2 checkpoint passed: 70 packages ordinary638.9s/race1040.7s
+(53 test/17 build-only), vet5.6s, Staticcheck9.2s, configured lint13.7s,
+connected CustomSCP ordinary10.4s/race17.0s. All seven commands/results are in
+`S2-scoped/checks.json`; both logging cases passed within complete ordinary/race.
+Tagged qualification vet/lint also passed. No logger repair, exclusion or waiver
+was applied. The unrelated dirty-YAML shipped-value failure remains recorded.
+
+Approved-item mapping: store admission/query/capacity/physical deletion coupling
+-> `spot/recent_band.go` and clock/churn/concurrent tests; actual owner minima
+-> config validator and runtime/replay/reveng startup fences/tests; live CW/RTTY/
+FT clocks/delivered S/? consequences -> runtime recorder/tests; offline admission
+and replay synchronous cadence/forced evaluation -> replay/reveng clock tests and
+maintenance benchmarks. There is no new worker/registry or CustomSCP clock change.
+
+Fresh final lead review confirms future refusal precedes store normalization/
+mutation, the inclusive upper/lower bounds, non-destructive backward exclusion,
+unchanged valid-admission lower pruning, coupled references and actual startup
+consumers/capacities. The reveng extraction preserves every resolver setting;
+only owner-specific validation precedes construction. Support-critical comments,
+config header/key explanations, ADR/TSR/index links and claimed evidence are
+consistent with the approved slice. Final map generation/check and direct staged
+diff review precede commit. Subsequent slices remain pending.

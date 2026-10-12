@@ -133,19 +133,22 @@ func TestOutputPipelineFTRecentSupportPromotesSingleReporterToS(t *testing.T) {
 	rb := buffer.NewRingBuffer(8)
 	pipeline := newTestFTOutputPipeline(cfg, rb)
 
-	observedAt := currentFTObservedTime()
+	acceptedAt := currentFTObservedTime()
+	// Source timestamps precede real admission. Advancing the controller's
+	// release clock must not fabricate future observations for legacy history.
+	observedAt := acceptedAt.Add(-20 * time.Second)
 	first := spot.NewSpot("K1SCP", "N0AAA", 14074.1, "FT8")
 	first.Time = observedAt
 	second := spot.NewSpot("K1SCP", "N0BBB", 14074.1, "FT8")
 	second.Time = observedAt.Add(400 * time.Millisecond)
 	pipeline.processSpotBody(first, nil)
 	pipeline.processSpotBody(second, nil)
-	pipeline.releaseDueFT(observedAt.Add(30*time.Second), false)
+	pipeline.releaseDueFT(acceptedAt.Add(30*time.Second), false)
 
 	followup := spot.NewSpot("K1SCP", "N0CCC", 14074.2, "FT8")
 	followup.Time = observedAt.Add(10 * time.Second)
 	pipeline.processSpotBody(followup, nil)
-	pipeline.releaseDueFT(observedAt.Add(40*time.Second), false)
+	pipeline.releaseDueFT(acceptedAt.Add(40*time.Second), false)
 
 	recent := rb.GetRecent(1)
 	if len(recent) != 1 {

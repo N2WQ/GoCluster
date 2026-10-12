@@ -48,6 +48,8 @@ calibrated call accuracy.
 
 ## Links
 
+- [ADR-0296](ADR-0296-legacy-history-clock-and-capacity.md) extends actual-owner
+  capacity checks to legacy/FT without changing this CustomSCP contract.
 - Refines [ADR-0286](ADR-0286-consumer-specific-historical-requirements.md) and
   [ADR-0287](ADR-0287-independent-historical-family-qualification.md).
 - Approved scope: `docs/call-correction-evidence-scope-ledger-v2.md`, B1.4.

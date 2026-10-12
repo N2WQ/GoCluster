@@ -223,6 +223,28 @@ Local non-test `DX` self-spots are treated as operator-authoritative in the live
 
 ### Historical receiver freshness
 
+Legacy recent-band history (including the separate FT store) admits against wall
+UTC live and evaluation time offline. A zero source timestamp means admission
+time; a future report is rejected before it can replace or evict valid history.
+Eligible support is the inclusive interval from query time minus the window
+through query time, at nanosecond precision. A backward query excludes later
+rows without deleting them solely for being later; existing lower pruning still
+applies. Retained cardinality alone does not prove current eligible support.
+
+Legacy Boolean queries retain requested minima: nonpositive means two, and an
+above-cap request fails. General legacy/reveng capacity is 64 receivers per key;
+separate live FT capacity is 16. Startup rejects enabled requirements consumed by
+the actual owner, with the setting, effective requirement and capacity. FT's
+common floor minimum applies even with correction globally disabled. Replay has
+no live S floor; reveng has no live stabilizer. Unused requirements do not reject
+those tools. Raw constructor sentinels do not override existing explicit-YAML
+positive-value validation. See [ADR-0296](../docs/decisions/ADR-0296-legacy-history-clock-and-capacity.md).
+
+Replay maintains legacy history synchronously at its evaluation clock and
+existing interval. A large gap produces one sweep without catch-up ticks; no
+wall cleanup worker expires still-eligible historical replay rows. Live legacy
+cleanup and CustomSCP's separate maintenance/timestamp contracts remain intact.
+
 Resolver and stabilizer queries use their own `custom_scp` age-score and H3
 cell minima against one canonical store. Each receiver qualification gate also
 uses the greater of its consumer's receiver minimum and

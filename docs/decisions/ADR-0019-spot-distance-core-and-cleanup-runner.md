@@ -58,6 +58,9 @@ Tags: spot, cleanup, concurrency, correction, weighted-distance
 
 ## Links
 - Related ADR(s): none
+- Replay legacy maintenance ownership is refined by
+  [ADR-0296](ADR-0296-legacy-history-clock-and-capacity.md); live periodic cleanup
+  and the shared runner remain unchanged.
 - Code:
   - `spot/correction.go`
   - `spot/cleanup_runner.go`

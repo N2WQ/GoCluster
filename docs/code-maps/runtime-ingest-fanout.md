@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `10b826b1684ab6d3`
+- Source fingerprint: `9c1a8a67d509c6c1`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 113 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 114 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 38 | 53 |
+| `dxcluster/spot` | `spot` | 38 | 55 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -206,6 +206,7 @@ Test files:
 - `internal/cluster/grid_lookup_test.go`
 - `internal/cluster/human_telnet_runtime_test.go`
 - `internal/cluster/ingest_validation_test.go`
+- `internal/cluster/legacy_history_runtime_test.go`
 - `internal/cluster/logging_test.go`
 - `internal/cluster/main_runtime_output_retirement_test.go`
 - `internal/cluster/main_runtime_test.go`
@@ -549,6 +550,8 @@ Test files:
 - `spot/mode_region_test.go`
 - `spot/numerical_integrity_resolver_test.go`
 - `spot/numerical_integrity_test.go`
+- `spot/recent_band_clock_bench_test.go`
+- `spot/recent_band_clock_test.go`
 - `spot/recent_band_test.go`
 - `spot/reliability_integrity_fuzz_test.go`
 - `spot/resolver_ambiguity_population_test.go`

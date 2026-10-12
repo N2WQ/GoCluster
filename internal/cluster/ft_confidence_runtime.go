@@ -670,6 +670,12 @@ func (p *outputPipeline) scheduleFTTimer(now time.Time) {
 // has earned a display glyph, keeping future uncertain FT bursts from starting
 // cold on the same band/call.
 func (p *outputPipeline) recordFTRecentBandObservation(s *spot.Spot) {
+	p.recordFTRecentBandObservationAt(s, time.Now().UTC())
+}
+
+// recordFTRecentBandObservationAt shares the legacy admission clock contract;
+// zero source timestamps resolve to the same supplied acceptance clock.
+func (p *outputPipeline) recordFTRecentBandObservationAt(s *spot.Spot, now time.Time) {
 	if p == nil || p.ftRecentBandStore == nil || s == nil || s.IsBeacon {
 		return
 	}
@@ -692,18 +698,14 @@ func (p *outputPipeline) recordFTRecentBandObservation(s *spot.Spot) {
 	if spotter == "" {
 		spotter = s.DECall
 	}
-	seenAt := s.Time.UTC()
-	if seenAt.IsZero() {
-		seenAt = time.Now().UTC()
-	}
 	key, baseKey, ok := spot.CorrectionFamilyKeyPair(call)
 	if !ok {
 		key = call
 	}
 	if key != "" {
-		p.ftRecentBandStore.Record(key, band, mode, spotter, seenAt)
+		p.ftRecentBandStore.RecordAt(key, band, mode, spotter, s.Time, now)
 	}
 	if baseKey != "" {
-		p.ftRecentBandStore.Record(baseKey, band, mode, spotter, seenAt)
+		p.ftRecentBandStore.RecordAt(baseKey, band, mode, spotter, s.Time, now)
 	}
 }

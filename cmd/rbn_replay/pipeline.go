@@ -439,7 +439,7 @@ func shouldRejectCTYCall(call string) bool {
 // recordRecentBandObservation updates replay support memory only after a spot
 // would have survived output. That keeps stabilizer and recent-band metrics from
 // learning from suppressed corrections.
-func recordRecentBandObservation(s *spot.Spot, store spot.RecentSupportStore, cfg config.CallCorrectionConfig) {
+func recordRecentBandObservation(s *spot.Spot, store spot.RecentSupportStore, cfg config.CallCorrectionConfig, now time.Time) {
 	if s == nil || store == nil || s.IsBeacon {
 		return
 	}
@@ -477,5 +477,5 @@ func recordRecentBandObservation(s *spot.Spot, store spot.RecentSupportStore, cf
 	if reporter == "" {
 		reporter = s.DECall
 	}
-	legacyStore.Record(call, band, mode, reporter, s.Time)
+	legacyStore.RecordAt(call, band, mode, reporter, s.Time, now)
 }

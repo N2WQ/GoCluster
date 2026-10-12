@@ -16,11 +16,14 @@ import (
 )
 
 const (
-	defaultRecentBandShards              = 64
-	defaultRecentBandMaxEntries          = 200000
-	defaultRecentBandCleanupInterval     = 10 * time.Minute
-	defaultRecentBandMaxSpottersPerEntry = 64
+	defaultRecentBandShards          = 64
+	defaultRecentBandMaxEntries      = 200000
+	defaultRecentBandCleanupInterval = 10 * time.Minute
 )
+
+// RecentBandDefaultMaxSpottersPerCall is the constructor's receiver bound.
+// Startup validators use this same limit before creating legacy history owners.
+const RecentBandDefaultMaxSpottersPerCall = 64
 
 // RecentBandOptions configures the bounded recent-on-band store.
 type RecentBandOptions struct {
@@ -91,7 +94,7 @@ func NewRecentBandStoreWithOptions(opts RecentBandOptions) *RecentBandStore {
 	}
 	maxSpotters := opts.MaxSpottersPerCall
 	if maxSpotters <= 0 {
-		maxSpotters = defaultRecentBandMaxSpottersPerEntry
+		maxSpotters = RecentBandDefaultMaxSpottersPerCall
 	}
 
 	perShard := maxEntries / shards
@@ -131,9 +134,38 @@ func (s *RecentBandStore) StopCleanup() {
 	stopPeriodicCleanup(&s.cleanupMu, &s.quit)
 }
 
+// CleanupAt expires retained entries at an explicit owner's clock and returns
+// the existing maintenance interval. Replay calls it synchronously instead of
+// starting wall-clock cleanup. A missing clock refuses maintenance; it never
+// substitutes wall time. Deletion retains the same active-reference coupling.
+func (s *RecentBandStore) CleanupAt(now time.Time) time.Duration {
+	if s == nil || now.IsZero() {
+		return 0
+	}
+	s.cleanup(now.UTC())
+	return s.cleanupInterval
+}
+
 // Record stores one observed report for (call, band, mode) from a spotter.
 func (s *RecentBandStore) Record(call, band, mode, spotter string, seenAt time.Time) {
-	if s == nil {
+	s.RecordAt(call, band, mode, spotter, seenAt, time.Now().UTC())
+}
+
+// RecordAt admits receiver evidence against the caller's clock. Zero observation
+// time means this admission clock; future evidence is refused before any key
+// normalization, pruning, overwrite, eviction or retained-state mutation.
+// Existing valid-admission lower pruning and bounds remain observation-based.
+func (s *RecentBandStore) RecordAt(call, band, mode, spotter string, seenAt, now time.Time) {
+	if s == nil || now.IsZero() {
+		return
+	}
+	now = now.UTC()
+	if seenAt.IsZero() {
+		seenAt = now
+	} else {
+		seenAt = seenAt.UTC()
+	}
+	if seenAt.After(now) {
 		return
 	}
 	key, ok := s.normalizeKey(call, band, mode)
@@ -143,11 +175,6 @@ func (s *RecentBandStore) Record(call, band, mode, spotter string, seenAt time.T
 	spotter = normalizeRecentBandSpotter(spotter)
 	if spotter == "" {
 		return
-	}
-	if seenAt.IsZero() {
-		seenAt = time.Now().UTC()
-	} else {
-		seenAt = seenAt.UTC()
 	}
 	cutoff := seenAt.Add(-s.window)
 	shard := s.shardFor(key)
@@ -241,7 +268,7 @@ func (s *RecentBandStore) RecentSupportCount(call, band, mode string, now time.T
 		s.deleteEntryLocked(shard, key)
 		return 0
 	}
-	return len(entry.spotters)
+	return recentBandEligibleCount(entry, now)
 }
 
 // RecentSupportCountNormalized is the no-cache lookup path for callers that
@@ -278,7 +305,20 @@ func (s *RecentBandStore) RecentSupportCountNormalized(call, band, mode string, 
 		s.deleteEntryLocked(shard, key)
 		return 0
 	}
-	return len(entry.spotters)
+	return recentBandEligibleCount(entry, now)
+}
+
+// recentBandEligibleCount leaves later, previously valid admissions retained
+// for subsequent queries. Existing lower pruning has already run under the
+// shard lock; retained cardinality is distinct from eligible support.
+func recentBandEligibleCount(entry *recentBandEntry, now time.Time) int {
+	count := 0
+	for _, seenAt := range entry.spotters {
+		if !seenAt.After(now) {
+			count++
+		}
+	}
+	return count
 }
 
 // ActiveCallCount returns the maintained distinct-call snapshot across all
@@ -342,9 +382,6 @@ func (s *RecentBandStore) normalizeKeyForNormalizedCall(call, band, mode string)
 func (s *RecentBandStore) normalizeMinUnique(minUnique int) int {
 	if minUnique <= 0 {
 		minUnique = 2
-	}
-	if minUnique > s.maxSpottersPerCall {
-		return s.maxSpottersPerCall
 	}
 	return minUnique
 }

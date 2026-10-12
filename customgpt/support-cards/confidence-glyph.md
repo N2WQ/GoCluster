@@ -83,6 +83,14 @@ not infer meanings from other cluster software.
   fail configuration/runtime/replay initialization; direct boolean queries
   return false rather than weakening the request. Disabled unused gates and the
   separate FT store do not inherit this cap. Partial count queries remain visible.
+- Legacy history has 64 receivers per key; separate live FT history has 16.
+  Startup rejects enabled requirements consumed by those actual owners, naming
+  the setting, effective requirement and cap. FT's common floor minimum applies
+  even with correction globally disabled. Future legacy/FT reports are refused
+  before changing valid history; zero source time resolves to admission time.
+  Queries use the inclusive window through query time at nanosecond precision.
+  Replay legacy maintenance uses evaluation time, without a wall cleanup worker.
+  These rules do not rewrite CustomSCP's separate timestamp/storage contract.
 - Future learned static membership is retained but cannot
   supply recognition or the S floor before its stored second. Eligible static
   counts differ from retained cardinality; independent history can still qualify.

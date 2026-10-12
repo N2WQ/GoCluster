@@ -95,6 +95,8 @@ call_correction:
   resolver_neighborhood_max_distance: 1 # Neighborhood comparability rail: non-family calls must be within this mode-aware distance
   resolver_neighborhood_allow_truncation_family: true # Allow truncation-family pairs in neighborhood competition even when distance exceeds max_distance
   resolver_recent_plus1_enabled: true  # Resolver-primary only: allow bounded +1 recent corroborator for one-short min_reports cases
+  # Enabled consumed history requirements must fit the active owner's capacity;
+  # legacy runtime/replay/reveng holds 64 receivers per key. Startup rejects excess.
   resolver_recent_plus1_min_unique_winner: 3 # Winner must have at least this many recent unique spotters on same band/mode
   resolver_recent_plus1_require_subject_weaker: true # Require winner recent support to be strictly stronger than subject recent support
   resolver_recent_plus1_max_distance: 1 # Apply +1 only for close calls (distance <= this), unless truncation-family allowance applies
@@ -148,6 +150,10 @@ call_correction:
   confusion_model_weight: 1           # Additive weight for confusion score in tie ranking (0 disables effect)
 
   recent_band_bonus_enabled: false           # Enable recent-on-band validation cache (same call+band+mode)
+  # Legacy/FT rejects future reports before changing valid history. Zero source
+  # time means admission time; queries include both ends of the current window.
+  # The separate live FT store holds 16 receivers, including with correction off.
+  # Its enabled common floor minimum must fit 16; unused owner gates are ignored.
   recent_band_window_seconds: 43200         # Look-back window for recent-on-band admission (12h)
   recent_band_record_min_unique_spotters: 3 # Shared recent-support minimum; each consumer also applies its own gates
 

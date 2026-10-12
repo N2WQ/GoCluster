@@ -2427,6 +2427,12 @@ func stabilizerImmediateCountEligible(s *spot.Spot) bool {
 // license filters) so the cache favors calls that already survived core checks.
 // Stabilizer-delayed spots are recorded only after delay resolution.
 func recordRecentBandObservation(s *spot.Spot, store spot.RecentSupportStore, customSCP *spot.CustomSCPStore, cfg config.CallCorrectionConfig) {
+	recordRecentBandObservationAt(s, store, customSCP, cfg, time.Now().UTC())
+}
+
+// recordRecentBandObservationAt keeps accepted legacy admission on one clock.
+// CustomSCP retains its separate RecordSpot admission and timestamp contract.
+func recordRecentBandObservationAt(s *spot.Spot, store spot.RecentSupportStore, customSCP *spot.CustomSCPStore, cfg config.CallCorrectionConfig, now time.Time) {
 	if s == nil || s.IsBeacon {
 		return
 	}
@@ -2460,19 +2466,15 @@ func recordRecentBandObservation(s *spot.Spot, store spot.RecentSupportStore, cu
 	if spotter == "" {
 		spotter = s.DECall
 	}
-	seenAt := s.Time.UTC()
-	if seenAt.IsZero() {
-		seenAt = time.Now().UTC()
-	}
 	key, baseKey, ok := spot.CorrectionFamilyKeyPair(call)
 	if !ok {
 		key = call
 	}
 	if key != "" {
-		legacyStore.Record(key, band, mode, spotter, seenAt)
+		legacyStore.RecordAt(key, band, mode, spotter, s.Time, now)
 	}
 	if baseKey != "" {
-		legacyStore.Record(baseKey, band, mode, spotter, seenAt)
+		legacyStore.RecordAt(baseKey, band, mode, spotter, s.Time, now)
 	}
 }
 

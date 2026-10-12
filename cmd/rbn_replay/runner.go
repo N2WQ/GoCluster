@@ -60,6 +60,7 @@ type replayRunner struct {
 	adaptiveMinReports *spot.AdaptiveMinReports
 	recentBandStore    spot.RecentSupportStore
 	cleanupRecentBand  func()
+	nextLegacyCleanup  time.Time // Sole replay owner; no wall-time cleanup worker.
 	temporalDecoder    *correctionflow.TemporalDecoder
 	tracker            *stats.Tracker
 	resolver           *spot.SignalResolver
@@ -408,12 +409,28 @@ func (r *replayRunner) openRecentBandStore() error {
 		return nil
 	}
 	if cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled {
+		if err := cfg.CallCorrection.ValidateLegacyHistoryCapacity("replay legacy recent-band", spot.RecentBandDefaultMaxSpottersPerCall,
+			config.LegacyHistoryConsumers{Stabilizer: true, Resolver: true}); err != nil {
+			return err
+		}
 		legacyStore := spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
-		legacyStore.StartCleanup()
 		r.recentBandStore = legacyStore
-		r.cleanupRecentBand = legacyStore.StopCleanup
 	}
 	return nil
+}
+
+// maintainLegacyHistory advances only on evaluation time. One bounded scalar
+// deadline preserves the store's existing interval; a gap sweeps once at the
+// current clock, without catch-up workers or ticks. Live/CustomSCP owners retain
+// their existing maintenance contracts.
+func (r *replayRunner) maintainLegacyHistory(now time.Time) {
+	legacy, ok := r.recentBandStore.(*spot.RecentBandStore)
+	if !ok || now.IsZero() || r.nextLegacyCleanup.After(now) {
+		return
+	}
+	if interval := legacy.CleanupAt(now); interval > 0 {
+		r.nextLegacyCleanup = now.Add(interval)
+	}
 }
 
 // openReplayOutputs creates all evidence artifacts before replay starts so a
@@ -509,6 +526,7 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 
 	r.recordsProcessed++
 	now := row.Time.UTC()
+	r.maintainLegacyHistory(now)
 	r.drainTemporal(now, false)
 
 	// Keep resolver state current before enqueuing evidence, but do not drain the
@@ -628,6 +646,7 @@ func (r *replayRunner) maybeHoldTemporal(
 // settings, not to tolerate hidden analysis loss.
 func (r *replayRunner) emitSample(ts time.Time) error {
 	ts = ts.UTC()
+	r.maintainLegacyHistory(ts)
 	r.driver.Sweep(ts)
 
 	metrics := r.resolver.MetricsSnapshot()
@@ -687,12 +706,13 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 		r.abMetrics.StabilizerDelayProxy.Observe(delayDecision)
 	}
 
-	recordRecentBandObservation(spotEntry, r.recentBandStore, r.cfg.CallCorrection)
+	recordRecentBandObservation(spotEntry, r.recentBandStore, r.cfg.CallCorrection, now)
 }
 
 // drainTemporal releases due temporal holds through the replay correction path
 // so delayed and immediate observations are scored consistently.
 func (r *replayRunner) drainTemporal(now time.Time, force bool) {
+	r.maintainLegacyHistory(now)
 	if r.temporalDecoder == nil || !r.temporalDecoder.Enabled() {
 		return
 	}

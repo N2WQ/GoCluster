@@ -37,6 +37,12 @@ Replay config:
 - Resolver is driven by deterministic driver stepping (`observe-before-drain` ordering).
 - Temporal decoder decisions are also event-time only (hold/defer/commit windows use CSV timestamps, not wall clock).
 - Runbook sample cadence is fixed at 60 seconds.
+- Legacy history admission, queries and maintenance use evaluation time. Zero
+  source timestamps resolve to admission time; later reports are refused before
+  replacing valid evidence. Legacy cleanup is synchronous at the existing
+  interval, with one deadline and one sweep when due, including sampling/gaps
+  and terminal temporal evaluation. It starts no machine-wall cleanup worker.
+  CustomSCP retains its separate historical clock/maintenance contract.
 - Replay fails fast on timestamp regressions, out-of-day records, resolver enqueue failures, and resolver hard-drop counters.
 
 Cap-loss generation idle retirement uses monotonic process elapsed time, not CSV
@@ -46,6 +52,12 @@ can therefore begin a new retained population when it resumes. Temporal hold
 and evidence windows remain event-time based. Deterministic tests can select the
 driver's manual process clock before its first owner-admitted receipt. This does
 not redesign historical CustomSCP query clocks.
+
+Actual legacy owner requirements must fit its 64-receiver capacity before
+resolver/history construction or scratch replacement. Replay consumes stabilizer
+and resolver gates, without the live S floor or separate FT history. Unused
+settings do not impose those capacities on replay. See
+[legacy history contract](../spot/README.md#historical-receiver-freshness).
 
 ## Inputs and dependency model
 

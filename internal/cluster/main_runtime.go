@@ -698,6 +698,19 @@ func (r *clusterRuntime) initializeSignalResolverAndRecentStore() bool {
 	if err := r.cfg.CallCorrection.ValidateCustomSCPCapacity(); err != nil {
 		return r.failStartup("Invalid call correction history capacity: %v", err)
 	}
+	if r.cfg.CallCorrection.RecentBandBonusEnabled {
+		if err := r.cfg.CallCorrection.ValidateLegacyHistoryCapacity("FT recent-band", ftConfidenceRecentMaxSpotters,
+			config.LegacyHistoryConsumers{SupportFloor: true}); err != nil {
+			return r.failStartup("Invalid call correction history capacity: %v", err)
+		}
+	}
+	if r.cfg.CallCorrection.Enabled && !r.cfg.CallCorrection.CustomSCP.Enabled &&
+		(r.cfg.CallCorrection.RecentBandBonusEnabled || r.cfg.CallCorrection.StabilizerEnabled) {
+		if err := r.cfg.CallCorrection.ValidateLegacyHistoryCapacity("legacy recent-band", spot.RecentBandDefaultMaxSpottersPerCall,
+			config.LegacyHistoryConsumers{SupportFloor: true, Stabilizer: true, Resolver: true}); err != nil {
+			return r.failStartup("Invalid call correction history capacity: %v", err)
+		}
+	}
 	if r.cfg.CallCorrection.Enabled {
 		r.signalResolver = spot.NewSignalResolver(spot.SignalResolverConfig{
 			QueueSize:                 shadowResolverQueueSize,
