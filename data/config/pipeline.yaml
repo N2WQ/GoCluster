@@ -209,8 +209,8 @@ call_correction:
   # Purpose: Delay telnet delivery only for delay-eligible confidence glyphs (?, S, P).
   # ---------------------------------------------------------------------------
   stabilizer_enabled: true                  # Delay risky telnet spots for ?, S, P (V/C always pass through)
-  stabilizer_delay_seconds: 15              # Hold duration before re-checking recent-on-band support
-  stabilizer_max_checks: 5                  # Delay-check cycles before timeout action (includes first check; 1 = current single-check behavior)
+  stabilizer_delay_seconds: 5               # Hold duration before re-checking recent-on-band support
+  stabilizer_max_checks: 6                  # Delay-check cycles before timeout action (includes first check; 1 = current single-check behavior)
   stabilizer_p_delay_confidence_percent: 25 # Delay P when resolver-backed call confidence is below this percent (0 disables)
   stabilizer_p_delay_max_checks: 3          # Retry budget for low-confidence P delay (includes first check; 0 disables)
   stabilizer_ambiguous_max_checks: 0        # Retry budget for resolver split/uncertain delay (0 = use stabilizer_max_checks)
