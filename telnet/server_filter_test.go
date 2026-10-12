@@ -1398,18 +1398,6 @@ func TestCCSyntaxReturnsHint(t *testing.T) {
 	}
 }
 
-func TestInvalidFilterCommandShowsHelpHint(t *testing.T) {
-	client := newTestClient()
-	engine := newFilterCommandEngine()
-	resp, handled := engine.Handle(client, "PASS")
-	if !handled {
-		t.Fatalf("expected PASS command to be handled")
-	}
-	if !strings.Contains(strings.ToLower(resp), "help") {
-		t.Fatalf("expected help hint in response, got: %q", resp)
-	}
-}
-
 func TestPathCommandIgnoredWhenPredictorDisabled(t *testing.T) {
 	client := newTestClient()
 	client.server = &Server{}

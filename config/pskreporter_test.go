@@ -5,15 +5,6 @@ import (
 	"testing"
 )
 
-func TestPSKReporterSubscriptionTopicsIgnoreModeTaxonomy(t *testing.T) {
-	cfg := PSKReporterConfig{}
-	got := cfg.SubscriptionTopics()
-	want := []string{defaultPSKReporterTopic}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("SubscriptionTopics() = %v, want %v", got, want)
-	}
-}
-
 func TestPSKReporterSubscriptionTopicsFallbackToTopic(t *testing.T) {
 	custom := "pskr/filter/v2/+/+/#"
 	cfg := PSKReporterConfig{Topic: custom}

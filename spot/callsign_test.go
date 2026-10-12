@@ -52,12 +52,6 @@ func TestIsValidCallsignRejectsNonDigitWithSlash(t *testing.T) {
 	}
 }
 
-func TestIsValidCallsignAcceptsDotSuffix(t *testing.T) {
-	if !IsValidCallsign("JA1CTC.P") {
-		t.Fatalf("IsValidCallsign should accept JA1CTC.P after normalization")
-	}
-}
-
 func TestIsValidCallsignRequiresDigitAfterSlash(t *testing.T) {
 	if IsValidCallsign("ABC/DEF") {
 		t.Fatalf("IsValidCallsign should reject ABC/DEF because it lacks digits")

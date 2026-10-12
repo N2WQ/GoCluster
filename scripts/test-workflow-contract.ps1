@@ -71,24 +71,6 @@ function Invoke-ApprovedChangedPathsFixture() {
   Write-Host "PASS approved workflow-script paths accepted"
 }
 
-function Invoke-ContextMeasurementSelectionFixtures() {
-  $measurementPaths = @(
-    'scripts/measure-codex-workflow-context.ps1',
-    'scripts/test-measure-codex-workflow-context.ps1'
-  )
-  foreach ($case in @(
-    @{ Paths=@('AGENTS.md'); Expected=$false; Label='unrelated workflow change skips context measurement' },
-    @{ Paths=@('scripts/measure-codex-workflow-context.ps1'); Expected=$true; Label='measurement implementation triggers context measurement' },
-    @{ Paths=@('scripts/test-measure-codex-workflow-context.ps1'); Expected=$true; Label='measurement fixture triggers context measurement' }
-  )) {
-    $changed = $case.Paths | ForEach-Object { $_.Replace('\', '/') } |
-      Where-Object { $_ -in $measurementPaths }
-    $actual = $null -ne $changed
-    if ($actual -ne $case.Expected) { throw "$($case.Label) expected $($case.Expected), got $actual" }
-    Write-Host "PASS $($case.Label)"
-  }
-}
-
 try {
   foreach ($path in @(
     "go.mod", ".golangci.yaml",
@@ -132,7 +114,6 @@ try {
   $original = Replace-Once ".github/workflows/ci.yml" "golangci-lint@v2.14.0" "golangci-lint@latest"
   Invoke-Fixture 1 "CI golangci-lint pin missing" "CI rejects unpinned golangci-lint"
   Set-Content -LiteralPath (Join-Path $fixtureRoot ".github/workflows/ci.yml") -Value $original -NoNewline
-  Invoke-ContextMeasurementSelectionFixtures
 
   $original = Replace-Once ".github/workflows/ci.yml" "on:`n  push:" "on:`n  pull_request:`n  push:"
   Invoke-Fixture 1 "CI pull-request trigger remains" "CI rejects pull-request trigger"

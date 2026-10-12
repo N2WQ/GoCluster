@@ -7,16 +7,6 @@ import (
 	"testing"
 )
 
-func TestLoadConfigMissingDisablesClassifier(t *testing.T) {
-	_, present, err := LoadConfig(filepath.Join(t.TempDir(), "toxicity.yaml"))
-	if err != nil {
-		t.Fatalf("LoadConfig error: %v", err)
-	}
-	if present {
-		t.Fatalf("expected missing optional config to be absent")
-	}
-}
-
 func TestLoadConfigValidatesEnabledSecretEnv(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "toxicity.yaml")

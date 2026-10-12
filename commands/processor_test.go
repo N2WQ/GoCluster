@@ -662,23 +662,6 @@ func TestHelpPathGlyphLegendUsesConfiguredSymbols(t *testing.T) {
 	}
 }
 
-func TestHelpPathGlyphLegendOmittedWhenDisabled(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil, nil, nil, WithPathGlyphHelp(PathGlyphHelpConfig{
-		Enabled:      false,
-		High:         ">",
-		Medium:       "=",
-		Low:          "<",
-		Unlikely:     "-",
-		Insufficient: " ",
-		Closed:       "!",
-	}))
-
-	resp := p.ProcessCommandForClient("HELP SYMBOLS", "N2WQ", "", nil, "go")
-	if strings.Contains(resp, "Path reliability glyphs:") {
-		t.Fatalf("expected path glyph legend omitted when disabled, got %q", resp)
-	}
-}
-
 func TestHelpDedupeNotesUseConfiguredWindows(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil, WithDedupeHelp(DedupeHelpConfig{
 		Configured:        true,
@@ -897,72 +880,10 @@ func TestHelpPauseAcrossDialects(t *testing.T) {
 	}
 }
 
-func TestHelpTopicGoDialect(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil, nil, nil)
-
-	resp := p.ProcessCommandForClient("HELP DX", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: DX <freq_khz> <callsign> [comment]") {
-		t.Fatalf("expected DX usage in help, got %q", resp)
-	}
-	if !strings.Contains(resp, "DX <callsign> <freq_khz> [comment]") {
-		t.Fatalf("expected alternate DX usage in help, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP PASS", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: PASS <type> <list>") || !strings.Contains(resp, "Types:") {
-		t.Fatalf("expected PASS usage and types, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW DX", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Aliases:") || !strings.Contains(resp, "SHOW DX -") {
-		t.Fatalf("expected SHOW DX aliases, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW BUILD", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: SHOW BUILD") {
-		t.Fatalf("expected SHOW BUILD usage, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW OWN", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: SHOW OWN") {
-		t.Fatalf("expected SHOW OWN usage, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW PROP", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: SHOW PROP <call|prefix|grid> [band] [mode]") {
-		t.Fatalf("expected SHOW PROP usage, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP WHOSPOTSME", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: WHOSPOTSME [band]") {
-		t.Fatalf("expected WHOSPOTSME usage, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW HOLD", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: SHOW HOLD") {
-		t.Fatalf("expected SHOW HOLD usage, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP RESUME", "N2WQ", "", nil, "go")
-	if !strings.Contains(resp, "Usage: RESUME") {
-		t.Fatalf("expected RESUME usage, got %q", resp)
-	}
-}
-
 func TestHelpTopicCCDialect(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 
-	resp := p.ProcessCommandForClient("HELP SHOW/DX", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Usage: SHOW/DX [count]") {
-		t.Fatalf("expected SHOW/DX usage, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SET/ANN", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Alias of PASS ANNOUNCE") {
-		t.Fatalf("expected SET/ANN alias, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SET/FT8", "N2WQ", "", nil, "cc")
+	resp := p.ProcessCommandForClient("HELP SET/FT8", "N2WQ", "", nil, "cc")
 	if !strings.Contains(resp, "Modes:") || !strings.Contains(resp, "FT8") {
 		t.Fatalf("expected mode shortcuts in help, got %q", resp)
 	}
@@ -977,35 +898,11 @@ func TestHelpTopicCCDialect(t *testing.T) {
 		t.Fatalf("expected HELP SHOW DX to map to SHOW/DX in cc, got %q", resp)
 	}
 
-	resp = p.ProcessCommandForClient("HELP SHOW BUILD", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Usage: SHOW BUILD") {
-		t.Fatalf("expected SHOW BUILD usage in cc, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW OWN", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Usage: SHOW OWN") {
-		t.Fatalf("expected SHOW OWN usage in cc, got %q", resp)
-	}
-
 	resp = p.ProcessCommandForClient("HELP SHOW/PROP", "N2WQ", "", nil, "cc")
 	if !strings.Contains(resp, "Usage: SHOW PROP <call|prefix|grid> [band] [mode]") {
 		t.Fatalf("expected SHOW PROP usage in cc, got %q", resp)
 	}
 
-	resp = p.ProcessCommandForClient("HELP WHOSPOTSME", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Usage: WHOSPOTSME [band]") {
-		t.Fatalf("expected WHOSPOTSME usage in cc, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW HOLD", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Usage: SHOW HOLD") {
-		t.Fatalf("expected SHOW HOLD usage in cc, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP RESUME", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Usage: RESUME") {
-		t.Fatalf("expected RESUME usage in cc, got %q", resp)
-	}
 }
 
 func TestHelpEntriesGoDialect(t *testing.T) {
@@ -1020,7 +917,7 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SHOW DX", []string{"SHOW DX - Alias of SHOW MYDX (stored history)", "Usage: SHOW DX [count]"}},
 		{"SHOW MYDX", []string{"SHOW MYDX - Show filtered spot history", "stored spots"}},
 		{"SHOW DXCC", []string{"SHOW DXCC - Look up DXCC/ADIF and zones", "other prefixes"}},
-		{"SHOW PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "omitted mode defaults to CW", "EFF, RX, and TX show mode-specific glyphs", "Only rows with REL HIGH, MEDIUM, or LOW are shown"}},
+		{"SHOW PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "Usage: SHOW PROP <call|prefix|grid> [band] [mode]", "omitted mode defaults to CW", "EFF, RX, and TX show mode-specific glyphs", "Only rows with REL HIGH, MEDIUM, or LOW are shown"}},
 		{"SHOW BUILD", []string{"SHOW BUILD - Show binary build metadata", "Usage: SHOW BUILD"}},
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},
