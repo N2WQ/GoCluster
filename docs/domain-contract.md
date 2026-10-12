@@ -262,6 +262,12 @@ These rules must be explicit, deterministic, and testable.
   FAST/MED/SLOW literal/time/frequency witnesses; failed attempts never refresh
   or delete rivals. Queue admission is an offer, not client receipt. See
   [ADR-0295](decisions/ADR-0295-fresh-admitted-family-display.md).
+  Weighted percentages retain their basis: known or rounded zero is available
+  as 0%, all-zero weighted totals are unavailable, and raw coverage requires an
+  explicitly unweighted population. Zero display alone does not authorize
+  family hiding; positive usable support remains required. An all-zero weighted
+  observation contributes no decoder support. See
+  [ADR-0298](decisions/ADR-0298-consistent-resolver-support-basis.md).
   Local display, ring history
   and archive may contain corrected B while peer publication contains original
   A. PC11/PC61 carry no local confidence percentage or rejection reason.

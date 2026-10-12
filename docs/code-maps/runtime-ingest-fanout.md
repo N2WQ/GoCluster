@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `66148e072b59df01`
+- Source fingerprint: `2e80ce20542e4e61`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 120 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 122 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 38 | 55 |
+| `dxcluster/spot` | `spot` | 38 | 57 |
 | `dxcluster/telnet` | `telnet` | 48 | 99 |
 
 ## In-Scope Package Edges
@@ -271,6 +271,8 @@ Test files:
 - `internal/cluster/stabilizer_retirement_bench_test.go`
 - `internal/cluster/stabilizer_retirement_test.go`
 - `internal/cluster/stabilizer_test.go`
+- `internal/cluster/support_basis_delivery_test.go`
+- `internal/cluster/support_basis_family_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_test.go`
 - `internal/cluster/temporal_acceptance_delivery_test.go`
@@ -571,6 +573,8 @@ Test files:
 - `spot/resolver_loss_metrics_test.go`
 - `spot/resolver_loss_test.go`
 - `spot/resolver_snr_presence_test.go`
+- `spot/resolver_support_basis_bench_test.go`
+- `spot/resolver_support_basis_test.go`
 - `spot/self_spot_test.go`
 - `spot/signal_resolver_bench_test.go`
 - `spot/signal_resolver_driver_test.go`

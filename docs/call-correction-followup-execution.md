@@ -273,3 +273,127 @@ pre-acceptance discard from output refusal. Relative links41, TSR/index and
 changed-source crawler checks pass. Source in the isolated checkpoint matches
 approved Go files; separate YAML5/6 values remain excluded and preserved.
 Final map generation/check, whitespace and direct staged review precede commit.
+
+S3 final maps/check, staged diff and whitespace passed. Checkpoint commit:
+`aeb59623395eeb624faf0b36e63e94547157f54f`. Only the unrelated YAML values
+remained dirty when S4 began.
+
+## S4: percentage basis and all-zero decoder support
+
+Detailed postapproval test-strategy review completed before S4 Go mutation.
+The inherited-context reviewer is not an independent numerical review. The
+matrix covers actual zero/default-weight publication, legacy positive versus
+explicit unavailable, known/rounded zero and missing ranked evidence,
+Compact/projection/loss recovery, neighborhood state/share agreement, mixed
+bases and order, decoder present/absent/subject N1/2/10, positive smoothing and
+separate transition/prior controls, fresh release authority, family eligibility
+and delivered P/0 with store safeguards. No policy or scope gap remains.
+
+Checker refinements accepted: a distinct explicit-unavailable scalar prevents
+legacy positive-total inference from reviving mixed evidence; a private lookup
+seam exercises complete production neighborhood arbitration using immutable
+published rows. Raw fixtures derive genuine zero-weight publications before
+explicit declaration; positive and unavailable controls retain actual tallies.
+Reverse bucket order and an unavailable/weighted/weighted sequence prove invalid
+basis cannot reset. Final aggregate ranks precede classification. The N10 owner
+fixture must have adequate capacity and prove no protected evidence loss.
+
+The compact basis scalar reuses snapshot padding, adds no retained registry,
+and is excluded from JSON. Real owners publish weighted basis even at total0;
+missing reliability still supplies existing unit weights. Basis/helper/classifier
+and compaction benchmarks target zero allocation with correctness controls.
+
+Implemented scalar basis publication/projection and consistent percentage,
+classification, neighborhood and decoder consumers. Header fallback remains for
+rankless legacy snapshots; complete ranks cannot grant absent/zero call evidence,
+and empty normalized requests remain unavailable. Diagnostics label known zero
+weighted; family comparison still requires positive usable support, including
+positive numerators rounded to zero. Existing conflict ratios, positive-weight
+loss emissions, thresholds, smoothing, transitions and priors remain unchanged.
+
+Owner ordinary/race checks passed count3, including actual CW/RTTY zero N1/N2/N10,
+no loss/default substitution, unit defaults, projection and immutable churn.
+The initial partial-expiry fixture swept1ns beyond its claimed positive boundary;
+the repaired real batch proves inclusive retention and1ns-later expiry. Its
+failed initial log remains `S4-spot-ordinary.log`. Basis/Compact cost checks
+reported0 allocations; Compact size312B, with scalar stored in existing padding.
+Helper cost checks also reported0 allocations, about110-124ns for guarded
+percentage/classifier/Compact paths. These are local costs, not capacity claims.
+
+All shared flow tests passed count3 ordinary/race before final checker refinements;
+all replay/reveng tests passed ordinary/race, including real CW/RTTY A2-zero/B1-unit
+minimum-report rejection and all-zero uncertain outcomes. Replay retains its
+resolver-only glyph/outcome role without a new per-row percentage artifact.
+Its deliberately receiver-only metric fixture now declares raw basis explicitly.
+
+Initial cluster checks exposed only new fixture expectations: DIAG retains
+input SNR10 (`CW 10 dB 0%`); a terminal abstention requires the existing configured
+abstain overflow/fallback action. Corrected fixtures preserve production policy.
+The failed `S4-cluster-ordinary.log` is retained. Fresh helper review restored its
+preexisting empty-call rejection and added malformed empty-row/header vectors.
+
+The actual-row aggregation checker crosses51 and25 boundaries: A580/B500 plus
+A420 produces A1000/1500=66% confident; four A420 neighbors produce81%.
+Inherited best-bucket ranks would incorrectly classify38% probable or21% uncertain.
+Four ignored mechanism overlays restore old owner denominator, per-call raw
+fallback, all-zero decoder fallback, and pre-rank classification respectively.
+Each exact qualified checker failed on its intended assertion; expected-red logs
+are retained. Final flow/cluster ordinary/race checks are running without overlays.
+
+Final shared-package checks passed all tests count3 ordinary/race, including the
+empty-request and actual aggregate-rank cases. Final cluster ordinary/race
+selections passed runtime P/0, exact DIAG SNR+percentage, real low-P budgets,
+temporal apply/abstain, eligible learning controls, family guards and preexisting
+delivery/shutdown regressions. Family cost checks reported0 allocations for
+positive, known-zero, rounded-zero and deliberately raw paths. The exact current
+selection path also measured0 allocations (313.9ns in its actual A2/B1 control).
+The private seam retains the prior linear bounded arbitration in one function;
+splitting policy steps further would obscure their ordering and ownership.
+
+Tagged family concurrent admission/queue refusal passed count3 ordinary/race;
+whole-module tagged vet/lint passed. The complete seven-check lane is running in
+`S4-scoped-worktree`, with approved Go source verified against the main workspace
+and only the unrelated YAML5/6 edits excluded. Canonical executable/lock paths,
+native-target guards, direct count1/paniconexit0 and stale-build refusal remain.
+There is no tracked workflow change or firewall action. TSR/index/crawler checks
+pass; ADR-0298/TSR-0091, prior decisions, operator domain/spot docs and the
+confidence support card record the basis contract. Domain ASCII insertion preserves
+its existing byte encoding. Fresh final scope/quality verification remains in progress.
+
+Complete S4 production-state ordinary706.7s/race1098.2s passed70 packages
+(53 test/17 build-only), followed by vet5.1s and Staticcheck8.7s. Configured
+lint found QF1003 in the new delivery fixture's destination if/else chain.
+The equivalent tagged switch changes only fixture syntax; affected actual
+delivery cases passed ordinary/race again. Broader results remain valid under
+the review-checklist invalidation rule because production, inputs and oracles
+are unchanged. Initial lint and pre-fix checks remain in `S4-scoped/`; final
+lint7.5s and connected CustomSCP ordinary10.2s/race21.0s passed. The aggregate
+seven-command evidence and explicit fixture correction are in `checks.json`
+and this record. No failure was excluded or waived. Both logging cases passed
+within complete ordinary/race runs, with no logging repair.
+
+Approved-item mapping: basis and genuine totals -> `spot/signal_resolver.go`,
+`resolver_evidence.go`/`resolver_loss.go`; freshness/copies -> `resolver_fresh.go`
+and Compact; eligible percentages, final-rank classification, mixed union and
+neutral support -> shared correctionflow helpers/decoder. Spot basis/churn,
+flow golden/union/temporal tests prove the contracts; runtime delivery/family
+and real replay/reveng tests prove consumer consequences. Existing B32 zero
+and deliberately raw fixtures retain distinct meanings. Diagnostics/family
+guards and benchmark fixtures cover label, hiding and allocation boundaries.
+ADR-0298/TSR-0091 and operator/support docs carry the selected method contract.
+
+Fresh final lead verification and inherited-context cross-package quality review
+found no material defect or scope expansion. The latter authored spot tests and
+is not independent. Actual source confirms scalar ownership without new retained
+state or lifecycle changes, JSON exclusion, immutable publication/copies,
+absorbing unavailable basis, rank ordering/eligibility, and preserved positive
+smoothing, loss emission, transitions, priors and ambiguity rails. Final source
+matches the isolated source under test; YAML5/6 edits remain preserved outside
+the checkpoint. Relative document links57, TSR/index and changed-source crawler
+checks pass. Final map generation/check, whitespace and staged review precede
+the `fix(confidence): preserve resolver support basis` checkpoint commit; its
+exact hash is recorded locally in `S4-scoped/checkpoint.json` and final handoff.
+
+All four approved slices are implemented and verified sequentially. Evidence
+establishes these local contracts; field accuracy, live-feed behavior, production
+load, Linux parity and broader firewall permission remain outside these checks.

@@ -175,8 +175,9 @@ func (s *telnetFamilySuppressor) compareLanesLocked(sp *spot.Spot, cfg config.Ca
 	return familyLanes{lanes[0], lanes[1], lanes[2]}
 }
 
-// familyPercent enforces one score basis before using the unchanged percentage
-// helper. Direct literal lookup is bounded by published candidates and avoids
+// familyPercent requires positive usable support before comparing displayed
+// shares. A known zero percentage alone supplies no hiding authority. Direct
+// literal lookup is bounded by published candidates and avoids
 // normalizing thousands of absent retained history calls on dense scans.
 func familyPercent(snapshot spot.ResolverSnapshot, literal string) (int, bool) {
 	if literal == "" || snapshot.TotalReporters <= 0 {
@@ -197,7 +198,16 @@ func familyPercent(snapshot spot.ResolverSnapshot, literal string) (int, bool) {
 			raw, weighted = snapshot.RunnerSupport, snapshot.RunnerWeightedSupportMilli
 		}
 	}
-	if raw <= 0 || (snapshot.TotalWeightedSupportMilli > 0 && weighted <= 0) {
+	if raw <= 0 {
+		return 0, false
+	}
+	switch snapshot.EffectiveSupportBasis() {
+	case spot.ResolverSupportBasisWeighted:
+		if weighted <= 0 {
+			return 0, false
+		}
+	case spot.ResolverSupportBasisReceivers:
+	default:
 		return 0, false
 	}
 	return correctionflow.ResolverCallConfidencePercent(snapshot, literal)

@@ -50,7 +50,7 @@ func TestResolverLossConcurrentReadersRetainImmutableGenerations(t *testing.T) {
 				case phase := <-phases[reader]:
 					for _, lookup := range []func() (ResolverSnapshot, bool){func() (ResolverSnapshot, bool) { return r.Lookup(key) }, func() (ResolverSnapshot, bool) { return r.LookupEligible(key, at.Add(2*time.Second)) }} {
 						s, ok := lookup()
-						if !ok || s.EvidenceLoss != phase.loss || s.Generation != clean.Generation || s.TotalReporters != 3 || s.TotalWeightedSupportMilli != 3000 || s.ReceiverEvidence().Len() != 3 || s.ReceiverEvidence().RecencyWindow() != phase.window || s.Compact().EvidenceLoss != phase.loss {
+						if !ok || s.SupportBasis != ResolverSupportBasisWeighted || s.EffectiveSupportBasis() != ResolverSupportBasisWeighted || s.EvidenceLoss != phase.loss || s.Generation != clean.Generation || s.TotalReporters != 3 || s.TotalWeightedSupportMilli != 3000 || s.ReceiverEvidence().Len() != 3 || s.ReceiverEvidence().RecencyWindow() != phase.window || s.Compact().EvidenceLoss != phase.loss || s.Compact().SupportBasis != ResolverSupportBasisWeighted {
 							reportFailure("reader missed literal loss/window publication phase")
 						}
 						if row, exists := lossTestRow(s, "K1ABC", "N0A3"); !exists || row.WeightMilli != 1000 {
@@ -62,7 +62,7 @@ func TestResolverLossConcurrentReadersRetainImmutableGenerations(t *testing.T) {
 				}
 				for _, retained := range []ResolverSnapshot{clean, quarantined} {
 					compact := retained.Compact()
-					if compact.Generation != clean.Generation || compact.EvidenceLoss != retained.EvidenceLoss || compact.ReceiverEvidence() != nil || retained.TotalReporters != 3 || retained.TotalWeightedSupportMilli != 3000 || retained.ReceiverEvidence().Len() != 3 {
+					if compact.SupportBasis != ResolverSupportBasisWeighted || retained.SupportBasis != ResolverSupportBasisWeighted || compact.Generation != clean.Generation || compact.EvidenceLoss != retained.EvidenceLoss || compact.ReceiverEvidence() != nil || retained.TotalReporters != 3 || retained.TotalWeightedSupportMilli != 3000 || retained.ReceiverEvidence().Len() != 3 {
 						reportFailure("retained reader metadata changed")
 					}
 					if row, exists := lossTestRow(retained, "K1ABD", "N0B1"); !exists || row.ObservedAt != at || row.WeightMilli != 1000 || row.FrequencyKHz != 7010.1 {
@@ -80,10 +80,10 @@ func TestResolverLossConcurrentReadersRetainImmutableGenerations(t *testing.T) {
 					if !ok {
 						reportFailure("live generation vanished during owner churn")
 					}
-					if s.Generation != clean.Generation || s.TotalReporters > 4 || len(s.CandidateRanks) > 2 || s.ReceiverEvidence().Len() > 4 || s.TotalWeightedSupportMilli != s.TotalReporters*1000 {
+					if s.SupportBasis != ResolverSupportBasisWeighted || s.EffectiveSupportBasis() != ResolverSupportBasisWeighted || s.Generation != clean.Generation || s.TotalReporters > 4 || len(s.CandidateRanks) > 2 || s.ReceiverEvidence().Len() > 4 || s.TotalWeightedSupportMilli != s.TotalReporters*1000 {
 						reportFailure("live publication exceeded bounds or lost exact totals")
 					}
-					if s.Compact().EvidenceLoss != s.EvidenceLoss {
+					if s.Compact().EvidenceLoss != s.EvidenceLoss || s.Compact().SupportBasis != ResolverSupportBasisWeighted {
 						reportFailure("live Compact discarded loss marker")
 					}
 				}

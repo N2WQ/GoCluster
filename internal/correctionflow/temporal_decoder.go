@@ -553,29 +553,18 @@ func runnerForTemporalSnapshot(snap spot.ResolverSnapshot, winner string) (strin
 }
 
 func classifyTemporalSnapshotState(snap spot.ResolverSnapshot) spot.ResolverState {
-	if snap.TotalWeightedSupportMilli > 0 && snap.WinnerWeightedSupportMilli > 0 {
-		confidence := snap.WinnerWeightedSupportMilli * 100 / snap.TotalWeightedSupportMilli
-		switch {
-		case confidence >= 51:
-			return spot.ResolverStateConfident
-		case confidence >= 25:
-			return spot.ResolverStateProbable
-		default:
-			return spot.ResolverStateUncertain
-		}
+	confidence, ok := ResolverCallConfidencePercent(snap, snap.Winner)
+	if !ok {
+		return spot.ResolverStateUncertain
 	}
-	if snap.TotalReporters > 0 && snap.WinnerSupport > 0 {
-		confidence := snap.WinnerSupport * 100 / snap.TotalReporters
-		switch {
-		case confidence >= 51:
-			return spot.ResolverStateConfident
-		case confidence >= 25:
-			return spot.ResolverStateProbable
-		default:
-			return spot.ResolverStateUncertain
-		}
+	switch {
+	case confidence >= 51:
+		return spot.ResolverStateConfident
+	case confidence >= 25:
+		return spot.ResolverStateProbable
+	default:
+		return spot.ResolverStateUncertain
 	}
-	return spot.ResolverStateUncertain
 }
 
 func (d *TemporalDecoder) decodeWindowLocked(events []temporalEvent, fallbackSubject string, mode string) (string, int, int, int) {
@@ -683,15 +672,21 @@ func (d *TemporalDecoder) emissionScore(event temporalEvent, call string, candid
 	}
 	if event.selection.SnapshotOK {
 		snapshot := event.selection.Snapshot
-		if snapshot.TotalWeightedSupportMilli > 0 {
+		switch snapshot.EffectiveSupportBasis() {
+		case spot.ResolverSupportBasisWeighted:
+			if snapshot.TotalWeightedSupportMilli <= 0 {
+				return 0
+			}
 			support := ResolverWeightedSupportForCall(snapshot, call)
 			denom := snapshot.TotalWeightedSupportMilli + candidateCount
 			if denom <= 0 {
 				return 0
 			}
 			return (support + 1) * temporalEmissionScale / denom
-		}
-		if snapshot.TotalReporters > 0 {
+		case spot.ResolverSupportBasisReceivers:
+			if snapshot.TotalReporters <= 0 {
+				return 0
+			}
 			support := ResolverSupportForCall(snapshot, call)
 			denom := snapshot.TotalReporters + candidateCount
 			if denom <= 0 {
@@ -699,6 +694,9 @@ func (d *TemporalDecoder) emissionScore(event temporalEvent, call string, candid
 			}
 			return (support + 1) * temporalEmissionScale / denom
 		}
+		// Declared populations with unavailable coverage contribute no support,
+		// including observed/absent candidates and the observation's subject.
+		return 0
 	}
 	if call == event.subject {
 		return 1

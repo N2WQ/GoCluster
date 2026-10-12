@@ -128,22 +128,44 @@ func ResolverWeightedSupportForCall(snapshot spot.ResolverSnapshot, call string)
 }
 
 // ResolverCallConfidencePercent computes call-specific confidence percentage.
-// It prefers weighted support when available and falls back to reporter support.
+// Eligible call evidence is required first; its declared denominator basis does
+// not change when a known weighted numerator is zero or rounds below one percent.
 func ResolverCallConfidencePercent(snapshot spot.ResolverSnapshot, call string) (int, bool) {
-	if snapshot.EvidenceLoss {
+	if snapshot.EvidenceLoss || snapshot.TotalReporters <= 0 {
 		return 0, false
 	}
-	if snapshot.TotalWeightedSupportMilli > 0 {
-		support := ResolverWeightedSupportForCall(snapshot, call)
-		if support > 0 {
-			return clampPercent(support * 100 / snapshot.TotalWeightedSupportMilli), true
+	call = spot.NormalizeSpotDXCallsign(call)
+	if call == "" {
+		return 0, false
+	}
+	support, weighted := 0, 0
+	if len(snapshot.CandidateRanks) > 0 {
+		// A published rank list is the eligible call population. Its absent or
+		// zero row must not regain support from stale winner/runner headers.
+		for _, candidate := range snapshot.CandidateRanks {
+			if candidate.Call == call {
+				support, weighted = max(0, candidate.Support), max(0, candidate.WeightedSupportMilli)
+				break
+			}
+		}
+	} else {
+		switch call {
+		case snapshot.Winner:
+			support, weighted = max(0, snapshot.WinnerSupport), max(0, snapshot.WinnerWeightedSupportMilli)
+		case snapshot.RunnerUp:
+			support, weighted = max(0, snapshot.RunnerSupport), max(0, snapshot.RunnerWeightedSupportMilli)
 		}
 	}
-	if snapshot.TotalReporters > 0 {
-		support := ResolverSupportForCall(snapshot, call)
-		if support > 0 {
-			return clampPercent(support * 100 / snapshot.TotalReporters), true
+	if support <= 0 {
+		return 0, false
+	}
+	switch snapshot.EffectiveSupportBasis() {
+	case spot.ResolverSupportBasisWeighted:
+		if snapshot.TotalWeightedSupportMilli > 0 {
+			return clampPercent(weighted * 100 / snapshot.TotalWeightedSupportMilli), true
 		}
+	case spot.ResolverSupportBasisReceivers:
+		return clampPercent(support * 100 / snapshot.TotalReporters), true
 	}
 	return 0, false
 }
@@ -206,9 +228,8 @@ func SelectResolverPrimarySnapshotForCallAt(resolver *spot.SignalResolver, key s
 }
 
 func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, now time.Time) ResolverPrimarySelection {
-	selection := ResolverPrimarySelection{}
 	if resolver == nil {
-		return selection
+		return ResolverPrimarySelection{}
 	}
 	lookup := func(k spot.ResolverSignalKey) (spot.ResolverSnapshot, bool) {
 		if now.IsZero() {
@@ -216,6 +237,14 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		}
 		return resolver.LookupEligible(k, now)
 	}
+	return selectResolverPrimarySnapshotFromLookup(key, cfg, anchorCall, lookup)
+}
+
+// selectResolverPrimarySnapshotFromLookup keeps the production arbitration in
+// one bounded pass. The private boundary also permits explicit raw populations
+// to exercise the same rules without introducing a runtime unweighted switch.
+func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, lookup func(spot.ResolverSignalKey) (spot.ResolverSnapshot, bool)) ResolverPrimarySelection {
+	selection := ResolverPrimarySelection{}
 	exact, exactOK := lookup(key)
 	selection.Snapshot = exact
 	selection.SnapshotOK = exactOK
@@ -275,6 +304,7 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 
 	aggregates := make(map[string]*neighborhoodCandidate, (radius*2)+1)
 	receivers := make(map[string]int)
+	basis := spot.ResolverSupportBasisUnspecified
 	for offset := -radius; offset <= radius; offset++ {
 		snap, ok := snapshots[offset+2], present[offset+2]
 		if !ok {
@@ -313,6 +343,14 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 			continue
 		}
 		selection.generationWitnesses[offset+2] = snap.Generation
+		// Only admitted populations contribute. Unavailable or mixed bases are
+		// absorbing; later weighted buckets must not restore numerical authority.
+		incomingBasis := snap.EffectiveSupportBasis()
+		if basis == spot.ResolverSupportBasisUnspecified {
+			basis = incomingBasis
+		} else if basis != incomingBasis {
+			basis = spot.ResolverSupportBasisUnavailable
+		}
 		addNeighborhoodEvidence(aggregates, receivers, snap)
 	}
 
@@ -371,11 +409,11 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 	synth.WinnerSupport = top.support
 	synth.WinnerWeightedSupportMilli = top.weighted
 	synth.TotalReporters = len(receivers)
+	synth.SupportBasis = basis
 	synth.TotalWeightedSupportMilli = 0
 	for _, weight := range receivers {
 		synth.TotalWeightedSupportMilli += weight
 	}
-	synth.State = classifyTemporalSnapshotState(synth)
 	sort.Slice(allCandidates, func(i, j int) bool {
 		left, right := allCandidates[i], allCandidates[j]
 		if left.WeightedSupportMilli != right.WeightedSupportMilli {
@@ -387,6 +425,7 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		return left.Call < right.Call
 	})
 	synth.CandidateRanks = allCandidates
+	synth.State = classifyTemporalSnapshotState(synth)
 
 	if len(ranked) > 1 {
 		runner := ranked[1]

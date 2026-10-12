@@ -8,6 +8,45 @@ import (
 	"time"
 )
 
+// ResolverSupportBasis names the denominator contract, independently of whether
+// a percentage is available. Weighted zero totals remain weighted, not raw.
+type ResolverSupportBasis uint8
+
+const (
+	ResolverSupportBasisUnspecified ResolverSupportBasis = iota
+	ResolverSupportBasisWeighted
+	ResolverSupportBasisReceivers
+	ResolverSupportBasisUnavailable
+)
+
+// EffectiveSupportBasis accepts legacy positive weighted snapshots, but does
+// not infer raw evidence from missing or zero weights. Explicit unavailable is
+// absorbing so mixed neighborhoods cannot regain authority through that legacy
+// compatibility path. Deliberately raw snapshots carry no weighted tallies.
+func (s ResolverSnapshot) EffectiveSupportBasis() ResolverSupportBasis {
+	switch s.SupportBasis {
+	case ResolverSupportBasisUnspecified:
+		if s.TotalWeightedSupportMilli > 0 {
+			return ResolverSupportBasisWeighted
+		}
+	case ResolverSupportBasisWeighted:
+		if s.TotalWeightedSupportMilli >= 0 {
+			return ResolverSupportBasisWeighted
+		}
+	case ResolverSupportBasisReceivers:
+		if s.TotalWeightedSupportMilli != 0 || s.WinnerWeightedSupportMilli != 0 || s.RunnerWeightedSupportMilli != 0 {
+			return ResolverSupportBasisUnavailable
+		}
+		for _, candidate := range s.CandidateRanks {
+			if candidate.WeightedSupportMilli != 0 {
+				return ResolverSupportBasisUnavailable
+			}
+		}
+		return ResolverSupportBasisReceivers
+	}
+	return ResolverSupportBasisUnavailable
+}
+
 type resolverReporterObservation struct {
 	observedAt        time.Time
 	frequencyKHz      float64

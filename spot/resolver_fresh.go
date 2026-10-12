@@ -31,7 +31,8 @@ func (r *SignalResolver) LookupEligible(key ResolverSignalKey, now time.Time) (R
 
 func resolverProjectionBase(snapshot ResolverSnapshot) ResolverSnapshot {
 	return ResolverSnapshot{Key: snapshot.Key, Generation: snapshot.Generation, EvidenceLoss: snapshot.EvidenceLoss,
-		EvaluatedAt: snapshot.EvaluatedAt, State: ResolverStateUncertain,
+		SupportBasis: snapshot.EffectiveSupportBasis(),
+		EvaluatedAt:  snapshot.EvaluatedAt, State: ResolverStateUncertain,
 		lossMinAt: snapshot.lossMinAt, lossMaxAt: snapshot.lossMaxAt, lossWindow: snapshot.lossWindow,
 		ordinaryWinner: snapshot.ordinaryWinner, ordinaryState: snapshot.ordinaryState}
 }

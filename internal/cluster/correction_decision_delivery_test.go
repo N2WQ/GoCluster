@@ -23,7 +23,7 @@ func TestB32DecisionDeliveredWeightedOutcomes(t *testing.T) {
 	}{
 		{"corrected", "K1ABD", "K1ABC", "C", "Call decision: phase=evaluation outcome=corrected reason=resolver_applied input=K1ABD call=K1ABC proposed=K1ABC at=14020.0kHz share=64% basis=weighted recognition=separate suppressed=false", 64, true, false, 1},
 		{"cty_rejected", "K1ABD", "K1ABD", "B", "Call decision: phase=evaluation outcome=rejected reason=resolver_cty_miss input=K1ABD call=K1ABD proposed=K1ABC at=14020.0kHz share=35% basis=weighted recognition=separate suppressed=false", 35, true, true, 0},
-		{"zero_weight_retained", "K1ABD", "K1ABD", "B", "Call decision: phase=evaluation outcome=rejected reason=resolver_cty_miss input=K1ABD call=K1ABD proposed=K1ABC at=14020.0kHz share=33% basis=receivers recognition=separate suppressed=false", 33, true, true, 0},
+		{"zero_weight_retained", "K1ABD", "K1ABD", "B", "Call decision: phase=evaluation outcome=rejected reason=resolver_cty_miss input=K1ABD call=K1ABD proposed=K1ABC at=14020.0kHz share=0% basis=weighted recognition=separate suppressed=false", 0, true, true, 0},
 		{"unsupported_retained", "K1ABE", "K1ABE", "B", "Call decision: phase=evaluation outcome=rejected reason=resolver_cty_miss input=K1ABE call=K1ABE proposed=K1ABC at=14020.0kHz share=--% basis=unavailable recognition=separate suppressed=false", 0, false, true, 0},
 		{"healthy_unchanged_silent", "K1ABC", "K1ABC", "V", "", 64, true, false, 0},
 	} {
@@ -142,13 +142,14 @@ func TestB32DecisionReceiverOnlyConsumerBasis(t *testing.T) {
 			cfg := correctionLossConfig()
 			cfg.MinConsensusReports = 3
 			selection := correctionflow.ResolverPrimarySelection{SnapshotOK: true, Snapshot: spot.ResolverSnapshot{
-				Key: spot.NewResolverSignalKey(14020, "20m", "CW", 500), State: spot.ResolverStateConfident,
+				SupportBasis: spot.ResolverSupportBasisReceivers,
+				Key:          spot.NewResolverSignalKey(14020, "20m", "CW", 500), State: spot.ResolverStateConfident,
 				Winner: "K1ABC", WinnerSupport: 2, RunnerUp: "K1ABD", RunnerSupport: 1, TotalReporters: 3,
 				CandidateRanks: []spot.ResolverCandidateSupport{{Call: "K1ABC", Support: 2}, {Call: "K1ABD", Support: 1}},
 			}}
 			s := b32OriginalSpot("K1ABD", at)
-			// This explicit consumer input exercises the supported receiver-only
-			// fallback; live resolver publications always carry milliweights.
+			// This explicitly unweighted consumer uses receiver coverage; zero
+			// live reliability weights do not authorize that alternate basis.
 			if maybeApplyResolverCorrectionWithSelectionOverride(s, nil, spot.ResolverEvidence{}, false, cfg,
 				nil, nil, p.tracker, p.dash, nil, nil, nil, nil, nil, nil, &selection, at, nil) {
 				t.Error("a min-report rejection unexpectedly suppressed its retained input")

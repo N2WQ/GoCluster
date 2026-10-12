@@ -63,6 +63,11 @@ Operational impact:
 
 ## Links
 
+[ADR-0298](ADR-0298-consistent-resolver-support-basis.md) refines zero support
+publication, retained calculation basis, percentages and all-zero decoder support.
+The reliability admission, fixed-point units, ranking and resource bounds here
+remain accepted.
+
 - Code:
   - `spot/signal_resolver.go`
   - `main.go`

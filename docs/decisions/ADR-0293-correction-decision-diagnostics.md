@@ -71,6 +71,10 @@ No registry, queue, worker, model, persisted schema or network format is added.
 
 ## References
 
+- [ADR-0298](ADR-0298-consistent-resolver-support-basis.md) refines basis semantics:
+  known weighted zero uses share=0% basis=weighted; all-zero totals are unavailable.
+  Evaluation timing, outcome/recognition separation and artifact formats remain.
+
 - [Approved scope, B3.2](../call-correction-evidence-scope-ledger-v2.md#b32---diagnostic-meaning-and-output-assertions)
 - [Execution evidence](../call-correction-evidence-execution.md)
 - [ADR-0292: Resolver Cap-Loss Authority](ADR-0292-resolver-cap-loss-authority.md)

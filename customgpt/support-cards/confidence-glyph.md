@@ -17,7 +17,9 @@ not infer meanings from other cluster software.
   probability.
 - If the user asks about current HELP output, retrieve `commands/README.md`.
 - Resolver evidence percentages measure a candidate's distinct receiver support
-  share, using reliability weights when available. Repeated neighborhood
+  share. Weighted evidence keeps that basis: known zero or rounded zero displays
+  `0%`; a weighted population with total zero is unavailable (`--%`). Raw receiver
+  coverage applies only to deliberately unweighted evidence. Repeated neighborhood
   buckets do not add receivers; losing candidates still contribute dissent.
 - Support shares are not calibrated probabilities. Current key/window evidence
   does not establish that receivers heard the same transmission episode.
@@ -33,6 +35,11 @@ not infer meanings from other cluster software.
 - Percentages describe the emitted call. A rejected candidate leaves `B` and
   the retained call's own weighted share; no eligible support displays `--%`
   in DIAG CONF. Accepted `C` output carries the replacement's share.
+- Two zero-weight receivers for A against one positive-weight receiver for B
+  give A `0%`. If the two-report minimum rejects replacing A with B, A displays
+  `P/0%`. Zero display does not grant family hiding authority; positive usable
+  support remains required. All-zero weights add no waiting-decoder support;
+  transition/prior behavior and independent historical recognition remain separate.
 - Split protection survives neighborhood and temporal selection. The narrow
   guard uses the closest eligible frequency pair; conflicting equal-time
   frequency metadata causes conservative abstention until superseded or expired.

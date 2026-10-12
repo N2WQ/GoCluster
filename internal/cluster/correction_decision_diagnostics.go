@@ -7,7 +7,6 @@ import (
 	"log"
 	"strings"
 
-	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 	"dxcluster/ui"
 )
@@ -28,9 +27,11 @@ func emitResolverDecision(dash ui.Surface, entry *spot.Spot, snapshot spot.Resol
 		}
 		if entry.ConfidencePercentOK {
 			share = fmt.Sprintf("%d%%", entry.ConfidencePercent)
-			if snapshot.TotalWeightedSupportMilli > 0 && correctionflow.ResolverWeightedSupportForCall(snapshot, call) > 0 {
+			// A known zero numerator keeps the population's weighted basis.
+			switch snapshot.EffectiveSupportBasis() {
+			case spot.ResolverSupportBasisWeighted:
 				basis = "weighted"
-			} else if snapshot.TotalReporters > 0 {
+			case spot.ResolverSupportBasisReceivers:
 				basis = "receivers"
 			}
 		}

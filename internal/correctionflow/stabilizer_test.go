@@ -77,9 +77,10 @@ func TestEvaluateStabilizerDelayPLowConfidence(t *testing.T) {
 
 	snapshot := spot.ResolverSnapshot{
 		State:                     spot.ResolverStateProbable,
+		TotalReporters:            5,
 		TotalWeightedSupportMilli: 1000,
 		CandidateRanks: []spot.ResolverCandidateSupport{
-			{Call: "K1PLOW", WeightedSupportMilli: 200},
+			{Call: "K1PLOW", Support: 1, WeightedSupportMilli: 200},
 		},
 	}
 	decision := EvaluateStabilizerDelay(s, store, cfg, now, snapshot, true)

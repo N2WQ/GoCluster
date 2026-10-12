@@ -40,9 +40,11 @@ func telnetFamilyTestSelection(total int, candidates ...spot.ResolverCandidateSu
 }
 
 func telnetFamilyRawSelection(left string, leftSupport int, right string, rightSupport int) correctionflow.ResolverPrimarySelection {
-	return telnetFamilyTestSelection(leftSupport+rightSupport,
+	selection := telnetFamilyTestSelection(leftSupport+rightSupport,
 		spot.ResolverCandidateSupport{Call: left, Support: leftSupport},
 		spot.ResolverCandidateSupport{Call: right, Support: rightSupport})
+	selection.Snapshot.SupportBasis = spot.ResolverSupportBasisReceivers
+	return selection
 }
 
 func telnetFamilyTestHandoff(tb testing.TB, s *telnetFamilySuppressor, sp *spot.Spot, cfg config.CallCorrectionConfig, now time.Time, allowed familyLanes, selection correctionflow.ResolverPrimarySelection, admitted bool, want familyLanes) {
@@ -187,9 +189,44 @@ func TestTelnetFamilySuppressorExactWholePercentMath(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			snapshot := spot.ResolverSnapshot{TotalReporters: tc.total, TotalWeightedSupportMilli: tc.weighted, CandidateRanks: tc.ranks,
 				Winner: "W9CONTROL", WinnerSupport: 3}
+			if tc.name == "raw_no_weighted_total" || tc.name == "absent_candidate" || tc.name == "literal_alias_not_pooled" {
+				snapshot.SupportBasis = spot.ResolverSupportBasisReceivers
+			}
 			got, ok := familyPercent(snapshot, tc.call)
 			if ok != tc.ok || (ok && got != tc.want) {
 				t.Fatalf("percentage=%d,%t want %d,%t", got, ok, tc.want, tc.ok)
+			}
+		})
+	}
+}
+
+func TestTelnetFamilySupportBasisBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name                  string
+		basis                 spot.ResolverSupportBasis
+		weighted, totalWeight int
+		want                  int
+		usable                bool
+	}{
+		{"known_weighted_zero", spot.ResolverSupportBasisWeighted, 0, 1000, 0, false},
+		{"positive_rounded_zero", spot.ResolverSupportBasisWeighted, 1, 101000, 0, true},
+		{"all_zero_weighted", spot.ResolverSupportBasisWeighted, 0, 0, 0, false},
+		{"unspecified_zero", spot.ResolverSupportBasisUnspecified, 0, 0, 0, false},
+		{"explicit_unavailable_positive", spot.ResolverSupportBasisUnavailable, 1000, 3000, 0, false},
+		{"deliberate_receivers", spot.ResolverSupportBasisReceivers, 0, 0, 66, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot := spot.ResolverSnapshot{SupportBasis: tc.basis, TotalReporters: 3,
+				TotalWeightedSupportMilli: tc.totalWeight, CandidateRanks: []spot.ResolverCandidateSupport{
+					{Call: "W1AB", Support: 2, WeightedSupportMilli: tc.weighted},
+				}}
+			if tc.name == "positive_rounded_zero" {
+				// One milliweight plus 100 unit weights and one 999 weight
+				// forms the declared 101000 total across 102 receivers.
+				snapshot.TotalReporters, snapshot.CandidateRanks[0].Support = 102, 1
+			}
+			if percent, usable := familyPercent(snapshot, "W1AB"); usable != tc.usable || (usable && percent != tc.want) {
+				t.Fatalf("family percentage=%d usable=%t want %d/%t", percent, usable, tc.want, tc.usable)
 			}
 		})
 	}
@@ -240,8 +277,25 @@ func TestTelnetFamilySuppressorUnavailableEvidenceCannotHide(t *testing.T) {
 			s.Snapshot.Winner, s.Snapshot.WinnerSupport = "", 0
 		}},
 		{"mixed_basis", func(s *correctionflow.ResolverPrimarySelection) {
+			s.Snapshot.SupportBasis = spot.ResolverSupportBasisWeighted
 			s.Snapshot.TotalWeightedSupportMilli = 3000
 			s.Snapshot.CandidateRanks[0].WeightedSupportMilli = 3000
+		}},
+		{"all_zero_weighted", func(s *correctionflow.ResolverPrimarySelection) {
+			s.Snapshot.SupportBasis = spot.ResolverSupportBasisWeighted
+		}},
+		{"unspecified_zero", func(s *correctionflow.ResolverPrimarySelection) {
+			s.Snapshot.SupportBasis = spot.ResolverSupportBasisUnspecified
+		}},
+		{"explicit_unavailable", func(s *correctionflow.ResolverPrimarySelection) {
+			s.Snapshot.SupportBasis = spot.ResolverSupportBasisUnavailable
+		}},
+		{"known_weighted_zero_rival", func(s *correctionflow.ResolverPrimarySelection) {
+			s.Snapshot.SupportBasis = spot.ResolverSupportBasisWeighted
+			s.Snapshot.TotalWeightedSupportMilli = 1000
+			s.Snapshot.CandidateRanks[1].WeightedSupportMilli = 1000
+			s.Snapshot.State = spot.ResolverStateConfident
+			s.Snapshot.Winner, s.Snapshot.WinnerSupport, s.Snapshot.WinnerWeightedSupportMilli = "N2WQ", 1, 1000
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -321,7 +375,8 @@ func TestTelnetFamilySuppressorWinnerRunnerFallback(t *testing.T) {
 				s, cfg, now := newTestTelnetFamilySuppressor(), telnetFamilyTestConfig(), time.Unix(1700000000, 0).UTC()
 				telnetFamilyAdmit(t, s, "W1ABC", 7010, "CW", cfg, now, all)
 				snapshot := spot.ResolverSnapshot{
-					State: spot.ResolverStateProbable, TotalReporters: 4,
+					SupportBasis: spot.ResolverSupportBasisReceivers,
+					State:        spot.ResolverStateProbable, TotalReporters: 4,
 					Winner: "W1AB", WinnerSupport: 1, RunnerUp: "W1ABC", RunnerSupport: 3,
 				}
 				if rivalIsWinner {
@@ -329,6 +384,7 @@ func TestTelnetFamilySuppressorWinnerRunnerFallback(t *testing.T) {
 					snapshot.WinnerSupport, snapshot.RunnerSupport = snapshot.RunnerSupport, snapshot.WinnerSupport
 				}
 				if weighted {
+					snapshot.SupportBasis = spot.ResolverSupportBasisWeighted
 					snapshot.TotalWeightedSupportMilli = 4000
 					snapshot.WinnerWeightedSupportMilli = snapshot.WinnerSupport * 1000
 					snapshot.RunnerWeightedSupportMilli = snapshot.RunnerSupport * 1000
@@ -454,6 +510,7 @@ func TestTelnetFamilySuppressorAllRivalsBeforeMutation(t *testing.T) {
 					spot.ResolverCandidateSupport{Call: "WA1AB", Support: 6},
 					spot.ResolverCandidateSupport{Call: "A1ABC", Support: 1},
 					spot.ResolverCandidateSupport{Call: "WA1ABC", Support: 3})
+				selection.Snapshot.SupportBasis = spot.ResolverSupportBasisReceivers
 				if !unavailable {
 					selection.Snapshot.CandidateRanks = append(selection.Snapshot.CandidateRanks, spot.ResolverCandidateSupport{Call: "ZWA1ABC", Support: 3})
 				}

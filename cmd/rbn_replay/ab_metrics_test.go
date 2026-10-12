@@ -22,6 +22,7 @@ func TestObserveResolverSnapshotTracksStateAndProjectedConfidence(t *testing.T) 
 	var metrics replayABMetrics
 
 	metrics.ObserveResolverSnapshot(spot.ResolverSnapshot{
+		SupportBasis:   spot.ResolverSupportBasisReceivers, // Deliberately receiver-only fixture.
 		State:          spot.ResolverStateConfident,
 		Winner:         "K1ABC",
 		WinnerSupport:  1,

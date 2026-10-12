@@ -26,8 +26,8 @@ The live mapping is shared through [`../internal/correctionflow/shared.go`](../i
 For resolver-capable modes:
 
 - the emitted call gets a call-specific confidence percent
-- weighted support is used when available
-- plain reporter support is the fallback
+- weighted evidence keeps a weighted calculation basis, including known zero
+- plain receiver coverage is used only for explicitly unweighted evidence
 - `FormatConfidence` maps:
   - one reporter to `?`
   - multi-reporter confidence `<= 50%` to `P`
@@ -45,6 +45,25 @@ receivers count once in the total and once for each candidate they support.
 Overlapping candidate shares can therefore sum to more than 100%. Weights
 900 and 950 supporting A against weight 1000 supporting B give A a displayed
 64% share, regardless of repeated buckets.
+
+The percentage keeps the meaning of the supplied evidence:
+
+| Evidence | Percentage |
+| --- | --- |
+| Positive weighted total; eligible call has zero weight | `0%` available |
+| Positive call weight whose percentage floors to zero | `0%` available |
+| Weighted population has total weight zero | Unavailable (`--%` in DIAG CONF) |
+| Deliberately unweighted population | Distinct receiver coverage |
+| Missing eligible call evidence or protected evidence loss | Unavailable |
+
+For example, A has two receivers of weight zero and B has one of weight 1000.
+A has `0%` weighted support. With a two-report correction minimum, B cannot
+replace A, so A displays `P/0%` under the existing glyph rules. Independent
+historical recognition keeps its separate meaning. An all-zero weighted
+population adds no waiting-decoder support for any candidate; transitions and
+priors retain their existing rules. Missing reliability assets or entries still
+use the existing weight 1 default; they do not select raw coverage.
+See [ADR-0298](../docs/decisions/ADR-0298-consistent-resolver-support-basis.md).
 
 These percentages describe retained receiver support, not calibrated correctness
 probabilities. Eligibility uses the existing key and recency window; it does not

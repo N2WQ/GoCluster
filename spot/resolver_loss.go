@@ -137,6 +137,7 @@ func (r *SignalResolver) publishKeySnapshot(st *resolverKeyState, snapshot Resol
 func (r *SignalResolver) publishLossControl(st *resolverKeyState, now time.Time) {
 	view := publishedResolverEvidence(st)
 	snapshot := ResolverSnapshot{Key: st.key, EvaluatedAt: st.lastEvalAt, State: ResolverStateUncertain,
+		SupportBasis:     ResolverSupportBasisWeighted,
 		receiverEvidence: view, ordinaryWinner: st.ordinaryWinner, ordinaryState: st.ordinaryState,
 		TotalReporters: len(st.reporterRefs), TotalWeightedSupportMilli: totalResolverReporterWeightMilli(st.reporterRefs)}
 	previousOrder := make(map[string]int, len(st.publishedCandidateRanks))

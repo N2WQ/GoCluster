@@ -100,8 +100,9 @@ type ResolverEvidence struct {
 // ResolverSnapshot is the latest shadow verdict for a ResolverSignalKey.
 type ResolverSnapshot struct {
 	Key                        ResolverSignalKey
-	Generation                 uint64 // Lifecycle identity; retained by Compact.
-	EvidenceLoss               bool   // Known discarded evidence may still be eligible.
+	Generation                 uint64               // Lifecycle identity; retained by Compact.
+	EvidenceLoss               bool                 // Known discarded evidence may still be eligible.
+	SupportBasis               ResolverSupportBasis `json:"-"` // Retained by Compact; no artifact schema change.
 	EvaluatedAt                time.Time
 	State                      ResolverState
 	Winner                     string
@@ -801,6 +802,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 
 	snapshot := ResolverSnapshot{
 		Key:              st.key,
+		SupportBasis:     ResolverSupportBasisWeighted,
 		EvaluatedAt:      now,
 		State:            ResolverStateUncertain,
 		receiverEvidence: publishedResolverEvidence(st),
@@ -842,7 +844,9 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		totalReporters = totalUniqueResolverReporters(ranked)
 	}
 	totalWeightedSupportMilli := totalResolverReporterWeightMilli(st.reporterRefs)
-	if totalWeightedSupportMilli <= 0 {
+	if len(st.reporterRefs) == 0 {
+		// Only externally constructed states lacking references use defaults.
+		// An actual zero-weight population has references and retains total zero.
 		totalWeightedSupportMilli = totalUniqueResolverReporterWeightMilli(ranked)
 	}
 	provisionalState := classifyResolverState(top.weightedSupportMilli, totalWeightedSupportMilli)
