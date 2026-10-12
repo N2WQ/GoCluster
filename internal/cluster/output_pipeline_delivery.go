@@ -86,6 +86,12 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	if hasResolverEvidence && p.signalResolver != nil {
 		delaySnapshot, delaySnapshotOK = p.signalResolver.LookupEligible(resolverEvidence.Key, now)
 	}
+	if selection.SnapshotOK && selection.Snapshot.EvidenceLoss {
+		// Only loss crosses the selected-neighborhood boundary. Other delay
+		// inputs retain exact-bucket meaning; no saved envelope flag can outlive
+		// the fresh eligibility decision above.
+		delaySnapshot.EvidenceLoss, delaySnapshotOK = true, true
+	}
 	delayDecision := evaluateTelnetStabilizerDelay(delayed, p.recentBandStore, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK)
 	if shouldRetryTelnetByStabilizer(delayDecision, checksCompleted) {
 		if p.telnetStabilizer.enqueueWithTemporalResult(
@@ -229,6 +235,10 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 	delaySnapshot, delaySnapshotOK := spot.ResolverSnapshot{}, false
 	if ctx.hasStabilizerResolverKey && p.signalResolver != nil {
 		delaySnapshot, delaySnapshotOK = p.signalResolver.Lookup(ctx.stabilizerResolverKey)
+	}
+	if ctx.stabilizerEvidenceLoss {
+		// Selection may protect a lost neighbor even with no exact snapshot.
+		delaySnapshot.EvidenceLoss, delaySnapshotOK = true, true
 	}
 	delayDecision := evaluateTelnetStabilizerDelay(s, p.recentBandStore, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK)
 	if delayDecision.ShouldDelay {

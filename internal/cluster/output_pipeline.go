@@ -111,6 +111,7 @@ type outputSpotContext struct {
 	stabilizerResolverKey      spot.ResolverSignalKey
 	hasStabilizerResolverKey   bool
 	stabilizerEvidenceEnqueued bool
+	stabilizerEvidenceLoss     bool // Request-local selected loss; retries derive it again.
 	temporalResult             *runtimeTemporalResult
 	resolverSelectionOverride  *correctionflow.ResolverPrimarySelection
 	resolverReleaseAt          time.Time

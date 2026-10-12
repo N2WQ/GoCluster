@@ -129,9 +129,18 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 		}
 		skipResolverApply = skip
 	}
+	selectionOverride := ctx.resolverSelectionOverride
 	if !skipResolverApply {
+		// Capture the correction selection already needed here. Its loss authority
+		// belongs to this request; the stabilizer otherwise keeps exact-bucket
+		// state/low-P semantics and retries select fresh evidence independently.
+		var selected correctionflow.ResolverPrimarySelection
+		if selectionOverride == nil && p.correctionCfg.Enabled && hasResolverEvidence && p.signalResolver != nil {
+			selected = correctionflow.SelectResolverPrimarySnapshotForCall(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(s))
+			selectionOverride = &selected
+		}
 		var suppress bool
-		if ctx.resolverSelectionOverride == nil {
+		if selectionOverride == nil {
 			suppress = maybeApplyResolverCorrection(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
 				p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
 				p.spotterReliability, p.spotterReliabilityCW, p.spotterReliabilityRTTY, p.confusionModel)
@@ -139,11 +148,14 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 			suppress = maybeApplyResolverCorrectionWithSelectionOverride(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
 				p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
 				p.spotterReliability, p.spotterReliabilityCW, p.spotterReliabilityRTTY, p.confusionModel,
-				ctx.resolverSelectionOverride, ctx.resolverReleaseAt, ctx.temporalResult)
+				selectionOverride, ctx.resolverReleaseAt, ctx.temporalResult)
 		}
 		if suppress {
 			return false
 		}
+	}
+	if selectionOverride != nil {
+		ctx.stabilizerEvidenceLoss = selectionOverride.SnapshotOK && selectionOverride.Snapshot.EvidenceLoss
 	}
 	s.RefreshBeaconFlag()
 	ctx.dirty = true

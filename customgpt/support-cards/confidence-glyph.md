@@ -47,6 +47,10 @@ not infer meanings from other cluster software.
   A later evaluation preserves an already accepted identity; retired temporal
   proposals cannot override fresh evidence. Queue-full/whole-key/FT loss and
   cross-restart protection remain outside this repair.
+- Stabilizer initial and retry evaluations honor current selected-neighborhood
+  loss, including an absent exact bucket and temporal abstention. Retry derives
+  fresh loss; recovery is not blocked by a saved flag. Existing delay-eligible
+  glyphs, reason budgets and timeout actions still govern waiting/release.
 - The dashboard's Call decisions pane reports corrected, rejected and retained
   evaluations, not unique deliveries or accepted-correction totals. Its named
   current identity gets the support share/basis; recognition is separate. Events
