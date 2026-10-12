@@ -21,11 +21,11 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if !cfg.CallCorrection.StabilizerEnabled {
 		t.Fatalf("expected stabilizer enabled")
 	}
-	if cfg.CallCorrection.StabilizerDelaySeconds != 15 {
-		t.Fatalf("expected stabilizer delay 15s from shipped YAML, got %d", cfg.CallCorrection.StabilizerDelaySeconds)
+	if cfg.CallCorrection.StabilizerDelaySeconds != 5 {
+		t.Fatalf("expected stabilizer delay 5s from shipped YAML, got %d", cfg.CallCorrection.StabilizerDelaySeconds)
 	}
-	if cfg.CallCorrection.StabilizerMaxChecks != 5 {
-		t.Fatalf("expected stabilizer max checks 5 from shipped YAML, got %d", cfg.CallCorrection.StabilizerMaxChecks)
+	if cfg.CallCorrection.StabilizerMaxChecks != 6 {
+		t.Fatalf("expected stabilizer max checks 6 from shipped YAML, got %d", cfg.CallCorrection.StabilizerMaxChecks)
 	}
 	if cfg.CallCorrection.StabilizerTimeoutAction != "release" {
 		t.Fatalf("expected stabilizer timeout action default release, got %q", cfg.CallCorrection.StabilizerTimeoutAction)

@@ -82,6 +82,15 @@ checks, failures and checkpoint status. Tests cover before/after-wall clocks,
 untouched maintenance, upper/lower nanosecond boundaries, capacity, state coupling
 and actual consumers. No production-load or field-accuracy claim follows.
 
+On 2026-10-12, the older slash-family stabilizer fixture reproduced an ordering
+error: it captured its query clock before `NewSpot` assigned observation times.
+It failed 4 of 100 ordinary repetitions and 8 of 100 race repetitions on this
+machine. Pinning both observations to the declared query clock passed 100
+repetitions in each build. The fixture also requires exclusion one nanosecond
+before that clock and inclusion at it, preserving the strict production boundary.
+The shipped tuning and combined-branch checkpoint are recorded in the linked
+execution evidence; earlier isolated checkpoints retain their original scope.
+
 ## References
 
 - Scope: [S2 ledger](../call-correction-followup-scope-ledger-v2.md).

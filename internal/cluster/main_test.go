@@ -756,12 +756,19 @@ func TestShouldDelayTelnetByStabilizerUsesSlashFamilyRecentSupport(t *testing.T)
 	}
 
 	// Record slash-explicit observations through the normal admission path so
-	// family keys are inserted consistently.
-	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0AAA", 7010.0, "CW"), store, nil, cfg)
-	recordRecentBandObservation(spot.NewSpot("W1AW/5", "N0BBB", 7010.0, "CW"), store, nil, cfg)
+	// family keys are inserted consistently. Pin observation times to the query
+	// clock so construction latency cannot make this fixture future evidence.
+	for _, receiver := range []string{"N0AAA", "N0BBB"} {
+		observation := spot.NewSpot("W1AW/5", receiver, 7010.0, "CW")
+		observation.Time = now
+		recordRecentBandObservation(observation, store, nil, cfg)
+	}
 
 	bare := spot.NewSpot("W1AW", "W2TT", 7010.0, "CW")
 	bare.Confidence = "?"
+	if !shouldDelayTelnetByStabilizer(bare, store, cfg, now.Add(-time.Nanosecond)) {
+		t.Fatalf("expected delay before slash-family observations are eligible")
+	}
 	if shouldDelayTelnetByStabilizer(bare, store, cfg, now) {
 		t.Fatalf("did not expect bare call to be delayed when slash family is recent")
 	}

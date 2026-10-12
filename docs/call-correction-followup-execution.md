@@ -397,3 +397,59 @@ exact hash is recorded locally in `S4-scoped/checkpoint.json` and final handoff.
 All four approved slices are implemented and verified sequentially. Evidence
 establishes these local contracts; field accuracy, live-feed behavior, production
 load, Linux parity and broader firewall permission remain outside these checks.
+
+## Shipped tuning and clock-fixture verification (2026-10-12)
+
+This Small follow-up starts from `094057a`. The owner explicitly confirmed that
+the shipped five-second delay and six-check base budget are deliberate. This
+patch changes tests and evidence documentation; production Go and YAML remain
+unchanged. The earlier S1-S4 isolated checkpoints retain their original scope.
+
+- `config/call_correction_stabilizer_test.go` now expects shipped values 5/6.
+- `internal/correctionflow/stabilizer_shipped_config_test.go` loads the complete
+  shipped configuration without overlays and exercises actual reason selection
+  and retry boundaries. Qualified, independently encoded CustomSCP history has
+  a successful six-receiver control before testing the edit-neighbor reason.
+  Base, ambiguity and edit-neighbor reasons exhaust six total checks at a
+  nominal 30s; low-P exhausts three at 15s. Zero reason-specific budgets retain
+  their inheritance meaning. Queueing, scheduling and temporal holds add time;
+  recovery, overflow or shutdown can change the eventual disposition.
+- `internal/cluster/main_test.go` pins both slash-family observations to the
+  declared query clock. It proves exclusion one nanosecond earlier and inclusion
+  at that clock through the existing recording/stabilizer path. No production
+  timestamp bound is relaxed.
+
+Before repair, the shipped-setting test failed ordinarily and under race. The
+slash-family fixture failed 4/100 ordinary repetitions and 8/100 race repetitions
+on this machine; the reviewer's 100/100 result is separate reported evidence.
+After repair, each existing regression passed 100 repetitions in both builds.
+All four shipped-budget cases passed three repetitions in each build. Initial
+new-fixture build/type and geographic-qualification failures remain in ignored
+logs; the final fixture reuses known-cell history rather than relying on global
+grid initialization. Those failures did not require production changes.
+
+Fresh full native Windows runs use the actual working tree, including shipped
+YAML 5/6, rather than an isolated source copy. The ordinary command was
+`pwsh -NoProfile -File scripts/test-windows.ps1 -Timeout 10m`, passing 70 packages
+in 690.9s; adding `-Race` passed 70 in 1085.5s. Each ran 53 test packages and
+build-checked 17 packages without tests. No data-race warning was observed.
+ULS passed in both full runs with its existing internal deadlines;
+the reviewer's earlier broad-run deadline failure remains reported evidence,
+and these passing runs do not establish its cause. No tests were excluded and
+no logging or timeout repair was made.
+
+Remaining final checks all passed: full-module vet 3.5s, Staticcheck 6.4s and
+configured lint 9.5s; connected CustomSCP ordinary 11.1s/race 17.5s; family
+qualification three repetitions ordinary 8.2s/race 13.6s; qualification-tagged
+full-module vet 2.1s/lint 6.2s. Exact commands and results are in
+`extra-checks.json` alongside the two full-run manifests. Logging checks remained
+in the passing full ordinary/race lanes without repair or waiver.
+
+Commands, baseline failures, repeated regressions and full-run results are in
+`.tmp/call-correction-verification-gaps/`. The canonical native Windows binary
+paths and shared runner lock are unchanged. TSR-0089 retains the clock-fixture
+learning; no architecture or model decision changes, so no new ADR is needed.
+Support-agent contract documentation remains applicable without changes.
+Verification is lead-owned; this follow-up performs no new independent
+scientific review and makes no field-accuracy or production-load claim. Labeled,
+held-out outcome evaluation remains the next method-evaluation priority.
