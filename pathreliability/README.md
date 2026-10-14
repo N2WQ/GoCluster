@@ -202,8 +202,12 @@ references; repeated, older, or unavailable samples add no observation.
 
 The offline propagation report requires complete count/weight pairs from one
 emission at the same available reference. It groups them by that reference's
-UTC date/hour and deduplicates equal references, rather than treating log time
-as a new observation. Malformed or incomplete modern samples are omitted.
+UTC date/hour and deduplicates equal references per band, rather than treating
+log time as a new observation. The last complete pair in input encounter order
+replaces that band's prior pair; missing, malformed or unavailable repeats
+preserve earlier valid evidence. Complete known zeros replace prior values.
+Variance follows the same per-band rule and requires `deg=1` exactly when
+`max=0`; contradictory flags are unavailable evidence.
 Historical metadata-free logs retain their emission-time and zero-weight
 assumptions. Observed sampling metadata survives fallback replacement, while
 request/reuse, forecast, and solar clocks retain their existing purposes.

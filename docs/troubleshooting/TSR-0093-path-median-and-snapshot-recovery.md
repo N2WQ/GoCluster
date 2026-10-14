@@ -1,8 +1,8 @@
 # TSR-0093 - Path Median and Snapshot Recovery
 
-Status: Open
+Status: Resolved
 Date Opened: 2026-10-13
-Date Resolved: n/a
+Date Resolved: 2026-10-14
 Owner: Repository owner and Codex
 Technical Area: pathreliability, internal/propreport
 Trigger Source: Chat request
@@ -17,12 +17,16 @@ Tags: exact median, float32, repeated snapshot, malformed variance
   a degeneracy flag inconsistent with the publisher's maximum.
 - What fixed it: owner-approved v3 selects exact integer median comparison and
   per-band last-valid snapshot recovery with consistent degeneracy flags.
-  Slice 1 implements the median; slice 2 reader implementation is pending.
+  Slice 1 implements the median; slice 2 implements the reader recovery.
 - How we know: separate non-steered mathematical review derived full-domain
   bounds and golden vectors. Native baseline regressions reproduced -14/MEDIUM
   with 113 reports and three receivers. Candidate median targeted and full
   ordinary/race/analyzer gates pass, with guided fuzz and matched performance
-  evidence. Reader implementation and validation remain pending.
+  evidence. Native reader baseline regressions reproduce band loss and both
+  contradictory flags; candidate collector and Generate JSON/text cases pass.
+  Both reader full Windows ordinary/race lanes and analyzers pass; guided
+  fuzzing passes 193,886 executions with 76 new coverage inputs. Separate
+  read-only source review and follow-up review find no remaining blocker.
 - Operator/support answer: inspect observed p50 and evidence provenance before
   tuning thresholds. Correct histogram arithmetic does not establish RF/QSO
   calibration or the field prevalence of these defects.
@@ -53,6 +57,12 @@ Tags: exact median, float32, repeated snapshot, malformed variance
    executions and 22 new coverage inputs. Six benchmark pairs and four controlled
    profiles passed their guards. Necessary exact-arithmetic CPU costs above the
    10% review trigger were reviewed and retained before the reader slice.
+6. 2026-10-14 - Reader baseline fixtures reproduced partial-band loss and both
+   contradictory flags. Candidate targeted checks passed all 86 cases; both
+   complete 70-package Windows ordinary/race lanes passed 9,337 cases with the
+   same 77 existing skips. All 19 required checks passed. Vet, Staticcheck,
+   lint and guided reader fuzzing passed. A consumer band-identity oracle
+   refinement was reviewed and tested before the full reporting-package runs.
 
 ## Hypotheses and Tests
 1. Float64 accumulation guarantees exact half-mass comparisons for float32 bins.
@@ -67,7 +77,15 @@ Tags: exact median, float32, repeated snapshot, malformed variance
      284; the fixed accumulator provides 320.
 3. Whole-sample deduplication preserves every prior usable band.
    - Evidence/commands: snapshot_logs.go whole-map replacement at equal AsOf.
-   - Outcome: Rejected by source. Per-band reader regressions remain pending.
+   - Outcome: Rejected by source and native regression fixtures. The candidate
+     preserves the prior count/weight pair and variance while replacing other
+     complete bands, including known zeros.
+4. An ordered nonnegative variance payload is usable even when deg contradicts max.
+   - Evidence/commands: TestSnapshotRepeatedVariancePreservesValidBands and
+     TestGenerateSnapshotRecovery, both contradictory flags with/without prior
+     data and on-disk JSON/text assertions.
+   - Outcome: Rejected. The baseline accepts both contradictions; the candidate
+     retains prior valid variance or leaves availability false when none exists.
 
 ## Root cause or best current explanation
 At the baseline, p50 independently rounded total and prefix sums in float64.
@@ -100,14 +118,21 @@ AsOf, and variance validation did not enforce the publisher's deg/max relation.
   Dense p50 costs 410.75 vs 55.74 ns; warm prediction medians rise about 2-5%.
   A single serial profile workload rises 11.59%, requiring review; exactness is
   retained. Profiles preserve 16,384 buckets/8,192 sidecars and comparable live
-  owner heap. Reader validation is pending; no production p99 claim follows.
+  owner heap. Reader targeted checks pass 86 cases without skips; its complete
+  ordinary/race lanes each pass 9,337 cases across 53 tested and 17 build-only
+  packages, with the same 77 existing skips and all 19 required checks passing.
+  Reader guided fuzz passes 193,886 executions and 76 new coverage inputs.
+  Both slices pass analyzers, docs/support/TSR/maps and fresh diff review.
+  Independent mathematical review and separate source reviews actually occurred.
+  No production p99 or RF/QSO calibration claim follows from this validation.
 - Signals to monitor: observed p50/provenance, receiver/count floors, median
   CPU/allocations, and report variance availability.
 - Rollback triggers: rational-oracle disagreement, race, allocation/size bound
   failure, or unreviewed material runtime cost. No intermediate deployment.
 
 ## References
-- Commit(s): 684d1458cc19a6cd36b38431102fe6756d0105b8 baseline.
+- Commit(s): 684d1458cc19a6cd36b38431102fe6756d0105b8 baseline;
+  cbac42d4db72752fb5be1e56bc3253897aea3d9d exact-median slice.
 - Related ADR(s): ADR-0131, ADR-0139, ADR-0300, ADR-0301.
 - Related docs: [path README](../../pathreliability/README.md),
   [operator guide](../../data/config/PATH_PREDICTIONS.md).

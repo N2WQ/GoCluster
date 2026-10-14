@@ -56,6 +56,11 @@ unavailable data is omitted from quantitative propagation summaries. Modern
 summaries use the recorded UTC sample time and matching count/weight pairs;
 older logs retain their historical log-time assumptions. Repeated or older
 sample times do not add observations to the live one-hour variance window.
+Offline summaries deduplicate repeated references per band. The last complete
+pair in input order replaces that band's values; incomplete or unavailable
+repeats preserve earlier valid values, and complete zeros replace them.
+Variance behaves similarly and rejects a degeneracy flag that disagrees with
+whether its maximum is zero.
 The observed sample can be later than the request when stored evidence already
 has a later accounting reference. This timestamp remains separate from
 forecast age, request reuse, and solar time, including when fallback is used.

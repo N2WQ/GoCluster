@@ -37,6 +37,10 @@ inspect user-visible diagnostics:
   `has_asof=true` is valid. Modern propagation summaries omit unavailable or
   incomplete pairs and group valid pairs by sample time. Known zero bands are
   included. Historical logs retain their legacy log-time/zero assumptions.
+  Offline repeated references replace each band only with a complete pair from
+  one emission, in input order. Incomplete repeats preserve prior valid bands;
+  complete known zeros replace them. Variance follows the same preservation
+  rule and rejects both `max>0 deg=1` and `max=0 deg=0` as contradictory.
   Repeated or older samples do not extend the live variance window. Raw counts
   and newest-observation freshness include validated reports excluded from
   usable mass, so neither is a measurement of RF or QSO accuracy.

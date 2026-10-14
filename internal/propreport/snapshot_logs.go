@@ -1,8 +1,9 @@
 // File role: Validates path snapshot availability and sampling provenance in logs.
 // Crawler notes: Modern count/weight rows pair within one emission, then use
-// their actual common UTC sample time. Legacy logs retain emission-time rules.
-// Related docs: docs/decisions/ADR-0300-path-observation-time-accounting.md.
-// Related tests: snapshot_logs_test.go.
+// their actual common UTC sample time. Repeated references replace only complete
+// bands; legacy logs retain emission-time rules.
+// Related docs: docs/decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md.
+// Related tests: snapshot_logs_test.go, snapshot_recovery_test.go.
 package propreport
 
 import (
@@ -196,7 +197,13 @@ func collectPathSnapshotSamples(entries []string, date time.Time) (map[string]ma
 			if metadata.modern {
 				variance := parseSnapshotVariance(entry)
 				if _, usable := metadata.sampleTime(date); usable && len(variance) > 0 {
-					modernVariance[metadata.asOfUnix] = variance
+					if previous := modernVariance[metadata.asOfUnix]; previous != nil {
+						for band, value := range variance {
+							previous[band] = value
+						}
+					} else {
+						modernVariance[metadata.asOfUnix] = variance
+					}
 				}
 			}
 		}
@@ -215,7 +222,17 @@ func collectPathSnapshotSamples(entries []string, date time.Time) (map[string]ma
 		}
 		if emission.countMetadata.modern || emission.weightMetadata.modern {
 			if sample, usable := modernSnapshotPair(emission, date); usable {
-				modernSamples[emission.countMetadata.asOfUnix] = sample
+				asOf := emission.countMetadata.asOfUnix
+				if previous, present := modernSamples[asOf]; present {
+					// Merge complete pairs only. Independent count/weight merging
+					// would fabricate evidence from different emission prefixes.
+					for band, count := range sample.counts {
+						previous.counts[band] = count
+						previous.weights[band] = sample.weights[band]
+					}
+				} else {
+					modernSamples[asOf] = sample
+				}
 			}
 			continue
 		}
@@ -321,7 +338,10 @@ func parseSnapshotVariance(line string) map[string]ge10Variance {
 	result := make(map[string]ge10Variance)
 	fields := parseSnapshotBandFields(line, "Path ge10 variance (5m):", []string{"min", "med", "p75", "max", "deg"})
 	for band, values := range fields {
-		if values[0] <= values[1] && values[1] <= values[2] && values[2] <= values[3] && values[4] <= 1 {
+		// The publisher defines degeneracy exactly as max == 0. Contradictory
+		// flags are unavailable evidence, rather than measurements of zero.
+		if values[0] <= values[1] && values[1] <= values[2] && values[2] <= values[3] &&
+			values[4] <= 1 && (values[4] == 1) == (values[3] == 0) {
 			result[band] = ge10Variance{Min: values[0], Med: values[1], P75: values[2], Max: values[3], Deg: values[4] == 1}
 		}
 	}

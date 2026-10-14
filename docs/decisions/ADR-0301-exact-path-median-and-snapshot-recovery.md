@@ -73,11 +73,20 @@ over 10% requires review before progression. No intermediate deployment.
   serial workload capture rises 11.59%. These costs exceed the review threshold
   and are retained for bounded exact arithmetic. Controlled serial/parallel
   profiles preserve owner heap and show no new allocator or lock owner. They
-  do not establish production p99. Slice 2 is not yet implemented.
+  do not establish production p99.
+- Slice 2 implements per-band complete-pair and variance recovery. Native
+  baseline regressions reproduce band loss and both contradictory flags;
+  all 86 targeted collector, Generate JSON/text and seed cases pass. Both
+  complete 70-package Windows ordinary/race lanes pass 9,337 cases with the
+  same 77 existing skips and all 19 required checks passing. Vet, Staticcheck
+  and lint pass. Guided reader fuzzing passes 193,886 executions with 76 new
+  coverage inputs. Separate source review and follow-up review find no blocker.
+  The median implementation and measured fixtures remain unchanged from slice 1.
 
 ## Links
 - Related tests: snr_histogram_exact_test.go, snr_histogram_mass_test.go,
-  snr_histogram_exact_bench_test.go, internal/propreport/snapshot_logs_test.go.
+  snr_histogram_exact_bench_test.go, internal/propreport/snapshot_logs_test.go,
+  internal/propreport/snapshot_recovery_test.go.
 - Related docs: [path README](../../pathreliability/README.md),
   [operator guide](../../data/config/PATH_PREDICTIONS.md),
   [support card](../../customgpt/support-cards/path-reliability.md).
