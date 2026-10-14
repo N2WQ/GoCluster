@@ -44,6 +44,11 @@ inspect user-visible diagnostics:
   placeholders must not be interpreted as measured zero or degenerate evidence.
 - A blank path glyph can mean insufficient, low-count, low-weight, stale, or
   capped evidence, not necessarily a bad path.
+- The observed p50 uses exact comparison of the stored float32 bin masses.
+  A tiny positive retained bin can distinguish a median crossing from a true
+  50/50 tie. Only a true tie averages occupied representatives. Earlier decay,
+  shift and merge rounding remain approximate. See ADR-0301 and TSR-0093 for
+  the precision repair and its actual validation status.
 - `SET DIAG PATH` `w<weight>` is scalar evidence mass after decay and
   path selection. Fine/coarse blends use the larger overlapping layer for
   scalar weight rather than adding fine and coarse together; `a<age>` can

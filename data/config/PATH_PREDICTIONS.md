@@ -178,6 +178,12 @@ missing/unavailable cache cold-starts normal delay/queue behavior.
    use the average of both representatives so balanced weak/strong evidence
    reflects the typical middle.
 
+The median comparison is exact for the stored float32 SNR histogram. A positive
+retained bin can decide which bin contains the median even when its mass is tiny
+beside neighboring bins. Midpoint interpolation applies only to an exact 50/50
+split between occupied bins. Earlier decay, shift and merge rounding remain
+approximations; exact histogram accounting does not calibrate QSO success.
+
 ### How Path Tags Are Chosen
 
 The displayed tag follows a simple precedence order:

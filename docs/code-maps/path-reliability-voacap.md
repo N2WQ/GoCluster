@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `fffb6c766d63e1d5`
+- Source fingerprint: `c76844c4e8e7b127`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 22 | 28 |
+| `dxcluster/pathreliability` | `pathreliability` | 23 | 31 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -93,6 +93,7 @@ Source files:
 - `pathreliability/predictor.go`
 - `pathreliability/receiver.go`
 - `pathreliability/snr_histogram.go`
+- `pathreliability/snr_histogram_mass.go`
 - `pathreliability/store.go`
 - `pathreliability/store_reporting.go`
 - `pathreliability/voacap_fallback.go`
@@ -117,6 +118,9 @@ Test files:
 - `pathreliability/observation_times_test.go`
 - `pathreliability/receiver_test.go`
 - `pathreliability/sampling_probe_test.go`
+- `pathreliability/snr_histogram_exact_bench_test.go`
+- `pathreliability/snr_histogram_exact_test.go`
+- `pathreliability/snr_histogram_mass_test.go`
 - `pathreliability/snr_histogram_precision_test.go`
 - `pathreliability/snr_histogram_test.go`
 - `pathreliability/stale_test.go`
@@ -155,6 +159,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0301](docs/decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md) | Accepted | 2026-10-13 | p50 precision, per-band modern log recovery | `path:pathreliability` |
 | [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:pathreliability` |
 | [ADR-0201](docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md) | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | `area:pathreliability, path:pathreliability` |
 | [ADR-0200](docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md) | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |

@@ -84,7 +84,11 @@ func BenchmarkAccountingPopulatedPrediction(b *testing.B) {
 				}
 			}
 			b.StopTimer()
-			if !result.HasP50 || result.ReceiverCount == 0 {
+			wantRaw := uint32(24)
+			if beacon {
+				wantRaw = 12
+			}
+			if !result.HasP50 || result.P50DB != -4.5 || result.ReceiverCount == 0 || result.RawCount != wantRaw || result.Source != SourceCombined || !result.ObservedDistributionAvailable || !result.HasObservedSamplingTime || result.ObservedSamplingUnix != now.Unix() {
 				b.Fatalf("unavailable populated prediction: %+v", result)
 			}
 		})

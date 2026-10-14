@@ -214,24 +214,32 @@ func (h *snrHistogram) shifted(deltaDB float64) (snrHistogram, bool) {
 }
 
 func (h *snrHistogram) p50DB() (float64, bool) {
-	var total float64
+	var total snrHistogramMass
+	hasMass := false
 	for _, weight := range h {
 		if !finiteHistogramBin(weight) {
 			return 0, false
 		}
-		total += float64(weight)
+		if weight > 0 {
+			total.add(weight)
+			hasMass = true
+		}
 	}
-	if total <= 0 {
+	if !hasMass {
 		return 0, false
 	}
-	target := total / 2
-	var cumulative float64
-	for i := range h {
-		weight := h[i]
-		cumulative += float64(weight)
-		if cumulative >= target {
+	// Validate every bin before selecting. Exact integer comparison prevents
+	// tiny retained bins from manufacturing a tie or hiding a genuine one.
+	var cumulative snrHistogramMass
+	for i, weight := range h {
+		if weight == 0 {
+			continue
+		}
+		cumulative.add(weight)
+		comparison := cumulative.compareDouble(&total)
+		if comparison >= 0 {
 			selected := snrHistogramBinRepresentativeDB(i)
-			if cumulative == target {
+			if comparison == 0 {
 				if next, ok := h.nextNonEmptyRepresentativeDB(i + 1); ok {
 					return (selected + next) / 2, true
 				}

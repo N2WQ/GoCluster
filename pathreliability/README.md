@@ -178,8 +178,11 @@ observed median is unavailable; diagnostics remain available.
 
 Directional bins retain their float32 materialization boundaries. Production
 computes the final median once, before output count/weight/receiver floors,
-using float64 totals and cumulative mass. Test-only distribution probes also
-calculate individual quantiles. Bin rounding remains an approximation.
+using exact integer totals and cumulative mass for the stored float32 bins.
+Five stack-local 64-bit words cover the full binary32 range. Selection compares
+twice the cumulative mass with the total; only true equality interpolates between
+occupied representatives. Test-only distribution probes also calculate individual
+quantiles. Earlier decay, shift and merge rounding remain approximations.
 
 Storewide reports discover their common reference during a provisional scan.
 They publish it only if all references fit; otherwise they retry once at the

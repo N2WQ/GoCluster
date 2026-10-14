@@ -77,5 +77,8 @@ retention remain unchanged.
 - Related docs: `README.md`, `pathreliability/README.md`,
   `data/config/PATH_PREDICTIONS.md`, `customgpt/troubleshooting-index.md`
 - Related TSRs:
+- Precision follow-up: [ADR-0301](ADR-0301-exact-path-median-and-snapshot-recovery.md)
+  establishes exact comparison of the stored float32 masses without changing
+  this representative or midpoint convention.
 - Supersedes / superseded by: Supersedes the lower-edge p50 representative and
   exact-boundary behavior in ADR-0126.

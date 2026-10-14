@@ -169,3 +169,6 @@ the unchanged production/profile binaries.
 - Related TSR: [TSR-0092](../troubleshooting/TSR-0092-path-timestamp-accounting.md).
 - Refines time accounting in ADR-0065/0130; retains ADR-0134/0139/0170 policies.
 - Supersedes / superseded by: none.
+- Precision/reader follow-up: [ADR-0301](ADR-0301-exact-path-median-and-snapshot-recovery.md)
+  refines median accumulation and malformed repeated modern snapshot recovery;
+  the accounting and sampling contracts above remain applicable.
