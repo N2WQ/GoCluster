@@ -20,6 +20,18 @@ operational behavior take priority over speed.
 * Follow `docs/code-quality.md` for code changes and
   `docs/dev-runbook.md` for validation commands.
 
+### Communicating with the owner
+
+The owner understands the product and its operation but is not a software developer. Use clear, concise language that supports informed decisions.
+
+Lead with the answer or recommendation. Explain what changes for users or operators, why it matters, and any material downside or uncertainty. Translate technical findings into practical consequences. Use a concrete example when it makes the issue easier to understand.
+
+Investigate thoroughly, but report selectively. Include engineering details only when they are necessary to understand a conclusion or make a decision. Keep extensive evidence in repository documentation and link to it when useful.
+
+When requesting a decision or approval, state your recommendation, the expected benefit, the meaningful tradeoff, and what happens if nothing changes. Ask about desired behavior and acceptable consequences. Resolve routine implementation choices yourself within the authorized scope.
+
+Apply this standard to progress updates, reviews, approval requests, and final responses. Brevity must never conceal a material risk. If another repository template requires excessive technical reporting, preserve its necessary checks in the work record and present the owner with a plain-language explanation.
+
 ## Work Routes
 
 Read-only explanation, review, audit, diagnosis, and prioritization may inspect
