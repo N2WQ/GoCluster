@@ -49,6 +49,9 @@ func TestExactP50MassEncodingAndCarries(t *testing.T) {
 		weights = append(weights, float32(math.Ldexp((1<<24)-1, 24*i-149)))
 	}
 	checkExactMassSequence(t, weights)
+	// Fill all consecutive quantum bits before the final unit, forcing carry
+	// through several complete words rather than only the current chunk.
+	checkExactMassSequence(t, append(append([]float32(nil), weights[1:]...), weights[0]))
 	maximum := make([]float32, 50)
 	for i := range maximum {
 		maximum[i] = math.MaxFloat32

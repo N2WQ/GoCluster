@@ -184,6 +184,17 @@ twice the cumulative mass with the total; only true equality interpolates betwee
 occupied representatives. Test-only distribution probes also calculate individual
 quantiles. Earlier decay, shift and merge rounding remain approximations.
 
+`BenchmarkMedianSpeedPrimary`, `BenchmarkMedianSpeedFallbackMix` and
+`BenchmarkMedianSpeedRuntime` exercise normal/beacon predictions and all
+receiver modes with ingestion-backed synthetic fixtures. Preflights check final
+materialized bins, rational-oracle outputs, allocations and retained owners.
+Their input frequencies do not represent measured production traffic.
+Primary/mix runs require a fixed iteration count divisible by their 12/30-call
+cycles; use `-test.benchtime=600000x` and `-test.cpu=4` with a saved native test
+binary. Default time-based calibration does not preserve those call fractions.
+[TSR-0094](../docs/troubleshooting/TSR-0094-path-median-speed-retention.md)
+records the rejected v6 optimization and its comparison method.
+
 Storewide reports discover their common reference during a provisional scan.
 They publish it only if all references fit; otherwise they retry once at the
 latest encountered reference. Continued advancement makes the attempt

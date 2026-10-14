@@ -4,7 +4,8 @@
 
 Use when a telnet user or node operator asks about blank or weak path glyphs,
 path thresholds, `SET PATHSAMPLES`, `SET DIAG PATH`, receiver diversity, H3
-tables, grid handling, noise penalties, or the `SHOW PROP` propagation outlook.
+tables, grid handling, noise penalties, path CPU/latency, or the `SHOW PROP`
+propagation outlook.
 
 ## First Safe Check
 
@@ -53,6 +54,11 @@ inspect user-visible diagnostics:
   50/50 tie. Only a true tie averages occupied representatives. Earlier decay,
   shift and merge rounding remain approximate. See ADR-0301 and TSR-0093 for
   the precision repair and its actual validation status.
+- For higher path CPU, compare matched build/traffic profiles before assigning
+  the increase to p50. The v6 speed experiment passed exactness and allocation
+  checks but exceeded sparse/fallback regression limits, so the production
+  median was restored. Its dense speedup and synthetic profile shares do not
+  establish production savings. See TSR-0094 for the measured limits.
 - `SET DIAG PATH` `w<weight>` is scalar evidence mass after decay and
   path selection. Fine/coarse blends use the larger overlapping layer for
   scalar weight rather than adding fine and coarse together; `a<age>` can
