@@ -207,7 +207,7 @@ func TestHistoryFilterSnapshotSeesCurrentPropagationObservations(t *testing.T) {
 	if snapshot.matches(s, sp) {
 		t.Fatal("HIGH-only filter must reject missing observations")
 	}
-	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, now, false)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 	if !snapshot.matches(s, sp) {
 		t.Fatalf("same snapshot must use newly available HIGH observations, class=%s", s.pathClassForClient(snapshot.client, sp))
 	}

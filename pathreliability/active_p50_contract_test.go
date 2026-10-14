@@ -65,10 +65,10 @@ func TestPredictActiveP50ReceiverModeContract(t *testing.T) {
 			weakOne := ReceiverIdentityHash("WEAK1")
 			weakTwo := ReceiverIdentityHash("WEAK2")
 			for i := 0; i < 3; i++ {
-				predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 30, 1, now, false, strongReceiver)
+				predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, strongReceiver)
 			}
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -30, 1, now, false, weakOne)
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -30, 1, now, false, weakTwo)
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, weakOne)
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, weakTwo)
 
 			res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 			if res.Source != SourceCombined {

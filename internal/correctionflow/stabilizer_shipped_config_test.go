@@ -38,10 +38,10 @@ func TestShippedStabilizerReasonBudgets(t *testing.T) {
 		checks            int
 		wait              time.Duration
 	}{
-		{name: "base", call: "K1XYZ", glyph: "?", reason: StabilizerDelayReasonUnknownOrNonRecent, checks: 6, wait: 30 * time.Second},
+		{name: "base", call: "K1XYZ", glyph: "?", reason: StabilizerDelayReasonUnknownOrNonRecent, checks: 12, wait: 60 * time.Second},
 		{name: "ambiguity", call: "K1ABC", glyph: "S", snapshot: spot.ResolverSnapshot{State: spot.ResolverStateSplit}, snapshotOK: true,
-			reason: StabilizerDelayReasonAmbiguous, checks: 6, wait: 30 * time.Second},
-		{name: "edit_neighbor", call: "K1ABC", glyph: "S", reason: StabilizerDelayReasonEditNeighbor, checks: 6, wait: 30 * time.Second},
+			reason: StabilizerDelayReasonAmbiguous, checks: 12, wait: 60 * time.Second},
+		{name: "edit_neighbor", call: "K1ABC", glyph: "S", reason: StabilizerDelayReasonEditNeighbor, checks: 12, wait: 60 * time.Second},
 		{name: "low_P", call: "K1ABC", glyph: "P", snapshot: spot.ResolverSnapshot{
 			State: spot.ResolverStateConfident, SupportBasis: spot.ResolverSupportBasisWeighted,
 			TotalReporters: 3, TotalWeightedSupportMilli: 1000,

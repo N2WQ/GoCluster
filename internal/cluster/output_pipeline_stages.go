@@ -4,7 +4,7 @@
 // resolver-mutated, aged out, path-tagged, confidence-stamped, or prepared for
 // fan-out after it leaves primary dedupe.
 // Related docs: README.md, spot/README.md, pathreliability/README.md.
-// Related tests: internal/cluster/*output_pipeline*_test.go.
+// Related tests: internal/cluster/*output_pipeline*_test.go, internal/cluster/path_timestamp_ingest_test.go.
 package cluster
 
 import (
@@ -411,16 +411,15 @@ func (p *outputPipeline) prepareFanoutSpot(ctx *outputSpotContext) bool {
 					band = strings.TrimSpace(spot.NormalizeBand(spot.FreqToBand(s.Frequency)))
 				}
 				if band != "" && band != "???" && allowedBand(p.allowedBands, band) {
-					spotTime := s.Time.UTC()
-					if spotTime.IsZero() {
-						spotTime = time.Now().UTC()
-					}
 					bucket := pathreliability.BucketForIngest(mode)
 					if bucket != pathreliability.BucketNone {
-						if p.pathReport != nil {
-							p.pathReport.ObserveWithCells(s, spotTime, cells.deCoarse, cells.dxCoarse)
+						// Arrival validates source observation only for path learning;
+						// rejection must not drop fanout or rewrite the source timestamp.
+						arrival := time.Now().UTC()
+						admission := p.pathPredictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, pathreliability.ObservationTimes{ObservedAt: s.Time, ArrivedAt: arrival}, s.IsBeacon, pathReceiverHash(s))
+						if admission.Accepted() && p.pathReport != nil {
+							p.pathReport.ObserveWithCells(s, admission.EffectiveObservation, cells.deCoarse, cells.dxCoarse)
 						}
-						p.pathPredictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon, pathReceiverHash(s))
 					}
 				}
 			}

@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0300 | Path Observation-Time Accounting | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | Refines ADR-0065/0130; retains ADR-0134/0139/0170 | none | `docs/decisions/ADR-0300-path-observation-time-accounting.md` |
 | ADR-0299 | Test Ownership and Current-Source Qualification | Accepted | 2026-10-12 | test ownership, CI lanes, required execution, qualification environment | Extends ADR-0227/0228/0265; Go 1.26.4 qualification identity only | none | `docs/decisions/ADR-0299-test-ownership-and-current-source-qualification.md` |
 | ADR-0298 | Consistent Resolver Support Basis | Accepted | 2026-10-12 | weighted percentage basis, zero decoder support, neighborhood classification | Zero and basis clauses of ADR-0027/0293 | none | `docs/decisions/ADR-0298-consistent-resolver-support-basis.md` |
 | ADR-0297 | Core Accepted Observation Learning | Accepted | 2026-10-11 | call/FT history, WhoSpotsMe, acceptance, shutdown | Learned-history admission interpretations of ADR-0148/0295 only | none | `docs/decisions/ADR-0297-core-accepted-observation-learning.md` |

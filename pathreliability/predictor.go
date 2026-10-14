@@ -6,10 +6,7 @@
 // Related tests: pathreliability/*_test.go, telnet/*path*_test.go.
 package pathreliability
 
-import (
-	"math"
-	"time"
-)
+import "time"
 
 // Predictor coordinates store access and presentation mapping.
 type Predictor struct {
@@ -35,28 +32,29 @@ func (p *Predictor) Config() Config {
 }
 
 // Update ingests a spot contribution (FT8-equiv) with optional beacon weight cap.
-func (p *Predictor) Update(bucket BucketClass, receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8dB float64, weight float64, now time.Time, isBeacon bool) {
-	p.UpdateWithReceiverHash(bucket, receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8dB, weight, now, isBeacon, 0)
+func (p *Predictor) Update(bucket BucketClass, receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8dB float64, weight float64, times ObservationTimes, isBeacon bool) ReportAdmission {
+	if p == nil {
+		return ReportAdmission{}
+	}
+	return p.combined.updateReport(receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8dB, weight, &times, 0, isBeacon, bucket)
 }
 
 // UpdateWithReceiverHash ingests a spot contribution and attributes capped
 // trust to the normalized receiving station identity hash.
-func (p *Predictor) UpdateWithReceiverHash(bucket BucketClass, receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8dB float64, weight float64, now time.Time, isBeacon bool, receiverHash uint64) {
-	if p == nil || !p.cfg.Enabled {
-		return
+func (p *Predictor) UpdateWithReceiverHash(bucket BucketClass, receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8dB float64, weight float64, times ObservationTimes, isBeacon bool, receiverHash uint64) ReportAdmission {
+	if p == nil {
+		return ReportAdmission{}
 	}
-	w := weight
-	if isBeacon && p.cfg.BeaconWeightCap > 0 && w > p.cfg.BeaconWeightCap {
-		w = p.cfg.BeaconWeightCap
+	return p.combined.updateReport(receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8dB, weight, &times, receiverHash, isBeacon, bucket)
+}
+
+// AdmissionStats reports input outcomes once per report, before fine/coarse
+// fanout. Counters are bounded in cardinality and never retain report identities.
+func (p *Predictor) AdmissionStats() AdmissionStats {
+	if p == nil || p.combined == nil {
+		return AdmissionStats{}
 	}
-	switch bucket {
-	case BucketCombined:
-		if p.combined != nil {
-			p.combined.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8dB, w, now, receiverHash)
-		}
-	default:
-		return
-	}
+	return p.combined.admissions.snapshot()
 }
 
 // PredictionSource describes which bucket family produced the glyph.
@@ -105,45 +103,49 @@ func (r InsufficientReason) String() string {
 
 // Result carries merged glyph and diagnostics.
 type Result struct {
-	Glyph                      string
-	Class                      string
-	P50DB                      float64
-	HasP50                     bool
-	P50Glyph                   string
-	Weight                     float64
-	AgeSec                     int64
-	Count                      uint32
-	ObservationCount           uint32
-	RawCount                   uint32
-	RawWeight                  float64
-	CappedCount                uint32
-	CappedWeight               float64
-	ReceiverCount              uint32
-	ReceiverRequired           uint32
-	CapLimited                 bool
-	CapWouldBlock              bool
-	Source                     PredictionSource
-	BeaconRX                   bool
-	InsufficientReason         InsufficientReason
-	VOACAPFT8SNRDB             int
-	VOACAPSSN                  int
-	VOACAPAgeSec               int64
-	VOACAPHourUTC              int
-	VOACAPFrequencyMHz         float64
-	VOACAPReqSNRReliability    float64
-	VOACAPHasReqSNRReliability bool
-	Native160Checked           bool
-	Native160Emitted           bool
-	Native160DisplayDisabled   bool
-	Native160Unknown           bool
-	Native160UserDaylight      bool
-	Native160DXDaylight        bool
-	Native160UserTwilight      bool
-	Native160DXTwilight        bool
-	Native160DaylightFraction  float64
-	Native160CivilDarkFraction float64
-	Native160CivilTwilightDeg  float64
-	Native160ClosedMaxDarkFrac float64
+	Glyph    string
+	Class    string
+	P50DB    float64
+	HasP50   bool
+	P50Glyph string
+	// Observed provenance is independent of fallback forecasts and display time.
+	ObservedSamplingUnix          int64
+	HasObservedSamplingTime       bool
+	ObservedDistributionAvailable bool
+	Weight                        float64
+	AgeSec                        int64
+	Count                         uint32
+	ObservationCount              uint32
+	RawCount                      uint32
+	RawWeight                     float64
+	CappedCount                   uint32
+	CappedWeight                  float64
+	ReceiverCount                 uint32
+	ReceiverRequired              uint32
+	CapLimited                    bool
+	CapWouldBlock                 bool
+	Source                        PredictionSource
+	BeaconRX                      bool
+	InsufficientReason            InsufficientReason
+	VOACAPFT8SNRDB                int
+	VOACAPSSN                     int
+	VOACAPAgeSec                  int64
+	VOACAPHourUTC                 int
+	VOACAPFrequencyMHz            float64
+	VOACAPReqSNRReliability       float64
+	VOACAPHasReqSNRReliability    bool
+	Native160Checked              bool
+	Native160Emitted              bool
+	Native160DisplayDisabled      bool
+	Native160Unknown              bool
+	Native160UserDaylight         bool
+	Native160DXDaylight           bool
+	Native160UserTwilight         bool
+	Native160DXTwilight           bool
+	Native160DaylightFraction     float64
+	Native160CivilDarkFraction    float64
+	Native160CivilTwilightDeg     float64
+	Native160ClosedMaxDarkFrac    float64
 }
 
 // Predict returns a single merged glyph for the path.
@@ -199,25 +201,28 @@ func (p *Predictor) predictWithSelectedEvidence(userCell, dxCell CellID, userCoa
 			glyph = glyphForClass(class, p.cfg)
 		}
 		return Result{
-			Glyph:            glyph,
-			Class:            class,
-			P50DB:            p50DB,
-			HasP50:           hasP50,
-			P50Glyph:         glyph,
-			Weight:           sample.Weight,
-			AgeSec:           sample.AgeSec,
-			Count:            sample.Count,
-			ObservationCount: sampleObservationCount(sample),
-			RawCount:         sample.RawCount,
-			RawWeight:        sample.RawWeight,
-			CappedCount:      sample.CappedCount,
-			CappedWeight:     sample.CappedWeight,
-			ReceiverCount:    sample.CappedReceiverCount,
-			ReceiverRequired: p.requiredReceiverCount(sample, receiverMinObservationCount),
-			CapLimited:       sample.CapLimited,
-			CapWouldBlock:    capWouldBlock,
-			Source:           source,
-			BeaconRX:         beaconRX,
+			Glyph:                         glyph,
+			Class:                         class,
+			P50DB:                         p50DB,
+			HasP50:                        hasP50,
+			P50Glyph:                      glyph,
+			ObservedSamplingUnix:          sample.SamplingUnix,
+			HasObservedSamplingTime:       sample.HasSamplingTime,
+			ObservedDistributionAvailable: hasP50,
+			Weight:                        sample.Weight,
+			AgeSec:                        sample.AgeSec,
+			Count:                         sample.Count,
+			ObservationCount:              sampleObservationCount(sample),
+			RawCount:                      sample.RawCount,
+			RawWeight:                     sample.RawWeight,
+			CappedCount:                   sample.CappedCount,
+			CappedWeight:                  sample.CappedWeight,
+			ReceiverCount:                 sample.CappedReceiverCount,
+			ReceiverRequired:              p.requiredReceiverCount(sample, receiverMinObservationCount),
+			CapLimited:                    sample.CapLimited,
+			CapWouldBlock:                 capWouldBlock,
+			Source:                        source,
+			BeaconRX:                      beaconRX,
 		}
 	}
 	makeInsufficient := func(sample Sample, p50DB float64, hasP50 bool, reason InsufficientReason, capWouldBlock bool) Result {
@@ -226,26 +231,29 @@ func (p *Predictor) predictWithSelectedEvidence(userCell, dxCell CellID, userCoa
 			p50Glyph = GlyphForDB(p50DB, modeKey, p.cfg)
 		}
 		return Result{
-			Glyph:              insufficient,
-			Class:              "",
-			P50DB:              p50DB,
-			HasP50:             hasP50,
-			P50Glyph:           p50Glyph,
-			Weight:             sample.Weight,
-			AgeSec:             sample.AgeSec,
-			Count:              sample.Count,
-			ObservationCount:   sampleObservationCount(sample),
-			RawCount:           sample.RawCount,
-			RawWeight:          sample.RawWeight,
-			CappedCount:        sample.CappedCount,
-			CappedWeight:       sample.CappedWeight,
-			ReceiverCount:      sample.CappedReceiverCount,
-			ReceiverRequired:   p.requiredReceiverCount(sample, receiverMinObservationCount),
-			CapLimited:         sample.CapLimited,
-			CapWouldBlock:      capWouldBlock,
-			Source:             SourceInsufficient,
-			BeaconRX:           beaconRX,
-			InsufficientReason: reason,
+			Glyph:                         insufficient,
+			Class:                         "",
+			P50DB:                         p50DB,
+			HasP50:                        hasP50,
+			P50Glyph:                      p50Glyph,
+			ObservedSamplingUnix:          sample.SamplingUnix,
+			HasObservedSamplingTime:       sample.HasSamplingTime,
+			ObservedDistributionAvailable: hasP50,
+			Weight:                        sample.Weight,
+			AgeSec:                        sample.AgeSec,
+			Count:                         sample.Count,
+			ObservationCount:              sampleObservationCount(sample),
+			RawCount:                      sample.RawCount,
+			RawWeight:                     sample.RawWeight,
+			CappedCount:                   sample.CappedCount,
+			CappedWeight:                  sample.CappedWeight,
+			ReceiverCount:                 sample.CappedReceiverCount,
+			ReceiverRequired:              p.requiredReceiverCount(sample, receiverMinObservationCount),
+			CapLimited:                    sample.CapLimited,
+			CapWouldBlock:                 capWouldBlock,
+			Source:                        SourceInsufficient,
+			BeaconRX:                      beaconRX,
+			InsufficientReason:            reason,
 		}
 	}
 
@@ -324,13 +332,13 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 	hasReceive := sampleHasEvidence(receive)
 	hasTransmit := sampleHasEvidence(transmit)
 	if !hasReceive && !hasTransmit {
-		return Sample{}, false
+		return sampleWithSamplingTime(Sample{}, receive, transmit), false
 	}
 	receiveActive := receive.Weight > 0
 	transmitActive := transmit.Weight > 0
 	if receiveActive && transmitActive {
 		mergedWeight := cfg.MergeReceiveWeight*receive.Weight + cfg.MergeTransmitWeight*transmit.Weight
-		return Sample{
+		return sampleWithSamplingTime(Sample{
 			Weight:                 mergedWeight,
 			AgeSec:                 weightedSampleAge(receive, transmit),
 			Count:                  saturatingAddCounts(receive.Count, transmit.Count),
@@ -342,7 +350,7 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 			CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
 			CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
 			CapLimited:             receive.CapLimited || transmit.CapLimited,
-		}, true
+		}, receive, transmit), true
 	}
 	if receiveActive {
 		return singleDirectionMerge(receive, transmit, cfg), true
@@ -350,7 +358,7 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 	if transmitActive {
 		return singleDirectionMerge(transmit, receive, cfg), true
 	}
-	return Sample{
+	return sampleWithSamplingTime(Sample{
 		AgeSec:                 maxSampleAge(receive, transmit),
 		Count:                  saturatingAddCounts(receive.Count, transmit.Count),
 		ObservationCount:       saturatingAddCounts(sampleObservationCount(receive), sampleObservationCount(transmit)),
@@ -361,40 +369,53 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 		CappedReceiverCount:    saturatingAddCounts(receive.CappedReceiverCount, transmit.CappedReceiverCount),
 		CappedReceiverCapacity: saturatingAddCounts(receive.CappedReceiverCapacity, transmit.CappedReceiverCapacity),
 		CapLimited:             receive.CapLimited || transmit.CapLimited,
-	}, true
+	}, receive, transmit), true
 }
 
 func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBins, cfg Config, noisePenalty float64) (sampleWithBins, bool) {
 	merged, ok := mergeSamples(receive.Sample, transmit.Sample, cfg)
 	if !ok {
-		return sampleWithBins{}, false
+		if receive.distributionUnavailable || transmit.distributionUnavailable {
+			return observedSampleDistribution(merged, snrHistogram{}, true), true
+		}
+		return sampleWithBins{Sample: merged}, false
+	}
+	if receive.distributionUnavailable || transmit.distributionUnavailable {
+		return observedSampleDistribution(merged, snrHistogram{}, true), true
 	}
 	receiveActive := receive.Weight > 0
 	transmitActive := transmit.Weight > 0
 	var bins snrHistogram
+	unavailable := false
 	if receiveActive && transmitActive {
 		receiveBins := receive.snrBins
+		unavailable = receive.distributionUnavailable || transmit.distributionUnavailable
 		if noisePenalty > 0 {
-			receiveBins = receiveBins.shifted(-noisePenalty)
+			var shifted bool
+			receiveBins, shifted = receiveBins.shifted(-noisePenalty)
+			unavailable = unavailable || !shifted
 		}
-		bins.addScaled(receiveBins, cfg.MergeReceiveWeight)
-		bins.addScaled(transmit.snrBins, cfg.MergeTransmitWeight)
+		if !unavailable {
+			unavailable = !bins.addScaled(&receiveBins, cfg.MergeReceiveWeight) || !bins.addScaled(&transmit.snrBins, cfg.MergeTransmitWeight)
+		}
 	} else if receiveActive {
 		receiveBins := receive.snrBins
+		unavailable = receive.distributionUnavailable
 		if noisePenalty > 0 {
-			receiveBins = receiveBins.shifted(-noisePenalty)
+			var shifted bool
+			receiveBins, shifted = receiveBins.shifted(-noisePenalty)
+			unavailable = unavailable || !shifted
 		}
-		bins.addScaled(receiveBins, cfg.ReverseHintDiscount)
+		if !unavailable {
+			unavailable = !bins.addScaled(&receiveBins, cfg.ReverseHintDiscount)
+		}
 	} else if transmitActive {
-		bins.addScaled(transmit.snrBins, cfg.ReverseHintDiscount)
+		unavailable = transmit.distributionUnavailable
+		if !unavailable {
+			unavailable = !bins.addScaled(&transmit.snrBins, cfg.ReverseHintDiscount)
+		}
 	}
-	p50DB, hasP50 := bins.p50DB()
-	return sampleWithBins{
-		Sample:  merged,
-		P50DB:   p50DB,
-		HasP50:  hasP50,
-		snrBins: bins,
-	}, true
+	return observedSampleDistribution(merged, bins, unavailable), true
 }
 
 func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
@@ -407,18 +428,24 @@ func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
 	active.RawCount = saturatingAddCounts(sampleRawCount(active), sampleRawCount(other))
 	active.CappedCount = saturatingAddCounts(sampleCappedCount(active), sampleCappedCount(other))
 	active.CapLimited = active.CapLimited || other.CapLimited
-	return active
+	return sampleWithSamplingTime(active, active, other)
 }
 
 func maxSampleAge(left Sample, right Sample) int64 {
 	if left.AgeSec >= right.AgeSec {
+		if left.AgeSec < 0 {
+			return 0
+		}
 		return left.AgeSec
+	}
+	if right.AgeSec < 0 {
+		return 0
 	}
 	return right.AgeSec
 }
 
 func sampleHasEvidence(sample Sample) bool {
-	return sample.Weight > 0 || sample.RawWeight > 0 || sample.RawCount > 0 || sample.ObservationCount > 0 || sample.CappedWeight > 0 || sample.CappedCount > 0
+	return sample.Weight != 0 || sample.RawWeight != 0 || sample.RawCount > 0 || sample.ObservationCount > 0 || sample.CappedWeight != 0 || sample.CappedCount > 0 || sample.Count > 0
 }
 
 func sampleObservationCount(sample Sample) uint32 {
@@ -463,20 +490,20 @@ func (p *Predictor) mergeFromStoreWithDistribution(store *Store, userCell, dxCel
 	if store == nil {
 		return sampleWithBins{}, InsufficientNoSample, false
 	}
-	rFine, rCoarse := store.lookupWithDistribution(userCell, dxCell, userCoarse, dxCoarse, band, now)
-	receive := selectSampleWithDistribution(rFine, rCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
-
-	tFine, tCoarse := store.lookupWithDistribution(dxCell, userCell, dxCoarse, userCoarse, band, now)
-	transmit := selectSampleWithDistribution(tFine, tCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
+	// Capture all four candidates once so both directions are aged and selected
+	// at the Store's common reference, including clocks ahead of the query.
+	candidates := store.lookupCandidates(userCell, dxCell, userCoarse, dxCoarse, band, now, true)
+	receive := selectSampleBins(candidates[0], candidates[1], p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
+	transmit := selectSampleBins(candidates[2], candidates[3], p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
 
 	receiveSample, transmitSample, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive.Sample, transmit.Sample)
 	if !sampleHasEvidence(receiveSample) {
-		receive = sampleWithBins{}
+		receive = sampleWithBins{Sample: receiveSample}
 	} else {
 		receive.Sample = receiveSample
 	}
 	if !sampleHasEvidence(transmitSample) {
-		transmit = sampleWithBins{}
+		transmit = sampleWithBins{Sample: transmitSample}
 	} else {
 		transmit.Sample = transmitSample
 	}
@@ -489,7 +516,11 @@ func (p *Predictor) mergeFromStoreWithDistribution(store *Store, userCell, dxCel
 		if reason == InsufficientNone {
 			reason = InsufficientNoSample
 		}
-		return sampleWithBins{Sample: Sample{Count: staleCount, RawCount: staleCount, CappedCount: staleCount}}, reason, false
+		merged.Count = staleCount.active
+		merged.RawCount = staleCount.raw
+		merged.ObservationCount = staleCount.observations
+		merged.CappedCount = staleCount.capped
+		return merged, reason, false
 	}
 	return merged, reason, true
 }
@@ -498,12 +529,12 @@ func (p *Predictor) receiveFromStoreWithDistribution(store *Store, userCell, dxC
 	if store == nil {
 		return sampleWithBins{}, InsufficientNoSample, false
 	}
-	rFine, rCoarse := store.lookupWithDistribution(userCell, dxCell, userCoarse, dxCoarse, band, now)
-	receive := selectSampleWithDistribution(rFine, rCoarse, p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
+	candidates := store.lookupCandidates(userCell, dxCell, userCoarse, dxCoarse, band, now, false)
+	receive := selectSampleBins(candidates[0], candidates[1], p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
 
 	receiveSample, _, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive.Sample, Sample{})
 	if !sampleHasEvidence(receiveSample) {
-		receive = sampleWithBins{}
+		receive = sampleWithBins{Sample: receiveSample}
 	} else {
 		receive.Sample = receiveSample
 	}
@@ -515,36 +546,48 @@ func (p *Predictor) receiveFromStoreWithDistribution(store *Store, userCell, dxC
 		if reason == InsufficientNone {
 			reason = InsufficientNoSample
 		}
-		return sampleWithBins{Sample: Sample{Count: staleCount, RawCount: staleCount, CappedCount: staleCount}}, reason, false
+		receive.Count = staleCount.active
+		receive.RawCount = staleCount.raw
+		receive.ObservationCount = staleCount.observations
+		receive.CappedCount = staleCount.capped
+		return receive, reason, false
 	}
 	bins := receive.snrBins
+	unavailable := receive.distributionUnavailable
 	if noisePenalty > 0 {
-		bins = bins.shifted(-noisePenalty)
+		var shifted bool
+		bins, shifted = bins.shifted(-noisePenalty)
+		unavailable = unavailable || !shifted
 	}
-	p50DB, hasP50 := bins.p50DB()
-	return sampleWithBins{
-		Sample:  receive.Sample,
-		P50DB:   p50DB,
-		HasP50:  hasP50,
-		snrBins: bins,
-	}, reason, true
+	return observedSampleDistribution(receive.Sample, bins, unavailable), reason, true
 }
 
-func (p *Predictor) applyFreshnessGate(store *Store, band string, receive Sample, transmit Sample) (Sample, Sample, bool, uint32) {
+// staleSampleCounts preserves separate diagnostics only when all selected
+// evidence is dropped. Stale counts never enter a surviving sample's floor.
+type staleSampleCounts struct{ active, raw, observations, capped uint32 }
+
+func (counts *staleSampleCounts) add(sample Sample) {
+	counts.active = saturatingAddCounts(counts.active, sample.Count)
+	counts.raw = saturatingAddCounts(counts.raw, sampleRawCount(sample))
+	counts.observations = saturatingAddCounts(counts.observations, sampleObservationCount(sample))
+	counts.capped = saturatingAddCounts(counts.capped, sampleCappedCount(sample))
+}
+
+func (p *Predictor) applyFreshnessGate(store *Store, band string, receive Sample, transmit Sample) (Sample, Sample, bool, staleSampleCounts) {
 	maxAge := p.maxPredictionAgeSeconds(store, band)
 	if maxAge <= 0 {
-		return receive, transmit, false, 0
+		return receive, transmit, false, staleSampleCounts{}
 	}
 	staleDropped := false
-	var staleCount uint32
+	var staleCount staleSampleCounts
 	if sampleHasEvidence(receive) && receive.AgeSec > maxAge {
-		staleCount = saturatingAddCounts(staleCount, receive.Count)
-		receive = Sample{}
+		staleCount.add(receive)
+		receive = sampleWithSamplingTime(Sample{}, receive, Sample{})
 		staleDropped = true
 	}
 	if sampleHasEvidence(transmit) && transmit.AgeSec > maxAge {
-		staleCount = saturatingAddCounts(staleCount, transmit.Count)
-		transmit = Sample{}
+		staleCount.add(transmit)
+		transmit = sampleWithSamplingTime(Sample{}, transmit, Sample{})
 		staleDropped = true
 	}
 	return receive, transmit, staleDropped, staleCount
@@ -558,11 +601,11 @@ func (p *Predictor) maxPredictionAgeSeconds(store *Store, band string) int64 {
 	if halfLife <= 0 {
 		return 0
 	}
-	seconds := math.Ceil(float64(halfLife) * p.cfg.MaxPredictionAgeHalfLifeMultiplier)
+	seconds := ceilNonnegativeInt64(float64(halfLife) * p.cfg.MaxPredictionAgeHalfLifeMultiplier)
 	if seconds < 1 {
 		return 1
 	}
-	return int64(seconds)
+	return seconds
 }
 
 // PurgeStale runs a stale purge and returns removed count.
@@ -624,48 +667,57 @@ type BandWeightHistogram struct {
 
 // WeightHistogram carries histogram edges and per-band counts.
 type WeightHistogram struct {
-	Edges []float64
-	Bands []BandWeightHistogram
+	Available bool
+	AsOfUnix  int64
+	Edges     []float64
+	Bands     []BandWeightHistogram
+}
+
+// PredictorStatsSnapshot carries one copied publication of totals and band
+// counts. Unavailable scans may retain HasSnapshot=true with an explicitly
+// dated earlier publication; consumers must not label it current.
+type PredictorStatsSnapshot struct {
+	Available   bool
+	HasSnapshot bool
+	AsOfUnix    int64
+	Stats       PredictorStats
+	Bands       []BandBucketStats
 }
 
 // weightHistogramEdges defines decayed weight bins for log-only histograms.
 var weightHistogramEdges = []float64{1, 2, 3, 5, 10}
 
 // Stats returns counts of active fine/coarse buckets for the combined store.
-func (p *Predictor) Stats(now time.Time) PredictorStats {
-	if p == nil || !p.cfg.Enabled {
-		return PredictorStats{}
-	}
-	stats := PredictorStats{}
-	if p.combined != nil {
-		stats.CombinedFine, stats.CombinedCoarse = p.combined.Stats(now)
-	}
-	return stats
+func (p *Predictor) Stats(_ time.Time) PredictorStats {
+	return p.StatsSnapshot().Stats
 }
 
 // StatsByBand returns per-band bucket counts for the combined store.
-func (p *Predictor) StatsByBand(now time.Time) []BandBucketStats {
-	if p == nil || !p.cfg.Enabled {
-		return nil
-	}
-	if p.combined == nil {
-		return nil
+func (p *Predictor) StatsByBand(_ time.Time) []BandBucketStats {
+	return p.StatsSnapshot().Bands
+}
+
+// StatsSnapshot exposes cached counts at one reference; it never initiates a
+// store scan. Returned band counts are caller-owned and bounded by band count.
+func (p *Predictor) StatsSnapshot() PredictorStatsSnapshot {
+	if p == nil || !p.cfg.Enabled || p.combined == nil {
+		return PredictorStatsSnapshot{}
 	}
 	bands := p.combined.bandIndex.Bands()
-	if len(bands) == 0 {
-		return nil
-	}
-	counts := p.combined.StatsByBand(now)
+	snapshot := p.combined.statsSnapshot()
 	stats := make([]BandBucketStats, len(bands))
 	for i, band := range bands {
 		entry := BandBucketStats{Band: band}
-		if i < len(counts) {
-			entry.Fine = counts[i].fine
-			entry.Coarse = counts[i].coarse
+		if i < len(snapshot.byBand) {
+			entry.Fine = snapshot.byBand[i].fine
+			entry.Coarse = snapshot.byBand[i].coarse
 		}
 		stats[i] = entry
 	}
-	return stats
+	return PredictorStatsSnapshot{
+		Available: snapshot.available, HasSnapshot: snapshot.hasSnapshot, AsOfUnix: snapshot.asOfUnix,
+		Stats: PredictorStats{CombinedFine: snapshot.fine, CombinedCoarse: snapshot.coarse}, Bands: stats,
+	}
 }
 
 // WeightHistogramByBand returns per-band bucket weight histograms for the combined store.
@@ -677,21 +729,23 @@ func (p *Predictor) WeightHistogramByBand(now time.Time) WeightHistogram {
 	if len(bands) == 0 {
 		return WeightHistogram{}
 	}
-	counts := p.combined.WeightHistogramByBand(now, weightHistogramEdges)
-	if len(counts) == 0 {
-		return WeightHistogram{}
+	snapshot := p.combined.weightHistogramSnapshot(now, weightHistogramEdges)
+	if !snapshot.available {
+		return WeightHistogram{AsOfUnix: snapshot.asOfUnix}
 	}
 	entries := make([]BandWeightHistogram, len(bands))
 	for i, band := range bands {
 		entry := BandWeightHistogram{Band: band}
-		if i < len(counts) {
-			entry.Total = counts[i].total
-			entry.Bins = append([]int(nil), counts[i].bins...)
+		if i < len(snapshot.byBand) {
+			entry.Total = snapshot.byBand[i].total
+			entry.Bins = append([]int(nil), snapshot.byBand[i].bins...)
 		}
 		entries[i] = entry
 	}
 	return WeightHistogram{
-		Edges: append([]float64(nil), weightHistogramEdges...),
-		Bands: entries,
+		Available: true,
+		AsOfUnix:  snapshot.asOfUnix,
+		Edges:     append([]float64(nil), weightHistogramEdges...),
+		Bands:     entries,
 	}
 }

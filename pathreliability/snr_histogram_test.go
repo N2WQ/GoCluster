@@ -86,7 +86,10 @@ func TestSNRHistogramShiftedUsesOneDBBins(t *testing.T) {
 	var hist snrHistogram
 	hist.add(snrHistogramBinIndex(-20), 1)
 
-	shifted := hist.shifted(2)
+	shifted, safe := hist.shifted(2)
+	if !safe {
+		t.Fatal("unsafe shift")
+	}
 	got, ok := shifted.p50DB()
 	if !ok {
 		t.Fatalf("expected shifted p50")
@@ -95,7 +98,10 @@ func TestSNRHistogramShiftedUsesOneDBBins(t *testing.T) {
 		t.Fatalf("shifted p50=%v, want -17.5", got)
 	}
 
-	underflow := hist.shifted(-5)
+	underflow, safe := hist.shifted(-5)
+	if !safe {
+		t.Fatal("unsafe underflow shift")
+	}
 	got, ok = underflow.p50DB()
 	if !ok {
 		t.Fatalf("expected underflow shifted p50")
@@ -118,7 +124,7 @@ func TestStoreSNRHistogramTracksUnclampedUnderflowOverflowAndDecay(t *testing.T)
 	receiverCoarse := CellID(3)
 	senderCoarse := CellID(4)
 
-	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, now, ReceiverIdentityHash("K1ABC"))
+	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, ReceiverIdentityHash("K1ABC"))
 	fine, _ := store.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now.Add(10*time.Second))
 	if !fine.HasP50 || fine.P50DB != -24 {
 		t.Fatalf("underflow p50=%v has=%v, want -24", fine.P50DB, fine.HasP50)
@@ -128,7 +134,7 @@ func TestStoreSNRHistogramTracksUnclampedUnderflowOverflowAndDecay(t *testing.T)
 	}
 
 	store = NewStore(cfg, []string{"20m"})
-	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, now, ReceiverIdentityHash("K1ABC"))
+	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, ReceiverIdentityHash("K1ABC"))
 	fine, _ = store.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
 	if !fine.HasP50 || fine.P50DB != 24 {
 		t.Fatalf("overflow p50=%v has=%v, want 24", fine.P50DB, fine.HasP50)
@@ -146,11 +152,11 @@ func TestStoreSNRHistogramRawAndCappedDiverge(t *testing.T) {
 	r3 := ReceiverIdentityHash("VE3XYZ")
 
 	update := func(store *Store) {
-		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, now, r1)
-		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, now, r1)
-		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, now, r1)
-		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, now, r2)
-		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, now, r3)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, r1)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, r1)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", 30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, r1)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, r2)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -30, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, r3)
 	}
 
 	shadowCfg := DefaultConfig()
@@ -190,7 +196,7 @@ func TestPredictAlwaysUsesActiveP50Distribution(t *testing.T) {
 	userCoarse := CellID(3)
 	dxCoarse := CellID(4)
 
-	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -15, 1, now, false, ReceiverIdentityHash("K1ABC"))
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -15, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("K1ABC"))
 	plain := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 	if !plain.HasP50 || plain.P50DB != -14.5 {
 		t.Fatalf("plain prediction p50=%v has=%v, want -14.5", plain.P50DB, plain.HasP50)
@@ -211,9 +217,9 @@ func TestPredictActiveP50ResistsStrongOutlier(t *testing.T) {
 	userCoarse := CellID(3)
 	dxCoarse := CellID(4)
 
-	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, now, false, ReceiverIdentityHash("K1ABC"))
-	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, now, false, ReceiverIdentityHash("W1AW"))
-	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1, now, false, ReceiverIdentityHash("VE3XYZ"))
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("K1ABC"))
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("W1AW"))
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("VE3XYZ"))
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 	if res.Source != SourceCombined {
@@ -239,8 +245,8 @@ func TestPredictActiveP50EvenSplitRepresentsTypicalMiddle(t *testing.T) {
 	dxCoarse := CellID(4)
 
 	for i := 0; i < 10; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, now, false, ReceiverIdentityHash(fmt.Sprintf("W%d", i)))
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -14, 1, now, false, ReceiverIdentityHash(fmt.Sprintf("S%d", i)))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash(fmt.Sprintf("W%d", i)))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -14, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash(fmt.Sprintf("S%d", i)))
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
@@ -294,10 +300,10 @@ func TestPredictActiveP50BimodalDominantSideStillWins(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			predictor := NewPredictor(cfg, []string{"20m"})
 			for i := 0; i < tc.weak; i++ {
-				predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, now, false, ReceiverIdentityHash(fmt.Sprintf("%sW%d", tc.name, i)))
+				predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash(fmt.Sprintf("%sW%d", tc.name, i)))
 			}
 			for i := 0; i < tc.strong; i++ {
-				predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -14, 1, now, false, ReceiverIdentityHash(fmt.Sprintf("%sS%d", tc.name, i)))
+				predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -14, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash(fmt.Sprintf("%sS%d", tc.name, i)))
 			}
 
 			res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
@@ -331,7 +337,7 @@ func TestPredictActiveP50NearThresholdUsesMidpoint(t *testing.T) {
 	}
 	for _, tc := range cases {
 		predictor := NewPredictor(cfg, []string{"20m"})
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", tc.db, 1, now, false, ReceiverIdentityHash("K1ABC"))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", tc.db, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("K1ABC"))
 		res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 		if !res.HasP50 || res.P50DB != tc.wantP50 {
 			t.Fatalf("db=%v p50=%v has=%v, want %v", tc.db, res.P50DB, res.HasP50, tc.wantP50)
@@ -363,7 +369,7 @@ func TestPredictActiveP50ThresholdEquality(t *testing.T) {
 	}
 	for _, tc := range cases {
 		predictor := NewPredictor(cfg, []string{"20m"})
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", tc.db, 1, now, false, ReceiverIdentityHash("K1ABC"))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", tc.db, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("K1ABC"))
 		res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 		if res.Class != tc.wantClass || res.Glyph != tc.wantGlyph {
 			t.Fatalf("db=%v class/glyph=%q/%q, want %q/%q", tc.db, res.Class, res.Glyph, tc.wantClass, tc.wantGlyph)
@@ -382,7 +388,7 @@ func TestPredictSkipsInvalidSNRHistogramUpdate(t *testing.T) {
 	userCoarse := CellID(3)
 	dxCoarse := CellID(4)
 
-	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", math.NaN(), 1, now, false, ReceiverIdentityHash("K1ABC"))
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", math.NaN(), 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("K1ABC"))
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
 	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientNoSample {
 		t.Fatalf("expected invalid SNR to leave no sample, got source=%v reason=%v", res.Source, res.InsufficientReason)
@@ -402,7 +408,7 @@ func TestPredictPositiveWeightEmptyHistogramIsInsufficient(t *testing.T) {
 	key := packKey(userCell, dxCell, 0)
 	sh := &predictor.combined.shards[key%uint64(len(predictor.combined.shards))]
 	sh.mu.Lock()
-	sh.buckets[key] = &bucket{weight: 2, count: 2, lastUpdate: now.Unix()}
+	sh.buckets[key] = &bucket{weight: 2, count: 2, lastUpdate: now.Unix(), newestObservation: now.Unix()}
 	sh.mu.Unlock()
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
@@ -427,7 +433,7 @@ func TestStoreSNRHistogramPurgeStale(t *testing.T) {
 	receiverCoarse := CellID(3)
 	senderCoarse := CellID(4)
 
-	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -15, 1, now, ReceiverIdentityHash("K1ABC"))
+	store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -15, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, ReceiverIdentityHash("K1ABC"))
 	fine, _ := store.lookupWithDistribution(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
 	if !fine.HasP50 {
 		t.Fatalf("expected active p50")

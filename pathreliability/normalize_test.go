@@ -139,7 +139,7 @@ func TestSelectSampleUsesUnionWeightForOverlappingFineCoarse(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 
 	for i := 0; i < 6; i++ {
-		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -12, 1, now, ReceiverIdentityHash("K1ABC"))
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -12, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, ReceiverIdentityHash("K1ABC"))
 	}
 
 	fine, coarse := store.Lookup(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
@@ -178,8 +178,8 @@ func TestSelectSampleWeightUnionPreservesP50Shape(t *testing.T) {
 
 	got := selectSampleWithDistribution(fine, coarse, 5, 20)
 	var wantBins snrHistogram
-	wantBins.addScaled(fineBins, 1)
-	wantBins.addScaled(coarseBins, 1)
+	wantBins.addScaled(&fineBins, 1)
+	wantBins.addScaled(&coarseBins, 1)
 	wantP50, wantHasP50 := wantBins.p50DB()
 	if got.Weight != 10 || got.RawWeight != 10 || got.CappedWeight != 7 {
 		t.Fatalf("selected weights = %v/%v/%v, want 10/10/7", got.Weight, got.RawWeight, got.CappedWeight)
@@ -220,7 +220,7 @@ func TestPredictWeightUnionCanConservativelyWithholdOutsideInvariant(t *testing.
 	now := time.Unix(1_700_000_000, 0).UTC()
 
 	for i := 0; i < 5; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now, false, ReceiverIdentityHash("K1ABC"))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("K1ABC"))
 	}
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
@@ -346,7 +346,7 @@ func TestPredictStaleEvidenceInsufficient(t *testing.T) {
 	dxCoarse := EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, now, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	fresh := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now.Add(10*time.Second))
 	if fresh.Source != SourceCombined {
@@ -380,7 +380,7 @@ func TestPredictMaxAgeMultiplierZeroPreservesOldBehavior(t *testing.T) {
 	dxCoarse := EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, now, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now.Add(30*time.Second))
 	if res.Source != SourceCombined {
@@ -403,8 +403,8 @@ func TestPredictDropsOnlyStaleDirection(t *testing.T) {
 	dxCoarse := EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, now.Add(-20*time.Second), false)
-	predictor.Update(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", 10, 1, now, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, ObservationTimes{ObservedAt: now.Add(-20 * time.Second), ArrivedAt: now.Add(-20 * time.Second)}, false)
+	predictor.Update(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", 10, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
 	if res.Source != SourceCombined {
@@ -426,8 +426,8 @@ func TestPredictStaleDropLowFreshWeightReportsStale(t *testing.T) {
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "EM12", "IO91")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, now.Add(-20*time.Second), false)
-	predictor.Update(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", 10, 0.1, now, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, ObservationTimes{ObservedAt: now.Add(-20 * time.Second), ArrivedAt: now.Add(-20 * time.Second)}, false)
+	predictor.Update(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", 10, 0.1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
 	if res.Source != SourceInsufficient {
@@ -490,7 +490,7 @@ func TestPredictUsesCombinedBuckets(t *testing.T) {
 	dxCoarse := EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	resCW := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "CW", 0, now)
 	if resCW.Glyph == cfg.GlyphSymbols.Insufficient {
@@ -527,7 +527,7 @@ func TestPredictUsesCoarseWhenFineMissing(t *testing.T) {
 	cfg.MinEffectiveWeight = 0.1
 	cfg.MinObservationCount = 1
 	predictor := NewPredictor(cfg, []string{"20m"})
-	predictor.Update(BucketCombined, InvalidCell, InvalidCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false)
+	predictor.Update(BucketCombined, InvalidCell, InvalidCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
 	if res.Glyph == cfg.GlyphSymbols.Insufficient {
@@ -543,8 +543,8 @@ func TestPredictCarriesObservationCount(t *testing.T) {
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t, "FN31", "DM04")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false)
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
 	if res.Count != 2 {
@@ -561,7 +561,7 @@ func TestPredictLowObservationCountInsufficient(t *testing.T) {
 	now := time.Now().UTC()
 
 	for i := 0; i < 3; i++ {
-		predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, now, false)
+		predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 	}
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
@@ -588,7 +588,7 @@ func TestPredictWithMinObservationCountCannotLowerConfiguredFloor(t *testing.T) 
 	now := time.Now().UTC()
 
 	for i := 0; i < 3; i++ {
-		predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, now, false)
+		predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)

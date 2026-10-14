@@ -34,7 +34,7 @@ func TestReceiverCapShadowPreservesRawPredictionAndReportsWouldBlock(t *testing.
 	receiver := ReceiverIdentityHash("N2WQ")
 
 	for i := 0; i < 19; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 	}
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
@@ -68,7 +68,7 @@ func TestReceiverCapShadowWouldBlockUsesUnionCappedWeight(t *testing.T) {
 
 	receiver := ReceiverIdentityHash("N2WQ")
 	for i := 0; i < 6; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
@@ -107,7 +107,7 @@ func TestReceiverCapEnforceCap8RequiresThreeReceiversAtObservationFloor(t *testi
 
 	for _, receiver := range receivers {
 		for i := 0; i < 8; i++ {
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receiver)
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 		}
 	}
 
@@ -134,7 +134,7 @@ func TestReceiverCapEnforceFailsSingleReceiverLowCount(t *testing.T) {
 	receiver := ReceiverIdentityHash("N2WQ")
 
 	for i := 0; i < 19; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 	}
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
@@ -170,7 +170,7 @@ func TestReceiverCapEnforcePassesReceiversAtDefaultFloor(t *testing.T) {
 	}
 
 	for i := 0; i < 20; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receivers[i%len(receivers)])
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receivers[i%len(receivers)])
 	}
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
@@ -207,7 +207,7 @@ func TestReceiverCapEnforceMinObservationsUseRawSelectedCount(t *testing.T) {
 
 	for _, receiver := range receivers {
 		for i := 0; i < 6; i++ {
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receiver)
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 		}
 	}
 
@@ -245,7 +245,7 @@ func TestReceiverCapEnforceUserPathSamplesDoesNotRaiseReceiverDiversityGate(t *t
 
 	for _, receiver := range receivers {
 		for i := 0; i < 10; i++ {
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, receiver)
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 		}
 	}
 
@@ -270,7 +270,7 @@ func TestReceiverCapEnforceUnattributedDoesNotAddCappedTrust(t *testing.T) {
 	dxCoarse := CellID(4)
 	now := time.Now().UTC()
 
-	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, now, false, 0)
+	predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, 0)
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now)
 	if res.Source != SourceInsufficient {
@@ -302,10 +302,10 @@ func TestReceiverCapEnforceDecayedCountAdmitsNewEvidence(t *testing.T) {
 	receiver := ReceiverIdentityHash("N2WQ")
 
 	for i := 0; i < 5; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 	}
 	for i := 0; i < 4; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, later, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, ObservationTimes{ObservedAt: later, ArrivedAt: later}, false, receiver)
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, later)
@@ -338,7 +338,7 @@ func TestReceiverCapEnforceSingleReceiverEffectiveCountStaysBelowFloor(t *testin
 
 	for i := 0; i < 60; i++ {
 		at := now.Add(time.Duration(i) * time.Second)
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, at, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, ObservationTimes{ObservedAt: at, ArrivedAt: at}, false, receiver)
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 30, now.Add(59*time.Second))
@@ -376,12 +376,12 @@ func TestReceiverCapEnforceMultiReceiverDecayedP50Recovers(t *testing.T) {
 
 	for _, receiver := range receivers {
 		for i := 0; i < 5; i++ {
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, now, false, receiver)
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 		}
 	}
 	for _, receiver := range receivers {
 		for i := 0; i < 4; i++ {
-			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, later, false, receiver)
+			predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 20, 1.0, ObservationTimes{ObservedAt: later, ArrivedAt: later}, false, receiver)
 		}
 	}
 
@@ -412,8 +412,8 @@ func TestReceiverCapEnforceEvenSplitUsesTypicalMiddleP50(t *testing.T) {
 	strongReceiver := ReceiverIdentityHash("STRONG")
 
 	for i := 0; i < 5; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, now, false, weakReceiver)
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -14, 1.0, now, false, strongReceiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, weakReceiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -14, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, strongReceiver)
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 1, now)
@@ -442,7 +442,7 @@ func TestReceiverCapFractionalAdmissionKeepsCountAndWeightCoherent(t *testing.T)
 	receiver := ReceiverIdentityHash("N2WQ")
 
 	for i := 0; i < 3; i++ {
-		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -5, 1.0, now, receiver)
+		store.UpdateWithReceiverHash(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, receiver)
 	}
 
 	fine, _ := store.Lookup(receiverCell, senderCell, receiverCoarse, senderCoarse, "20m", now)
@@ -461,7 +461,7 @@ func TestReceiverCapCoarseBucketsUseExtraSlots(t *testing.T) {
 	receiverCoarse := CellID(3)
 	senderCoarse := CellID(4)
 	for i := 0; i < maxCoarseReceiverSlots; i++ {
-		store.UpdateWithReceiverHash(InvalidCell, InvalidCell, receiverCoarse, senderCoarse, "20m", -5, 1.0, now, uint64(i+1))
+		store.UpdateWithReceiverHash(InvalidCell, InvalidCell, receiverCoarse, senderCoarse, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, uint64(i+1))
 	}
 
 	key := packCoarseKey(receiverCoarse, senderCoarse, 0)

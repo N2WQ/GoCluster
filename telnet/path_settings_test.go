@@ -74,7 +74,7 @@ func TestPathPredictionUsesLocationNoisePenalty(t *testing.T) {
 	dxCoarse := pathreliability.EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
 	for _, band := range []string{"160m", "6m"} {
-		predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, band, -5, 1, now, false)
+		predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, band, -5, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 	}
 
 	server := &Server{
@@ -125,7 +125,7 @@ func TestPathPredictionStaleEvidenceIsInsufficientForDisplayAndFilter(t *testing
 	userCoarse := pathreliability.EncodeCoarseCell("FN31")
 	dxCoarse := pathreliability.EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
-	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, now.Add(-20*time.Second), false)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, pathreliability.ObservationTimes{ObservedAt: now.Add(-20 * time.Second), ArrivedAt: now.Add(-20 * time.Second)}, false)
 
 	server := &Server{
 		pathPredictor: predictor,
@@ -165,7 +165,7 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
 	now := time.Now().UTC()
 	for i := 0; i < 3; i++ {
-		predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, now, false)
+		predictor.Update(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 	}
 
 	server := &Server{
@@ -219,7 +219,7 @@ func TestBeaconRXPathPredictionAppliesToDisplayAndFilter(t *testing.T) {
 		if i >= 8 {
 			receiver = receivers[1]
 		}
-		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1, now, true, receiver)
+		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, true, receiver)
 	}
 
 	server := &Server{
@@ -337,7 +337,7 @@ func TestPathPredictionUsesVOACAPAlignedFallbackForSparseP50Match(t *testing.T) 
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	userCell := pathreliability.CellID(1)
 	dxCell := pathreliability.CellID(2)
-	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -15, 1, now, false)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -15, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	server := &Server{
 		pathPredictor: predictor,
@@ -380,7 +380,7 @@ func TestPathPredictionKeepsInsufficientWhenVOACAPSparseP50Mismatch(t *testing.T
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	userCell := pathreliability.CellID(1)
 	dxCell := pathreliability.CellID(2)
-	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -15, 1, now, false)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -15, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	server := &Server{
 		pathPredictor: predictor,
@@ -486,7 +486,7 @@ func TestPathPredictionUsesRELGatedVOACAPSparseUpgrade(t *testing.T) {
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	userCell := pathreliability.CellID(1)
 	dxCell := pathreliability.CellID(2)
-	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -19, 1, now, false)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -19, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	server := &Server{
 		pathPredictor: predictor,
@@ -526,7 +526,7 @@ func TestPathPredictionBucketResultWinsOverVOACAPClosedFallback(t *testing.T) {
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	userCell := pathreliability.CellID(1)
 	dxCell := pathreliability.CellID(2)
-	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, now, false)
+	predictor.Update(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	fallback := &countingClosedFallback{forecast: pathreliability.VOACAPCachedForecast{
 		Record: pathreliability.VOACAPHourlyForecast{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: 14.1},

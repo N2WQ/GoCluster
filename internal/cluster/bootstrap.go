@@ -828,7 +828,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 				current := snapshotPathOnly(pskrPathOnly)
 				delta := diffPathOnly(current, prevPathOnly)
 				prevPathOnly = current
-				pathOnlyLine = fmt.Sprintf("[yellow]Path[-]: %s (U) / %s (S) / %s (N) / %s (G) / %s (H) / %s (B) / %s (M)",
+				pathOnlyLine = fmt.Sprintf("[yellow]Path[-]: %s (U) / %s (S) / %s (N) / %s (G) / %s (H) / %s (B) / %s (M) / %s (T)",
 					humanize.Comma(int64(delta.updates)),
 					humanize.Comma(int64(delta.stale)),
 					humanize.Comma(int64(delta.noSNR)),
@@ -836,6 +836,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 					humanize.Comma(int64(delta.badH3)),
 					humanize.Comma(int64(delta.badBand)),
 					humanize.Comma(int64(delta.mode)),
+					humanize.Comma(int64(delta.badTime)),
 				)
 			}
 		}
@@ -969,6 +970,7 @@ type pathOnlyStats struct {
 	noGrid  atomic.Uint64
 	badH3   atomic.Uint64
 	badBand atomic.Uint64
+	badTime atomic.Uint64
 	off     atomic.Uint64
 	mode    atomic.Uint64
 }
@@ -981,6 +983,7 @@ type pathOnlySnapshot struct {
 	noGrid  uint64
 	badH3   uint64
 	badBand uint64
+	badTime uint64
 	off     uint64
 	mode    uint64
 }
@@ -995,6 +998,7 @@ const (
 	pathOnlyDropBadBand
 	pathOnlyDropOff
 	pathOnlyDropMode
+	pathOnlyDropTime
 )
 
 func snapshotPathOnly(stats *pathOnlyStats) pathOnlySnapshot {
@@ -1009,6 +1013,7 @@ func snapshotPathOnly(stats *pathOnlyStats) pathOnlySnapshot {
 		noGrid:  stats.noGrid.Load(),
 		badH3:   stats.badH3.Load(),
 		badBand: stats.badBand.Load(),
+		badTime: stats.badTime.Load(),
 		off:     stats.off.Load(),
 		mode:    stats.mode.Load(),
 	}
@@ -1023,6 +1028,7 @@ func diffPathOnly(current, prev pathOnlySnapshot) pathOnlySnapshot {
 		noGrid:  diffCounterRaw(current.noGrid, prev.noGrid),
 		badH3:   diffCounterRaw(current.badH3, prev.badH3),
 		badBand: diffCounterRaw(current.badBand, prev.badBand),
+		badTime: diffCounterRaw(current.badTime, prev.badTime),
 		off:     diffCounterRaw(current.off, prev.off),
 		mode:    diffCounterRaw(current.mode, prev.mode),
 	}
@@ -1037,80 +1043,93 @@ func processPSKRPathOnlySpots(client *pskreporter.Client, predictor *pathreliabi
 	if client == nil {
 		return
 	}
-	spotChan := client.GetPathOnlyChannel()
+	processPSKRPathOnlyChannel(client.GetPathOnlyChannel(), predictor, pathReport, stats, spotPolicy, allowedBands)
+}
+
+// processPSKRPathOnlyChannel owns iteration only; it adds no queue or worker.
+// Each report receives one path-ingestion arrival, independent of source time.
+func processPSKRPathOnlyChannel(spotChan <-chan *spot.Spot, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}) {
 	if spotChan == nil {
 		return
 	}
 	for s := range spotChan {
-		if s == nil {
-			continue
+		processPSKRPathOnlySpot(s, time.Now().UTC(), predictor, pathReport, stats, spotPolicy, allowedBands)
+	}
+}
+
+// processPSKRPathOnlySpot keeps the original path-only qualification gates.
+// Its arrival is request-local and never inferred from the source observation.
+func processPSKRPathOnlySpot(s *spot.Spot, arrival time.Time, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}) {
+	if s == nil {
+		return
+	}
+	if isStale(s, spotPolicy) {
+		recordPathOnlyDrop(stats, pathOnlyDropStale)
+		return
+	}
+	if predictor == nil || !predictor.Config().Enabled {
+		recordPathOnlyDrop(stats, pathOnlyDropOff)
+		return
+	}
+	if !s.HasReport {
+		recordPathOnlyDrop(stats, pathOnlyDropNoSNR)
+		return
+	}
+	mode := s.ModeNorm
+	if strings.TrimSpace(mode) == "" {
+		mode = s.Mode
+	}
+	ft8, ok := pathreliability.FT8Equivalent(mode, s.Report, predictor.Config())
+	if !ok {
+		recordPathOnlyDrop(stats, pathOnlyDropMode)
+		return
+	}
+	bucket := pathreliability.BucketForIngest(mode)
+	if bucket == pathreliability.BucketNone {
+		recordPathOnlyDrop(stats, pathOnlyDropMode)
+		return
+	}
+	dxGrid := strings.TrimSpace(s.DXMetadata.Grid)
+	deGrid := strings.TrimSpace(s.DEMetadata.Grid)
+	if dxGrid == "" || deGrid == "" {
+		recordPathOnlyDrop(stats, pathOnlyDropNoGrid)
+		return
+	}
+	cells := hydrateSpotPathCells(s)
+	if (cells.dxFine == pathreliability.InvalidCell || cells.deFine == pathreliability.InvalidCell) &&
+		(cells.dxCoarse == pathreliability.InvalidCell || cells.deCoarse == pathreliability.InvalidCell) {
+		recordPathOnlyDrop(stats, pathOnlyDropBadH3)
+		return
+	}
+	band := s.BandNorm
+	if strings.TrimSpace(band) == "" {
+		band = s.Band
+	}
+	if strings.TrimSpace(band) == "" || band == "???" {
+		band = spot.FreqToBand(s.Frequency)
+	}
+	band = strings.TrimSpace(spot.NormalizeBand(band))
+	if band == "" || band == "???" {
+		recordPathOnlyDrop(stats, pathOnlyDropBadBand)
+		return
+	}
+	if !allowedBand(allowedBands, band) {
+		recordPathOnlyDrop(stats, pathOnlyDropBadBand)
+		return
+	}
+	// Spot SNR reflects DX -> DE (spotter is the receiver).
+	admission := predictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, pathreliability.ObservationTimes{ObservedAt: s.Time, ArrivedAt: arrival}, s.IsBeacon, pathReceiverHash(s))
+	if !admission.Accepted() {
+		if admission.Status == pathreliability.AdmissionRejectedTime {
+			recordPathOnlyDrop(stats, pathOnlyDropTime)
 		}
-		if isStale(s, spotPolicy) {
-			recordPathOnlyDrop(stats, pathOnlyDropStale)
-			continue
-		}
-		if predictor == nil || !predictor.Config().Enabled {
-			recordPathOnlyDrop(stats, pathOnlyDropOff)
-			continue
-		}
-		if !s.HasReport {
-			recordPathOnlyDrop(stats, pathOnlyDropNoSNR)
-			continue
-		}
-		mode := s.ModeNorm
-		if strings.TrimSpace(mode) == "" {
-			mode = s.Mode
-		}
-		ft8, ok := pathreliability.FT8Equivalent(mode, s.Report, predictor.Config())
-		if !ok {
-			recordPathOnlyDrop(stats, pathOnlyDropMode)
-			continue
-		}
-		bucket := pathreliability.BucketForIngest(mode)
-		if bucket == pathreliability.BucketNone {
-			recordPathOnlyDrop(stats, pathOnlyDropMode)
-			continue
-		}
-		dxGrid := strings.TrimSpace(s.DXMetadata.Grid)
-		deGrid := strings.TrimSpace(s.DEMetadata.Grid)
-		if dxGrid == "" || deGrid == "" {
-			recordPathOnlyDrop(stats, pathOnlyDropNoGrid)
-			continue
-		}
-		cells := hydrateSpotPathCells(s)
-		if (cells.dxFine == pathreliability.InvalidCell || cells.deFine == pathreliability.InvalidCell) &&
-			(cells.dxCoarse == pathreliability.InvalidCell || cells.deCoarse == pathreliability.InvalidCell) {
-			recordPathOnlyDrop(stats, pathOnlyDropBadH3)
-			continue
-		}
-		band := s.BandNorm
-		if strings.TrimSpace(band) == "" {
-			band = s.Band
-		}
-		if strings.TrimSpace(band) == "" || band == "???" {
-			band = spot.FreqToBand(s.Frequency)
-		}
-		band = strings.TrimSpace(spot.NormalizeBand(band))
-		if band == "" || band == "???" {
-			recordPathOnlyDrop(stats, pathOnlyDropBadBand)
-			continue
-		}
-		if !allowedBand(allowedBands, band) {
-			recordPathOnlyDrop(stats, pathOnlyDropBadBand)
-			continue
-		}
-		spotTime := s.Time.UTC()
-		if spotTime.IsZero() {
-			spotTime = time.Now().UTC()
-		}
-		if pathReport != nil {
-			pathReport.ObserveWithCells(s, spotTime, cells.deCoarse, cells.dxCoarse)
-		}
-		// Spot SNR reflects DX -> DE (spotter is the receiver).
-		predictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, spotTime, s.IsBeacon, pathReceiverHash(s))
-		if stats != nil {
-			stats.updates.Add(1)
-		}
+		return
+	}
+	if pathReport != nil {
+		pathReport.ObserveWithCells(s, admission.EffectiveObservation, cells.deCoarse, cells.dxCoarse)
+	}
+	if stats != nil {
+		stats.updates.Add(1)
 	}
 }
 
@@ -1138,6 +1157,8 @@ func recordPathOnlyDrop(stats *pathOnlyStats, reason pathOnlyDropReason) {
 		stats.off.Add(1)
 	case pathOnlyDropMode:
 		stats.mode.Add(1)
+	case pathOnlyDropTime:
+		stats.badTime.Add(1)
 	}
 }
 
@@ -1289,6 +1310,18 @@ func startPipelineHealthMonitor(ctx context.Context, dedup *dedup.Deduplicator, 
 	}()
 }
 
+// pathAdmissionLogLine formats one interval's bounded input counters; detailed
+// per-report logs would add I/O to path learning and are intentionally avoided.
+func pathAdmissionLogLine(current, previous pathreliability.AdmissionStats) string {
+	clamped := diffCounterRaw(current.ClampedFuture, previous.ClampedFuture)
+	rejectedTime := diffCounterRaw(current.RejectedTime, previous.RejectedTime)
+	rejectedWeight := diffCounterRaw(current.RejectedWeight, previous.RejectedWeight)
+	if clamped == 0 && rejectedTime == 0 && rejectedWeight == 0 {
+		return ""
+	}
+	return fmt.Sprintf("Path admission (5m): future_clamped=%d rejected_time=%d rejected_weight=%d", clamped, rejectedTime, rejectedWeight)
+}
+
 func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telnet.Server, predictor *pathreliability.Predictor, pathReport *pathReportMetrics) {
 	// Purpose: Periodically report path prediction outcomes, bucket counts, and weight histograms.
 	// Key aspects: Writes only to the propagation file sink, uses atomic snapshot/reset, and exits on context cancellation.
@@ -1299,65 +1332,8 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 	}
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
-	type ge10Sample struct {
-		ts  time.Time
-		val int
-	}
-	ge10Window := make(map[string][]ge10Sample)
-	const ge10WindowDuration = time.Hour
-
-	pruneGe10 := func(now time.Time, band string) {
-		samples := ge10Window[band]
-		if len(samples) == 0 {
-			return
-		}
-		cutoff := now.Add(-ge10WindowDuration)
-		n := 0
-		for _, s := range samples {
-			if s.ts.After(cutoff) || s.ts.Equal(cutoff) {
-				samples[n] = s
-				n++
-			}
-		}
-		if n == 0 {
-			delete(ge10Window, band)
-			return
-		}
-		ge10Window[band] = samples[:n]
-	}
-
-	ge10Stats := func(band string) (min, med, p75, max int, ok bool) {
-		samples := ge10Window[band]
-		if len(samples) == 0 {
-			return 0, 0, 0, 0, false
-		}
-		vals := make([]int, 0, len(samples))
-		for _, s := range samples {
-			vals = append(vals, s.val)
-		}
-		sort.Ints(vals)
-		min = vals[0]
-		max = vals[len(vals)-1]
-		mid := len(vals) / 2
-		if len(vals)%2 == 1 {
-			med = vals[mid]
-		} else {
-			med = int(math.Round(float64(vals[mid-1]+vals[mid]) / 2))
-		}
-		if len(vals) == 1 {
-			p75 = vals[0]
-		} else {
-			pos := int(math.Round(0.75 * float64(len(vals)-1)))
-			if pos < 0 {
-				pos = 0
-			}
-			if pos >= len(vals) {
-				pos = len(vals) - 1
-			}
-			p75 = vals[pos]
-		}
-		return min, med, p75, max, true
-	}
+	var weightWindow pathWeightWindow
+	var previousAdmission pathreliability.AdmissionStats
 	for {
 		select {
 		case <-ctx.Done():
@@ -1562,65 +1538,26 @@ func startPathPredictionLogger(ctx context.Context, propLog lineSink, srv *telne
 			if predictor == nil || !predictor.Config().Enabled {
 				continue
 			}
-			bandStats := predictor.StatsByBand(now)
-			if len(bandStats) == 0 {
-				continue
+			admission := predictor.AdmissionStats()
+			if line := pathAdmissionLogLine(admission, previousAdmission); line != "" {
+				fileOnly(line)
 			}
-			var b strings.Builder
-			b.WriteString("Path buckets (5m):")
-			for _, entry := range bandStats {
-				fmt.Fprintf(&b, " %s f=%s c=%s",
-					entry.Band,
-					humanize.Comma(int64(entry.Fine)),
-					humanize.Comma(int64(entry.Coarse)))
+			previousAdmission = admission
+			// Refresh at this emission's request time, then copy one publication.
+			// Independent scans may still differ in reference or event inclusion;
+			// the offline consumer verifies times rather than fabricating a pair.
+			predictor.RefreshStatsSnapshot(now)
+			snapshot := predictor.StatsSnapshot()
+			bandStats := snapshot.Bands
+			fileOnly(pathBucketLogLine(snapshot))
+			histogramAt := now
+			if snapshot.HasSnapshot && snapshot.AsOfUnix > now.Unix() {
+				histogramAt = time.Unix(snapshot.AsOfUnix, 0).UTC()
 			}
-			fileOnly(b.String())
-			hist := predictor.WeightHistogramByBand(now)
-			if len(hist.Bands) == 0 || len(hist.Edges) == 0 {
-				continue
-			}
-			var h strings.Builder
-			h.WriteString("Path weight dist (5m):")
-			for _, entry := range hist.Bands {
-				if entry.Total == 0 {
-					continue
-				}
-				fmt.Fprintf(&h, " %s t=%s", entry.Band, humanize.Comma(int64(entry.Total)))
-				for i, count := range entry.Bins {
-					label := weightBinLabel(i, hist.Edges)
-					fmt.Fprintf(&h, " %s=%s", label, humanize.Comma(int64(count)))
-				}
-			}
-			if h.Len() > len("Path weight dist (5m):") {
-				fileOnly(h.String())
-			}
-			if len(hist.Bands) > 0 {
-				var v strings.Builder
-				v.WriteString("Path ge10 variance (5m):")
-				for _, entry := range hist.Bands {
-					band := entry.Band
-					if band == "" {
-						continue
-					}
-					ge10 := 0
-					if len(entry.Bins) > 0 {
-						ge10 = entry.Bins[len(entry.Bins)-1]
-					}
-					ge10Window[band] = append(ge10Window[band], ge10Sample{ts: now, val: ge10})
-					pruneGe10(now, band)
-					min, med, p75, max, ok := ge10Stats(band)
-					if !ok {
-						continue
-					}
-					deg := 0
-					if max == 0 {
-						deg = 1
-					}
-					fmt.Fprintf(&v, " %s min=%d med=%d p75=%d max=%d deg=%d", band, min, med, p75, max, deg)
-				}
-				if v.Len() > len("Path ge10 variance (5m):") {
-					fileOnly(v.String())
-				}
+			hist := predictor.WeightHistogramByBand(histogramAt)
+			fileOnly(pathWeightLogLine(hist))
+			if weightWindow.record(hist) {
+				fileOnly(pathVarianceLogLine(hist, &weightWindow))
 			}
 			if pathReport != nil {
 				hourKey, spotters, gridPairs := pathReport.HourlyCounts(now)
@@ -4593,23 +4530,34 @@ type voacapFallbackSnapshotProvider interface {
 	Snapshot() pathreliability.VOACAPClosedFallbackSnapshot
 }
 
-func formatPathLines(predictor *pathreliability.Predictor, voacapFallback voacapFallbackSnapshotProvider, now time.Time) []string {
-	const (
-		colsPerRow = 4
-	)
+func formatPathLines(predictor *pathreliability.Predictor, voacapFallback voacapFallbackSnapshotProvider, _ time.Time) []string {
 	lines := make([]string, 0, 2)
 	lines = append(lines, formatVOACAPCacheLine(voacapFallback))
 	if predictor == nil || !predictor.Config().Enabled {
 		lines = append(lines, "[yellow]H3 path pairs[-]: n/a")
 		return lines
 	}
-	stats := predictor.Stats(now)
-	lines = append(lines, fmt.Sprintf("[yellow]H3 path pairs[-]: %s (L2) / %s (L1)",
-		humanize.Comma(int64(stats.CombinedFine)),
-		humanize.Comma(int64(stats.CombinedCoarse)),
+	return formatPathSnapshotLines(lines, predictor.StatsSnapshot())
+}
+
+// formatPathSnapshotLines consumes one copied publication for the title and
+// bands. Unavailable cached numbers keep their date; an initial failure is n/a.
+func formatPathSnapshotLines(lines []string, snapshot pathreliability.PredictorStatsSnapshot) []string {
+	const colsPerRow = 4
+	if !snapshot.HasSnapshot {
+		return append(lines, "[yellow]H3 path pairs[-]: n/a (unavailable)")
+	}
+	status := ""
+	if !snapshot.Available {
+		status = " (unavailable; cached)"
+	}
+	lines = append(lines, fmt.Sprintf("[yellow]H3 path pairs[-]: %s (L2) / %s (L1) as of %s%s",
+		humanize.Comma(int64(snapshot.Stats.CombinedFine)),
+		humanize.Comma(int64(snapshot.Stats.CombinedCoarse)),
+		time.Unix(snapshot.AsOfUnix, 0).UTC().Format(time.RFC3339), status,
 	))
 	lines = append(lines, "")
-	bands := predictor.StatsByBand(now)
+	bands := snapshot.Bands
 	if len(bands) == 0 {
 		return lines
 	}

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `f2b11eeeac54abd9`
+- Source fingerprint: `490aadc16845b548`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 29 | 123 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 30 | 125 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 57 |
-| `dxcluster/telnet` | `telnet` | 48 | 99 |
+| `dxcluster/telnet` | `telnet` | 48 | 100 |
 
 ## In-Scope Package Edges
 
@@ -153,6 +153,7 @@ Source files:
 - `internal/cluster/output_pipeline_stages.go`
 - `internal/cluster/path_cells.go`
 - `internal/cluster/path_report_metrics.go`
+- `internal/cluster/path_reporting.go`
 - `internal/cluster/peer_publication.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/stabilizer.go`
@@ -230,6 +231,8 @@ Test files:
 - `internal/cluster/path_cells_test.go`
 - `internal/cluster/path_report_metrics_bench_test.go`
 - `internal/cluster/path_report_metrics_test.go`
+- `internal/cluster/path_reporting_test.go`
+- `internal/cluster/path_timestamp_ingest_test.go`
 - `internal/cluster/pc92_q4_cycles_test.go`
 - `internal/cluster/pc92_q4_enabled_ownership_test.go`
 - `internal/cluster/pc92_q4_pressure_oracle_test.go`
@@ -703,6 +706,7 @@ Test files:
 - `telnet/nearby_endpoint_test.go`
 - `telnet/nofilter_nearby_test.go`
 - `telnet/path_settings_test.go`
+- `telnet/path_timestamp_provenance_test.go`
 - `telnet/peer_membership_test.go`
 - `telnet/persistence_warning_test.go`
 - `telnet/prelogin_gate_test.go`
@@ -744,6 +748,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:internal/cluster` |
 | [ADR-0297](docs/decisions/ADR-0297-core-accepted-observation-learning.md) | Accepted | 2026-10-11 | call/FT history, WhoSpotsMe, acceptance, shutdown | `path:peer` |
 | [ADR-0295](docs/decisions/ADR-0295-fresh-admitted-family-display.md) | Accepted | 2026-10-11 | family display, fresh evidence, telnet queue admission | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0290](docs/decisions/ADR-0290-correction-numerical-asset-integrity.md) | Accepted | 2026-10-11 | reliability, confusion model, startup, replay | `path:spot` |

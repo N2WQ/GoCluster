@@ -30,7 +30,7 @@ func TestBeaconReceiveOnlyUsesBeaconFloorAndReceiverGate(t *testing.T) {
 		if i >= 8 {
 			receiver = receivers[1]
 		}
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1.0, now, true, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, true, receiver)
 	}
 
 	normal := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, cfg.MinObservationCount, now)
@@ -62,7 +62,7 @@ func TestBeaconReceiveOnlyDoesNotApplyReverseHintDiscount(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 
 	for i := 0; i < 11; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1.0, now, true, ReceiverIdentityHash("RX"))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, true, ReceiverIdentityHash("RX"))
 	}
 
 	beacon := predictor.PredictBeaconReceiveOnlyWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 11, now)
@@ -88,8 +88,8 @@ func TestBeaconReceiveOnlyIgnoresTransmitEvidence(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 
 	for i := 0; i < 11; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, now, true, ReceiverIdentityHash("RX"))
-		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", 20, 1.0, now, false, ReceiverIdentityHash("TX"))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -20, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, true, ReceiverIdentityHash("RX"))
+		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", 20, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, ReceiverIdentityHash("TX"))
 	}
 
 	beacon := predictor.PredictBeaconReceiveOnlyWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 11, now)
@@ -115,7 +115,7 @@ func TestBeaconReceiveOnlyAppliesNoisePenalty(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 
 	for i := 0; i < 11; i++ {
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1.0, now, true, ReceiverIdentityHash("RX"))
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -10, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, true, ReceiverIdentityHash("RX"))
 	}
 
 	beacon := predictor.PredictBeaconReceiveOnlyWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 5, 11, now)

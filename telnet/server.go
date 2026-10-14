@@ -4520,6 +4520,16 @@ func (s *Server) pathResultWithClosedFallback(res pathreliability.Result, req pa
 	return res
 }
 
+// withObservedSampling preserves the observed evidence provenance when a
+// fallback creates a replacement result. Forecast age and synthetic HasP50
+// retain their existing meanings; neither supplies an observed sampling clock.
+func withObservedSampling(base, replacement pathreliability.Result) pathreliability.Result {
+	replacement.ObservedSamplingUnix = base.ObservedSamplingUnix
+	replacement.HasObservedSamplingTime = base.HasObservedSamplingTime
+	replacement.ObservedDistributionAvailable = base.ObservedDistributionAvailable
+	return replacement
+}
+
 func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, req pathreliability.VOACAPClosedRequest, now time.Time) (pathreliability.Result, sparseP50VOACAPTrace) {
 	if s == nil || s.pathPredictor == nil {
 		return res, sparseP50VOACAPTrace{}
@@ -4566,7 +4576,7 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 		if trace.Active {
 			trace.Outcome = sparseP50VOACAPOutcomeClosed
 		}
-		return pathreliability.VOACAPClosedResult(cfg, forecast), trace
+		return withObservedSampling(res, pathreliability.VOACAPClosedResult(cfg, forecast)), trace
 	}
 	if !res.HasP50 {
 		s.vStageNoP50.Add(1)
@@ -4577,7 +4587,7 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 				if trace.Active {
 					trace.Outcome = sparseP50VOACAPOutcomeOpenRELPass
 				}
-				return pathreliability.VOACAPOpenResult(cfg, req.Mode, forecast), trace
+				return withObservedSampling(res, pathreliability.VOACAPOpenResult(cfg, req.Mode, forecast)), trace
 			}
 			s.recordVOACAPReliabilityGate(reason)
 			recordSparseTraceRELFailure(&trace, reason)
@@ -4693,7 +4703,7 @@ func (s *Server) pathResultWithBeaconReceiveFallback(res pathreliability.Result,
 		if trace.Active {
 			trace.Outcome = sparseP50VOACAPOutcomeClosed
 		}
-		return pathreliability.VOACAPBeaconClosedResult(cfg, forecast), trace
+		return withObservedSampling(res, pathreliability.VOACAPBeaconClosedResult(cfg, forecast)), trace
 	}
 	if !res.HasP50 {
 		s.vStageNoP50.Add(1)
@@ -4704,7 +4714,7 @@ func (s *Server) pathResultWithBeaconReceiveFallback(res pathreliability.Result,
 				if trace.Active {
 					trace.Outcome = sparseP50VOACAPOutcomeOpenRELPass
 				}
-				return pathreliability.VOACAPBeaconOpenResult(cfg, req.Mode, forecast), trace
+				return withObservedSampling(res, pathreliability.VOACAPBeaconOpenResult(cfg, req.Mode, forecast)), trace
 			}
 			s.recordVOACAPReliabilityGate(reason)
 			recordSparseTraceRELFailure(&trace, reason)

@@ -12,8 +12,8 @@ func TestStoreStatsByBandCounts(t *testing.T) {
 	store := NewStore(cfg, []string{"160m", "80m"})
 	now := time.Now().UTC()
 
-	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, now, 0)
-	store.UpdateWithReceiverHash(InvalidCell, InvalidCell, EncodeCoarseCell("FN31"), EncodeCoarseCell("FN32"), "80m", -10, 1.0, now, 0)
+	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
+	store.UpdateWithReceiverHash(InvalidCell, InvalidCell, EncodeCoarseCell("FN31"), EncodeCoarseCell("FN32"), "80m", -10, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
 	store.RefreshStatsSnapshot(now)
 
 	stats := store.StatsByBand(now)
@@ -35,8 +35,8 @@ func TestPredictorStatsByBand(t *testing.T) {
 	predictor := NewPredictor(cfg, []string{"160m", "80m"})
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, now, false)
-	predictor.Update(BucketCombined, InvalidCell, InvalidCell, EncodeCoarseCell("FN31"), EncodeCoarseCell("FN32"), "80m", -7, 1.0, now, false)
+	predictor.Update(BucketCombined, EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
+	predictor.Update(BucketCombined, InvalidCell, InvalidCell, EncodeCoarseCell("FN31"), EncodeCoarseCell("FN32"), "80m", -7, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 	predictor.RefreshStatsSnapshot(now)
 
 	stats := predictor.StatsByBand(now)
@@ -61,7 +61,7 @@ func TestStoreStatsRequireExplicitRefresh(t *testing.T) {
 	store := NewStore(cfg, []string{"160m"})
 	now := time.Now().UTC()
 
-	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, now, 0)
+	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
 
 	stats := store.StatsByBand(now)
 	if len(stats) != 1 {
@@ -87,7 +87,7 @@ func TestStoreStatsRemainCachedUntilExplicitRefresh(t *testing.T) {
 	store := NewStore(cfg, []string{"160m"})
 	now := time.Now().UTC()
 
-	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, now, 0)
+	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
 	store.RefreshStatsSnapshot(now)
 
 	stats := store.StatsByBand(now)
@@ -119,8 +119,8 @@ func TestStoreWeightHistogramByBand(t *testing.T) {
 	store := NewStore(cfg, []string{"160m"})
 	now := time.Now().UTC()
 
-	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 0.5, now, 0)
-	store.UpdateWithReceiverHash(EncodeCell("EM10"), EncodeCell("EM11"), InvalidCell, InvalidCell, "160m", -5, 2.5, now, 0)
+	store.UpdateWithReceiverHash(EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 0.5, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
+	store.UpdateWithReceiverHash(EncodeCell("EM10"), EncodeCell("EM11"), InvalidCell, InvalidCell, "160m", -5, 2.5, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
 
 	edges := []float64{1, 2, 3}
 	hist := store.WeightHistogramByBand(now, edges)
@@ -145,7 +145,7 @@ func TestPredictorWeightHistogramByBand(t *testing.T) {
 	predictor := NewPredictor(cfg, []string{"160m"})
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, now, false)
+	predictor.Update(BucketCombined, EncodeCell("FN31"), EncodeCell("FN32"), InvalidCell, InvalidCell, "160m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	hist := predictor.WeightHistogramByBand(now)
 	if len(hist.Edges) == 0 {

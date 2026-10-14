@@ -14,7 +14,7 @@ func BenchmarkStoreUpdate(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, now, 0)
+		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
 	}
 }
 
@@ -33,7 +33,7 @@ func BenchmarkStoreUpdateReceiverCapShadow(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, now, receivers[i&3])
+		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, receivers[i&3])
 	}
 }
 
@@ -52,7 +52,7 @@ func BenchmarkStoreUpdateReceiverCapEnforce(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, now, receivers[i&3])
+		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, receivers[i&3])
 	}
 }
 
@@ -72,7 +72,7 @@ func BenchmarkStoreUpdateP50ElapsedSecondDecay(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		t := now.Add(time.Duration(i) * time.Second)
-		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, t, receivers[i&3])
+		store.UpdateWithReceiverHash(1, 2, 3, 4, "20m", -5, 1.0, ObservationTimes{ObservedAt: t, ArrivedAt: t}, receivers[i&3])
 	}
 }
 
@@ -85,7 +85,7 @@ func BenchmarkStoreRefreshStatsSnapshot(b *testing.B) {
 	for i := 0; i < 20000; i++ {
 		receiver := CellID((i % 30000) + 1)
 		sender := CellID(((i * 7) % 30000) + 1)
-		store.UpdateWithReceiverHash(receiver, sender, InvalidCell, InvalidCell, "20m", -5, 1.0, now, 0)
+		store.UpdateWithReceiverHash(receiver, sender, InvalidCell, InvalidCell, "20m", -5, 1.0, ObservationTimes{ObservedAt: now, ArrivedAt: now}, 0)
 	}
 
 	b.ReportAllocs()
@@ -108,8 +108,8 @@ func BenchmarkPredictFreshnessGate(b *testing.B) {
 	dxCoarse := CellID(4)
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, now, false)
-	predictor.Update(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 8, now, false)
+	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 10, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
+	predictor.Update(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 8, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -138,8 +138,8 @@ func BenchmarkPredictReceiverCapShadow(b *testing.B) {
 
 	for i := 0; i < 24; i++ {
 		receiver := receivers[i%len(receivers)]
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, now, false, receiver)
-		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 1, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 	}
 
 	b.ReportAllocs()
@@ -169,8 +169,8 @@ func BenchmarkPredictReceiverCapEnforce(b *testing.B) {
 
 	for i := 0; i < 24; i++ {
 		receiver := receivers[i%len(receivers)]
-		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, now, false, receiver)
-		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 1, now, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -5, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
+		predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -7, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
 	}
 
 	b.ReportAllocs()

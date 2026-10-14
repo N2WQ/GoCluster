@@ -2,7 +2,7 @@
 // Crawler notes: Start here when investigating path source-mix logs, hourly
 // unique spotter/grid-pair counts, or allocation in path reporting.
 // Related docs: pathreliability/README.md, docs/decisions/ADR-0139-active-path-p50-histogram-lane-retention.md.
-// Related tests: internal/cluster/path_report_metrics_test.go, internal/cluster/path_report_metrics_bench_test.go.
+// Related tests: internal/cluster/path_report_metrics_test.go, internal/cluster/path_report_metrics_bench_test.go, internal/cluster/path_timestamp_ingest_test.go.
 package cluster
 
 import (
@@ -39,18 +39,20 @@ func (m *pathReportMetrics) Observe(s *spot.Spot, now time.Time) {
 	}
 	deCoarse := pathreliability.EncodeCoarseCell(s.DEMetadata.Grid)
 	dxCoarse := pathreliability.EncodeCoarseCell(s.DXMetadata.Grid)
-	m.ObserveWithCells(s, now, deCoarse, dxCoarse)
+	effectiveObservation := s.Time
+	if effectiveObservation.IsZero() {
+		effectiveObservation = now
+	}
+	m.ObserveWithCells(s, effectiveObservation, deCoarse, dxCoarse)
 }
 
-func (m *pathReportMetrics) ObserveWithCells(s *spot.Spot, now time.Time, deCoarse, dxCoarse pathreliability.CellID) {
-	if m == nil || s == nil {
+// ObserveWithCells receives the predictor's accepted observation time. Spot.Time
+// remains the source timestamp and must not override path-learning normalization.
+func (m *pathReportMetrics) ObserveWithCells(s *spot.Spot, effectiveObservation time.Time, deCoarse, dxCoarse pathreliability.CellID) {
+	if m == nil || s == nil || effectiveObservation.IsZero() {
 		return
 	}
-	ts := s.Time
-	if ts.IsZero() {
-		ts = now
-	}
-	ts = ts.UTC()
+	ts := effectiveObservation.UTC()
 	hourStart := ts.Truncate(time.Hour)
 	hourStartUnix := hourStart.Unix()
 

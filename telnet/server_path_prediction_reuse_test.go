@@ -130,7 +130,7 @@ func TestPathPredictionEnvelopeRecomputesWhenClientStateChanges(t *testing.T) {
 				client.pathMu.Unlock()
 			},
 			seedAlt: func(predictor *pathreliability.Predictor, now time.Time, _, dxCell pathreliability.CellID) {
-				predictor.Update(pathreliability.BucketCombined, pathreliability.CellID(3), dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, now, false)
+				predictor.Update(pathreliability.BucketCombined, pathreliability.CellID(3), dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 			},
 		},
 		{
@@ -250,7 +250,7 @@ func newPathPredictionReuseFixture(t testing.TB, samples int, sufficient bool, p
 	userCell := pathreliability.CellID(1)
 	dxCell := pathreliability.CellID(2)
 	for i := 0; i < samples; i++ {
-		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, now.Add(time.Duration(i)*time.Second), false, uint64(i+1))
+		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1, pathreliability.ObservationTimes{ObservedAt: now.Add(time.Duration(i) * time.Second), ArrivedAt: now.Add(time.Duration(i) * time.Second)}, false, uint64(i+1))
 	}
 	fallback := &countingPathClosedFallback{
 		forecast: pathreliability.VOACAPCachedForecast{

@@ -14,7 +14,6 @@ import (
 
 const (
 	defaultShards = 64
-	ln2           = 0.6931471805599453
 
 	inlineReceiverSlots = 6
 )
@@ -34,8 +33,11 @@ type receiverSlot struct {
 type bucket struct {
 	weight float64
 	count  uint32
-	// lastUpdate stores Unix seconds.
+	// lastUpdate is the monotonic accounting reference in Unix seconds.
 	lastUpdate int64
+	// newestObservation is independent of reference advancement and includes
+	// validated cap-rejected/numerically unusable raw reports. Epoch zero is valid.
+	newestObservation int64
 
 	cappedWeight float64
 	cappedCount  float64
@@ -58,20 +60,14 @@ type shard struct {
 
 // Store aggregates decaying FT8-equiv path evidence.
 type Store struct {
-	shards    []shard
-	cfg       Config
-	bandIndex BandIndex
+	shards     []shard
+	cfg        Config
+	bandIndex  BandIndex
+	admissions admissionCounters
 
 	statsMu        sync.RWMutex
 	statsRefreshMu sync.Mutex
 	stats          pathStoreStatsSnapshot
-}
-
-type pathStoreStatsSnapshot struct {
-	asOfUnix int64
-	fine     int
-	coarse   int
-	byBand   []bandCounts
 }
 
 const (
@@ -103,128 +99,165 @@ func NewStore(cfg Config, bands []string) *Store {
 // UpdateWithReceiverHash applies a new reading and attributes capped
 // contribution trust to the normalized receiving station identity hash.
 // A zero hash is intentionally unattributed and does not add capped trust.
-func (s *Store) UpdateWithReceiverHash(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8DB float64, weight float64, now time.Time, receiverHash uint64) {
-	if s == nil || !s.cfg.Enabled {
-		return
+func (s *Store) UpdateWithReceiverHash(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8DB float64, weight float64, times ObservationTimes, receiverHash uint64) ReportAdmission {
+	return s.updateReport(receiverCell, senderCell, receiverCoarse, senderCoarse, band, ft8DB, weight, &times, receiverHash, false, BucketCombined)
+}
+
+// updateReport validates original input before applying an optional predictor
+// beacon limit. One entry owns validation, diagnostics, and fine/coarse writes;
+// its outcome is recorded once, independently of bucket or cap admission.
+func (s *Store) updateReport(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, ft8DB float64, weight float64, times *ObservationTimes, receiverHash uint64, isBeacon bool, class BucketClass) ReportAdmission {
+	if s == nil || !s.cfg.Enabled || class != BucketCombined {
+		return ReportAdmission{Status: AdmissionInactive}
 	}
-	if weight <= 0 || math.IsNaN(weight) {
-		return
+	admission := validateReport(times, weight)
+	if admission.Status != AdmissionAccepted {
+		s.admissions.record(admission.Status)
+	}
+	if !admission.Accepted() {
+		return admission
+	}
+	if isBeacon && s.cfg.BeaconWeightCap > 0 && weight > s.cfg.BeaconWeightCap {
+		weight = s.cfg.BeaconWeightCap
 	}
 	idx, ok := s.bandIndex.Lookup(band)
 	if !ok {
-		return
+		return admission
 	}
 	halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
 	snrBin := snrHistogramBinIndex(ft8DB)
 	if snrBin < 0 {
-		return
+		return admission
 	}
+	observedSec, arrivedSec := admission.EffectiveObservation.Unix(), times.ArrivedAt.Unix()
+	mass, count := agedContribution(weight, nonnegativeSecondsSince(arrivedSec, observedSec), halfLife)
 	if receiverCell == InvalidCell || senderCell == InvalidCell {
 		// Still allow coarse update when fine cells are missing.
 	} else {
-		s.updateBucket(packKey(receiverCell, senderCell, idx), weight, now, halfLife, receiverHash, s.cfg.ReceiverFineSlots, snrBin)
+		s.updateBucket(packKey(receiverCell, senderCell, idx), weight, mass, count, observedSec, arrivedSec, halfLife, receiverHash, s.cfg.ReceiverFineSlots, snrBin)
 	}
 	if receiverCoarse != InvalidCell && senderCoarse != InvalidCell {
-		s.updateBucket(packCoarseKey(receiverCoarse, senderCoarse, idx), weight, now, halfLife, receiverHash, s.cfg.ReceiverCoarseSlots, snrBin)
+		s.updateBucket(packCoarseKey(receiverCoarse, senderCoarse, idx), weight, mass, count, observedSec, arrivedSec, halfLife, receiverHash, s.cfg.ReceiverCoarseSlots, snrBin)
 	}
+	return admission
 }
 
-func (s *Store) updateBucket(key uint64, weight float64, now time.Time, halfLifeSec int, receiverHash uint64, receiverSlots int, snrBin int) {
+// updateBucket ages existing and incoming evidence to one monotonic accounting
+// reference. Count/freshness describe eligible raw reports, independently of
+// usable histogram mass and receiver admission.
+func (s *Store) updateBucket(key uint64, weight, mass, count float64, observedSec, arrivedSec int64, halfLifeSec int, receiverHash uint64, receiverSlots int, snrBin int) {
 	if key == 0 {
 		return
 	}
 	sh := &s.shards[key%uint64(len(s.shards))]
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
-	nowSec := now.Unix()
-	b, ok := sh.buckets[key]
-	if !ok {
-		b = &bucket{lastUpdate: nowSec}
+	b := sh.buckets[key]
+	if b == nil {
+		b = &bucket{lastUpdate: arrivedSec, newestObservation: observedSec}
 		sh.buckets[key] = b
 		if len(sh.buckets) > sh.peak {
 			sh.peak = len(sh.buckets)
 		}
 	}
-	elapsed := nowSec - b.lastUpdate
+	reference := max(b.lastUpdate, arrivedSec)
+	elapsed := nonnegativeSecondsSince(reference, b.lastUpdate)
 	decay := decayFactor(elapsed, halfLifeSec)
-	if snrBin >= 0 && decay != 1 && s.cfg.ReceiverContributionMode != ReceiverContributionEnforce {
+	if decay != 1 {
+		b.weight = decayedMass(b.weight, elapsed, halfLifeSec, decay)
+		b.cappedWeight = decayedMass(b.cappedWeight, elapsed, halfLifeSec, decay)
+		b.cappedCount *= decay
 		b.snrBins.decay(decay)
+		if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
+			b.decayReceiverSlots(decay, receiverSlots)
+		}
 	}
-	oldWeight := b.weight * decay
-	newWeight := oldWeight + weight
-	if newWeight <= 0 || math.IsNaN(newWeight) {
-		b.weight = 0
-		b.updateCapped(weight, nowSec, decay, receiverHash, receiverSlots, s.cfg, snrBin)
-		b.lastUpdate = nowSec
-		return
-	}
-	b.weight = newWeight
+	b.lastUpdate = reference
+	b.newestObservation = max(b.newestObservation, observedSec)
 	if b.count < maxBucketObservationCount {
 		b.count++
 	}
-	if snrBin >= 0 && s.cfg.ReceiverContributionMode != ReceiverContributionEnforce {
-		b.snrBins.add(snrBin, weight)
+	// Both buckets normally share arrival's incoming factor. A captured bucket
+	// ahead of arrival needs its own later reference, without amplifying weight.
+	if reference > arrivedSec {
+		mass, count = agedContribution(weight, nonnegativeSecondsSince(reference, observedSec), halfLifeSec)
 	}
-	b.updateCapped(weight, nowSec, decay, receiverHash, receiverSlots, s.cfg, snrBin)
-	b.lastUpdate = nowSec
+	if !finitePositiveSum(b.weight, mass) {
+		return
+	}
+	activeCapped := s.cfg.ReceiverContributionMode == ReceiverContributionEnforce
+	var rawBin float32
+	if activeCapped {
+		if !usableHistogramIncrement(mass) {
+			return
+		}
+	} else {
+		var safe bool
+		rawBin, safe = b.snrBins.addition(snrBin, mass)
+		if !safe {
+			return
+		}
+	}
+	b.weight += mass
+	if !activeCapped {
+		b.snrBins[snrBin] = rawBin
+	}
+	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
+		b.updateCapped(mass, count, reference, receiverHash, receiverSlots, &s.cfg, snrBin)
+	}
 }
 
-func (b *bucket) updateCapped(weight float64, nowSec int64, decay float64, receiverHash uint64, receiverSlots int, cfg Config, snrBin int) {
-	if b == nil {
+func finitePositiveSum(current, increment float64) bool {
+	sum := current + increment
+	return current >= 0 && sum > 0 && sum <= math.MaxFloat64
+}
+
+// updateCapped previews receiver ownership and the final weighted increment.
+// No allocation or eviction occurs until that increment is safe. Raw usable
+// mass remains recorded when only cap scaling makes the capped mass unusable.
+func (b *bucket) updateCapped(mass, count float64, reference int64, receiverHash uint64, receiverSlots int, cfg *Config, snrBin int) {
+	if cfg.ReceiverContributionMode == ReceiverContributionOff || receiverHash == 0 || receiverSlots <= 0 || cfg.ReceiverMaxEffectiveWeight <= 0 || cfg.ReceiverMaxEffectiveCount == 0 {
 		return
 	}
-	if cfg.ReceiverContributionMode == ReceiverContributionOff {
+	index := b.selectReceiverSlotIndex(receiverHash, receiverSlots)
+	if index < 0 {
 		return
 	}
-	b.cappedWeight *= decay
-	b.cappedCount *= decay
+	var previous receiverSlot
+	if slot := b.receiverSlotAt(index, false); slot != nil && slot.hash == receiverHash {
+		previous = *slot
+	}
+	remainingWeight := cfg.ReceiverMaxEffectiveWeight - previous.weight
+	remainingCount := float64(cfg.ReceiverMaxEffectiveCount) - previous.count
+	if remainingWeight <= effectiveCountEpsilon || remainingCount <= effectiveCountEpsilon {
+		return
+	}
+	fraction := math.Min(1, remainingWeight/mass)
+	if count > 0 {
+		fraction = math.Min(fraction, remainingCount/count)
+	}
+	if !(fraction > effectiveCountEpsilon) {
+		return
+	}
+	acceptedWeight, acceptedCount := mass*fraction, count*fraction
+	if !usableHistogramIncrement(acceptedWeight) || !finitePositiveSum(b.cappedWeight, acceptedWeight) || !finitePositiveSum(previous.weight, acceptedWeight) {
+		return
+	}
 	activeCapped := cfg.ReceiverContributionMode == ReceiverContributionEnforce
-	if snrBin >= 0 && decay != 1 && activeCapped {
-		b.snrBins.decay(decay)
+	var cappedBin float32
+	if activeCapped {
+		var safe bool
+		cappedBin, safe = b.snrBins.addition(snrBin, acceptedWeight)
+		if !safe {
+			return
+		}
 	}
-	if b.cappedWeight <= 0 || math.IsNaN(b.cappedWeight) {
-		b.cappedWeight = 0
-	}
-	if b.cappedCount <= 0 || math.IsNaN(b.cappedCount) {
-		b.cappedCount = 0
-	}
-	b.decayReceiverSlots(decay, receiverSlots)
-	if receiverHash == 0 || receiverSlots <= 0 || weight <= 0 || cfg.ReceiverMaxEffectiveWeight <= 0 || cfg.ReceiverMaxEffectiveCount == 0 {
-		return
-	}
-	slot := b.selectReceiverSlot(receiverHash, receiverSlots)
-	if slot == nil {
-		return
-	}
-	if slot.hash != receiverHash {
-		*slot = receiverSlot{hash: receiverHash}
-	}
-	remainingWeight := cfg.ReceiverMaxEffectiveWeight - slot.weight
-	if remainingWeight <= effectiveCountEpsilon {
-		return
-	}
-	remainingCount := float64(cfg.ReceiverMaxEffectiveCount) - slot.count
-	if remainingCount <= effectiveCountEpsilon {
-		return
-	}
-	acceptedFraction := 1.0
-	if remainingCount < acceptedFraction {
-		acceptedFraction = remainingCount
-	}
-	if weightLimitFraction := remainingWeight / weight; weightLimitFraction < acceptedFraction {
-		acceptedFraction = weightLimitFraction
-	}
-	if acceptedFraction <= effectiveCountEpsilon || math.IsNaN(acceptedFraction) {
-		return
-	}
-	acceptedWeight := weight * acceptedFraction
-	slot.weight += acceptedWeight
-	slot.count += acceptedFraction
-	slot.lastUpdate = nowSec
+	slot := b.receiverSlotAt(index, true)
+	*slot = receiverSlot{hash: receiverHash, weight: previous.weight + acceptedWeight, count: previous.count + acceptedCount, lastUpdate: reference}
 	b.cappedWeight += acceptedWeight
-	b.cappedCount += acceptedFraction
-	if snrBin >= 0 && activeCapped {
-		b.snrBins.add(snrBin, acceptedWeight)
+	b.cappedCount += acceptedCount
+	if activeCapped {
+		b.snrBins[snrBin] = cappedBin
 	}
 }
 
@@ -251,9 +284,9 @@ func (b *bucket) decayReceiverSlots(decay float64, receiverSlots int) {
 	}
 }
 
-func (b *bucket) selectReceiverSlot(hash uint64, receiverSlots int) *receiverSlot {
+func (b *bucket) selectReceiverSlotIndex(hash uint64, receiverSlots int) int {
 	if b == nil || hash == 0 || receiverSlots <= 0 {
-		return nil
+		return -1
 	}
 	if receiverSlots > maxCoarseReceiverSlots {
 		receiverSlots = maxCoarseReceiverSlots
@@ -271,7 +304,7 @@ func (b *bucket) selectReceiverSlot(hash uint64, receiverSlots int) *receiverSlo
 			continue
 		}
 		if slot.hash == hash {
-			return slot
+			return i
 		}
 		if replace < 0 || slot.weight < replaceWeight || (slot.weight == replaceWeight && slot.lastUpdate < replaceUpdate) {
 			replace = i
@@ -280,9 +313,9 @@ func (b *bucket) selectReceiverSlot(hash uint64, receiverSlots int) *receiverSlo
 		}
 	}
 	if empty >= 0 {
-		return b.receiverSlotAt(empty, true)
+		return empty
 	}
-	return b.receiverSlotAt(replace, true)
+	return replace
 }
 
 func (b *bucket) receiverSlotAt(index int, allocate bool) *receiverSlot {
@@ -313,6 +346,9 @@ func (b *bucket) receiverSlotAt(index int, allocate bool) *receiverSlot {
 
 // Sample represents selected decayed path evidence with weight and counts.
 type Sample struct {
+	// SamplingUnix is the common evaluation time, even for count-only evidence.
+	SamplingUnix           int64
+	HasSamplingTime        bool
 	Weight                 float64
 	AgeSec                 int64
 	Count                  uint32
@@ -328,23 +364,83 @@ type Sample struct {
 
 type sampleWithBins struct {
 	Sample
-	P50DB   float64
-	HasP50  bool
-	snrBins snrHistogram
+	P50DB                   float64
+	HasP50                  bool
+	snrBins                 snrHistogram
+	distributionUnavailable bool
 }
 
-type bandCounts struct {
-	fine   int
-	coarse int
+// bucketCapture owns copied receiver values; no retained sidecar pointer leaves
+// a shard lock. Presence is explicit because Unix epoch zero is a valid clock.
+type bucketCapture struct {
+	present                      bool
+	weight                       float64
+	count                        uint32
+	reference, newestObservation int64
+	cappedWeight, cappedCount    float64
+	bins                         snrHistogram
+	slots                        [maxCoarseReceiverSlots]receiverCapture
 }
 
-type weightHistogram struct {
-	total int
-	bins  []int
+type receiverCapture struct{ weight, count float64 }
+
+func (s *Store) captureBucket(key uint64, receiverSlots int, distribution bool) bucketCapture {
+	var capture bucketCapture
+	s.captureBucketInto(key, receiverSlots, distribution, &capture)
+	return capture
 }
 
-// Lookup returns the decayed samples for the given keys.
+func (s *Store) captureBucketInto(key uint64, receiverSlots int, distribution bool, capture *bucketCapture) {
+	if key == 0 {
+		return
+	}
+	sh := &s.shards[key%uint64(len(s.shards))]
+	sh.mu.RLock()
+	defer sh.mu.RUnlock()
+	b := sh.buckets[key]
+	if b == nil {
+		return
+	}
+	*capture = bucketCapture{present: true, weight: b.weight, count: b.count,
+		reference: b.lastUpdate, newestObservation: b.newestObservation,
+		cappedWeight: b.cappedWeight, cappedCount: b.cappedCount}
+	if distribution {
+		capture.bins = b.snrBins
+	}
+	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
+		for i := 0; i < min(receiverSlots, maxCoarseReceiverSlots); i++ {
+			if slot := b.receiverSlotAt(i, false); slot != nil {
+				if slot.hash != 0 {
+					capture.slots[i] = receiverCapture{weight: slot.weight, count: slot.count}
+				}
+			}
+		}
+	}
+}
+
+// sampleDetail separates bin materialization from quantile work. Production
+// validates complete needed components when it writes selected/merged scratch
+// bins; only the final distribution needs a median. Diagnostic lookup helpers
+// can still explicitly request individual quantiles.
+type sampleDetail uint8
+
+const (
+	sampleScalars sampleDetail = iota
+	sampleDistribution
+	sampleQuantile
+)
+
+// Lookup evaluates both overlapping candidates at one captured sampling time.
 func (s *Store) Lookup(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, now time.Time) (fine Sample, coarse Sample) {
+	candidates := s.lookupCandidateSet(receiverCell, senderCell, receiverCoarse, senderCoarse, band, now, false, sampleScalars)
+	return candidates[0].Sample, candidates[1].Sample
+}
+
+func (s *Store) lookupCandidates(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, now time.Time, includeReverse bool) [4]sampleWithBins {
+	return s.lookupCandidateSet(receiverCell, senderCell, receiverCoarse, senderCoarse, band, now, includeReverse, sampleDistribution)
+}
+
+func (s *Store) lookupCandidateSet(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, now time.Time, includeReverse bool, detail sampleDetail) (samples [4]sampleWithBins) {
 	if s == nil || !s.cfg.Enabled {
 		return
 	}
@@ -352,215 +448,107 @@ func (s *Store) Lookup(receiverCell, senderCell CellID, receiverCoarse, senderCo
 	if !ok {
 		return
 	}
-	halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
+	var keys [4]uint64
 	if receiverCell != InvalidCell && senderCell != InvalidCell {
-		fine = s.sample(packKey(receiverCell, senderCell, idx), halfLife, now, s.cfg.ReceiverFineSlots)
+		keys[0] = packKey(receiverCell, senderCell, idx)
+		if includeReverse {
+			keys[2] = packKey(senderCell, receiverCell, idx)
+		}
 	}
 	if receiverCoarse != InvalidCell && senderCoarse != InvalidCell {
-		coarse = s.sample(packCoarseKey(receiverCoarse, senderCoarse, idx), halfLife, now, s.cfg.ReceiverCoarseSlots)
+		keys[1] = packCoarseKey(receiverCoarse, senderCoarse, idx)
+		if includeReverse {
+			keys[3] = packCoarseKey(senderCoarse, receiverCoarse, idx)
+		}
+	}
+	var captures [4]bucketCapture
+	reference := now.Unix()
+	length := 2
+	if includeReverse {
+		length = 4
+	}
+	for i := 0; i < length; i++ {
+		slots := s.cfg.ReceiverFineSlots
+		if i%2 == 1 {
+			slots = s.cfg.ReceiverCoarseSlots
+		}
+		s.captureBucketInto(keys[i], slots, detail != sampleScalars, &captures[i])
+		if captures[i].present {
+			reference = max(reference, captures[i].reference)
+		}
+	}
+	halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
+	for i := 0; i < length; i++ {
+		slots := s.cfg.ReceiverFineSlots
+		if i%2 == 1 {
+			slots = s.cfg.ReceiverCoarseSlots
+		}
+		samples[i] = s.evaluateCapture(&captures[i], halfLife, reference, slots, detail)
 	}
 	return
 }
 
-func (s *Store) lookupWithDistribution(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, now time.Time) (fine sampleWithBins, coarse sampleWithBins) {
-	if s == nil || !s.cfg.Enabled {
-		return
+func (s *Store) evaluateCapture(capture *bucketCapture, halfLife int, reference int64, receiverSlots int, detail sampleDetail) sampleWithBins {
+	result := sampleWithBins{Sample: Sample{SamplingUnix: reference, HasSamplingTime: true}}
+	if !capture.present {
+		return result
 	}
-	idx, ok := s.bandIndex.Lookup(band)
-	if !ok {
-		return
+	age := nonnegativeSecondsSince(reference, capture.newestObservation)
+	if staleAfter := s.staleAfterSeconds(halfLife); staleAfter > 0 && age > staleAfter {
+		return result
 	}
-	halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
-	if receiverCell != InvalidCell && senderCell != InvalidCell {
-		fine = s.sampleWithDistribution(packKey(receiverCell, senderCell, idx), halfLife, now, s.cfg.ReceiverFineSlots)
-	}
-	if receiverCoarse != InvalidCell && senderCoarse != InvalidCell {
-		coarse = s.sampleWithDistribution(packCoarseKey(receiverCoarse, senderCoarse, idx), halfLife, now, s.cfg.ReceiverCoarseSlots)
-	}
-	return
-}
-
-func (s *Store) sample(key uint64, halfLife int, now time.Time, receiverSlots int) Sample {
-	if key == 0 {
-		return Sample{}
-	}
-	nowSec := now.Unix()
-	sh := &s.shards[key%uint64(len(s.shards))]
-	sh.mu.RLock()
-	b := sh.buckets[key]
-	if b == nil {
-		sh.mu.RUnlock()
-		return Sample{}
-	}
-	age := nowSec - b.lastUpdate
-	if age < 0 {
-		age = 0
-	}
-	staleAfter := s.staleAfterSeconds(halfLife)
-	if staleAfter > 0 && age > staleAfter {
-		sh.mu.RUnlock()
-		return Sample{}
-	}
-	decay := decayFactor(age, halfLife)
-	snap := bucket{
-		weight:       b.weight,
-		count:        b.count,
-		lastUpdate:   b.lastUpdate,
-		cappedWeight: b.cappedWeight,
-		cappedCount:  b.cappedCount,
-	}
-	cappedReceiverCount := uint32(0)
-	cappedReceiverCapacity := uint32(0)
-	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
-		cappedReceiverCount = b.receiverCountAfterDecay(receiverSlots, decay)
-		cappedReceiverCapacity = receiverSlotCapacity(receiverSlots)
-	}
-	sh.mu.RUnlock()
-	rawWeight := snap.weight * decay
-	if rawWeight <= 0 {
-		return Sample{}
-	}
-	cappedWeight := rawWeight
-	cappedCount := snap.count
+	elapsed := nonnegativeSecondsSince(reference, capture.reference)
+	decay := decayFactor(elapsed, halfLife)
+	rawWeight := decayedMass(capture.weight, elapsed, halfLife, decay)
+	cappedWeight, cappedCount := rawWeight, capture.count
+	var receiverCount, capacity uint32
 	capLimited := false
 	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
-		cappedWeight = snap.cappedWeight * decay
-		if cappedWeight <= 0 {
-			cappedWeight = 0
+		cappedWeight = decayedMass(capture.cappedWeight, elapsed, halfLife, decay)
+		cappedCount = effectiveCountToUint32(capture.cappedCount * decay)
+		capLimited = receiverCapLimited(capture.count, cappedCount, rawWeight, cappedWeight)
+		capacity = receiverSlotCapacity(receiverSlots)
+		for i := 0; i < min(receiverSlots, maxCoarseReceiverSlots); i++ {
+			slot := capture.slots[i]
+			if slot.weight*decay > effectiveCountEpsilon || slot.count*decay > effectiveCountEpsilon {
+				receiverCount++
+			}
 		}
-		cappedCount = effectiveCountToUint32(snap.cappedCount * decay)
-		capLimited = receiverCapLimited(snap.count, cappedCount, rawWeight, cappedWeight)
 	}
-	activeWeight := rawWeight
-	activeCount := snap.count
+	activeWeight, activeCount := rawWeight, capture.count
 	if s.cfg.ReceiverContributionMode == ReceiverContributionEnforce {
-		activeWeight = cappedWeight
-		activeCount = cappedCount
+		activeWeight, activeCount = cappedWeight, cappedCount
 	}
-	if activeWeight <= 0 {
-		return Sample{
-			AgeSec:                 age,
-			Count:                  activeCount,
-			ObservationCount:       snap.count,
-			RawCount:               snap.count,
-			RawWeight:              rawWeight,
-			CappedCount:            cappedCount,
-			CappedWeight:           cappedWeight,
-			CappedReceiverCount:    cappedReceiverCount,
-			CappedReceiverCapacity: cappedReceiverCapacity,
-			CapLimited:             capLimited,
-		}
+	result.Sample = Sample{SamplingUnix: reference, HasSamplingTime: true,
+		Weight: activeWeight, AgeSec: age, Count: activeCount,
+		ObservationCount: capture.count, RawCount: capture.count, RawWeight: rawWeight,
+		CappedCount: cappedCount, CappedWeight: cappedWeight,
+		CappedReceiverCount: receiverCount, CappedReceiverCapacity: capacity, CapLimited: capLimited}
+	if math.IsNaN(activeWeight) || math.IsInf(activeWeight, 0) || activeWeight < 0 {
+		result.distributionUnavailable = detail != sampleScalars
+		return result
 	}
-	return Sample{
-		Weight:                 activeWeight,
-		AgeSec:                 age,
-		Count:                  activeCount,
-		ObservationCount:       snap.count,
-		RawCount:               snap.count,
-		RawWeight:              rawWeight,
-		CappedCount:            cappedCount,
-		CappedWeight:           cappedWeight,
-		CappedReceiverCount:    cappedReceiverCount,
-		CappedReceiverCapacity: cappedReceiverCapacity,
-		CapLimited:             capLimited,
+	if detail == sampleScalars || !(activeWeight > 0) {
+		return result
 	}
-}
-
-func (s *Store) sampleWithDistribution(key uint64, halfLife int, now time.Time, receiverSlots int) sampleWithBins {
-	if key == 0 {
-		return sampleWithBins{}
+	result.snrBins = capture.bins
+	arithmeticOK := true
+	if decay != 1 {
+		arithmeticOK = result.snrBins.decay(decay)
 	}
-	nowSec := now.Unix()
-	sh := &s.shards[key%uint64(len(s.shards))]
-	sh.mu.RLock()
-	b := sh.buckets[key]
-	if b == nil {
-		sh.mu.RUnlock()
-		return sampleWithBins{}
+	if detail == sampleQuantile {
+		result.P50DB, result.HasP50 = result.snrBins.p50DB()
+		result.distributionUnavailable = !arithmeticOK || !result.HasP50
+	} else {
+		// Every needed component is validated by addScaled, shifted, or the
+		// final p50 calculation. Empty positive distributions fail those same
+		// boundaries, without rescanning all four candidate arrays here.
+		result.distributionUnavailable = !arithmeticOK
 	}
-	age := nowSec - b.lastUpdate
-	if age < 0 {
-		age = 0
+	if result.distributionUnavailable {
+		result.HasP50 = false
 	}
-	staleAfter := s.staleAfterSeconds(halfLife)
-	if staleAfter > 0 && age > staleAfter {
-		sh.mu.RUnlock()
-		return sampleWithBins{}
-	}
-	decay := decayFactor(age, halfLife)
-	snap := bucket{
-		weight:       b.weight,
-		count:        b.count,
-		lastUpdate:   b.lastUpdate,
-		cappedWeight: b.cappedWeight,
-		cappedCount:  b.cappedCount,
-		snrBins:      b.snrBins,
-	}
-	cappedReceiverCount := uint32(0)
-	cappedReceiverCapacity := uint32(0)
-	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
-		cappedReceiverCount = b.receiverCountAfterDecay(receiverSlots, decay)
-		cappedReceiverCapacity = receiverSlotCapacity(receiverSlots)
-	}
-	sh.mu.RUnlock()
-	rawWeight := snap.weight * decay
-	if rawWeight <= 0 {
-		return sampleWithBins{}
-	}
-	cappedWeight := rawWeight
-	cappedCount := snap.count
-	capLimited := false
-	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
-		cappedWeight = snap.cappedWeight * decay
-		if cappedWeight <= 0 {
-			cappedWeight = 0
-		}
-		cappedCount = effectiveCountToUint32(snap.cappedCount * decay)
-		capLimited = receiverCapLimited(snap.count, cappedCount, rawWeight, cappedWeight)
-	}
-	activeWeight := rawWeight
-	activeCount := snap.count
-	activeSNRBins := snap.snrBins
-	if s.cfg.ReceiverContributionMode == ReceiverContributionEnforce {
-		activeWeight = cappedWeight
-		activeCount = cappedCount
-	}
-	activeSNRBins.decay(decay)
-	p50DB, hasP50 := activeSNRBins.p50DB()
-	if activeWeight <= 0 {
-		return sampleWithBins{
-			Sample: Sample{
-				AgeSec:                 age,
-				Count:                  activeCount,
-				ObservationCount:       snap.count,
-				RawCount:               snap.count,
-				RawWeight:              rawWeight,
-				CappedCount:            cappedCount,
-				CappedWeight:           cappedWeight,
-				CappedReceiverCount:    cappedReceiverCount,
-				CappedReceiverCapacity: cappedReceiverCapacity,
-				CapLimited:             capLimited,
-			},
-		}
-	}
-	return sampleWithBins{
-		Sample: Sample{
-			Weight:                 activeWeight,
-			AgeSec:                 age,
-			Count:                  activeCount,
-			ObservationCount:       snap.count,
-			RawCount:               snap.count,
-			RawWeight:              rawWeight,
-			CappedCount:            cappedCount,
-			CappedWeight:           cappedWeight,
-			CappedReceiverCount:    cappedReceiverCount,
-			CappedReceiverCapacity: cappedReceiverCapacity,
-			CapLimited:             capLimited,
-		},
-		P50DB:   p50DB,
-		HasP50:  hasP50,
-		snrBins: activeSNRBins,
-	}
+	return result
 }
 
 func receiverCapLimited(rawCount uint32, cappedCount uint32, rawWeight float64, cappedWeight float64) bool {
@@ -588,26 +576,6 @@ func receiverSlotCapacity(receiverSlots int) uint32 {
 	return uint32(receiverSlots)
 }
 
-func (b *bucket) receiverCountAfterDecay(receiverSlots int, decay float64) uint32 {
-	if b == nil || receiverSlots <= 0 {
-		return 0
-	}
-	if receiverSlots > maxCoarseReceiverSlots {
-		receiverSlots = maxCoarseReceiverSlots
-	}
-	var count uint32
-	for i := 0; i < receiverSlots; i++ {
-		slot := b.receiverSlotAt(i, false)
-		if slot == nil || slot.hash == 0 {
-			continue
-		}
-		if slot.weight*decay > effectiveCountEpsilon || slot.count*decay > effectiveCountEpsilon {
-			count++
-		}
-	}
-	return count
-}
-
 // PurgeStale removes buckets older than stale-after.
 func (s *Store) PurgeStale(now time.Time) int {
 	if s == nil {
@@ -630,10 +598,7 @@ func (s *Store) PurgeStale(now time.Time) int {
 				removed++
 				continue
 			}
-			age := nowSec - b.lastUpdate
-			if age < 0 {
-				age = 0
-			}
+			age := nonnegativeSecondsSince(max(nowSec, b.lastUpdate), b.newestObservation)
 			isCoarse := k&0xFFFF != 0
 			var idx uint16
 			if isCoarse {
@@ -711,185 +676,11 @@ func (s *Store) TotalBuckets() int {
 	return total
 }
 
-// Stats returns the last refreshed counts of active fine/coarse buckets.
-func (s *Store) Stats(_ time.Time) (fine int, coarse int) {
-	if s == nil || !s.cfg.Enabled {
-		return 0, 0
-	}
-	s.statsMu.RLock()
-	defer s.statsMu.RUnlock()
-	return s.stats.fine, s.stats.coarse
-}
-
-// StatsByBand returns the last refreshed counts of active fine/coarse buckets
-// per band.
-func (s *Store) StatsByBand(_ time.Time) []bandCounts {
-	if s == nil || !s.cfg.Enabled {
-		return nil
-	}
-	s.statsMu.RLock()
-	defer s.statsMu.RUnlock()
-	if len(s.stats.byBand) == 0 {
-		return nil
-	}
-	counts := make([]bandCounts, len(s.stats.byBand))
-	copy(counts, s.stats.byBand)
-	return counts
-}
-
-// RefreshStatsSnapshot recomputes the cached active-bucket counts used by
-// operator-facing stats displays. It is intentionally explicit so ingest writes
-// never scan the whole store.
-func (s *Store) RefreshStatsSnapshot(now time.Time) {
-	if s == nil || !s.cfg.Enabled {
-		return
-	}
-	if now.IsZero() {
-		now = time.Now().UTC()
-	} else {
-		now = now.UTC()
-	}
-	nowSec := now.Unix()
-
-	s.statsRefreshMu.Lock()
-	defer s.statsRefreshMu.Unlock()
-
-	bands := s.bandIndex.Bands()
-	counts := make([]bandCounts, len(bands))
-	staleAfterByBand := make([]int64, len(bands))
-	for i, band := range bands {
-		halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
-		staleAfterByBand[i] = s.staleAfterSeconds(halfLife)
-	}
-	fine := 0
-	coarse := 0
-	for i := range s.shards {
-		sh := &s.shards[i]
-		sh.mu.RLock()
-		for key, b := range sh.buckets {
-			if b == nil {
-				continue
-			}
-			age := nowSec - b.lastUpdate
-			if age < 0 {
-				age = 0
-			}
-			isCoarse := key&0xFFFF != 0
-			var idx uint16
-			if isCoarse {
-				idx = uint16((key >> 32) & 0xFFFF)
-			} else {
-				idx = uint16((key >> 48) & 0xFFFF)
-			}
-			if int(idx) >= len(counts) {
-				continue
-			}
-			staleAfter := staleAfterByBand[idx]
-			if staleAfter > 0 && age > staleAfter {
-				continue
-			}
-			if isCoarse {
-				counts[idx].coarse++
-				coarse++
-			} else {
-				counts[idx].fine++
-				fine++
-			}
-		}
-		sh.mu.RUnlock()
-	}
-
-	s.statsMu.Lock()
-	s.stats = pathStoreStatsSnapshot{
-		asOfUnix: nowSec,
-		fine:     fine,
-		coarse:   coarse,
-		byBand:   counts,
-	}
-	s.statsMu.Unlock()
-}
-
-// WeightHistogramByBand returns per-band bucket weight histograms for active buckets.
-// edges defines the ascending bin boundaries (len+1 bins, last bin is >= last edge).
-func (s *Store) WeightHistogramByBand(now time.Time, edges []float64) []weightHistogram {
-	if s == nil || !s.cfg.Enabled {
-		return nil
-	}
-	bands := s.bandIndex.Bands()
-	if len(bands) == 0 {
-		return nil
-	}
-	if len(edges) == 0 {
-		return nil
-	}
-	binCount := len(edges) + 1
-	counts := make([]weightHistogram, len(bands))
-	for i := range counts {
-		counts[i].bins = make([]int, binCount)
-	}
-	halfLives := make([]int, len(bands))
-	for i, band := range bands {
-		halfLives[i] = s.bandIndex.HalfLifeSeconds(band, s.cfg)
-	}
-	staleAfterByBand := make([]int64, len(bands))
-	for i, halfLife := range halfLives {
-		staleAfterByBand[i] = s.staleAfterSeconds(halfLife)
-	}
-	nowSec := now.Unix()
-	for i := range s.shards {
-		sh := &s.shards[i]
-		sh.mu.RLock()
-		for key, b := range sh.buckets {
-			if b == nil {
-				continue
-			}
-			age := nowSec - b.lastUpdate
-			if age < 0 {
-				age = 0
-			}
-			isCoarse := key&0xFFFF != 0
-			var idx uint16
-			if isCoarse {
-				idx = uint16((key >> 32) & 0xFFFF)
-			} else {
-				idx = uint16((key >> 48) & 0xFFFF)
-			}
-			if int(idx) >= len(counts) {
-				continue
-			}
-			staleAfter := staleAfterByBand[idx]
-			if staleAfter > 0 && age > staleAfter {
-				continue
-			}
-			halfLife := halfLives[idx]
-			decay := decayFactor(age, halfLife)
-			decayedWeight := float64(b.weight) * decay
-			if decayedWeight <= 0 {
-				continue
-			}
-			bin := weightBinIndex(decayedWeight, edges)
-			counts[idx].total++
-			counts[idx].bins[bin]++
-		}
-		sh.mu.RUnlock()
-	}
-	return counts
-}
-
-func weightBinIndex(weight float64, edges []float64) int {
-	for i, edge := range edges {
-		if weight < edge {
-			return i
-		}
-	}
-	return len(edges)
-}
-
 func decayFactor(ageSec int64, halfLifeSec int) float64 {
 	if halfLifeSec <= 0 || ageSec <= 0 {
 		return 1
 	}
-	return math.Exp(-ln2 * float64(ageSec) / float64(halfLifeSec))
+	return math.Exp2(-float64(ageSec) / float64(halfLifeSec))
 }
 
 func (s *Store) staleAfterSeconds(halfLifeSec int) int64 {
@@ -901,7 +692,7 @@ func (s *Store) staleAfterSeconds(halfLifeSec int) int64 {
 		if seconds < 1 {
 			seconds = 1
 		}
-		return int64(seconds)
+		return ceilNonnegativeInt64(seconds)
 	}
 	if s.cfg.StaleAfterSeconds <= 0 {
 		return 0

@@ -144,7 +144,7 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 	case !hasFine && hasCoarse:
 		return coarseCandidate
 	case !hasFine && !hasCoarse:
-		return Sample{}
+		return sampleWithSamplingTime(Sample{}, fine, coarseCandidate)
 	}
 	if fineOnlyWeight > 0 && fine.Weight >= fineOnlyWeight {
 		return fine
@@ -153,10 +153,7 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 		return coarseCandidate
 	}
 	weight := maxFloat64(fine.Weight, coarseCandidate.Weight)
-	if weight <= 0 {
-		return Sample{}
-	}
-	return Sample{
+	return sampleWithSamplingTime(Sample{
 		Weight:                 weight,
 		AgeSec:                 weightedFineCoarseSampleAge(fine, coarseCandidate),
 		Count:                  maxCount(fine.Count, coarseCandidate.Count),
@@ -168,20 +165,22 @@ func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWei
 		CappedReceiverCount:    maxCount(fine.CappedReceiverCount, coarseCandidate.CappedReceiverCount),
 		CappedReceiverCapacity: maxCount(fine.CappedReceiverCapacity, coarseCandidate.CappedReceiverCapacity),
 		CapLimited:             fine.CapLimited || coarseCandidate.CapLimited,
-	}
+	}, fine, coarseCandidate)
 }
 
-func selectSampleWithDistribution(fine sampleWithBins, coarse sampleWithBins, minFineWeight float64, fineOnlyWeight float64) sampleWithBins {
+// selectSampleBins preserves directional float32 materialization and failure
+// boundaries, while leaving quantile calculation to the final merged sample.
+func selectSampleBins(fine sampleWithBins, coarse sampleWithBins, minFineWeight float64, fineOnlyWeight float64) sampleWithBins {
 	coarseCandidate := coarse
-	hasFine := sampleHasEvidence(fine.Sample)
-	hasCoarse := sampleHasEvidence(coarseCandidate.Sample)
+	hasFine := sampleHasEvidence(fine.Sample) || fine.distributionUnavailable
+	hasCoarse := sampleHasEvidence(coarseCandidate.Sample) || coarseCandidate.distributionUnavailable
 	switch {
 	case hasFine && !hasCoarse:
 		return fine
 	case !hasFine && hasCoarse:
 		return coarseCandidate
 	case !hasFine && !hasCoarse:
-		return sampleWithBins{}
+		return sampleWithBins{Sample: sampleWithSamplingTime(Sample{}, fine.Sample, coarseCandidate.Sample)}
 	}
 	if fineOnlyWeight > 0 && fine.Weight >= fineOnlyWeight {
 		return fine
@@ -190,22 +189,49 @@ func selectSampleWithDistribution(fine sampleWithBins, coarse sampleWithBins, mi
 		return coarseCandidate
 	}
 	sample := SelectSample(fine.Sample, coarseCandidate.Sample, minFineWeight, fineOnlyWeight)
-	if !sampleHasEvidence(sample) {
-		return sampleWithBins{}
+	if !sampleHasEvidence(sample) && !fine.distributionUnavailable && !coarseCandidate.distributionUnavailable {
+		return sampleWithBins{Sample: sample}
 	}
 	var bins snrHistogram
-	p50DB, hasP50 := 0.0, false
-	if fine.HasP50 || coarseCandidate.HasP50 {
-		bins.addScaled(fine.snrBins, 1)
-		bins.addScaled(coarseCandidate.snrBins, 1)
-		p50DB, hasP50 = bins.p50DB()
+	unavailable := fine.distributionUnavailable || coarseCandidate.distributionUnavailable
+	if !unavailable && fine.Weight > 0 {
+		unavailable = !bins.addScaled(&fine.snrBins, 1)
 	}
-	return sampleWithBins{
-		Sample:  sample,
-		P50DB:   p50DB,
-		HasP50:  hasP50,
-		snrBins: bins,
+	if !unavailable && coarseCandidate.Weight > 0 {
+		unavailable = !bins.addScaled(&coarseCandidate.snrBins, 1)
 	}
+	return sampleWithBins{Sample: sample, snrBins: bins, distributionUnavailable: unavailable}
+}
+
+// observedSampleDistribution preserves scalar/count diagnostics on failure,
+// but never exposes the median of a partial contributing distribution.
+func observedSampleDistribution(sample Sample, bins snrHistogram, unavailable bool) sampleWithBins {
+	if unavailable {
+		return sampleWithBins{Sample: sample, distributionUnavailable: true}
+	}
+	if sample.Weight <= 0 {
+		return sampleWithBins{Sample: sample}
+	}
+	p50DB, hasP50 := bins.p50DB()
+	if !hasP50 {
+		return sampleWithBins{Sample: sample, distributionUnavailable: true}
+	}
+	return sampleWithBins{Sample: sample, P50DB: p50DB, HasP50: true, snrBins: bins}
+}
+
+// sampleWithSamplingTime carries the common candidate reference through empty,
+// count-only, selected, and merged results. Store candidates already share one
+// time; maximum keeps direct sample callers from accidentally rewinding it.
+func sampleWithSamplingTime(sample, left, right Sample) Sample {
+	if left.HasSamplingTime {
+		sample.SamplingUnix = left.SamplingUnix
+		sample.HasSamplingTime = true
+	}
+	if right.HasSamplingTime && (!sample.HasSamplingTime || right.SamplingUnix > sample.SamplingUnix) {
+		sample.SamplingUnix = right.SamplingUnix
+		sample.HasSamplingTime = true
+	}
+	return sample
 }
 
 func maxCount(left uint32, right uint32) uint32 {
@@ -230,46 +256,44 @@ func saturatingAddCounts(left uint32, right uint32) uint32 {
 }
 
 func weightedFineCoarseSampleAge(fine Sample, coarse Sample) int64 {
-	fineWeight := fine.Weight
 	complementWeight := coarse.Weight - fine.Weight
 	if complementWeight < 0 {
 		complementWeight = 0
 	}
-	total := fineWeight + complementWeight
-	if total <= 0 {
-		return 0
-	}
-	fineAge := fine.AgeSec
-	if fineAge < 0 {
-		fineAge = 0
-	}
-	coarseAge := coarse.AgeSec
-	if coarseAge < 0 {
-		coarseAge = 0
-	}
-	age := (float64(fineAge)*fineWeight + float64(coarseAge)*complementWeight) / total
-	if age <= 0 {
-		return 0
-	}
-	return int64(math.Ceil(age))
+	return weightedEvidenceAge(fine.AgeSec, coarse.AgeSec, fine.Weight, complementWeight)
 }
 
 func weightedSampleAge(left Sample, right Sample) int64 {
-	total := left.Weight + right.Weight
-	if total <= 0 {
-		return 0
-	}
-	leftAge := left.AgeSec
+	return weightedEvidenceAge(left.AgeSec, right.AgeSec, left.Weight, right.Weight)
+}
+
+func weightedEvidenceAge(leftAge, rightAge int64, leftWeight, rightWeight float64) int64 {
 	if leftAge < 0 {
 		leftAge = 0
 	}
-	rightAge := right.AgeSec
 	if rightAge < 0 {
 		rightAge = 0
 	}
-	age := (float64(leftAge)*left.Weight + float64(rightAge)*right.Weight) / total
-	if age <= 0 {
-		return 0
+	if leftWeight < 0 || rightWeight < 0 || !(leftWeight <= math.MaxFloat64) || !(rightWeight <= math.MaxFloat64) {
+		return maxSampleAge(Sample{AgeSec: leftAge}, Sample{AgeSec: rightAge})
 	}
-	return int64(math.Ceil(age))
+	maxWeight := maxFloat64(leftWeight, rightWeight)
+	if maxWeight <= 0 {
+		if leftAge >= rightAge {
+			return leftAge
+		}
+		return rightAge
+	}
+	total := leftWeight + rightWeight
+	numerator := float64(leftAge)*leftWeight + float64(rightAge)*rightWeight
+	if total <= math.MaxFloat64 && numerator <= math.MaxFloat64 {
+		// Keep ordinary weighted-age rounding unchanged at freshness boundaries.
+		return ceilNonnegativeInt64(numerator / total)
+	}
+	// Normalize before summation and multiplication: neither large finite mass
+	// nor an age at MaxInt64 can overflow an intermediate weighted numerator.
+	leftRatio, rightRatio := leftWeight/maxWeight, rightWeight/maxWeight
+	totalRatio := leftRatio + rightRatio
+	age := float64(leftAge)*(leftRatio/totalRatio) + float64(rightAge)*(rightRatio/totalRatio)
+	return ceilNonnegativeInt64(age)
 }

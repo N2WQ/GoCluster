@@ -74,16 +74,20 @@ type bandSummary struct {
 }
 
 type hourStat struct {
-	Hour            string `json:"hour"`
-	FMed            int    `json:"f_med"`
-	Ge10Med         int    `json:"ge10_med"`
-	Lt1Med          int    `json:"lt1_med"`
-	UniqueSpotters  int    `json:"unique_spotters"`
-	UniqueGridPairs int    `json:"unique_grid_pairs"`
-	Ge10Min         int    `json:"ge10_min"`
-	Ge10P75         int    `json:"ge10_p75"`
-	Ge10Max         int    `json:"ge10_max"`
-	Ge10Degenerate  bool   `json:"ge10_degenerate"`
+	Hour                  string `json:"hour"`
+	FMed                  int    `json:"f_med"`
+	Ge10Med               int    `json:"ge10_med"`
+	Lt1Med                int    `json:"lt1_med"`
+	UniqueSpotters        int    `json:"unique_spotters"`
+	UniqueGridPairs       int    `json:"unique_grid_pairs"`
+	Ge10Min               int    `json:"ge10_min"`
+	Ge10P75               int    `json:"ge10_p75"`
+	Ge10Max               int    `json:"ge10_max"`
+	Ge10Degenerate        bool   `json:"ge10_degenerate"`
+	Ge10VarianceAvailable bool   `json:"ge10_variance_available"`
+	// Legacy snapshot rows retain their historical assumption that omitted
+	// variance can be read as zero. Modern rows require actual validated data.
+	legacyVarianceAssumed bool
 }
 
 type rangeValue struct {
@@ -811,7 +815,12 @@ func median(vals []int) int {
 	if len(sorted)%2 == 1 {
 		return sorted[mid]
 	}
-	return int(math.Round(float64(sorted[mid-1]+sorted[mid]) / 2))
+	// Callers supply nonnegative bucket, variance, spotter, and grid-pair counts.
+	// Half-up rounding uses integer differences so finite MaxInt counts cannot
+	// overflow their sum or round beyond the destination integer range.
+	lo, hi := sorted[mid-1], sorted[mid]
+	difference := hi - lo
+	return lo + difference/2 + difference%2
 }
 
 func percentile(vals []int, p float64) int {
@@ -1102,8 +1111,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		return result, err
 	}
 
-	bucketByTS := make(map[string]map[string]int)
-	weightByTS := make(map[string]map[string]weightBins)
+	bandHourStats, ge10VarByHour := collectPathSnapshotSamples(entries, date)
 	predByTS := make(map[string]*predTotals)
 	sparseP50VOACAPByTS := make(map[string]*sparseP50VOACAPTotals)
 	capShadowByTS := make(map[string]capShadowTotals)
@@ -1111,31 +1119,11 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 	sourceMixByHour := make(map[int]*sourceMixHour)
 	spottersByHour := make(map[int]map[string]int)
 	pairsByHour := make(map[int]map[string]int)
-	ge10VarByHour := make(map[int]map[string][]ge10Variance)
 
 	for _, entry := range entries {
-		if m := bucketsRe.FindStringSubmatch(entry); len(m) == 2 {
-			ts := m[1]
-			buckets := make(map[string]int)
-			for _, match := range bandBuckets.FindAllStringSubmatch(entry, -1) {
-				band := match[1]
-				buckets[band] = parseInt(match[2])
-			}
-			bucketByTS[ts] = buckets
-			continue
-		}
-		if m := weightsRe.FindStringSubmatch(entry); len(m) == 2 {
-			ts := m[1]
-			weights := make(map[string]weightBins)
-			for _, match := range bandWeights.FindAllStringSubmatch(entry, -1) {
-				band := match[1]
-				weights[band] = weightBins{
-					Total: parseInt(match[2]),
-					Lt1:   parseInt(match[3]),
-					Ge10:  parseInt(match[8]),
-				}
-			}
-			weightByTS[ts] = weights
+		if bucketsRe.MatchString(entry) || weightsRe.MatchString(entry) {
+			// Snapshot records were paired and validated above. Other periodic
+			// counters intentionally retain their emission-time clock.
 			continue
 		}
 		if m := predsRe.FindStringSubmatch(entry); len(m) == 2 {
@@ -1221,6 +1209,9 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			updateBandHourMax(pairsByHour, hour, entry, bandCounts)
 		}
 		if m := ge10VarRe.FindStringSubmatch(entry); len(m) == 2 {
+			if parseSnapshotLogMetadata(entry).modern {
+				continue
+			}
 			ts := m[1]
 			hour, ok := parseHour(ts, entry)
 			if !ok {
@@ -1250,31 +1241,6 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 
-	bandHourStats := make(map[string]map[int][]hourStat)
-	for ts, buckets := range bucketByTS {
-		tsTime, err := time.Parse("2006/01/02 15:04:05", ts)
-		if err != nil {
-			continue
-		}
-		hour := tsTime.Hour()
-		weights := weightByTS[ts]
-		for band, f := range buckets {
-			if _, ok := allowedBands[band]; !ok {
-				continue
-			}
-			w := weights[band]
-			if bandHourStats[band] == nil {
-				bandHourStats[band] = make(map[int][]hourStat)
-			}
-			bandHourStats[band][hour] = append(bandHourStats[band][hour], hourStat{
-				Hour:    fmt.Sprintf("%02d:00", hour),
-				FMed:    f,
-				Ge10Med: w.Ge10,
-				Lt1Med:  w.Lt1,
-			})
-		}
-	}
-
 	bands := make([]string, 0, len(bandHourStats))
 	for band := range bandHourStats {
 		bands = append(bands, band)
@@ -1300,10 +1266,12 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		for hour, list := range hourMap {
 			hours = append(hours, hour)
 			var fList, gList, lList []int
+			ge10VarianceAvailable := false
 			for _, v := range list {
 				fList = append(fList, v.FMed)
 				gList = append(gList, v.Ge10Med)
 				lList = append(lList, v.Lt1Med)
+				ge10VarianceAvailable = ge10VarianceAvailable || v.legacyVarianceAssumed
 			}
 			spotterCount := 0
 			if byBand, ok := spottersByHour[hour]; ok {
@@ -1319,6 +1287,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 			ge10Deg := false
 			if byBand, ok := ge10VarByHour[hour]; ok {
 				if vars := byBand[band]; len(vars) > 0 {
+					ge10VarianceAvailable = true
 					var mins, p75s, maxs []int
 					degCount := 0
 					for _, v := range vars {
@@ -1338,16 +1307,17 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 				}
 			}
 			stat := hourStat{
-				Hour:            fmt.Sprintf("%02d:00", hour),
-				FMed:            median(fList),
-				Ge10Med:         median(gList),
-				Lt1Med:          median(lList),
-				UniqueSpotters:  spotterCount,
-				UniqueGridPairs: pairCount,
-				Ge10Min:         ge10Min,
-				Ge10P75:         ge10P75,
-				Ge10Max:         ge10Max,
-				Ge10Degenerate:  ge10Deg,
+				Hour:                  fmt.Sprintf("%02d:00", hour),
+				FMed:                  median(fList),
+				Ge10Med:               median(gList),
+				Lt1Med:                median(lList),
+				UniqueSpotters:        spotterCount,
+				UniqueGridPairs:       pairCount,
+				Ge10Min:               ge10Min,
+				Ge10P75:               ge10P75,
+				Ge10Max:               ge10Max,
+				Ge10Degenerate:        ge10Deg,
+				Ge10VarianceAvailable: ge10VarianceAvailable,
 			}
 			hourStats[hour] = stat
 			fVals = append(fVals, stat.FMed)
@@ -1731,10 +1701,12 @@ func buildFinalReport(summary reportSummary) string {
 	var b strings.Builder
 	logName := filepath.Base(summary.LogFile)
 	fmt.Fprintf(&b, "I reviewed the entire %s log (%s) and summarized per band, by hour how much evidence we have (active fine buckets) and how strong it is (weight distribution). All times are UTC from the log.\n\n", summary.DateUTC, logName)
+	b.WriteString("Availability-tagged snapshots use their recorded sampling time; unavailable or incomplete snapshots are omitted. Historical snapshots without those fields use the log emission time and its legacy zero-weight assumptions.\n\n")
 	b.WriteString("How to read this\n\n")
 	b.WriteString("f_med = median count of active fine buckets for the hour (higher = more evidence).\n")
 	b.WriteString("ge10_med = median count of buckets with decayed weight ≥10 (strong evidence).\n")
 	b.WriteString("lt1_med = median count of buckets with weight <1 (weak evidence).\n")
+	b.WriteString("ge10_variance_available=false marks unavailable variance; its min/p75/max zeros are placeholders, not zero measurements. Historical untagged rows keep the legacy zero-variance assumption.\n")
 	b.WriteString("Interpretation: High f_med + high ge10_med = strong evidence. High lt1_med with low ge10_med = weak/fragile evidence.\n\n")
 	b.WriteString("Model context for this run\n\n")
 	writeModelContext(&b, summary.ModelContext, summary.Bands)
@@ -1901,10 +1873,9 @@ func coverageSummary(bands []bandSummary, mixes []sourceMixHour, medians map[str
 }
 
 func degeneracySummary(bands []bandSummary) string {
-	if len(bands) == 0 {
-		return "No degeneracy data available."
-	}
 	degenerate := make([]string, 0)
+	availableHours := 0
+	unavailableHours := 0
 	for i := range bands {
 		band := &bands[i]
 		if len(band.Hours) == 0 {
@@ -1913,19 +1884,31 @@ func degeneracySummary(bands []bandSummary) string {
 		var degCount int
 		var maxVals []int
 		for _, h := range band.Hours {
+			if !h.Ge10VarianceAvailable {
+				unavailableHours++
+				continue
+			}
 			if h.Ge10Degenerate {
 				degCount++
 			}
 			maxVals = append(maxVals, h.Ge10Max)
 		}
-		if degCount > len(band.Hours)/2 || median(maxVals) == 0 {
+		availableHours += len(maxVals)
+		if len(maxVals) > 0 && (degCount > len(maxVals)/2 || median(maxVals) == 0) {
 			degenerate = append(degenerate, band.Band)
 		}
 	}
-	if len(degenerate) == 0 {
-		return "No bands show degenerate ge10 buckets (ge10 variance is informative across the day)."
+	if availableHours == 0 {
+		return "No ge10 variance data available."
 	}
-	return "Degenerate ge10 buckets (ge10 rarely reaches strong levels): " + strings.Join(degenerate, ", ") + "."
+	unavailable := ""
+	if unavailableHours > 0 {
+		unavailable = fmt.Sprintf(" Variance is unavailable for %d band-hours.", unavailableHours)
+	}
+	if len(degenerate) == 0 {
+		return "No bands with available ge10 variance show degenerate buckets." + unavailable
+	}
+	return "Degenerate ge10 buckets (ge10 rarely reaches strong levels): " + strings.Join(degenerate, ", ") + "." + unavailable
 }
 
 func writeBandDetail(b *strings.Builder, band bandSummary) {

@@ -20,6 +20,28 @@ inspect user-visible diagnostics:
 
 ## Must Include
 
+- If path learning is missing reports, inspect `Path admission (5m)` counters:
+  `future_clamped` counts observations normalized to arrival within the inclusive
+  120-second future tolerance; `rejected_time` includes larger future offsets or
+  missing arrival; `rejected_weight` counts nonfinite/nonpositive original
+  weights. These are once-per-report counts, not fine/coarse write totals.
+  Path-only dashboard `T` means timestamp drops. Path-report metrics use the
+  accepted effective observation, while the shared spot timestamp is unchanged.
+  Ordinary late reports can still rewind the separate hourly metrics window.
+  See `docs/decisions/ADR-0300-path-observation-time-accounting.md` and
+  `docs/troubleshooting/TSR-0092-path-timestamp-accounting.md` for the staged
+  accounting contract and verified implementation status.
+- Read the overview's UTC as-of date and unavailable/cached marker before
+  interpreting path counts. `Path buckets`, `Path weight dist`, and `Path ge10
+  variance` logs carry `available`, `has_asof`, and `asof_unix`; epoch zero with
+  `has_asof=true` is valid. Modern propagation summaries omit unavailable or
+  incomplete pairs and group valid pairs by sample time. Known zero bands are
+  included. Historical logs retain their legacy log-time/zero assumptions.
+  Repeated or older samples do not extend the live variance window. Raw counts
+  and newest-observation freshness include validated reports excluded from
+  usable mass, so neither is a measurement of RF or QSO accuracy.
+  Report JSON `ge10_variance_available=false` means unknown variance; its zero
+  placeholders must not be interpreted as measured zero or degenerate evidence.
 - A blank path glyph can mean insufficient, low-count, low-weight, stale, or
   capped evidence, not necessarily a bad path.
 - `SET DIAG PATH` `w<weight>` is scalar evidence mass after decay and

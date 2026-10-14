@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `37d247de5c0b29a8`
+- Source fingerprint: `fffb6c766d63e1d5`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 19 | 18 |
+| `dxcluster/pathreliability` | `pathreliability` | 22 | 28 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -75,6 +75,7 @@ Test files:
 ### `dxcluster/pathreliability`
 
 Source files:
+- `pathreliability/accounting_math.go`
 - `pathreliability/band.go`
 - `pathreliability/config.go`
 - `pathreliability/grid.go`
@@ -88,14 +89,20 @@ Source files:
 - `pathreliability/native160_fallback.go`
 - `pathreliability/noise.go`
 - `pathreliability/normalize.go`
+- `pathreliability/observation_times.go`
 - `pathreliability/predictor.go`
 - `pathreliability/receiver.go`
 - `pathreliability/snr_histogram.go`
 - `pathreliability/store.go`
+- `pathreliability/store_reporting.go`
 - `pathreliability/voacap_fallback.go`
 - `pathreliability/voacap_forecast_cache_store.go`
 
 Test files:
+- `pathreliability/accounting_bench_test.go`
+- `pathreliability/accounting_math_test.go`
+- `pathreliability/accounting_runtime_bench_test.go`
+- `pathreliability/accounting_selection_test.go`
 - `pathreliability/active_p50_contract_test.go`
 - `pathreliability/beacon_prediction_test.go`
 - `pathreliability/compact_test.go`
@@ -106,12 +113,18 @@ Test files:
 - `pathreliability/native160_solar_bench_test.go`
 - `pathreliability/noise_test.go`
 - `pathreliability/normalize_test.go`
+- `pathreliability/observation_accounting_test.go`
+- `pathreliability/observation_times_test.go`
 - `pathreliability/receiver_test.go`
+- `pathreliability/sampling_probe_test.go`
+- `pathreliability/snr_histogram_precision_test.go`
 - `pathreliability/snr_histogram_test.go`
 - `pathreliability/stale_test.go`
 - `pathreliability/stats_test.go`
 - `pathreliability/store_bench_test.go`
+- `pathreliability/store_reporting_test.go`
 - `pathreliability/test_helpers_test.go`
+- `pathreliability/timestamp_admission_bench_test.go`
 - `pathreliability/voacap_fallback_test.go`
 - `pathreliability/voacap_forecast_cache_store_test.go`
 
@@ -142,6 +155,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:pathreliability` |
 | [ADR-0201](docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md) | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | `area:pathreliability, path:pathreliability` |
 | [ADR-0200](docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md) | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0198](docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md) | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | `area:pathreliability, path:solarweather` |

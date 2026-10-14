@@ -33,6 +33,37 @@ Every time someone decodes a digital signal (FT8, FT4, CW from RBN, PSK, WSPR), 
 
 All of these get normalized to "FT8-equivalent" values so CW, PSK, and other modes can be compared on the same scale. For example, a CW signal at -10 dB gets adjusted because CW decoding works at different SNR levels than FT8.
 
+### Report Timestamps
+
+Path learning validates each report against arrival at the path-ingestion
+boundary. A missing observation time uses arrival. A timestamp up to 120 seconds
+ahead is clamped to arrival; a larger future offset is excluded from learning
+and path-report metrics. The original spot timestamp and other applicable spot
+processing are preserved. Operators can check `Path admission (5m)` for
+`future_clamped`, `rejected_time`, and `rejected_weight` interval counts. The
+path-only dashboard's `T` count means timestamp drops. This limit is a fixed
+admission policy, not a new YAML setting.
+
+Reports age from their validated observation time. A late report can add aged
+evidence without making the newest observation appear more recent. Raw report
+counts include validated reports that receiver caps or numerical limits exclude
+from usable mass; counts alone do not establish a usable prediction.
+
+The overview dates its path counts and marks a failed refresh as unavailable
+with cached values. Five-minute path bucket, weight, and variance logs include
+`available`, `has_asof`, and `asof_unix`. An available zero is a measurement;
+unavailable data is omitted from quantitative propagation summaries. Modern
+summaries use the recorded UTC sample time and matching count/weight pairs;
+older logs retain their historical log-time assumptions. Repeated or older
+sample times do not add observations to the live one-hour variance window.
+The observed sample can be later than the request when stored evidence already
+has a later accounting reference. This timestamp remains separate from
+forecast age, request reuse, and solar time, including when fallback is used.
+These accounting checks do not calibrate glyphs as QSO success probabilities.
+In report JSON, `ge10_variance_available=false` marks missing variance rather
+than a measurement of zero; the generated summary excludes it from variance
+conclusions.
+
 ### Geographic Intelligence
 
 Your location and the DX station's location get converted into hexagonal cells on a global grid (using something called H3). The system tracks propagation at two levels:

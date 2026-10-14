@@ -140,8 +140,8 @@ func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
 
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
 	receiver := pathreliability.ReceiverIdentityHash("W1AW")
-	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-10*time.Second), false, receiver)
-	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-5*time.Second), false, receiver)
+	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, pathreliability.ObservationTimes{ObservedAt: now.Add(-10 * time.Second), ArrivedAt: now.Add(-10 * time.Second)}, false, receiver)
+	predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, pathreliability.ObservationTimes{ObservedAt: now.Add(-5 * time.Second), ArrivedAt: now.Add(-5 * time.Second)}, false, receiver)
 
 	sp := spot.NewSpot("K1ABC", "W1AW", 14074.0, "FT8")
 	sp.Time = now
@@ -177,7 +177,7 @@ func TestFormatSpotForClientPathDiagUsesUnionWeight(t *testing.T) {
 
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
 	for i := 0; i < 6; i++ {
-		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, now.Add(-5*time.Second), false, pathreliability.ReceiverIdentityHash("W1AW"))
+		predictor.UpdateWithReceiverHash(pathreliability.BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", -12, 1, pathreliability.ObservationTimes{ObservedAt: now.Add(-5 * time.Second), ArrivedAt: now.Add(-5 * time.Second)}, false, pathreliability.ReceiverIdentityHash("W1AW"))
 	}
 
 	sp := spot.NewSpot("K1ABC", "W1AW", 14074.0, "FT8")

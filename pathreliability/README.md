@@ -57,6 +57,29 @@ value in fixed histogram bins. Active glyphs and PATH filters use the selected
 p50 bin, so out-of-range observations remain visible as underflow or overflow
 bins instead of being collapsed into one aggregate value.
 
+## Report Timestamp Admission
+
+Update callers provide `ObservationTimes` with separate source observation and
+path-ingestion arrival. Arrival is required; a missing observation uses arrival.
+Future observations up to 120 seconds ahead, inclusively, are clamped to arrival.
+Larger future offsets are rejected from path learning and report metrics while
+other applicable spot processing continues. The comparison uses full timestamp
+precision; bucket accounting retains Unix-second resolution. `Spot.Time` is not
+rewritten. Original report weights must be finite and positive before a beacon
+weight limit is applied.
+
+`ReportAdmission.Accepted()` describes input validation, independently of bucket
+eligibility or receiver-cap admission. Its effective observation is authoritative
+for path-report metrics. `Path admission (5m)` reports bounded interval counters
+`future_clamped`, `rejected_time`, and `rejected_weight`; a report updating both
+fine and coarse buckets is counted once. The path-only dashboard's `T` counter
+records timestamp drops. Hourly report-window rewinding on ordinary late reports
+remains a separate, deferred issue.
+
+The accepted accounting contract and staged implementation are recorded in
+[`ADR-0300`](../docs/decisions/ADR-0300-path-observation-time-accounting.md) and
+[`TSR-0092`](../docs/troubleshooting/TSR-0092-path-timestamp-accounting.md).
+
 ## Bucket Storage
 
 The predictor stores directional buckets keyed by:
@@ -73,11 +96,15 @@ Each bucket stores:
 - capped receiver-attributed weight and effective observation count
 - one fixed SNR histogram for the active p50 scoring lane
 - fixed receiver contribution slots
-- last update time
+- monotonic accounting reference and separate newest effective observation time
 
-Updates apply exponential decay using the band's half-life before adding the new sample.
+Updates age existing state to `R = max(previous reference, arrival)` using the
+band's half-life. Incoming weight and effective count are aged from the validated
+observation to that same R, including when the report arrived late. Advancing R
+does not advance the newest observation.
 The raw observation count is not decayed; it is a bounded diagnostic count of
-how many reports contributed to the selected bucket evidence. Capped
+eligible valid reports, including cap-rejected and numerically unusable reports.
+Capped
 receiver-attributed count is a decayed effective count, aligned with capped
 weight in enforce mode, so old receiver evidence fades and makes room for newer
 evidence.
@@ -93,6 +120,20 @@ same fraction, and the active histogram receives that fraction when `enforce`
 mode makes capped evidence the active p50 lane. When the slot set is full, the
 weakest/oldest slot is reused; this is an approximation, not an unbounded exact
 unique-receiver set.
+
+Admission uses one fraction against the aged receiver's remaining count and
+weight room: `min(1, count room / incoming aged count, weight room / incoming
+aged weight)`. The same fraction scales capped weight, effective count, and the
+active capped histogram. Arrival-order dependence remains an explicit
+approximation.
+
+Weighted incoming mass and cap-scaled mass must be positive and finite at
+float32 histogram precision, with safe prospective writes. Representable
+increments can be admitted even if addition rounds them away. Unusable raw
+mass cannot allocate or replace a receiver; count and newest observation remain.
+Usable raw mass survives cap-only underflow. Complete weighted products are
+formed before rounding; an underflowed unit factor alone does not prove that
+its weighted mass is absent.
 
 `receiver_contribution_mode` controls how capped evidence is used:
 
@@ -123,6 +164,48 @@ representative; underflow displays as `-24` and overflow displays as `24`.
 When an exact 50/50 median boundary falls between two non-empty bins, p50 uses
 the average of the two bin representatives so balanced bimodal evidence maps to
 the typical middle rather than always choosing the weaker bin.
+
+Sampling captures candidate values and receiver slots under their shard locks,
+then evaluates all candidates at `T = max(query, captured references)`: four for
+normal prediction, two for beacon receive-only prediction and public lookup.
+Mass, effective counts, histogram decay, diversity, freshness, and expiry use T.
+This ensures time coherence without an atomic event snapshot across buckets.
+`Result.HasObservedSamplingTime` and `ObservedSamplingUnix` expose T;
+`ObservedDistributionAvailable` describes the observed distribution independently
+of any later synthetic fallback. Epoch zero is a valid time. If a needed
+distribution becomes unsafe or entirely loses representable bins, the whole
+observed median is unavailable; diagnostics remain available.
+
+Directional bins retain their float32 materialization boundaries. Production
+computes the final median once, before output count/weight/receiver floors,
+using float64 totals and cumulative mass. Test-only distribution probes also
+calculate individual quantiles. Bin rounding remains an approximation.
+
+Storewide reports discover their common reference during a provisional scan.
+They publish it only if all references fit; otherwise they retry once at the
+latest encountered reference. Continued advancement makes the attempt
+unavailable. Cached counts preserve their prior date and values on failure;
+`StatsSnapshot` copies totals and bands from one publication. Scratch and cache
+storage are bounded by band count, with no per-bucket scan history.
+
+The overview reads total and band counts from that one publication and shows
+its UTC date. Before a publication exists it shows unavailable; a failed refresh
+keeps the earlier dated numbers visibly marked unavailable/cached. Five-minute
+`Path buckets`, `Path weight dist`, and `Path ge10 variance` lines carry
+`available`, `has_asof`, and `asof_unix`. Epoch zero is valid when `has_asof=true`.
+Available weight snapshots include every configured band, including known zeros.
+The logger's one-hour variance window accepts only advancing available sample
+references; repeated, older, or unavailable samples add no observation.
+
+The offline propagation report requires complete count/weight pairs from one
+emission at the same available reference. It groups them by that reference's
+UTC date/hour and deduplicates equal references, rather than treating log time
+as a new observation. Malformed or incomplete modern samples are omitted.
+Historical metadata-free logs retain their emission-time and zero-weight
+assumptions. Observed sampling metadata survives fallback replacement, while
+request/reuse, forecast, and solar clocks retain their existing purposes.
+Report JSON carries `ge10_variance_available`: when false, its variance bounds
+are placeholders and do not support a zero-variance or degeneracy conclusion.
 
 Five-minute propagation logs split insufficient path prediction outcomes into
 `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
