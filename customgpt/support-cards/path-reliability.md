@@ -56,9 +56,12 @@ inspect user-visible diagnostics:
   the precision repair and its actual validation status.
 - For higher path CPU, compare matched build/traffic profiles before assigning
   the increase to p50. The v6 speed experiment passed exactness and allocation
-  checks but exceeded sparse/fallback regression limits, so the production
-  median was restored. Its dense speedup and synthetic profile shares do not
-  establish production savings. See TSR-0094 for the measured limits.
+  checks but exceeded sparse/fallback regression limits, so the original exact
+  median was initially restored. The owner subsequently requested restoration
+  of the same v6 candidate on `path_relia` for long-running cluster profiling.
+  Its dense speedup and synthetic profile shares do not establish production
+  savings. Compare total cluster CPU for equivalent completed work; individual
+  median timings are diagnostic evidence. See TSR-0094 for the measured limits.
 - `SET DIAG PATH` `w<weight>` is scalar evidence mass after decay and
   path selection. Fine/coarse blends use the larger overlapping layer for
   scalar weight rather than adding fine and coarse together; `a<age>` can

@@ -177,12 +177,17 @@ distribution becomes unsafe or entirely loses representable bins, the whole
 observed median is unavailable; diagnostics remain available.
 
 Directional bins retain their float32 materialization boundaries. Production
-computes the final median once, before output count/weight/receiver floors,
-using exact integer totals and cumulative mass for the stored float32 bins.
-Five stack-local 64-bit words cover the full binary32 range. Selection compares
-twice the cumulative mass with the total; only true equality interpolates between
-occupied representatives. Test-only distribution probes also calculate individual
-quantiles. Earlier decay, shift and merge rounding remain approximations.
+computes the final median once, before output count/weight/receiver floors.
+The restored v6 candidate validates every bin before selection, compares one
+or two occupied bins directly, and uses float64 sums for larger histograms only
+when `24 + D + ceil(log2(n)) <= 53` certifies exact totals and prefixes. Here
+`n` counts positive bins and `D` is their binary32 quantum-shift span, with
+shift `max(E-1, 0)` for encoded exponent `E`. Other distributions use exact
+integer arithmetic: five stack-local 64-bit words cover the full binary32
+range. Selection compares twice the cumulative mass with the total; only true
+equality interpolates between occupied representatives. Test-only distribution
+probes also calculate individual quantiles. Earlier decay, shift and merge
+rounding remain approximations.
 
 `BenchmarkMedianSpeedPrimary`, `BenchmarkMedianSpeedFallbackMix` and
 `BenchmarkMedianSpeedRuntime` exercise normal/beacon predictions and all
@@ -193,7 +198,10 @@ Primary/mix runs require a fixed iteration count divisible by their 12/30-call
 cycles; use `-test.benchtime=600000x` and `-test.cpu=4` with a saved native test
 binary. Default time-based calibration does not preserve those call fractions.
 [TSR-0094](../docs/troubleshooting/TSR-0094-path-median-speed-retention.md)
-records the rejected v6 optimization and its comparison method.
+records the failed v6 retention gate and its comparison method. The owner
+subsequently requested restoration of that same candidate on `path_relia` for
+long-running whole-cluster profiling. Restoration does not establish a cluster
+CPU improvement.
 
 Storewide reports discover their common reference during a provisional scan.
 They publish it only if all references fit; otherwise they retry once at the

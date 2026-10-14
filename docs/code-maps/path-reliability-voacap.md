@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `66122d4f708874cf`
+- Source fingerprint: `e62b9a32db5e4bc9`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 23 | 33 |
+| `dxcluster/pathreliability` | `pathreliability` | 23 | 34 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -124,6 +124,7 @@ Test files:
 - `pathreliability/snr_histogram_mass_test.go`
 - `pathreliability/snr_histogram_precision_test.go`
 - `pathreliability/snr_histogram_speed_bench_test.go`
+- `pathreliability/snr_histogram_speed_test.go`
 - `pathreliability/snr_histogram_test.go`
 - `pathreliability/stale_test.go`
 - `pathreliability/stats_test.go`

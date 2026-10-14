@@ -6,7 +6,10 @@
 // Related tests: pathreliability/snr_histogram_test.go, pathreliability/snr_histogram_precision_test.go, pathreliability/store_bench_test.go.
 package pathreliability
 
-import "math"
+import (
+	"math"
+	"math/bits"
+)
 
 const (
 	snrHistogramUnderflowBin = 0
@@ -214,32 +217,132 @@ func (h *snrHistogram) shifted(deltaDB float64) (snrHistogram, bool) {
 }
 
 func (h *snrHistogram) p50DB() (float64, bool) {
-	var total snrHistogramMass
-	hasMass := false
-	for _, weight := range h {
+	var scalarTotal float64
+	var integerTotal snrHistogramMass
+	count, first, second := 0, 0, 0
+	minShift, maxShift := 0, 0
+	for i, weight := range h {
 		if !finiteHistogramBin(weight) {
 			return 0, false
 		}
-		if weight > 0 {
-			total.add(weight)
-			hasMass = true
+		if weight == 0 {
+			continue
 		}
+		count++
+		if count == 1 {
+			first = i
+			continue
+		} else if count == 2 {
+			second = i
+			continue
+		}
+		shift := max(int(math.Float32bits(weight)>>23)-1, 0)
+		if count == 3 {
+			firstShift := max(int(math.Float32bits(h[first])>>23)-1, 0)
+			secondShift := max(int(math.Float32bits(h[second])>>23)-1, 0)
+			minShift, maxShift = min(firstShift, secondShift, shift), max(firstShift, secondShift, shift)
+		} else {
+			minShift, maxShift = min(minShift, shift), max(maxShift, shift)
+		}
+		// With at most 50 bins, span <= 23 certifies every occupancy. The
+		// count-aware check is needed only for the wider accepted ranges.
+		if span := maxShift - minShift; span > 23 && !snrHistogramFloat64Exact(count, span) {
+			// Count and span cannot decrease, so failure is permanent. Seed
+			// from validated stored bins, never the rounded scalar subtotal.
+			// The common three-bin case needs no prefix replay.
+			if count == 3 {
+				integerTotal.add(h[first])
+				integerTotal.add(h[second])
+				integerTotal.add(weight)
+			} else {
+				for _, prior := range h[:i+1] {
+					if prior > 0 {
+						integerTotal.add(prior)
+					}
+				}
+			}
+			// Finish validation without keeping scalar bookkeeping live
+			// across integer additions. No selection can precede this tail.
+			for _, remaining := range h[i+1:] {
+				if !finiteHistogramBin(remaining) {
+					return 0, false
+				}
+				if remaining > 0 {
+					count++
+					integerTotal.add(remaining)
+				}
+			}
+			goto integerSelection
+		}
+		if count == 3 {
+			scalarTotal = float64(h[first]) + float64(h[second])
+		}
+		scalarTotal += float64(weight)
 	}
-	if !hasMass {
+	// Every bin is validated before selection, including after a handoff.
+	if count == 0 {
 		return 0, false
 	}
-	// Validate every bin before selecting. Exact integer comparison prevents
-	// tiny retained bins from manufacturing a tie or hiding a genuine one.
+	if count == 1 {
+		return snrHistogramBinRepresentativeDB(first), true
+	}
+	if count == 2 {
+		left, right := h[first], h[second]
+		if left > right {
+			return snrHistogramBinRepresentativeDB(first), true
+		}
+		if left < right {
+			return snrHistogramBinRepresentativeDB(second), true
+		}
+		return (snrHistogramBinRepresentativeDB(first) + snrHistogramBinRepresentativeDB(second)) / 2, true
+	}
+	return h.p50Float64Validated(scalarTotal)
+
+integerSelection:
+	// Keep validated integer selection here to avoid another fallback call.
+	// The total comes only from stored bins; scratch never changes the input.
 	var cumulative snrHistogramMass
 	for i, weight := range h {
 		if weight == 0 {
 			continue
 		}
 		cumulative.add(weight)
-		comparison := cumulative.compareDouble(&total)
+		comparison := cumulative.compareDouble(&integerTotal)
 		if comparison >= 0 {
 			selected := snrHistogramBinRepresentativeDB(i)
 			if comparison == 0 {
+				if next, ok := h.nextNonEmptyRepresentativeDB(i + 1); ok {
+					return (selected + next) / 2, true
+				}
+			}
+			return selected, true
+		}
+	}
+	return 0, false
+}
+
+// snrHistogramFloat64Exact certifies all totals and nonnegative prefixes on
+// the common binary32 lattice. Mantissas need at most 24 bits; the shift span
+// and ceil(log2(count)) bound the sum to binary64's 53 significant bits.
+// Count is positive, zeros are excluded, and normal/subnormal shifts share 0.
+func snrHistogramFloat64Exact(count, shiftSpan int) bool {
+	return 24+shiftSpan+bits.Len(uint(count-1)) <= 53
+}
+
+// p50Float64Validated requires a completely validated positive histogram and
+// the exact-sum certificate. Doubling is exact scaling, so equality is a true
+// half-mass tie. No scratch escapes or changes the caller's stored bins.
+func (h *snrHistogram) p50Float64Validated(total float64) (float64, bool) {
+	var cumulative float64
+	for i, weight := range h {
+		if weight == 0 {
+			continue
+		}
+		cumulative += float64(weight)
+		doubled := 2 * cumulative
+		if doubled >= total {
+			selected := snrHistogramBinRepresentativeDB(i)
+			if doubled == total {
 				if next, ok := h.nextNonEmptyRepresentativeDB(i + 1); ok {
 					return (selected + next) / 2, true
 				}

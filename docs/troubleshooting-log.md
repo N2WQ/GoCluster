@@ -11,7 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
-| TSR-0094 | Path Median Speed Retention | Monitoring | 2026-10-14 | exact median CPU, synthetic performance, failed retention | none | `docs/troubleshooting/TSR-0094-path-median-speed-retention.md` |
+| TSR-0094 | Path Median Speed Retention | Monitoring | 2026-10-14 | exact median CPU, failed retention, candidate restored for cluster profiling | none | `docs/troubleshooting/TSR-0094-path-median-speed-retention.md` |
 | TSR-0093 | Path Median and Snapshot Recovery | Resolved | 2026-10-13 | exact p50, repeated modern snapshots, contradictory variance | ADR-0301 | `docs/troubleshooting/TSR-0093-path-median-and-snapshot-recovery.md` |
 | TSR-0092 | Path Timestamp Accounting | Resolved | 2026-10-13 | late reports, binary32 usability, common sampling reference | ADR-0300 | `docs/troubleshooting/TSR-0092-path-timestamp-accounting.md` |
 | TSR-0091 | Resolver Zero Support Basis | Monitoring | 2026-10-12 | zero numerator/denominator, decoder neutrality, retained basis | ADR-0298 | `docs/troubleshooting/TSR-0091-resolver-zero-support-basis.md` |

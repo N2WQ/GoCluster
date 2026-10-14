@@ -16,9 +16,11 @@ Tags: exact median, performance, Windows, zero allocations
   explains a calculation cost, but does not establish the cause of the whole
   production CPU increase. The attempted sparse/certified dispatch also adds
   work before integer fallback.
-- What fixed it: no production speed change was retained. The candidate passed
-  correctness and resource checks but exceeded four declared regression limits.
-  The existing exact implementation was restored; fixtures and evidence remain.
+- What fixed it: the initial candidate passed correctness and resource checks
+  but exceeded four declared regression limits, so the existing exact
+  implementation was restored. The owner subsequently requested restoration
+  of the same v6 candidate on `path_relia` for long-running cluster profiling.
+  Overall cluster CPU improvement remains unverified.
 - How we know: one frozen native Windows campaign completed 1,060 matched pairs
   and 2,120 valid processes. Raw-duration analysis and a separate lead
   recalculation agree. All twelve prescribed profile processes passed.
@@ -38,7 +40,8 @@ Tags: exact median, performance, Windows, zero allocations
   restoring that approximate method was outside this experiment.
 - Production CPU increase and production histogram frequencies remain unmeasured.
 - The candidate preserved exact outputs, but some direct sparse/aged cases cost
-  more than the existing exact method. No candidate deployment occurred.
+  more than the existing exact method. The initial campaign did not deploy it;
+  the later restoration prepares the owner's profiling build.
 
 ## Timeline
 1. 2026-10-14 - Separate non-steered mathematical and statistical reviewers
@@ -52,6 +55,10 @@ Tags: exact median, performance, Windows, zero allocations
 5. 2026-10-14 10:03 EDT - The complete prescribed campaign failed retention.
 6. 2026-10-14 - Twelve fixed-work profiles completed; existing exact production
    source was restored after candidate source and tests were archived.
+7. 2026-10-14 - Owner requested restoration of the archived v6 candidate for
+   compilation and long-running cluster profiling. The two benchmark fixture
+   files already matched the archive; the median implementation and its
+   candidate-specific test file were restored without redesign.
 
 ## Hypotheses and Tests
 1. Sparse shortcuts and a sufficient float64 certificate preserve exact p50.
@@ -124,7 +131,9 @@ Twenty pairs per direct case expose these blocking time increases:
 
 Certified three-bin cost rises 7.7064%, below its 10% guard. No tested connected
 workload exceeds its 5% regression guard. Those facts do not waive the four
-direct failures. No candidate was retained under a relaxed threshold.
+direct failures. The initial campaign retained no candidate under a relaxed
+threshold. The later owner-directed restoration enables a cluster-level
+evaluation; it does not change the recorded v6 gate result.
 
 Profiles use the same two binaries, all modes, serial/parallel execution,
 6,000,000 operations and a 183-second synthetic horizon. Median inclusive CPU
@@ -139,12 +148,15 @@ it cannot support byte-for-byte retained-heap comparisons. No median allocation
 or lock site was introduced; parallel locks remain existing Store operations.
 
 ## Decision Linkage
-- ADR created/updated: none. The attempted algorithm was rejected; the existing
+- ADR created/updated: none. The initial automatic retention gate rejected the
+  algorithm; the owner later requested the same candidate for profiling.
   [ADR-0301](../decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md)
-  exact-median decision remains in force.
-- Decision delta summary: no durable production decision changed.
-- Contract/behavior changes: no runtime, config, API, timestamp, admission,
-  materialization, reader, glyph or retained-state change remains.
+  continues to govern exact stored-mass behavior and snapshot recovery.
+- Decision delta summary: exactness policy is unchanged; the profiling
+  candidate has not demonstrated whole-cluster CPU savings.
+- Contract/behavior changes: the private median dispatch is restored. Config,
+  API, timestamp, admission, materialization, reader, glyph and retained-state
+  contracts remain unchanged.
 
 ## Verification and Monitoring
 - Candidate full native ordinary/race lanes each passed 9,401 cases across
@@ -163,13 +175,22 @@ or lock site was introduced; parallel locks remain existing Store operations.
   sequence also passes its standalone ordinary check and the full race lane.
   Final vet, Staticcheck and golangci-lint pass. Troubleshooting/support checks
   and final generated-map freshness checks pass.
+- The subsequent owner-directed v6 restoration matches all four archived Go
+  files byte for byte. Current path-reliability ordinary/race runs each pass
+  475 cases with two existing skips; the full ordinary lane passes 9,402 cases
+  across 53 tested and 17 build-only packages with 77 existing skips. Current
+  vet, Staticcheck and lint pass, and the Windows cluster executable builds.
+  Allocation and 448-byte bucket guards pass. These restoration checks are
+  lead-owned; long-running whole-cluster profiling remains the owner's next
+  measurement. Integer arithmetic and the retained carry regression are unchanged.
 - Source review, independent mathematical/statistical review and lead raw-ratio
   verification actually occurred. Benchmark/profile evidence was coordinated
   and must not be described as independent production verification.
 - Signals to monitor: matched build identity, actual histogram mix, median CPU,
   total CPU, latency, allocations, owner counts and receiver mode.
-- Rollback triggers: the declared direct regressions triggered restoration.
-  Further optimization or an explicit regression tradeoff needs a new scope.
+- Rollback triggers: the declared direct regressions triggered the initial
+  restoration. The owner's later request explicitly restores the same tested
+  candidate for profiling; a new algorithm remains outside that request.
 
 ## References
 - Baseline commit: `9f34b88033889737dcdd916d4a8cd7654522c82b`.
