@@ -8,6 +8,11 @@ Decision Origin: Troubleshooting chat
 Troubleshooting Record(s): TSR-0002
 Tags: call-correction, ambiguity, quality-anchors, observability
 
+The raw-tie application is refined by
+[ADR-0302](ADR-0302-correction-evidence-admission-and-license-authority.md):
+qualifying equal receiver counts retain narrow ambiguity protection despite
+unequal weights, including actual temporal proposals. Other clauses remain accepted.
+
 ## Context
 - Operators reported contradictory call outcomes for close call variants on the same frequency and requested an architecture-level review.
 - Inspection showed correction decisions are made per spot, while quality feedback penalized every non-winner call in a resolved cluster.

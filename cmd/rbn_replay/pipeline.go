@@ -38,6 +38,7 @@ const (
 	resolverDecisionSameCall                      = "resolver_same_call"
 	resolverDecisionInvalidBaseCall               = "resolver_invalid_base"
 	resolverDecisionCTYMiss                       = "resolver_cty_miss"
+	resolverDecisionLicenseReject                 = "resolver_license_rejected"
 	resolverDecisionGatePrefix                    = "resolver_gate_"
 	resolverDecisionRecentPlus1RejectPrefix       = "resolver_recent_plus1_reject_"
 	resolverDecisionBayesReportRejectPrefix       = "resolver_bayes_report_reject_"
@@ -330,6 +331,13 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 			return outcome
 		}
 	}
+	// A replacement is a proposal until its own home-base authority permits it.
+	// Retaining the original preserves its confidence, metadata, observation
+	// time, and correction/temporal accounting; no runner-up search occurs.
+	if rejectReplayDXLicense(ctyDB, winnerCall, spotEntry.IsBeacon || spot.IsBeaconCall(winnerCall), now) {
+		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionLicenseReject, 1)
+		return outcome
+	}
 
 	spotEntry.DXCall = winnerCall
 	spotEntry.DXCallNorm = winnerCall
@@ -344,6 +352,20 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	appliedReason := resolverAppliedDecisionReason(gate, outcome.Selection)
 	observeResolverPrimaryDecision(tracker, "applied", appliedReason, 1)
 	return outcome
+}
+
+// Replay checks only DX identity. DE admission, metadata enrichment, and other
+// production preprocessing remain outside this correction replay contract.
+func rejectReplayDXLicense(db *cty.CTYDatabase, call string, beacon bool, now time.Time) bool {
+	if db == nil {
+		return false
+	}
+	base := uls.NormalizeForLicense(call)
+	info, ok := db.LookupCallsignPortable(base)
+	if !ok {
+		return false
+	}
+	return uls.ShouldRejectDXLicense(info.ADIF, base, beacon, uls.LookupForADIFAt(info.ADIF, base, now))
 }
 
 // evaluateResolverPrimaryGateReplay keeps replay gate decisions on the same

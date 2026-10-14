@@ -26,6 +26,7 @@ type replayRunRecord struct {
 	CallCorrectionSHA string                 `json:"call_correction_sha256"`
 	InputZipPath      string                 `json:"input_zip_path"`
 	InputZipSHA       string                 `json:"input_zip_sha256,omitempty"`
+	LicenseInputs     replayLicenseInputs    `json:"license_inputs"`
 	Stability         replayStabilitySummary `json:"stability"`
 	ABMetrics         replayABMetrics        `json:"ab_metrics"`
 }
@@ -50,6 +51,7 @@ func writeReplayRunHistory(
 		ReplayConfigPath: strings.TrimSpace(replayConfigPath),
 		InputZipPath:     manifest.InputZipPath,
 		InputZipSHA:      strings.TrimSpace(manifest.InputZipMeta.SHA256),
+		LicenseInputs:    manifest.LicenseInputs,
 		Stability:        manifest.Results.Stability,
 		ABMetrics:        manifest.Results.ABMetrics,
 	}

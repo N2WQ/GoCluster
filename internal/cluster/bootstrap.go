@@ -1770,8 +1770,7 @@ func applyLicenseGate(s *spot.Spot, ctyDB *cty.CTYDatabase, metaCache *callMetaC
 		if result.Available && result.Found {
 			s.DXMetadata.State = result.State
 		}
-		if !s.IsBeacon && !uls.AllowlistMatch(dxLicenseInfo.ADIF, dxLicenseCall) &&
-			uls.LicenseChecksEnabledForADIF(dxLicenseInfo.ADIF) && result.Available && !result.Found {
+		if uls.ShouldRejectDXLicense(dxLicenseInfo.ADIF, dxLicenseCall, s.IsBeacon, result) {
 			if reporter != nil {
 				reporter(droppedCallSourceFromSpot(s), "DX", dxLicenseCall, deCall, dxCall, droppedCallModeFromSpot(s), s.Frequency)
 			}
@@ -1879,6 +1878,7 @@ const (
 	resolverDecisionSameCall                      = "resolver_same_call"
 	resolverDecisionInvalidBaseCall               = "resolver_invalid_base"
 	resolverDecisionCTYMiss                       = "resolver_cty_miss"
+	resolverDecisionLicenseMissing                = "resolver_license_missing"
 	resolverDecisionGatePrefix                    = "resolver_gate_"
 	resolverDecisionRecentPlus1RejectPrefix       = "resolver_recent_plus1_reject_"
 	resolverDecisionBayesReportRejectPrefix       = "resolver_bayes_report_reject_"
@@ -2140,7 +2140,8 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, true)
+	// Activity belongs to successful primary admission, never a gate read/retry.
+	runtime := correctionflow.ResolveRuntimeSettings(cfg, spotEntry, adaptive, now, false)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{
 		Cfg:             cfg,
 		MinReports:      runtime.MinReports,
@@ -2193,6 +2194,11 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 
 	if ctyDB != nil {
 		if info := effectivePrefixInfo(ctyDB, metaCache, winnerCall); info != nil {
+			if replacementLicenseRejected(spotEntry, winnerCall, ctyDB, metaCache) {
+				decisionReason = resolverDecisionLicenseMissing
+				observeResolverPrimaryDecision(tracker, "rejected", decisionReason, 1)
+				return false
+			}
 			spotEntry.DXCall = winnerCall
 			spotEntry.DXCallNorm = winnerCall
 			temporalResult.confirm(preCorrectionCall, winnerCall)
@@ -5158,7 +5164,7 @@ func maybeStartHeapLogger() {
 // Key aspects: Logs bounded cardinalities; no impact when disabled.
 // Upstream: main startup.
 // Downstream: tracker cardinality, dedup stats, predictor bucket counts.
-func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Predictor, dedup *dedup.Deduplicator, secondaryFast, secondaryMed, secondarySlow *dedup.SecondaryDeduper, customSCPStore *spot.CustomSCPStore) {
+func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Predictor, dedup *dedup.Deduplicator, secondaryFast, secondaryMed, secondarySlow *dedup.SecondaryDeduper, customSCPStore *spot.CustomSCPStore, adaptive *spot.AdaptiveMinReports) {
 	intervalStr := strings.TrimSpace(os.Getenv(envMapLogInterval))
 	if intervalStr == "" {
 		return
@@ -5211,6 +5217,10 @@ func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Pred
 				fccCache.Entries, fccCache.Slots, fccCache.Capacity, fccCache.TTL, fccCache.Generation, fccCache.StateCapable, fccCache.Refreshing)
 			canadianCache := uls.CanadianLookupStats()
 			log.Printf("ISED snapshot: generation=%d state_ready=%t refreshing=%t", canadianCache.Generation, canadianCache.StateCapable, canadianCache.Refreshing)
+			if adaptive != nil {
+				bands, reporters := adaptive.ActivityCardinality()
+				log.Printf("Adaptive activity: bands=%d reporters=%d (retained; window/cadence expiry)", bands, reporters)
+			}
 
 			log.Printf("Map sizes: stats sources=%d source-modes=%d; dedup primary=%d secondary fast=%d med=%d slow=%d; path buckets=%d; custom_scp static=%d keys=%d spotters=%d interned=%d intern_refs=%d intern_release_misses=%d entry_expiry=%d static_expiry=%d load_oversized=%d overflow_pruned=%d stale_obs_pruned=%d stale_static_pruned=%d",
 				sourceCount,

@@ -41,6 +41,7 @@ PRAGMA user_version=1;`)
 			t.Fatalf("fixture=%v close=%v", err, closeErr)
 		}
 		r := &replayRunner{cfg: &config.Config{ISED: config.ISEDConfig{Enabled: false, DBPath: path, URL: source.URL, SpecialURL: source.URL}}}
+		t.Cleanup(r.close)
 		if err := r.configureExternalDependencies(); err != nil {
 			t.Fatal(err)
 		}
@@ -49,6 +50,7 @@ PRAGMA user_version=1;`)
 		}
 	}
 	r := &replayRunner{cfg: &config.Config{ISED: config.ISEDConfig{DBPath: filepath.Join(t.TempDir(), "missing.db"), URL: source.URL, SpecialURL: source.URL}}}
+	t.Cleanup(r.close)
 	if err := r.configureExternalDependencies(); err != nil {
 		t.Fatal(err)
 	}

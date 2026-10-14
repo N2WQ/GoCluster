@@ -292,7 +292,7 @@ call_correction:
   adaptive_min_reports:
     # Repeated group fields:
     #   bands: normalized band tokens covered by the group.
-    #   quiet_below/busy_above: spots-per-window activity thresholds.
+    #   quiet_below/busy_above: average distinct admitted receivers per band in the group/window.
     #   *_min_reports: min report gate used in that activity state.
     enabled: true
     window_minutes: 10

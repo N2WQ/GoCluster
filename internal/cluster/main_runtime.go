@@ -32,6 +32,7 @@ import (
 	"dxcluster/filter"
 	"dxcluster/floodcontrol"
 	"dxcluster/gridstore"
+	"dxcluster/internal/correctionflow"
 	"dxcluster/internal/peerdiag"
 	"dxcluster/internal/toxicity"
 	"dxcluster/internal/voacap"
@@ -877,9 +878,25 @@ func (r *clusterRuntime) initializePipelineCore() {
 		log.Println("Deduplication disabled (cluster window=0); spots pass through unfiltered")
 	}
 
-	dedupInput := r.deduplicator.GetInputChannel()
+	primaryInput := r.deduplicator.GetInputChannel()
+	adaptive := r.adaptiveMinReports
+	// The same sink owns both topologies. Activity is recorded only after the
+	// successful primary enqueue, using immutable identity captured before send.
+	// Do not place logging, flood evaluation, or another lock inside the sink.
+	admitPrimary := func(s *spot.Spot) bool {
+		return correctionflow.AdmitResolverActivity(s, adaptive, time.Now, func() bool {
+			select {
+			case primaryInput <- s:
+				return true
+			default:
+				return false
+			}
+		})
+	}
+	dedupInput := primaryInput
 	if r.cfg.FloodControl.Enabled {
 		r.floodController = floodcontrol.New(r.cfg.FloodControl, dedupInput, r.statsTracker, r.dropReporter)
+		r.floodController.SetAdmissionSink(admitPrimary)
 		r.floodController.Start()
 		dedupInput = r.floodController.Input()
 		log.Printf("Flood control active with partition=%s log_interval=%ds", r.cfg.FloodControl.PartitionMode, r.cfg.FloodControl.LogIntervalSeconds)
@@ -887,6 +904,9 @@ func (r *clusterRuntime) initializePipelineCore() {
 		log.Println("Flood control disabled")
 	}
 	r.ingestValidator = newIngestValidator(r.ctyLookup, r.metaCache, r.ctyUpdater, r.gridUpdater, dedupInput, r.unlicensedReporter, r.dropReporter, r.cfg.CTY.Enabled)
+	if !r.cfg.FloodControl.Enabled {
+		r.ingestValidator.admitPrimary = admitPrimary
+	}
 	r.ingestValidator.SetBadCallReporter(r.reportBadCallDrop)
 	r.ingestValidator.Start()
 	r.ingestInput = r.ingestValidator.Input()
@@ -1559,7 +1579,7 @@ func (r *clusterRuntime) logStartup() {
 	log.Println("---")
 	maybeStartContentionProfiling()
 	maybeStartHeapLogger()
-	maybeStartMapLogger(r.statsTracker, r.pathPredictor, r.deduplicator, r.secondaryFast, r.secondaryMed, r.secondarySlow, r.customSCPStore)
+	maybeStartMapLogger(r.statsTracker, r.pathPredictor, r.deduplicator, r.secondaryFast, r.secondaryMed, r.secondarySlow, r.customSCPStore, r.adaptiveMinReports)
 	maybeStartDiagServer()
 }
 

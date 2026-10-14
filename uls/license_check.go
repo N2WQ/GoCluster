@@ -200,6 +200,52 @@ func LookupForADIF(adif int, call string) LookupResult {
 	return LookupResult{}
 }
 
+// LookupForADIFAt evaluates dated eligibility at the supplied UTC instant while
+// cache lifetime uses process time. Offline callers must supply a valid clock:
+// a zero instant is unknown authority, never evidence of confirmed absence.
+// Runtime callers retain LookupForADIF's wall-time behavior.
+func LookupForADIFAt(adif int, call string, at time.Time) LookupResult {
+	if at.IsZero() {
+		return LookupResult{}
+	}
+	eligibilityClock := func() time.Time { return at }
+	if spot.IsFCCJurisdiction(adif) {
+		return lookupSourceWithClocks(fccSnapshot, call, time.Now, eligibilityClock)
+	}
+	if spot.IsCanadianJurisdiction(adif) {
+		return lookupSourceWithClocks(canadianSnapshot, call, time.Now, eligibilityClock)
+	}
+	return LookupResult{}
+}
+
+// LicenseDatabaseAvailableForADIF probes actual local snapshot readiness for
+// offline provenance. It performs no download and supplies no membership fact.
+// A configured path or disabled enforcement alone cannot establish readiness.
+func LicenseDatabaseAvailableForADIF(adif int) bool {
+	var source *licenseSnapshot
+	if spot.IsFCCJurisdiction(adif) {
+		source = fccSnapshot
+	} else if spot.IsCanadianJurisdiction(adif) {
+		source = canadianSnapshot
+	} else {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	db, hasState := source.getDatabase(ctx)
+	if db == nil {
+		return false
+	}
+	if source.id == fccSource && hasState {
+		rows, err := db.QueryContext(ctx, "SELECT call_sign,state FROM AM LIMIT 0;")
+		if err != nil {
+			return false
+		}
+		return rows.Close() == nil
+	}
+	return true
+}
+
 // LicenseChecksEnabledForADIF keeps source-specific rejection independent.
 func LicenseChecksEnabledForADIF(adif int) bool {
 	if spot.IsFCCJurisdiction(adif) {
@@ -214,6 +260,23 @@ func LicenseChecksEnabledForADIF(adif int) bool {
 func canadianLookupDay(now time.Time) int64 { return now.UTC().Truncate(24 * time.Hour).Unix() }
 
 func lookupSource(source *licenseSnapshot, call string, clock func() time.Time) LookupResult {
+	// Runtime starts both roles from the same instant, preserving the original
+	// midnight barrier even when a cold lookup crosses the date boundary.
+	at := clock()
+	first := true
+	return lookupSourceWithClocks(source, call, func() time.Time { return at }, func() time.Time {
+		if first {
+			first = false
+			return at
+		}
+		return clock()
+	})
+}
+
+// Process time bounds cache retention; eligibility time selects Canadian UTC
+// date authority. Date is an entry property, not a growing key dimension, so
+// historical time reversal replaces one cached fact instead of retaining days.
+func lookupSourceWithClocks(source *licenseSnapshot, call string, cacheClock, eligibilityClock func() time.Time) LookupResult {
 	if source.refreshing.Load() {
 		return LookupResult{}
 	}
@@ -221,17 +284,21 @@ func lookupSource(source *licenseSnapshot, call string, clock func() time.Time) 
 	if canonical == "" {
 		return LookupResult{}
 	}
-	now := clock().UTC()
+	now := cacheClock().UTC()
+	eligibilityAt := eligibilityClock().UTC()
+	if eligibilityAt.IsZero() {
+		return LookupResult{}
+	}
 	day := int64(0)
 	if source.id == canadianSource {
-		day = canadianLookupDay(now)
+		day = canadianLookupDay(eligibilityAt)
 	}
 	generation := source.generation.Load()
 	cache := licenseCache.Load()
 	key := licenseCacheKey{source: source.id, call: canonical}
 	if cache != nil {
 		if result, ok := cache.get(key, generation, day, now); ok {
-			if !lookupCurrent(source, cache, generation, day, clock) {
+			if !lookupCurrent(source, cache, generation, day, eligibilityClock) {
 				return LookupResult{}
 			}
 			return result
@@ -246,7 +313,7 @@ func lookupSource(source *licenseSnapshot, call string, clock func() time.Time) 
 	var result LookupResult
 	if source.id == canadianSource {
 		var err error
-		result, err = queryCanadianLicense(ctx, db, canonical, now)
+		result, err = queryCanadianLicense(ctx, db, canonical, eligibilityAt)
 		if err != nil {
 			source.logGenerationError(err, generation)
 			return LookupResult{}
@@ -258,7 +325,7 @@ func lookupSource(source *licenseSnapshot, call string, clock func() time.Time) 
 		}
 		result = queryLicenseContext(ctx, db, query, canonical, generation)
 	}
-	return finishLookup(source, cache, key, generation, day, result, now, clock)
+	return finishLookup(source, cache, key, generation, day, result, now, eligibilityClock)
 }
 
 func lookupCurrent(source *licenseSnapshot, cache *ttlCache, generation uint64, day int64, clock func() time.Time) bool {

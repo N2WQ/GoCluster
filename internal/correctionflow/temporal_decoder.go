@@ -505,6 +505,15 @@ func selectionForTemporalWinner(base ResolverPrimarySelection, winner string) Re
 	if winner == "" {
 		return base
 	}
+	if !base.allowsReplacement(winner) {
+		return base
+	}
+	if incumbent, challenger, pending := base.Snapshot.PendingTransition(); pending &&
+		ResolverSupportForCall(base.Snapshot, incumbent) > 0 && ResolverSupportForCall(base.Snapshot, challenger) > 0 {
+		// Exact uncertain snapshots cannot acquire settled authority merely by
+		// reclassifying a decoder proposal. Fresh neighborhood selection owns recovery.
+		return base
+	}
 	snap := base.Snapshot
 	snap.Winner = winner
 	snap.WinnerSupport = ResolverSupportForCall(snap, winner)

@@ -124,6 +124,13 @@ func (r *SignalResolver) publishKeySnapshot(st *resolverKeyState, snapshot Resol
 	snapshot.Generation = st.generation
 	snapshot.lossMinAt, snapshot.lossMaxAt, snapshot.lossWindow = st.lossMinAt, st.lossMaxAt, st.recencyWindow
 	snapshot.ordinaryWinner, snapshot.ordinaryState = st.ordinaryWinner, st.ordinaryState
+	// Two scalar identities follow this capped key publication, including control
+	// publications. Compact copies them without retaining any receiver generation.
+	if st.pendingWinner != "" && st.pendingWins > 0 {
+		snapshot.pendingIncumbent, snapshot.pendingChallenger = st.stableWinner, st.pendingWinner
+	} else {
+		snapshot.pendingIncumbent, snapshot.pendingChallenger = "", ""
+	}
 	snapshot.EvidenceLoss = resolverSnapshotLossEligible(snapshot, now)
 	if previous := st.cell.snapshot.Load(); previous != nil && previous.EvidenceLoss && !snapshot.EvidenceLoss {
 		r.lossPublicationRecoveries.Add(1)

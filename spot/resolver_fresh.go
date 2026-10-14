@@ -34,7 +34,8 @@ func resolverProjectionBase(snapshot ResolverSnapshot) ResolverSnapshot {
 		SupportBasis: snapshot.EffectiveSupportBasis(),
 		EvaluatedAt:  snapshot.EvaluatedAt, State: ResolverStateUncertain,
 		lossMinAt: snapshot.lossMinAt, lossMaxAt: snapshot.lossMaxAt, lossWindow: snapshot.lossWindow,
-		ordinaryWinner: snapshot.ordinaryWinner, ordinaryState: snapshot.ordinaryState}
+		ordinaryWinner: snapshot.ordinaryWinner, ordinaryState: snapshot.ordinaryState,
+		pendingIncumbent: snapshot.pendingIncumbent, pendingChallenger: snapshot.pendingChallenger}
 }
 
 func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time.Time) ResolverSnapshot {
@@ -152,6 +153,9 @@ func (r *SignalResolver) projectResolverAuthority(projected, previous ResolverSn
 		split = split || witnessed && shouldRejectAsAmbiguousMultiSignal(top.Support, runner.Support,
 			a, b, r.cfg.FreqGuardMinSeparationKHz, r.cfg.FreqGuardRunnerUpRatio, overlap,
 			correctionDistance(left, right, projected.Key.Mode, r.cfg.DistanceModelCW, r.cfg.DistanceModelRTTY), r.cfg.MaxEditDistance, related)
+	}
+	if !split {
+		split = r.ProposalHasAmbiguousRawTie(projected, top.Call)
 	}
 	if split {
 		projected.State = ResolverStateSplit

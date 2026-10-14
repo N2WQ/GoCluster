@@ -387,6 +387,15 @@ lenient modes must be explicit, documented, and test-covered.
 See [ADR-0253](decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) and
 [ADR-0254](decisions/ADR-0254-canadian-ised-license-and-state-reuse.md).
 
+Call correction checks a replacement's home-base license eligibility before
+identity, confidence, metadata or accepted-mutation accounting changes. A
+confirmed ineligible replacement leaves the original for ordinary final
+validation, without searching another candidate. Later authority changes can
+still reject an accepted replacement at the final gate; accepted mutation counts
+are not rolled back and do not imply delivery. Replay uses frozen input bytes
+and simulated UTC eligibility, with process-time cache lifetime and explicit
+per-run cleanup. See [ADR-0302](decisions/ADR-0302-correction-evidence-admission-and-license-authority.md).
+
 ## Per-Mode Minimum SNR
 
 `PASS MINSNR <modes|ALL> <integer dB>` and numeric `REJECT MINSNR` set

@@ -45,6 +45,7 @@ type Controller struct {
 	enabled         bool
 	input           chan *spot.Spot
 	downstream      chan<- *spot.Spot
+	admitPrimary    func(*spot.Spot) bool // Installed before Start; owns successful primary admission.
 	shutdown        chan struct{}
 	cleanupInterval time.Duration
 	logInterval     time.Duration
@@ -91,6 +92,15 @@ func (c *Controller) Input() chan<- *spot.Spot {
 		return nil
 	}
 	return c.input
+}
+
+// SetAdmissionSink installs the primary admission boundary before Start.
+// It replaces only the channel send; policy decisions and pressure reporting
+// remain owned here. The sink returns the result of a nonblocking channel send;
+// admission bookkeeping may first wait for its own mutex. Flood locks are not
+// held during the call.
+func (c *Controller) SetAdmissionSink(admit func(*spot.Spot) bool) {
+	c.admitPrimary = admit
 }
 
 // Start launches the processing loop and derived cleanup ticker.
@@ -200,17 +210,28 @@ func (c *Controller) process(now time.Time, s *spot.Spot) {
 }
 
 func (c *Controller) forward(s *spot.Spot) {
+	if c.tryForward(s) {
+		return
+	}
+	if count, ok := c.downstreamDrop.Inc(); ok {
+		line := fmt.Sprintf("Flood control: downstream full, dropping spot (total=%d)", count)
+		if c.dropReporter != nil {
+			c.dropReporter(line)
+		} else {
+			log.Print(line)
+		}
+	}
+}
+
+func (c *Controller) tryForward(s *spot.Spot) bool {
+	if c.admitPrimary != nil {
+		return c.admitPrimary(s)
+	}
 	select {
 	case c.downstream <- s:
+		return true
 	default:
-		if count, ok := c.downstreamDrop.Inc(); ok {
-			line := fmt.Sprintf("Flood control: downstream full, dropping spot (total=%d)", count)
-			if c.dropReporter != nil {
-				c.dropReporter(line)
-			} else {
-				log.Print(line)
-			}
-		}
+		return false
 	}
 }
 

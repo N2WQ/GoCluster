@@ -1017,7 +1017,7 @@ func shouldRejectAsAmbiguousMultiSignal(
 	if winnerSupport <= 0 || runnerSupport <= 0 {
 		return false
 	}
-	if winnerSupport <= runnerSupport {
+	if winnerSupport < runnerSupport {
 		return false
 	}
 	if winnerSupport < ambiguousMultiSignalMinSupport || runnerSupport < ambiguousMultiSignalMinSupport {

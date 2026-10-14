@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0095 | Call Correction Evidence, Admission and Licensing | Monitoring | 2026-10-14 | dissent, raw ties, primary admission, activity expiry, replacement/replay authority | ADR-0302 | `docs/troubleshooting/TSR-0095-call-correction-evidence-admission-and-licensing.md` |
 | TSR-0094 | Path Median Speed Retention | Monitoring | 2026-10-14 | exact median CPU, failed retention, candidate restored for cluster profiling | none | `docs/troubleshooting/TSR-0094-path-median-speed-retention.md` |
 | TSR-0093 | Path Median and Snapshot Recovery | Resolved | 2026-10-13 | exact p50, repeated modern snapshots, contradictory variance | ADR-0301 | `docs/troubleshooting/TSR-0093-path-median-and-snapshot-recovery.md` |
 | TSR-0092 | Path Timestamp Accounting | Resolved | 2026-10-13 | late reports, binary32 usability, common sampling reference | ADR-0300 | `docs/troubleshooting/TSR-0092-path-timestamp-accounting.md` |

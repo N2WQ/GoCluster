@@ -72,6 +72,14 @@ receiver evidence is published immutably; temporal scoring retains compact
 tallies. See [ADR-0280](../docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md).
 
 An exact split remains protected through neighborhood and temporal selection.
+Eligible dissent from an uncertain exact bucket remains in nearby support.
+Comparable unsettled neighbors can add evidence but cannot introduce nominees;
+nominee eligibility from existing settled populations is unchanged. A pending
+transition constrains replacement only while both endpoints retain eligible raw
+receiver membership and are comparable to that replacement. This includes a
+transition between two competitors of a third proposed call. Expiry removes the
+constraint without advancing hysteresis; fresh eligible receivers can justify
+recovery. Repeated receivers do not add distinct support.
 Temporal release filters the latest immutable rows at its current clock, keeps
 the inclusive recency cutoff and excludes future observations. Saved proposals
 carry no support authority. Current settled evidence and ordinary correction
@@ -83,6 +91,37 @@ equal-time frequency metadata causes abstention until superseded or expired.
 The strict floating-point threshold has no tolerance: nominal boundary values
 can differ slightly by band. See
 [ADR-0021](../docs/decisions/ADR-0021-call-correction-ambiguity-guard-and-quality-rail.md).
+Qualifying raw receiver-count ties remain protected despite unequal weights,
+including for actual temporal proposals and tied competitors below the weighted
+runner-up. Minimum support, frequency, overlap, distance and family exceptions
+remain. Weights still rank candidates and calculate support elsewhere. This is
+conservative operating policy, not proof that equal counts have equal evidence.
+See [ADR-0302](../docs/decisions/ADR-0302-correction-evidence-admission-and-license-authority.md).
+
+## Adaptive activity admission
+
+Adaptive activity counts each eligible observation once after validation, flood
+policy and successful primary dedup input admission. Duplicate rejection and
+later output congestion do not undo activity; refusal before admission does not
+count. Activity uses the eligible known mode at admission, excluding unknown
+modes, beacons and local SELF. It counts when adaptation is enabled even if
+correction is disabled. Later inference and correction retries do not refresh it.
+
+Distinct receivers are tracked per band; group activity is the average across
+configured bands. Live timestamps are sampled at admission after lock waiting
+and due pruning. Replay uses original historical row time. The existing adaptive
+mutex serializes success-only activity publication with queries. The channel send
+is nonblocking, but admission can wait for that mutex. Observation-driven expiry
+uses the configured window plus maintenance cadence without advancing state
+hysteresis. `DXC_MAP_LOG_INTERVAL` reports retained band/reporter cardinality.
+
+An already-ineligible replacement is rejected before identity, confidence,
+metadata or mutation accounting changes. The original keeps its own support and
+still faces ordinary final validation. A later authority change can reject an
+accepted replacement at the final gate; accepted correction/temporal counts
+remain, without claiming output delivery. No alternate candidate search occurs.
+
+## Resolver evidence loss and diagnostics
 
 Known candidate/receiver-cap loss blocks correction and current-consensus
 promotion while discarded evidence could still be eligible. The entering call

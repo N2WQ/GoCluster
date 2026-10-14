@@ -30,6 +30,8 @@ Replay config:
   - optional fixed-lag temporal decoding (`call_correction.temporal_decoder.*`) before final winner commit
   - invalid-base rejection rail
   - CTY rejection rail
+  - replacement license rejection before mutation and authoritative final-DX
+    license rejection before output/learning
 
 ## Determinism model
 
@@ -73,7 +75,35 @@ All other dependencies are local snapshots and must already exist when enabled:
 - `cty.file`
 - `fcc_uls.allowlist_path`
 - `fcc_uls.db_path`
+- `ised.db_path` when enabled
 - optional confusion model and spotter-reliability files
+
+Each run stream-copies configured present FCC/ISED databases and allowlist into
+owned frozen inputs before lookup. Manifest and run history `license_inputs`
+record source path, SHA-256 of the bytes actually read, byte count, enforcement
+and actual authority readiness. Disabled checking, unavailable authority and a
+confirmed missing call are different states. Enabled missing files retain setup
+errors; a malformed allowlist retains the warning/empty-exception policy and is
+reported unavailable. No license update download occurs during replay.
+
+Canadian dated eligibility uses simulated UTC at each check, including delayed
+releases. Cache TTL uses process time; historical day is entry metadata rather
+than an additional retained cache key. Completion and partial initialization
+clear database handles/paths, allowlist, settings and cached authority before
+removing run-owned copies. Cleanup failures surface and retain deletion ownership
+for retry; consecutive runs cannot inherit previous authority.
+
+Activity is counted once from each eligible admitted nonbeacon row at its
+original timestamp, before dedup/correction holds. Retries do not refresh it.
+Replacement rejection retains the original fields/accounting without another
+candidate search. The ordinary final gate may still reject the original or an
+accepted replacement after eligibility changes. Accepted temporal mutation
+accounting remains separate from final output and learning.
+
+Frozen snapshots cannot reproduce database changes at the historical date.
+Replay still omits live DE/login admission, flood/primary queue pressure, State
+enrichment and other production preprocessing; it does not claim full production
+equivalence. See [ADR-0302](decisions/ADR-0302-correction-evidence-admission-and-license-authority.md).
 
 Invalid applicable configured assets stop initialization before history scratch
 replacement or resolver ownership. Every nonblank reliability path is attempted;

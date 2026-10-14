@@ -121,6 +121,15 @@ type ResolverSnapshot struct {
 	lossWindow                 time.Duration
 	ordinaryWinner             string
 	ordinaryState              ResolverState
+	pendingIncumbent           string // Owner-published provenance, never advanced by readers.
+	pendingChallenger          string
+}
+
+// PendingTransition returns the unfinished owner transition. Consumers must
+// still require current eligible membership for both identities; expiry revokes
+// relevance without letting a read settle the bucket or advance hysteresis.
+func (s ResolverSnapshot) PendingTransition() (incumbent, challenger string, ok bool) {
+	return s.pendingIncumbent, s.pendingChallenger, s.pendingIncumbent != "" && s.pendingChallenger != ""
 }
 
 // ResolverCandidateSupport captures one candidate support tally from the latest
@@ -876,6 +885,7 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		st.publishedCandidateRanks = candidateRanks
 	}
 	st.candidateRanksScratch = candidateRanksScratch[:0]
+	snapshot.CandidateRanks = candidateRanks
 
 	// Conflicting equal-time metadata cannot supply an invented witness. Its
 	// protected state survives compact temporal selection just like a split.
@@ -904,6 +914,9 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 		)
 	}
 
+	if !split {
+		split = r.ProposalHasAmbiguousRawTie(snapshot, top.call)
+	}
 	if split {
 		st.pendingWinner = ""
 		st.pendingWins = 0

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -26,7 +27,6 @@ import (
 	rbnfeed "dxcluster/rbn"
 	"dxcluster/spot"
 	"dxcluster/stats"
-	"dxcluster/uls"
 )
 
 type replayRequest struct {
@@ -57,6 +57,9 @@ type replayRunner struct {
 	zipResult  download.Result
 
 	ctyDB              *cty.CTYDatabase
+	licenseInputs      replayLicenseInputs
+	licenseInputsDir   string
+	ownsLicenseInputs  bool
 	adaptiveMinReports *spot.AdaptiveMinReports
 	recentBandStore    spot.RecentSupportStore
 	cleanupRecentBand  func()
@@ -88,9 +91,9 @@ type replayRunner struct {
 // runReplay is the public orchestration entry point used by main and tests.
 // Cleanup is deferred here so partially initialized resources are still closed
 // when an early phase returns an error.
-func runReplay(req replayRequest) error {
+func runReplay(req replayRequest) (err error) {
 	runner := newReplayRunner(req)
-	defer runner.close()
+	defer func() { err = errors.Join(err, runner.closeWithError()) }()
 	return runner.run()
 }
 
@@ -134,19 +137,33 @@ func (r *replayRunner) run() error {
 	return r.finalize()
 }
 
-// close releases replay-only files and stores. It is intentionally best-effort
-// because the primary error should remain the replay phase that failed.
+// close is the cleanup callback for fixtures that cannot return errors.
+// Production runReplay uses closeWithError to return failures to its caller.
 func (r *replayRunner) close() {
+	if err := r.closeWithError(); err != nil {
+		log.Printf("Replay cleanup failed: %v", err)
+	}
+}
+
+// closeWithError releases every initialized owner, including partial initialization.
+// runReplay joins cleanup errors after the primary phase error so callers can
+// still identify the original failure while cleanup failures remain visible.
+func (r *replayRunner) closeWithError() error {
+	var errs []error
 	if r.csvParser != nil {
-		_ = r.csvParser.Close()
+		errs = append(errs, r.csvParser.Close())
+		r.csvParser = nil
 	}
 	if r.runbookSamplesFile != nil {
-		_ = r.runbookSamplesFile.Close()
+		errs = append(errs, r.runbookSamplesFile.Close())
+		r.runbookSamplesFile = nil
 	}
 	if r.cleanupRecentBand != nil {
 		r.cleanupRecentBand()
 		r.cleanupRecentBand = nil
 	}
+	errs = append(errs, r.closeLicenseInputs())
+	return errors.Join(errs...)
 }
 
 func (r *replayRunner) loadReplayConfig() error {
@@ -225,43 +242,9 @@ func (r *replayRunner) downloadInputZip() error {
 // uses so replay failures match production support conditions.
 func (r *replayRunner) configureExternalDependencies() error {
 	cfg := r.cfg
-
-	uls.SetLicenseChecksEnabled(cfg.FCCULS.Enabled)
-	uls.SetCanadianLicenseChecksEnabled(cfg.ISED.Enabled)
-	uls.SetLicenseCacheTTL(time.Duration(cfg.FCCULS.CacheTTLSeconds) * time.Second)
-
-	allowlistPath := strings.TrimSpace(cfg.FCCULS.AllowlistPath)
-	if allowlistPath != "" {
-		if _, err := os.Stat(allowlistPath); err != nil {
-			return fmt.Errorf("fcc_uls.allowlist_path missing/unreadable %s: %w", allowlistPath, err)
-		}
-		uls.SetAllowlistPath(allowlistPath)
-	} else {
-		uls.SetAllowlistPath("")
+	if err := r.freezeLicenseInputs(); err != nil {
+		return err
 	}
-
-	// Replay registers local snapshots without downloading or enriching spots.
-	// A missing optional DB clears prior globals even when enforcement is disabled.
-	dbPath := strings.TrimSpace(cfg.FCCULS.DBPath)
-	if cfg.FCCULS.Enabled {
-		if dbPath == "" {
-			return fmt.Errorf("fcc_uls.enabled=true but fcc_uls.db_path is empty (config=%s)", cfg.LoadedFrom)
-		}
-		if _, err := os.Stat(dbPath); err != nil {
-			return fmt.Errorf("fcc_uls.db_path missing/unreadable %s: %w", dbPath, err)
-		}
-	}
-	uls.SetLicenseDBPath(dbPath)
-	canadianPath := strings.TrimSpace(cfg.ISED.DBPath)
-	if cfg.ISED.Enabled {
-		if canadianPath == "" {
-			return fmt.Errorf("ised.enabled=true but ised.db_path is empty (config=%s)", cfg.LoadedFrom)
-		}
-		if _, err := os.Stat(canadianPath); err != nil {
-			return fmt.Errorf("ised.db_path missing/unreadable %s: %w", canadianPath, err)
-		}
-	}
-	uls.SetCanadianLicenseDBPath(canadianPath)
 
 	if !cfg.CTY.Enabled {
 		return nil
@@ -443,6 +426,7 @@ func (r *replayRunner) openReplayOutputs() error {
 	}
 	r.runbookSamplesFile = runbookSamplesFile
 	r.manifest = buildReplayManifest(r.startedAt, r.dayStart, r.cfg, r.archiveDir, r.outDir, r.zipPath, r.zipResult.Meta, r.runbookSamplesPath)
+	r.manifest.LicenseInputs = r.licenseInputs
 
 	csvParser, err := openRBNHistoryCSV(r.zipPath, r.dayCompact+".csv")
 	if err != nil {
@@ -537,6 +521,7 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 	if spotEntry.IsBeacon {
 		return nil
 	}
+	correctionflow.ObserveResolverActivity(spotEntry, r.adaptiveMinReports, now)
 
 	resolverEvidence, hasResolverEvidence := buildResolverEvidenceSnapshot(spotEntry, r.cfg.CallCorrection, r.adaptiveMinReports, now)
 	if hasResolverEvidence {
@@ -682,9 +667,18 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 			switched := r.temporalDecoder.ConfirmCorrection(outcome.temporalKey, normalizedDXCall(spotEntry))
 			r.abMetrics.Temporal.ObserveAccepted(switched)
 		}
+		r.observeTemporalHistory()
+	}
+	// Confirmation records accepted mutation, even if the authority changes
+	// before final validation. Output metrics and learning require final DX
+	// acceptance; a drop does not undo the accepted identity history.
+	spotEntry.RefreshBeaconFlag()
+	if rejectReplayDXLicense(r.ctyDB, normalizedDXCall(spotEntry), spotEntry.IsBeacon, now) {
+		return
+	}
+	if outcome.temporal {
 		// This is the replay output boundary, not a network receipt claim.
 		r.abMetrics.Temporal.HandoffAttempts++
-		r.observeTemporalHistory()
 	}
 	r.abMetrics.ObserveAppliedOutput(outcome.Confidence)
 	r.abMetrics.ObserveResolverSelection(outcome.Selection)
@@ -692,7 +686,6 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 	r.abMetrics.ObserveResolverRecentPlus1Gate(outcome.Gate, outcome.GateEvaluated)
 	r.abMetrics.ObserveResolverBayesGate(outcome.Gate, outcome.GateEvaluated)
 
-	spotEntry.RefreshBeaconFlag()
 	if outcome.Applied {
 		band := spotEntry.BandNorm
 		if band == "" || band == "???" {

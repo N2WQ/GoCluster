@@ -4,6 +4,11 @@
 - Date: 2026-10-07
 - Decision Origin: Design
 
+[ADR-0302](ADR-0302-correction-evidence-admission-and-license-authority.md)
+extends replacement rejection and replay ownership: frozen per-run bytes,
+historical UTC eligibility at every check, and a separate process-time cache TTL.
+The runtime jurisdiction, State and enforcement contracts here remain accepted.
+
 ## Context
 
 ADR-0253 added FCC license facts, registered-address State metadata, DESTATE and

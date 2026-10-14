@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `0a0099b11ea73335`
+- Source fingerprint: `6994578b50357d67`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 30 | 125 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 128 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 38 | 57 |
+| `dxcluster/spot` | `spot` | 38 | 63 |
 | `dxcluster/telnet` | `telnet` | 48 | 100 |
 
 ## In-Scope Package Edges
@@ -156,6 +156,7 @@ Source files:
 - `internal/cluster/path_reporting.go`
 - `internal/cluster/peer_publication.go`
 - `internal/cluster/prop_report_scheduler.go`
+- `internal/cluster/replacement_license.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/telnet_family_suppressor.go`
 - `internal/cluster/temporal_result.go`
@@ -168,6 +169,7 @@ Test files:
 - `internal/cluster/accepted_learning_output_gates_test.go`
 - `internal/cluster/accepted_learning_paths_test.go`
 - `internal/cluster/accepted_learning_shutdown_test.go`
+- `internal/cluster/activity_admission_wiring_test.go`
 - `internal/cluster/archive_fanout_delivery_test.go`
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
@@ -197,6 +199,7 @@ Test files:
 - `internal/cluster/drop_log_dedupe_test.go`
 - `internal/cluster/dropped_call_log_test.go`
 - `internal/cluster/event_file_log_test.go`
+- `internal/cluster/f1_f2_delivery_test.go`
 - `internal/cluster/family_admission_delivery_test.go`
 - `internal/cluster/family_admission_qualification_test.go`
 - `internal/cluster/family_delivery_destinations_test.go`
@@ -215,6 +218,7 @@ Test files:
 - `internal/cluster/human_telnet_runtime_test.go`
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/legacy_history_runtime_test.go`
+- `internal/cluster/license_replacement_delivery_test.go`
 - `internal/cluster/logging_test.go`
 - `internal/cluster/main_runtime_output_retirement_test.go`
 - `internal/cluster/main_runtime_test.go`
@@ -532,6 +536,11 @@ Source files:
 - `spot/who_spots_me.go`
 
 Test files:
+- `spot/adaptive_activity_bench_test.go`
+- `spot/adaptive_activity_churn_bench_test.go`
+- `spot/adaptive_activity_clock_other_test.go`
+- `spot/adaptive_activity_clock_windows_test.go`
+- `spot/adaptive_activity_test.go`
 - `spot/bands_test.go`
 - `spot/bounded_store_bench_test.go`
 - `spot/callsign_test.go`
@@ -552,6 +561,7 @@ Test files:
 - `spot/custom_scp_persistence_bench_test.go`
 - `spot/custom_scp_store_test.go`
 - `spot/dedupe_key_test.go`
+- `spot/f1_f2_test.go`
 - `spot/ft_frequency_test.go`
 - `spot/harmonics_test.go`
 - `spot/harmonics_v16_reference_test.go`
@@ -748,6 +758,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0302](docs/decisions/ADR-0302-correction-evidence-admission-and-license-authority.md) | Accepted | 2026-10-14 | raw ambiguity, pending transitions, primary activity, frozen replay authority | `path:internal/cluster, path:spot` |
 | [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:internal/cluster` |
 | [ADR-0297](docs/decisions/ADR-0297-core-accepted-observation-learning.md) | Accepted | 2026-10-11 | call/FT history, WhoSpotsMe, acceptance, shutdown | `path:peer` |
 | [ADR-0295](docs/decisions/ADR-0295-fresh-admitted-family-display.md) | Accepted | 2026-10-11 | family display, fresh evidence, telnet queue admission | `area:telnet, path:internal/cluster, path:telnet` |

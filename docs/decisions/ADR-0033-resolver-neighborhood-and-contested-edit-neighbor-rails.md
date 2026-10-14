@@ -13,6 +13,12 @@ Edit-neighbor telnet display clauses are partially superseded by
 admitted per-policy history replace cached contested support and arrival ties.
 Neighborhood and stabilizer clauses remain accepted.
 
+[ADR-0302](ADR-0302-correction-evidence-admission-and-license-authority.md)
+refines uncertain-population neighborhood evidence and relevant pending
+transitions. It replaces the gate-read `observe=true` activity clause below
+with successful primary admission; later reads/retries use `observe=false`.
+Other neighborhood, gate and stabilizer policies remain accepted.
+
 ## Context
 
 - Resolver-primary is the long-term authority path, but one-character variants could still leak under bucket-boundary and timing conditions.

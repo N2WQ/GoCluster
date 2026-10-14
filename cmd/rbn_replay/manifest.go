@@ -12,9 +12,10 @@ type replayManifest struct {
 	InputZipPath string            `json:"input_zip_path"`
 	InputZipMeta download.Metadata `json:"input_zip_meta"`
 
-	StartedAtUTC  string `json:"started_at_utc"`
-	FinishedAtUTC string `json:"finished_at_utc"`
-	GoVersion     string `json:"go_version"`
+	StartedAtUTC  string              `json:"started_at_utc"`
+	FinishedAtUTC string              `json:"finished_at_utc"`
+	GoVersion     string              `json:"go_version"`
+	LicenseInputs replayLicenseInputs `json:"license_inputs"`
 
 	CSV struct {
 		Header             []string `json:"header"`

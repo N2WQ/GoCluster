@@ -25,6 +25,7 @@ const (
 type ingestValidator struct {
 	input                chan *spot.Spot
 	dedupInput           chan<- *spot.Spot
+	admitPrimary         func(*spot.Spot) bool // Fixed before Start; used only without an intervening flood gate.
 	ctyLookup            func() *cty.CTYDatabase
 	metaCache            *callMetaCache
 	ctyUpdater           func(call string, info *cty.PrefixInfo)
@@ -113,13 +114,23 @@ func (v *ingestValidator) run() {
 		if !v.validateSpot(s) {
 			continue
 		}
-		select {
-		case v.dedupInput <- s:
-		default:
+		if !v.tryForward(s) {
 			if count, ok := v.dedupDropCounter.Inc(); ok {
 				log.Printf("Ingest: dedup input full, dropping spot (source=%s total=%d)", ingestSourceLabel(s), count)
 			}
 		}
+	}
+}
+
+func (v *ingestValidator) tryForward(s *spot.Spot) bool {
+	if v.admitPrimary != nil {
+		return v.admitPrimary(s)
+	}
+	select {
+	case v.dedupInput <- s:
+		return true
+	default:
+		return false
 	}
 }
 

@@ -61,7 +61,7 @@ func TestMethodAmbiguityGuardBoundaries(t *testing.T) {
 		{"narrow", 3, 2, 0, 1, .2, .6, false, true},
 		{"wide", 3, 2, 0, 1, .31, .6, false, false},
 		{"exact equality", 3, 2, 0, 1, .3, .6, false, false},
-		{"equal support", 2, 2, 0, 1, .2, .6, false, false},
+		{"equal support", 2, 2, 0, 1, .2, .6, false, true},
 		{"weak runner", 2, 1, 0, 1, .2, .6, false, false},
 		{"support gap", 4, 2, 0, 1, .2, .6, false, false},
 		{"ratio rejects", 3, 2, 0, 1, .2, .8, false, false},

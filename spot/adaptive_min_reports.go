@@ -19,8 +19,11 @@ type AdaptiveMinReports struct {
 	window     time.Duration
 	evalPeriod time.Duration
 
-	mu           sync.Mutex
-	lastEval     time.Time
+	mu        sync.Mutex
+	lastEval  time.Time
+	lastPrune time.Time
+	// Expiry runs during observation as well as queries. Retention therefore
+	// follows the window plus maintenance cadence even if correction is off.
 	reporterSeen map[string]map[string]time.Time // band -> reporter -> lastSeen
 	groups       map[string]*groupState          // group name -> state
 	bandToGroup  map[string]string               // band -> group name
@@ -115,10 +118,84 @@ func (a *AdaptiveMinReports) Observe(band, reporter string, now time.Time) {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	a.pruneIfDueLocked(now)
+	a.observeLocked(b, r, now)
+}
+
+// AdmitObservation counts only a successful nonblocking input admission.
+// The caller captures immutable band/reporter values before publishing a spot.
+// The sink must only attempt that send: it must not block, query adaptive state,
+// or acquire another component lock. Readers use the same mutex and therefore
+// cannot observe admission before its activity update. Downstream spot mutation
+// is independent because this method never reads the published spot.
+// The clock is sampled after lock contention and again after any due scan so
+// last-seen records admission time rather than time spent waiting for maintenance.
+func (a *AdaptiveMinReports) AdmitObservation(band, reporter string, clock func() time.Time, admit func() bool) bool {
+	if a == nil {
+		return admit()
+	}
+	b := strings.ToLower(strings.TrimSpace(band))
+	r := strutil.NormalizeUpper(reporter)
+	if b == "" || r == "" {
+		return admit()
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now := clock()
+	if a.pruneIfDueLocked(now) {
+		now = clock()
+	}
+	if !admit() {
+		return false
+	}
+	a.observeLocked(b, r, now)
+	return true
+}
+
+func (a *AdaptiveMinReports) observeLocked(b, r string, now time.Time) {
 	if _, ok := a.reporterSeen[b]; !ok {
 		a.reporterSeen[b] = make(map[string]time.Time)
 	}
 	a.reporterSeen[b][r] = now
+}
+
+// ActivityCardinality reports retained bands and unique band/reporter pairs.
+// It changes neither the clock nor adaptive state, so replay diagnostics cannot
+// accidentally evaluate historical activity against machine wall time.
+func (a *AdaptiveMinReports) ActivityCardinality() (bands, reporters int) {
+	if a == nil {
+		return 0, 0
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for _, seen := range a.reporterSeen {
+		reporters += len(seen)
+	}
+	return len(a.reporterSeen), reporters
+}
+
+func (a *AdaptiveMinReports) pruneIfDueLocked(now time.Time) bool {
+	if !a.lastPrune.IsZero() && now.Sub(a.lastPrune) < a.evalPeriod {
+		return false
+	}
+	a.pruneLocked(now)
+	return true
+}
+
+// pruneLocked is maintenance only: it must not advance hysteresis windows.
+// Exact window-boundary receivers remain active, matching query evaluation.
+func (a *AdaptiveMinReports) pruneLocked(now time.Time) {
+	for band, reporters := range a.reporterSeen {
+		for call, seenAt := range reporters {
+			if now.Sub(seenAt) > a.window {
+				delete(reporters, call)
+			}
+		}
+		if len(reporters) == 0 {
+			delete(a.reporterSeen, band)
+		}
+	}
+	a.lastPrune = now
 }
 
 // MinReportsForBand returns current min_reports for a band.
@@ -158,17 +235,7 @@ func (a *AdaptiveMinReports) evaluate(now time.Time) {
 	// Key aspects: Prunes stale reporters and applies hysteresis windows.
 	// Upstream: ensureEvaluatedLocked.
 	// Downstream: averageReporters and stateForCount.
-	// Drop stale reporters outside the window.
-	for band, reporters := range a.reporterSeen {
-		for call, seenAt := range reporters {
-			if now.Sub(seenAt) > a.window {
-				delete(reporters, call)
-			}
-		}
-		if len(reporters) == 0 {
-			delete(a.reporterSeen, band)
-		}
-	}
+	a.pruneLocked(now)
 
 	for name, gs := range a.groups {
 		count := a.averageReporters(gs.config.Bands)

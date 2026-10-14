@@ -36,6 +36,7 @@ func TestReplayStateOffLocalOnlyAndReset(t *testing.T) {
 			t.Fatal(err)
 		}
 		r := &replayRunner{cfg: &config.Config{FCCULS: config.FCCULSConfig{Enabled: false, DBPath: path, URL: source.URL}}}
+		t.Cleanup(r.close)
 		if err := r.configureExternalDependencies(); err != nil {
 			t.Fatal(err)
 		}
@@ -46,6 +47,7 @@ func TestReplayStateOffLocalOnlyAndReset(t *testing.T) {
 	}
 	missing := filepath.Join(t.TempDir(), "missing.db")
 	r := &replayRunner{cfg: &config.Config{FCCULS: config.FCCULSConfig{Enabled: false, DBPath: missing, URL: source.URL}}}
+	t.Cleanup(r.close)
 	if err := r.configureExternalDependencies(); err != nil {
 		t.Fatalf("optional offline database became required: %v", err)
 	}
