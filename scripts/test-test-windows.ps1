@@ -202,7 +202,12 @@ func TestSpoofChild(t *testing.T) {
     $passed++
 
     # Tool faults must not be hidden by a succeeding process or output pipeline.
-    $nativeGo = (Get-Command go -CommandType Application).Source
+    $nativeGoCommand = Get-Command go.exe -CommandType Application -All -ErrorAction Stop |
+        Select-Object -First 1
+    $nativeGo = $nativeGoCommand.Source
+    if ([string]::IsNullOrWhiteSpace($nativeGo) -or -not (Test-Path -LiteralPath $nativeGo -PathType Leaf)) {
+        throw 'Could not resolve one Go executable for fault-injection fixtures.'
+    }
     try {
         function go {
             if ($args[0] -eq 'tool') {
