@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0306 | Path Key Shard Distribution | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | none; retains ADR-0305/0300/0301 | none | `docs/decisions/ADR-0306-path-key-shard-distribution.md` |
 | ADR-0305 | Path Map Compaction After Distributed Contraction | Accepted | 2026-10-14 | retained path maps, maintenance, refill | none | none | `docs/decisions/ADR-0305-path-map-distributed-compaction.md` |
 | ADR-0304 | Bounded Incremental Forecast Persistence | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | Refines ADR-0184/0191; retains ADR-0303 | none | `docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md` |
 | ADR-0303 | Deterministic Persisted Forecast Retention | Accepted | 2026-10-14 | VOACAP persistence, capacity ties, restart equivalence | Refines ADR-0184 capacity ordering | none | `docs/decisions/ADR-0303-deterministic-persisted-forecast-retention.md` |

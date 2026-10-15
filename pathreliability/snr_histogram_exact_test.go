@@ -205,7 +205,7 @@ func TestExactP50ShippedPrediction(t *testing.T) {
 				t.Fatal("shipped 20m band missing")
 			}
 			key := packCoarseKey(3, 4, index)
-			state := p.combined.shards[key%uint64(len(p.combined.shards))].buckets[key]
+			state := p.combined.shardForKey(key).buckets[key]
 			if state == nil {
 				t.Fatal("shipped coarse bucket missing")
 			}

@@ -18,17 +18,16 @@ func TestPredictorCompactionAfterPurgePreservesPredictionAndReports(t *testing.T
 	cfg.MinObservationCount = 1
 	predictor := NewPredictor(cfg, []string{"20m"})
 	now := time.Date(2026, time.October, 14, 20, 0, 0, 0, time.UTC)
-	for entry := 0; entry < 17; entry++ {
-		observed := now
-		if entry >= 8 {
-			observed = now.Add(-61 * time.Second)
-		}
-		for offset := 0; offset < 64; offset++ {
-			sender := CellID(entry*64 + offset + 1)
-			admission := predictor.UpdateWithReceiverHash(BucketCombined, InvalidCell, InvalidCell, 1, sender, "20m", -10.5, 1,
+	for offset, paths := range balancedCompactionCoarsePaths(t, predictor.combined) {
+		for entry, path := range paths {
+			observed := now
+			if entry >= 8 {
+				observed = now.Add(-61 * time.Second)
+			}
+			admission := predictor.UpdateWithReceiverHash(BucketCombined, InvalidCell, InvalidCell, path.receiver, path.sender, "20m", -10.5, 1,
 				ObservationTimes{ObservedAt: observed, ArrivedAt: observed}, false, uint64(offset+1))
 			if !admission.Accepted() {
-				t.Fatalf("coarse report sender=%d was not admitted: %+v", sender, admission)
+				t.Fatalf("coarse report path=%+v was not admitted: %+v", path, admission)
 			}
 		}
 	}
@@ -86,6 +85,52 @@ func TestPredictorCompactionAfterPurgePreservesPredictionAndReports(t *testing.T
 	if got := predictor.Compact(1000, 0.5); got != 0 {
 		t.Fatalf("connected fixture repeated compaction without contraction: %d", got)
 	}
+}
+
+type compactionCoarsePath struct{ receiver, sender CellID }
+
+// This bounded search sets up balanced maintenance work; selector correctness
+// and useful distribution have separate literal and mapped-population oracles.
+func balancedCompactionCoarsePaths(t *testing.T, store *Store) [][]compactionCoarsePath {
+	t.Helper()
+	requireH3Mappings(t)
+	groups := make([][]compactionCoarsePath, len(store.shards))
+	indices := make(map[*shard]int, len(store.shards))
+	for i := range store.shards {
+		groups[i] = make([]compactionCoarsePath, 0, 17)
+		indices[&store.shards[i]] = i
+	}
+	index, ok := store.bandIndex.Lookup("20m")
+	if !ok {
+		t.Fatal("balanced compaction fixture requires 20m")
+	}
+	queryShard := indices[store.shardForKey(packCoarseKey(1, 2, index))]
+	groups[queryShard] = append(groups[queryShard], compactionCoarsePath{1, 2})
+	count := 1
+search:
+	for receiver := CellID(1); receiver <= 842; receiver++ {
+		for sender := CellID(1); sender <= 842; sender++ {
+			if coarseMapper.ToH3[receiver] == 0 || coarseMapper.ToH3[sender] == 0 {
+				t.Fatal("balanced setup requires valid checked-in res-1 H3 proxy IDs")
+			}
+			if (receiver == 1 && sender == 2) || (receiver == 2 && sender == 1) {
+				continue
+			}
+			i := indices[store.shardForKey(packCoarseKey(receiver, sender, index))]
+			if len(groups[i]) == 17 {
+				continue
+			}
+			groups[i] = append(groups[i], compactionCoarsePath{receiver, sender})
+			count++
+			if count == 64*17 {
+				break search
+			}
+		}
+	}
+	if count != 64*17 {
+		t.Fatalf("bounded coarse population filled %d entries, want 64*17", count)
+	}
+	return groups
 }
 
 func assertCompactionConnectedReports(t *testing.T, stats PredictorStatsSnapshot, hist WeightHistogram, now time.Time) {

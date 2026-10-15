@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `bed944255e6b19ae`
+- Source fingerprint: `e1ed55bf68282b5f`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 130 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 136 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 63 |
-| `dxcluster/telnet` | `telnet` | 48 | 100 |
+| `dxcluster/telnet` | `telnet` | 48 | 101 |
 
 ## In-Scope Package Edges
 
@@ -236,6 +236,12 @@ Test files:
 - `internal/cluster/path_report_metrics_bench_test.go`
 - `internal/cluster/path_report_metrics_test.go`
 - `internal/cluster/path_reporting_test.go`
+- `internal/cluster/path_sharding_campaign_test.go`
+- `internal/cluster/path_sharding_connected_test.go`
+- `internal/cluster/path_sharding_fixture_test.go`
+- `internal/cluster/path_sharding_maintenance_test.go`
+- `internal/cluster/path_sharding_profile_test.go`
+- `internal/cluster/path_sharding_soak_test.go`
 - `internal/cluster/path_timestamp_ingest_test.go`
 - `internal/cluster/pc92_q4_cycles_test.go`
 - `internal/cluster/pc92_q4_enabled_ownership_test.go`
@@ -718,6 +724,7 @@ Test files:
 - `telnet/nearby_endpoint_test.go`
 - `telnet/nofilter_nearby_test.go`
 - `telnet/path_settings_test.go`
+- `telnet/path_sharding_wire_test.go`
 - `telnet/path_timestamp_provenance_test.go`
 - `telnet/peer_membership_test.go`
 - `telnet/persistence_warning_test.go`
@@ -760,6 +767,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:internal/cluster, path:telnet` |
 | [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:internal/cluster` |
 | [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `path:internal/cluster` |
 | [ADR-0302](docs/decisions/ADR-0302-correction-evidence-admission-and-license-authority.md) | Accepted | 2026-10-14 | raw ambiguity, pending transitions, primary activity, frozen replay authority | `path:internal/cluster, path:spot` |

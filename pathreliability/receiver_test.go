@@ -465,7 +465,7 @@ func TestReceiverCapCoarseBucketsUseExtraSlots(t *testing.T) {
 	}
 
 	key := packCoarseKey(receiverCoarse, senderCoarse, 0)
-	sh := &store.shards[key%uint64(len(store.shards))]
+	sh := store.shardForKey(key)
 	sh.mu.RLock()
 	b := sh.buckets[key]
 	if b == nil {

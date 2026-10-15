@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0097 | Path Sharding Measurement Clock | Monitoring | 2026-10-15 | Windows QPC observer cost, benchmark lifetime, repeatability, owner-accepted S4 performance exception | ADR-0306 | `docs/troubleshooting/TSR-0097-path-sharding-measurement-clock.md` |
 | TSR-0096 | JSON Forecast Payload Retention | Resolved | 2026-10-14 | decoded slice capacity, live-cache retained heap, paired memory oracle | ADR-0304 | `docs/troubleshooting/TSR-0096-json-forecast-payload-retention.md` |
 | TSR-0095 | Call Correction Evidence, Admission and Licensing | Monitoring | 2026-10-14 | dissent, raw ties, primary admission, activity expiry, replacement/replay authority | ADR-0302 | `docs/troubleshooting/TSR-0095-call-correction-evidence-admission-and-licensing.md` |
 | TSR-0094 | Path Median Speed Retention | Monitoring | 2026-10-14 | exact median CPU, failed retention, candidate restored for cluster profiling | none | `docs/troubleshooting/TSR-0094-path-median-speed-retention.md` |

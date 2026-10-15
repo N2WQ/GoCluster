@@ -406,7 +406,7 @@ func TestPredictPositiveWeightEmptyHistogramIsInsufficient(t *testing.T) {
 	userCoarse := CellID(3)
 	dxCoarse := CellID(4)
 	key := packKey(userCell, dxCell, 0)
-	sh := &predictor.combined.shards[key%uint64(len(predictor.combined.shards))]
+	sh := predictor.combined.shardForKey(key)
 	sh.mu.Lock()
 	sh.buckets[key] = &bucket{weight: 2, count: 2, lastUpdate: now.Unix(), newestObservation: now.Unix()}
 	sh.mu.Unlock()

@@ -149,7 +149,7 @@ func (s *Store) updateBucket(key uint64, weight, mass, count float64, observedSe
 	if key == 0 {
 		return
 	}
-	sh := &s.shards[key%uint64(len(s.shards))]
+	sh := s.shardForKey(key)
 	sh.mu.Lock()
 	defer sh.mu.Unlock()
 	b := sh.buckets[key]
@@ -394,7 +394,7 @@ func (s *Store) captureBucketInto(key uint64, receiverSlots int, distribution bo
 	if key == 0 {
 		return
 	}
-	sh := &s.shards[key%uint64(len(s.shards))]
+	sh := s.shardForKey(key)
 	sh.mu.RLock()
 	defer sh.mu.RUnlock()
 	b := sh.buckets[key]

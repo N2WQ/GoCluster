@@ -230,7 +230,7 @@ func TestStoreReportingConcurrentSnapshotCopies(t *testing.T) {
 		<-start
 		for i := 0; i < 1000; i++ {
 			key := packKey(CellID(i%16+1), 100, uint16(i%2))
-			sh := &store.shards[key%uint64(len(store.shards))]
+			sh := store.shardForKey(key)
 			sh.mu.Lock()
 			if i%3 == 0 {
 				delete(sh.buckets, key)
@@ -267,7 +267,7 @@ func TestStoreReportingConcurrentSnapshotCopies(t *testing.T) {
 }
 
 func putReportTestBucket(store *Store, key uint64, b *bucket) {
-	sh := &store.shards[key%uint64(len(store.shards))]
+	sh := store.shardForKey(key)
 	sh.mu.Lock()
 	sh.buckets[key] = b
 	sh.mu.Unlock()

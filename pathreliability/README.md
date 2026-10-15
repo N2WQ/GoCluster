@@ -29,6 +29,33 @@ including contraction spread across individually small shards. Maintenance
 rechecks each shard under its lock and preserves the live bucket pointers.
 It does not change active predictions or bucket contents. See ADR-0305.
 
+### Local Performance Evidence
+
+The owner accepted S4's unresolved performance risk under Approved v4, and its
+retained safety checks passed before the local checkpoint. ADR-0306 records the
+full-key selector and exception. The [first-wave execution record](../docs/path-reliability-first-wave-execution.md)
+separates accepted slices, failed comparisons and diagnostic results. Do not use
+contention-profile improvements to claim that a serial tail guard passed or
+that production CPU fell.
+
+Failed timing observations remain failed, and unrun comparisons remain unrun.
+S4's remaining timing campaign and final matched profiles are deferred until
+assessment after S5-S7. Correctness, race, memory, lifecycle and hourly-cadence
+checks remain required; S5-S7 retain their own performance/resource gates.
+
+The approved S4 measurement repair uses `testsupport.RunFixedBenchmark` with
+explicit `-test.benchtime=1x`, a live outer test deadline and one complete fixed
+workload. The supplied clock uses a primed `testing.B.Elapsed` domain. All role,
+queue and maintenance owners must cancel and join before that domain ends;
+benchmark cleanup cancellation cannot replace cancel-before-join defers.
+Ordinary correctness tests and the real-cadence soak retain their original
+clock domain. Never combine samples from these measurement protocols.
+
+Use the existing stable native Windows test paths and shared runner lock for
+these opt-in runs. No firewall rule change is part of qualification. The
+measurement mechanism and remaining uncertainty are recorded in
+[TSR-0097](../docs/troubleshooting/TSR-0097-path-sharding-measurement-clock.md).
+
 ## Grid To H3 Mapping
 
 The implementation converts a Maidenhead grid to the center of the represented area:

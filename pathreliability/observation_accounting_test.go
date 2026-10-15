@@ -30,7 +30,7 @@ func accountingBucket(store *Store, coarse bool) *bucket {
 		key = packCoarseKey(3, 4, 0)
 	}
 	// Used only by serial fixtures after all writers have joined.
-	return store.shards[key%uint64(len(store.shards))].buckets[key]
+	return store.shardForKey(key).buckets[key]
 }
 
 func TestObservationAccountingPermutationGolden(t *testing.T) {
@@ -230,9 +230,9 @@ func TestObservationAccountingCommonTimeAndCopiedCoarseSlots(t *testing.T) {
 	}
 	key := packCoarseKey(3, 4, 0)
 	capture := store.captureBucket(key, 12, true)
-	store.shards[key%uint64(len(store.shards))].mu.Lock()
+	store.shardForKey(key).mu.Lock()
 	clear(accountingBucket(store, true).extraSlots.slots[:])
-	store.shards[key%uint64(len(store.shards))].mu.Unlock()
+	store.shardForKey(key).mu.Unlock()
 	sample := store.evaluateCapture(&capture, 10, 20, 12, sampleQuantile)
 	if sample.CappedReceiverCount != 12 {
 		t.Fatalf("capture retained mutable pointer: receivers=%d", sample.CappedReceiverCount)

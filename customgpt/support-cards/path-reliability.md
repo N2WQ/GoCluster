@@ -182,6 +182,15 @@ inspect user-visible diagnostics:
 
 ## Must Avoid
 
+- For S4 performance questions, consult `docs/path-reliability-first-wave-execution.md`
+  and TSR-0097. Original Serial/off and repaired Serial/enforce tail guards
+  failed. Same-binary enforce diagnostics also exceeded repeatability bounds;
+  these do not prove production savings. Approved v4 accepts the unresolved
+  S4 performance risk for development continuation, retaining safety checks
+  and deferring S4 performance assessment until after S5-S7. ADR-0306 records
+  that exception; failed results retain their historical status. Local
+  qualification uses a separate frozen measurement protocol at the existing
+  stable Windows executable paths, with no firewall changes.
 - Do not call a blank glyph a bad path.
 - Do not call a `valn` glyph a pure VOACAP forecast; it requires sparse bucket
   p50 and VOACAP to agree.
@@ -195,6 +204,8 @@ inspect user-visible diagnostics:
 
 ## Sources
 
+- `docs/path-reliability-first-wave-execution.md`
+- `docs/troubleshooting/TSR-0097-path-sharding-measurement-clock.md`
 - `customgpt/troubleshooting-index.md`
 - `README.md`
 - `docs/OPERATOR_GUIDE.md`

@@ -1,6 +1,8 @@
 # Path Reliability First-Wave Execution
 
-Authority: owner token `Approved v2`, received 2026-10-14. This record maps the
+Authority: owner token `Approved v2`, received 2026-10-14, with the S4 measurement
+amendment `Approved v3` and performance exception `Approved v4`, both received
+2026-10-15. This record maps the
 seven approved serial slices to implementation and evidence. It does not
 authorize the gated backlog, production deployment/restart, push or firewall
 changes. The complete approved ledger and raw evidence are retained locally at
@@ -15,13 +17,14 @@ aging, not independent samples, calibrated confidence or QSO probability.
 | --- | --- | --- |
 | S1 | Deterministic persisted retention | Accepted, `3eb9c84` |
 | S2 | Bounded incremental persistence | Accepted, `08ba7f7` |
-| S3 | Distributed-contraction compaction | Test gates passed; local checkpoint pending |
-| S4 | Fine-key sharding | Not started |
+| S3 | Distributed-contraction compaction | Accepted, `9145209` |
+| S4 | Fine-key sharding | Accepted with the Approved v4 performance exception |
 | S5 | Present zero-dB PSKReporter reports | Not started |
 | S6 | Nonduplicated common-resolution selection | Not started |
 | S7 | Recent support and receiver diversity | Not started |
 
-No later slice begins before the preceding slice's required evidence passes.
+No later slice begins before the preceding slice's retained required evidence
+passes. Approved v4 explicitly excepts S4 performance gates only.
 Each accepted slice receives a local checkpoint. Reverting an optimization
 must preserve any earlier slice's accepted correctness contract.
 
@@ -210,3 +213,189 @@ body. Vet, Staticcheck and lint passed for the complete source and again for the
 package after that assertion change. Crawler and support-agent checks passed.
 Test implementation was partitioned; the fresh source/contract review was
 lead-owned. No scientific independence claim is made for this maintenance slice.
+
+## S4: Sharding and Owner-Accepted Performance Exception
+
+The candidate introduces one private fixed full-key selector and uses it for
+both updates and captures. It changes map/lock placement without changing
+packed keys, H3 mapping, configuration, bucket layout or model arithmetic.
+Routing-aware helpers and the connected S3 compaction fixture follow the
+selector. New literal vectors, real mapped populations, public ordinary/beacon
+readback and concurrent maintenance fixtures cover routing consistency.
+
+Targeted core ordinary/race each passed 197 cases, including 57 required
+identities with the test clock checks. The Windows skip is the cgo-only mapper
+test; the verbose Linux/cgo run passed that mapper and the applicable corpora.
+Connected consumer ordinary/race each passed 13 cases, including all three
+required receiver-mode preflights. Loopback wire ordinary/race each passed all
+three modes with 192 ordinary and 192 beacon glyph frames per mode, no drops,
+and observed server/client goroutine retirement. Vet, Staticcheck and lint
+passed; lint reported zero issues. The old selector and old capture-route
+overlays failed the intended routing/read-after-write witnesses.
+
+Engineering reviews corrected checker contention, incomplete maintenance-tail
+classes, purge-only overlap claims, warm-seed admission slack and wall-time-only
+post-cycle success. Test intervals use owner-local Windows performance counters;
+local clock checks measured 100 ns minimum positive increments and zero steady
+allocations. Workload/profile setup and post-run oracles are excluded from
+scoring. The controller passed 84 positive/negative checker expectations.
+These reviews were steered engineering evidence, not scientific independence.
+
+The first comparison was rejected before scoring because baseline and candidate
+YAML bytes differed only in five CRLF sequences. Its two observations, source
+snapshots and binaries remain in `s4/campaign-v1/`; none is pooled with the valid
+comparison. Preparation for `campaign-v2` verified semantic text equality,
+made isolated baseline YAML bytes identical, and verified both H3 table hashes.
+Owner configuration remained untouched. All common S3/S4 preflights passed.
+
+The valid Serial/off fixture completed all twelve balanced process pairs with
+one million samples per role per process and matching frozen identities. The
+median paired candidate/baseline normal-writer p99.9 ratio was **1.1666666667**,
+above the **1.10** limit. Recalculation directly from all 24 raw manifests
+reproduced it. Elapsed ratio was 0.9970709699 (within 1.05); the other three
+role-tail guards passed. Their gains cannot waive the failing writer guard.
+
+Individual writer-tail ratios varied widely, approximately 0.07 to 31.67. This
+is a failed controlled acceptance result; it does not establish a production
+regression or identify its cause. No limit was relaxed, valid observation
+discarded, or repeated attempt selected to force acceptance. All raw evidence
+is retained under `.tmp/path-reliability-first-wave/s4/campaign-v2/`.
+
+At that stage S4 remained uncommitted and unaccepted. The campaign stopped at this gate; the
+remaining timing fixtures, comparative profiles, real 66-minute soak and full
+S4 acceptance lanes were not run. S5-S7 have not begun. S1-S3 remain accepted at
+their local checkpoints. No push, deployment, production restart, firewall edit
+or new listening executable path occurred.
+
+### S4 measurement investigation and Approved v3
+
+The owner approved v3 on 2026-10-15. It amends the test measurement and failure
+lifecycle only; the original serial failure, numerical limits and S5-S7 serial
+gate remain. See [TSR-0097](troubleshooting/TSR-0097-path-sharding-measurement-clock.md)
+for source/profile evidence, hypothesis limits and the retained first probe.
+
+The original same-binary control completed twelve balanced pairs with elapsed
+ratio 0.9768992589 and normal-writer p99.9 ratio 0.8839869281. It passed the
+original one-sided guards, but unchanged code's apparent 11.60% tail improvement
+exposes variability. The original contention diagnostic measured elapsed ratio
+0.3547503355 for its declared stress population. Neither diagnostic qualifies
+S4 or establishes production savings.
+
+V3 uses a separate detached S3 baseline, common repaired harness, controllers,
+saved binaries and artifact directories under `s4/v3/`. Both original source
+sets were archived byte-for-byte and hash-checked before modification. The
+preapproval and postapproval test-strategy findings are dispositioned in the
+ignored implementation design. Reviews were steered engineering reviews, not
+independent scientific-model evidence.
+
+The repaired helper ordinary/race checks each passed 30 cases; targeted core
+checks each passed 74, and targeted connected checks each passed 15. Required
+lifecycle leaves, concurrent reads and retirement witnesses passed. The targeted
+Linux/cgo check passed. Vet, Staticcheck and final lint passed; controller-only
+checks passed 123 positive/negative expectations. All four rebuilt baseline/
+candidate common preflights passed before the source/controller/binary freeze.
+These are targeted results, not complete S4 acceptance lanes.
+
+Both prescribed twelve-pair Serial/off same-binary controls passed all ten
+symmetric guards. New qualification passed Serial/off and Serial/shadow, then
+stopped at Serial/enforce: normal-writer p99.9 ratio **1.2361111111** exceeded
+**1.10**. Elapsed ratio **1.003743236** and the other three tails passed.
+Recalculation from all 24 raw manifests reproduced the failure; identities,
+one-million sample populations, test execution and timing receipts are valid.
+Neither total elapsed gains nor passing off-mode controls waive this failure.
+
+Source review also found that Go's integer-averaged AllocsPerRun assertion can
+hide fractional allocations. All shadow/enforce serial receipts record the
+same 372 allocations in both variants; one-time receiver-state growth is a
+source-supported explanation, not established allocation attribution. Exact
+zero-allocation claims required a stronger checker. Complete frozen sources
+were archived and hash-verified before that checker was refined. The warmed
+unit tests now count a whole measured batch exactly, with a distinct warm
+batch. Only measured reports fund their admission witness. The fixed timing
+campaign and its failed result remain unchanged; no report warmup was added
+to qualification.
+
+The enforce-mode same-binary follow-up is diagnostic only and kept separately
+under `s4/v3-enforce-investigation-20261015/`. Both full series completed:
+baseline writer B/A tail ratio1.1984; candidate writer3.7682 and path-only
+writer2.8171, each comparing identical code. Both elapsed results stayed
+within5%. This demonstrates failed enforce-mode tail repeatability for those
+observations; it cannot qualify S4 or establish the candidate failure's cause.
+Four separate diagnostic runs retained all 16 million original-position
+samples after timing, using isolated source copies and an explicitly unscored
+protocol. Their quantiles, maxima and zero counts reproduce the successful
+receipts. Slow operations occur beyond receiver growth and bucket-aging work;
+their cause remains unknown. The p99.9 rank also crosses a sparse slow-sample
+boundary, contributing to unstable reported tail values.
+
+After the allocation-oracle repair, helper ordinary/race each passed 31 cases
+with 29 exact required identities and no skips; core ordinary/race each passed
+74 with 64 required identities. Fresh Linux/cgo allocation cases, full-repository
+vet/Staticcheck/lint and TSR/support checks passed. These do not convert the
+failed performance comparison into acceptance.
+
+Before Approved v4, remaining qualification fixtures, final acceptance
+profiles, real soak, full acceptance lanes and S5-S7 remained blocked. Work was
+uncommitted on voacap; no push, deployment, restart or firewall change occurred.
+
+### Approved v4: owner-accepted S4 performance exception
+
+The owner selected acceptance of S4's unresolved performance risk and supplied
+exact Approved v4 before this amendment. Original and repaired failed timing
+results remain failed; unfinished comparisons remain unrun. Remaining S4 timing
+and final S4 matched profiles are deferred to assessment after S5-S7. No timing
+pass, profile-completion marker or production-savings claim is synthesized.
+
+The retained correctness/race/resource/lifecycle checks and real 66-minute
+maintenance soak still precede S4's local checkpoint. The new versioned v4
+driver replaces both old timing and profile prerequisites with the explicit
+approval, preserving source/binary/input identity and actual soak assertions.
+It uses the existing approved executable path and shared runner lock. All
+nonwaived S5-S7 contracts and per-slice checkpoints remain unchanged. ADR-0306
+records the selector decision and accepted uncertainty; TSR-0097 retains the
+measurement history.
+
+Fresh steered source reviews found no outstanding production or instrumentation
+issue. One wire-test early-dial cleanup gap was fixed before new builds: Stop
+and explicit server-retirement wait now register immediately after startup,
+before dialing. A failed dial therefore receives the same retirement boundary.
+The affected wire ordinary/race reruns passed in the retained validation below.
+
+The retained full native ordinary and race lanes subsequently passed: each
+executed 9,824 cases across 70 packages, with 207 required case identities.
+Actual loopback glyph ordinary/race checks passed all three receiver modes.
+After a test-only allocation-check refinement, the full path-reliability
+package ordinary/race reruns each passed 669 cases with 170 required identities;
+the Linux/cgo targeted checks and affected analyzers passed too. The earlier
+single process-wide allocation remains failed and unattributed. Each warmed
+allocation mode now runs in a bounded child of the same stable executable,
+with unchanged exact batches and zero limit. A deliberate escaping allocation
+inside the measured beacon batch verifies the actual rejection path.
+
+The real 66-minute maintenance soak passed from the approved executable path.
+Both actual compactions rebuilt 64 shards, one hour apart. Growth to 20,002
+buckets contracted to 180, then regrew, purged and compacted again before a
+refill to 435 buckets. The two measured compactions released 8,194,016 and
+607,472 retained heap bytes respectively. These candidate-only readings do not
+establish a comparative memory saving. All four work roles completed nearly
+299 seconds of successful activity after the second compaction; all 13 dated
+periodic reports were available, and logger/maintenance owners joined.
+
+The Go test passed in 3,960.04 seconds. Its original post-run PowerShell checker
+then failed because it expected Go field names instead of the snake_case JSON
+tags. That controller and failure log remain unchanged. A separately reviewed
+completion verifier corrects only those property names and retains every soak
+assertion. Its 22 positive/negative cases use the actual Go-serialized proof.
+It verified the exact RUN/PASS and package PASS, all 1,430 frozen input hashes,
+approval/controller/tool/configuration/binary identities and unchanged branch/
+HEAD before writing `s4/v4/soak/accepted-retained-validation.json`. No workload
+was rerun to clear this reporting error.
+
+S4's retained safety gates and fresh final verification passed. The accepted
+change maps `keys.go`'s selector to both `store.go` update/capture routes;
+literal/mapped/concurrent contracts, connected ingress, actual glyph wire,
+allocation falsifiers and real maintenance cover those boundaries. Support
+documentation impact is Required and is reflected in the package guide,
+support card, ADR-0306 and TSR-0097. Timing failures and deferred S4 profiles
+retain their recorded status. S5-S7 remain serial follow-on work with their
+own nonwaived gates; no production performance outcome is established.

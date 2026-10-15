@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `785cbe036ba15bfb`
+- Source fingerprint: `ae21fe3e3d037e42`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 27 | 45 |
+| `dxcluster/pathreliability` | `pathreliability` | 27 | 51 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -126,6 +126,12 @@ Test files:
 - `pathreliability/observation_times_test.go`
 - `pathreliability/receiver_test.go`
 - `pathreliability/sampling_probe_test.go`
+- `pathreliability/sharding_concurrency_test.go`
+- `pathreliability/sharding_contract_test.go`
+- `pathreliability/sharding_runtime_fixture_test.go`
+- `pathreliability/sharding_runtime_maintenance_test.go`
+- `pathreliability/sharding_runtime_performance_test.go`
+- `pathreliability/sharding_runtime_profile_test.go`
 - `pathreliability/snr_histogram_exact_bench_test.go`
 - `pathreliability/snr_histogram_exact_test.go`
 - `pathreliability/snr_histogram_mass_test.go`
@@ -177,6 +183,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:pathreliability` |
 | [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:pathreliability` |
 | [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `area:internal/voacap, path:pathreliability` |
 | [ADR-0303](docs/decisions/ADR-0303-deterministic-persisted-forecast-retention.md) | Accepted | 2026-10-14 | VOACAP persistence, capacity ties, restart equivalence | `area:internal/voacap, path:pathreliability` |

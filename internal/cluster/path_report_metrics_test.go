@@ -69,7 +69,7 @@ func TestPathReportMetricsObserveWithCellsUsesHydratedCells(t *testing.T) {
 	}
 }
 
-func requirePathReportH3Mappings(t *testing.T) {
+func requirePathReportH3Mappings(t testing.TB) {
 	t.Helper()
 	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(t)); err != nil {
 		t.Fatalf("InitH3Mappings unavailable: %v", err)

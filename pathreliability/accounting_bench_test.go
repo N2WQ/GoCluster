@@ -40,7 +40,7 @@ func BenchmarkAccountingAdmission(b *testing.B) {
 				}
 				b.StopTimer()
 				key := packCoarseKey(3, 4, 0)
-				state := store.shards[key%uint64(len(store.shards))].buckets[key]
+				state := store.shardForKey(key).buckets[key]
 				if state == nil || state.extraSlots == nil || state.extraSlots.slots == nil {
 					b.Fatal("coarse sidecar not populated")
 				}
