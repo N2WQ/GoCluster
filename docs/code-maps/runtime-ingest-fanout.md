@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ae436a9aba83f7db`
+- Source fingerprint: `bed944255e6b19ae`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -760,6 +760,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:internal/cluster` |
 | [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `path:internal/cluster` |
 | [ADR-0302](docs/decisions/ADR-0302-correction-evidence-admission-and-license-authority.md) | Accepted | 2026-10-14 | raw ambiguity, pending transitions, primary activity, frozen replay authority | `path:internal/cluster, path:spot` |
 | [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:internal/cluster` |

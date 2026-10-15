@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `2ac70eeac4df5643`
+- Source fingerprint: `785cbe036ba15bfb`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 26 | 42 |
+| `dxcluster/pathreliability` | `pathreliability` | 27 | 45 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -95,6 +95,7 @@ Source files:
 - `pathreliability/snr_histogram.go`
 - `pathreliability/snr_histogram_mass.go`
 - `pathreliability/store.go`
+- `pathreliability/store_compaction.go`
 - `pathreliability/store_reporting.go`
 - `pathreliability/voacap_fallback.go`
 - `pathreliability/voacap_forecast_cache_index.go`
@@ -110,6 +111,9 @@ Test files:
 - `pathreliability/active_p50_contract_test.go`
 - `pathreliability/beacon_prediction_test.go`
 - `pathreliability/compact_test.go`
+- `pathreliability/compaction_connected_test.go`
+- `pathreliability/compaction_contract_test.go`
+- `pathreliability/compaction_heap_test.go`
 - `pathreliability/config_test.go`
 - `pathreliability/grid_test.go`
 - `pathreliability/h3map_test.go`
@@ -173,6 +177,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:pathreliability` |
 | [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `area:internal/voacap, path:pathreliability` |
 | [ADR-0303](docs/decisions/ADR-0303-deterministic-persisted-forecast-retention.md) | Accepted | 2026-10-14 | VOACAP persistence, capacity ties, restart equivalence | `area:internal/voacap, path:pathreliability` |
 | [ADR-0301](docs/decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md) | Accepted | 2026-10-13 | p50 precision, per-band modern log recovery | `path:pathreliability` |

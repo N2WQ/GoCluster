@@ -34,6 +34,8 @@ current source/tests.
   [ADR-0131](ADR-0131-path-p50-midpoint-and-even-split-semantics.md).
 - Active p50 histogram retention is in
   [ADR-0139](ADR-0139-active-path-p50-histogram-lane-retention.md).
+- Retained path-map compaction after distributed contraction is in
+  [ADR-0305](ADR-0305-path-map-distributed-compaction.md).
 - Fine/coarse scalar evidence is in
   [ADR-0170](ADR-0170-fine-coarse-union-scalar-evidence.md).
 - Beacon receive-only prediction semantics are in

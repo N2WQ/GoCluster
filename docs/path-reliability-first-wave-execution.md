@@ -14,8 +14,8 @@ aging, not independent samples, calibrated confidence or QSO probability.
 | Slice | Contract | State |
 | --- | --- | --- |
 | S1 | Deterministic persisted retention | Accepted, `3eb9c84` |
-| S2 | Bounded incremental persistence | Accepted; local checkpoint |
-| S3 | Distributed-contraction compaction | Not started |
+| S2 | Bounded incremental persistence | Accepted, `08ba7f7` |
+| S3 | Distributed-contraction compaction | Test gates passed; local checkpoint pending |
 | S4 | Fine-key sharding | Not started |
 | S5 | Present zero-dB PSKReporter reports | Not started |
 | S6 | Nonduplicated common-resolution selection | Not started |
@@ -166,3 +166,47 @@ Support-agent impact: operator diagnostics and troubleshooting changed; the
 path support card, package README and operator guide were updated. The disk
 format, configuration values, model admission, forecast precedence and observed
 glyph qualification remain unchanged through S2.
+
+## S3: Compaction After Distributed Contraction
+
+`Store.Compact` adds a bounded advisory scan of existing shard counts and
+peaks. It permits contracted sub-minimum shards to rebuild when total peak
+reaches the minimum and total occupancy is strictly below the configured
+ratio. Every rebuild rechecks live occupancy under its shard's write lock.
+Existing large-shard integer-floor boundaries and bucket pointers survive.
+There are no new retained structures, update counters, workers or intervals.
+ADR-0305 records the decision; existing bucket counts cover primary cardinality.
+
+New contract tests cover aggregate 999/1000/1001 boundaries, strict ratio,
+normalization, large-shard compatibility, nil/empty handling, peak reset,
+refill after the advisory snapshot, concurrent refill and exact retained keys
+and pointers. A connected public Predictor fixture grows 1,088 coarse buckets,
+purges 576 stale buckets, compacts all 64 maps and retains the same nonempty
+-10.5 dB prediction and 512-entry active report/histogram. No S4 placement is
+included. The old S2 Compact overlay fails both distributed public witnesses.
+
+The opt-in map-only resource fixture grows 64 maps to 512 entries each and
+retains eight. All entries refer to one live bucket without receiver sidecars,
+so bucket deletion cannot explain the measured release. It rebuilt all 64
+maps and preserved every key/pointer. Logical bucket size remained 448 bytes.
+HeapAlloc fell by 1,172,992 bytes. The pre-compaction map-allocation estimate
+was 1,133,344 bytes; its post-compaction estimate was -39,648 bytes, showing
+background GC noise. The frozen minimum release of 50% passed comfortably;
+these signed process estimates do not establish exact remaining map bytes,
+an exact percentage, or immediate Windows working-set reduction.
+
+Targeted ordinary and race checks each passed 173 cases; the opt-in heap fixture
+was skipped there and passed separately. The complete ordinary lane passed
+9,723 cases across 70 packages, including all 119 required identities. Its
+81 skips are the previous 80 optional/artifact cases plus the separately passed
+S3 heap fixture. The complete race lane also passed 9,723 cases across the same
+70 packages with the same skips and all 119 required identities verified.
+The boundary fixtures gained literal public Compact rebuild counts during the
+race lane, before this package built. These stronger assertions passed in the
+complete race run and in a final targeted ordinary rerun (173 passes). Production
+source did not change after the complete ordinary lane. The existing ordinary
+evidence therefore remains applicable alongside the rerun for the changed test
+body. Vet, Staticcheck and lint passed for the complete source and again for the
+package after that assertion change. Crawler and support-agent checks passed.
+Test implementation was partitioned; the fresh source/contract review was
+lead-owned. No scientific independence claim is made for this maintenance slice.

@@ -21,6 +21,11 @@ inspect user-visible diagnostics:
 
 ## Must Include
 
+- Minute stale purging and hourly path-map compaction retain their existing
+  cadence. Compaction also handles contraction spread across small shards,
+  preserving live buckets and prediction data. A lower retained Go heap does
+  not imply immediate Windows working-set reduction. See ADR-0305.
+
 - If path learning is missing reports, inspect `Path admission (5m)` counters:
   `future_clamped` counts observations normalized to arrival within the inclusive
   120-second future tolerance; `rejected_time` includes larger future offsets or

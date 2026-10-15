@@ -21,6 +21,14 @@ The predictor accepts only these ingest modes:
 
 Path-only PSKReporter modes, such as `WSPR`, can update the predictor without entering the normal dedup, archive, telnet, or peer paths.
 
+## Storage Maintenance
+
+The store retains per-shard growth peaks. Existing minute stale purging and
+hourly compaction can rebuild map backing storage after substantial contraction,
+including contraction spread across individually small shards. Maintenance
+rechecks each shard under its lock and preserves the live bucket pointers.
+It does not change active predictions or bucket contents. See ADR-0305.
+
 ## Grid To H3 Mapping
 
 The implementation converts a Maidenhead grid to the center of the represented area:

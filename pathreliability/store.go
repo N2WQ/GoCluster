@@ -620,7 +620,7 @@ func (s *Store) PurgeStale(now time.Time) int {
 	return removed
 }
 
-// Compact rebuilds shard maps when they have shrunk far below their peak size.
+// Compact rebuilds maps after local or distributed store contraction.
 // It preserves all live entries and returns the number of shards compacted.
 func (s *Store) Compact(minPeak int, shrinkRatio float64) int {
 	if s == nil {
@@ -632,31 +632,12 @@ func (s *Store) Compact(minPeak int, shrinkRatio float64) int {
 	if shrinkRatio <= 0 || shrinkRatio >= 1 {
 		shrinkRatio = 0.5
 	}
+	distributed := s.distributedContraction(minPeak, shrinkRatio)
 	compacted := 0
 	for i := range s.shards {
-		sh := &s.shards[i]
-		sh.mu.Lock()
-		current := len(sh.buckets)
-		if current > sh.peak {
-			sh.peak = current
-		}
-		threshold := int(float64(sh.peak) * shrinkRatio)
-		if sh.peak >= minPeak && current < threshold {
-			if current == 0 {
-				sh.buckets = make(map[uint64]*bucket)
-			} else {
-				next := make(map[uint64]*bucket, current)
-				for k, v := range sh.buckets {
-					if v != nil {
-						next[k] = v
-					}
-				}
-				sh.buckets = next
-			}
-			sh.peak = len(sh.buckets)
+		if s.shards[i].compactIfContracted(minPeak, shrinkRatio, distributed) {
 			compacted++
 		}
-		sh.mu.Unlock()
 	}
 	return compacted
 }
