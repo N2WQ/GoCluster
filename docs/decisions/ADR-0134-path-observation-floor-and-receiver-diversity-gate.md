@@ -89,3 +89,9 @@ Expose receiver-diversity failures separately:
 - Related docs: `data/config/path_reliability.yaml`, `pathreliability/README.md`, `README.md`, `docs/OPERATOR_GUIDE.md`, `data/config/PATH_PREDICTIONS.md`, `customgpt/common-questions.md`
 - Related TSRs: TSR-0023
 - Supersedes / superseded by: supersedes the enforce-mode capped-count floor portion of ADR-0129 and the cap-shadow low-count-only fields in ADR-0132
+
+## Later identity decision
+
+[ADR-0308](ADR-0308-path-population-identity.md) defines physical population
+selection and unique receiver identity counting. This record's observation-floor
+and configured receiver-requirement policy remains in force until S7.

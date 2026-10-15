@@ -36,8 +36,9 @@ current source/tests.
   [ADR-0139](ADR-0139-active-path-p50-histogram-lane-retention.md).
 - Retained path-map compaction after distributed contraction is in
   [ADR-0305](ADR-0305-path-map-distributed-compaction.md).
-- Fine/coarse scalar evidence is in
-  [ADR-0170](ADR-0170-fine-coarse-union-scalar-evidence.md).
+- Physical population identity, common-resolution selection and receiver
+  identity union are in [ADR-0308](ADR-0308-path-population-identity.md), which
+  supersedes [ADR-0170](ADR-0170-fine-coarse-union-scalar-evidence.md).
 - Beacon receive-only prediction semantics are in
   [ADR-0174](ADR-0174-beacon-rx-only-path-prediction.md).
 - Admission reuse between p50 path prediction and VOACAP sparse diagnostics is

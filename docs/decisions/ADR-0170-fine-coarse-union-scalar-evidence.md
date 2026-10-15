@@ -1,6 +1,6 @@
 # ADR-0170: Fine-Coarse Union Scalar Evidence
 
-- Status: Accepted
+- Status: Superseded by ADR-0308
 - Date: 2026-06-10
 - Decision Origin: Design review
 
@@ -111,3 +111,11 @@ the scalar change only lowers or preserves weight.
 - Related TSRs: TSR-0023, TSR-0025
 - Supersedes / superseded by: Refines ADR-0126, ADR-0131, ADR-0134, and
   ADR-0139 for fine/coarse scalar evidence and selected-age semantics.
+
+## Superseding decision
+
+[ADR-0308](ADR-0308-path-population-identity.md) replaces this decision's
+fine/coarse max scalars, added histogram and blended-age policy with one common
+resolution and unique physical populations. The historical text above records
+the prior behavior; it is not the current selection contract. Histogram
+geometry, exact stored-mass medians and mode thresholds remain unchanged.

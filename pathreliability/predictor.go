@@ -487,79 +487,53 @@ func sampleCappedWeight(sample Sample) float64 {
 }
 
 func (p *Predictor) mergeFromStoreWithDistribution(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (sampleWithBins, InsufficientReason, bool) {
+	return p.selectedFromStore(store, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now, false)
+}
+
+func (p *Predictor) receiveFromStoreWithDistribution(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (sampleWithBins, InsufficientReason, bool) {
+	return p.selectedFromStore(store, userCell, dxCell, userCoarse, dxCoarse, band, noisePenalty, now, true)
+}
+
+func (p *Predictor) selectedFromStore(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time, beacon bool) (sampleWithBins, InsufficientReason, bool) {
 	if store == nil {
 		return sampleWithBins{}, InsufficientNoSample, false
 	}
-	// Capture all four candidates once so both directions are aged and selected
-	// at the Store's common reference, including clocks ahead of the query.
-	candidates := store.lookupCandidates(userCell, dxCell, userCoarse, dxCoarse, band, now, true)
-	receive := selectSampleBins(candidates[0], candidates[1], p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
-	transmit := selectSampleBins(candidates[2], candidates[3], p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
-
-	receiveSample, transmitSample, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive.Sample, transmit.Sample)
-	if !sampleHasEvidence(receiveSample) {
-		receive = sampleWithBins{Sample: receiveSample}
-	} else {
-		receive.Sample = receiveSample
-	}
-	if !sampleHasEvidence(transmitSample) {
-		transmit = sampleWithBins{Sample: transmitSample}
-	} else {
-		transmit.Sample = transmitSample
-	}
-	merged, ok := mergeSamplesWithDistribution(receive, transmit, p.cfg, noisePenalty)
+	var query candidateQuery
+	store.lookupQueryInto(userCell, dxCell, userCoarse, dxCoarse, band, now, !beacon, sampleDistribution, &query)
+	selected := query.selectPopulation(p.cfg, p.maxPredictionAgeSeconds(store, band), beacon)
+	receive, transmit := query.sample(selected.receive), query.sample(selected.transmit)
 	reason := InsufficientNone
-	if staleDropped {
+	if selected.staleDropped {
 		reason = InsufficientStale
 	}
+	var merged sampleWithBins
+	var ok bool
+	if beacon {
+		merged = receive
+		ok = sampleHasEvidence(receive.Sample) || receive.distributionUnavailable
+		if ok {
+			bins, unavailable := receive.snrBins, receive.distributionUnavailable
+			if noisePenalty > 0 {
+				var shifted bool
+				bins, shifted = bins.shifted(-noisePenalty)
+				unavailable = unavailable || !shifted
+			}
+			merged = observedSampleDistribution(receive.Sample, bins, unavailable)
+		}
+	} else {
+		merged, ok = mergeSamplesWithDistribution(receive, transmit, p.cfg, noisePenalty)
+	}
+	merged.CappedReceiverCount, merged.CappedReceiverCapacity = query.receiverUnion(selected.receive, selected.transmit)
 	if !ok {
 		if reason == InsufficientNone {
 			reason = InsufficientNoSample
 		}
-		merged.Count = staleCount.active
-		merged.RawCount = staleCount.raw
-		merged.ObservationCount = staleCount.observations
-		merged.CappedCount = staleCount.capped
-		return merged, reason, false
+		merged.Count = selected.staleCounts.active
+		merged.RawCount = selected.staleCounts.raw
+		merged.ObservationCount = selected.staleCounts.observations
+		merged.CappedCount = selected.staleCounts.capped
 	}
-	return merged, reason, true
-}
-
-func (p *Predictor) receiveFromStoreWithDistribution(store *Store, userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, noisePenalty float64, now time.Time) (sampleWithBins, InsufficientReason, bool) {
-	if store == nil {
-		return sampleWithBins{}, InsufficientNoSample, false
-	}
-	candidates := store.lookupCandidates(userCell, dxCell, userCoarse, dxCoarse, band, now, false)
-	receive := selectSampleBins(candidates[0], candidates[1], p.cfg.MinFineWeight, p.cfg.FineOnlyWeight)
-
-	receiveSample, _, staleDropped, staleCount := p.applyFreshnessGate(store, band, receive.Sample, Sample{})
-	if !sampleHasEvidence(receiveSample) {
-		receive = sampleWithBins{Sample: receiveSample}
-	} else {
-		receive.Sample = receiveSample
-	}
-	reason := InsufficientNone
-	if staleDropped {
-		reason = InsufficientStale
-	}
-	if !sampleHasEvidence(receive.Sample) {
-		if reason == InsufficientNone {
-			reason = InsufficientNoSample
-		}
-		receive.Count = staleCount.active
-		receive.RawCount = staleCount.raw
-		receive.ObservationCount = staleCount.observations
-		receive.CappedCount = staleCount.capped
-		return receive, reason, false
-	}
-	bins := receive.snrBins
-	unavailable := receive.distributionUnavailable
-	if noisePenalty > 0 {
-		var shifted bool
-		bins, shifted = bins.shifted(-noisePenalty)
-		unavailable = unavailable || !shifted
-	}
-	return observedSampleDistribution(receive.Sample, bins, unavailable), reason, true
+	return merged, reason, ok
 }
 
 // staleSampleCounts preserves separate diagnostics only when all selected
@@ -571,26 +545,6 @@ func (counts *staleSampleCounts) add(sample Sample) {
 	counts.raw = saturatingAddCounts(counts.raw, sampleRawCount(sample))
 	counts.observations = saturatingAddCounts(counts.observations, sampleObservationCount(sample))
 	counts.capped = saturatingAddCounts(counts.capped, sampleCappedCount(sample))
-}
-
-func (p *Predictor) applyFreshnessGate(store *Store, band string, receive Sample, transmit Sample) (Sample, Sample, bool, staleSampleCounts) {
-	maxAge := p.maxPredictionAgeSeconds(store, band)
-	if maxAge <= 0 {
-		return receive, transmit, false, staleSampleCounts{}
-	}
-	staleDropped := false
-	var staleCount staleSampleCounts
-	if sampleHasEvidence(receive) && receive.AgeSec > maxAge {
-		staleCount.add(receive)
-		receive = sampleWithSamplingTime(Sample{}, receive, Sample{})
-		staleDropped = true
-	}
-	if sampleHasEvidence(transmit) && transmit.AgeSec > maxAge {
-		staleCount.add(transmit)
-		transmit = sampleWithSamplingTime(Sample{}, transmit, Sample{})
-		staleDropped = true
-	}
-	return receive, transmit, staleDropped, staleCount
 }
 
 func (p *Predictor) maxPredictionAgeSeconds(store *Store, band string) int64 {

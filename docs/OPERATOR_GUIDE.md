@@ -631,14 +631,13 @@ prefixes.
   the diagnostic evidence. The raw count is the sample floor; the capped count,
   receiver count, and capped weight explain receiver-cap trust evidence.
 - `w<weight>` is the rounded effective weight after decay and path selection.
-  Fine and coarse are overlapping evidence layers, so blended scalar weight uses
-  the larger layer instead of adding both. It is not SNR or dB. Weight is an
-  evidence-strength gate, not the displayed path class itself.
+  Fine and coarse evidence are selected at one common resolution and never
+  added. Shared regional evidence receives one ordinary single-direction
+  discount. Weight is not SNR or dB; it is a separate evidence-strength gate.
 - `a<age>` is the effective age of the selected evidence. Bare numbers are
-  seconds; `m` and `h` mean minutes and hours. Blended fine/coarse age uses
-  local fine mass plus the coarse regional complement; old local evidence can
-  make a direction stale even when coarse regional evidence was recently
-  refreshed.
+  seconds; `m` and `h` mean minutes and hours. Prediction freshness applies
+  before layer selection; excluded old fine evidence cannot age a fresh
+  selected coarse population.
 - `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
   supplied the result. `<snr>` is the selected hour's rounded bidirectional
   FT8-equivalent SNR after receive-side noise penalty, `h<hour>` is the
@@ -706,8 +705,8 @@ The five-minute `Path predictions (5m)` propagation log uses the same reason
 split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
 `low_count` is the raw observation-count gate; `low_receiver` is the
 receiver-diversity gate; `low_weight` is the decayed effective-weight gate; and
-`stale` can increase when fine/coarse age drops an old local direction before
-receive/transmit merge.
+`stale` describes an excluded stale direction from the selected common layer.
+A fresh fine hint is allowed only after all coarse candidates are unavailable.
 VOACAP fallback outcomes are counted separately as `voacap_closed`,
 `voacap_aligned`, `voacap_sparse_upgrade`, and `voacap_open`.
 Beacon spots add `beacon_rx`, `beacon_rx_insufficient`,

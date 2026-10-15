@@ -339,7 +339,7 @@ func TestObservationAccountingInsufficientFloorStillReportsQuantile(t *testing.T
 	}
 }
 
-func TestObservationAccountingIntermediateOverflowCannotBeRescuedByFinalScaling(t *testing.T) {
+func TestObservationAccountingRemovedFineCoarseAdditionCannotOverflow(t *testing.T) {
 	cfg := accountingConfig(ReceiverContributionOff, 240)
 	cfg.MinObservationCount = 1
 	cfg.MinEffectiveWeight = .01
@@ -357,16 +357,16 @@ func TestObservationAccountingIntermediateOverflowCannotBeRescuedByFinalScaling(
 	accountingBucket(p.combined, false).snrBins[snrHistogramBinIndex(-5)] = math.MaxFloat32
 	accountingBucket(p.combined, true).snrBins[snrHistogramBinIndex(-5)] = math.MaxFloat32
 	result := p.Predict(1, 2, 3, 4, "20m", "FT8", 0, now)
-	// Fine+coarse cannot be represented at their directional boundary. Fusing
-	// .4 into both inputs would hide that failure by making the final sum fit.
-	if result.HasP50 || result.ObservedDistributionAvailable || result.P50Glyph != "" || result.RawCount != 11 {
-		t.Fatalf("final scaling rescued unsafe intermediate=%+v", result)
+	// Fine is excluded, so its large bin is never added to the coarse bin.
+	// Remaining shift/directional failure boundaries have separate witnesses.
+	if !result.HasP50 || !result.ObservedDistributionAvailable || result.P50DB != -4.5 || result.RawCount != 11 {
+		t.Fatalf("excluded fine introduced a removed arithmetic failure=%+v", result)
 	}
 }
 
 func TestObservationAccountingConnectedLiteralHistogramOracles(t *testing.T) {
 	for _, twoDirections := range []bool{false, true} {
-		t.Run(map[bool]string{false: "overlapping_blend", true: "merge_bins_not_medians"}[twoDirections], func(t *testing.T) {
+		t.Run(map[bool]string{false: "selected_coarse_only", true: "merge_bins_not_medians"}[twoDirections], func(t *testing.T) {
 			cfg := accountingConfig(ReceiverContributionOff, 240)
 			cfg.MinObservationCount = 1
 			cfg.MinEffectiveWeight = .01
@@ -382,20 +382,19 @@ func TestObservationAccountingConnectedLiteralHistogramOracles(t *testing.T) {
 					p.Update(BucketCombined, rx, tx, rc, tc, "20m", db, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
 				}
 			}
-			wantP50, wantWeight, wantCount := 18.5, 8.0, uint32(16)
+			wantP50, wantWeight, wantCount := -19.5, 8.0, uint32(16)
 			if !twoDirections {
 				add(1, 2, 3, 4, 18, 6)
 				add(InvalidCell, InvalidCell, 3, 4, -20, 10)
-				// Fine contributes six strong bins again; coarse contains six
-				// strong and ten weak. The selected shape is 12 strong/10 weak.
+				// Coarse contains six strong and ten weak reports. Fine
+				// contributes no additional mass to the selected population.
 			} else {
 				add(1, 2, 3, 4, -20, 6)
 				add(InvalidCell, InvalidCell, 3, 4, 10, 4)
 				add(2, 1, 4, 3, 10, 8)
 				add(InvalidCell, InvalidCell, 4, 3, -20, 12)
-				// Receive shape 12 weak/4 strong; transmit 12 weak/16 strong.
-				// Final .4/.6 weighting yields 12 weak/11.2 strong, so the
-				// distribution median is weak despite the stronger leg median.
+				// Coarse receive: six weak/four strong; transmit: twelve
+				// weak/eight strong. Final .4/.6 mass is 9.6 weak/6.4 strong.
 				wantP50, wantWeight, wantCount = -19.5, 16, 30
 			}
 			result := p.Predict(1, 2, 3, 4, "20m", "FT8", 0, now)

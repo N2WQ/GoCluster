@@ -19,8 +19,8 @@ aging, not independent samples, calibrated confidence or QSO probability.
 | S2 | Bounded incremental persistence | Accepted, `08ba7f7` |
 | S3 | Distributed-contraction compaction | Accepted, `9145209` |
 | S4 | Fine-key sharding | Accepted, `258e4a8`, with the Approved v4 performance exception |
-| S5 | Present zero-dB PSKReporter reports | Accepted; all nonwaived gates passed |
-| S6 | Nonduplicated common-resolution selection | Not started |
+| S5 | Present zero-dB PSKReporter reports | Accepted, `e82cec1`; all nonwaived gates passed |
+| S6 | Nonduplicated common-resolution selection | Accepted; all nonwaived gates passed |
 | S7 | Recent support and receiver diversity | Not started |
 
 No later slice begins before the preceding slice's retained required evidence
@@ -475,3 +475,96 @@ production launch/restart, deployment, host tuning or firewall change occurred.
 S6 and S7 remain serial follow-on work. Whole-cluster profiling must account
 for S5's additional legitimate report volume; these controls do not compare
 old zero-report discard cost with new successful processing as equivalent work.
+
+
+## S6: physical populations and common resolution
+
+S5 was checkpointed as `e82cec1` before S6 began. `candidate_query.go` plans
+four logical roles as at most four unique keys. Each physical key is captured
+and evaluated once at the maximum captured/query reference. Receiver values,
+including hashes, are copied under shard locks; no sidecar pointer escapes.
+The query is bounded temporary scratch, not an atomic multi-bucket snapshot.
+Retained bucket ownership and its 448-byte logical layout are unchanged.
+
+`predictor.go` selects one common resolution before numerical usability checks.
+Both distinct fine directions require fresh active weight at least 20; otherwise
+available coarse directions are used without fine fill. Fresh fine hints are
+allowed only after all coarse candidates are unavailable. Shared populations
+receive noise and the ordinary signal/histogram discount once. Beacons remain
+receive-only and undiscounted. Selected failures are terminal; excluded failures
+do not poison the chosen layer. `normalize.go` no longer adds overlapping
+histograms or creates a blended age. Existing lifetime-floor and epsilon-OR
+receiver liveness remain for S6; receiver hashes are unioned once across distinct
+selected physical populations, with configured capacities kept separate.
+
+The frozen policy and identity corpora cover qualification at/adjacent to 20,
+aged weights 20 to 10 and 40 to 20, all coarse-availability pairs, 540/541 age boundaries,
+store expiry, epoch/backward/common clocks, actual H3 boundary mapping,
+concurrent shared-key updates, exact receiver intersection and slot lifecycle.
+Literal stored-bin medians and materialization faults distinguish a removed
+fine/coarse overflow from remaining real shift/directional failures. Connected
+telnet delivery/filter/formatting gives LOW for 16 local strong plus 21 regional
+weak reports; PATH LOW passes, PATH HIGH fails and DIAG retains 78 columns.
+The 532-line selection corpus is a cohesive set of 12 policy vectors with shared
+public-admission/fault helpers; every function remains below 80 lines.
+
+Targeted final native checks passed 169 cases with no skips. Exact isolated
+warmed-read allocation checks cover 21 funded shapes and detect a deliberately
+escaping allocation in the measured batch. Existing warmed-update admission witnesses
+remain required. Linux/cgo focused checks passed. The complete native ordinary
+lane passed 10,345 cases across 70 packages (54 executed, 16 build-only), with 602
+required identities and 90 opt-in skips. The complete native race lane passed
+the same cases, packages and required identities. Final vet and Staticcheck
+passed; full lint passed with zero issues after
+removing an obsolete production freshness helper and an unused test parameter.
+
+All 21 performance controls passed their individual 1.10 limits against the
+actual S5 checkpoint. The common harness uses 100,000 predictions per process,
+12 balanced AB/BA pairs and exact stopped-timer elapsed cost. All 504 scored
+observations reported zero B/op and zero allocs/op. No observation was discarded
+or rerun to seek a favorable result.
+
+| Population | Off ratio | Shadow ratio | Enforce ratio |
+| --- | ---: | ---: | ---: |
+| All aliases | 0.789845 | 0.753346 | 0.702844 |
+| Shared coarse, distinct fine | 0.694661 | 0.743961 | 0.681228 |
+| Distinct fine pair | 0.952002 | 0.947387 | 0.998950 |
+| Coarse twelve-by-twelve, disjoint | 0.794708 | 0.990586 | 0.983323 |
+| Coarse twelve-by-twelve, shared hashes | 0.767666 | 0.866202 | 0.928962 |
+| Beacon fine | 1.021957 | 1.070971 | 1.085262 |
+| Beacon coarse | 0.929352 | 0.904557 | 0.978816 |
+
+The fine-beacon increases, including 8.53% in enforce mode, remain recorded
+costs despite passing their limits. These fixed API controls do not establish
+whole-cluster latency or production impact. The largest scored pair gap was
+2.647882 seconds.
+
+All 42 matched, unscored CPU/allocation/live-heap captures have prediction-work
+samples and the exact expected live bucket objects at the actual bucket
+allocation site, retaining 448 bytes per bucket. Complete fixture ownership,
+coarse sidecars, binaries, Go build IDs, synthetic Windows pprof mapping IDs and
+raw receipts were checked. Profiling starts after seeding, stops and joins
+before heap capture, and keeps the complete Store alive through post-GC capture.
+Profile-mode observer overhead is diagnostic, not scored timing evidence.
+
+The original harness completed 42 unscored preflights and no scored work before
+the live-heap observer correction. Those artifacts remain intact. Version 2
+passed all 42 native preflights, two observer-enabled probes and 55 damaged-proof
+controls before scoring. Its benchmark-only correction received ordinary/race
+targeted reruns: 169 cases, no skips, plus clean lint. The final lead audit
+reconstructed ratios from raw integer elapsed values; its initial exact binary
+equality check was corrected for one-ULP arithmetic-order differences without
+changing the 1.10 guard or rerunning observations. No timing gate is waived.
+
+A steered read-only Go quality review found no blocking source/scope issue;
+lead verification retains authority. Independent mathematical evidence was
+obtained separately before implementation, without the preferred ledger/design.
+It establishes volume/identity arithmetic, not RF accuracy or QSO probability.
+ADR-0308 supersedes ADR-0170 selection/scalar/age semantics. Support documentation
+impact is Required. Package/config/operator and support guidance are updated;
+YAML parsed values are unchanged. No new TSR is needed for this design repair.
+Final code-map and diff checks complete this checkpoint. Local evidence is under
+`.tmp/path-reliability-first-wave/s6/`, including
+`performance-v2/accepted.json` and `performance-v2/final-raw-verification.json`.
+S7 remains a separate serial slice. No push, deployment, production restart,
+host tuning, new listening path or firewall change occurred.

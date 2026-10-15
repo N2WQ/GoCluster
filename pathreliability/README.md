@@ -441,36 +441,39 @@ Prediction uses two directions:
 - receive sample: DX to user
 - transmit sample: user to DX
 
-For each direction, `SelectSample(...)` chooses between fine and coarse evidence:
+A query captures each unique physical bucket once at one common accounting
+reference, including references ahead of the request clock. Ordinary paths use
+fine resolution only when both distinct directions are present, fresh, and
+meet `fine_only_weight` (20, inclusive) in active signal weight. Otherwise they
+use available coarse directions. A missing coarse direction is not filled with
+fine evidence. Only when all coarse evidence is missing, expired or prediction-
+stale may fresh fine evidence supply a hint below that threshold.
 
-- if fine is below `min_fine_weight`, coarse wins
-- if fine is above `fine_only_weight`, fine wins outright
-- otherwise, fine and coarse are blended
+Fine and coarse populations are never added together. Their H3 mappings are
+independent, so containment cannot be assumed. `min_fine_weight` remains a
+required positive configuration value and lower bound for normalization of
+`fine_only_weight`; it no longer directly shapes a blend.
 
-Fine and coarse are overlapping views in one direction: a report accepted into a
-fine bucket also updates the matching coarse bucket when both cells are valid.
-For scalar evidence mass, the blend therefore uses union semantics:
-`Weight`, `RawWeight`, `CappedWeight`, counts, and receiver-capacity fields use
-the larger fine/coarse value instead of summing both layers. This prevents a
-local report from being counted twice in weight gates and `SET DIAG PATH`.
+Freshness is checked before selection using the common reference and newest
+observation: age must be at most
+`ceil(band_half_life * max_prediction_age_half_life_multiplier)`. Equality is
+fresh (540 seconds on shipped 20m; 541 is stale). Zero disables this prediction
+gate, while store aging and expiry remain active. Unselected stale evidence
+cannot spoil a fresh chosen layer. Expired counts and signal mass are excluded; captured references still
+participate in the common sampling time.
 
-The p50 histogram deliberately keeps the existing local-emphasis shape by adding
-fine bins and coarse bins together. That makes local fine evidence count once in
-the fine layer and once inside the coarse layer's regional view. This preserves
-the active p50 distribution shape while fixing scalar evidence mass.
+Availability is separate from distribution usability. Fresh count-only or
+corrupt coarse evidence blocks a fine retry. A required selected distribution
+that is empty, corrupt or numerically unusable produces INSUFFICIENT; it cannot
+silently become a surviving-direction median. Excluded bad evidence does not
+poison the selected layer.
 
-When fine and coarse evidence are blended, selected sample age uses the fine
-weight plus the coarse complement `max(0, coarse.Weight - fine.Weight)`. Coarse
-is often fresher because regional evidence can arrive after the local fine
-bucket went quiet, so this can make the selected age older than the previous
-double-counted formula. A direction can become stale and be dropped before the
-receive/transmit merge; if one direction survives, the final p50 class can shift.
-
-After sample selection, the predictor applies the freshness gate. If selected
-evidence is older than `ceil(band_half_life * max_prediction_age_half_life_multiplier)`,
-that direction is discarded before receive/transmit merge. A value of `0`
-disables this gate. Stale positive evidence returns `INSUFFICIENT`; it does not
-fade through weaker glyph tiers just because it got older.
+A shared physical population is counted once as a receive hint: receive noise
+is applied once, and ordinary signal weight and histogram mass receive the
+single-direction discount once. Beacon receive-only evidence has no such
+discount. Receiver identities shared by distinct selected populations count
+once; configured capacity remains per distinct contributing bucket. This
+regional SNR summary makes no QSO-probability or independent-sample claim.
 
 The shipped config currently uses:
 
@@ -554,7 +557,7 @@ Runtime path reliability settings are owned by [`../data/config/path_reliability
 
 `enabled`, `display_enabled`, `glyph_symbols`, `allowed_bands`,
 `min_observation_count`, and `receiver_contribution_mode` are operator policy.
-Half-lives, stale/freshness multipliers, effective weight, fine/coarse merge,
+Half-lives, stale/freshness multipliers, effective weight, geographic selection, directional merge,
 reverse discount, mode thresholds, mode offsets, and noise tables are algorithm
 calibration; do not retune them under normal operation without validation and
 decision-memory handling.

@@ -125,16 +125,19 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 
 2. **Decay**: Each data point gets weighted by how recent it is.
 
-3. **Blend resolutions**: Fine and coarse data get combined. If you have
-   strong local data (fine), it dominates. If not, regional data (coarse) fills
-   in. Because fine reports also update the matching coarse bucket, scalar
-   evidence mass uses the larger fine/coarse value instead of adding both. The
-   p50 histogram still keeps the existing local-emphasis shape.
+3. **Check freshness**: Each candidate must be within the band's prediction
+   age limit. Equality is fresh. Expired store evidence cannot return through
+   fallback selection; excluded stale evidence does not age the selected layer.
 
-4. **Check freshness**: Selected receive/transmit evidence must be recent enough
-   for the band. Blended fine/coarse age uses local fine evidence plus the
-   coarse regional complement, so stale local evidence can make a direction old
-   enough to discard even when the wider region was refreshed.
+4. **Select resolution**: For ordinary paths, select fine evidence only when
+   both distinct fresh local directions reach the fine-only signal threshold.
+   Otherwise use available coarse directions together, without filling a
+   missing coarse direction with fine evidence. Only when all coarse candidates
+   are missing, expired or prediction-stale may fresh fine evidence supply a
+   hint. Fine and coarse are never added. Shared regional evidence is counted
+   once; receive noise and the ordinary single-direction signal discount are
+   each applied once. A required selected distribution failure is insufficient
+   and cannot silently trigger a layer retry or partial median.
 
 5. **Merge directions**: Receive and transmit paths combine (60/40 split), with the configured receive-side noise penalty applied when nonzero.
    For beacon spots, transmit evidence is not applicable. The system uses only

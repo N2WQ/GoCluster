@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `ae21fe3e3d037e42`
+- Source fingerprint: `10e40b636ce71008`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 27 | 51 |
+| `dxcluster/pathreliability` | `pathreliability` | 28 | 57 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -77,6 +77,7 @@ Test files:
 Source files:
 - `pathreliability/accounting_math.go`
 - `pathreliability/band.go`
+- `pathreliability/candidate_query.go`
 - `pathreliability/config.go`
 - `pathreliability/grid.go`
 - `pathreliability/h3map.go`
@@ -124,6 +125,12 @@ Test files:
 - `pathreliability/normalize_test.go`
 - `pathreliability/observation_accounting_test.go`
 - `pathreliability/observation_times_test.go`
+- `pathreliability/population_allocation_test.go`
+- `pathreliability/population_bench_test.go`
+- `pathreliability/population_config_test.go`
+- `pathreliability/population_histogram_test.go`
+- `pathreliability/population_identity_test.go`
+- `pathreliability/population_selection_test.go`
 - `pathreliability/receiver_test.go`
 - `pathreliability/sampling_probe_test.go`
 - `pathreliability/sharding_concurrency_test.go`
@@ -183,6 +190,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:pathreliability` |
 | [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:pathreliability` |
 | [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:pathreliability` |
 | [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `area:internal/voacap, path:pathreliability` |
@@ -210,7 +218,7 @@ Test files:
 | [ADR-0173](docs/decisions/ADR-0173-voacap-rel-gated-open-fallback.md) | Accepted | 2026-06-11 | voacap, pathreliability, telnet, operations, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0172](docs/decisions/ADR-0172-show-prop-worker-refresh-and-glyph-columns.md) | Accepted | 2026-06-10 | telnet, voacap, pathreliability, config, commands, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0171](docs/decisions/ADR-0171-show-prop-voacap-outlook.md) | Superseded | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
-| [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Accepted | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:pathreliability, path:pathreliability` |
+| [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Superseded | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:pathreliability, path:pathreliability` |
 | [ADR-0169](docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, model calibration | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0168](docs/decisions/ADR-0168-voacap-p50-cache-comparison.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `area:internal/voacap, area:pathreliability, path:pathreliability` |
 | [ADR-0167](docs/decisions/ADR-0167-voacap-closed-sparse-p50-stage-counters.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `area:internal/voacap, area:pathreliability, path:pathreliability` |

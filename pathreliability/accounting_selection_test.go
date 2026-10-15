@@ -20,24 +20,19 @@ func accountingSelectionSample(db, mass float64, count uint32) sampleWithBins {
 }
 
 func TestAccountingSelectionRequiredDistributionFailurePreservesDiagnostics(t *testing.T) {
-	for _, failure := range []string{"empty", "nonfinite bins", "flagged nonfinite mass", "merged bin overflow"} {
+	for _, failure := range []string{"empty", "nonfinite bins", "flagged nonfinite mass"} {
 		t.Run(failure, func(t *testing.T) {
 			fine := accountingSelectionSample(-20, 6, 6)
 			coarse := accountingSelectionSample(10, 10, 10)
 			switch failure {
 			case "empty":
-				fine.snrBins = snrHistogram{}
-				fine.HasP50 = false
-			case "nonfinite bins":
-				fine.snrBins[snrHistogramBinIndex(-20)] = float32(math.Inf(1))
-			case "flagged nonfinite mass":
-				fine.Weight = math.NaN()
-				fine.distributionUnavailable = true
-			case "merged bin overflow":
-				fine.snrBins = snrHistogram{}
 				coarse.snrBins = snrHistogram{}
-				fine.snrBins[1] = math.MaxFloat32
-				coarse.snrBins[1] = math.MaxFloat32
+				coarse.HasP50 = false
+			case "nonfinite bins":
+				coarse.snrBins[snrHistogramBinIndex(10)] = float32(math.Inf(1))
+			case "flagged nonfinite mass":
+				coarse.Weight = math.NaN()
+				coarse.distributionUnavailable = true
 			}
 			got := selectSampleWithDistribution(fine, coarse, 5, 20)
 			if got.HasP50 || !got.distributionUnavailable || got.snrBins != (snrHistogram{}) {
@@ -147,9 +142,7 @@ func TestAccountingSelectionWeightedAgesSaturateWithoutOverflow(t *testing.T) {
 			}
 		})
 	}
-	if got := weightedFineCoarseSampleAge(Sample{Weight: math.MaxFloat64, AgeSec: math.MaxInt64}, Sample{Weight: math.MaxFloat64, AgeSec: 1}); got != math.MaxInt64 {
-		t.Fatalf("fine/coarse union age wrapped: %d", got)
-	}
+
 }
 
 func TestAccountingSelectionPredictorUsesOneReferenceAcrossDirections(t *testing.T) {

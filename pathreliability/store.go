@@ -382,7 +382,10 @@ type bucketCapture struct {
 	slots                        [maxCoarseReceiverSlots]receiverCapture
 }
 
-type receiverCapture struct{ weight, count float64 }
+type receiverCapture struct {
+	hash          uint64
+	weight, count float64
+}
 
 func (s *Store) captureBucket(key uint64, receiverSlots int, distribution bool) bucketCapture {
 	var capture bucketCapture
@@ -411,7 +414,7 @@ func (s *Store) captureBucketInto(key uint64, receiverSlots int, distribution bo
 		for i := 0; i < min(receiverSlots, maxCoarseReceiverSlots); i++ {
 			if slot := b.receiverSlotAt(i, false); slot != nil {
 				if slot.hash != 0 {
-					capture.slots[i] = receiverCapture{weight: slot.weight, count: slot.count}
+					capture.slots[i] = receiverCapture{hash: slot.hash, weight: slot.weight, count: slot.count}
 				}
 			}
 		}
@@ -441,62 +444,39 @@ func (s *Store) lookupCandidates(receiverCell, senderCell CellID, receiverCoarse
 }
 
 func (s *Store) lookupCandidateSet(receiverCell, senderCell CellID, receiverCoarse, senderCoarse CellID, band string, now time.Time, includeReverse bool, detail sampleDetail) (samples [4]sampleWithBins) {
-	if s == nil || !s.cfg.Enabled {
+	var query candidateQuery
+	s.lookupQueryInto(receiverCell, senderCell, receiverCoarse, senderCoarse, band, now, includeReverse, detail, &query)
+	if !query.hasReference {
 		return
 	}
-	idx, ok := s.bandIndex.Lookup(band)
-	if !ok {
-		return
-	}
-	var keys [4]uint64
-	if receiverCell != InvalidCell && senderCell != InvalidCell {
-		keys[0] = packKey(receiverCell, senderCell, idx)
-		if includeReverse {
-			keys[2] = packKey(senderCell, receiverCell, idx)
-		}
-	}
-	if receiverCoarse != InvalidCell && senderCoarse != InvalidCell {
-		keys[1] = packCoarseKey(receiverCoarse, senderCoarse, idx)
-		if includeReverse {
-			keys[3] = packCoarseKey(senderCoarse, receiverCoarse, idx)
-		}
-	}
-	var captures [4]bucketCapture
-	reference := now.Unix()
 	length := 2
 	if includeReverse {
 		length = 4
 	}
-	for i := 0; i < length; i++ {
-		slots := s.cfg.ReceiverFineSlots
-		if i%2 == 1 {
-			slots = s.cfg.ReceiverCoarseSlots
-		}
-		s.captureBucketInto(keys[i], slots, detail != sampleScalars, &captures[i])
-		if captures[i].present {
-			reference = max(reference, captures[i].reference)
-		}
-	}
-	halfLife := s.bandIndex.HalfLifeSeconds(band, s.cfg)
-	for i := 0; i < length; i++ {
-		slots := s.cfg.ReceiverFineSlots
-		if i%2 == 1 {
-			slots = s.cfg.ReceiverCoarseSlots
-		}
-		samples[i] = s.evaluateCapture(&captures[i], halfLife, reference, slots, detail)
+	for role := 0; role < length; role++ {
+		samples[role] = query.sample(query.plan.roles[role])
 	}
 	return
 }
 
 func (s *Store) evaluateCapture(capture *bucketCapture, halfLife int, reference int64, receiverSlots int, detail sampleDetail) sampleWithBins {
-	result := sampleWithBins{Sample: Sample{SamplingUnix: reference, HasSamplingTime: true}}
+	var result sampleWithBins
+	s.evaluateCaptureInto(capture, halfLife, reference, receiverSlots, detail, &result)
+	return result
+}
+
+// evaluateCaptureInto preserves expiry separately from numerical usability.
+// Each physical capture is evaluated once at the query's common reference.
+func (s *Store) evaluateCaptureInto(capture *bucketCapture, halfLife int, reference int64, receiverSlots int, detail sampleDetail, result *sampleWithBins) (state candidateState) {
+	*result = sampleWithBins{Sample: Sample{SamplingUnix: reference, HasSamplingTime: true}}
 	if !capture.present {
-		return result
+		return state
 	}
 	age := nonnegativeSecondsSince(reference, capture.newestObservation)
 	if staleAfter := s.staleAfterSeconds(halfLife); staleAfter > 0 && age > staleAfter {
-		return result
+		return state
 	}
+	state.storeValid = true
 	elapsed := nonnegativeSecondsSince(reference, capture.reference)
 	decay := decayFactor(elapsed, halfLife)
 	rawWeight := decayedMass(capture.weight, elapsed, halfLife, decay)
@@ -512,6 +492,7 @@ func (s *Store) evaluateCapture(capture *bucketCapture, halfLife int, reference 
 			slot := capture.slots[i]
 			if slot.weight*decay > effectiveCountEpsilon || slot.count*decay > effectiveCountEpsilon {
 				receiverCount++
+				state.liveSlots |= 1 << i
 			}
 		}
 	}
@@ -526,10 +507,10 @@ func (s *Store) evaluateCapture(capture *bucketCapture, halfLife int, reference 
 		CappedReceiverCount: receiverCount, CappedReceiverCapacity: capacity, CapLimited: capLimited}
 	if math.IsNaN(activeWeight) || math.IsInf(activeWeight, 0) || activeWeight < 0 {
 		result.distributionUnavailable = detail != sampleScalars
-		return result
+		return state
 	}
 	if detail == sampleScalars || !(activeWeight > 0) {
-		return result
+		return state
 	}
 	result.snrBins = capture.bins
 	arithmeticOK := true
@@ -540,15 +521,13 @@ func (s *Store) evaluateCapture(capture *bucketCapture, halfLife int, reference 
 		result.P50DB, result.HasP50 = result.snrBins.p50DB()
 		result.distributionUnavailable = !arithmeticOK || !result.HasP50
 	} else {
-		// Every needed component is validated by addScaled, shifted, or the
-		// final p50 calculation. Empty positive distributions fail those same
-		// boundaries, without rescanning all four candidate arrays here.
+		// Selected components are validated at shift, merge and final p50.
 		result.distributionUnavailable = !arithmeticOK
 	}
 	if result.distributionUnavailable {
 		result.HasP50 = false
 	}
-	return result
+	return state
 }
 
 func receiverCapLimited(rawCount uint32, cappedCount uint32, rawWeight float64, cappedWeight float64) bool {

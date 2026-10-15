@@ -68,10 +68,9 @@ inspect user-visible diagnostics:
   savings. Compare total cluster CPU for equivalent completed work; individual
   median timings are diagnostic evidence. See TSR-0094 for the measured limits.
 - `SET DIAG PATH` `w<weight>` is scalar evidence mass after decay and
-  path selection. Fine/coarse blends use the larger overlapping layer for
-  scalar weight rather than adding fine and coarse together; `a<age>` can
-  reflect stale local fine evidence even when coarse regional evidence is
-  fresher.
+  path selection. Fine and coarse are selected at one common resolution,
+  never added. `a<age>` reflects selected populations; excluded stale local
+  evidence does not age a fresh selected regional population.
 - `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
   are sparse bucket p50 aligned with current-hour VOACAP; `vup` diagnostics
   are REL-gated one-tier sparse p50 upgrades; `vop` diagnostics are REL-gated
@@ -217,3 +216,15 @@ inspect user-visible diagnostics:
 - `pathreliability/README.md`
 - `data/config/PATH_PREDICTIONS.md`
 - `data/config/README.md`
+
+## Physical evidence and regional glyphs
+
+Observed glyphs remain regional SNR summaries under the user's receive noise.
+They do not claim a QSO probability. Ordinary paths use fine evidence only
+when both distinct fresh directions reach the fine-only signal threshold;
+otherwise available coarse directions are selected together. A fresh fine hint
+is allowed only after all coarse candidates are unavailable. No fine/coarse
+histograms are added. Shared regional evidence and receiver identities count
+once; shared ordinary signal gets one single-direction discount, beacon signal
+none. Required selected numerical failure is insufficient, without a layer
+retry. See ADR-0308 and pathreliability/README.md for exact boundaries.

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `8ed63c1d234c7b1d`
+- Source fingerprint: `3f7aae58d5dd1203`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 31 | 139 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 63 |
-| `dxcluster/telnet` | `telnet` | 48 | 102 |
+| `dxcluster/telnet` | `telnet` | 48 | 103 |
 
 ## In-Scope Package Edges
 
@@ -726,6 +726,7 @@ Test files:
 - `telnet/mode_delta_test.go`
 - `telnet/nearby_endpoint_test.go`
 - `telnet/nofilter_nearby_test.go`
+- `telnet/path_population_selection_test.go`
 - `telnet/path_settings_test.go`
 - `telnet/path_sharding_wire_test.go`
 - `telnet/path_timestamp_provenance_test.go`
@@ -771,6 +772,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:telnet` |
 | [ADR-0307](docs/decisions/ADR-0307-pskreporter-report-presence.md) | Accepted | 2026-10-15 | present zero admission, ordinary and path-only routes | `path:internal/cluster, path:telnet` |
 | [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:internal/cluster, path:telnet` |
 | [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:internal/cluster` |
@@ -849,7 +851,7 @@ Test files:
 | [ADR-0173](docs/decisions/ADR-0173-voacap-rel-gated-open-fallback.md) | Accepted | 2026-06-11 | voacap, pathreliability, telnet, operations, supportability | `area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0172](docs/decisions/ADR-0172-show-prop-worker-refresh-and-glyph-columns.md) | Accepted | 2026-06-10 | telnet, voacap, pathreliability, config, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0171](docs/decisions/ADR-0171-show-prop-voacap-outlook.md) | Superseded | 2026-06-10 | telnet, voacap, pathreliability, commands, supportability | `area:commands, area:telnet, path:commands, path:telnet` |
-| [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Accepted | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:telnet, path:telnet` |
+| [ADR-0170](docs/decisions/ADR-0170-fine-coarse-union-scalar-evidence.md) | Superseded | 2026-06-10 | pathreliability, telnet diagnostics, receiver caps, model calibration | `area:telnet, path:telnet` |
 | [ADR-0169](docs/decisions/ADR-0169-bidirectional-noise-aware-voacap-fallback.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, model calibration | `path:telnet` |
 | [ADR-0168](docs/decisions/ADR-0168-voacap-p50-cache-comparison.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `path:internal/cluster, path:telnet` |
 | [ADR-0167](docs/decisions/ADR-0167-voacap-closed-sparse-p50-stage-counters.md) | Accepted | 2026-06-10 | voacap, pathreliability, operations, observability | `path:internal/cluster, path:telnet` |

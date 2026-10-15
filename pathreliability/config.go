@@ -34,8 +34,8 @@ type Config struct {
 	ReceiverCoarseSlots                int                        `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets
 	ReceiverMaxEffectiveCount          uint32                     `yaml:"receiver_max_effective_count"`            // max accepted reports per receiver per bucket
 	ReceiverMaxEffectiveWeight         float64                    `yaml:"receiver_max_effective_weight"`           // max accepted effective weight per receiver per bucket
-	MinFineWeight                      float64                    `yaml:"min_fine_weight"`                         // minimum fine weight to blend with coarse
-	FineOnlyWeight                     float64                    `yaml:"fine_only_weight"`                        // minimum fine weight to use fine only
+	MinFineWeight                      float64                    `yaml:"min_fine_weight"`                         // normalization lower bound for FineOnlyWeight
+	FineOnlyWeight                     float64                    `yaml:"fine_only_weight"`                        // active fine weight required for fine-layer selection
 	ReverseHintDiscount                float64                    `yaml:"reverse_hint_discount"`                   // multiplier when using reverse direction
 	MergeReceiveWeight                 float64                    `yaml:"merge_receive_weight"`                    // merge weight for DX->user
 	MergeTransmitWeight                float64                    `yaml:"merge_transmit_weight"`                   // merge weight for user->DX

@@ -104,3 +104,8 @@ then cite the underlying repo docs or TSRs.
   for Linux service failures.
 
 PC92 controlled retries, required `peering.max_peers`, and recovery phase diagnostics: [peer bulletin/dedupe support card](support-cards/peer-bulletin-dedupe.md), [v14 evidence](../docs/pc92-v14-validation.md).
+
+For changed regional p50, shared-bucket counts, common-resolution selection or
+fine fallback after stale coarse evidence, start with
+`docs/decisions/ADR-0308-path-population-identity.md`,
+`pathreliability/candidate_query.go` and the path-reliability support card.

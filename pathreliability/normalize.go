@@ -1,4 +1,4 @@
-// File role: Owns path reliability signal normalization and sample blending.
+// File role: Owns path reliability signal normalization and single-layer sample selection.
 // Crawler notes: Start here for mode-to-FT8-equivalent SNR conversion, glyph
 // class mapping, noise penalties, and fine/coarse sample selection used by
 // prediction.
@@ -128,79 +128,33 @@ func thresholdsForModeDB(mode string, cfg Config) GlyphThresholds {
 	return cfg.GlyphThresholds
 }
 
-// SelectSample chooses or blends fine/coarse samples by confidence weight.
-// If fine is below minFineWeight, coarse wins to prevent weak fine data
-// from overriding stronger regional evidence. If fine meets fineOnlyWeight,
-// fine wins outright to preserve local detail. In the blend band, scalar
-// evidence mass uses union semantics because fine and coarse are overlapping
-// views in one direction; p50 bins keep the existing local-emphasis shape.
-func SelectSample(fine Sample, coarse Sample, minFineWeight float64, fineOnlyWeight float64) Sample {
-	coarseCandidate := coarse
-	hasFine := sampleHasEvidence(fine)
-	hasCoarse := sampleHasEvidence(coarseCandidate)
-	switch {
-	case hasFine && !hasCoarse:
-		return fine
-	case !hasFine && hasCoarse:
-		return coarseCandidate
-	case !hasFine && !hasCoarse:
-		return sampleWithSamplingTime(Sample{}, fine, coarseCandidate)
-	}
-	if fineOnlyWeight > 0 && fine.Weight >= fineOnlyWeight {
+// SelectSample selects one geographic layer. minFineWeight remains in the
+// compatibility signature; configuration still normalizes fineOnlyWeight
+// against it. Production queries additionally enforce common resolution,
+// physical presence, store expiry and prediction freshness before selection.
+func SelectSample(fine Sample, coarse Sample, _ float64, fineOnlyWeight float64) Sample {
+	hasFine, hasCoarse := sampleHasEvidence(fine), sampleHasEvidence(coarse)
+	if hasFine && (!hasCoarse || fine.Weight >= fineOnlyWeight) {
 		return fine
 	}
-	if minFineWeight > 0 && fine.Weight < minFineWeight {
-		return coarseCandidate
+	if hasCoarse {
+		return coarse
 	}
-	weight := maxFloat64(fine.Weight, coarseCandidate.Weight)
-	return sampleWithSamplingTime(Sample{
-		Weight:                 weight,
-		AgeSec:                 weightedFineCoarseSampleAge(fine, coarseCandidate),
-		Count:                  maxCount(fine.Count, coarseCandidate.Count),
-		ObservationCount:       maxCount(sampleObservationCount(fine), sampleObservationCount(coarseCandidate)),
-		RawCount:               maxCount(fine.RawCount, coarseCandidate.RawCount),
-		RawWeight:              maxFloat64(fine.RawWeight, coarseCandidate.RawWeight),
-		CappedCount:            maxCount(fine.CappedCount, coarseCandidate.CappedCount),
-		CappedWeight:           maxFloat64(fine.CappedWeight, coarseCandidate.CappedWeight),
-		CappedReceiverCount:    maxCount(fine.CappedReceiverCount, coarseCandidate.CappedReceiverCount),
-		CappedReceiverCapacity: maxCount(fine.CappedReceiverCapacity, coarseCandidate.CappedReceiverCapacity),
-		CapLimited:             fine.CapLimited || coarseCandidate.CapLimited,
-	}, fine, coarseCandidate)
+	return sampleWithSamplingTime(Sample{}, fine, coarse)
 }
 
-// selectSampleBins preserves directional float32 materialization and failure
-// boundaries, while leaving quantile calculation to the final merged sample.
-func selectSampleBins(fine sampleWithBins, coarse sampleWithBins, minFineWeight float64, fineOnlyWeight float64) sampleWithBins {
-	coarseCandidate := coarse
+// selectSampleBins never adds overlapping fine and coarse distributions.
+// Unlike Store queries, these value-only callers have no presence metadata.
+func selectSampleBins(fine sampleWithBins, coarse sampleWithBins, _ float64, fineOnlyWeight float64) sampleWithBins {
 	hasFine := sampleHasEvidence(fine.Sample) || fine.distributionUnavailable
-	hasCoarse := sampleHasEvidence(coarseCandidate.Sample) || coarseCandidate.distributionUnavailable
-	switch {
-	case hasFine && !hasCoarse:
-		return fine
-	case !hasFine && hasCoarse:
-		return coarseCandidate
-	case !hasFine && !hasCoarse:
-		return sampleWithBins{Sample: sampleWithSamplingTime(Sample{}, fine.Sample, coarseCandidate.Sample)}
-	}
-	if fineOnlyWeight > 0 && fine.Weight >= fineOnlyWeight {
+	hasCoarse := sampleHasEvidence(coarse.Sample) || coarse.distributionUnavailable
+	if hasFine && (!hasCoarse || fine.Weight >= fineOnlyWeight) {
 		return fine
 	}
-	if minFineWeight > 0 && fine.Weight < minFineWeight {
-		return coarseCandidate
+	if hasCoarse {
+		return coarse
 	}
-	sample := SelectSample(fine.Sample, coarseCandidate.Sample, minFineWeight, fineOnlyWeight)
-	if !sampleHasEvidence(sample) && !fine.distributionUnavailable && !coarseCandidate.distributionUnavailable {
-		return sampleWithBins{Sample: sample}
-	}
-	var bins snrHistogram
-	unavailable := fine.distributionUnavailable || coarseCandidate.distributionUnavailable
-	if !unavailable && fine.Weight > 0 {
-		unavailable = !bins.addScaled(&fine.snrBins, 1)
-	}
-	if !unavailable && coarseCandidate.Weight > 0 {
-		unavailable = !bins.addScaled(&coarseCandidate.snrBins, 1)
-	}
-	return sampleWithBins{Sample: sample, snrBins: bins, distributionUnavailable: unavailable}
+	return sampleWithBins{Sample: sampleWithSamplingTime(Sample{}, fine.Sample, coarse.Sample)}
 }
 
 // observedSampleDistribution preserves scalar/count diagnostics on failure,
@@ -234,13 +188,6 @@ func sampleWithSamplingTime(sample, left, right Sample) Sample {
 	return sample
 }
 
-func maxCount(left uint32, right uint32) uint32 {
-	if left >= right {
-		return left
-	}
-	return right
-}
-
 func maxFloat64(left float64, right float64) float64 {
 	if left >= right {
 		return left
@@ -253,14 +200,6 @@ func saturatingAddCounts(left uint32, right uint32) uint32 {
 		return maxBucketObservationCount
 	}
 	return left + right
-}
-
-func weightedFineCoarseSampleAge(fine Sample, coarse Sample) int64 {
-	complementWeight := coarse.Weight - fine.Weight
-	if complementWeight < 0 {
-		complementWeight = 0
-	}
-	return weightedEvidenceAge(fine.AgeSec, coarse.AgeSec, fine.Weight, complementWeight)
 }
 
 func weightedSampleAge(left Sample, right Sample) int64 {

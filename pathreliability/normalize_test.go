@@ -114,8 +114,8 @@ func TestSelectSampleMinFineWeight(t *testing.T) {
 	if got.Weight != coarse.Weight {
 		t.Fatalf("expected blended weight to use larger fine/coarse layer %v, got %v", coarse.Weight, got.Weight)
 	}
-	if got.AgeSec != 14 {
-		t.Fatalf("expected blended union effective age 14, got %d", got.AgeSec)
+	if got.AgeSec != 20 {
+		t.Fatalf("expected selected coarse age 20, got %d", got.AgeSec)
 	}
 	if got.Count != 8 {
 		t.Fatalf("expected blended count to use larger selected layer count 8, got %d", got.Count)
@@ -158,7 +158,7 @@ func TestSelectSampleUsesUnionWeightForOverlappingFineCoarse(t *testing.T) {
 	}
 }
 
-func TestSelectSampleWeightUnionPreservesP50Shape(t *testing.T) {
+func TestSelectSampleUsesOnlySelectedCoarseP50Shape(t *testing.T) {
 	var fineBins snrHistogram
 	fineBins.add(snrHistogramBinIndex(18), 6)
 	fine := sampleWithBins{
@@ -177,10 +177,7 @@ func TestSelectSampleWeightUnionPreservesP50Shape(t *testing.T) {
 	}
 
 	got := selectSampleWithDistribution(fine, coarse, 5, 20)
-	var wantBins snrHistogram
-	wantBins.addScaled(&fineBins, 1)
-	wantBins.addScaled(&coarseBins, 1)
-	wantP50, wantHasP50 := wantBins.p50DB()
+	wantP50, wantHasP50 := -19.5, true
 	if got.Weight != 10 || got.RawWeight != 10 || got.CappedWeight != 7 {
 		t.Fatalf("selected weights = %v/%v/%v, want 10/10/7", got.Weight, got.RawWeight, got.CappedWeight)
 	}
@@ -189,18 +186,18 @@ func TestSelectSampleWeightUnionPreservesP50Shape(t *testing.T) {
 	}
 }
 
-func TestSelectSampleCappedWeightUsesConservativeMax(t *testing.T) {
+func TestSelectSampleCappedDiagnosticsFollowSelectedLayer(t *testing.T) {
 	fine := Sample{Weight: 6, CappedWeight: 6, Count: 6, CappedCount: 6, CapLimited: true}
 	coarse := Sample{Weight: 10, CappedWeight: 3, Count: 10, CappedCount: 3, CapLimited: true}
 	got := SelectSample(fine, coarse, 5, 20)
 	if got.Weight != 10 {
 		t.Fatalf("selected active weight=%v, want 10", got.Weight)
 	}
-	if got.CappedWeight != 6 {
-		t.Fatalf("selected capped weight=%v, want conservative max 6", got.CappedWeight)
+	if got.CappedWeight != 3 {
+		t.Fatalf("selected capped weight=%v, want coarse 3", got.CappedWeight)
 	}
-	if got.CappedCount != 6 {
-		t.Fatalf("selected capped count=%d, want max 6", got.CappedCount)
+	if got.CappedCount != 3 {
+		t.Fatalf("selected capped count=%d, want coarse 3", got.CappedCount)
 	}
 }
 
@@ -232,7 +229,7 @@ func TestPredictWeightUnionCanConservativelyWithholdOutsideInvariant(t *testing.
 	}
 }
 
-func TestFineCoarseUnionAgeCanTripFreshnessGate(t *testing.T) {
+func TestExcludedFineAgeCannotTripSelectedCoarseFreshness(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.BandHalfLifeSec = map[string]int{"20m": 360}
 	cfg.MaxPredictionAgeHalfLifeMultiplier = 1.5
@@ -244,12 +241,11 @@ func TestFineCoarseUnionAgeCanTripFreshnessGate(t *testing.T) {
 		5,
 		20,
 	)
-	if selected.AgeSec <= 540 {
-		t.Fatalf("selected age=%d, want above 540s freshness gate", selected.AgeSec)
+	if selected.AgeSec != 60 {
+		t.Fatalf("selected age=%d, want coarse age 60", selected.AgeSec)
 	}
-	receive, _, dropped, _ := predictor.applyFreshnessGate(predictor.combined, "20m", selected, Sample{})
-	if !dropped || sampleHasEvidence(receive) {
-		t.Fatalf("expected union-aged fine/coarse sample to be stale-dropped, dropped=%v receive=%+v", dropped, receive)
+	if selected.AgeSec > predictor.maxPredictionAgeSeconds(predictor.combined, "20m") {
+		t.Fatal("excluded fine age poisoned selected coarse freshness")
 	}
 }
 
@@ -283,7 +279,9 @@ func TestFineCoarseUnionAgeDirectionDropCanShiftClass(t *testing.T) {
 		t.Fatalf("expected both directions to merge")
 	}
 	bothClass := ClassForDB(both.P50DB, "FT8", cfg)
-	receiveSample, transmitSample, dropped, _ := predictor.applyFreshnessGate(predictor.combined, "20m", receive.Sample, transmit.Sample)
+	query := candidateQuery{plan: candidatePlan{roles: [4]uint8{0, 1, 0, 2}}, samples: [4]sampleWithBins{receive, transmit}, states: [4]candidateState{{storeValid: true}, {storeValid: true}}}
+	selected := query.selectPopulation(cfg, predictor.maxPredictionAgeSeconds(predictor.combined, "20m"), false)
+	receiveSample, transmitSample, dropped := query.sample(selected.receive).Sample, query.sample(selected.transmit).Sample, selected.staleDropped
 	if !dropped || sampleHasEvidence(receiveSample) {
 		t.Fatalf("expected stale receive direction to be dropped, dropped=%v receive=%+v", dropped, receiveSample)
 	}
