@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0303 | Deterministic Persisted Forecast Retention | Accepted | 2026-10-14 | VOACAP persistence, capacity ties, restart equivalence | Refines ADR-0184 capacity ordering | none | `docs/decisions/ADR-0303-deterministic-persisted-forecast-retention.md` |
 | ADR-0302 | Correction Evidence, Admission and License Authority | Accepted | 2026-10-14 | raw ambiguity, pending transitions, primary activity, frozen replay authority | Refines ADR-0021/0033/0254 | none | `docs/decisions/ADR-0302-correction-evidence-admission-and-license-authority.md` |
 | ADR-0301 | Exact Path Median and Snapshot Recovery | Accepted | 2026-10-13 | p50 precision, per-band modern log recovery | Refines ADR-0131/0300; retains ADR-0139 | none | `docs/decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md` |
 | ADR-0300 | Path Observation-Time Accounting | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | Refines ADR-0065/0130; retains ADR-0134/0139/0170 | none | `docs/decisions/ADR-0300-path-observation-time-accounting.md` |
@@ -143,7 +144,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0187 | SHOW PROP Open Row Display | Accepted | 2026-06-16 | telnet, pathreliability, voacap, commands, supportability | ADR-0172 display-all cached rows behavior | - | `docs/decisions/ADR-0187-show-prop-open-row-display.md` |
 | ADR-0186 | Prod Secondary Dedupe Window Alignment | Accepted | 2026-06-16 | config, dedupe, operations | - | - | `docs/decisions/ADR-0186-prod-secondary-dedupe-window-alignment.md` |
 | ADR-0185 | Shared Pebble Directory Open Helper | Accepted | 2026-06-16 | pebble, archive, voacap, pathreliability, retained state | - | - | `docs/decisions/ADR-0185-shared-pebble-directory-open-helper.md` |
-| ADR-0184 | VOACAP Forecast Cache Persistence | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | ADR-0162 memory-only restart behavior | - | `docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md` |
+| ADR-0184 | VOACAP Forecast Cache Persistence | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | ADR-0162 memory-only restart behavior | ADR-0303 persisted capacity ordering | `docs/decisions/ADR-0184-voacap-forecast-cache-persistence.md` |
 | ADR-0183 | PSKReporter T3 Worker Budget | Accepted | 2026-06-16 | pskreporter, ingest, config, hot path, operations | - | - | `docs/decisions/ADR-0183-pskreporter-t3-worker-budget.md` |
 | ADR-0182 | VOACAP Runtime SSN State Persistence | Accepted | 2026-06-16 | voacap, pathreliability, config, retained state, operations | ADR-0161 SSN runtime behavior | - | `docs/decisions/ADR-0182-voacap-runtime-ssn-state-persistence.md` |
 | ADR-0181 | RBN Startup Retry And Console Liveness | Accepted | 2026-06-16 | rbn, ingest, dashboard, lifecycle, operations | - | - | `docs/decisions/ADR-0181-rbn-startup-retry-and-console-liveness.md` |

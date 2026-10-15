@@ -108,3 +108,5 @@ entries count as normal VOACAP cache hits in fallback-stage counters.
 - Related TSRs: none
 - Supersedes / superseded by: supersedes ADR-0162's memory-only restart
   behavior; preserves ADR-0162 cache key and hourly-window semantics
+  Persisted capacity ordering is refined by
+  [ADR-0303](ADR-0303-deterministic-persisted-forecast-retention.md).

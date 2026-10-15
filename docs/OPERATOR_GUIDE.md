@@ -648,6 +648,9 @@ prefixes.
   hydrate the memory cache before workers start, so they bypass
   `voacap_fallback.delay_seconds`. Stale or malformed cache records are pruned;
   a missing/unavailable cache cold-starts normal delay/queue behavior.
+  Persisted capacity pruning retains newest storage timestamps, then lowest
+  canonical cache keys for ties. An identical-time refresh has no priority;
+  live-memory eviction keeps its separate policy.
 - `valn|<p50>/<snr>h<hour>s<ssn>` means sparse bucket p50 evidence was
   insufficient by sample gates but aligned with the current-hour VOACAP class.
   `<p50>` is rounded for display so the diagnostic fits the fixed-width line.

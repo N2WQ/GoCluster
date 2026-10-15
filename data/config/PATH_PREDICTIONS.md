@@ -165,6 +165,9 @@ month, TTL, and current UTC hour hydrate the memory cache before VOACAP workers
 start. Those restored predictions are ordinary cache hits and do not wait for
 the warm-up delay; stale or malformed records are pruned and a
 missing/unavailable cache cold-starts normal delay/queue behavior.
+Persisted capacity pruning keeps newest storage timestamps and lowest canonical
+cache keys for ties. An identical-time refresh does not gain priority. This
+ordering applies to disk retention, not live-memory eviction.
 
 8. **Check receiver diversity**: In receiver-cap enforcement and cap-shadow
    candidate evaluation, the selected capped evidence must include enough live

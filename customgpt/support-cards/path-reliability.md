@@ -110,6 +110,9 @@ inspect user-visible diagnostics:
   become ordinary memory cache hits and bypass `voacap_fallback.delay_seconds`;
   stale/malformed records are pruned and a missing/unavailable cache uses the
   normal warm-up delay and queue path.
+  Persisted capacity pruning retains newest storage timestamps, then lowest
+  canonical cache keys for ties. Equal-time refreshes have no recency advantage;
+  this does not change live-memory eviction.
 - `brx` diagnostics mean the spot was marked as a beacon and path prediction
   used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their SNR and REL fields are receive-leg

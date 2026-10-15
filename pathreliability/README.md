@@ -352,6 +352,10 @@ rounded SSN generation, forecast month, TTL, and current UTC hour. Hydrated
 records become ordinary memory cache hits and bypass
 `voacap_fallback.delay_seconds`; stale or malformed records are pruned and a
 missing/unavailable cache cold-starts normal delay/queue behavior.
+When the persisted cache exceeds its capacity, it retains the newest storage
+timestamps. Equal timestamps retain the lowest canonical cache keys; refreshing
+an entry at the same timestamp gives it no extra retention priority. This
+ordering applies to disk pruning and restart hydration, not live-memory eviction.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the

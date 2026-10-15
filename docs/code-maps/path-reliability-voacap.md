@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `e62b9a32db5e4bc9`
+- Source fingerprint: `9616a5635e0478d3`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 23 | 34 |
+| `dxcluster/pathreliability` | `pathreliability` | 23 | 35 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -134,6 +134,7 @@ Test files:
 - `pathreliability/timestamp_admission_bench_test.go`
 - `pathreliability/voacap_fallback_test.go`
 - `pathreliability/voacap_forecast_cache_store_test.go`
+- `pathreliability/voacap_retention_test.go`
 
 ### `dxcluster/solarweather`
 
@@ -162,6 +163,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0303](docs/decisions/ADR-0303-deterministic-persisted-forecast-retention.md) | Accepted | 2026-10-14 | VOACAP persistence, capacity ties, restart equivalence | `area:internal/voacap, path:pathreliability` |
 | [ADR-0301](docs/decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md) | Accepted | 2026-10-13 | p50 precision, per-band modern log recovery | `path:pathreliability` |
 | [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:pathreliability` |
 | [ADR-0201](docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md) | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | `area:pathreliability, path:pathreliability` |

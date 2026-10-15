@@ -6,6 +6,7 @@
 package pathreliability
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -216,6 +217,11 @@ func (s *VOACAPForecastCacheStore) scanCurrentLocked(now time.Time, currentSSN i
 	}
 
 	sort.Slice(loaded, func(i, j int) bool {
+		// Equal storage times have no recency preference. Canonical key order
+		// makes retention identical across refreshes, write order and restart.
+		if loaded[i].entry.storedAt.Equal(loaded[j].entry.storedAt) {
+			return bytes.Compare(loaded[i].dbKey, loaded[j].dbKey) < 0
+		}
 		return loaded[i].entry.storedAt.After(loaded[j].entry.storedAt)
 	})
 	if len(loaded) > cfg.MaxCacheEntries {

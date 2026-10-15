@@ -391,11 +391,12 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
+			windowStart := job.WindowStartUTC
 			return VOACAPClosedForecast{
-				WindowStartUTC: job.WindowStartUTC,
+				WindowStartUTC: windowStart,
 				Records: []VOACAPHourlyForecast{
-					{FT8SNRDB: -20, HourUTC: now.Hour(), FrequencyMHz: job.FrequencyMHz},
-					{FT8SNRDB: -18, HourUTC: now.Add(time.Hour).Hour(), FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -20, HourUTC: windowStart.Hour(), FrequencyMHz: job.FrequencyMHz},
+					{FT8SNRDB: -18, HourUTC: windowStart.Add(time.Hour).Hour(), FrequencyMHz: job.FrequencyMHz},
 				},
 				OutputPath: "runtime-output-should-not-persist.out",
 				Elapsed:    time.Second,
@@ -424,8 +425,20 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 		t.Fatalf("enqueue lookup should not synchronously return a forecast")
 	}
 	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
+	// Memory publication precedes persistence; worker shutdown is the disk fence.
+	cancel()
+	fallback.Wait()
+	records := readRawVOACAPRetentionRecords(t, store)
+	key := fallback.cacheKey(testClosedRequest(), 112, now)
+	record, ok := records[string(voacapForecastCacheKeyBytes(key))]
+	if !ok || len(records) != 1 || record.StoredAtUnixNS <= 0 || record.WindowUnixNS != forecastWindowStart(now).UnixNano() || len(record.Records) != 2 {
+		t.Fatalf("raw persisted worker forecast missing or invalid before hydration: %+v", records)
+	}
+	if record.Records[0].FT8SNRDB != -20 || record.Records[1].FT8SNRDB != -18 || record.Records[0].HourUTC != forecastWindowStart(now).Hour() || record.Records[1].HourUTC != forecastWindowStart(now).Add(time.Hour).Hour() {
+		t.Fatalf("raw persisted worker rows = %+v, want requested two-hour forecast", record.Records)
+	}
 
-	loaded, loadStats, err := store.loadCurrent(now, 112, cfg.VOACAPFallback)
+	loaded, loadStats, err := store.loadCurrent(time.Now().UTC(), 112, cfg.VOACAPFallback)
 	if err != nil {
 		t.Fatalf("loadCurrent() error: %v", err)
 	}
