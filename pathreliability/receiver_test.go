@@ -6,6 +6,33 @@ import (
 	"time"
 )
 
+func TestRequiredReceiverCountClampsBeforeNarrowing(t *testing.T) {
+	for _, tc := range []struct {
+		name                string
+		floor               int
+		cap, capacity, want uint32
+	}{
+		{"zero", 0, 8, 12, 0},
+		{"ordinary", 21, 8, 12, 3},
+		{"capacity", 97, 8, 12, 12},
+		{"zero_cap", 21, 0, 12, 0},
+		{"zero_capacity", 21, 8, 0, 0},
+		{"maximum_int", int(^uint(0) >> 1), 8, 12, 12},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := requiredReceiverCount(tc.floor, tc.cap, tc.capacity); got != tc.want {
+				t.Fatalf("requiredReceiverCount(%d,%d,%d)=%d, want %d", tc.floor, tc.cap, tc.capacity, got, tc.want)
+			}
+		})
+	}
+	if ^uint(0)>>63 != 0 {
+		floor := uint64(1) << 35
+		if got := requiredReceiverCount(int(floor), 8, 12); got != 12 {
+			t.Fatalf("2^32 receiver quotient wrapped before capacity clamp: %d", got)
+		}
+	}
+}
+
 func TestReceiverIdentityHashNormalizesCaseAndSpace(t *testing.T) {
 	left := ReceiverIdentityHash(" n2wq ")
 	right := ReceiverIdentityHash("N2WQ")
@@ -141,8 +168,8 @@ func TestReceiverCapEnforceFailsSingleReceiverLowCount(t *testing.T) {
 	if res.Source != SourceInsufficient {
 		t.Fatalf("expected enforced cap to block single-receiver prediction, got source=%v", res.Source)
 	}
-	if res.InsufficientReason != InsufficientLowReceiver {
-		t.Fatalf("expected low-receiver reason, got %v", res.InsufficientReason)
+	if res.InsufficientReason != InsufficientLowCount {
+		t.Fatalf("expected recent low-count reason, got %v", res.InsufficientReason)
 	}
 	if res.Count != 5 || res.RawCount != 19 || res.CappedCount != 5 {
 		t.Fatalf("unexpected counts: count=%d raw=%d capped=%d", res.Count, res.RawCount, res.CappedCount)
@@ -182,7 +209,7 @@ func TestReceiverCapEnforcePassesReceiversAtDefaultFloor(t *testing.T) {
 	}
 }
 
-func TestReceiverCapEnforceMinObservationsUseRawSelectedCount(t *testing.T) {
+func TestReceiverCapEnforceMinimumUsesRecentAcceptedReports(t *testing.T) {
 	cfg := DefaultConfig()
 	cfg.ReceiverContributionMode = ReceiverContributionEnforce
 	cfg.ReceiverMaxEffectiveCount = 6
@@ -212,14 +239,18 @@ func TestReceiverCapEnforceMinObservationsUseRawSelectedCount(t *testing.T) {
 	}
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now.Add(90*time.Second))
-	if res.Source != SourceCombined {
-		t.Fatalf("expected raw observation floor plus receiver diversity to pass, got source=%v reason=%v count=%d capped=%d raw=%d receivers=%d/%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount, res.ReceiverCount, res.ReceiverRequired)
+	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientLowCount {
+		t.Fatalf("expected recent accepted support below the floor to fail, got source=%v reason=%v count=%d capped=%d raw=%d receivers=%d/%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount, res.ReceiverCount, res.ReceiverRequired)
 	}
 	if res.ObservationCount != 24 || res.CappedCount >= uint32(cfg.MinObservationCount) {
-		t.Fatalf("expected raw observations to pass while decayed capped count is below floor, got obs=%d capped=%d", res.ObservationCount, res.CappedCount)
+		t.Fatalf("expected lifetime observations retained while recent support is below floor, got obs=%d capped=%d", res.ObservationCount, res.CappedCount)
 	}
 	if res.ReceiverCount != 4 || res.ReceiverRequired != 4 {
 		t.Fatalf("expected four receivers to satisfy derived gate, got receivers=%d required=%d", res.ReceiverCount, res.ReceiverRequired)
+	}
+	wantUnits := 24 * math.Exp2(-.25)
+	if math.Abs(res.ObservedRecentSupport.Admitted-wantUnits) > 1e-12 || math.Abs(res.ObservedRecentSupport.RawUsable-wantUnits) > 1e-12 {
+		t.Fatalf("fractional recent support lost: %+v, want %g", res.ObservedRecentSupport, wantUnits)
 	}
 }
 
@@ -250,11 +281,22 @@ func TestReceiverCapEnforceUserPathSamplesDoesNotRaiseReceiverDiversityGate(t *t
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 37, now)
-	if res.Source != SourceCombined {
-		t.Fatalf("expected stricter raw user floor not to raise receiver gate, got source=%v reason=%v raw=%d receivers=%d/%d", res.Source, res.InsufficientReason, res.ObservationCount, res.ReceiverCount, res.ReceiverRequired)
+	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientLowCount || res.ObservedRecentSupport.Admitted != 24 {
+		t.Fatalf("expected stricter recent floor to reject24 admitted units, got source=%v reason=%v raw=%d receivers=%d/%d", res.Source, res.InsufficientReason, res.ObservationCount, res.ReceiverCount, res.ReceiverRequired)
 	}
 	if res.ObservationCount != 40 || res.ReceiverCount != 4 || res.ReceiverRequired != 4 {
 		t.Fatalf("expected raw=40 and configured receiver gate 4/4, got raw=%d receivers=%d/%d", res.ObservationCount, res.ReceiverCount, res.ReceiverRequired)
+	}
+	// Fund the stricter floor with a disjoint reverse population using the same
+	// four identities. The configured receiver requirement stays four, not seven.
+	for _, receiver := range receivers {
+		for range 10 {
+			predictor.UpdateWithReceiverHash(BucketCombined, dxCell, userCell, dxCoarse, userCoarse, "20m", -5, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, receiver)
+		}
+	}
+	funded := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 37, now)
+	if funded.Source != SourceCombined || funded.ObservedRecentSupport.Admitted != 48 || funded.ObservationCount != 80 || funded.ReceiverCount != 4 || funded.ReceiverRequired != 4 {
+		t.Fatalf("funded user floor changed configured receiver baseline: %+v", funded)
 	}
 }
 
@@ -276,8 +318,8 @@ func TestReceiverCapEnforceUnattributedDoesNotAddCappedTrust(t *testing.T) {
 	if res.Source != SourceInsufficient {
 		t.Fatalf("expected unattributed enforce update to be insufficient, got %v", res.Source)
 	}
-	if res.InsufficientReason != InsufficientLowReceiver {
-		t.Fatalf("expected low-receiver reason, got %v", res.InsufficientReason)
+	if res.InsufficientReason != InsufficientLowCount {
+		t.Fatalf("expected recent low-count reason, got %v", res.InsufficientReason)
 	}
 	if res.RawCount != 1 || res.CappedCount != 0 {
 		t.Fatalf("expected raw=1 capped=0, got raw=%d capped=%d", res.RawCount, res.CappedCount)
@@ -342,7 +384,7 @@ func TestReceiverCapEnforceSingleReceiverEffectiveCountStaysBelowFloor(t *testin
 	}
 
 	res := predictor.PredictWithMinObservationCount(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, 30, now.Add(59*time.Second))
-	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientLowReceiver {
+	if res.Source != SourceInsufficient || res.InsufficientReason != InsufficientLowCount {
 		t.Fatalf("expected one receiver to stay below floor, got source=%v reason=%v count=%d capped=%d raw=%d", res.Source, res.InsufficientReason, res.Count, res.CappedCount, res.RawCount)
 	}
 	if res.CappedCount > cfg.ReceiverMaxEffectiveCount {

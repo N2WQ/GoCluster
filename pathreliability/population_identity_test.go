@@ -212,7 +212,15 @@ func TestS6ReceiverIntersectionMatchesSetOracle(t *testing.T) {
 					query.captures[population].slots[i].hash = hash
 				}
 			}
-			query.states[0].liveSlots, query.states[1].liveSlots = tc.aMask, tc.bMask
+			query.states[0].decay, query.states[1].decay = 1, 1
+			query.plan.slots[0], query.plan.slots[1] = 12, 12
+			for population, mask := range [2]uint16{tc.aMask, tc.bMask} {
+				for i := range 12 {
+					if mask&(1<<i) != 0 {
+						query.captures[population].slots[i].count = 1
+					}
+				}
+			}
 			if tc.zeroRight {
 				query.samples[1].Weight = 0
 			}
@@ -221,8 +229,8 @@ func TestS6ReceiverIntersectionMatchesSetOracle(t *testing.T) {
 				if alias == 0 || query.samples[alias-1].Weight <= 0 {
 					continue
 				}
-				for i, slot := range query.captures[alias-1].slots {
-					if query.states[alias-1].liveSlots&(1<<i) != 0 {
+				for _, slot := range query.captures[alias-1].slots {
+					if slot.count >= 1 {
 						want[slot.hash] = struct{}{}
 					}
 				}
@@ -236,7 +244,7 @@ func TestS6ReceiverIntersectionMatchesSetOracle(t *testing.T) {
 	}
 }
 
-func TestS6ReceiverIdentityUnionPreservesLiveness(t *testing.T) {
+func TestSelectedReceiverIdentityUnionQualification(t *testing.T) {
 	for _, mode := range []string{ReceiverContributionShadow, ReceiverContributionEnforce} {
 		t.Run(mode, func(t *testing.T) {
 			p, now := NewPredictor(s6PolicyConfig(mode), []string{"20m"}), s6PolicyNow()
@@ -252,17 +260,22 @@ func TestS6ReceiverIdentityUnionPreservesLiveness(t *testing.T) {
 			})
 			query := s6IdentityQuery(p, s6PolicyQuery, now)
 			alias := query.plan.roles[receiveCoarse]
-			if query.states[alias-1].liveSlots != 0x80b {
-				t.Fatalf("S6 epsilon-OR mask=%x, want 80b", query.states[alias-1].liveSlots)
+			if query.samples[alias-1].CappedReceiverCount != 0 {
+				t.Fatalf("fractional/weight-only receiver qualified: %+v", query.samples[alias-1])
 			}
 			got := s6PolicyPredict(p, s6PolicyQuery, 0, now, false)
-			s6PolicyWant(t, got, -10.5, 3, 6)
-			if got.ReceiverCount != 4 {
-				t.Fatalf("fractional/OR liveness changed early: %+v", got)
+			if got.ReceiverCount != 0 || !got.HasP50 || got.P50DB != -10.5 || got.Weight != 3 || got.ObservationCount != 6 {
+				t.Fatalf("fractional receiver threshold lost scalar diagnostics: %+v", got)
+			}
+			if mode == ReceiverContributionEnforce && (got.Source != SourceInsufficient || got.InsufficientReason != InsufficientLowReceiver) {
+				t.Fatalf("subunit receiver supported enforced glyph: %+v", got)
+			}
+			if mode == ReceiverContributionShadow && (got.Source != SourceCombined || !got.CapWouldBlock) {
+				t.Fatalf("shadow receiver gate changed raw glyph or lost diagnostic: %+v", got)
 			}
 		})
 	}
-	t.Run("subepsilon_slots_not_summed_across_populations_in_s6", func(t *testing.T) {
+	t.Run("combined_subepsilon_support_remains_below_one", func(t *testing.T) {
 		p, now := NewPredictor(s6PolicyConfig(ReceiverContributionEnforce), []string{"20m"}), s6PolicyNow()
 		for _, reverse := range []bool{false, true} {
 			path := s6PolicyLayer(false, reverse)
@@ -274,7 +287,7 @@ func TestS6ReceiverIdentityUnionPreservesLiveness(t *testing.T) {
 		}
 		got := s6PolicyPredict(p, s6PolicyQuery, 0, now, false)
 		if got.Source != SourceInsufficient || got.InsufficientReason != InsufficientLowReceiver || got.ReceiverCount != 0 || got.ReceiverRequired != 1 || !got.HasP50 {
-			t.Fatalf("S6 combined subepsilon slot quantities: %+v", got)
+			t.Fatalf("subunit combined slot quantities qualified: %+v", got)
 		}
 	})
 }

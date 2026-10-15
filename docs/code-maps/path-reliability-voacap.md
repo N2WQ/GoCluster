@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `10e40b636ce71008`
+- Source fingerprint: `404e6d7a88059ed0`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 28 | 57 |
+| `dxcluster/pathreliability` | `pathreliability` | 29 | 65 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -93,6 +93,7 @@ Source files:
 - `pathreliability/observation_times.go`
 - `pathreliability/predictor.go`
 - `pathreliability/receiver.go`
+- `pathreliability/report_support.go`
 - `pathreliability/snr_histogram.go`
 - `pathreliability/snr_histogram_mass.go`
 - `pathreliability/store.go`
@@ -126,12 +127,20 @@ Test files:
 - `pathreliability/observation_accounting_test.go`
 - `pathreliability/observation_times_test.go`
 - `pathreliability/population_allocation_test.go`
+- `pathreliability/population_bench_projection_test.go`
 - `pathreliability/population_bench_test.go`
 - `pathreliability/population_config_test.go`
 - `pathreliability/population_histogram_test.go`
 - `pathreliability/population_identity_test.go`
 - `pathreliability/population_selection_test.go`
 - `pathreliability/receiver_test.go`
+- `pathreliability/recent_receiver_units_test.go`
+- `pathreliability/recent_support_accounting_test.go`
+- `pathreliability/recent_support_admission_test.go`
+- `pathreliability/recent_support_bench_test.go`
+- `pathreliability/recent_support_resource_accounting_test.go`
+- `pathreliability/recent_support_resource_test.go`
+- `pathreliability/recent_support_update_allocation_test.go`
 - `pathreliability/sampling_probe_test.go`
 - `pathreliability/sharding_concurrency_test.go`
 - `pathreliability/sharding_contract_test.go`
@@ -190,6 +199,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0309](docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md) | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | `path:pathreliability` |
 | [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:pathreliability` |
 | [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:pathreliability` |
 | [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:pathreliability` |
@@ -236,7 +246,7 @@ Test files:
 | [ADR-0146](docs/decisions/ADR-0146-h3-path-cell-duplicate-work-removal.md) | Accepted | 2026-06-05 | spot, internal/cluster, pathreliability, hot path | `area:pathreliability, path:pathreliability` |
 | [ADR-0139](docs/decisions/ADR-0139-active-path-p50-histogram-lane-retention.md) | Accepted | 2026-06-04 | pathreliability, retained state, hot path, reports | `area:pathreliability, path:pathreliability` |
 | [ADR-0135](docs/decisions/ADR-0135-path-cap8-enforcement-and-shadow-candidate-retirement.md) | Accepted | 2026-05-11 | pathreliability, config, retained state, propagation logs, reports | `area:pathreliability, path:pathreliability` |
-| [ADR-0134](docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md) | Accepted | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | `area:pathreliability, path:pathreliability` |
+| [ADR-0134](docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md) | Superseded | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | `area:pathreliability, path:pathreliability` |
 | [ADR-0133](docs/decisions/ADR-0133-path-receiver-cap-p50-shadow-histograms.md) | Superseded | 2026-05-11 | pathreliability, config, propagation logs, reports | `area:pathreliability, path:pathreliability` |
 | [ADR-0132](docs/decisions/ADR-0132-path-receiver-cap-shadow-candidates.md) | Superseded | 2026-05-10 | pathreliability, config, propagation logs, reports | `area:pathreliability, path:pathreliability` |
 | [ADR-0131](docs/decisions/ADR-0131-path-p50-midpoint-and-even-split-semantics.md) | Accepted | 2026-05-10 | pathreliability, telnet display, PATH filters | `area:pathreliability, path:pathreliability` |

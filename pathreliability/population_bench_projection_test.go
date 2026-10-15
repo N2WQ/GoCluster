@@ -1,0 +1,51 @@
+package pathreliability
+
+// Keep the cross-version performance oracle explicit and limited to the S6
+// Result contract. S7 recent fields have separate exact accounting/gate tests;
+// this projection compiles unchanged on the accepted S6 checkpoint.
+func populationBenchLegacyResult(result Result) Result {
+	return Result{
+		Glyph:                         result.Glyph,
+		Class:                         result.Class,
+		P50DB:                         result.P50DB,
+		HasP50:                        result.HasP50,
+		P50Glyph:                      result.P50Glyph,
+		ObservedSamplingUnix:          result.ObservedSamplingUnix,
+		HasObservedSamplingTime:       result.HasObservedSamplingTime,
+		ObservedDistributionAvailable: result.ObservedDistributionAvailable,
+		Weight:                        result.Weight,
+		AgeSec:                        result.AgeSec,
+		Count:                         result.Count,
+		ObservationCount:              result.ObservationCount,
+		RawCount:                      result.RawCount,
+		RawWeight:                     result.RawWeight,
+		CappedCount:                   result.CappedCount,
+		CappedWeight:                  result.CappedWeight,
+		ReceiverCount:                 result.ReceiverCount,
+		ReceiverRequired:              result.ReceiverRequired,
+		CapLimited:                    result.CapLimited,
+		CapWouldBlock:                 result.CapWouldBlock,
+		Source:                        result.Source,
+		BeaconRX:                      result.BeaconRX,
+		InsufficientReason:            result.InsufficientReason,
+		VOACAPFT8SNRDB:                result.VOACAPFT8SNRDB,
+		VOACAPSSN:                     result.VOACAPSSN,
+		VOACAPAgeSec:                  result.VOACAPAgeSec,
+		VOACAPHourUTC:                 result.VOACAPHourUTC,
+		VOACAPFrequencyMHz:            result.VOACAPFrequencyMHz,
+		VOACAPReqSNRReliability:       result.VOACAPReqSNRReliability,
+		VOACAPHasReqSNRReliability:    result.VOACAPHasReqSNRReliability,
+		Native160Checked:              result.Native160Checked,
+		Native160Emitted:              result.Native160Emitted,
+		Native160DisplayDisabled:      result.Native160DisplayDisabled,
+		Native160Unknown:              result.Native160Unknown,
+		Native160UserDaylight:         result.Native160UserDaylight,
+		Native160DXDaylight:           result.Native160DXDaylight,
+		Native160UserTwilight:         result.Native160UserTwilight,
+		Native160DXTwilight:           result.Native160DXTwilight,
+		Native160DaylightFraction:     result.Native160DaylightFraction,
+		Native160CivilDarkFraction:    result.Native160CivilDarkFraction,
+		Native160CivilTwilightDeg:     result.Native160CivilTwilightDeg,
+		Native160ClosedMaxDarkFrac:    result.Native160ClosedMaxDarkFrac,
+	}
+}

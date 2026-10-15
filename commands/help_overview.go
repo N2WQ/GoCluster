@@ -225,7 +225,7 @@ func featureOverviewLines(dialect string) []string {
 func preferencesOverviewLines() []string {
 	lines := helpSection(nil, "Preferences and propagation", helpRow{"SHOW SETTINGS", "Show preferences and session settings."},
 		helpRow{"SET GRID", "Set your Maidenhead grid square."}, helpRow{"SET NOISE", "Set your receiving noise environment."},
-		helpRow{"SHOW PROP", "Show an outlook to a callsign, prefix or grid."}, helpRow{"SET PATHSAMPLES", "Set the minimum observations for path estimates."},
+		helpRow{"SHOW PROP", "Show an outlook to a callsign, prefix or grid."}, helpRow{"SET PATHSAMPLES", "Set the minimum recent report units for paths."},
 		helpRow{"SHOW DEDUPE", "Show duplicate-spot suppression settings."}, helpRow{"SET DEDUPE", "Choose FAST, MED or SLOW duplicate suppression."},
 		helpRow{"SET SOLAR", "Set the cadence for active solar summaries."}, helpRow{"DIALECT", "Show or switch between GO and CC command styles."})
 	lines = append(lines, "", "Examples:", "  SET GRID FN31", "  SET NOISE SUBURBAN", "  SHOW PROP DL 20 CW", "  SET DEDUPE FAST")

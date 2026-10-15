@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0309 | Recent Report Support and Receiver Units | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | ADR-0134 floor; ADR-0308 receiver qualification | none | `docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md` |
 | ADR-0308 | Path Population Identity and Common Resolution | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | ADR-0170 selection/scalar/age | none | `docs/decisions/ADR-0308-path-population-identity.md` |
 | ADR-0307 | PSKReporter Report Presence | Accepted | 2026-10-15 | present zero admission, ordinary and path-only routes | none; consistent with ADR-0291 | none | `docs/decisions/ADR-0307-pskreporter-report-presence.md` |
 | ADR-0306 | Path Key Shard Distribution | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | none; retains ADR-0305/0300/0301 | none | `docs/decisions/ADR-0306-path-key-shard-distribution.md` |
@@ -198,7 +199,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0137 | Prod User Dedupe Slow Bulk Update | Accepted | 2026-05-25 | user records, dedupe, operations | - | - | `docs/decisions/ADR-0137-prod-user-dedupe-slow-bulk-update.md` |
 | ADR-0136 | Custom SCP Test Time Fixtures | Accepted | 2026-05-23 | spot, custom_scp, tests | - | - | `docs/decisions/ADR-0136-custom-scp-test-time-fixtures.md` |
 | ADR-0135 | Path Cap8 Enforcement And Shadow Candidate Retirement | Accepted | 2026-05-11 | pathreliability, config, retained state, propagation logs, reports | ADR-0132; ADR-0133; ADR-0129 (shipped cap value portion) | - | `docs/decisions/ADR-0135-path-cap8-enforcement-and-shadow-candidate-retirement.md` |
-| ADR-0134 | Path Observation Floor And Receiver Diversity Gate | Accepted | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | ADR-0129 (enforce-mode capped-count floor portion); ADR-0132 (cap-shadow low-count-only fields) | - | `docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md` |
+| ADR-0134 | Path Observation Floor And Receiver Diversity Gate | Superseded | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | ADR-0129 (enforce-mode capped-count floor portion); ADR-0132 (cap-shadow low-count-only fields) | ADR-0309 | `docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md` |
 | ADR-0133 | Path Receiver Cap P50 Shadow Histograms | Superseded | 2026-05-11 | pathreliability, config, propagation logs, reports | - | ADR-0135 | `docs/decisions/ADR-0133-path-receiver-cap-p50-shadow-histograms.md` |
 | ADR-0132 | Path Receiver Cap Shadow Candidates | Superseded | 2026-05-10 | pathreliability, config, propagation logs, reports | - | ADR-0135 | `docs/decisions/ADR-0132-path-receiver-cap-shadow-candidates.md` |
 | ADR-0131 | Path P50 Midpoint And Even-Split Semantics | Accepted | 2026-05-10 | pathreliability, telnet display, PATH filters | ADR-0126 (lower-edge p50 representative and exact-boundary behavior) | - | `docs/decisions/ADR-0131-path-p50-midpoint-and-even-split-semantics.md` |

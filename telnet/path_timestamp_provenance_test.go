@@ -238,7 +238,7 @@ func TestTimestampProvenanceStaleRawDiagnosticsDoNotChangeFallback(t *testing.T)
 					t.Fatalf("stale raw counts became sparse p50 stage evidence: %+v", stats)
 				}
 				if tc.want == pathreliability.SourceInsufficient {
-					wantTag := "n19|stale|vrel"
+					wantTag := "n19/u2.3|stale|vrel"
 					if beacon {
 						wantTag = "brx|" + wantTag
 					}

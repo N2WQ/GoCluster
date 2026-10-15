@@ -1,7 +1,8 @@
 # Path Reliability First-Wave Execution
 
 Authority: owner token `Approved v2`, received 2026-10-14, with the S4 measurement
-amendment `Approved v3` and performance exception `Approved v4`, both received
+amendment `Approved v3`, S4 performance exception `Approved v4`, and S7 timing
+exception `Approved v5` and observer repair `Approved v6`, received
 2026-10-15. This record maps the
 seven approved serial slices to implementation and evidence. It does not
 authorize the gated backlog, production deployment/restart, push or firewall
@@ -20,11 +21,12 @@ aging, not independent samples, calibrated confidence or QSO probability.
 | S3 | Distributed-contraction compaction | Accepted, `9145209` |
 | S4 | Fine-key sharding | Accepted, `258e4a8`, with the Approved v4 performance exception |
 | S5 | Present zero-dB PSKReporter reports | Accepted, `e82cec1`; all nonwaived gates passed |
-| S6 | Nonduplicated common-resolution selection | Accepted; all nonwaived gates passed |
-| S7 | Recent support and receiver diversity | Not started |
+| S6 | Nonduplicated common-resolution selection | Accepted, `da1ab80`; all nonwaived gates passed |
+| S7 | Recent support and receiver diversity | Accepted at this local checkpoint under Approved v6; timing exception retained |
 
 No later slice begins before the preceding slice's retained required evidence
-passes. Approved v4 explicitly excepts S4 performance gates only.
+passes or receives an explicit owner exception. Approved v4 excepts S4
+performance gates; Approved v5 separately excepts S7 comparative elapsed time.
 Each accepted slice receives a local checkpoint. Reverting an optimization
 must preserve any earlier slice's accepted correctness contract.
 
@@ -568,3 +570,186 @@ Final code-map and diff checks complete this checkpoint. Local evidence is under
 `performance-v2/accepted.json` and `performance-v2/final-raw-verification.json`.
 S7 remains a separate serial slice. No push, deployment, production restart,
 host tuning, new listening path or firewall change occurred.
+
+## S7: Recent Support and Receiver Diversity (Accepted Under V6)
+
+`report_support.go`, the existing bucket/capture owners and predictor carry
+recent usable and cap-admitted report units separately from lifetime counts
+and signal weight. Qualification uses fractional units before display weights;
+tracked receiver quantities combine by identity before the one-unit minimum.
+The configured receiver requirement remains separate from user PATHSAMPLES.
+Observed support survives forecast replacement. ADR-0309 supersedes ADR-0134's
+lifetime-floor policy and refines ADR-0308's temporary receiver qualification.
+
+The steered implementation review added decisive shadow cases with admitted
+support just below the floor while legacy CapLimited is false, exact joined
+maintenance quantities, and large configured-floor arithmetic boundaries.
+DIAG now shows recent units after the lifetime count. Report-present ordinary
+and beacon witnesses preserve the 78-column line and document possible reason
+clipping. No SNR threshold, forecast precedence or configured value changes.
+Support documentation impact is Required; command HELP, operator guidance,
+package/config explanations and support routing have been updated.
+
+The full native ordinary and race lanes each passed 10,601 cases across all
+70 packages: 54 tested and 16 build-only. All 832 required identities passed;
+92 opt-in skips per lane were expected. The ordinary wrapper initially rejected
+an inventory that mistakenly required the opt-in resource fixture. Only that
+inventory entry was removed; all original package executions remain preserved,
+and strict raw-output revalidation passed without rerunning them. Vet,
+Staticcheck, golangci-lint, parsed configuration-value equality, and the focused
+Linux/cgo run passed. That Linux run passed 236 cases with one expected resource
+opt-in skip; an earlier shell invocation failed before Go execution because of
+unquoted PATH spaces and remains recorded separately.
+
+The actual original `5d40e7f` and final-candidate consumer comparison passed all
+36 literal-oracle records. Before: 36 observed results. After: 16 observed,
+10 blank and 10 existing CLOSED forecasts. Six retained observed results change
+HIGH to LOW after duplicate local evidence is removed. These deliberately
+selected cases demonstrate behavior, not production coverage or RF accuracy.
+Full inputs, base/final outputs and binary/source identities remain in
+`s7/whole-wave/` under the local evidence root.
+
+The frozen native performance campaign stopped at its tenth guard:
+`ordinary_coarse_12x12_disjoint/off` had a paired-median candidate/baseline ratio
+of 1.1731677803 against the nonwaived 1.10 limit. Its median paired added cost
+was 209.5965 ns per prediction. The first nine guards passed. All 240 scored
+observations remain retained; the remaining 408 scored observations and
+54 final matched profiles were not run. The 54 correctness preflights and
+four profile-observer probes passed, but cannot replace those missing gates.
+This fixture does not measure client delivery or establish a production effect.
+
+The separate retained-memory campaign stopped on its first accepted-S6 baseline
+fixture, before any candidate observation. It recorded exactly 65,536 separate
+448-byte bucket allocations plus one unexplained 16-byte live allocation in
+both immediate and post-GC deltas. The captured heap contains the exact bucket
+owners and a 16-byte Go background-scavenger timer allocation. The observer
+rejects the residual; it is not subtracted after seeing the result. No paired
+memory guard passed or failed in that stopped campaign.
+
+Read-only source/compiler/disassembly investigation excludes the receiver
+intersection scan in the failing off-mode leaf. It confirms two new support
+gate calls and larger value-copy/stack shapes, but does not establish the cause
+of the full timing increase. A bounded optimization or new observer must retain
+all numerical, fractional-support and ownership contracts, use a separately
+frozen evidence version and preserve both stopped campaigns. No unchanged
+retry, threshold relaxation or S7 acceptance is recorded by that campaign.
+
+Approved v5 excepts S7 comparative elapsed-time acceptance, bound to the exact
+600-file production/configuration fingerprint
+`3dc0a4e9590fc75e7dc63f141271252727858e1643a3a5a7410f89c903b55b0a`.
+It preserves all stopped results and unrun comparisons. It does not waive
+correctness, race, zero warmed allocations, logical bucket size, the 40-byte
+incremental retained-memory budget or the 54 matched native profile processes.
+
+The v5 observer permitted only zero residual or exactly 16 bytes, one malloc,
+one live object and zero frees, identical in both accounting epochs and solely
+in class 16. A nonzero event requires the complete captured runtime scavenger
+timer stack. Candidate residual bytes count against the memory budget; baseline
+residuals give no credit. Every other discrepancy stops qualification. New
+controllers, source/test builds and evidence are separately frozen under
+`s7/v5/`; the original stopped campaigns remain immutable.
+
+The affected resource observer policy and exact read-allocation tests pass
+ordinary and race: 17 cases each, no skips. Production source/configuration
+remains unchanged; only the resource fixture and its added policy test differ
+from the completed full-lane source. The full ordinary/race evidence therefore
+remains applicable, with observer-specific verification recorded separately.
+Vet, Staticcheck and golangci-lint have also passed on the repaired observer.
+All 54 v5 profile processes completed and their raw outputs, matched inputs,
+CPU/heap artifacts, live owners, binary mappings and retirement were revalidated.
+These are 27 pairs, 14 AB and 13 BA. Every CPU profile contains Predictor API
+samples; sampling still provides no causal or production-latency verdict.
+The separate allocation campaign passed same-reference off and shadow, then
+stopped in enforce with one allocation across 100,000 calls. No allocation
+profile was captured for that process, so its source is unattributed. The three
+half-life allocation cases were not run. The profile campaign has no synthesized
+completion marker; `v5/profile-partial-audit.json` records only the evidence
+actually present. Earlier exact read allocation gates remain passed.
+
+The new resource campaign also stopped at its first S6 baseline, before any
+candidate observation. Seed counters contain exactly the expected 65,536
+448-byte buckets plus one 32-byte allocation. Post-GC counters also include a
+16-byte free. This differs from v5's permitted identical zero-or-16-byte event
+and is correctly rejected. The post-only heap contains runtime scavenger timer
+allocation stacks; it does not date individual allocations or frees. No paired
+resource gate was established. Both stopped versions and all raw evidence remain
+preserved; no unchanged retry or broader residual allowance was used.
+
+[TSR-0099](troubleshooting/TSR-0099-global-heap-counter-observers.md) records the
+global-counter limitation and the still-unattributed allocation failure. A
+conservative allocation-based memory bound and standard single-processor API
+allocation tests required separate approval. V5 alone left S7 uncommitted and
+acceptance blocked at S6 `da1ab80`. Its failed and unrun observations remain
+unchanged; the v6 evidence below establishes the replacement gates.
+
+### V6 observer qualification and acceptance
+
+Approved v6 changes measurement boundaries only. The 600-file production/config/
+H3 fingerprint above remains exact. The conservative bound charges every byte
+allocated by the candidate between Start and PostGC, then subtracts only verified
+NEW baseline bucket/sidecar bytes. Temporary allocations, candidate frees,
+baseline runtime noise and preexisting warm owners supply no credit. This is
+Go heap-object accounting, not RSS or allocator span overhead. A bound above
+40 bytes per bucket would block acceptance without proving actual retained growth.
+
+All 40 planned native resource processes and 20 independent AB/BA paired guards
+passed. The conservative incremental bounds were 32.000000 to 32.317871
+bytes per new bucket, each below 40. Exact named live bucket/sidecar owners,
+allocator classes, all five counters, class/global lower bounds, inputs,
+source/build identities and process retirement passed raw revalidation. Logical
+bucket size is 456 bytes; its measured allocator class is 480 versus S6's 448.
+
+The first native baseline passed, but the original v6 report parser rejected
+Windows CRLF output. A separately frozen transport adapter validates that exact
+saved process and profile, then executes only the remaining 39 planned processes.
+No native observation was repeated or discarded. The original parser stop stays
+immutable. The first pair's wall-time gap is recorded; these measurements make
+no timing claim. Synthetic checks rejected 124 resource-proof faults and 44
+transport/adoption faults before their respective native campaigns.
+
+The six replacement warmed update controls passed with exactly zero allocations
+per measured 100,000-call callback. Each has a separately seeded 100,000-call
+warm callback, exact completed-state/recent-support assertions and a deliberate
+one-allocation witness that must fail. Ordinary and race each passed 87 targeted
+cases with no skips, including all six positive and six fault children. The helper
+uses one scheduler processor and restores four; it neither attributes the old
+four-processor allocation nor proves concurrent production allocation behavior.
+Focused Linux/cgo passed 85 cases. The final targeted runs follow an equivalent
+test-only comparison simplification requested by lint; production, resource and
+benchmark fixtures stayed unchanged. Vet, Staticcheck and lint pass on final Go.
+
+The earlier complete 70-package ordinary/race lanes remain applicable: production
+and existing functional tests are unchanged, with the three affected/new observer
+test files verified separately. All 54 original v5 CPU/heap profile processes
+were freshly raw-revalidated against their original binaries, symbols and input
+identities. They are evidence for unchanged production, not v6 executable captures.
+The original v5 profile campaign remains stopped, with its allocation failure
+unattributed; no completion record was manufactured for it.
+
+Fresh final source/diff verification is lead-owned, not an independent review.
+The earlier non-steered S6 mathematical review remains the scientific evidence;
+this observer repair introduces no new scientific or RF claim. Support impact
+remains Required, covered by the HELP/config/operator/support updates. ADR-0309
+records the accepted support and qualification contract; TSR-0099 preserves the
+observer failures and repair. S7 is accepted at this local `voacap` checkpoint.
+Timing exceptions remain explicit; practical delivery impact awaits whole-runtime
+profiling. No push, deployment, production restart, firewall change or full-cluster
+runtime capture occurred.
+
+Local evidence: `s7/v6/builds/`, `s7/v6/resource/`,
+`s7/v6/transport/accepted.json`, `s7/v6/profile-reuse-audit.json`,
+`s7/v6/v6-targeted-final-audit.json` and final analyzer/source verification receipts.
+
+## Whole-Cluster Profiling Preparation
+
+The [profiling plan](path-reliability-runtime-profiling-plan.md) isolates the
+effect of S4 while retaining final S5-S7 behavior in both variants. It specifies
+the approved stable executable path, separate target/driver owners, complete
+delivery accounting and source/config/binary provenance. Current wildcard
+telnet binding and always-active reference refresh require explicit experiment
+adapters before a private replay can launch. Recorded inputs and the bounded
+launch/controller implementation remain prerequisites. This is preparation;
+no whole-cluster runtime profile, deployment or firewall change has occurred.
+The accepted S7 source checkpoint is complete. The actual configured-runtime
+binary, concrete corpus, experiment adapters and bounded controller remain the
+next separately reviewed execution boundary.

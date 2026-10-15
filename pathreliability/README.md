@@ -128,6 +128,7 @@ Each bucket stores:
 
 - accumulated weight
 - raw observation count
+- recent raw usable report units, aged independently of signal mass
 - capped receiver-attributed weight and effective observation count
 - one fixed SNR histogram for the active p50 scoring lane
 - fixed receiver contribution slots
@@ -139,6 +140,11 @@ observation to that same R, including when the report arrived late. Advancing R
 does not advance the newest observation.
 The raw observation count is not decayed; it is a bounded diagnostic count of
 eligible valid reports, including cap-rejected and numerically unusable reports.
+Recent raw usable support increments only after raw numerical admission. One
+fresh usable report adds one unit even with signal weight 0.01. Numerical
+rejection adds zero; later cap rejection retains that raw unit. A 25% admitted
+report adds one raw unit and 0.25 admitted units. Aging reduces both quantities.
+Representable increments still count when histogram addition rounds them away.
 Capped
 receiver-attributed count is a decayed effective count, aligned with capped
 weight in enforce mode, so old receiver evidence fades and makes room for newer
@@ -174,15 +180,26 @@ its weighted mass is absent.
 
 - `shadow`: use raw selected evidence for active p50 glyphs and PATH filters,
   but expose whether the configured cap would have blocked the prediction.
-- `enforce`: use raw selected count for the observation floor, plus capped
+- `enforce`: use recent cap-admitted reports for the support floor, plus capped
   receiver diversity and capped weight for receiver-cap trust gates.
 - `off`: disable capped tracking and use raw evidence only.
 
-In enforce mode, the global `min_observation_count` still means selected raw
-observations. Receiver concentration is checked by a separate derived gate:
+The global `min_observation_count` is a recent report-support floor: raw usable
+units in off/shadow, cap-admitted units in enforce. Compare fractional units
+before directional display weights or the single-direction discount, without
+integer rounding, epsilon promotion or lifetime-count fallback. Twenty-one
+fresh unit reports meet 21; after one half-life 10.5 no longer do. Zero means zero.
+Admitted support is explicitly unavailable while cap tracking is off.
+
+Receiver concentration is checked by a separate derived gate:
 the selected capped evidence must include at least
 `ceil(min_observation_count / receiver_max_effective_count)` live attributed
-receiver slots, capped by the selected bucket's slot capacity. This keeps the
+receiver identities, capped by the selected physical populations' capacity.
+Each tracked hash needs at least one accepted aged report unit. Sum the same
+hash across distinct selected populations before qualification: 0.6+0.6 counts
+as one receiver; shared 0.6 counts as none. Do not infer diversity from weight.
+Slot rotation remains an approximation; report volume is not independent
+samples or calibrated confidence. This keeps the
 sample floor and receiver-diversity floor debuggable as separate causes.
 
 The store retains one fixed SNR histogram per bucket for the active p50 lane.
@@ -270,7 +287,7 @@ are placeholders and do not support a zero-variance or degeneracy conclusion.
 
 Five-minute propagation logs split insufficient path prediction outcomes into
 `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
-`low_count` maps to the raw selected observation floor; `low_receiver` maps to
+`low_count` maps to the recent usable/admitted report floor; `low_receiver` maps to
 the receiver-diversity gate in enforce evaluation; `low_weight`
 maps to the decayed effective weight floor. These aggregate lines are written
 to `logging.propagation.dir`. VOACAP fallback outcomes are counted separately
@@ -360,7 +377,7 @@ insufficient, VOACAP fallback classifies and REL-gates on the receive leg
 instead of the bidirectional effective SNR. Display glyphs and PATH filters use
 the same beacon RX-only result.
 `SET DIAG PATH` may append a compact sparse VOACAP suffix to insufficient
-diagnostics, such as `n0|none|vdly` or `n2|lown|vrel`. The suffix explains the
+diagnostics, such as `n0/u0|none|vdly` or `n2/u1|lown|vrel`. The suffix explains the
 VOACAP state for sparse/no-p50 candidates: queued, delayed, inflight,
 unsupported band, empty/unknown band, invalid user/DX grid, invalid user/DX
 cell, missing SSN, no current-hour cache record, queue full, worker not running,
@@ -494,7 +511,7 @@ receive leg is used without that discount.
 Telnet users can set a stricter personal observation floor with
 `SET PATHSAMPLES <count>`. That setting is applied as
 `max(min_observation_count, user setting)` and cannot lower the cluster default.
-This floor uses the raw selected observation count in all receiver-cap modes.
+This floor uses recent usable/admitted report units for the configured mode.
 In enforce mode, receiver concentration is evaluated separately from this user
 sample floor.
 For beacon spots, the session floor is
@@ -520,7 +537,7 @@ Prediction returns either:
 - `INSUFFICIENT`
 
 `INSUFFICIENT` is returned when there is no usable sample, selected evidence is
-too old for the freshness gate, the selected raw observation count is below
+too old for the freshness gate, selected recent report support is below
 `min_observation_count`, receiver diversity is too low under enforce/candidate
 cap evaluation, or the merged effective weight stays below
 `min_effective_weight`.

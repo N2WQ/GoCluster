@@ -33,6 +33,9 @@ type receiverSlot struct {
 type bucket struct {
 	weight float64
 	count  uint32
+	// recentRawUsable decays with this bucket and counts reports after the raw
+	// numerical boundary, before cap admission. It is never signal weight.
+	recentRawUsable float64
 	// lastUpdate is the monotonic accounting reference in Unix seconds.
 	lastUpdate int64
 	// newestObservation is independent of reference advancement and includes
@@ -167,6 +170,7 @@ func (s *Store) updateBucket(key uint64, weight, mass, count float64, observedSe
 		b.weight = decayedMass(b.weight, elapsed, halfLifeSec, decay)
 		b.cappedWeight = decayedMass(b.cappedWeight, elapsed, halfLifeSec, decay)
 		b.cappedCount *= decay
+		b.recentRawUsable *= decay
 		b.snrBins.decay(decay)
 		if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
 			b.decayReceiverSlots(decay, receiverSlots)
@@ -199,6 +203,7 @@ func (s *Store) updateBucket(key uint64, weight, mass, count float64, observedSe
 		}
 	}
 	b.weight += mass
+	b.recentRawUsable += count
 	if !activeCapped {
 		b.snrBins[snrBin] = rawBin
 	}
@@ -349,6 +354,7 @@ type Sample struct {
 	// SamplingUnix is the common evaluation time, even for count-only evidence.
 	SamplingUnix           int64
 	HasSamplingTime        bool
+	RecentSupport          ReportSupport
 	Weight                 float64
 	AgeSec                 int64
 	Count                  uint32
@@ -375,6 +381,7 @@ type sampleWithBins struct {
 type bucketCapture struct {
 	present                      bool
 	weight                       float64
+	recentRawUsable              float64
 	count                        uint32
 	reference, newestObservation int64
 	cappedWeight, cappedCount    float64
@@ -404,7 +411,7 @@ func (s *Store) captureBucketInto(key uint64, receiverSlots int, distribution bo
 	if b == nil {
 		return
 	}
-	*capture = bucketCapture{present: true, weight: b.weight, count: b.count,
+	*capture = bucketCapture{present: true, weight: b.weight, count: b.count, recentRawUsable: b.recentRawUsable,
 		reference: b.lastUpdate, newestObservation: b.newestObservation,
 		cappedWeight: b.cappedWeight, cappedCount: b.cappedCount}
 	if distribution {
@@ -455,6 +462,8 @@ func (s *Store) lookupCandidateSet(receiverCell, senderCell CellID, receiverCoar
 	}
 	for role := 0; role < length; role++ {
 		samples[role] = query.sample(query.plan.roles[role])
+		samples[role].RecentSupport.AdmittedAvailable = s.cfg.ReceiverContributionMode != ReceiverContributionOff
+		samples[role].RecentSupport.Enforced = s.cfg.ReceiverContributionMode == ReceiverContributionEnforce
 	}
 	return
 }
@@ -468,7 +477,8 @@ func (s *Store) evaluateCapture(capture *bucketCapture, halfLife int, reference 
 // evaluateCaptureInto preserves expiry separately from numerical usability.
 // Each physical capture is evaluated once at the query's common reference.
 func (s *Store) evaluateCaptureInto(capture *bucketCapture, halfLife int, reference int64, receiverSlots int, detail sampleDetail, result *sampleWithBins) (state candidateState) {
-	*result = sampleWithBins{Sample: Sample{SamplingUnix: reference, HasSamplingTime: true}}
+	*result = sampleWithBins{Sample: Sample{SamplingUnix: reference, HasSamplingTime: true,
+		RecentSupport: reportSupportForMode(s.cfg.ReceiverContributionMode)}}
 	if !capture.present {
 		return state
 	}
@@ -479,20 +489,23 @@ func (s *Store) evaluateCaptureInto(capture *bucketCapture, halfLife int, refere
 	state.storeValid = true
 	elapsed := nonnegativeSecondsSince(reference, capture.reference)
 	decay := decayFactor(elapsed, halfLife)
+	state.decay = decay
+	support := reportSupportForMode(s.cfg.ReceiverContributionMode)
+	support.RawUsable = capture.recentRawUsable * decay
 	rawWeight := decayedMass(capture.weight, elapsed, halfLife, decay)
 	cappedWeight, cappedCount := rawWeight, capture.count
 	var receiverCount, capacity uint32
 	capLimited := false
 	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
+		support.Admitted = capture.cappedCount * decay
 		cappedWeight = decayedMass(capture.cappedWeight, elapsed, halfLife, decay)
 		cappedCount = effectiveCountToUint32(capture.cappedCount * decay)
 		capLimited = receiverCapLimited(capture.count, cappedCount, rawWeight, cappedWeight)
 		capacity = receiverSlotCapacity(receiverSlots)
 		for i := 0; i < min(receiverSlots, maxCoarseReceiverSlots); i++ {
 			slot := capture.slots[i]
-			if slot.weight*decay > effectiveCountEpsilon || slot.count*decay > effectiveCountEpsilon {
+			if slot.hash != 0 && slot.count*decay >= 1 {
 				receiverCount++
-				state.liveSlots |= 1 << i
 			}
 		}
 	}
@@ -501,7 +514,8 @@ func (s *Store) evaluateCaptureInto(capture *bucketCapture, halfLife int, refere
 		activeWeight, activeCount = cappedWeight, cappedCount
 	}
 	result.Sample = Sample{SamplingUnix: reference, HasSamplingTime: true,
-		Weight: activeWeight, AgeSec: age, Count: activeCount,
+		RecentSupport: support,
+		Weight:        activeWeight, AgeSec: age, Count: activeCount,
 		ObservationCount: capture.count, RawCount: capture.count, RawWeight: rawWeight,
 		CappedCount: cappedCount, CappedWeight: cappedWeight,
 		CappedReceiverCount: receiverCount, CappedReceiverCapacity: capacity, CapLimited: capLimited}

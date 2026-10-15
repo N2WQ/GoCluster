@@ -193,7 +193,7 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 	}
 	client.setDiagMode(diagModePath)
 	line := server.formatSpotForClient(client, sp)
-	if !strings.Contains(line, "n3|lown") {
+	if !strings.Contains(line, "n3/u3|lown") {
 		t.Fatalf("expected low-count diagnostic from user floor, got %q", line)
 	}
 }
@@ -248,7 +248,7 @@ func TestBeaconRXPathPredictionAppliesToDisplayAndFilter(t *testing.T) {
 	}
 	client.setDiagMode(diagModePath)
 	line := server.formatSpotForClient(client, sp)
-	if !strings.Contains(line, "brx|n11|w11|") {
+	if !strings.Contains(line, "brx|n11/u11|w11|") {
 		t.Fatalf("expected beacon RX diagnostic with 11/2 gate evidence, got %q", line)
 	}
 }

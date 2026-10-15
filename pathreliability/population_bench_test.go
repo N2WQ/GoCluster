@@ -231,15 +231,15 @@ func (f *populationBenchFixture) predict() Result {
 
 func (f *populationBenchFixture) assertPrediction(tb testing.TB, got Result) {
 	tb.Helper()
-	if got != f.want {
+	if populationBenchLegacyResult(got) != f.want {
 		tb.Fatalf("population %s/%s output differs from literal funded-work oracle:\ngot  %+v\nwant %+v", f.control.name, f.mode, got, f.want)
 	}
 }
 
 func (f *populationBenchFixture) assertState(tb testing.TB) {
 	tb.Helper()
-	if unsafe.Sizeof(bucket{}) != 448 {
-		tb.Fatalf("S6 retained logical bucket size=%d, want 448", unsafe.Sizeof(bucket{}))
+	if unsafe.Sizeof(bucket{}) != populationBenchLogicalBytes() {
+		tb.Fatalf("retained logical bucket size=%d, want %d", unsafe.Sizeof(bucket{}), populationBenchLogicalBytes())
 	}
 	seen, sidecars := 0, 0
 	for i := range f.predictor.combined.shards {
@@ -314,6 +314,10 @@ func (f *populationBenchFixture) assertState(tb testing.TB) {
 // recorded but cannot be accepted as qualification measurements.
 func BenchmarkPopulationSelectionControls(b *testing.B) {
 	variant := os.Getenv("GOCLUSTER_S6_POPULATION_VARIANT")
+	expectedVariant := variant
+	if supportVariant := os.Getenv("GOCLUSTER_S7_SUPPORT_VARIANT"); supportVariant != "" {
+		variant, expectedVariant = supportVariant, "candidate"
+	}
 	if variant == "" {
 		b.Skip("requires controller-frozen GOCLUSTER_S6_POPULATION_VARIANT=baseline or candidate")
 	}
@@ -324,7 +328,7 @@ func BenchmarkPopulationSelectionControls(b *testing.B) {
 		b.Run(control.name, func(b *testing.B) {
 			for _, mode := range []string{ReceiverContributionOff, ReceiverContributionShadow, ReceiverContributionEnforce} {
 				b.Run(mode, func(b *testing.B) {
-					f := newPopulationBenchFixture(b, control, mode, variant)
+					f := newPopulationBenchFixture(b, control, mode, expectedVariant)
 					var result Result
 					completed := 0
 					p := f.query
@@ -403,6 +407,7 @@ func populationBenchStartCPU(b *testing.B, directory string) func() {
 func (f *populationBenchFixture) writeLiveHeap(b *testing.B, directory string) {
 	b.Helper()
 	runtime.GC()
+	runtime.GC()
 	var memory runtime.MemStats
 	runtime.ReadMemStats(&memory)
 	output, err := os.Create(filepath.Join(directory, "heap.pprof"))
@@ -430,4 +435,14 @@ func (f *populationBenchFixture) writeLiveHeap(b *testing.B, directory string) {
 		b.Fatal(err)
 	}
 	runtime.KeepAlive(f)
+}
+
+// S7 comparisons reuse repaired S6 populations with a common legacy oracle.
+// Native S7 allocation tests use the current layout; a baseline run must be
+// explicitly bound by the frozen S7 controller to its accepted S6 binary.
+func populationBenchLogicalBytes() uintptr {
+	if os.Getenv("GOCLUSTER_S7_SUPPORT_VARIANT") == "baseline" {
+		return 448
+	}
+	return 456
 }

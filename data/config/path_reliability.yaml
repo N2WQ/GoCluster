@@ -150,12 +150,13 @@ max_prediction_age_half_life_multiplier: 1.5
 # Select one common geographic resolution; never add overlapping fine/coarse mass.
 min_effective_weight: 0.5
 
-# Minimum raw selected observations required to report a glyph; below this returns glyph_symbols.insufficient.
-# Receiver-cap enforce mode applies receiver diversity as a separate gate so this count keeps one meaning.
+# Minimum recent usable report units required for a glyph; aging reduces units.
+# Off/shadow use raw usable units; enforce uses cap-admitted units. Display weights do not scale units.
+# Lifetime raw counts remain diagnostics. Receiver diversity is a separate gate.
 min_observation_count: 21
 
-# Minimum raw DX->user receive-leg observations required to report a beacon glyph.
-# Beacon transmit evidence is not applicable, so this floor is calibrated per direction.
+# Minimum recent DX->user receive-leg report units required for a beacon glyph.
+# Beacon transmit evidence is not applicable; this is an operating floor, not calibrated confidence.
 beacon_min_observation_count: 11
 
 # Receiver contribution caps limit how much one receiving station can add to a

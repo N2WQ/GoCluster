@@ -109,3 +109,8 @@ For changed regional p50, shared-bucket counts, common-resolution selection or
 fine fallback after stale coarse evidence, start with
 `docs/decisions/ADR-0308-path-population-identity.md`,
 `pathreliability/candidate_query.go` and the path-reliability support card.
+
+Recent path-support failures use decay-adjusted usable/admitted report units,
+not lifetime `n` diagnostics. See [ADR-0309](../docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md)
+and [the path support card](support-cards/path-reliability.md) for `/u` and
+receiver qualification. CLOSED precedence is unchanged.

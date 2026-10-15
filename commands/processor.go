@@ -544,6 +544,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		nil,
 		[]string{
 			"Count must be higher than the cluster default.",
+			"Requires recent usable reports, reduced by aging.",
+			"Receiver caps also reduce units in enforce mode.",
+			"21 fresh unit reports become 10.5 after one half-life.",
 			"DEFAULT clears your personal override.",
 		},
 	)

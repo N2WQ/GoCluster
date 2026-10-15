@@ -21,6 +21,18 @@ inspect user-visible diagnostics:
 
 ## Must Include
 
+- PATHSAMPLES and the configured 21/11 floors use recent report units, before
+  display weights: usable raw reports in off/shadow, cap-admitted fractions in
+  enforce. 21 fresh unit reports meet 21; after one half-life 10.5 do not. Lifetime
+  `n` and rounded `/c` remain diagnostics. `/u10.5` shows active recent units,
+  rounded only for display; classification uses the unrounded quantity.
+  Cap-off admitted support is unavailable, never substituted from raw support.
+  Each tracked receiver needs at least one accepted aged unit, summing the same
+  identity across disjoint selected populations. 0.6+0.6 qualifies once; shared
+  0.6 does not. These are volume/aging gates, not calibrated confidence.
+  Fewer observed glyphs and more existing forecast fallbacks are expected;
+  CLOSED precedence is unchanged. See ADR-0309.
+
 - Minute stale purging and hourly path-map compaction retain their existing
   cadence. Compaction also handles contraction spread across small shards,
   preserving live buckets and prediction data. A lower retained Go heap does
@@ -92,7 +104,7 @@ inspect user-visible diagnostics:
   were dark. It is not SNR. Beacon receive-only native 160m diagnostics use
   `bn160|dNN`.
 - Insufficient sparse/no-p50 diagnostics can add compact `v*` suffixes such as
-  `n0|none|vdly` or `n2|lown|vrel` to explain VOACAP state without changing the
+  `n0/u0|none|vdly` or `n2/u2|lown|vrel` to explain VOACAP state without changing the
   blank glyph: queued, delayed, inflight, unsupported band, empty/unknown band,
   invalid user/DX grid, invalid user/DX cell, missing SSN, missing current hour,
   queue full, worker not running, disabled, unavailable, REL/tier guard failure,

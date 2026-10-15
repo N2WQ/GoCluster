@@ -5,10 +5,7 @@
 // Related docs: pathreliability/README.md, docs/path-reliability-first-wave-execution.md.
 package pathreliability
 
-import (
-	"math/bits"
-	"time"
-)
+import "time"
 
 const (
 	receiveFine = iota
@@ -42,7 +39,7 @@ func (p *candidatePlan) add(role int, key uint64, slots int) {
 
 type candidateState struct {
 	storeValid bool
-	liveSlots  uint16
+	decay      float64
 }
 
 type candidateQuery struct {
@@ -153,9 +150,9 @@ func (q *candidateQuery) selectPopulation(cfg Config, maxAge int64, beacon bool)
 	return selected
 }
 
-// Each bucket has unique nonzero slot hashes. Count the cross-population
-// intersection once, using existing epsilon-OR liveness before identity union.
-// At most 12x12 comparisons; count-only populations supply no diversity.
+// Each bucket has unique nonzero slot hashes. Sum admitted aged quantities for
+// matching hashes before the inclusive one-unit threshold, without an epsilon
+// prefilter. At most 12x12 comparisons; count-only populations supply no diversity.
 func (q *candidateQuery) receiverUnion(left, right uint8) (count, capacity uint32) {
 	if right == left {
 		right = 0
@@ -179,27 +176,41 @@ func (q *candidateQuery) receiverUnion(left, right uint8) (count, capacity uint3
 	if right != 0 && (!(q.samples[right-1].Weight > 0) || right == left) {
 		right = 0
 	}
-	var a, b uint16
+	var a, b *bucketCapture
+	var aDecay, bDecay float64
+	var aSlots, bSlots int
 	if left != 0 {
-		a = q.states[left-1].liveSlots
+		a, aDecay, aSlots = &q.captures[left-1], q.states[left-1].decay, q.plan.slots[left-1]
 		capacity += q.samples[left-1].CappedReceiverCapacity
 	}
 	if right != 0 {
-		b = q.states[right-1].liveSlots
+		b, bDecay, bSlots = &q.captures[right-1], q.states[right-1].decay, q.plan.slots[right-1]
 		capacity += q.samples[right-1].CappedReceiverCapacity
 	}
-	count = uint32(bits.OnesCount16(a) + bits.OnesCount16(b))
-	for a != 0 && b != 0 {
-		i := bits.TrailingZeros16(a)
-		a &^= 1 << i
-		for remaining := b; remaining != 0; {
-			j := bits.TrailingZeros16(remaining)
-			remaining &^= 1 << j
-			if q.captures[left-1].slots[i].hash == q.captures[right-1].slots[j].hash {
-				count--
-				b &^= 1 << j
+	if capacity == 0 {
+		// Off mode captures no receiver state; there are no identities to scan.
+		return 0, 0
+	}
+	var matchedRight uint16
+	for i := 0; i < aSlots; i++ {
+		if a.slots[i].hash == 0 {
+			continue
+		}
+		units := a.slots[i].count * aDecay
+		for j := 0; j < bSlots; j++ {
+			if a.slots[i].hash == b.slots[j].hash {
+				units += b.slots[j].count * bDecay
+				matchedRight |= 1 << j
 				break
 			}
+		}
+		if units >= 1 {
+			count++
+		}
+	}
+	for j := 0; j < bSlots; j++ {
+		if matchedRight&(1<<j) == 0 && b.slots[j].hash != 0 && b.slots[j].count*bDecay >= 1 {
+			count++
 		}
 	}
 	return count, capacity

@@ -66,12 +66,16 @@ func TestPredictorShardedConcurrentMaintenanceReadback(t *testing.T) {
 					if fine.RawCount != 24 || coarse.RawCount != 24 || fine.Weight != 24 || coarse.Weight != 24 {
 						t.Fatalf("final directional capture lost reports reverse=%v fine=%+v coarse=%+v", reverse, fine, coarse)
 					}
+					recentSupportWant(t, fine.RecentSupport, mode, 24, 24)
+					recentSupportWant(t, coarse.RecentSupport, mode, 24, 24)
 				}
 				ordinary := predictor.Predict(path.receiver.fine, path.sender.fine, path.receiver.coarse, path.sender.coarse, "20m", "FT8", 0, now)
 				beacon := predictor.PredictBeaconReceiveOnlyWithMinObservationCount(path.receiver.fine, path.sender.fine, path.receiver.coarse, path.sender.coarse, "20m", "FT8", 0, 1, now)
 				if !usableShardingContractResult(ordinary) || ordinary.RawCount != 48 || !usableShardingContractResult(beacon) || beacon.RawCount != 24 || !beacon.BeaconRX {
 					t.Fatalf("final known p50/count readback failed: ordinary=%+v beacon=%+v", ordinary, beacon)
 				}
+				recentSupportWant(t, ordinary.ObservedRecentSupport, mode, 48, 48)
+				recentSupportWant(t, beacon.ObservedRecentSupport, mode, 24, 24)
 			}
 			if stats := predictor.AdmissionStats(); stats != (AdmissionStats{}) {
 				t.Fatalf("concurrent valid reports changed input admission: %+v", stats)

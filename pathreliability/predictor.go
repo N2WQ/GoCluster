@@ -112,6 +112,7 @@ type Result struct {
 	ObservedSamplingUnix          int64
 	HasObservedSamplingTime       bool
 	ObservedDistributionAvailable bool
+	ObservedRecentSupport         ReportSupport
 	Weight                        float64
 	AgeSec                        int64
 	Count                         uint32
@@ -158,9 +159,9 @@ func (p *Predictor) Predict(userCell, dxCell CellID, userCoarse, dxCoarse CellID
 }
 
 // PredictWithMinObservationCount returns a merged glyph using the supplied
-// observation floor. The floor is always applied to selected raw observations.
-// In enforce mode receiver-concentration is checked separately from the raw
-// sample floor. Callers may pass a floor above the configured default when
+// observation floor. Off/shadow use recent usable reports; enforce uses recent
+// cap-admitted reports. Neither signal weights nor display discounts scale this
+// fractional floor. Callers may pass a floor above the configured default when
 // applying stricter per-session display or filter policy.
 func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
 	receiverMinObservationCount := 0
@@ -171,8 +172,8 @@ func (p *Predictor) PredictWithMinObservationCount(userCell, dxCell CellID, user
 }
 
 // PredictBeaconReceiveOnlyWithMinObservationCount returns a beacon path glyph
-// from the DX-to-user receive leg only. The supplied floor can raise the raw
-// observation requirement, while receiver diversity remains derived from the
+// from the DX-to-user receive leg only. The supplied floor can raise recent
+// report support, while receiver diversity remains derived from the
 // beacon configured floor.
 func (p *Predictor) PredictBeaconReceiveOnlyWithMinObservationCount(userCell, dxCell CellID, userCoarse, dxCoarse CellID, band string, mode string, noisePenalty float64, minObservationCount int, now time.Time) Result {
 	if p == nil {
@@ -209,6 +210,7 @@ func (p *Predictor) predictWithSelectedEvidence(userCell, dxCell CellID, userCoa
 			ObservedSamplingUnix:          sample.SamplingUnix,
 			HasObservedSamplingTime:       sample.HasSamplingTime,
 			ObservedDistributionAvailable: hasP50,
+			ObservedRecentSupport:         sample.RecentSupport,
 			Weight:                        sample.Weight,
 			AgeSec:                        sample.AgeSec,
 			Count:                         sample.Count,
@@ -239,6 +241,7 @@ func (p *Predictor) predictWithSelectedEvidence(userCell, dxCell CellID, userCoa
 			ObservedSamplingUnix:          sample.SamplingUnix,
 			HasObservedSamplingTime:       sample.HasSamplingTime,
 			ObservedDistributionAvailable: hasP50,
+			ObservedRecentSupport:         sample.RecentSupport,
 			Weight:                        sample.Weight,
 			AgeSec:                        sample.AgeSec,
 			Count:                         sample.Count,
@@ -261,8 +264,10 @@ func (p *Predictor) predictWithSelectedEvidence(userCell, dxCell CellID, userCoa
 	if minObservationCount < receiverMinObservationCount {
 		minObservationCount = receiverMinObservationCount
 	}
-	capWouldBlock := p.capWouldBlock(merged.Sample, receiverMinObservationCount)
-	countOK := countMeetsMinimum(sampleObservationCount(merged.Sample), minObservationCount)
+	// Shadow describes gates on a selected population, not absent/all-stale
+	// diagnostic counts. It does not simulate an alternative capped median.
+	capWouldBlock := ok && p.capWouldBlock(merged.Sample, minObservationCount, receiverMinObservationCount)
+	countOK := merged.RecentSupport.meetsMinimum(minObservationCount)
 	receiverOK := p.receiverGateMeetsMinimum(merged.Sample, receiverMinObservationCount)
 	if ok && merged.Weight >= p.cfg.MinEffectiveWeight && countOK && receiverOK && merged.HasP50 {
 		return makeResult(merged.Sample, merged.P50DB, merged.HasP50, source, capWouldBlock)
@@ -287,10 +292,6 @@ func (p *Predictor) predictWithSelectedEvidence(userCell, dxCell CellID, userCoa
 	return makeInsufficient(merged.Sample, merged.P50DB, merged.HasP50, reason, capWouldBlock)
 }
 
-func countMeetsMinimum(count uint32, min int) bool {
-	return min <= 0 || uint64(count) >= uint64(min)
-}
-
 func (p *Predictor) receiverGateMeetsMinimum(sample Sample, minObservationCount int) bool {
 	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionEnforce {
 		return true
@@ -310,18 +311,21 @@ func requiredReceiverCount(minObservationCount int, maxEffectiveCount uint32, ca
 	if minObservationCount <= 0 || maxEffectiveCount == 0 || capacity == 0 {
 		return 0
 	}
-	required := uint32((uint64(minObservationCount) + uint64(maxEffectiveCount) - 1) / uint64(maxEffectiveCount))
-	if required > capacity {
+	required := (uint64(minObservationCount) + uint64(maxEffectiveCount) - 1) / uint64(maxEffectiveCount)
+	if required > uint64(capacity) {
 		return capacity
 	}
-	return required
+	return uint32(required)
 }
 
-func (p *Predictor) capWouldBlock(sample Sample, minObservationCount int) bool {
-	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionShadow || !sample.CapLimited {
+func (p *Predictor) capWouldBlock(sample Sample, minObservationCount, receiverMinObservationCount int) bool {
+	if p == nil || p.cfg.ReceiverContributionMode != ReceiverContributionShadow {
 		return false
 	}
-	required := p.requiredReceiverCount(sample, minObservationCount)
+	if !sample.RecentSupport.AdmittedAvailable || !reportUnitsMeetMinimum(sample.RecentSupport.Admitted, minObservationCount) {
+		return true
+	}
+	required := p.requiredReceiverCount(sample, receiverMinObservationCount)
 	if required > 0 && sample.CappedReceiverCount < required {
 		return true
 	}
@@ -329,16 +333,18 @@ func (p *Predictor) capWouldBlock(sample Sample, minObservationCount int) bool {
 }
 
 func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
+	support := mergeReportSupport(receive.RecentSupport, transmit.RecentSupport, cfg.ReceiverContributionMode)
 	hasReceive := sampleHasEvidence(receive)
 	hasTransmit := sampleHasEvidence(transmit)
 	if !hasReceive && !hasTransmit {
-		return sampleWithSamplingTime(Sample{}, receive, transmit), false
+		return sampleWithSamplingTime(Sample{RecentSupport: support}, receive, transmit), false
 	}
 	receiveActive := receive.Weight > 0
 	transmitActive := transmit.Weight > 0
 	if receiveActive && transmitActive {
 		mergedWeight := cfg.MergeReceiveWeight*receive.Weight + cfg.MergeTransmitWeight*transmit.Weight
 		return sampleWithSamplingTime(Sample{
+			RecentSupport:          support,
 			Weight:                 mergedWeight,
 			AgeSec:                 weightedSampleAge(receive, transmit),
 			Count:                  saturatingAddCounts(receive.Count, transmit.Count),
@@ -359,6 +365,7 @@ func mergeSamples(receive Sample, transmit Sample, cfg Config) (Sample, bool) {
 		return singleDirectionMerge(transmit, receive, cfg), true
 	}
 	return sampleWithSamplingTime(Sample{
+		RecentSupport:          support,
 		AgeSec:                 maxSampleAge(receive, transmit),
 		Count:                  saturatingAddCounts(receive.Count, transmit.Count),
 		ObservationCount:       saturatingAddCounts(sampleObservationCount(receive), sampleObservationCount(transmit)),
@@ -419,6 +426,7 @@ func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBin
 }
 
 func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
+	active.RecentSupport = mergeReportSupport(active.RecentSupport, other.RecentSupport, cfg.ReceiverContributionMode)
 	rawWeight := sampleRawWeight(active)
 	cappedWeight := sampleCappedWeight(active)
 	active.Weight *= cfg.ReverseHintDiscount
@@ -532,19 +540,29 @@ func (p *Predictor) selectedFromStore(store *Store, userCell, dxCell CellID, use
 		merged.RawCount = selected.staleCounts.raw
 		merged.ObservationCount = selected.staleCounts.observations
 		merged.CappedCount = selected.staleCounts.capped
+		merged.RecentSupport = selected.staleCounts.recent
 	}
+	// Mode provenance is known even for explicit zero/absent evidence. It never
+	// follows positive quantities or legacy integer fallback rules.
+	merged.RecentSupport.AdmittedAvailable = p.cfg.ReceiverContributionMode != ReceiverContributionOff
+	merged.RecentSupport.Enforced = p.cfg.ReceiverContributionMode == ReceiverContributionEnforce
 	return merged, reason, ok
 }
 
 // staleSampleCounts preserves separate diagnostics only when all selected
 // evidence is dropped. Stale counts never enter a surviving sample's floor.
-type staleSampleCounts struct{ active, raw, observations, capped uint32 }
+type staleSampleCounts struct {
+	active, raw, observations, capped uint32
+	recent                            ReportSupport
+}
 
 func (counts *staleSampleCounts) add(sample Sample) {
 	counts.active = saturatingAddCounts(counts.active, sample.Count)
 	counts.raw = saturatingAddCounts(counts.raw, sampleRawCount(sample))
 	counts.observations = saturatingAddCounts(counts.observations, sampleObservationCount(sample))
 	counts.capped = saturatingAddCounts(counts.capped, sampleCappedCount(sample))
+	counts.recent.RawUsable += sample.RecentSupport.RawUsable
+	counts.recent.Admitted += sample.RecentSupport.Admitted
 }
 
 func (p *Predictor) maxPredictionAgeSeconds(store *Store, band string) int64 {

@@ -146,14 +146,18 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
 
 6. **Apply receiver contribution caps**: The cluster tracks a bounded set of
    receiver identities per bucket. In `enforce` mode, receiver diversity and
-   capped weight gate the path class separately from the raw observation floor.
+   capped weight gate the path class separately from recent report support.
+   A tracked receiver needs at least one accepted aged report unit; combine
+   its units across distinct selected populations before that test.
    Old capped receiver evidence decays on the same clock as signal weight, so
    newer evidence can replace it. If an operator switches to `shadow`, the
    displayed glyph uses raw evidence while diagnostics and logs show where the
    capped evidence would have been stricter.
 
-7. **Check evidence floor**: If the raw selected observation count is below the
-   cluster minimum, the system shows a space (insufficient data). Users can make
+7. **Check evidence floor**: Use recent usable report units in off/shadow,
+   and recent cap-admitted units in enforce. Aging and cap fractions reduce units;
+   signal display weights do not. Compare without integer rounding. Below the
+   effective minimum, the system shows a space (insufficient data). Users can make
    their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower the
    cluster default. Five-minute propagation logs report this as `low_count`.
 
@@ -338,7 +342,8 @@ It's giving you a statistical estimate based on what thousands of other stations
 **New paths take time**: If a band just opened to a new area, there might not be data yet. A space character doesn't mean the path is bad - it means the prediction system is still learning.
 
 **You can require more samples**: `SET PATHSAMPLES 30` makes your session wait
-for at least 30 selected observations before showing a path tag. Use
+for at least 30 recent report units before showing a path tag. 21 fresh unit
+reports become 10.5 after one half-life. Lifetime raw counts remain diagnostics. Use
 `SET PATHSAMPLES DEFAULT` to return to the cluster default.
 
 **One receiver cannot carry a bucket by itself**: receiver contribution caps
@@ -351,12 +356,12 @@ current runtime.
 
 **Beacon RX-only paths**: The existing beacon flag covers source
 class beacons, `/B` calls, known beacon calls, and beacon comment keywords.
-Their default raw observation floor is `beacon_min_observation_count`, currently
+Their default recent report-support floor is `beacon_min_observation_count`, currently
 11, with receiver diversity derived from that floor and the receiver cap.
 
 **Sparse VOACAP suffixes**: `SET DIAG PATH` may append a `v*` suffix to an
-insufficient sparse/no-p50 diagnostic, such as `n0|none|vdly` or
-`n2|lown|vrel`. The suffix explains whether VOACAP was queued, delayed,
+insufficient sparse/no-p50 diagnostic, such as `n0/u0|none|vdly` or
+`n2/u2|lown|vrel`. The suffix explains whether VOACAP was queued, delayed,
 inflight, invalid by band/grid/cell reason, missing SSN, missing the current
 hour, queue-full, not running, disabled, unavailable, blocked by REL/tier
 guards, or usable but not closed.
@@ -386,7 +391,7 @@ The system is highly configurable (see [path_reliability.yaml](path_reliability.
 - **Freshness gate**: Maximum selected evidence age as a multiple of band half-life
 - **Noise penalties**: receive-side dB adjustments per environment type
 - **Mode thresholds**: What signal strength qualifies as high/medium/low for each mode
-- **Minimum observation count**: How many raw selected observations are needed before showing a prediction; receiver diversity is checked separately when receiver caps are enforced
+- **Minimum observation count**: How much recent usable/admitted report evidence is needed before showing a prediction; receiver diversity is checked separately when receiver caps are enforced
 - **Minimum weight**: How much data is needed before showing a prediction
 - **Receiver contribution caps**: Whether capped receiver evidence is off, shadowed, or enforced, how many receiver slots are tracked in fine/coarse buckets, and how many decayed effective observations one receiver can contribute per bucket
 

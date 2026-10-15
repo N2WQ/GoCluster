@@ -214,7 +214,7 @@ Log in with your callsign. Useful first commands:
 - `RESUME`: end the read pause and resume live spots immediately.
 - `SET GRID <grid>`: set your 4 or 6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
-- `SET PATHSAMPLES <count|DEFAULT>`: require more path samples than the cluster default, or clear your personal override.
+- `SET PATHSAMPLES <count|DEFAULT>`: require more recent report units than the cluster default, or clear your personal override.
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: choose an aligned cadence for active solar summaries,
   or stop them. Quiet conditions produce no tick message. Disabled nodes retain
@@ -593,7 +593,7 @@ The compact format omits the path class glyph because the normal path
 column already shows it when path display is enabled:
 
 ```text
-n<count>|w<weight>|a<age>
+n<count>/u<units>|w<weight>|a<age>
 ```
 
 When receiver contribution caps reduce the diagnostic evidence, raw selected
@@ -601,15 +601,22 @@ count is shown first, capped effective count is shown after `/c`, and live
 attributed receivers are shown after `/rx`:
 
 ```text
-n<raw>/c<capped>/rx<receivers>|w<weight>|a<age>
+n<raw>/u<units>/c<capped>/rx<receivers>|w<weight>|a<age>
 ```
 
 Insufficient evidence is shown as:
 
 ```text
-n<count>|<reason>
-n<count>|<reason>|v<voacap-reason>
+n<count>/u<units>|<reason>
+n<count>/u<units>|<reason>|v<voacap-reason>
+n<raw>/u<units>|<reason>/c<capped>/rx<receivers>
 ```
+
+Recent support and the insufficient-evidence reason precede optional cap
+details. The 78-column spot line can clip later diagnostic text, especially
+when a signal report or the beacon prefix also uses comment space.
+For example, an FT8 report of -10 dB can leave only `n21/u10.5|lo`, or
+`brx|n11/u5.5` for a beacon; the complete reason remains in the prediction.
 
 VOACAP fallback results are shown as:
 
@@ -624,12 +631,18 @@ Beacon RX-only decisions add `brx|` to bucket diagnostics. Beacon VOACAP
 fallback uses the same compact shapes with `bvcap`, `bvaln`, `bvup`, or `bvop`
 prefixes.
 
-- `n<count>` is the raw selected observation count behind the displayed path
-  decision in every receiver-cap mode. It is a sample-size clue, not a
-  confidence percent.
-- `n<raw>/c<capped>/rx<receivers>` means receiver contribution caps reduced
-  the diagnostic evidence. The raw count is the sample floor; the capped count,
-  receiver count, and capped weight explain receiver-cap trust evidence.
+- `n<count>` is the selected lifetime raw report diagnostic, including
+  numerically unusable and cap-rejected reports. It does not fund the floor.
+- `/u<units>` is recent usable report support in off/shadow, or cap-admitted
+  support in enforce. It is rounded to tenths for display only. Qualification
+  uses unrounded units before directional weights or discounts. Twenty-one
+  fresh unit reports meet a floor of 21; after one half-life 10.5 do not.
+  These units measure volume and aging, not independent samples or confidence.
+- `/c<capped>/rx<receivers>` means receiver contribution caps reduced
+  the diagnostic evidence. These legacy integers retain their meanings; `/u`
+  supplies recent support. Each tracked receiver needs at least one accepted
+  aged unit; the same identity's units combine across distinct populations
+  before that test, and a shared bucket is counted once.
 - `w<weight>` is the rounded effective weight after decay and path selection.
   Fine and coarse evidence are selected at one common resolution and never
   added. Shared regional evidence receives one ordinary single-direction
@@ -683,9 +696,8 @@ prefixes.
   equivalent beacon VOACAP fallback diagnostics; their SNR and REL fields are
   receive-leg values, not bidirectional effective values.
 - `none` means no usable selected sample existed.
-- `lown` means selected samples existed, but their observation count was below
-  the configured minimum.
-- `lowr` means raw selected observations met the count floor, but receiver
+- `lown` means selected recent report support was below the effective minimum.
+- `lowr` means recent report units met the support floor, but receiver
   diversity was below the derived receiver gate.
 - `loww` means selected samples existed, but their effective weight was below
   the configured minimum.
@@ -703,7 +715,7 @@ prefixes.
 
 The five-minute `Path predictions (5m)` propagation log uses the same reason
 split: `no_sample`, `low_count`, `low_receiver`, `low_weight`, and `stale`.
-`low_count` is the raw observation-count gate; `low_receiver` is the
+`low_count` is the recent report-support gate; `low_receiver` is the
 receiver-diversity gate; `low_weight` is the decayed effective-weight gate; and
 `stale` describes an excluded stale direction from the selected common layer.
 A fresh fine hint is allowed only after all coarse candidates are unavailable.
@@ -766,17 +778,17 @@ bucket results, and SNR plus selected UTC hour for VOACAP fallback results.
 
 Example readings:
 
-- `n18|w7`: 18 selected observations, rounded effective weight 7.
-- `n0|none`: no usable selected sample.
-- `n3|lown`: three selected observations existed, but not enough to emit a
-  path class.
-- `n0|none|vdly`: no usable selected path sample, and VOACAP is still in its
+- `n18/u12.5|w7`: 18 lifetime reports, 12.5 recent units, rounded weight 7.
+- `n0/u0|none`: no usable selected sample.
+- `n21/u10.5|lown`: 21 lifetime reports aged to 10.5 recent units, below 21.
+- `n0/u0|none|vdly`: no usable selected path sample, and VOACAP is still in its
   configured delay window.
-- `n2|lown|vrel`: very sparse p50 existed, VOACAP had a usable open forecast,
+- `n2/u2|lown|vrel`: very sparse p50 existed, VOACAP had a usable open forecast,
   but the REL or one-tier guard blocked an open fallback glyph.
-- `n19/c5/rx1|lowr`: nineteen raw observations existed, but only one
-  attributed receiver contributed capped evidence.
-- `n19/c5/rx1|w3`: receiver caps reduced diagnostic evidence; raw count is
+- `n19/u5|lown/c5/rx1`: 19 raw reports existed, but only 5 recent admitted
+  units remain. The recent count fails before the separate receiver gate.
+- `n19/u19/c5/rx1|w3`: shadow uses 19 recent raw units; caps reduced diagnostic
+  evidence. Lifetime raw count is
   shown first, capped effective count after `/c`, and attributed receiver count
   after `/rx`.
 - `vcap|-34|h20|s112`: VOACAP fallback selected the 20:00 UTC forecast record,

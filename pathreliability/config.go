@@ -27,8 +27,8 @@ type Config struct {
 	StaleAfterHalfLifeMultiplier       float64                    `yaml:"stale_after_half_life_multiplier"`        // stale = k * half-life (per band)
 	MaxPredictionAgeHalfLifeMultiplier float64                    `yaml:"max_prediction_age_half_life_multiplier"` // prediction age gate = k * half-life; 0 disables
 	MinEffectiveWeight                 float64                    `yaml:"min_effective_weight"`                    // minimum decayed weight to report
-	MinObservationCount                int                        `yaml:"min_observation_count"`                   // minimum raw selected observations to report
-	BeaconMinObservationCount          int                        `yaml:"beacon_min_observation_count"`            // minimum raw receive-leg observations for beacon paths
+	MinObservationCount                int                        `yaml:"min_observation_count"`                   // minimum recent usable/admitted report units
+	BeaconMinObservationCount          int                        `yaml:"beacon_min_observation_count"`            // minimum recent receive-leg report units for beacons
 	ReceiverContributionMode           string                     `yaml:"receiver_contribution_mode"`              // off, shadow, or enforce receiver contribution caps
 	ReceiverFineSlots                  int                        `yaml:"receiver_fine_slots"`                     // tracked receiver slots in fine buckets
 	ReceiverCoarseSlots                int                        `yaml:"receiver_coarse_slots"`                   // tracked receiver slots in coarse buckets

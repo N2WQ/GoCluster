@@ -11,6 +11,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0099 | Global Heap Counter Observers | Monitoring | 2026-10-15 | S7 retained heap, asynchronous runtime activity, unattributed update allocation | ADR-0309 | `docs/troubleshooting/TSR-0099-global-heap-counter-observers.md` |
 | TSR-0098 | Benchmark Completion Evidence | Resolved | 2026-10-15 | chatty Go benchmark output, native empty output, frozen observation adoption | none | `docs/troubleshooting/TSR-0098-benchmark-completion-evidence.md` |
 | TSR-0097 | Path Sharding Measurement Clock | Monitoring | 2026-10-15 | Windows QPC observer cost, benchmark lifetime, repeatability, owner-accepted S4 performance exception | ADR-0306 | `docs/troubleshooting/TSR-0097-path-sharding-measurement-clock.md` |
 | TSR-0096 | JSON Forecast Payload Retention | Resolved | 2026-10-14 | decoded slice capacity, live-cache retained heap, paired memory oracle | ADR-0304 | `docs/troubleshooting/TSR-0096-json-forecast-payload-retention.md` |

@@ -234,8 +234,8 @@ func TestObservationAccountingCommonTimeAndCopiedCoarseSlots(t *testing.T) {
 	clear(accountingBucket(store, true).extraSlots.slots[:])
 	store.shardForKey(key).mu.Unlock()
 	sample := store.evaluateCapture(&capture, 10, 20, 12, sampleQuantile)
-	if sample.CappedReceiverCount != 12 {
-		t.Fatalf("capture retained mutable pointer: receivers=%d", sample.CappedReceiverCount)
+	if sample.CappedReceiverCount != 11 || sample.RecentSupport.Admitted != 11.25 || sample.RecentSupport.RawUsable != 11.25 {
+		t.Fatalf("capture retained mutable pointer or qualified aged quarter-unit receiver: %+v", sample.Sample)
 	}
 }
 
@@ -270,8 +270,8 @@ func TestObservationAccountingConcurrentPopulatedCoarseSlots(t *testing.T) {
 }
 
 func TestObservationAccountingRetainedBucketBound(t *testing.T) {
-	if got := unsafe.Sizeof(bucket{}); got != 448 {
-		t.Fatalf("logical bucket size=%d, want approved 448", got)
+	if got := unsafe.Sizeof(bucket{}); got != 456 {
+		t.Fatalf("logical bucket size=%d, want approved 456", got)
 	}
 	if got := unsafe.Sizeof(bucketExtraState{}); got != 8 {
 		t.Fatalf("sidecar owner grew=%d", got)

@@ -344,7 +344,10 @@ func TestPredictStaleEvidenceInsufficient(t *testing.T) {
 	dxCoarse := EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
+	// Fund recent support through three half-lives to isolate freshness.
+	for range 8 {
+		predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
+	}
 
 	fresh := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now.Add(10*time.Second))
 	if fresh.Source != SourceCombined {
@@ -378,7 +381,10 @@ func TestPredictMaxAgeMultiplierZeroPreservesOldBehavior(t *testing.T) {
 	dxCoarse := EncodeCoarseCell("FN32")
 	now := time.Now().UTC()
 
-	predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 10, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
+	// Fund recent support through three half-lives to isolate freshness.
+	for range 8 {
+		predictor.Update(BucketCombined, userCell, dxCell, userCoarse, dxCoarse, "20m", 25, 1, ObservationTimes{ObservedAt: now, ArrivedAt: now}, false)
+	}
 
 	res := predictor.Predict(userCell, dxCell, userCoarse, dxCoarse, "20m", "FT8", 0, now.Add(30*time.Second))
 	if res.Source != SourceCombined {

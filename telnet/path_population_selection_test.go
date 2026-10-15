@@ -62,7 +62,7 @@ func TestS6PopulationSelectionDisplayFilterAndDiag(t *testing.T) {
 				t.Fatalf("regional consumer result: %+v", got)
 			}
 			line := s.formatSpotEnvelopeForClient(c, env)
-			if len(strings.TrimRight(line, "\r\n")) != 78 || !strings.Contains(line, "n37|") {
+			if len(strings.TrimRight(line, "\r\n")) != 78 || !strings.Contains(line, "n37/u37|") {
 				t.Fatalf("regional DIAG or fixed width changed: %q", line)
 			}
 			c.filter.SetPathClass(filter.PathClassLow, false)

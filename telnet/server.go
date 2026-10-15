@@ -4527,6 +4527,7 @@ func withObservedSampling(base, replacement pathreliability.Result) pathreliabil
 	replacement.ObservedSamplingUnix = base.ObservedSamplingUnix
 	replacement.HasObservedSamplingTime = base.HasObservedSamplingTime
 	replacement.ObservedDistributionAvailable = base.ObservedDistributionAvailable
+	replacement.ObservedRecentSupport = base.ObservedRecentSupport
 	return replacement
 }
 
@@ -4987,7 +4988,9 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	count := diagPathCountToken(res)
 	if res.Source == pathreliability.SourceInsufficient {
 		reason := diagPathInsufficientReason(res.InsufficientReason)
-		tag := count + "|" + reason
+		// Keep the floor's recent units and reason ahead of optional cap detail
+		// when the fixed 78-column wire budget truncates a long beacon tag.
+		tag := count + "|" + reason + diagPathCapToken(res)
 		if suffix := diagSparseVOACAPTraceSuffix(prediction.sparseVOACAPTrace); suffix != "" {
 			tag += "|" + suffix
 		}
@@ -5039,7 +5042,7 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		weightValue = res.CappedWeight
 	}
 	weight := strconv.FormatInt(int64(math.Round(weightValue)), 10)
-	tag := count + "|w" + weight + "|a" + diagAgeToken(res.AgeSec)
+	tag := count + diagPathCapToken(res) + "|w" + weight + "|a" + diagAgeToken(res.AgeSec)
 	if res.BeaconRX {
 		return "brx|" + tag
 	}
@@ -5164,22 +5167,35 @@ func diagFractionPercent(value float64) int {
 }
 
 func diagPathCountToken(res pathreliability.Result) string {
-	if res.CapLimited {
-		count := res.ObservationCount
-		if count == 0 {
-			count = res.RawCount
-		}
-		token := "n" + strconv.FormatUint(uint64(count), 10) + "/c" + strconv.FormatUint(uint64(res.CappedCount), 10)
-		if res.ReceiverRequired > 0 {
-			token += "/rx" + strconv.FormatUint(uint64(res.ReceiverCount), 10)
-		}
-		return token
-	}
 	count := res.ObservationCount
 	if count == 0 {
 		count = res.Count
 	}
-	return "n" + strconv.FormatUint(uint64(count), 10)
+	token := "n" + strconv.FormatUint(uint64(count), 10)
+	if res.CapLimited {
+		count = res.ObservationCount
+		if count == 0 {
+			count = res.RawCount
+		}
+		token = "n" + strconv.FormatUint(uint64(count), 10)
+	}
+	units, available := res.ObservedRecentSupport.ActiveUnits()
+	if !available || units < 0 || math.IsNaN(units) || math.IsInf(units, 0) {
+		return token + "/u?"
+	}
+	// Display rounding follows qualification; this token never feeds a gate.
+	return token + "/u" + strings.TrimSuffix(strconv.FormatFloat(units, 'f', 1, 64), ".0")
+}
+
+func diagPathCapToken(res pathreliability.Result) string {
+	if !res.CapLimited {
+		return ""
+	}
+	token := "/c" + strconv.FormatUint(uint64(res.CappedCount), 10)
+	if res.ReceiverRequired > 0 {
+		token += "/rx" + strconv.FormatUint(uint64(res.ReceiverCount), 10)
+	}
+	return token
 }
 
 func diagModeTag(sp *spot.Spot) string {

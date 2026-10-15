@@ -79,3 +79,9 @@ Timing and allocation guards remain required; S4's exception does not cover S6.
 - Supersedes ADR-0170 fine/coarse scalar, histogram-blend and selected-age
   semantics. Complements ADR-0131/0301 histogram semantics and refines physical
   identity counting under ADR-0134.
+
+## Later support qualification
+
+[ADR-0309](ADR-0309-recent-report-support-and-receiver-units.md) replaces this
+slice's temporary epsilon-OR receiver qualification with accepted report units.
+Physical identity, common resolution and SNR selection remain in force.

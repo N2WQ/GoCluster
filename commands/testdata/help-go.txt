@@ -153,7 +153,7 @@ Preferences and propagation:
   SET GRID               Set your Maidenhead grid square.
   SET NOISE              Set your receiving noise environment.
   SHOW PROP              Show an outlook to a callsign, prefix or grid.
-  SET PATHSAMPLES        Set the minimum observations for path estimates.
+  SET PATHSAMPLES        Set the minimum recent report units for paths.
   SHOW DEDUPE            Show duplicate-spot suppression settings.
   SET DEDUPE             Choose FAST, MED or SLOW duplicate suppression.
   SET SOLAR              Set the cadence for active solar summaries.

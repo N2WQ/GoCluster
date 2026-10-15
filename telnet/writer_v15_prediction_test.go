@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dxcluster/filter"
+	"dxcluster/pathreliability"
 )
 
 func TestWriterV15PredictionStateAndAge(t *testing.T) {
@@ -49,6 +50,12 @@ func TestWriterV15PredictionStateAndAge(t *testing.T) {
 func writerV15PredictionFixture(t *testing.T, age time.Duration, noiseChange bool) (*Server, *Client, *spotEnvelope, *countingPathClosedFallback) {
 	t.Helper()
 	server, client, sp, fallback := newPathPredictionReuseFixture(t, 1, true, true)
+	// Two reports from the same receiver keep this reuse fixture above both
+	// recent one-unit gates after its deliberately advanced writer clock.
+	at := server.now()
+	server.pathPredictor.UpdateWithReceiverHash(pathreliability.BucketCombined, client.gridCell, pathreliability.CellID(sp.DXCellID),
+		pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1,
+		pathreliability.ObservationTimes{ObservedAt: at, ArrivedAt: at}, false, 1)
 	sp.Time = time.Date(2026, time.October, 2, 12, 34, 0, 0, time.UTC)
 	client.filter.SetPathClass(filter.PathClassHigh, true)
 	env := deliverPathPredictionReuseSpot(t, server, client, sp)

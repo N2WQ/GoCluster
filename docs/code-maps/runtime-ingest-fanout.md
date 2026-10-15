@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `3f7aae58d5dd1203`
+- Source fingerprint: `a289f6a26e36cb35`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 31 | 139 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 63 |
-| `dxcluster/telnet` | `telnet` | 48 | 103 |
+| `dxcluster/telnet` | `telnet` | 48 | 106 |
 
 ## In-Scope Package Edges
 
@@ -726,7 +726,10 @@ Test files:
 - `telnet/mode_delta_test.go`
 - `telnet/nearby_endpoint_test.go`
 - `telnet/nofilter_nearby_test.go`
+- `telnet/path_first_wave_comparison_test.go`
 - `telnet/path_population_selection_test.go`
+- `telnet/path_recent_support_provenance_test.go`
+- `telnet/path_recent_support_test.go`
 - `telnet/path_settings_test.go`
 - `telnet/path_sharding_wire_test.go`
 - `telnet/path_timestamp_provenance_test.go`
@@ -772,6 +775,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0309](docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md) | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | `path:telnet` |
 | [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:telnet` |
 | [ADR-0307](docs/decisions/ADR-0307-pskreporter-report-presence.md) | Accepted | 2026-10-15 | present zero admission, ordinary and path-only routes | `path:internal/cluster, path:telnet` |
 | [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:internal/cluster, path:telnet` |
@@ -870,7 +874,7 @@ Test files:
 | [ADR-0137](docs/decisions/ADR-0137-prod-user-dedupe-slow-bulk-update.md) | Accepted | 2026-05-25 | user records, dedupe, operations | `path:telnet` |
 | [ADR-0136](docs/decisions/ADR-0136-custom-scp-test-time-fixtures.md) | Accepted | 2026-05-23 | spot, custom_scp, tests | `area:spot, path:spot` |
 | [ADR-0135](docs/decisions/ADR-0135-path-cap8-enforcement-and-shadow-candidate-retirement.md) | Accepted | 2026-05-11 | pathreliability, config, retained state, propagation logs, reports | `path:telnet` |
-| [ADR-0134](docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md) | Accepted | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | `area:telnet, path:telnet` |
+| [ADR-0134](docs/decisions/ADR-0134-path-observation-floor-and-receiver-diversity-gate.md) | Superseded | 2026-05-11 | pathreliability, config, telnet diagnostics, propagation logs | `area:telnet, path:telnet` |
 | [ADR-0133](docs/decisions/ADR-0133-path-receiver-cap-p50-shadow-histograms.md) | Superseded | 2026-05-11 | pathreliability, config, propagation logs, reports | `path:telnet` |
 | [ADR-0132](docs/decisions/ADR-0132-path-receiver-cap-shadow-candidates.md) | Superseded | 2026-05-10 | pathreliability, config, propagation logs, reports | `path:telnet` |
 | [ADR-0131](docs/decisions/ADR-0131-path-p50-midpoint-and-even-split-semantics.md) | Accepted | 2026-05-10 | pathreliability, telnet display, PATH filters | `area:telnet` |

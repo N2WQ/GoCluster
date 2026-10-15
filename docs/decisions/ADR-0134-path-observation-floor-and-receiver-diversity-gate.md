@@ -1,6 +1,6 @@
 # ADR-0134: Path Observation Floor And Receiver Diversity Gate
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-05-11
 - Decision Origin: Troubleshooting chat
 
@@ -93,5 +93,6 @@ Expose receiver-diversity failures separately:
 ## Later identity decision
 
 [ADR-0308](ADR-0308-path-population-identity.md) defines physical population
-selection and unique receiver identity counting. This record's observation-floor
-and configured receiver-requirement policy remains in force until S7.
+selection and unique receiver identity counting. [ADR-0309](ADR-0309-recent-report-support-and-receiver-units.md) replaces this
+record's lifetime-floor policy and receiver qualification. It retains the
+separate configured receiver requirement and stricter user-floor relationship.

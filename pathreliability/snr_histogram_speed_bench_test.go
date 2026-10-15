@@ -205,7 +205,7 @@ func medianSpeedRuntimeGuard(tb testing.TB, fixture *accountingRuntimeFixture, q
 	if fixture.predictor.cfg.ReceiverContributionMode == ReceiverContributionOff {
 		wantSidecars = 0
 	}
-	if buckets != 4*len(fixture.paths) || sidecars != wantSidecars || unsafe.Sizeof(bucket{}) != 448 {
+	if buckets != 4*len(fixture.paths) || sidecars != wantSidecars || unsafe.Sizeof(bucket{}) != 456 {
 		tb.Fatalf("runtime retained owners=%d/%d want=%d/%d bucket=%d", buckets, sidecars, 4*len(fixture.paths), wantSidecars, unsafe.Sizeof(bucket{}))
 	}
 	seed := uint64(accountingRuntimeReceivers * accountingRuntimeSeedCount)

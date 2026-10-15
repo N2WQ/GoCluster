@@ -219,14 +219,16 @@ func TestExactP50ShippedPrediction(t *testing.T) {
 					if beacon {
 						result = p.PredictBeaconReceiveOnlyWithMinObservationCount(1, 2, 3, 4, "20m", "FT8", 0, cfg.BeaconMinObservationCount, query)
 					}
-					if result.Source != SourceCombined || !result.HasP50 || !result.ObservedDistributionAvailable || !result.HasObservedSamplingTime || result.ObservedSamplingUnix != query.Unix() || result.P50DB != -5.5 || result.Class != classHigh || result.RawCount != 113 {
+					// The reviewed tiny-mass vector still exposes the exact median, but
+					// four recent units no longer qualify via113 lifetime reports.
+					if result.Source != SourceInsufficient || result.InsufficientReason != InsufficientLowCount || !result.HasP50 || !result.ObservedDistributionAvailable || !result.HasObservedSamplingTime || result.ObservedSamplingUnix != query.Unix() || result.P50DB != -5.5 || result.P50Glyph != ">" || result.RawCount != 113 || result.ObservedRecentSupport.RawUsable != 4 {
 						t.Fatalf("shipped observed prediction=%+v", result)
 					}
 					wantRequired := uint32(3)
 					if beacon {
 						wantRequired = 2 // Shipped beacon floor 11 with count cap 8.
 					}
-					if mode == ReceiverContributionEnforce && (result.ReceiverCount != 3 || result.ReceiverRequired != wantRequired) {
+					if mode == ReceiverContributionEnforce && (result.ReceiverCount != 2 || result.ReceiverRequired != wantRequired) {
 						t.Fatalf("shipped receiver gates were bypassed: %+v", result)
 					}
 				})

@@ -244,12 +244,12 @@ func TestS6FreshnessAndStoreExpiryBoundaries(t *testing.T) {
 			cfg.MaxPredictionAgeHalfLifeMultiplier = tc.multiplier
 			p := NewPredictor(cfg, []string{"20m"})
 			s6PolicyReports(t, p, s6PolicyLayer(true, false), 3, 3, -11, 1, now)
-			s6PolicyReports(t, p, s6PolicyLayer(false, false), 1, 1, -20, 1, now.Add(-time.Duration(tc.age)*time.Second))
+			s6PolicyReports(t, p, s6PolicyLayer(false, false), 32, 6, -20, 1, now.Add(-time.Duration(tc.age)*time.Second))
 			got := s6PolicyPredict(p, s6PolicyQuery, 0, now, false)
 			if tc.wantCoarse {
 				// Independent half-life formula; age and lifetime count distinguish
 				// selecting aged coarse from returning the fresh fine distribution.
-				s6PolicyWant(t, got, -19.5, 0.5*math.Exp2(-float64(tc.age)/180), 1)
+				s6PolicyWant(t, got, -19.5, 16*math.Exp2(-float64(tc.age)/180), 32)
 				if got.AgeSec != int64(tc.age) {
 					t.Fatalf("age=%d, want %d", got.AgeSec, tc.age)
 				}
@@ -474,13 +474,15 @@ func TestS6RemovesLocalExtraEmphasis(t *testing.T) {
 				t.Fatalf("selected population counts: %+v", got)
 			}
 		})
-		t.Run(mode+"/lifetime_floor_survives_one_half_life_in_s6", func(t *testing.T) {
+		t.Run(mode+"/recent_floor_fails_after_one_half_life", func(t *testing.T) {
 			cfg, observed := s6PolicyConfig(mode), s6PolicyNow()
 			cfg.MinObservationCount = 21
 			p := NewPredictor(cfg, []string{"20m"})
 			s6PolicyReports(t, p, s6PolicyLayer(false, false), 21, 6, -11, 1, observed)
 			got := s6PolicyPredict(p, s6PolicyQuery, 0, observed.Add(180*time.Second), false)
-			s6PolicyWant(t, got, -10.5, 5.25, 21)
+			if got.Source != SourceInsufficient || got.InsufficientReason != InsufficientLowCount || !got.HasP50 || got.P50DB != -10.5 || got.Weight != 5.25 || got.ObservationCount != 21 || got.ObservedRecentSupport.RawUsable != 10.5 {
+				t.Fatalf("aged lifetime count funded a recent floor or lost diagnostics: %+v", got)
+			}
 			wantCount, wantCapped := uint32(21), uint32(10)
 			if mode == ReceiverContributionEnforce {
 				wantCount = 10
@@ -489,7 +491,7 @@ func TestS6RemovesLocalExtraEmphasis(t *testing.T) {
 				wantCapped = 21
 			}
 			if got.Count != wantCount || got.CappedCount != wantCapped {
-				t.Fatalf("S6 must retain lifetime qualification and existing capped rounding: %+v", got)
+				t.Fatalf("recent gate must preserve existing integer diagnostics: %+v", got)
 			}
 		})
 	}
@@ -505,8 +507,8 @@ func TestS6BeaconLayerSelectionAndIsolation(t *testing.T) {
 		wantCount          uint32
 	}{
 		{"fine_at_20", 20, 0, true, -16.5, 20, 20},
-		{"fine_below_20_coarse_fresh", 19, 0, true, -24, 6, 6},
-		{"coarse_540_fresh", 3, 540, true, -24, 0.75, 6},
+		{"fine_below_20_coarse_fresh", 19, 0, true, -24, 48, 48},
+		{"coarse_540_fresh", 3, 540, true, -24, 6, 48},
 		{"fine_hint_coarse_missing", 3, 0, false, -16.5, 3, 3},
 		{"fine_hint_coarse_541_stale", 3, 541, true, -16.5, 3, 3},
 	} {
@@ -514,7 +516,7 @@ func TestS6BeaconLayerSelectionAndIsolation(t *testing.T) {
 			p, now := NewPredictor(s6PolicyConfig(ReceiverContributionEnforce), []string{"20m"}), s6PolicyNow()
 			s6PolicyReports(t, p, s6PolicyLayer(true, false), tc.fine, 6, -11, 1, now)
 			if tc.coarse {
-				s6PolicyReports(t, p, s6PolicyLayer(false, false), 6, 6, -20, 1, now.Add(-time.Duration(tc.coarseAge)*time.Second))
+				s6PolicyReports(t, p, s6PolicyLayer(false, false), 48, 6, -20, 1, now.Add(-time.Duration(tc.coarseAge)*time.Second))
 			}
 			// Reverse evidence is stronger, corrupt and clock-ahead. Receive-only
 			// prediction must neither inspect its bins nor advance its reference.

@@ -63,13 +63,18 @@ func TestS6PopulationAllocationChild(t *testing.T) {
 	for _, control := range populationBenchControls() {
 		for _, mode := range []string{ReceiverContributionOff, ReceiverContributionShadow, ReceiverContributionEnforce} {
 			f := newPopulationBenchFixture(t, control, mode, "candidate")
+			wantSupport := ReportSupport{RawUsable: float64(f.want.ObservationCount),
+				AdmittedAvailable: mode != ReceiverContributionOff, Enforced: mode == ReceiverContributionEnforce}
+			if wantSupport.AdmittedAvailable {
+				wantSupport.Admitted = wantSupport.RawUsable // Every seeded report fully admits.
+			}
 			operations, usable := 0, true
 			allocations := testing.AllocsPerRun(1, func() {
 				for range 1000 {
 					if setting == "true" && operations == 1000 {
 						pathShardAllocationWitness = make([]byte, 64)
 					}
-					if got := f.predict(); got != f.want {
+					if got := f.predict(); populationBenchLegacyResult(got) != f.want || got.ObservedRecentSupport != wantSupport {
 						usable = false
 					}
 					operations++

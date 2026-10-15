@@ -27,7 +27,8 @@ current source/tests.
 - Receiver-cap capacity, decay, diversity gates, and cap-8 enforcement are in
   [ADR-0129](ADR-0129-path-receiver-capacity-and-enforcement.md),
   [ADR-0130](ADR-0130-path-receiver-cap-count-decay.md),
-  [ADR-0134](ADR-0134-path-observation-floor-and-receiver-diversity-gate.md),
+  [ADR-0309](ADR-0309-recent-report-support-and-receiver-units.md)
+  (supersedes ADR-0134),
   and
   [ADR-0135](ADR-0135-path-cap8-enforcement-and-shadow-candidate-retirement.md).
 - P50 midpoint and even-split display semantics are in
