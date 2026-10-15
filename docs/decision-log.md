@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0304 | Bounded Incremental Forecast Persistence | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | Refines ADR-0184/0191; retains ADR-0303 | none | `docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md` |
 | ADR-0303 | Deterministic Persisted Forecast Retention | Accepted | 2026-10-14 | VOACAP persistence, capacity ties, restart equivalence | Refines ADR-0184 capacity ordering | none | `docs/decisions/ADR-0303-deterministic-persisted-forecast-retention.md` |
 | ADR-0302 | Correction Evidence, Admission and License Authority | Accepted | 2026-10-14 | raw ambiguity, pending transitions, primary activity, frozen replay authority | Refines ADR-0021/0033/0254 | none | `docs/decisions/ADR-0302-correction-evidence-admission-and-license-authority.md` |
 | ADR-0301 | Exact Path Median and Snapshot Recovery | Accepted | 2026-10-13 | p50 precision, per-band modern log recovery | Refines ADR-0131/0300; retains ADR-0139 | none | `docs/decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md` |

@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `9616a5635e0478d3`
+- Source fingerprint: `2ac70eeac4df5643`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 23 | 35 |
+| `dxcluster/pathreliability` | `pathreliability` | 26 | 42 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -97,6 +97,9 @@ Source files:
 - `pathreliability/store.go`
 - `pathreliability/store_reporting.go`
 - `pathreliability/voacap_fallback.go`
+- `pathreliability/voacap_forecast_cache_index.go`
+- `pathreliability/voacap_forecast_cache_index_heap.go`
+- `pathreliability/voacap_forecast_cache_index_scan.go`
 - `pathreliability/voacap_forecast_cache_store.go`
 
 Test files:
@@ -132,8 +135,15 @@ Test files:
 - `pathreliability/store_reporting_test.go`
 - `pathreliability/test_helpers_test.go`
 - `pathreliability/timestamp_admission_bench_test.go`
+- `pathreliability/voacap_cache_index_test.go`
+- `pathreliability/voacap_cache_index_work_test.go`
+- `pathreliability/voacap_daily_retention_heap_test.go`
 - `pathreliability/voacap_fallback_test.go`
 - `pathreliability/voacap_forecast_cache_store_test.go`
+- `pathreliability/voacap_incremental_cache_lifecycle_test.go`
+- `pathreliability/voacap_incremental_cache_test.go`
+- `pathreliability/voacap_persistence_bench_test.go`
+- `pathreliability/voacap_persistence_heap_test.go`
 - `pathreliability/voacap_retention_test.go`
 
 ### `dxcluster/solarweather`
@@ -163,6 +173,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `area:internal/voacap, path:pathreliability` |
 | [ADR-0303](docs/decisions/ADR-0303-deterministic-persisted-forecast-retention.md) | Accepted | 2026-10-14 | VOACAP persistence, capacity ties, restart equivalence | `area:internal/voacap, path:pathreliability` |
 | [ADR-0301](docs/decisions/ADR-0301-exact-path-median-and-snapshot-recovery.md) | Accepted | 2026-10-13 | p50 precision, per-band modern log recovery | `path:pathreliability` |
 | [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:pathreliability` |

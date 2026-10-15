@@ -101,6 +101,13 @@ inspect user-visible diagnostics:
   generation when `tview-v2` is enabled. Its Path Predictions panel also shows
   `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)`
   from the existing fallback snapshot counters.
+  The separate `VOACAP disk index` line reports cached metadata `(M)`, retention `(R)` and
+  eligibility `(E)` index counts, with `ready` and `dirty`. Successful maintenance
+  makes these counts equal and bounded by `max_cache_entries`. `ready=false`
+  means uncertified bookkeeping, so zero counts do not prove an empty database.
+  `dirty=true` means a failed/uncertain disk operation needs recovery; inspect
+  forecast-cache warnings. `VOACAP disk index: n/a` means no store is attached. Snapshot reads
+  do not wait behind disk I/O. See ADR-0304.
 - Runtime VOACAP execution is Windows-only. On Linux and other non-Windows
   builds, startup logs that the VOACAP fallback is disabled; `SHOW PROP`
   reports that VOACAP fallback is disabled, sparse/no-p50 diagnostics can show
@@ -113,6 +120,12 @@ inspect user-visible diagnostics:
   Persisted capacity pruning retains newest storage timestamps, then lowest
   canonical cache keys for ties. Equal-time refreshes have no recency advantage;
   this does not change live-memory eviction.
+  Ordinary completion batches its replacement and actual removals atomically;
+  it maintains bounded indexes without scanning unrelated forecasts. Startup or
+  dirty-state recovery still scans disk with bounded candidates/prune batches.
+  Memory publication and waiter notification precede warning-only persistence;
+  shutdown waits for persistence. No schema migration or firewall change is
+  required.
 - `brx` diagnostics mean the spot was marked as a beacon and path prediction
   used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their SNR and REL fields are receive-leg

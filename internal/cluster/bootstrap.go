@@ -4537,8 +4537,9 @@ type voacapFallbackSnapshotProvider interface {
 }
 
 func formatPathLines(predictor *pathreliability.Predictor, voacapFallback voacapFallbackSnapshotProvider, _ time.Time) []string {
-	lines := make([]string, 0, 2)
+	lines := make([]string, 0, 3)
 	lines = append(lines, formatVOACAPCacheLine(voacapFallback))
+	lines = append(lines, formatVOACAPCacheIndexLine(voacapFallback))
 	if predictor == nil || !predictor.Config().Enabled {
 		lines = append(lines, "[yellow]H3 path pairs[-]: n/a")
 		return lines
@@ -4637,6 +4638,23 @@ func formatVOACAPCacheLine(provider voacapFallbackSnapshotProvider) string {
 		humanize.Comma(int64(snap.InflightEntries)),
 		humanize.Comma(int64(snap.QueueDepth)),
 	)
+}
+
+// Keep index diagnostics on their own line: the overview does not wrap text.
+func formatVOACAPCacheIndexLine(provider voacapFallbackSnapshotProvider) string {
+	if provider == nil {
+		return "[yellow]VOACAP disk index[-]: n/a"
+	}
+	snap := provider.Snapshot()
+	index := snap.ForecastCacheIndex
+	if !index.Attached {
+		return "[yellow]VOACAP disk index[-]: n/a"
+	}
+	return fmt.Sprintf("[yellow]VOACAP disk index[-]: %s/%s/%s (M/R/E) ready=%t dirty=%t",
+		humanize.Comma(int64(index.Entries)),
+		humanize.Comma(int64(index.RetentionEntries)),
+		humanize.Comma(int64(index.EligibilityEntries)),
+		index.Ready, index.Dirty)
 }
 
 func formatRecentSupportByBandLines(store spot.RecentSupportStore, now time.Time, maxBands int) []string {

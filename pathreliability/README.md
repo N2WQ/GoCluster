@@ -341,8 +341,15 @@ The local Overview page displays that current rounded generation as
 `VOACAP SSN: <integer|n/a>` when the interactive console is enabled.
 The Overview Path Predictions panel also displays
 `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)` using
-the existing in-memory fallback snapshot counters; it does not add a second
-cache or count distinct path pairs.
+the existing in-memory fallback snapshot counters. A separate `VOACAP disk index`
+line reports persisted-cache bookkeeping: metadata entries `(M)`, retention-heap entries `(R)`
+and eligibility-heap entries `(E)`, plus `ready` and `dirty`. The three counts
+converge to the same value, bounded by `max_cache_entries`, after a successful
+operation. These are cached index counts, not a scan of disk or distinct paths.
+`ready=false` means the database has not been certified; zero counts then do not
+mean the database is empty. `dirty=true` means a failed or uncertain operation
+requires recovery. `VOACAP disk index: n/a` means no store is attached. Reading the overview
+does not wait for persistence.
 On non-Windows builds those Overview VOACAP values stay `n/a` because the
 fallback provider is not started.
 Completed VOACAP hourly forecast-window records persist separately in the
@@ -356,6 +363,14 @@ When the persisted cache exceeds its capacity, it retains the newest storage
 timestamps. Equal timestamps retain the lowest canonical cache keys; refreshing
 an entry at the same timestamp gives it no extra retention priority. This
 ordering applies to disk pruning and restart hydration, not live-memory eviction.
+Ordinary completions maintain bounded metadata and two coupled indexed heaps;
+they do not decode or sort unrelated persisted forecasts. Startup, recovery,
+configuration/generation changes and backward clock movement rebuild from disk
+with capacity-bounded candidates and 256-key prune batches. Replacement and its
+ordinary removals share one atomic batch. Failed or uncertain disk operations discard
+index trust; the next operation repairs from actual disk contents. Live memory
+publication and waiter notification still precede warning-only persistence,
+and shutdown waits for persistence before closing the database. See ADR-0304.
 
 `SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
 VOACAP records directly as a point-to-point outlook from the user's grid to the

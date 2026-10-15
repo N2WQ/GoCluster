@@ -6,11 +6,9 @@
 package pathreliability
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +46,20 @@ type VOACAPForecastCacheStore struct {
 	path string
 	db   *pebble.DB
 	mu   sync.Mutex
+
+	// The disk mutex owns these bounded, payload-free indexes. A failed or
+	// uncertain write discards all derived state before the next operation.
+	index        map[string]*voacapForecastCacheIndexEntry
+	retention    voacapForecastCacheRetentionHeap
+	eligibility  voacapForecastCacheEligibilityHeap
+	indexContext voacapForecastCacheIndexContext
+	indexReady   bool
+	indexDirty   bool
+	faults       *voacapForecastCacheFaults
+
+	// Diagnostics never acquire mu or wait behind Pebble I/O.
+	indexStatsMu sync.RWMutex
+	indexStats   VOACAPForecastCacheIndexSnapshot
 }
 
 type voacapForecastCacheLoadedEntry struct {
@@ -97,7 +109,7 @@ func OpenVOACAPForecastCacheStore(path string) (*VOACAPForecastCacheStore, error
 	if err != nil {
 		return nil, fmt.Errorf("voacap forecast cache: open: %w", err)
 	}
-	return &VOACAPForecastCacheStore{path: path, db: db}, nil
+	return &VOACAPForecastCacheStore{path: path, db: db, indexStats: VOACAPForecastCacheIndexSnapshot{Attached: true}}, nil
 }
 
 func voacapForecastCacheOpenDirError(err error) error {
@@ -131,6 +143,7 @@ func (s *VOACAPForecastCacheStore) Close() error {
 	}
 	err := s.db.Close()
 	s.db = nil
+	s.clearIndexLocked(false)
 	return err
 }
 
@@ -163,82 +176,11 @@ func (s *VOACAPForecastCacheStore) storeForecast(key voacapCacheKey, entry voaca
 	if err != nil {
 		return fmt.Errorf("voacap forecast cache: encode: %w", err)
 	}
-	if err := s.db.Set(voacapForecastCacheKeyBytes(key), value, pebble.NoSync); err != nil {
-		return fmt.Errorf("voacap forecast cache: set: %w", err)
-	}
-	if _, _, err := s.scanCurrentLocked(now, key.ssn, cfg); err != nil {
-		return err
-	}
-	return nil
+	return s.storeIndexedForecastLocked(key, record, value, cfg, now)
 }
 
 func (s *VOACAPForecastCacheStore) scanCurrentLocked(now time.Time, currentSSN int, cfg VOACAPFallbackConfig) ([]voacapForecastCacheLoadedEntry, VOACAPForecastCacheRestoreStats, error) {
-	var stats VOACAPForecastCacheRestoreStats
-	if s == nil || s.db == nil {
-		return nil, stats, nil
-	}
-	iter, err := s.db.NewIter(&pebble.IterOptions{
-		LowerBound: []byte(voacapForecastCacheEntryKeyPrefix),
-		UpperBound: voacapForecastCacheEntryKeyUpperBound(),
-	})
-	if err != nil {
-		return nil, stats, fmt.Errorf("voacap forecast cache: iterator: %w", err)
-	}
-	defer iter.Close()
-
-	loaded := make([]voacapForecastCacheLoadedEntry, 0)
-	deleteKeys := make([][]byte, 0)
-	for iter.First(); iter.Valid(); iter.Next() {
-		dbKey := append([]byte(nil), iter.Key()...)
-		key, entry, reason := decodeCurrentForecastCacheEntry(dbKey, iter.Value(), now, currentSSN, cfg)
-		switch reason {
-		case voacapForecastCacheRejectNone:
-			loaded = append(loaded, voacapForecastCacheLoadedEntry{
-				key:   key,
-				entry: entry,
-				dbKey: dbKey,
-			})
-		case voacapForecastCacheRejectExpired:
-			stats.Expired++
-			deleteKeys = append(deleteKeys, dbKey)
-		case voacapForecastCacheRejectStaleGeneration:
-			stats.StaleGeneration++
-			deleteKeys = append(deleteKeys, dbKey)
-		case voacapForecastCacheRejectStaleWindow:
-			stats.StaleWindow++
-			deleteKeys = append(deleteKeys, dbKey)
-		default:
-			stats.Invalid++
-			deleteKeys = append(deleteKeys, dbKey)
-		}
-	}
-	if err := iter.Error(); err != nil {
-		return nil, stats, fmt.Errorf("voacap forecast cache: scan: %w", err)
-	}
-
-	sort.Slice(loaded, func(i, j int) bool {
-		// Equal storage times have no recency preference. Canonical key order
-		// makes retention identical across refreshes, write order and restart.
-		if loaded[i].entry.storedAt.Equal(loaded[j].entry.storedAt) {
-			return bytes.Compare(loaded[i].dbKey, loaded[j].dbKey) < 0
-		}
-		return loaded[i].entry.storedAt.After(loaded[j].entry.storedAt)
-	})
-	if len(loaded) > cfg.MaxCacheEntries {
-		for i := cfg.MaxCacheEntries; i < len(loaded); i++ {
-			deleteKeys = append(deleteKeys, loaded[i].dbKey)
-			stats.Overflow++
-		}
-		loaded = loaded[:cfg.MaxCacheEntries]
-	}
-	stats.Loaded = len(loaded)
-	if len(deleteKeys) > 0 {
-		if err := s.deleteKeysLocked(deleteKeys); err != nil {
-			return nil, stats, err
-		}
-		stats.Pruned = len(deleteKeys)
-	}
-	return loaded, stats, nil
+	return s.rebuildIndexLocked(now, currentSSN, cfg, true)
 }
 
 func (s *VOACAPForecastCacheStore) deleteKeysLocked(keys [][]byte) error {
@@ -252,7 +194,7 @@ func (s *VOACAPForecastCacheStore) deleteKeysLocked(keys [][]byte) error {
 			return fmt.Errorf("voacap forecast cache: delete: %w", err)
 		}
 	}
-	if err := batch.Commit(pebble.NoSync); err != nil {
+	if err := s.commitForecastCacheBatchLocked(batch); err != nil {
 		return fmt.Errorf("voacap forecast cache: prune: %w", err)
 	}
 	return nil
@@ -263,40 +205,61 @@ func decodeCurrentForecastCacheEntry(dbKey, value []byte, now time.Time, current
 	if err := json.Unmarshal(value, &record); err != nil {
 		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectInvalid
 	}
+	key, reason := validateCurrentForecastCacheRecord(dbKey, record, now, currentSSN, cfg)
+	if reason != voacapForecastCacheRejectNone {
+		return voacapCacheKey{}, voacapCacheEntry{}, reason
+	}
+	// Hydrated forecasts can live for the cache lifetime. Do not retain the
+	// JSON decoder's growth capacity (for example, beyond 24 hourly rows).
+	records := make([]VOACAPHourlyForecast, len(record.Records))
+	copy(records, record.Records)
+	return key, voacapCacheEntry{
+		storedAt: time.Unix(0, record.StoredAtUnixNS).UTC(),
+		forecast: VOACAPClosedForecast{
+			WindowStartUTC: time.Unix(0, record.WindowUnixNS).UTC(),
+			Records:        records,
+		},
+	}, voacapForecastCacheRejectNone
+}
+
+// Both recovery decoding and ordinary writes use this predicate. In particular,
+// record existence is exactly forecastRecordForHour's HourUTC equality test;
+// persistence does not introduce new numerical forecast admission policy.
+func validateCurrentForecastCacheRecord(dbKey []byte, record voacapForecastCacheDiskRecord, now time.Time, currentSSN int, cfg VOACAPFallbackConfig) (voacapCacheKey, voacapForecastCacheRejectReason) {
 	if record.SchemaVersion != voacapForecastCacheSchemaVersion || record.ModelGeneration != voacapForecastCacheModelGeneration {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectStaleGeneration
+		return voacapCacheKey{}, voacapForecastCacheRejectStaleGeneration
 	}
 	key, ok := record.Key.cacheKey()
 	if !ok {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectInvalid
+		return voacapCacheKey{}, voacapForecastCacheRejectInvalid
 	}
 	if string(dbKey) != string(voacapForecastCacheKeyBytes(key)) {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectInvalid
+		return voacapCacheKey{}, voacapForecastCacheRejectInvalid
 	}
 	if len(record.Records) == 0 || record.StoredAtUnixNS <= 0 || record.WindowUnixNS <= 0 {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectInvalid
+		return voacapCacheKey{}, voacapForecastCacheRejectInvalid
 	}
 	entry := voacapCacheEntry{
 		storedAt: time.Unix(0, record.StoredAtUnixNS).UTC(),
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: time.Unix(0, record.WindowUnixNS).UTC(),
-			Records:        append([]VOACAPHourlyForecast(nil), record.Records...),
+			Records:        record.Records,
 		},
 	}
 	if entry.storedAt.After(now.Add(voacapForecastCacheFutureStoredSkew)) {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectInvalid
+		return voacapCacheKey{}, voacapForecastCacheRejectInvalid
 	}
 	if now.Sub(entry.storedAt) > time.Duration(cfg.CacheTTLSeconds)*time.Second {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectExpired
+		return voacapCacheKey{}, voacapForecastCacheRejectExpired
 	}
 	windowStart := forecastWindowStart(now)
 	if key.ssn != currentSSN || key.year != windowStart.Year() || key.month != int(windowStart.Month()) {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectStaleWindow
+		return voacapCacheKey{}, voacapForecastCacheRejectStaleWindow
 	}
 	if _, ok := forecastRecordForHour(entry.forecast, now, cfg.ForecastHours); !ok {
-		return voacapCacheKey{}, voacapCacheEntry{}, voacapForecastCacheRejectStaleWindow
+		return voacapCacheKey{}, voacapForecastCacheRejectStaleWindow
 	}
-	return key, entry, voacapForecastCacheRejectNone
+	return key, voacapForecastCacheRejectNone
 }
 
 func diskRecordFromForecastCache(key voacapCacheKey, entry voacapCacheEntry) voacapForecastCacheDiskRecord {

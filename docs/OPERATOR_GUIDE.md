@@ -171,6 +171,13 @@ The Path Predictions panel also shows the same fallback snapshot as
 before the H3 path-pair counts. These are the existing in-memory fallback cache
 entries, delayed lookups, inflight jobs, and queued jobs from the current
 process.
+The separate line `VOACAP disk index: <M>/<R>/<E> (M/R/E) ready=<bool> dirty=<bool>`
+shows cached persisted-cache metadata, retention and eligibility index counts.
+After successful maintenance these match and stay within `max_cache_entries`.
+`ready=false` means the database has not been certified; zero index counts do
+not then establish an empty database. `dirty=true` marks failed or uncertain
+persistence awaiting repair; inspect cache warnings. `VOACAP disk index: n/a` means no store
+is attached. These diagnostics do not scan disk or wait behind its operations.
 
 VOACAP fallback is a Windows-only runtime feature because it launches the
 Windows VOACAP engine. Linux startup skips VOACAP validation and logs that the

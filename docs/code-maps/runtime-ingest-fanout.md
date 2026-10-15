@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ed59c68a8297d94d`
+- Source fingerprint: `ae436a9aba83f7db`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 128 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 130 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 63 |
 | `dxcluster/telnet` | `telnet` | 48 | 100 |
@@ -291,6 +291,8 @@ Test files:
 - `internal/cluster/temporal_retirement_test.go`
 - `internal/cluster/temporal_runtime_test.go`
 - `internal/cluster/toxicity_config_contract_test.go`
+- `internal/cluster/voacap_cache_diagnostics_test.go`
+- `internal/cluster/voacap_persistence_profile_test.go`
 
 ### `dxcluster/peer`
 
@@ -758,6 +760,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `path:internal/cluster` |
 | [ADR-0302](docs/decisions/ADR-0302-correction-evidence-admission-and-license-authority.md) | Accepted | 2026-10-14 | raw ambiguity, pending transitions, primary activity, frozen replay authority | `path:internal/cluster, path:spot` |
 | [ADR-0300](docs/decisions/ADR-0300-path-observation-time-accounting.md) | Accepted | 2026-10-13 | path timestamps, numerical admission, coherent sampling/reporting | `path:internal/cluster` |
 | [ADR-0297](docs/decisions/ADR-0297-core-accepted-observation-learning.md) | Accepted | 2026-10-11 | call/FT history, WhoSpotsMe, acceptance, shutdown | `path:peer` |

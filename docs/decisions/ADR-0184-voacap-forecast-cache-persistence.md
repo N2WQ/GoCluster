@@ -110,3 +110,5 @@ entries count as normal VOACAP cache hits in fallback-stage counters.
   behavior; preserves ADR-0162 cache key and hourly-window semantics
   Persisted capacity ordering is refined by
   [ADR-0303](ADR-0303-deterministic-persisted-forecast-retention.md).
+  Maintenance and recovery are refined by
+  [ADR-0304](ADR-0304-bounded-incremental-forecast-persistence.md).

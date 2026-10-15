@@ -363,10 +363,11 @@ type VOACAPForecastCheck struct {
 }
 
 type VOACAPClosedFallbackSnapshot struct {
-	CacheEntries    int
-	DelayEntries    int
-	InflightEntries int
-	QueueDepth      int
+	CacheEntries       int
+	DelayEntries       int
+	InflightEntries    int
+	QueueDepth         int
+	ForecastCacheIndex VOACAPForecastCacheIndexSnapshot
 }
 
 // VOACAPFallbackStats explains why fallback work did or did not emit a glyph
@@ -545,6 +546,7 @@ func (f *VOACAPClosedFallback) AttachForecastCacheStore(store *VOACAPForecastCac
 
 	ssn, ok := f.ssnProvider.CurrentSSN(now)
 	if !ok {
+		store.invalidateIndex()
 		stats.SSNUnavailable = true
 		return stats, nil
 	}
@@ -581,12 +583,16 @@ func (f *VOACAPClosedFallback) Snapshot() VOACAPClosedFallbackSnapshot {
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return VOACAPClosedFallbackSnapshot{
+	snapshot := VOACAPClosedFallbackSnapshot{
 		CacheEntries:    len(f.cache),
 		DelayEntries:    len(f.delays),
 		InflightEntries: len(f.inflight),
 		QueueDepth:      len(f.queue),
 	}
+	if f.forecastCacheStore != nil {
+		snapshot.ForecastCacheIndex = f.forecastCacheStore.IndexSnapshot()
+	}
+	return snapshot
 }
 
 func (f *VOACAPClosedFallback) StatsSnapshot() VOACAPFallbackStats {

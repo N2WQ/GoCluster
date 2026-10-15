@@ -88,6 +88,9 @@ current source/tests.
   [ADR-0185](ADR-0185-shared-pebble-directory-open-helper.md),
   [ADR-0190](ADR-0190-voacap-ssn-overview-visibility.md), and
   [ADR-0191](ADR-0191-voacap-cache-overview-counters.md).
+- Persisted capacity ties and incremental maintenance refine that chain in
+  [ADR-0303](ADR-0303-deterministic-persisted-forecast-retention.md) and
+  [ADR-0304](ADR-0304-bounded-incremental-forecast-persistence.md).
 
 ## Historical Context
 
