@@ -14,7 +14,8 @@ This directory owns PSKReporter MQTT ingest and normalization into canonical spo
 
 - the client subscribes to one catch-all topic and routes modes after receipt
 - `data/config/spot_taxonomy.yaml` owns PSKReporter mode handling through `pskreporter_route: normal`, `path_only`, or `ignore`
-- spots with explicit `0 dB` reports or missing reports are dropped before ingest
+- a present numeric report, including `0 dB`, follows its configured mode route
+- missing or null reports are dropped before ingest; zero does not mean missing
 - PSK variants are normalized into the `PSK` family for filtering and stats while keeping the original variant for display
 - PSKReporter spots do not carry a free-form comment string in the runtime pipeline
 

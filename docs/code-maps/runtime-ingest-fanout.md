@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e1ed55bf68282b5f`
+- Source fingerprint: `8ed63c1d234c7b1d`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 136 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 139 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 63 |
-| `dxcluster/telnet` | `telnet` | 48 | 101 |
+| `dxcluster/telnet` | `telnet` | 48 | 102 |
 
 ## In-Scope Package Edges
 
@@ -278,6 +278,9 @@ Test files:
 - `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/peer_spot_admission_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
+- `internal/cluster/pskr_zero_connected_test.go`
+- `internal/cluster/pskr_zero_mqtt_retirement_test.go`
+- `internal/cluster/pskr_zero_protocol_test.go`
 - `internal/cluster/runtime_output_listener_other_test.go`
 - `internal/cluster/runtime_output_listener_windows_test.go`
 - `internal/cluster/runtime_output_retirement_test.go`
@@ -731,6 +734,7 @@ Test files:
 - `telnet/prelogin_gate_test.go`
 - `telnet/preset_commands_test.go`
 - `telnet/preset_transaction_test.go`
+- `telnet/pskr_zero_wire_test.go`
 - `telnet/qualification_observer_test.go`
 - `telnet/qualification_stage_test.go`
 - `telnet/read_pause_command_test.go`
@@ -767,6 +771,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0307](docs/decisions/ADR-0307-pskreporter-report-presence.md) | Accepted | 2026-10-15 | present zero admission, ordinary and path-only routes | `path:internal/cluster, path:telnet` |
 | [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:internal/cluster, path:telnet` |
 | [ADR-0305](docs/decisions/ADR-0305-path-map-distributed-compaction.md) | Accepted | 2026-10-14 | retained path maps, maintenance, refill | `path:internal/cluster` |
 | [ADR-0304](docs/decisions/ADR-0304-bounded-incremental-forecast-persistence.md) | Accepted | 2026-10-14 | VOACAP persistence, bounded indexes, recovery diagnostics | `path:internal/cluster` |

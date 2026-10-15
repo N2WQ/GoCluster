@@ -571,7 +571,7 @@ func (c *Client) handlePayload(payload []byte) {
 			return
 		}
 	}
-	if !pskrMsg.hasReport || pskrMsg.report == 0 {
+	if !pskrMsg.hasReport {
 		return
 	}
 	modeInfo, ok := pskrMsg.modeInfo()

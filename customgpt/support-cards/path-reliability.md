@@ -204,6 +204,11 @@ inspect user-visible diagnostics:
 
 ## Sources
 
+- `docs/troubleshooting/TSR-0098-benchmark-completion-evidence.md`: S5's local
+  measurement-checker repair, preserved first observation and timing limits.
+- `pskreporter/README.md`: present numeric zero reports follow their configured
+  normal or path-only route; missing/null reports remain excluded. Path-only
+  reports contribute to learning without entering archive, telnet or peer output.
 - `docs/path-reliability-first-wave-execution.md`
 - `docs/troubleshooting/TSR-0097-path-sharding-measurement-clock.md`
 - `customgpt/troubleshooting-index.md`

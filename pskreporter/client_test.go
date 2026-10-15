@@ -316,42 +316,59 @@ func TestHandlePayloadFiltersModesByTaxonomyRoute(t *testing.T) {
 	}
 }
 
-func TestHandlePayloadDropsZeroSNR(t *testing.T) {
+func TestHandlePayloadAdmitsPresentZeroSNR(t *testing.T) {
 	client := NewClient("localhost", 1883, nil, "", 1, 0, 0, 0, nil, nil, false, 2, 0)
+	observed := time.Now().Add(-time.Minute).Truncate(time.Second)
 	msg := PSKRMessage{
 		Frequency:    14074000,
 		Mode:         "FT8",
 		Report:       intPtr(0),
-		Timestamp:    time.Now().Unix(),
+		Timestamp:    observed.Unix(),
 		SenderCall:   "K1ABC",
 		ReceiverCall: "N0CALL",
 	}
-	payload, _ := json.Marshal(msg)
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	client.handlePayload(payload)
 	select {
-	case spot := <-client.spotChan:
-		t.Fatalf("expected zero-SNR spot to be dropped, got %+v", spot)
+	case got := <-client.spotChan:
+		if got == nil || !got.HasReport || got.Report != 0 || !got.Time.Equal(observed) {
+			t.Fatalf("present zero report or observation time lost: %+v", got)
+		}
 	default:
+		t.Fatal("present zero-SNR report did not reach the normal route")
+	}
+	if len(client.spotChan) != 0 || len(client.pathOnlyChan) != 0 {
+		t.Fatal("present zero report produced an extra or path-only spot")
 	}
 }
 
-func TestHandlePayloadDropsMissingReport(t *testing.T) {
+func TestHandlePayloadDropsNullReport(t *testing.T) {
 	client := NewClient("localhost", 1883, nil, "", 1, 0, 0, 0, nil, nil, false, 2, 0)
 	msg := PSKRMessage{
 		Frequency:    14074000,
 		Mode:         "FT8",
-		Timestamp:    time.Now().Unix(),
+		Timestamp:    time.Now().Add(-time.Minute).Unix(),
 		SenderCall:   "K1ABC",
 		ReceiverCall: "N0CALL",
 	}
-	payload, _ := json.Marshal(msg)
+	// A nil pointer marshals as literal null; omission is covered separately.
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	client.handlePayload(payload)
 	select {
 	case spot := <-client.spotChan:
-		t.Fatalf("expected missing-report spot to be dropped, got %+v", spot)
+		t.Fatalf("expected null-report spot to be dropped, got %+v", spot)
 	default:
+	}
+	if len(client.pathOnlyChan) != 0 {
+		t.Fatal("null report reached the path-only route")
 	}
 }
 

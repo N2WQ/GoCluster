@@ -18,8 +18,8 @@ aging, not independent samples, calibrated confidence or QSO probability.
 | S1 | Deterministic persisted retention | Accepted, `3eb9c84` |
 | S2 | Bounded incremental persistence | Accepted, `08ba7f7` |
 | S3 | Distributed-contraction compaction | Accepted, `9145209` |
-| S4 | Fine-key sharding | Accepted with the Approved v4 performance exception |
-| S5 | Present zero-dB PSKReporter reports | Not started |
+| S4 | Fine-key sharding | Accepted, `258e4a8`, with the Approved v4 performance exception |
+| S5 | Present zero-dB PSKReporter reports | Accepted; all nonwaived gates passed |
 | S6 | Nonduplicated common-resolution selection | Not started |
 | S7 | Recent support and receiver diversity | Not started |
 
@@ -399,3 +399,79 @@ documentation impact is Required and is reflected in the package guide,
 support card, ADR-0306 and TSR-0097. Timing failures and deferred S4 profiles
 retain their recorded status. S5-S7 remain serial follow-on work with their
 own nonwaived gates; no production performance outcome is established.
+
+
+## S5: present numeric zero reports
+
+S4 was checkpointed as `258e4a8` on `voacap` before S5 began. S5 removes only
+zero-value rejection from `pskreporter/client.go`'s presence check. A present
+numeric zero now follows the existing normal/path-only taxonomy route. Missing,
+null and malformed reports retain their established handling. Neither decoder,
+mode offset, subscription, queue bound nor overload policy changed.
+
+The owner-package ordinary/race checks each passed 360 cases with 212 required
+identities. They cover presence, sign, duplicate fields, malformed inputs,
+normal/path-only/ignored modes, both parser paths and unchanged compatibility
+boundaries. Both bounded 15-second differential fuzz campaigns passed.
+
+Connected MQTT ingress exercises the actual public client, normal output,
+path-only learning, archive and peer exclusion, timestamps and metadata. A
+separate consumer replays the actual captured broadcast snapshots through a
+real telnet connection. Ordinary and race captures passed; literal wire rows
+and all mask branches agree. Restoring the old presence gate through a compiler
+overlay fails the intended first-zero learning assertion after positive
+controls and owner retirement. This is delivery evidence, not continuous
+MQTT-to-client latency measurement.
+
+Full native ordinary and race lanes each passed 10,177 cases across 70 packages
+(54 executed, 16 build-only), with all 433 required identities and 90 opt-in
+skips. The new opt-in wire replay was exercised separately; all 125 parser fuzz
+seeds also ran and passed. Subsequent fixture-only lint corrections received
+ordinary/race targeted reruns (15 cases, 13 required, no skips) and refreshed
+actual wire captures. No production/shared contract changed after the full
+lanes. Final full-repository vet, Staticcheck and lint passed with zero issues.
+
+All four nonzero handler controls passed their own fixed 1.10 paired-median
+regression limit, using 12 balanced AB/BA process pairs and one million measured
+operations per process:
+
+| Control | Candidate/baseline paired median |
+| --- | --- |
+| FT8 fast | 0.974648 |
+| FT8 compatibility | 1.005062 |
+| WSPR fast | 0.982082 |
+| WSPR compatibility | 0.968479 |
+
+All 96 scored observations and eight separate matched CPU/allocation/live-heap
+profiles were verified against frozen inputs and saved binaries. Fast controls
+retained 917 B/op and 5 allocs/op; compatibility controls retained 1081 B/op and
+8 allocs/op in both variants. Sampled allocation profiles attribute most churn
+to existing Spot construction. Sampled live heap is a different measure; no
+production latency, memory saving or sustained-load conclusion follows.
+
+Two controller failures remain preserved. One rejected native empty branch
+output before measurement. Another rejected the successful first baseline
+because verbose Go logs did not emit the expected bench action. A reviewed
+versioned continuation adopted that exact observation without rerunning or
+discarding it, using the same binaries and timestamp. The interrupted first
+pair has a recorded 614.6226298-second gap; the original protocol specified no
+gap limit. This remains an interpretation limitation. No timing limit was
+relaxed, no process-exit receipt was invented, and S5 needed no performance
+exception. TSR-0098 records the actual schema, refusal controls and evidence.
+
+Local evidence is under `.tmp/path-reliability-first-wave/s5/`: final connected
+logs, `split-wire-v3/accepted.json`, `performance-v3/accepted-controls.json`,
+`performance-v3/final-raw-verification.json` and their immutable predecessors.
+The final proof/checker passed 104 schema/source/metric expectations plus 36
+adoption/freshness controls and actual native branch checks. A lead-owned fresh
+verification reviewed scope, source, raw observations, profiles and final diff.
+
+Support documentation impact: Required. The PSKReporter guide, path support
+card, troubleshooting route and ADR-0307 are updated. TSR-0098 records durable
+checker learning without a new runtime decision. All new listening/live
+fixtures used the existing approved cluster test executable path. No push,
+production launch/restart, deployment, host tuning or firewall change occurred.
+
+S6 and S7 remain serial follow-on work. Whole-cluster profiling must account
+for S5's additional legitimate report volume; these controls do not compare
+old zero-report discard cost with new successful processing as equivalent work.

@@ -99,6 +99,14 @@ func TestHandlePayloadUsesCompatForEscapedString(t *testing.T) {
 
 func FuzzParsePSKRPayloadFastMatchesCompat(f *testing.F) {
 	f.Add([]byte(`{"f":14074000,"md":"FT8","rp":5,"t":1700000000,"sc":"K1ABC","sl":"FN42","rc":"N0CALL","rl":"EM10"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","rp":0,"t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","rp":-0,"t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","rp":null,"t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","rp":-7,"rp":0,"t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","rp":0,"rp":null,"t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","r\u0070":0,"t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
+	f.Add([]byte(`{"f":14074000,"md":"FT8","Rp":0,"t":1700000000,"sc":"K1ABC","rc":"N0CALL"}`))
 	f.Add([]byte(`{"rc":"N0CALL","rl":"EM10","rp":-7,"md":"WSPR","f":14097000,"t":1700000000,"sc":"K1ABC","sl":"FN42","sa":291,"ra":291}`))
 	f.Add([]byte(`{"f":14074000,"md":"PSK31","rp":5,"rp":6,"t":1700000000,"sc":"K1ABC","rc":"N0CALL","b":"20m"}`))
 
