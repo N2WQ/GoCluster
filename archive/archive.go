@@ -406,6 +406,8 @@ func (w *Writer) flush(batch []*spot.Spot) {
 	pebbleBatch := w.db.NewBatch()
 	defer pebbleBatch.Close()
 
+	// Batch.Set copies its value before returning; scratch lives for one flush.
+	var encoded []byte
 	for _, s := range batch {
 		if s == nil {
 			continue
@@ -416,8 +418,8 @@ func (w *Writer) flush(batch []*spot.Spot) {
 		s = s.Clone()
 		s.EnsureNormalized()
 		key := spotKeyBytes(normalizeUnixNano(s.Time), w.nextSeq())
-		val := encodeRecord(s)
-		if err := pebbleBatch.Set(key, val, nil); err != nil {
+		encoded = encodeRecordInto(encoded, s)
+		if err := pebbleBatch.Set(key, encoded, nil); err != nil {
 			log.Printf("archive: batch set failed: %v", err)
 		}
 	}
@@ -634,6 +636,13 @@ type archiveRecord struct {
 }
 
 func encodeRecord(s *spot.Spot) []byte {
+	return encodeRecordInto(nil, s)
+}
+
+// encodeRecordInto returns a complete record in caller-owned storage. Every
+// returned byte is overwritten, including reserved header bytes and lengths.
+// The linear layout stays together to preserve the existing version-6 codec.
+func encodeRecordInto(buf []byte, s *spot.Spot) []byte {
 	dxCall := strings.TrimSpace(s.DXCallNorm)
 	if dxCall == "" {
 		dxCall = strings.TrimSpace(s.DXCall)
@@ -701,7 +710,11 @@ func encodeRecord(s *spot.Spot) []byte {
 	for _, l := range lengths {
 		total += l
 	}
-	buf := make([]byte, total)
+	if cap(buf) < total {
+		buf = make([]byte, total)
+	} else {
+		buf = buf[:total]
+	}
 	buf[0] = recordVersion
 	flags := uint8(0)
 	if s.HasReport {
