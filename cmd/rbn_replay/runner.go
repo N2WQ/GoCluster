@@ -463,14 +463,37 @@ func (r *replayRunner) replayDay() error {
 		}
 	}
 
-	r.drainTemporal(r.dayEnd.Add(24*time.Hour), true)
-	for !r.nextSampleAt.After(r.dayEnd) {
-		if err := r.emitSample(r.nextSampleAt); err != nil {
-			return err
-		}
-		r.nextSampleAt = r.nextSampleAt.Add(sampleInterval)
+	eofAt := r.dayEnd.Add(24 * time.Hour)
+	if err := r.advanceReplayTime(eofAt); err != nil {
+		return err
 	}
+	r.drainTemporal(eofAt, true)
 	return nil
+}
+
+// advanceReplayTime services scheduled events before the next validated row or
+// EOF. Samples win equal timestamps, then temporal releases precede the row.
+// Drain at the actual deadline before later samples can prune its evidence;
+// backdating a query after a later sweep cannot restore that evidence. Re-read
+// the existing bounded heap after each drain: a defer moves to max wait, where
+// evaluation is terminal. No resolver steps or additional clock owners are added.
+func (r *replayRunner) advanceReplayTime(until time.Time) error {
+	for {
+		sampleDue := !r.nextSampleAt.After(until) && !r.nextSampleAt.After(r.dayEnd)
+		temporalDue := len(r.temporalQueue) > 0 && !r.temporalQueue[0].due.After(until)
+		if sampleDue && (!temporalDue || !r.nextSampleAt.After(r.temporalQueue[0].due)) {
+			if err := r.emitSample(r.nextSampleAt); err != nil {
+				return err
+			}
+			r.nextSampleAt = r.nextSampleAt.Add(sampleInterval)
+			continue
+		}
+		if temporalDue {
+			r.drainTemporal(r.temporalQueue[0].due, false)
+			continue
+		}
+		return nil
+	}
 }
 
 // processCSVRow enforces chronological replay. Timestamp regressions are hard
@@ -491,11 +514,8 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 	}
 	r.lastRecordTime = row.Time
 
-	for !r.nextSampleAt.After(row.Time) {
-		if err := r.emitSample(r.nextSampleAt); err != nil {
-			return err
-		}
-		r.nextSampleAt = r.nextSampleAt.Add(sampleInterval)
+	if err := r.advanceReplayTime(row.Time); err != nil {
+		return err
 	}
 
 	if !row.SpotClass.Accepted() {
@@ -511,7 +531,6 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 	r.recordsProcessed++
 	now := row.Time.UTC()
 	r.maintainLegacyHistory(now)
-	r.drainTemporal(now, false)
 
 	// Keep resolver state current before enqueuing evidence, but do not drain the
 	// evidence for this spot until after observation (observe-before-drain).

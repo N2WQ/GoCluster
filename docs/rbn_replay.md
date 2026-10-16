@@ -37,8 +37,16 @@ Replay config:
 
 - Evidence eligibility is driven by row timestamps from the RBN CSV.
 - Resolver is driven by deterministic driver stepping (`observe-before-drain` ordering).
-- Temporal decoder decisions are also event-time only (hold/defer/commit windows use CSV timestamps, not wall clock).
+- Temporal decoder decisions use scheduled event time, not the next eligible row
+  or machine wall clock. Samples and held-spot deadlines run chronologically;
+  a deferred hold is revisited at its maximum wait. At equal timestamps, the
+  order is sample, temporal release, then incoming rows. A report arriving
+  exactly at the deadline does not influence that release.
 - Runbook sample cadence is fixed at 60 seconds.
+- Every valid, chronologically accepted row advances scheduled events before
+  class/mode exclusions. At EOF, scheduled events advance through the existing
+  `dayEnd + 24 hours` clock; samples stop at `dayEnd`, inclusive. Any holds still
+  due after that EOF clock are force-retired at that unchanged clock.
 - Legacy history admission, queries and maintenance use evaluation time. Zero
   source timestamps resolve to admission time; later reports are refused before
   replacing valid evidence. Legacy cleanup is synchronous at the existing
@@ -46,6 +54,13 @@ Replay config:
   and terminal temporal evaluation. It starts no machine-wall cleanup worker.
   CustomSCP retains its separate historical clock/maintenance contract.
 - Replay fails fast on timestamp regressions, out-of-day records, resolver enqueue failures, and resolver hard-drop counters.
+
+With identical target reports, unrelated traffic must not change a held spot's
+scheduled release time or correction outcome when that traffic neither triggers
+capacity limits nor changes relevant evidence. Correct deadline handling can
+change replay corrections, latency metrics and interval values compared with
+older runs; it does not change the correction method or live spot latency.
+See [TSR-0101](troubleshooting/TSR-0101-replay-deadline-scheduling.md).
 
 Cap-loss generation idle retirement uses monotonic process elapsed time, not CSV
 timestamps. At 10 minutes without owner-admitted evidence a loss-affected

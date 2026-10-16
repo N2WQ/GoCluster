@@ -4,6 +4,19 @@ Use this file when a user reports a problem or asks why GoCluster behaved a
 certain way. This is a routing layer, not the source of truth. Cite this file,
 then cite the underlying repo docs or TSRs.
 
+## Replay deadlines
+
+If identical target reports yield different replay corrections after changing
+unrelated traffic, check the replay tool version and temporal decision time.
+Scheduled holds must release at their lag/max-wait deadlines before later
+samples can expire evidence. The traffic invariant excludes capacity pressure
+and changed relevant evidence. Equal timestamps use sample, release, incoming
+rows. EOF retains its existing forced-retirement clock. See the
+[replay contract](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/rbn_replay.md#determinism-model)
+and [TSR-0101](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/troubleshooting/TSR-0101-replay-deadline-scheduling.md).
+Replay metrics may change after the repair; this does not imply changed live
+latency or improved RF accuracy.
+
 ## Rules
 
 - Use the most specific matching symptom route. Platform-specific routes beat
