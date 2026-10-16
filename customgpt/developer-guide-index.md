@@ -43,6 +43,7 @@ workflow rules.
 | Peer protocol and forwarding | [peer/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/peer/README.md), `peer/` |
 | Reputation gate, shared station allowance and lookups | `reputation/`, [data/config/reputation.yaml](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/reputation.yaml), [ADR-0271](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0271-shared-station-reputation.md) |
 | UI/dashboard | `ui/`, [ui/dashboard_v2.go](https://raw.githubusercontent.com/N2WQ/GoCluster/main/ui/dashboard_v2.go) |
+| Stabilizer transition matrix and terminal accounting | [ui matrix guide](https://raw.githubusercontent.com/N2WQ/GoCluster/main/ui/README.md#stabilizer-matrix), `stats/stabilizer_transitions.go`, `internal/cluster/stabilizer_matrix.go`, `internal/cluster/output_pipeline_delivery.go` |
 | Build, release, local profiling controller and helper scripts | [scripts/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/scripts/README.md), `scripts/` |
 | Public example config, reference inputs, and runtime/local data | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), [data/h3/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/h3/README.md), `data/` |
 

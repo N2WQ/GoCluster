@@ -4264,7 +4264,9 @@ func buildOverviewLines(
 		),
 		fmt.Sprintf("[yellow]Flood[-]: %s", strings.TrimPrefix(formatFloodSummary(tracker), "Flood: ")),
 		"",
-		fmt.Sprintf("[yellow]Stabilizer Glyph[-]: %s", strings.TrimPrefix(formatStabilizerGlyphSummary(tracker), "Stabilizer Glyph: ")),
+	)
+	lines = append(lines, formatStabilizerMatrix(tracker)...)
+	lines = append(lines,
 		"CACHES & DATA FRESHNESS",
 	)
 	lines = append(lines, cacheBars...)

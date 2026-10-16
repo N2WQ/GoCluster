@@ -28,3 +28,34 @@ pane; the Events page has one pane, so Tab stays on it.
 `dashboard_v2_keybindings_test.go` exercises the actual tcell input capture,
 tview pages and pane consumers without starting a terminal or scheduler. These
 checks establish key behavior, not OS-terminal rendering or production shutdown.
+
+## Stabilizer matrix
+
+The Pipeline Quality pane replaces the old final-glyph average line with a
+matrix of average turns per delayed spot. Rows show the glyph at first
+stabilizer admission (`?`, `S`, `P`). Columns show the glyph at the terminal
+decision (`?`, `S`, `P`, `V`, `C`, `B`). For example, an `S` spot released as `V`
+after two checks contributes one observation of two turns to `S → V`.
+
+`B` means a proposed correction was rejected and the original call was retained.
+
+Each cell is total turns divided by completed spots in that cell. Values round
+to the nearest tenth, with halfway values rounded up (`2.25` displays as
+`2.3`). An em dash means there are no observations. Turns are checks, not
+seconds. Each completed spot counts once, including timeout suppression and
+completion followed by secondary output filtering. Retries do not add samples.
+Immediate passes, initial queue overflow, earlier correction/license rejection,
+and work dropped during shutdown do not contribute. A failed retry enqueue
+ends an already admitted path and counts its completed checks once.
+
+The matrix refreshes on the same configured statistics cycle as the other
+console numbers, on the Overview, Pipeline, and Events pages. It accumulates
+process-local observations until statistics reset or restart. It starts empty;
+old final-glyph totals cannot reconstruct entry glyphs. Storage is fixed at
+18 cells and retains no callsign history. The matrix occupies more vertical
+space than the old line; its table is 56 columns wide and its heading is 52.
+
+The existing headless `Stabilizer Glyph` diagnostics retain their final-glyph
+definition and fanout boundary. Their averages can differ from the console
+matrix, which counts terminal paths before output filtering. This display
+change does not alter stabilizer timing, retry limits, eligibility, or delivery.

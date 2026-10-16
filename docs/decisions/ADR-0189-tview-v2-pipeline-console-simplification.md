@@ -25,6 +25,10 @@ current non-console consumer.
 
 ## Decision
 
+The retained `Stabilizer Glyph` console line below is replaced by the transition
+matrix in [ADR-0311](ADR-0311-stabilizer-transition-matrix.md). The other row
+removals and headless diagnostics remain in effect.
+
 Simplify the `tview-v2` Pipeline Quality box by removing these rows:
 
 - `Resolver`

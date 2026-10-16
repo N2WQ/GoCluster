@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"container/heap"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,6 +25,7 @@ type telnetStabilizerItem struct {
 	due              time.Time
 	seq              uint64
 	checksCompleted  int
+	entryGlyph       string
 	delayReason      string
 	resolverKey      spot.ResolverSignalKey
 	hasResolverKey   bool
@@ -33,12 +35,14 @@ type telnetStabilizerItem struct {
 
 // telnetStabilizerEnvelope carries the minimum context needed to retry a held
 // telnet spot without re-running upstream stages that already made a decision.
+// entryGlyph is captured at first admission and is immutable across retries.
 // Keeping this envelope small makes the delay queue easier to reason about
 // during overflow or shutdown investigations.
 type telnetStabilizerEnvelope struct {
 	spot             *spot.Spot
 	peerOriginal     *originalPeerPublication
 	checksCompleted  int
+	entryGlyph       string
 	delayReason      string
 	resolverKey      spot.ResolverSignalKey
 	hasResolverKey   bool
@@ -198,19 +202,26 @@ func (s *telnetSpotStabilizer) EnqueueWithContext(
 	hasResolverKey bool,
 	evidenceEnqueued bool,
 ) bool {
-	return s.enqueueWithTemporalResult(sp, checksCompleted, delayReason, resolverKey, hasResolverKey, evidenceEnqueued, nil, nil)
+	if sp == nil {
+		return false
+	}
+	return s.enqueueWithTemporalResult(sp, checksCompleted, delayReason, resolverKey, hasResolverKey, evidenceEnqueued, nil, nil, sp.Confidence)
 }
 
 func (s *telnetSpotStabilizer) enqueueWithTemporalResult(
 	sp *spot.Spot, checksCompleted int, delayReason string, resolverKey spot.ResolverSignalKey,
 	hasResolverKey, evidenceEnqueued bool, temporalResult *runtimeTemporalResult,
-	peerOriginal *originalPeerPublication,
+	peerOriginal *originalPeerPublication, entryGlyph string,
 ) bool {
 	if s == nil || sp == nil {
 		return false
 	}
 	if checksCompleted < 0 {
 		checksCompleted = 0
+	}
+	entryGlyph = strings.ToUpper(strings.TrimSpace(entryGlyph))
+	if entryGlyph == "" {
+		entryGlyph = "?"
 	}
 	s.lifecycleMu.Lock()
 	defer s.lifecycleMu.Unlock()
@@ -225,6 +236,7 @@ func (s *telnetSpotStabilizer) enqueueWithTemporalResult(
 		spot:             sp,
 		peerOriginal:     peerOriginal,
 		checksCompleted:  checksCompleted,
+		entryGlyph:       entryGlyph,
 		delayReason:      delayReason,
 		resolverKey:      resolverKey,
 		hasResolverKey:   hasResolverKey,
@@ -342,6 +354,7 @@ func (s *telnetSpotStabilizer) run() {
 				due:              time.Now().UTC().Add(s.delay),
 				seq:              nextID,
 				checksCompleted:  envelope.checksCompleted,
+				entryGlyph:       envelope.entryGlyph,
 				delayReason:      envelope.delayReason,
 				resolverKey:      envelope.resolverKey,
 				hasResolverKey:   envelope.hasResolverKey,
@@ -367,6 +380,7 @@ func (s *telnetSpotStabilizer) run() {
 					spot:             item.spot,
 					peerOriginal:     item.peerOriginal,
 					checksCompleted:  item.checksCompleted,
+					entryGlyph:       item.entryGlyph,
 					delayReason:      item.delayReason,
 					resolverKey:      item.resolverKey,
 					hasResolverKey:   item.hasResolverKey,

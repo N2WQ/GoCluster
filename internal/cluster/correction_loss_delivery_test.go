@@ -244,7 +244,7 @@ func TestCorrectionLossDeliveredAcceptedIdentityAfterScheduler(t *testing.T) {
 	p.telnetStabilizer = newTelnetSpotStabilizer(time.Nanosecond, 1)
 	p.telnetStabilizer.Start()
 	t.Cleanup(p.telnetStabilizer.Stop)
-	if !p.telnetStabilizer.enqueueWithTemporalResult(s, 0, "accepted_fixture", key, true, true, result, original) {
+	if !p.telnetStabilizer.enqueueWithTemporalResult(s, 0, "accepted_fixture", key, true, true, result, original, s.Confidence) {
 		t.Fatal("actual bounded scheduler refused its free request slot")
 	}
 	correctionLossAdmit(t, r, d, key, "K1ABE", 14020, at.Add(-time.Second), 2*time.Minute, "N0EEE", "N0FFF", "N0GGG", "N0HHH")

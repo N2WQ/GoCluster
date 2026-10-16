@@ -103,6 +103,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 			resolverEvidenceEnqueued,
 			envelope.temporalResult,
 			envelope.peerOriginal,
+			envelope.entryGlyph,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()
@@ -120,8 +121,15 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 			p.tracker.IncrementStabilizerSuppressedTimeout()
 			p.tracker.IncrementStabilizerSuppressedTimeoutReason(delayDecision.Reason.String())
 			p.tracker.ObserveStabilizerGlyphTurns(delayed.Confidence, checksCompleted)
+			p.tracker.ObserveStabilizerTransition(envelope.entryGlyph, delayed.Confidence, checksCompleted)
 		}
 		return
+	}
+	// A terminal path counts before secondary thinning, even without fanout.
+	// Earlier correction/license aborts and shutdown drops never reach this point;
+	// re-holds return above. Initial admission overflow never enters this handler.
+	if p.tracker != nil {
+		p.tracker.ObserveStabilizerTransition(envelope.entryGlyph, delayed.Confidence, checksCompleted)
 	}
 	p.recordAcceptedObservation(delayed)
 	plan := p.buildFinalDeliveryPlan(delayed)
@@ -260,6 +268,7 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			ctx.stabilizerEvidenceEnqueued,
 			ctx.temporalResult,
 			ctx.peerOriginal,
+			delayed.Confidence,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()

@@ -32,7 +32,11 @@ const (
 	placeholderPipeline = "[lightgray]Primary Dedupe[-]: -- | [lightgray]Secondary[-]: F-- M-- S--\n" +
 		"[lightgray]Corrections[-]: -- | [lightgray]Unlicensed[-]: -- | [lightgray]Harmonics[-]: -- | [lightgray]Reputation[-]: --\n" +
 		"\n" +
-		"[lightgray]Stabilizer Glyph[-]: --"
+		"Stabilizer: average turns per call (entered → ended)\n" +
+		"Entered ↓ / Ended →       ?     S     P     V     C     B\n" +
+		"?                        —     —     —     —     —     —\n" +
+		"S                        —     —     —     —     —     —\n" +
+		"P                        —     —     —     —     —     —"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
 		"\n" +
 		"[lightgray]Custom SCP[-]: -- (R) / -- (S)\n" +
@@ -48,7 +52,7 @@ const (
 	placeholderHarmonics          = "Harmonics: --"
 	placeholderEvents             = "No events yet."
 	streamPanelMaxLines           = 200
-	overviewPipelineDefaultHeight = 9
+	overviewPipelineDefaultHeight = 11
 	overviewPipelineMinHeight     = 4
 	overviewCachesDefaultHeight   = 9
 	overviewCachesMinHeight       = 3
@@ -698,6 +702,9 @@ func appendFilteredOverviewLines(dst []string, lines []string) []string {
 
 func isRemovedOverviewPipelineLine(line string) bool {
 	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "Stabilizer: average turns per call (entered → ended)") {
+		return false
+	}
 	for _, prefix := range []string{
 		"[yellow]Resolver[-]:",
 		"Resolver:",
@@ -1119,8 +1126,10 @@ PIPELINE METRICS (PLAIN ENGLISH)
     Shares describe current support. S uses separate recognition.
   Corrections: accepted call changes since process start.
   Unlicensed/Harmonics/Reputation: cumulative totals since process start.
-  Stabilizer Glyph:
-    average stabilizer delay turns by glyph (ordered ? / S / P / V / C).
+  Stabilizer matrix: average turns per delayed spot.
+    Rows: entry glyph ? / S / P. Columns: terminal glyph ? / S / P / V / C / B.
+    Counts terminal release or timeout suppression, before output filtering.
+    — means no observations. Refreshes with stats; reset clears the averages.
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))
 	help.SetBorder(true).SetTitle("Help")
 	help.SetBorderColor(uiBorderColor)

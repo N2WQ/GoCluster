@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `b25ebd38cb89ea40`
+- Source fingerprint: `969ac27d39ee3b55`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 31 | 139 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 142 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
 | `dxcluster/telnet` | `telnet` | 48 | 106 |
@@ -158,6 +158,7 @@ Source files:
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/replacement_license.go`
 - `internal/cluster/stabilizer.go`
+- `internal/cluster/stabilizer_matrix.go`
 - `internal/cluster/telnet_family_suppressor.go`
 - `internal/cluster/temporal_result.go`
 - `internal/cluster/temporal_runtime.go`
@@ -285,9 +286,12 @@ Test files:
 - `internal/cluster/runtime_output_listener_windows_test.go`
 - `internal/cluster/runtime_output_retirement_test.go`
 - `internal/cluster/short_portable_license_test.go`
+- `internal/cluster/stabilizer_matrix_test.go`
 - `internal/cluster/stabilizer_retirement_bench_test.go`
 - `internal/cluster/stabilizer_retirement_test.go`
 - `internal/cluster/stabilizer_test.go`
+- `internal/cluster/stabilizer_transition_delivery_test.go`
+- `internal/cluster/stabilizer_transition_license_test.go`
 - `internal/cluster/support_basis_delivery_test.go`
 - `internal/cluster/support_basis_family_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
@@ -777,6 +781,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0311](docs/decisions/ADR-0311-stabilizer-transition-matrix.md) | Accepted | 2026-10-16 | console, terminal-path accounting, bounded stats | `path:internal/cluster` |
 | [ADR-0309](docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md) | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | `path:telnet` |
 | [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:telnet` |
 | [ADR-0307](docs/decisions/ADR-0307-pskreporter-report-presence.md) | Accepted | 2026-10-15 | present zero admission, ordinary and path-only routes | `path:internal/cluster, path:telnet` |

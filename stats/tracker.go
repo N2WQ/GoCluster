@@ -19,6 +19,7 @@ type StabilizerGlyphTurnStat struct {
 
 // Tracker tracks spot statistics by source
 type Tracker struct {
+	stabilizerTransitions stabilizerTransitionTracker
 	// counters live in sync.Map + atomic.Uint64 so per-spot increments don't fight over a mutex
 	modeCounts           sync.Map // string -> *atomic.Uint64
 	sourceCounts         sync.Map // string -> *atomic.Uint64
@@ -187,6 +188,9 @@ func (t *Tracker) GetUptime() time.Duration {
 // Upstream: Admin reset flows.
 // Downstream: sync.Map delete, atomic store.
 func (t *Tracker) Reset() {
+	t.stabilizerTransitions.mu.Lock()
+	t.stabilizerTransitions.cells = [3][6]stabilizerTransitionCell{}
+	t.stabilizerTransitions.mu.Unlock()
 	t.modeCounts.Range(func(key, _ any) bool {
 		t.modeCounts.Delete(key)
 		return true
