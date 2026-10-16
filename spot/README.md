@@ -71,6 +71,13 @@ prove that all reports belong to the original transmission episode. Resolver
 receiver evidence is published immutably; temporal scoring retains compact
 tallies. See [ADR-0280](../docs/decisions/ADR-0280-resolver-receiver-evidence-ownership.md).
 
+The resolver owner prunes each surviving key once per sweep before empty-state
+and evaluation checks. Due evaluation reuses that prepared state; standalone
+evaluation still attaches its generation and prunes before scoring. Recency
+cutoffs, scheduling, hysteresis and immutable publication are unchanged. This
+removes a duplicate traversal; whole-cluster performance benefit remains to be
+measured.
+
 An exact split remains protected through neighborhood and temporal selection.
 Eligible dissent from an uncertain exact bucket remains in nearby support.
 Comparable unsettled neighbors can add evidence but cannot introduce nominees;

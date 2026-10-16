@@ -620,7 +620,8 @@ func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, n
 
 		if !now.Before(st.nextEvalAt) {
 			if st.dirty || now.Sub(st.lastEvalAt) >= r.cfg.SweepInterval {
-				r.evaluateKey(st, now)
+				r.attachKeyGeneration(st)
+				r.evaluatePrunedKey(st, now)
 				st.nextEvalAt = now.Add(r.cfg.EvalMinInterval)
 				st.dirty = false
 			}
@@ -783,6 +784,13 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 	}
 	r.attachKeyGeneration(st)
 	r.pruneKeyState(st, now)
+	r.evaluatePrunedKey(st, now)
+}
+
+// evaluatePrunedKey requires a nonnil, generation-attached state pruned at now.
+// The single owner may reuse sweep's preparation; standalone evaluation still
+// performs its own preparation through evaluateKey.
+func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) {
 	st.lastEvalAt = now
 
 	ranked := st.rankedScratch[:0]
