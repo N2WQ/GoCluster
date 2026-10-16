@@ -179,6 +179,15 @@ not then establish an empty database. `dirty=true` marks failed or uncertain
 persistence awaiting repair; inspect cache warnings. `VOACAP disk index: n/a` means no store
 is attached. These diagnostics do not scan disk or wait behind its operations.
 
+The unaccepted local V3 candidate described in proposed ADR-0310 is not a
+deployment recommendation: timing qualification is blocked by short measured
+batches. In that candidate, refreshing an existing live forecast or delay
+updates only that entry, even when its map is full. A new entry evicts the oldest
+existing timestamp; ties
+use the deterministic typed-key order in ADR-0310. New entries are always
+admitted. Live capacity selection and expiry still scan the original maps;
+there is no live index, new diagnostic, setting, or cleanup schedule.
+
 VOACAP fallback is a Windows-only runtime feature because it launches the
 Windows VOACAP engine. Linux startup skips VOACAP validation and logs that the
 fallback is disabled, so the cluster can still run with path reliability,

@@ -1285,11 +1285,17 @@ func (f *VOACAPClosedFallback) cacheExpired(entry voacapCacheEntry, now time.Tim
 
 func (f *VOACAPClosedFallback) addCacheLocked(key voacapCacheKey, entry voacapCacheEntry) {
 	if len(f.cache) >= f.fallback.MaxCacheEntries {
+		// At capacity, replacing an owner must not evict another key.
+		if _, exists := f.cache[key]; exists {
+			f.cache[key] = entry
+			return
+		}
 		var oldestKey voacapCacheKey
 		var oldest time.Time
 		first := true
 		for candidate, existing := range f.cache {
-			if first || existing.storedAt.Before(oldest) {
+			order := existing.storedAt.Compare(oldest)
+			if first || order < 0 || (order == 0 && compareLiveCacheKey(&candidate, &oldestKey) > 0) {
 				oldestKey = candidate
 				oldest = existing.storedAt
 				first = false
@@ -1302,11 +1308,16 @@ func (f *VOACAPClosedFallback) addCacheLocked(key voacapCacheKey, entry voacapCa
 
 func (f *VOACAPClosedFallback) addDelayLocked(key voacapDelayKey, entry voacapDelayEntry) {
 	if len(f.delays) >= f.fallback.MaxDelayEntries {
+		if _, exists := f.delays[key]; exists {
+			f.delays[key] = entry
+			return
+		}
 		var oldestKey voacapDelayKey
 		var oldest time.Time
 		first := true
 		for candidate, existing := range f.delays {
-			if first || existing.lastSeen.Before(oldest) {
+			order := existing.lastSeen.Compare(oldest)
+			if first || order < 0 || (order == 0 && compareLiveDelayKey(&candidate, &oldestKey) > 0) {
 				oldestKey = candidate
 				oldest = existing.lastSeen
 				first = false

@@ -24,6 +24,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0310 | Live Forecast Cache Retention | Proposed | 2026-10-16 | replacement-only refresh, deterministic live eviction, original map scans | none; preserves ADR-0303/0304 disk contracts | none | `docs/decisions/ADR-0310-live-forecast-cache-retention.md` |
 | ADR-0309 | Recent Report Support and Receiver Units | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | ADR-0134 floor; ADR-0308 receiver qualification | none | `docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md` |
 | ADR-0308 | Path Population Identity and Common Resolution | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | ADR-0170 selection/scalar/age | none | `docs/decisions/ADR-0308-path-population-identity.md` |
 | ADR-0307 | PSKReporter Report Presence | Accepted | 2026-10-15 | present zero admission, ordinary and path-only routes | none; consistent with ADR-0291 | none | `docs/decisions/ADR-0307-pskreporter-report-presence.md` |

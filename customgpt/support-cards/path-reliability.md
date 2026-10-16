@@ -124,6 +124,13 @@ inspect user-visible diagnostics:
   `dirty=true` means a failed/uncertain disk operation needs recovery; inspect
   forecast-cache warnings. `VOACAP disk index: n/a` means no store is attached. Snapshot reads
   do not wait behind disk I/O. See ADR-0304.
+- The unaccepted local V3 candidate makes existing live forecast/delay keys
+  refresh without evicting unrelated entries. Timing qualification is blocked
+  by short measurement batches; this is not shipped behavior (ADR-0310 Proposed).
+  New keys evict the oldest existing timestamp, with deterministic typed-key
+  ties (ADR-0310), and are always admitted. Live eviction and expiry retain map
+  scans; the indexed optimization was not accepted. TTL, limits, delay clocks
+  and diagnostics are unchanged. See the live-cache execution record.
 - Runtime VOACAP execution is Windows-only. On Linux and other non-Windows
   builds, startup logs that the VOACAP fallback is disabled; `SHOW PROP`
   reports that VOACAP fallback is disabled, sparse/no-p50 diagnostics can show

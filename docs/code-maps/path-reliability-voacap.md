@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `404e6d7a88059ed0`
+- Source fingerprint: `412ce4b2f4cda8aa`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 29 | 65 |
+| `dxcluster/pathreliability` | `pathreliability` | 30 | 71 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -104,6 +104,7 @@ Source files:
 - `pathreliability/voacap_forecast_cache_index_heap.go`
 - `pathreliability/voacap_forecast_cache_index_scan.go`
 - `pathreliability/voacap_forecast_cache_store.go`
+- `pathreliability/voacap_live_cache_order.go`
 
 Test files:
 - `pathreliability/accounting_bench_test.go`
@@ -168,6 +169,12 @@ Test files:
 - `pathreliability/voacap_forecast_cache_store_test.go`
 - `pathreliability/voacap_incremental_cache_lifecycle_test.go`
 - `pathreliability/voacap_incremental_cache_test.go`
+- `pathreliability/voacap_live_cache_policy_alloc_test.go`
+- `pathreliability/voacap_live_cache_policy_test.go`
+- `pathreliability/voacap_live_cache_qualification_observer_test.go`
+- `pathreliability/voacap_live_cache_qualification_overlap_test.go`
+- `pathreliability/voacap_live_cache_qualification_serial_test.go`
+- `pathreliability/voacap_live_cache_qualification_test.go`
 - `pathreliability/voacap_persistence_bench_test.go`
 - `pathreliability/voacap_persistence_heap_test.go`
 - `pathreliability/voacap_retention_test.go`
@@ -199,6 +206,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0310](docs/decisions/ADR-0310-live-forecast-cache-retention.md) | Proposed | 2026-10-16 | replacement-only refresh, deterministic live eviction, original map scans | `path:pathreliability` |
 | [ADR-0309](docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md) | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | `path:pathreliability` |
 | [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:pathreliability` |
 | [ADR-0306](docs/decisions/ADR-0306-path-key-shard-distribution.md) | Accepted | 2026-10-15 | path locks, full-key placement, owner-accepted S4 performance exception | `path:pathreliability` |

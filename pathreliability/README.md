@@ -404,6 +404,17 @@ requires recovery. `VOACAP disk index: n/a` means no store is attached. Reading 
 does not wait for persistence.
 On non-Windows builds those Overview VOACAP values stay `n/a` because the
 fallback provider is not started.
+The local V3 candidate below remains unaccepted: functional checks passed, but
+timing qualification was invalidated by short refresh batches. See proposed
+ADR-0310 and the live-cache execution record; no performance result is claimed.
+Its live forecast and delay maps replace an existing key without evicting another
+entry, including at capacity. A new key evicts the oldest existing storage or
+last-seen timestamp; equal times evict the greatest typed key described in
+ADR-0310. The incoming key is admitted even if its timestamp is older. Capacity
+selection and request-driven expiry retain the original map scans; there is no
+live age index or deferred maintenance. Cache limits, TTL and the one-minute
+cleanup throttle are unchanged. This correctness change does not provide the
+indexed insertion speedup investigated in the live-cache execution record.
 Completed VOACAP hourly forecast-window records persist separately in the
 per-node Pebble DB at `voacap_fallback.forecast_cache_db_path`. Startup hydrates
 only records that still match the current cache schema, model generation,
