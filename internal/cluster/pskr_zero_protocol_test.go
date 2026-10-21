@@ -542,7 +542,7 @@ func TestPSKRZeroProtocolLifecycle(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("new listening witnesses use the approved native Windows executable")
 	}
-	pathShardingRequireExecutable(t)
+	ordinaryHarnessRequireExecutable(t)
 	for _, fault := range []string{"broker_cancel", "broker_bad_packet", "peer_cancel", "peer_forced_close"} {
 		t.Run(fault, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
@@ -667,7 +667,7 @@ func TestPSKRZeroBrokerShutdown(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("new listening witnesses use the approved native Windows executable")
 	}
-	pathShardingRequireExecutable(t)
+	ordinaryHarnessRequireExecutable(t)
 	for _, fault := range []string{"premature_eof", "complete_without_unsubscribe", "unsubscribe_eof", "unsubscribe_cancel", "unsubscribe_forced", "unsubscribe_truncated_frame"} {
 		t.Run(fault, func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)

@@ -77,7 +77,7 @@ func TestPSKRZeroConnectedRoutes(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("listening S5 qualification uses the approved native Windows executable")
 	}
-	pathShardingRequireExecutable(t)
+	ordinaryHarnessRequireExecutable(t)
 	repo := pathShardingRepoRoot()
 	requirePathReportH3Mappings(t)
 	cfgPath := filepath.Join(repo, "data", "config", "path_reliability.yaml")

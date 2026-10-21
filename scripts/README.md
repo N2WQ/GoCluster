@@ -1,4 +1,7 @@
-# GoCluster Scripts
+---
+title: GoCluster Scripts
+description: Local build, validation, release, and operational tooling.
+---
 
 ## Development And Launcher Validation
 
@@ -75,12 +78,13 @@ after a failed build. The runner covers package selection, test name filters,
 timeouts and race builds; other Go test flags need a separately selected command.
 
 Executables live under `.tmp/windows-tests/<full-import-path>/package.test.exe`.
-For this checkout, the listening test packages include:
+For any checkout, the listening test packages include these checkout-relative
+paths. Preparation prints their actual absolute paths:
 
 ```text
-C:\src\gocluster\.tmp\windows-tests\dxcluster\peer\package.test.exe
-C:\src\gocluster\.tmp\windows-tests\dxcluster\internal\cluster\package.test.exe
-C:\src\gocluster\.tmp\windows-tests\dxcluster\internal\peerdiag\package.test.exe
+.tmp\windows-tests\dxcluster\peer\package.test.exe
+.tmp\windows-tests\dxcluster\internal\cluster\package.test.exe
+.tmp\windows-tests\dxcluster\internal\peerdiag\package.test.exe
 ```
 
 Windows Firewall application rules use the **full executable path**. Approve
@@ -96,6 +100,12 @@ peer diagnostic companion uses `peerdiag.exe` beside its package test binary;
 preparation builds and prints that path. Temporary VOACAP fixture executables
 remain isolated; the inspected fixtures do not listen on network sockets.
 Moving the checkout changes the paths and requires corresponding rule updates.
+
+Ordinary cluster fixtures require the exact saved executable in the current
+checkout, not a historical developer path. Their artifact paths stay under
+`.tmp/path-reliability-first-wave`; redirected ancestors are refused before
+writes, including a missing destination beneath a junction. Opt-in controlled
+campaign/profile/soak paths retain their separate qualification restrictions.
 
 One file lock protects all packages and preparation runs in this checkout.
 An overlapping invocation is refused; a crash releases the handle automatically.

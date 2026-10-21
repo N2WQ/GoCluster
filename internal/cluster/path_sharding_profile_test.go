@@ -225,7 +225,7 @@ func TestPathShardingRepairedProfileLifecycle(t *testing.T) {
 				pathShardingProfileLifecycleChild(t, fault)
 				return
 			}
-			dir := pathShardingArtifactDir(t, "repaired-profile-lifecycle-"+fault+"-")
+			dir := ordinaryHarnessArtifactDir(t, "repaired-profile-lifecycle-"+fault+"-")
 			testsupport.RunFixedBenchmark(t, func(b *testing.B, ctx context.Context, cancel context.CancelFunc, clock *testsupport.Clock) bool {
 				defer cancel()
 				fixture := newPathShardingConnectedFixture(b, "enforce")

@@ -76,9 +76,26 @@ function Assert-PlainOutputPath([string]$Path) {
 
 $lock = $null
 $originalPath = $env:PATH
+$powerShellIdentity = 'GOCLUSTER_TEST_POWERSHELL'
+$originalPowerShell = [Environment]::GetEnvironmentVariable($powerShellIdentity, 'Process')
+# Windows names are case-insensitive, unlike the environment snapshot's hashtable.
+$hadPowerShell = [Environment]::GetEnvironmentVariables('Process').Keys -icontains $powerShellIdentity
 if ($moduleDirectory -ne $repoRoot) { Assert-PlainOutputPath $moduleDirectory }
 Push-Location -LiteralPath $moduleDirectory
 try {
+    $runnerImage = [Environment]::ProcessPath
+    $expectedImage = Join-Path $PSHOME 'pwsh.exe'
+    if ([string]::IsNullOrWhiteSpace($runnerImage) -or -not [IO.Path]::IsPathFullyQualified($runnerImage) -or
+        -not [string]::Equals($runnerImage, $expectedImage, [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $runnerImage -PathType Leaf)) {
+        throw 'Cannot establish the actual PowerShell 7 runner executable.'
+    }
+    $runnerArchitecture = [Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+    $hostArchitecture = [Runtime.InteropServices.RuntimeInformation]::OSArchitecture
+    if ($runnerArchitecture -ne $hostArchitecture) {
+        throw "PowerShell runner must be native to Windows (runner=$runnerArchitecture; host=$hostArchitecture)."
+    }
+    [Environment]::SetEnvironmentVariable($powerShellIdentity, $runnerImage, 'Process')
     Assert-PlainOutputPath $outputRoot
     $null = [IO.Directory]::CreateDirectory($outputRoot)
     $lockPath = Join-Path $outputRoot 'runner.lock'
@@ -95,6 +112,7 @@ try {
     if ($goEnvironment.GOOS -ne 'windows' -or $goEnvironment.GOARCH -ne $goEnvironment.GOHOSTARCH) {
         throw 'Tests require a native Windows target; remove cross-compilation GOOS/GOARCH settings.'
     }
+    Write-Host "RUNNER PowerShell=$runnerImage; Windows=$hostArchitecture; PowerShell=$runnerArchitecture; Go=$($goEnvironment.GOARCH)/$($goEnvironment.GOHOSTARCH)"
     # Match go test's toolchain selection for tests that spawn the go command.
     $env:PATH = (Join-Path $goEnvironment.GOROOT 'bin') + [IO.Path]::PathSeparator + $originalPath
     $listArguments = @('list', '-f', '{{.ImportPath}}|{{.Dir}}|{{if or .TestGoFiles .XTestGoFiles}}tests{{end}}|{{if .Module}}{{.Module.Dir}}{{end}}')
@@ -210,6 +228,8 @@ try {
     }
     Write-Host "Windows tests complete: executed=$executed; build-only=$buildOnly; passed-cases=$passedCases; skipped-cases=$skippedCases; $($selected.Count) packages; prepare-only=$($PrepareOnly.IsPresent); race=$($Race.IsPresent)."
 } finally {
+    # PowerShell binds $null as an empty string; NullString removes an absent key.
+    [Environment]::SetEnvironmentVariable($powerShellIdentity, $(if ($hadPowerShell) { $originalPowerShell } else { [NullString]::Value }), 'Process')
     $env:PATH = $originalPath
     if ($null -ne $lock) { $lock.Dispose() }
     Pop-Location

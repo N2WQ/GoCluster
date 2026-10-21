@@ -18,7 +18,7 @@ $fixtureRoot = Join-Path $repoRoot ('.tmp/windows-test-fixture-' + [guid]::NewGu
 $originalPath = $env:PATH
 $originalLocation = (Get-Location).Path
 $savedEnvironment = @{}
-foreach ($name in @('WINDOWS_TEST_FIXTURE_LOG', 'WINDOWS_TEST_FIXTURE_FAIL')) {
+foreach ($name in @('WINDOWS_TEST_FIXTURE_LOG', 'WINDOWS_TEST_FIXTURE_FAIL', 'GOCLUSTER_TEST_POWERSHELL')) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 $passed = 0
@@ -64,6 +64,7 @@ func observe(t *testing.T, role string) {
     if err != nil { t.Fatal(err) }
     err = json.NewEncoder(file).Encode(map[string]string{
         "Executable": executable, "Directory": directory, "Role": role, "Path": os.Getenv("PATH"),
+        "PowerShell": os.Getenv("GOCLUSTER_TEST_POWERSHELL"),
         "Race": fixtureRace, "Timeout": flag.Lookup("test.timeout").Value.String(), "Count": flag.Lookup("test.count").Value.String(),
     })
     closeErr := file.Close()
@@ -133,6 +134,7 @@ func TestSpoofChild(t *testing.T) {
         foreach ($observation in $matching) {
             Assert ($observation.Executable -eq $expectedBinary) "Wrong executable path: $($observation.Executable)"
             Assert ($observation.Path.StartsWith((Join-Path $goroot 'bin') + ';', [StringComparison]::OrdinalIgnoreCase)) 'Toolchain PATH mismatch.'
+            Assert ($observation.PowerShell -eq [Environment]::ProcessPath) 'Runner PowerShell identity was not forwarded to the actual parent/child.'
             Assert ($observation.Race -eq 'false' -and $observation.Count -eq '1') 'Ordinary build or test count mismatch.'
             if ($observation.Role -eq 'parent') { Assert ($observation.Timeout -eq '30s') 'Timeout was not forwarded.' }
         }
@@ -259,10 +261,66 @@ func TestSpoofChild(t *testing.T) {
     try { Invoke-FixtureFailure 'junction or symlink' @{ ModuleRoot = 'third_party/paho.mqtt.golang'; PrepareOnly = $true } }
     finally { [IO.Directory]::Delete($modulePath) }
     $passed++
-    Write-Host "PASS: $passed Windows test runner fixture groups."
+
+    $identityKey = 'GOCLUSTER_TEST_POWERSHELL'
+    foreach ($prior in @(
+        @{ Present = $false; Value = $null; Name = 'absent'; Key = $identityKey },
+        @{ Present = $true; Value = ''; Name = 'empty'; Key = $identityKey },
+        @{ Present = $true; Value = 'parent identity must not select the test image'; Name = 'nonempty'; Key = $identityKey },
+        @{ Present = $true; Value = ''; Name = 'lowercase-empty'; Key = 'gocluster_test_powershell' },
+        @{ Present = $true; Value = 'lowercase parent identity must not select the test image'; Name = 'lowercase-nonempty'; Key = 'gocluster_test_powershell' },
+        @{ Present = $true; Value = ''; Name = 'mixed-case-empty'; Key = 'GoCluster_Test_PowerShell' },
+        @{ Present = $true; Value = 'mixed-case parent identity must not select the test image'; Name = 'mixed-case-nonempty'; Key = 'GoCluster_Test_PowerShell' }
+    )) {
+        foreach ($outcome in @('success', 'prepare', 'early-failure', 'build-failure', 'test-failure')) {
+            # Establish each spelling afresh without requiring the runner to preserve casing.
+            [Environment]::SetEnvironmentVariable($identityKey, [NullString]::Value, 'Process')
+            if ($prior.Present) {
+                [Environment]::SetEnvironmentVariable($prior.Key, $prior.Value, 'Process')
+            }
+            $environmentKeys = [Environment]::GetEnvironmentVariables('Process').Keys
+            Assert (($environmentKeys -icontains $identityKey) -eq $prior.Present) "Could not establish $($prior.Name) identity state."
+            if ($prior.Present) {
+                Assert ($environmentKeys -ccontains $prior.Key) "Could not establish exact '$($prior.Key)' identity spelling."
+            }
+            Assert ([Environment]::GetEnvironmentVariable($identityKey, 'Process') -ceq $prior.Value) "Could not establish $($prior.Name) identity value."
+            $beforeCount = (Read-Observations).Count
+            switch ($outcome) {
+                'success' { & $runner -Packages '.' -Run '^TestRunner$' -Timeout 30s }
+                'prepare' { & $runner -Packages '.' -PrepareOnly }
+                'early-failure' { Invoke-FixtureFailure 'go list failed' @{ Packages = @('./missing') } }
+                'build-failure' {
+                    Set-Content -LiteralPath $invalidSource "package fixture`nvar broken = missingIdentifier"
+                    try { Invoke-FixtureFailure 'Test build failed: runnerfixture' @{ Packages = @('.'); Run = '^TestRunner$' } }
+                    finally { Remove-Item -LiteralPath $invalidSource }
+                }
+                'test-failure' {
+                    $env:WINDOWS_TEST_FIXTURE_FAIL = '1'
+                    try { Invoke-FixtureFailure 'Tests failed: runnerfixture' @{ Packages = @('.'); Run = '^TestRunner$' } }
+                    finally { $env:WINDOWS_TEST_FIXTURE_FAIL = '0' }
+                }
+            }
+            $present = [Environment]::GetEnvironmentVariables('Process').Keys -icontains $identityKey
+            $value = [Environment]::GetEnvironmentVariable($identityKey, 'Process')
+            Assert ($present -eq $prior.Present -and $value -ceq $prior.Value) "Identity state leaked after $($prior.Name)/$outcome."
+            Assert ($env:PATH -ceq $originalPath -and (Get-Location).Path -eq $originalLocation) "Caller state leaked after $($prior.Name)/$outcome."
+            if ($outcome -in @('success', 'test-failure')) {
+                $newRows = @(Read-Observations | Select-Object -Skip $beforeCount)
+                $expectedCount = if ($outcome -eq 'success') { 2 } else { 1 }
+                Assert ($newRows.Count -eq $expectedCount) "Identity case did not execute its actual fixture: $($prior.Name)/$outcome."
+                foreach ($row in $newRows) {
+                    Assert ($row.PowerShell -ceq [Environment]::ProcessPath) 'Poisoned prior identity selected the child PowerShell.'
+                }
+            } else {
+                Assert ((Read-Observations).Count -eq $beforeCount) 'Preparation/failure ran an unexpected test executable.'
+            }
+            Write-Host "PASS: PowerShell identity $($prior.Name)/$outcome in the same caller process."
+            $passed++
+        }
+    }
 } finally {
     foreach ($name in $savedEnvironment.Keys) {
-        [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process')
+        [Environment]::SetEnvironmentVariable($name, $(if ($null -eq $savedEnvironment[$name]) { [NullString]::Value } else { $savedEnvironment[$name] }), 'Process')
     }
     $env:PATH = $originalPath
     Set-Location -LiteralPath $originalLocation
@@ -271,5 +329,17 @@ func TestSpoofChild(t *testing.T) {
     if (-not $resolvedFixture.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) {
         throw "Refusing fixture cleanup outside .tmp: $resolvedFixture"
     }
-    if (Test-Path -LiteralPath $resolvedFixture) { Remove-Item -LiteralPath $resolvedFixture -Recurse -Force }
+    if (Test-Path -LiteralPath $resolvedFixture) {
+        # Retry brief Windows executable locks, but still fail on persistent cleanup errors.
+        for ($attempt = 0; $attempt -lt 20; $attempt++) {
+            try {
+                Remove-Item -LiteralPath $resolvedFixture -Recurse -Force
+                break
+            } catch [IO.IOException], [UnauthorizedAccessException] {
+                if ($attempt -eq 19) { throw }
+                Start-Sleep -Milliseconds 100
+            }
+        }
+    }
 }
+Write-Host "PASS: $passed Windows test runner fixture groups."

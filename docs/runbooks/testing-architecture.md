@@ -65,6 +65,13 @@ selected. Firewall policy remains user-managed. The summary separates executed
 packages, build-only packages, passed cases and skipped cases. A filtered lane
 with no passing cases fails; exact required identities protect the intended set.
 
+Ordinary executable guards and lifecycle artifacts are anchored to the current
+checkout. They do not relax the opt-in controlled qualification paths, workloads
+or historical evidence. New ordinary guards discover the checkout from the
+package working directory and `go.mod`, independently of recorded compiler
+source filenames. The output tree remains private to the runner; pre-write
+path checks do not promise protection against hostile concurrent replacement.
+
 ## Command collection and fixture isolation
 
 Use PyYAML 6.0.3 in the pinned environment, without optimized Python:
