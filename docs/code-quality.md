@@ -1,4 +1,7 @@
-# Code Quality
+---
+title: Code Quality
+description: Shared GoCluster engineering standards and proportionate permanent testing.
+---
 
 This is the canonical codebase-level engineering standard shared by Codex and
 Fable. Read the universal kernel for code changes, then only the risk sections
@@ -28,6 +31,36 @@ in each executor's workflow and skills.
   table-driven structure is clearer. A hand-written file over 500 lines is a
   review trigger; explain why splitting would reduce clarity or cohesion.
 - Prefer cohesive helpers over monoliths without fragmenting control flow.
+
+## Proportionate Permanent Testing
+
+- Inspect and extend existing tests, fixtures and runners before adding parallel
+  infrastructure. Organize test files by cohesive behavior, not development task.
+- Test behavior primarily in its owning component. Add integration coverage
+  when it proves a distinct wiring, transport, persistence or lifecycle risk
+  that owner-level tests cannot establish. Do not repeat a semantic matrix at
+  every layer without a distinguishing failure it can detect.
+- Treat new permanent runners, cross-process handoffs, receipt formats and
+  miniature protocol services as exceptional. Explain the concrete evidence
+  gap, why existing tools cannot close it, and the maintenance cost in the
+  existing change plan or review. This is not a separate approval ceremony.
+- Separate development experiments from permanent regression protection.
+  Retain investigative code only when it provides meaningful, repeatable
+  protection or is needed for an accepted qualification obligation.
+- Review the whole testing change, including helpers, scripts, fixtures,
+  duplicated scenarios and CI, for complexity, execution cost and maintenance.
+  Ask whether a smaller suite would detect the same material failures.
+- File counts and test-to-production line ratios are diagnostic signals, not
+  acceptance targets. Do not combine files or remove unique protection merely
+  to improve those numbers. Review expected behavior as well as coverage;
+  passing tests can enforce an incorrect expectation.
+
+Keep risk-driven race, performance, scientific and lifecycle evidence required
+by the affected contract. These rules govern how evidence is obtained, not
+whether necessary evidence may be waived. Existing execution and qualification
+obligations remain in force; reducing them requires separately approved scope.
+See the [testing architecture](runbooks/testing-architecture.md) and
+[ADR-0316](decisions/ADR-0316-proportionate-permanent-testing.md).
 
 ## Network And Lifecycle
 

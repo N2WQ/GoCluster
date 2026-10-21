@@ -1,4 +1,7 @@
-# Decision Log
+---
+title: Decision Log
+description: Index of GoCluster architecture, protocol, operations, and workflow decisions.
+---
 
 This index tracks all architecture and workflow decisions recorded as ADRs.
 
@@ -24,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0316 | Proportionate Permanent Testing | Accepted | 2026-10-20 | shared testing policy, fixture reuse, permanent harness cost | none; extends ADR-0299 | none | [ADR-0316](decisions/ADR-0316-proportionate-permanent-testing.md) |
 | ADR-0311 | Stabilizer Transition Matrix | Accepted | 2026-10-16 | console, terminal-path accounting, bounded stats | Refines ADR-0189 glyph display only | none | `docs/decisions/ADR-0311-stabilizer-transition-matrix.md` |
 | ADR-0310 | Live Forecast Cache Retention | Proposed | 2026-10-16 | replacement-only refresh, deterministic live eviction, original map scans | none; preserves ADR-0303/0304 disk contracts | none | `docs/decisions/ADR-0310-live-forecast-cache-retention.md` |
 | ADR-0309 | Recent Report Support and Receiver Units | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | ADR-0134 floor; ADR-0308 receiver qualification | none | `docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md` |

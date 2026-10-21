@@ -1,9 +1,28 @@
-# Testing Architecture
+---
+title: Testing Architecture
+description: Test ownership, execution lanes, fixture isolation, and qualification boundaries.
+---
 
 Owner tests retain exhaustive semantics. Composed tests witness distinct wiring,
 transport, persistence and lifecycle mechanisms. Retired integration variants
 retain owner coverage, but lose their individual integration runs. Package
 counts and test names alone do not establish end-to-end qualification.
+
+## Permanent testing scope
+
+Apply the shared [proportionate permanent testing rules](../code-quality.md#proportionate-permanent-testing)
+when planning and reviewing test additions. Reuse existing fixtures and lanes;
+keep detailed semantics with the owner and use composed checks for distinct
+boundary risks. Full qualification machinery is not the default for each fix.
+Explain exceptional infrastructure within the existing plan or review, without
+creating another approval step or checker.
+
+[ADR-0316](../decisions/ADR-0316-proportionate-permanent-testing.md) extends the
+ownership policy without retiring any lane below. July's suite is a reference
+for simplicity, not a completeness guarantee or a rollback target. Existing
+test reduction needs separately approved, bounded scope distinguishing redundant
+evidence from unique regression protection. Renaming or merging files alone is
+not a reduction in maintenance burden.
 
 ## Execution lanes
 
