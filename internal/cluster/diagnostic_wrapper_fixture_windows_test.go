@@ -16,10 +16,12 @@ import (
 type diagWrapperFixture struct {
 	root        string
 	script      string
+	supervisor  string
 	executable  string
 	private     string
 	nonce       string
 	rejectStart bool
+	fault       string
 }
 
 // A host/kernel cleanup refusal fails closed for this fixture's later writes.
@@ -91,12 +93,22 @@ func newDiagWrapperFixture(t *testing.T, name string, gc int, executable, omitEx
 		t.Fatal(err)
 	}
 	private := filepath.Join(privateRoot, hex.EncodeToString(nonce[:]))
+	if err := diagPlainFixturePath(repo, private); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.Mkdir(private, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	supervisor := filepath.Join(private, "supervisor.ps1")
+	if err := diagPlainFixturePath(repo, supervisor); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(supervisor, []byte(diagNativeSupervisorSource), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	// Retain fixed-size per-invocation evidence rather than scheduling removal
 	// beneath a child whose retirement might be refused by the host/kernel.
-	fixture := diagWrapperFixture{root: root, script: script, executable: child,
+	fixture := diagWrapperFixture{root: root, script: script, supervisor: supervisor, executable: child,
 		private: private, nonce: hex.EncodeToString(nonce[:])}
 	if executable {
 		diagCopyConfig(t, repo, filepath.Join(private, "config"), gc)

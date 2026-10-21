@@ -1,12 +1,11 @@
 package cluster
 
 import (
-	"context"
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"io"
 	"time"
 	"unsafe"
 
@@ -19,15 +18,33 @@ type diagJobAccounting struct {
 }
 
 type diagSupervisorResult struct {
-	Nonce   string
-	Status  int
-	Context string
-	Error   string
+	Nonce              string
+	Status             int
+	Context            string
+	Error              string
+	Image              string
+	Stage              string
+	NativeJoined       bool
+	NativeClosed       bool
+	HandleListExcluded bool
 }
 
-// Parent-created named jobs own the supervisor before it can start PowerShell.
-// No breakaway is allowed. Kernel accounting covers even a rejected/missing
-// child receipt; authenticated child handles provide the stronger normal witness.
+type diagPowerShellOwner struct {
+	Nonce  string
+	Handle uint64
+	Stage  string
+}
+
+const (
+	diagPowerShellIdentity = "GOCLUSTER_TEST_POWERSHELL"
+	diagJobAssign          = 1
+	diagJobQuery           = 4
+)
+
+var diagKernel = windows.NewLazySystemDLL("kernel32.dll")
+
+// The parent retains the kill-on-close owner through complete retirement.
+// Neither the job handle nor process-ownership handles enter the stdio allowlist.
 func newDiagJob(nonce string) (windows.Handle, error) {
 	name := "Local\\GoClusterDiagWrapper-" + nonce
 	encoded, err := windows.UTF16PtrFromString(name)
@@ -54,20 +71,80 @@ func newDiagJob(nonce string) (windows.Handle, error) {
 	return handle, nil
 }
 
-func diagJoinParentJob(name string) error {
+func diagOpenJob(nonce string, access uint32) (windows.Handle, error) {
+	name := "Local\\GoClusterDiagWrapper-" + nonce
 	encoded, err := windows.UTF16PtrFromString(name)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	open := windows.NewLazySystemDLL("kernel32.dll").NewProc("OpenJobObjectW")
-	const assignProcess = 1
-	value, _, callErr := open.Call(assignProcess, 0, uintptr(unsafe.Pointer(encoded)))
+	value, _, callErr := open.Call(uintptr(access), 0, uintptr(unsafe.Pointer(encoded)))
 	if value == 0 {
-		return fmt.Errorf("open parent diagnostic job: %w", callErr)
+		return 0, fmt.Errorf("open parent diagnostic job: %w", callErr)
 	}
-	handle := windows.Handle(value)
-	err = windows.AssignProcessToJobObject(handle, windows.CurrentProcess())
-	return errors.Join(err, windows.CloseHandle(handle))
+	return windows.Handle(value), nil
+}
+
+func diagRequireMember(process, job windows.Handle) error {
+	query := diagKernel.NewProc("IsProcessInJob")
+	if err := query.Find(); err != nil {
+		return err
+	}
+	var member int32
+	ok, _, queryErr := query.Call(uintptr(process), uintptr(job), uintptr(unsafe.Pointer(&member)))
+	if ok == 0 {
+		return fmt.Errorf("diagnostic job membership query: %w", queryErr)
+	}
+	if member == 0 {
+		return fmt.Errorf("diagnostic process is outside its intended job")
+	}
+	return nil
+}
+
+func diagRequireLiveMember(process, job windows.Handle) error {
+	event, err := windows.WaitForSingleObject(process, 0)
+	if err != nil {
+		return fmt.Errorf("diagnostic process liveness query: %w", err)
+	}
+	if event != uint32(windows.WAIT_TIMEOUT) {
+		return fmt.Errorf("diagnostic process is not live: wait=%d", event)
+	}
+	return diagRequireMember(process, job)
+}
+
+func diagVerifyImage(process windows.Handle, expected string) error {
+	var path [32768]uint16
+	length := uint32(len(path))
+	if err := windows.QueryFullProcessImageName(process, 0, &path[0], &length); err != nil {
+		return err
+	}
+	actual := windows.UTF16ToString(path[:length])
+	if !diagEqualPath(actual, expected) {
+		return fmt.Errorf("diagnostic process image %q, want %q", actual, expected)
+	}
+	return nil
+}
+
+func diagDecodeOwner(body []byte, nonce, stage string) (diagPowerShellOwner, error) {
+	var owner diagPowerShellOwner
+	if len(body) == 0 || len(body) > 4096 {
+		return owner, fmt.Errorf("invalid diagnostic ownership receipt size")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&owner); err != nil {
+		return owner, fmt.Errorf("invalid diagnostic ownership receipt: %w", err)
+	}
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		return owner, fmt.Errorf("trailing diagnostic ownership receipt data")
+	}
+	// Pseudo process/thread/token handles are not transferable ownership.
+	if len(nonce) != 32 || owner.Nonce != nonce || owner.Stage != stage ||
+		owner.Handle == 0 || owner.Handle >= uint64(^uintptr(0))-15 {
+		return owner, fmt.Errorf("unauthenticated diagnostic PowerShell ownership receipt")
+	}
+	return owner, nil
 }
 
 func diagJobSnapshot(handle windows.Handle) (diagJobAccounting, error) {
@@ -89,50 +166,4 @@ func diagAwaitJob(handle windows.Handle) (diagJobAccounting, error) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-}
-
-// This test-only supervisor closes launch/assignment races by joining the
-// parent job before any PowerShell process exists. It owns the actual native
-// -File child wait and records causal status/context separately from owner exit.
-func runDiagSupervisor() (int, error) {
-	private := os.Getenv("DXC_DIAG_WRAPPER_PRIVATE")
-	nonce := os.Getenv("DXC_DIAG_WRAPPER_NONCE")
-	if !filepath.IsAbs(private) || len(nonce) != 32 {
-		return 95, fmt.Errorf("invalid private diagnostic supervisor ownership")
-	}
-	if err := diagJoinParentJob("Local\\GoClusterDiagWrapper-" + nonce); err != nil {
-		return 95, err // Fail closed before PowerShell launch.
-	}
-	budget := 8 * time.Second
-	if os.Getenv("DXC_DIAG_WRAPPER_STALL") == "1" {
-		budget = 4 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
-	defer cancel()
-	command := exec.CommandContext(ctx, "pwsh", "-NoProfile", "-NonInteractive", "-File", os.Getenv("DXC_DIAG_WRAPPER_SCRIPT"))
-	command.Dir = filepath.Join(private, "working directory")
-	command.Env = append(os.Environ(), "DXC_DIAG_WRAPPER_CHILD=1")
-	command.Stdout, command.Stderr = os.Stdout, os.Stderr
-	command.WaitDelay = 250 * time.Millisecond
-	runErr := command.Run()
-	result := diagSupervisorResult{Nonce: nonce}
-	if runErr != nil {
-		result.Error = runErr.Error()
-		var exit *exec.ExitError
-		if errors.As(runErr, &exit) {
-			result.Status = exit.ExitCode()
-		} else {
-			result.Status = 95
-		}
-	}
-	if ctx.Err() != nil {
-		result.Context = ctx.Err().Error()
-	}
-	if err := diagWriteJSON(filepath.Join(private, "supervisor.json"), result); err != nil {
-		return 95, err
-	}
-	if result.Context != "" {
-		return 94, nil // Context failure is never credited as a child status.
-	}
-	return result.Status, nil
 }

@@ -72,6 +72,15 @@ package working directory and `go.mod`, independently of recorded compiler
 source filenames. The output tree remains private to the runner; pre-write
 path checks do not promise protection against hostile concurrent replacement.
 
+Windows diagnostic fixtures qualify the actual native PowerShell 7 runner
+image, not an arbitrary PATH resolution. A private native supervisor preserves
+the existing parent/job, native-wrapper and test-child owners. Atomic job-list
+creation, restricted stdio inheritance and a creation-local desktop-app policy
+fund the native process tree's containment. Actual live image, distinct PID and
+intended-job membership precede release; aggregate process totals alone are not
+admission. Failed invocations require confirmed retirement before fixture reuse.
+See [ADR-0314](../decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md).
+
 ## Command collection and fixture isolation
 
 Use PyYAML 6.0.3 in the pinned environment, without optimized Python:

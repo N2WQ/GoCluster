@@ -1,4 +1,7 @@
-# Development Validation Runbook
+---
+title: Development Validation Runbook
+description: Shared validation lanes, native Windows execution, and evidence boundaries.
+---
 
 This shared runbook owns validation lane selection and commands. Codex and
 Fable keep separate approval, planning, review, and reporting contracts.
@@ -76,6 +79,13 @@ for manual Windows Firewall approval. Ordinary and race builds reuse the paths;
 the runner does not modify firewall settings. See the
 [script guide](../scripts/README.md#windows-tests-with-stable-firewall-paths)
 for paths, prerequisites, helper binaries, locking, and policy limitations.
+
+The native runner forwards its actual PowerShell image privately to diagnostic
+fixtures and restores the caller's prior variable state. Do not set a substitute
+image to hide a failed native launch. PowerShell's Windows-host architecture
+and Go's host/target architecture are recorded separately. Ordinary
+checkout-relative fixture paths do not waive controlled qualification paths.
+See [native test ownership](decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md).
 
 ## CI Backstops
 

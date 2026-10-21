@@ -1,4 +1,7 @@
-# Troubleshooting Log
+---
+title: Troubleshooting Log
+description: Index of durable GoCluster troubleshooting evidence and linked decisions.
+---
 
 This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 
@@ -11,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0103 | Checkout Paths and Native Test Containment | Monitoring | 2026-10-19 | ordinary fixtures, Windows native membership, owner loss and retirement | ADR-0314 | `docs/troubleshooting/TSR-0103-checkout-paths-and-native-test-containment.md` |
 | TSR-0101 | Replay Deadline Scheduling | Monitoring | 2026-10-16 | chronological samples/holds, skipped traffic, deferred deadlines, EOF | none | `docs/troubleshooting/TSR-0101-replay-deadline-scheduling.md` |
 | TSR-0100 | Live Cache Qualification | Open | 2026-10-15 | rejected live indexes, delay updates, dense expiry, correctness-only extraction | ADR-0310 | `docs/troubleshooting/TSR-0100-live-cache-qualification.md` |
 | TSR-0099 | Global Heap Counter Observers | Monitoring | 2026-10-15 | S7 retained heap, asynchronous runtime activity, unattributed update allocation | ADR-0309 | `docs/troubleshooting/TSR-0099-global-heap-counter-observers.md` |

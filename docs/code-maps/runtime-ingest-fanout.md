@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `969ac27d39ee3b55`
+- Source fingerprint: `ad874f5dd671f3e8`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 142 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 147 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
 | `dxcluster/telnet` | `telnet` | 48 | 106 |
@@ -195,6 +195,7 @@ Test files:
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_job_windows_test.go`
+- `internal/cluster/diagnostic_wrapper_native_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_process_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_windows_test.go`
 - `internal/cluster/drop_log_dedupe_test.go`
@@ -225,6 +226,10 @@ Test files:
 - `internal/cluster/main_runtime_test.go`
 - `internal/cluster/main_stats_test.go`
 - `internal/cluster/main_test.go`
+- `internal/cluster/ordinary_harness_paths_boundaries_test.go`
+- `internal/cluster/ordinary_harness_paths_nonwindows_test.go`
+- `internal/cluster/ordinary_harness_paths_test.go`
+- `internal/cluster/ordinary_harness_paths_windows_test.go`
 - `internal/cluster/output_pipeline_collision_test.go`
 - `internal/cluster/output_pipeline_delivery_test.go`
 - `internal/cluster/output_pipeline_dropped_log_test.go`
@@ -781,6 +786,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0314](docs/decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md) | Accepted | 2026-10-19 | test paths, native Windows ownership, runner identity | `path:internal/cluster` |
 | [ADR-0311](docs/decisions/ADR-0311-stabilizer-transition-matrix.md) | Accepted | 2026-10-16 | console, terminal-path accounting, bounded stats | `path:internal/cluster` |
 | [ADR-0309](docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md) | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | `path:telnet` |
 | [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:telnet` |

@@ -1,4 +1,7 @@
-# TSR-0076 - Diagnostic Wrapper Settings and Status
+---
+title: "TSR-0076: Diagnostic Wrapper Settings and Status"
+description: Preserve diagnostic settings, child exit-status, and subsequent native test-ownership evidence.
+---
 
 Status: Monitoring
 Date Opened: 2026-10-10
@@ -67,6 +70,12 @@ Tags: tools, PowerShell, diagnostics, GC, exit-status
   cluster startup or production memory result is established by these fixtures.
 
 ## References
+
+The later [TSR-0103](TSR-0103-checkout-paths-and-native-test-containment.md)
+records checkout-path and native containment failures on a different host and
+the bounded test-harness repair. It does not rewrite checkpoint31's original
+observations or change the production wrapper's settings/status contract.
+
 - Issue(s): approved v3 diagnostic wrapper checkpoint.
 - PR(s): none.
 - Commit(s): checkpoint31 on `fix_commands`; see execution history.

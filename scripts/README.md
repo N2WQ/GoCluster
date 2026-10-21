@@ -107,6 +107,26 @@ checkout, not a historical developer path. Their artifact paths stay under
 writes, including a missing destination beneath a junction. Opt-in controlled
 campaign/profile/soak paths retain their separate qualification restrictions.
 
+The runner privately forwards its actual PowerShell 7 image through
+`GOCLUSTER_TEST_POWERSHELL`, then restores the prior variable state on every
+exit path. This is test-only invocation metadata, not a server setting or an
+alternate-image selector. PowerShell must be native to Windows; its architecture
+is recorded separately from the Go host/target architecture. ARM64 PowerShell
+and an amd64 Go toolchain are distinct identities, not a mismatch to hide by
+selecting another PowerShell installation.
+
+The diagnostic-wrapper fixture uses that actual image for its private native
+supervisor and the unchanged copied `-File` wrapper. The parent owns the job and
+supervisor; the supervisor creates wrapper PowerShell atomically into the job,
+then retains its creation-returned handle through authenticated adoption.
+Only standard handles inherit. A creation-local desktop-app policy prevents
+packaged PowerShell's test descendants from breaking away; it changes no
+machine policy or operator launch script. Live image, distinct process identity
+and intended-job membership checks precede workload release. Unsupported
+creation or unconfirmed retirement fails rather than falling back or skipping.
+See [ADR-0314](../docs/decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md)
+and [TSR-0103](../docs/troubleshooting/TSR-0103-checkout-paths-and-native-test-containment.md).
+
 One file lock protects all packages and preparation runs in this checkout.
 An overlapping invocation is refused; a crash releases the handle automatically.
 The empty `runner.lock` file remains on disk and should not be removed during a

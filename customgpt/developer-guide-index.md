@@ -1,4 +1,7 @@
-# Developer Guide Index
+---
+title: Developer Guide Index
+description: Source and contract entry points for GoCluster development and support.
+---
 
 Use this index for Go developers who want to understand, debug, or extend
 GoCluster. It routes to existing sources and avoids duplicating the repo's
@@ -95,6 +98,7 @@ workflow rules.
 | Operator-visible behavior | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), package README, HELP/docs tests |
 | Decisions or reversals | [docs/decision-memory.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-memory.md), [docs/decision-log.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-log.md) |
 | Test ownership, required execution, command/nested-module lanes and qualification identity | [testing architecture](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/runbooks/testing-architecture.md), [ADR-0299](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0299-test-ownership-and-current-source-qualification.md) |
+| Ordinary fixture relocation, actual runner identity and Windows native process containment | [ADR-0314](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md), [TSR-0103](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/troubleshooting/TSR-0103-checkout-paths-and-native-test-containment.md), [Windows test guide](https://raw.githubusercontent.com/N2WQ/GoCluster/main/scripts/README.md#windows-tests-with-stable-firewall-paths) |
 | Troubleshooting or incident learnings | [docs/decision-memory.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decision-memory.md), [docs/troubleshooting-log.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/troubleshooting-log.md) |
 | Recurring model or workflow lessons | [docs/agent-lessons/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/agent-lessons/README.md), [docs/change-workflow.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/change-workflow.md) |
 

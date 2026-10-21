@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime/metrics"
@@ -26,15 +27,19 @@ type diagChildStart struct {
 }
 
 type diagChildResult struct {
-	Nonce       string
-	GOGC        string
-	Address     string
-	InitialGC   uint64
-	LoadedGC    int
-	EffectiveGC uint64
-	Config      string
-	Arguments   int
-	Status      int
+	Nonce        string
+	GOGC         string
+	Address      string
+	InitialGC    uint64
+	LoadedGC     int
+	EffectiveGC  uint64
+	Config       string
+	Arguments    int
+	Status       int
+	StdinEOF     bool
+	Context      string
+	EmptyPresent bool
+	EmptyValue   string
 }
 
 // TestMain's private branch belongs only to the native wrapper fixture. The
@@ -42,13 +47,6 @@ type diagChildResult struct {
 // The child exercises the real loader/tuning consumer without starting sockets,
 // cluster services or diagnostics. Its watchdog bounds life after parent loss.
 func TestMain(m *testing.M) {
-	if os.Getenv("DXC_DIAG_WRAPPER_CHILD") == "supervisor" {
-		status, err := runDiagSupervisor()
-		if err != nil {
-			fmt.Fprintln(os.Stderr, err)
-		}
-		os.Exit(status)
-	}
 	if os.Getenv("DXC_DIAG_WRAPPER_CHILD") != "1" {
 		os.Exit(m.Run())
 	}
@@ -79,6 +77,14 @@ func runDiagWrapperChild() error {
 		os.Exit(96)
 	})
 	defer watchdog.Stop()
+	job, err := diagOpenJob(nonce, diagJobQuery)
+	if err != nil {
+		return err
+	}
+	memberErr := diagRequireLiveMember(windows.CurrentProcess(), job)
+	if err := errors.Join(memberErr, windows.CloseHandle(job)); err != nil {
+		return err
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -118,8 +124,38 @@ func runDiagWrapperChild() error {
 	if err != nil {
 		return err
 	}
-	result := diagChildResult{nonce, os.Getenv("GOGC"), os.Getenv("DXC_PPROF_ADDR"),
-		initialGC, cfg.GoRuntime.GCPercent, effectiveGC, cfg.LoadedFrom, len(os.Args), status}
+	input := []byte{0}
+	count, inputErr := os.Stdin.Read(input)
+	if count != 0 || !errors.Is(inputErr, io.EOF) {
+		if inputErr != nil {
+			return fmt.Errorf("diagnostic child stdin is not EOF: count=%d: %w", count, inputErr)
+		}
+		return fmt.Errorf("diagnostic child stdin is not EOF: count=%d without an EOF error", count)
+	}
+	fault := os.Getenv("DXC_DIAG_WRAPPER_FAULT")
+	if fault == "stdio_roundtrip" || fault == "stdio_backpressure" || fault == "launch_context" {
+		if _, err := fmt.Fprintln(os.Stdout, "DIAG_STDOUT_SENTINEL "+nonce); err != nil {
+			return err
+		}
+		if _, err := fmt.Fprintln(os.Stderr, "DIAG_STDERR_SENTINEL "+nonce); err != nil {
+			return err
+		}
+		if fault == "stdio_backpressure" {
+			for range 1024 {
+				if _, err := os.Stdout.Write([]byte("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n")); err != nil {
+					return err
+				}
+				if _, err := os.Stderr.Write([]byte("fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210\n")); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	empty, emptyPresent := os.LookupEnv("DXC_DIAG_WRAPPER_EMPTY")
+	result := diagChildResult{Nonce: nonce, GOGC: os.Getenv("GOGC"), Address: os.Getenv("DXC_PPROF_ADDR"),
+		InitialGC: initialGC, LoadedGC: cfg.GoRuntime.GCPercent, EffectiveGC: effectiveGC,
+		Config: cfg.LoadedFrom, Arguments: len(os.Args), Status: status, StdinEOF: true,
+		Context: os.Getenv("DXC_DIAG_WRAPPER_CONTEXT"), EmptyPresent: emptyPresent, EmptyValue: empty}
 	return diagWriteJSON(filepath.Join(directory, "result.json"), result)
 }
 
@@ -153,5 +189,11 @@ func diagWriteJSON(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, body, 0o600)
+	if len(body) > 4096 {
+		return fmt.Errorf("diagnostic receipt exceeds 4096 bytes")
+	}
+	if err := os.WriteFile(path+".pending", body, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(path+".pending", path)
 }
