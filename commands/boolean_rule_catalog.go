@@ -4,6 +4,10 @@ package commands
 func installBooleanRuleHelp(catalog *helpCatalog) {
 	lines := []string{"RULE - Numbered Boolean personal filters.", "Usage: HELP RULE"}
 	for _, text := range BooleanRuleHelpLines() {
+		if text == "" {
+			lines = append(lines, "")
+			continue
+		}
 		if len(text)+2 <= helpMaxWidth {
 			// In particular, do not collapse spaces inside quoted COMMENT values.
 			lines = append(lines, "  "+text)

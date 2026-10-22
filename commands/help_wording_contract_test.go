@@ -83,7 +83,7 @@ func TestHelpWordingRegisteredMailingVocabulary(t *testing.T) {
 			}
 		}
 		response := p.ProcessCommandForClient("HELP RULE", "W1ABC-18", "", nil, dialect)
-		if !strings.Contains(strings.Join(strings.Fields(response), " "), "DXSTATE/DESTATE use US/Canadian registered mailing codes; missing values are unknown.") ||
+		if !strings.Contains(strings.Join(strings.Fields(response), " "), "DXSTATE/DESTATE use US/Canadian registered mailing codes. Missing values are unknown.") ||
 			strings.Contains(response, "show FCC mailing-address codes") {
 			t.Fatalf("%s readback help attributes Canadian data to FCC: %q", dialect, response)
 		}

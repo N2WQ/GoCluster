@@ -72,7 +72,8 @@ func TestBooleanRuleHelpCanonicalCatalog(t *testing.T) {
 		for _, want := range []string{
 			"A PASS rule without SOURCE selects HUMAN only.",
 			"If SOURCE appears anywhere in the rule, normal Boolean logic applies.",
-			"Users moving from old filters receive the same starting rule and keep their settings.",
+			"Users moving from old filters get this rule too.",
+			"They keep their settings.",
 		} {
 			if !strings.Contains(flat, want) {
 				t.Fatalf("%s HELP RULE omitted source/onboarding policy %q", dialect, want)
