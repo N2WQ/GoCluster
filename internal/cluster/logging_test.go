@@ -279,6 +279,29 @@ func TestDailyFileSinkAdoptsCurrentLegacyLog(t *testing.T) {
 	}
 }
 
+// Keep the real retention path, but wait for each asynchronous cleanup before
+// checking files so expired archives cannot pass merely by winning a race.
+func observeDailyFileCleanup(t *testing.T, sink *dailyFileSink) func() {
+	t.Helper()
+	done := make(chan error, 2)
+	sink.cleanupFn = func(dir string, now time.Time, retention int) error {
+		err := cleanupOldLogs(dir, now, retention)
+		done <- err
+		return err
+	}
+	return func() {
+		t.Helper()
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("retention cleanup: %v", err)
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("retention cleanup did not finish")
+		}
+	}
+}
+
 func TestDailyFileSinkArchivesStaleActiveOnStartup(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "system")
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -288,13 +311,15 @@ func TestDailyFileSinkArchivesStaleActiveOnStartup(t *testing.T) {
 	if err := os.WriteFile(activePath, []byte("2026/01/22 23:59:59 stale\n"), 0644); err != nil {
 		t.Fatalf("write active: %v", err)
 	}
-	sink, err := newDailyFileSink(dir, 1)
+	sink, err := newDailyFileSink(dir, 2)
 	if err != nil {
 		t.Fatalf("newDailyFileSink: %v", err)
 	}
 	defer sink.Close()
 
+	waitCleanup := observeDailyFileCleanup(t, sink)
 	sink.WriteLine("fresh", time.Date(2026, time.January, 23, 0, 0, 1, 0, time.UTC))
+	waitCleanup()
 
 	archiveData, err := os.ReadFile(filepath.Join(dir, "22-Jan-2026.log"))
 	if err != nil {
@@ -314,21 +339,24 @@ func TestDailyFileSinkArchivesStaleActiveOnStartup(t *testing.T) {
 
 func TestDailyFileSinkArchiveCollisionMergesWithoutOverwrite(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "system")
-	sink, err := newDailyFileSink(dir, 1)
+	sink, err := newDailyFileSink(dir, 2)
 	if err != nil {
 		t.Fatalf("newDailyFileSink: %v", err)
 	}
 	defer sink.Close()
+	waitCleanup := observeDailyFileCleanup(t, sink)
 
 	day1 := time.Date(2026, time.January, 22, 12, 0, 0, 0, time.UTC)
 	day2 := day1.Add(24 * time.Hour)
 	sink.WriteLine("from-active", day1)
+	waitCleanup()
 	archivePath := filepath.Join(dir, "22-Jan-2026.log")
 	if err := os.WriteFile(archivePath, []byte("existing\n"), 0644); err != nil {
 		t.Fatalf("write archive: %v", err)
 	}
 
 	sink.WriteLine("new-day", day2)
+	waitCleanup()
 	if err := sink.Close(); err != nil {
 		t.Fatalf("Close() error: %v", err)
 	}

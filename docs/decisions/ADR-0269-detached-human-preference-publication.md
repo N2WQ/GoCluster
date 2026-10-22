@@ -1,8 +1,16 @@
-# ADR-0269: Detached Human Preference Publication
+---
+title: "ADR-0269: Detached Human Preference Publication"
+description: Staged human commands, stable publication and truthful persistence outcomes.
+---
 
 - Status: Accepted
 - Date: 2026-10-09
 - Decision Origin: Design
+
+[ADR-0317](ADR-0317-boolean-filter-replacement-mvp.md) replaces mutable category
+collections and NEARBY restoration maps with immutable full/projected rules.
+Detached staging, stable publication, explicit save intent and scheduling
+ownership remain in force; obsolete legacy scalars are no longer carried.
 
 ## Context
 

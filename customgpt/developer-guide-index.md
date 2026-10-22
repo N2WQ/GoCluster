@@ -35,7 +35,8 @@ workflow rules.
 | --- | --- |
 | Live runtime | `internal/cluster/`, [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | Telnet sessions, filters, and queues | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), `telnet/` |
-| Presets, saved preferences and SSID ownership | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#named-presets), `telnet/preset_commands.go`, `filter/presets.go`, `filter/user_preferences.go` |
+| Boolean personal-rule engine and immutable matching | [Boolean contracts and local owners](#boolean-personal-rules), [telnet filters](../telnet/README.md#filters), [normative domain contract](../docs/domain-contract.md#boolean-personal-rules) |
+| Presets, native-v5 preferences and SSID ownership | [telnet presets](../telnet/README.md#named-presets), [operator storage](../data/config/README.md#user-configuration-storage); local checkout: `filter/configuration_v5.go`, `filter/storage_v5.go`, `filter/storage_v5_decode.go`, `filter/storage_v5_io_adapter.go`, `filter/preset_v5.go`; coordination remains in `telnet/preset_commands.go`, `filter/presets.go`, `filter/user_preferences.go` |
 | Command HELP and command dispatch | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md), `commands/` |
 | Spot record, formatting, confidence, correction | [spot/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/spot/README.md), `spot/` |
 | Path reliability | [pathreliability/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/pathreliability/README.md), `pathreliability/` |
@@ -136,16 +137,62 @@ For custom GPT responses:
 - Do not summarize old ADRs as current behavior without checking the current
   doc/code path.
 
+## Boolean Personal Rules
+
+Start with the [telnet rule contract](../telnet/README.md#filters),
+[HELP ownership](../commands/README.md#help-source-of-truth),
+[normative domain contract](../docs/domain-contract.md#boolean-personal-rules) and
+[accepted test-only ADR-0317](../docs/decisions/ADR-0317-boolean-filter-replacement-mvp.md).
+They describe one prepared Boolean engine, not an additional category gate.
+New records receive mode/source defaults in editable PASS slot 0. A one-time
+recognized old-profile login upgrade installs the same configured mode/source defaults,
+preserving settings and discarding old filters/presets without translating
+their logic. Reset/existing v5 empty records never reinstall defaults.
+Pure v5 codecs and machine schemas remain strict; see
+[ADR-0318](../docs/decisions/ADR-0318-old-profile-reset-upgrade.md) and
+[ADR-0319](../docs/decisions/ADR-0319-boolean-onboarding-and-source-default.md).
+A PASS without a SOURCE atom selects HUMAN only. Any SOURCE atom uses normal
+Boolean semantics for the entire rule; REJECT has no HUMAN default. No active
+PASS still allows all sources. Login/readbacks preserve exact expressions,
+never independent field summaries that lose Boolean relationships.
+
+These are verified **local checkout** owners, not new raw-main publication
+claims. Private-cluster acceptance remains pending.
+
+| Concern | Local source owners |
+| --- | --- |
+| Syntax, preparation, field compilation/evaluation and per-spot normalization | `filter/expr/parse.go`, `filter/rule_set.go`, `filter/rule_compile.go`, `filter/rule_evaluate.go`, `filter/rule_view.go` |
+| New-user default construction and startup publication | `filter/rule_defaults.go`, `filter/match_snapshot.go` (`ConfigureDefaultRules`) |
+| Structural geography projection and saved/effective counts | `filter/rule_set_projection.go`, `filter/rule_set_readback.go` |
+| Immutable matching programs and coherent controls/cells/path captures | `filter/match_snapshot.go`, `telnet/matching_snapshot.go`; `telnet/history_filter.go` and `telnet/history_v5.go` for history snapshots/invalidation |
+| Human ingress, detached admission and bounded display | `telnet/boolean_input.go`, `telnet/boolean_rule_commands.go`, `telnet/boolean_rule_readback.go`, `telnet/configuration_render.go`, `telnet/human_preference_stage.go` |
+| Registered GO/CC expression HELP | `commands/boolean_rule_help.go` (`BooleanRuleHelpLines`), `commands/boolean_rule_catalog.go` (`installBooleanRuleHelp`), installed in `commands/processor.go`; configuration topics remain in `commands/configuration_help.go` |
+| Machine headers, strict proposals/rules, transactions and readback | `telnet/machine_v5_input.go`, `telnet/machine_v5_schema.go`, `telnet/machine_v5_schema_rules.go`, `telnet/machine_v5_commands.go`, `telnet/machine_v5_readback.go`, `telnet/machine_v5_readback_capabilities.go` |
+| Native configuration, record preparation/decoding, runtime adapters and presets | `filter/configuration_v5.go`, `filter/storage_v5.go`, `filter/storage_v5_decode.go`, `filter/storage_v5_io_adapter.go`, `filter/preset_v5.go` |
+
+Review [machine schema 5](../telnet/README.md#client-yaml-configuration) for
+explicit SCHEMA 5 on every GET, body schema_version 5, complete PUT/VALIDATE,
+whole-list PATCH, runtime settings admission, revisions and publication fences.
+Review [native storage](../data/config/README.md#user-configuration-storage)
+for explicit versions on records/entries/baselines, protection, byte/work bounds
+and atomicity, not frozen old-schema preservation checklists.
+For NEARBY use the [recovery contract](../docs/domain-contract.md#nearby-projection-and-recovery):
+already-ON unusable restored geometry permits rule-only human/YAML edits with
+all other selections unchanged and retains GRID/ON. Both cells unavailable blocks
+ordinary spots until repaired/OFF, preserving SELF/history exceptions and TOXIC.
+Partial geometry remains band-specific. The exception waives only unchanged GRID
+mapping availability; exact syntax and other settings checks remain. The joined
+fresh-child GRID fixture covers PATCH, PUT and VALIDATE against no mappings.
+
 ## Per-Mode Minimum SNR
 
-Route command, exception, inactive-rule and machine-schema questions to
-[telnet/README.md](../telnet/README.md#minimum-snr) and
-[ADR-0258](../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md).
-Implementation entry points are `filter/min_snr.go`, `filter/min_snr_storage.go`,
-`telnet/minsnr_commands.go`, `telnet/machine_versions.go` and
-`telnet/configuration_readback.go`. Check signed map presence, exact canonical
-activity, predecode/precopy bounds, frozen schemas 1/2, pinned version 2 state
-migration, and detached history snapshots when reviewing changes.
+This retained heading routes former MINSNR questions to
+[Boolean SNR expressions](../telnet/README.md#minimum-snr) and the
+[current engine owners](#boolean-personal-rules). `HasReport` makes SNR known,
+including human and zero reports; a SOURCE guard is explicit policy, not an
+implicit exemption. Missing comparisons are false, including `<>`; NOT negates
+that result. [ADR-0258](../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md)
+records historical pre-v5 map/schema mechanics, not an active compatibility path.
 
 ## Literal Comment Rules And History
 
@@ -157,17 +204,22 @@ For combined BAND/MODE/COMMENT history searches, also use
 the existing history cursor retains only bounded immutable selections. Check
 saved-filter narrowing, mandatory explicit selection for self-spots, malformed
 request preservation and NEXT, and reader-level COMMENT punctuation after lists.
-History lists require commas; PASS/REJECT lists keep their existing separators.
+Explicit history lists require commas; numbered-rule value lists use the
+Boolean expression grammar in `HELP RULE`, not category-command separators.
 For configured mode aliases named BAND/MODE, inspect first-value and post-comma
 precedence and repeated-clause rejection. See
 [TSR-0047](../docs/troubleshooting/TSR-0047-history-mode-alias-clause-collision.md)
 and `commands/history_selection_taxonomy_test.go` for the collision regression.
 
-Route to [telnet comments](../telnet/README.md#comment-filters-and-searches) and
-[ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).
-Entry points are `filter/comment.go`, `filter/comment_storage.go`,
-`telnet/comment_commands.go`, `telnet/comment_input.go`, `commands/history.go`
-and `telnet/machine_versions.go`. Check literal spacing/punctuation, scoped
-ASCII ingress, case-insensitive moves, independent 32/64 limits, exact duplicate
-YAML lists, schema 1-3 projections/preservation, pinned MINSNR introduction at
-disk 3, detached snapshots and mandatory query matching before self exceptions.
+Route saved COMMENT expressions to
+[telnet comments](../telnet/README.md#comment-filters-and-searches) and the
+[Boolean owners](#boolean-personal-rules), not phrase-list handlers.
+Check preserved literal bytes, doubled expression quotes/literal backslashes
+versus Go-quoted display chunks, unknown/NOT semantics and rule budgets.
+Machine/native v5 carry expressions in rules, not saved COMMENT maps/lists.
+`commands/history.go` and `commands/history_selection.go` retain independent
+query grammar; `telnet/history.go` owns continuation/publication,
+`telnet/history_filter.go` and `telnet/history_v5.go` own captured Boolean
+matching/invalidation. Explicit query clauses apply before saved self exceptions
+and counting. [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
+is historical for pre-v5 saved lists; its separate archive phrase grammar remains.

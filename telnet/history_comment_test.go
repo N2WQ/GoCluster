@@ -12,16 +12,18 @@ import (
 )
 
 func TestHistoryCommentSnapshotAndDigest(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter()}
-	c.filter.Comments = []string{"POTA"}
-	c.filter.BlockComments = []string{"QRT"}
+	c := &Client{callsign: "N0USER", filter: testRuleFilter(t,
+		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=POTA"},
+		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=QRT"})}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.Comment = "POTA up 5"
 	snapshot := c.captureHistoryFilter()
 	if !snapshot.matches(nil, sp) {
 		t.Fatal("initial comment fixture rejected")
 	}
-	c.updateFilter(func(f *filter.Filter) { f.Comments[0], f.BlockComments[0] = "SOTA", "up 5" })
+	next := testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=SOTA"},
+		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: `COMMENT="up 5"`})
+	c.updateFilter(func(f *filter.Filter) { *f = *next })
 	if !snapshot.matches(nil, sp) || c.captureHistoryFilter().matches(nil, sp) || snapshot.digest == c.historyFilterDigest() {
 		t.Fatal("snapshot borrows comment rules or digest omits them")
 	}
@@ -54,7 +56,7 @@ func TestHistoryCommentRequiredForSelfAndRetainedByNext(t *testing.T) {
 	})
 	// Saved rules exclude the matching self-spot but retain their existing
 	// exception. The explicit query remains mandatory on each continued page.
-	c.filter.BlockComments = []string{"POTA"}
+	c.filter = testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "COMMENT=POTA"})
 	if text := runHistory(t, s, c, "SHOW DX 1 COMMENT pota:  up 5!"); !strings.Contains(text, self.FormatDXCluster()) || c.historySearch == nil {
 		t.Fatalf("first page failed: %q", text)
 	}
@@ -65,17 +67,18 @@ func TestHistoryCommentRequiredForSelfAndRetainedByNext(t *testing.T) {
 }
 
 func TestHistoryCommentChangesInvalidateCursor(t *testing.T) {
-	for _, change := range []func(*filter.Filter){
-		func(f *filter.Filter) { f.Comments = []string{"POTA"} },
-		func(f *filter.Filter) { f.BlockComments = []string{"QRT"} },
+	for _, definition := range []filter.RuleDefinition{
+		{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=POTA"},
+		{Slot: 0, Action: filter.RuleReject, Expr: "COMMENT=QRT"},
 	} {
 		s, c := historyTestSession(func(archive.HistoryRequest) (archive.HistoryPage, error) {
 			return archive.HistoryPage{Before: []byte("p"), End: archive.HistoryBudgetReached}, nil
 		})
 		runHistory(t, s, c, "SHOW DX COMMENT POTA")
 		token := c.historySearch.token
+		next := testRuleFilter(t, definition)
 		s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
-			c.updateFilter(change)
+			c.updateFilter(func(f *filter.Filter) { *f = *next })
 			return "", true
 		})
 		if text := runHistory(t, s, c, "SHOW DX NEXT "+token); !strings.Contains(text, "Invalid history continuation") || c.historySearch != nil {
@@ -99,13 +102,14 @@ func TestHistoryCommentPendingPageInvalidatedAfterRestore(t *testing.T) {
 		}
 		return archive.HistoryPage{Spots: []*spot.Spot{sp}, Before: []byte("p"), End: archive.HistoryCountReached}, nil
 	})
-	c.filter.Comments = []string{"POTA"}
+	c.filter = passRuleTestFilter(t, "COMMENT=POTA")
 	done := make(chan bool, 1)
 	go func() { _, proceed := s.handleHistoryCommand(c, "SHOW DX 1 COMMENT POTA"); done <- proceed }()
 	<-entered
 	for _, phrase := range []string{"SOTA", "POTA"} {
+		next := passRuleTestFilter(t, "COMMENT="+phrase)
 		s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
-			c.updateFilter(func(f *filter.Filter) { f.Comments[0] = phrase })
+			c.updateFilter(func(f *filter.Filter) { *f = *next })
 			return "", true
 		})
 	}
@@ -119,8 +123,12 @@ func TestHistoryCommentPendingPageInvalidatedAfterRestore(t *testing.T) {
 }
 
 func TestHistoryCommentConcurrentSnapshotIsolation(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter()}
-	c.filter.Comments, c.filter.BlockComments = []string{"POTA"}, []string{"QRT"}
+	first := testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=POTA"},
+		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=QRT"})
+	second := testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=SOTA"},
+		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=POTA"})
+	c := &Client{callsign: "N0USER", filter: first}
+	states := [2]filter.Filter{*first, *second}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.Comment = "POTA"
 	initial := c.captureHistoryFilter()
@@ -128,8 +136,7 @@ func TestHistoryCommentConcurrentSnapshotIsolation(t *testing.T) {
 	group.Go(func() {
 		for i := range 500 {
 			c.updateFilter(func(f *filter.Filter) {
-				f.Comments[0] = []string{"POTA", "SOTA"}[i%2]
-				f.BlockComments[0] = []string{"QRT", "POTA"}[i%2]
+				*f = states[i%2]
 			})
 		}
 	})

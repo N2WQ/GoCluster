@@ -42,19 +42,14 @@ telnet:
     Hello <CALL>, DE <CLUSTER>
     Cluster: Users <USER_COUNT>  Uptime <UPTIME>
     Last login: <LAST_LOGIN> from <LAST_IP>
-    Current commands: <DIALECT> (<DIALECT_SOURCE>).
-    Use DIALECT LIST or DIALECT <DIALECT_DEFAULT> to change.
-    Grid: <GRID> (SET GRID <grid>)
-    Noise: <NOISE> (SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL)
-    Dedupe policy: <DEDUPE> (SET DEDUPE FAST|MED|SLOW)
-    Type HELP for all commands.
+    <SETTINGS_FILTERS>
     
     <CALL> de <CLUSTER> <DATETIME>>
   login_empty_message: |
     Callsign cannot be empty. Please try again.
   login_invalid_message: |
     Invalid call. Please try again.
-  nearby_login_warning: "PASS NEARBY filter is ON. Disable NEARBY if you want to use regular location filters" # Post-login warning when saved NEARBY is active.
+  nearby_login_warning: "NEARBY is ON. Geographic rule conditions are suspended." # Post-login warning when saved NEARBY is active.
   input_too_long_message: |
     <CONTEXT> input is too long (maximum <MAX_LEN> characters).
   input_invalid_char_message: |

@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-
-	"gopkg.in/yaml.v3"
 )
 
 // MaxUserRecordBytes bounds raw, normalized and prospective user records.
@@ -81,71 +79,13 @@ func recordConfiguration(record *UserRecord) Configuration {
 	})
 }
 
-// Reject impossible metadata before constructing a YAML tree. This is a linear
-// lower bound only; quoting, indentation and timestamps still belong to the
-// exact final encoding. Runtime fields are excluded by Configuration conversion.
-func userRecordMinimumFits(record *UserRecord) bool {
-	remaining := MaxUserRecordBytes
-	for _, ip := range trimRecentIPs(record.RecentIPs) {
-		if len(ip) > remaining || remaining-len(ip) < 3 {
-			return false
-		}
-		remaining -= len(ip) + 3
-	}
-	var fits bool
-	remaining, fits = recordConfiguration(record).minimumSizeRemaining(remaining)
-	if !fits {
-		return false
-	}
-	if record.Preset != nil {
-		if len(record.Preset.Name) > remaining {
-			return false
-		}
-		remaining -= len(record.Preset.Name)
-		if record.Preset.Baseline != nil {
-			_, fits = ConfigurationFromPreset(record.Preset.Baseline).minimumSizeRemaining(remaining)
-		}
-	}
-	return fits
-}
-
 // encodeUserRecord is pure: both canonical loading and prospective preparation
-// use the same v4 encoding, without path resolution or changes to caller data.
+// use the same v5 encoding, without path resolution or changes to caller data.
 // Configuration and baseline use the independent standalone SavedPreset oracle.
 func encodeUserRecord(record *UserRecord) ([]byte, error) {
-	if record.ConfigurationVersion != 0 && record.ConfigurationVersion != CurrentConfigurationVersion {
-		return nil, ErrUnsupportedConfigurationVersion
-	}
-	cfg := recordConfiguration(record)
-	if err := cfg.ValidateStateRules(); err != nil {
-		return nil, err
-	}
-	if err := cfg.ValidateMinSNRRules(); err != nil {
-		return nil, err
-	}
-	if err := cfg.ValidateCommentRules(); err != nil {
-		return nil, err
-	}
-	if !userRecordMinimumFits(record) {
-		return nil, storageAdmissionf("user record exceeds %d bytes", MaxUserRecordBytes)
-	}
-	if _, err := cfg.Preset(); err != nil {
-		return nil, err
-	}
-	snapshot := *record
-	snapshot.ConfigurationVersion = CurrentConfigurationVersion
-	snapshot.RecentIPs = trimRecentIPs(snapshot.RecentIPs)
-	var err error
-	snapshot.Preset, err = snapshot.Preset.Clone()
+	stored, err := V5UserRecordFromRuntime(record)
 	if err != nil {
 		return nil, err
 	}
-	data, err := yaml.Marshal(&snapshot)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > MaxUserRecordBytes {
-		return nil, storageAdmissionf("user record exceeds %d bytes", MaxUserRecordBytes)
-	}
-	return data, nil
+	return EncodeV5UserRecord(stored)
 }

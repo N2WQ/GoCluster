@@ -26,12 +26,30 @@ replacement of an older connection. An old session cannot overwrite the new
 session's record, including through a save already underway during reconnect.
 
 If a valid record is restored but updating the login timestamp/IP fails, login
-continues with those preferences and a warning. If the record itself is
-unreadable or has an unsupported format, login uses protected temporary
+continues with those preferences and a warning.
+
+Login upgrades recognized unversioned and version 1–4 profiles once. Old
+personal filters, NEARBY and the applied-preset association are reset. The
+replacement is an ordinary editable PASS rule in slot 0 using configured
+default modes and sources, identical to a new user's starting rule. Saved settings, separate
+controls and login metadata are retained; the login reports the reset.
+Old shared preset entries are removed without deleting already-created v5
+presets. Original files are backed up before replacement. Existing v5 profiles,
+including empty rule sets, are never reset again. This does not revive old
+category commands or accept old machine YAML schemas.
+
+If the record itself is unreadable, unsafe or uses an unrecognized version,
+or its required upgrade cannot be committed, login uses protected temporary
 defaults without overwriting that record. Human preference changes are
 temporary; readbacks remain available. SAVE PRESET is rejected before any
 library write, and LOAD PRESET and PUT/PATCH cannot commit configuration.
-LIST/DELETE retain their separate preset-library behavior.
+LIST/DELETE retain their separate preset-library behavior. File replacements
+are atomic individually, not one cross-file transaction; upgrade failures must
+be reported and retried safely without overwriting the original backups.
+Original backups use `.pre-v5.bak` beside the user record or preset library.
+A different existing backup is never overwritten. A library-only cleanup
+failure on an already-valid v5 profile warns without replacing that user's
+settings or blocking unrelated preference saves.
 
 Raw and normalized user records must each fit 1 MiB. The proposed saved record,
 including login metadata and the applied baseline, must also fit 1 MiB.
@@ -99,51 +117,137 @@ Blank `NCDXF B` source-class beacon comments display `NCDXF BEACON`.
 
 ## Filters
 
-The telnet layer owns the live filter parser and persistence rules.
+This describes the Boolean filter MVP in the current local checkout, not a
+production deployment or a claim that new source files are published on main.
+Private local-cluster acceptance remains pending. The telnet layer owns command
+admission and publication; personal selection uses one prepared Boolean engine.
 
-Bare PASS/REJECT and unknown types return bounded, action-aware suggestions.
-They include all 29 filter families, with NOFILTER only for PASS and PC93 as an
-ANNOUNCE alias. Special categories have their own grammar; use HELP PASS/REJECT
-for complete syntax. Shared DXBM errors recommend PASS/REJECT and REJECT MODE.
+Both `go` and `cc` use the same numbered-rule commands:
 
-CC HELP SET/FILTER and HELP UNSET/FILTER list ordinary categories separately
-from switches and special forms. Shared PASS/REJECT commands also work in CC.
-COMMENT uses those shared commands; it has no SET/UNSET alias. MINSNR takes
-modes plus an integer threshold, or ALL with SET and NONE with UNSET to clear.
-NEARBY follows the explicit ON/OFF value with either CC verb. Inline /ON or
-/OFF applies only through SET/FILTER to listed ordinary categories and switches;
-NOFILTER permits only SET and /ON. DXBM takes numeric band codes, with SET's
-separate PASS/REJECT variants. Geography edits remain refused while NEARBY is
-active. See [CC grammar troubleshooting](../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md).
+```text
+PASS RULE <0..9> <expression>
+REJECT RULE <0..9> <expression>
+RESET FILTER RULE <0..9|ALL>
+RESET FILTER
+SHOW FILTER [RULE|FULL]
+HELP RULE
+```
 
-- `PASS` adds to the allow list and removes from the block list
-- `REJECT` adds to the block list and removes from the allow list
-- if a value appears in both, block wins
-- `RESET FILTER` restores configured defaults for new users
-- `PASS/REJECT MODE <list>` are deltas; modes not listed are unchanged
-- Re-enabling FT8 after rejecting it keeps previously visible CW visible.
-  This also preserves visibility for custom and future modes. To select only
-  named modes, use `REJECT MODE ALL` first, then `PASS MODE CW,FT8`.
-  `PASS MODE ALL` explicitly allows every mode again.
-- `UNKNOWN` is the MODE token for blank-mode spots; use `PASS MODE UNKNOWN` or `PASS MODE ALL` to show them again after they are hidden
+Each occupied slot holds one action and one complete expression. Setting a slot
+replaces both; it is not a delta or an addition to a category list.
 
-Path and confidence filters are operator-visible here:
+- Any matching REJECT vetoes delivery. Otherwise any active PASS can qualify.
+- With no active PASS, personal selection is unrestricted except for matching
+  REJECTs. With no rules there is no personal restriction; separate controls and
+  NEARBY still apply.
+- Slot IDs are not priorities. Adding another PASS broadens selection. To narrow
+  a selection, edit or remove its existing PASS, including default slot 0.
+- `RESET FILTER RULE` clears the selected slot or all slots, preserving NEARBY.
+  `RESET FILTER` clears all personal rules and turns NEARBY OFF. Neither resets
+  separate controls or profile settings, and neither reinstalls defaults.
+- New accounts and recognized old-profile resets receive the same validated
+  configured MODE/SOURCE selection as an ordinary editable PASS in slot 0.
+  Both sources are written explicitly as SOURCE=HUMAN,SKIMMER.
+  Existing/restored Boolean empty rules remain empty.
+- A PASS rule without any SOURCE atom selects HUMAN only. If SOURCE appears
+  anywhere, normal Boolean logic applies, including OR and NOT. Text inside
+  COMMENT is not a SOURCE atom. REJECT rules do not get a HUMAN default.
+  Effective readback includes the HUMAN restriction; stored expressions and
+  parser budgets remain unchanged. No active PASS still allows all sources.
 
-- `PASS/REJECT CONFIDENCE` works with `?`, `S`, `C`, `P`, `V`, `B`
-- `PASS/REJECT PATH` works with `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, `CLOSED`, `INSUFFICIENT`
-- `PASS/REJECT MODE` and `PASS/REJECT EVENT` validate against the active `spot_taxonomy.yaml`
-- Configured MODE/EVENT names and mode aliases containing `_` work in human
-  commands after login, in both dialects. Login callsigns and machine request
-  IDs retain their stricter alphabets. Unknown names still fail without changes.
-- the shipped `PASS/REJECT EVENT` families are `LLOTA`, `IOTA`, `POTA`, `SOTA`, `WWFF`, or `ALL`
-- `PASS TOXIC` shows spots classified as toxic; `REJECT TOXIC` hides only spots with the classifier status `TOXIC`
+For example, replace slot 0 to require both the bands and modes:
 
-`CLOSED` is the optional VOACAP closed fallback class. It is filter-visible as
-`CLOSED`, but remains compatible with `UNLIKELY`: existing
-`PASS/REJECT PATH UNLIKELY` filters still include closed fallback spots. Direct
-`PASS/REJECT PATH CLOSED` rules target only closed fallback spots.
+```text
+PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8
+```
 
-EVENT filters are family-level. Standalone tokens such as `POTA` and acronym-prefixed references such as `POTA-1234` both match `POTA`; the reference stays in the comment and is not separately filterable. Spots with no recognized EVENT tag are not affected by EVENT filters, including `REJECT EVENT ALL`.
+Other PASS slots can still qualify other spots. Use `SHOW FILTER RULE` before
+editing; clearing all slots is deliberate, not a recipe for preserving them.
+Old category, MODE-delta, MINSNR, COMMENT-list, DXBM, NOFILTER and CC filter/mode
+shortcut mutations are refused without translation. There is no `RESET RULE`
+or `SET DX FILTER` alias. `HELP RULE` is the shared expression reference.
+
+Expressions support comparisons, parentheses, NOT, AND and OR, with precedence
+`NOT > AND > OR`. Equality matches any value in a bare or bracketed comma list,
+for example `MODE=CW,FT8` or `MODE=[CW,FT8]`. `<>` means none of the listed values
+only when the field is known. Every comparison on a missing/unknown value is
+false, including `<>`; NOT negates that result. There are no generic
+ALL/ON/OFF wildcard operands.
+
+| Fields | Values and matching |
+| --- | --- |
+| `BAND`, `MODE` | Active supported bands and taxonomy modes/aliases; blank MODE is the known token `UNKNOWN`. |
+| `SOURCE` | `HUMAN` when `Spot.IsHuman` is true; otherwise `SKIMMER`. |
+| `EVENT` | Taxonomy event bits, with `NONE` for eventless spots; no untagged exemption. |
+| `DXCALL`, `DECALL` | Exact callsign patterns, one prefix/suffix `*`, or `*` alone; see below. |
+| `DXCONT`, `DECONT` | Supported continent codes. |
+| `DXZONE`, `DEZONE` | Integral CQ zones 1–40. |
+| `DXDXCC`, `DEDXCC` | Positive ADIF integers, not CTY labels or callsign lookups. |
+| `DXSTATE`, `DESTATE` | Canonical observed US/Canadian registered mailing codes; missing/invalid metadata is unknown. |
+| `DXGRID2`, `DEGRID2` | Two-letter Maidenhead fields, `AA` through `RR`. |
+| `FREQ` | Finite nonnegative operands in kHz; `=`/`<>` also accept inclusive low-high ranges. Spot frequency is known only when finite and positive. No extra rounding or epsilon is added. |
+| `SNR` | Integral report whenever `Spot.HasReport` is true, including zero and human reports. |
+| `CONF` | `?`, `S`, `C`, `P`, `V`, `B`; unknown for confidence-exempt modes, with no expression bypass. Otherwise blank confidence becomes known `?`. `CONFIDENCE` is not a field alias. |
+| `PATH` | Exact `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, `CLOSED`, `INSUFFICIENT`; absent/invalid prediction is `INSUFFICIENT`. |
+| `COMMENT` | ASCII case-insensitive literal substring of the stored cleaned comment; see below. |
+
+Only FREQ, SNR, DXZONE and DEZONE accept `<`, `<=`, `>` and `>=`; ordered
+comparisons require one value. `PATH=UNLIKELY` does not include CLOSED; use
+`PATH=UNLIKELY,CLOSED` to select both. EVENT remains family-level: POTA and
+POTA-1234 set the same family bit, while the reference stays in the comment.
+Non-COMMENT operands are case-insensitive and normalized. Configured
+MODE/EVENT names and mode aliases containing `_` work in both dialects; login
+callsigns and machine request IDs retain their stricter rules.
+
+DXCALL reads `DXCall`; DECALL prefers `DECallStripped`, falling back to `DECall`.
+Patterns use ASCII letters, digits, `/` or `-`, with at most one `*` at either
+end: `K1ABC`, `W1*`, `*ABC`, or `*`. Internal/multiple stars and `?` wildcards
+are invalid. A lone star does not match an unknown empty call.
+
+Separate controls are not expression fields. In both dialects,
+`PASS/REJECT <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]` enable/disable the
+named control. PC93 aliases ANNOUNCE. These switches accept no value or one
+`ALL`; `PASS BEACON OFF` is refused. `PASS NEARBY ON|OFF` and
+`REJECT NEARBY ON|OFF` follow the explicit value, not the verb.
+CC `SET/FILTER` and `UNSET/FILTER` retain these controls only. Inline
+`SET/FILTER <switch>/ON|/OFF` takes no extra values; UNSET has no inline flags
+and NEARBY has none. Named CC control shortcuts such as `SET/BEACON` and
+`SET/SELF` take no arguments; old category shortcuts are not supported.
+
+Live self-spots require SELF enabled and bypass personal rules and NEARBY, but
+still honor TOXIC. Command/history self matches retain their exception
+independently of SELF, also honoring TOXIC. Explicit history BAND/MODE/COMMENT
+clauses are mandatory even for self-spots.
+
+Rule limits apply before publication:
+
+| Boundary | Limit |
+| --- | --- |
+| Occupied slots | 10; IDs 0–9 |
+| Each expression | 1,024 raw bytes and 1,024 canonical bytes |
+| Each rule | 32 atoms, 128 nodes, nesting depth 8 |
+| Values per comparison atom | 32 |
+| Complete rule set | 128 atoms, 512 values |
+| Each COMMENT operand | 1–64 printable ASCII bytes, at least one non-space |
+
+Nesting counts parentheses and NOT, not the height of a flat AND/OR tree.
+These are distinct from the configured human line limit, machine body/final
+response limits, stored-byte limits and decode-work budgets. Prepared full
+and NEARBY programs are retained immutably; edits prepare replacements without
+changing snapshots already in use. Live, command and history matching capture
+coherent controls, cells and path inputs with those rules, without another
+category gate. Rendering reads prepared programs; it does not compile them.
+
+Current checkout source routes: `filter/rule_set.go` owns preparation and
+combination, `rule_compile.go`/`rule_evaluate.go`/`rule_view.go` own field
+semantics, and `rule_set_projection.go` owns NEARBY projection.
+`telnet/boolean_input.go`, `boolean_rule_commands.go` and
+`boolean_rule_readback.go` own human admission/display;
+`matching_snapshot.go` and `history_filter.go` capture matching state.
+`commands/boolean_rule_help.go` supplies the registered HELP RULE reference.
+
+`PASS TOXIC` shows spots classified as toxic; `REJECT TOXIC` hides only spots
+with classifier status `TOXIC`.
 
 Toxic comment filtering is optional and fail-open. When the classifier is
 disabled, unavailable, timed out, or has not seen a human comment yet, the spot
@@ -158,56 +262,44 @@ spots and archive-backed history queries. Local self-spot bypasses still honor
 
 ## Comment Filters And Searches
 
-`PASS COMMENT <phrase>` adds a case-insensitive literal substring to the comment
-allowlist; `REJECT COMMENT <phrase>` adds one to the reject list. Match only the
-stored comment, after ingestion cleanup. Removed mode/report/time tokens,
-synthetic beacon fallbacks and per-user diagnostic display text are not searched.
-
-Any PASS phrase satisfies the comment domain; any matching REJECT phrase wins.
-Other filter domains still apply. Empty/nonmatching comments fail a nonempty
-PASS list; an empty PASS list imposes no comment restriction. Existing live and
-history self-spot exceptions remain in force for saved filters. Unlike EVENT,
-COMMENT does not exempt ordinary untagged spots.
+Saved COMMENT selection uses numbered expressions, not phrase lists:
 
 ```text
-PASS BAND 20,40
-PASS COMMENT POTA
-PASS COMMENT up  5: please!
-REJECT COMMENT QRT
-REMOVE PASS COMMENT POTA
-REMOVE REJECT COMMENT QRT
-RESET FILTER COMMENT PASS
-RESET FILTER COMMENT REJECT
-RESET FILTER COMMENT
-SHOW FILTER COMMENT
+PASS RULE 0 BAND=20M,40M AND COMMENT="POTA"
+REJECT RULE 9 COMMENT="QRT"
+PASS RULE 0 COMMENT="CQ ""DX""  !;=()[]"
+SHOW FILTER RULE
 SHOW DX K1ABC 20 COMMENT POTA
 SHOW DX K1ABC 20 BAND 20m,40m MODE CW,FT8 COMMENT POTA
 SHOW MYDX 20 COMMENT up 5
 ```
 
-These base commands work in both dialects. Each command supplies one phrase,
-not a comma-separated list. Trim only surrounding ASCII spaces in human commands;
-preserve interior spaces and punctuation. Quotes, commas, `*`, `?`, `ALL`, and
-`NONE` are literal text, with no quoting, escaping, wildcard or reset meaning.
-COMMENT arguments permit printable ASCII punctuation specifically; other
-command and login character restrictions remain unchanged.
+Each COMMENT operand contains 1–64 printable ASCII bytes with at least one
+non-space byte. Quote expression values containing spaces or punctuation.
+Double a literal quote as `""` inside a quoted value; backslash is literal,
+not an escape. Case, punctuation and all spaces inside the value are preserved.
+`*` and `?` have no wildcard meaning in COMMENT. Matching is a literal
+substring, not a regex, glob or word match. Only the stored cleaned comment is
+searched, not removed mode/report/time tokens, synthetic beacon fallbacks or
+per-user diagnostics. Unknown/empty comments follow ordinary unknown comparison
+semantics. Rules combine as described under [Filters](#filters).
+
+The human RULE reader preserves expression bytes, including literal case and
+spaces; compilation normalizes syntax and non-COMMENT operands. The configured
+whole-command ceiling still applies (128 bytes by default). Use schema 5 YAML
+for longer expressions. The [rule budgets](#filters) replace old per-list limits.
+There are no COMMENT move/remove/list-reset commands.
 
 Manual DX comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _`.
 Other punctuation and non-ASCII characters are rejected before posting. The
 whole edited DX command uses the node's command-byte limit (128 by default),
 excluding its line ending. Mode/report tokens may be parsed from the comment.
 
-Each list admits at most 32 retained entries, and each phrase contains 1-64
-printable ASCII bytes with at least one non-space character. The independent
-configured command-line ceiling still applies to the whole command. Invalid or
-over-limit operations fail before any move/add/removal. Human additions are
-case-insensitive and idempotent; moving or removing a phrase deletes all
-case-equivalent opposite/selected entries. All filter resets clear comments.
 Human filter and settings edits are prepared before publication; a rejected edit
 leaves live preferences and saved bytes unchanged. Accepted edits retain existing
 live-update-then-save behavior; a disk failure
 is logged and reported, and does not roll back a human filter edit. Filter,
-COMMENT, reset and changed DIALECT commands append a warning when saving fails:
+rule/reset and changed DIALECT commands append a warning when saving fails:
 
 ```text
 warning: failed to persist; changes are active but were not saved: <reason>
@@ -215,14 +307,17 @@ warning: failed to persist; changes are active but were not saved: <reason>
 
 The accepted change is active in this session. A new login restores the last
 successfully saved settings. Protected temporary settings preserve the refused
-record, including during logout. Repeating an unchanged DIALECT or idempotent
-COMMENT edit does not attempt another save; other filter commands retain their
-existing save attempts. A later successful preference save can persist current
+record, including during logout. An unchanged DIALECT does not attempt another
+save. Repeated rule sets retain save intent; removing an already empty slot is
+a no-op. A later successful preference save can persist current
 live settings when the record is writable and valid.
 
 `SHOW DX`/`SHOW MYDX` accept COMMENT after their existing optional selector/count
 arguments. Existing aliases retain their restrictions. Everything after COMMENT
-is the search phrase; count/selector options must precede it. This phrase is a
+is the search phrase; count/selector options must precede it. Unlike expression
+quoting, archive phrase grammar trims surrounding ASCII spaces and treats
+quotes, commas, `*`, `?`, ALL and NONE as literal text. It requires 1–64 printable
+ASCII bytes and a non-space byte. This phrase is a
 mandatory additional condition, including for self-spots; saved user filters
 retain their existing self exceptions. Search changes no preferences. Matching
 occurs before rows are counted, and returned NEXT commands retain the phrase.
@@ -230,53 +325,25 @@ Changing saved comment rules invalidates continuation and pending publication.
 Retention, page counts, work budgets, errors and warnings remain as documented
 under [archive history](#archive-history-and-continuation).
 
-Rules survive reconnects and presets. Explicit machine schema 4 adds `comments`
-and `block_comments` lists; full PUT/VALIDATE requires both. PATCH omission
-preserves a list; a supplied list replaces it, including `[]` to clear. Null,
-wrong-type, empty/space-only, non-ASCII and over-limit entries are errors.
-YAML preserves exact valid case, spaces, order and duplicates; every entry counts
-toward the cap. Cross-list overlap is retained and REJECT wins at matching.
-Schema 4 CAPABILITIES exposes phrase limits and status/readbacks expose counts.
-Schemas 1-3 retain their shapes and preserve hidden comment rules during writes.
-New disk saves use configuration version 4; older profiles, presets and applied
-baselines acquire empty comment lists while preserving state/SNR rules. Malformed
-rules and unsupported versions protect stored data instead of truncating it.
-See [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).
+Rules survive reconnects and presets through the [schema 5](#client-yaml-configuration)
+and [native v5](#persistence-format-and-rollback) contracts. Older COMMENT-list
+mechanics in [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
+are historical, not a supported compatibility engine.
 
 ## Canonical DXCC Prefixes
 
-DXCC filters accept exact canonical CTY prefixes (case-insensitive) as well as
-existing positive ADIF numbers, including mixed comma/space-separated lists:
+Numbered DXDXCC/DEDXCC comparisons accept positive ADIF integers only:
 
 ```text
-PASS DXDXCC K,VE,248
-REJECT DXDXCC IT9
-REJECT DEDXCC 3D2/R
+REJECT RULE 9 DXDXCC=248
+REJECT RULE 8 DXCALL=IT9*
 ```
 
-Canonical labels come from CTY's Prefix field, not its callsign lookup keys.
-Letters-only and slash-bearing labels work; aliases and callsigns such as W6
-and K1ABC are not canonical filter inputs. A canonical input requires loaded
-CTY. Unknown or conflicting prefixes reject the entire command without changing
-or saving any rules. Numeric-only commands retain their existing acceptance
-without CTY membership verification. Standalone ALL and NEARBY restrictions
-retain their current behavior.
-
-Matching and persistence remain ADIF-based. IT9, I and IG9 select the same
-entity, ADIF 248: REJECT DXDXCC IT9 blocks the whole entity, not just Sicily.
-For a literal callsign-prefix block use REJECT DXCALL IT9* instead.
-
-Every human SHOW FILTER view displays unambiguous canonical prefixes for known
-entities. Short overview selections list all such prefixes, such as DXCC: All
-except I, IG9, IT9; long previews count DXCC entities rather than expanded prefix
-labels. FULL and DXDXCC/DEDXCC category views show effective PASS/REJECT
-selections, for example `PASS: ALL` and `REJECT: I, IG9, IT9`. Inactive ordinary
-entries and overridden flags are omitted.
-Conflicting canonical labels are omitted; valid alternatives remain.
-When none remain, each stored entity retains its own `Unknown DXCC (<number>)`
-label. A missing CTY association, including unavailable CTY, also appears as
-`Unknown DXCC (12345)`. Machine YAML and saved records continue to use numbers.
-All human width, size, quoting and reading-pause limits remain in force.
+The first blocks the whole ADIF entity; the second matches a literal callsign
+prefix. CTY labels such as IT9, I and IG9 are not expression operands for DXCC.
+Positive operands need no rule-time CTY membership verification; a spot's ADIF
+metadata must be positive to be known. Saved and effective rule readbacks show
+canonical expressions, not a category-prefix expansion.
 
 SHOW DX and SHOW MYDX recognize canonical CTY labels before exact-call or
 prefix classification, including SHOW MYDX 3D2/R 10. Numeric history arguments
@@ -284,43 +351,22 @@ remain counts; SHOW DXCC detail lookup retains its existing behavior.
 
 ## Minimum SNR
 
-Use a per-mode minimum to suppress weak automated reports:
+Use an explicit SNR expression to suppress weak reports. For example:
 
 ```text
-PASS MINSNR CW,RTTY 10
-REJECT MINSNR FT8,FT4 -10
-PASS MINSNR FT8,FT4 ALL
-REJECT MINSNR CW,RTTY NONE
-SHOW FILTER MINSNR
+REJECT RULE 1 SOURCE=SKIMMER AND MODE=CW AND SNR<8
 ```
 
-Numeric PASS and REJECT set the same inclusive minimum: reports equal to the
-threshold pass. Zero and negative integers are valid. Human spots and spots
-without SNR bypass this category; other filters still apply. Lists are validated
-before any change. Updates replace selected thresholds and leave other modes
-unchanged. ALL must stand alone in the mode position: numeric ALL selects every
-currently supported filter mode, while PASS MINSNR ALL ALL or REJECT MINSNR ALL
-NONE clears every saved threshold. RESET FILTER and PASS NOFILTER also clear it.
+This explicitly targets skimmer CW reports below 8; a report equal to 8 does
+not match the rejection. SOURCE=SKIMMER is a user-selected condition, not an
+implicit human exemption. SNR is known whenever `Spot.HasReport` is true,
+including zero, negative and human reports. Missing SNR makes comparisons
+false, including `SNR<>8`; `NOT SNR<8` is true when SNR is missing.
 
-Removed modes remain saved but inactive, reactivating when their exact canonical
-mode returns. Alias changes do not redirect saved rules. Readbacks list each
-minimum and mark inactive entries; selected retained dormant names can be cleared.
-Active and dormant entries share a 128-entry limit and 65,536 aggregate mode-key
-byte limit. Commands exceeding a bound fail without partial changes.
-
-Live delivery and archive history use the shared matcher, retaining existing
-self-spot exceptions. Threshold changes invalidate an active history continuation
-and pending pages. Saved preferences, presets and modification status include
-these values. Default minima are disabled.
-
-Machine clients use `GET YAML FILTER SCHEMA 3` or `GET YAML CONFIG SCHEMA 3`. The
-`min_snr` map contains exact mode names and signed integers; an empty map
-clears it. Full PUT/VALIDATE requires it, PATCH omissions preserve it, and supplied
-maps replace the whole collection. Existing dormant keys can be retained or
-removed through YAML; a new unavailable mode name is rejected. Schemas 1/2 retain
-their shapes and preserve hidden thresholds during writes. Schema 3 status
-adds configured/inactive counts and sorted exact inactive keys; response limits
-include that status.
+There is no per-mode MINSNR map, dormant threshold list or old-schema write
+path. Edit/clear the numbered slot instead. Live and archive matching use the
+same prepared rules with their existing self exceptions; changes invalidate
+history continuation and pending pages.
 
 ## Archive History And Continuation
 
@@ -398,90 +444,34 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 
 | Command | Response |
 | --- | --- |
-| `SHOW FILTER` | Passing finite selections and useful exclusions wrap by name; long callsign, DXCC, grid and zone lists use counts. |
-| `SHOW FILTER FULL` | Complete effective PASS/REJECT selections and ON/OFF switches. |
-| `SHOW FILTER <category>` | Complete effective selections for one category. |
+| `SHOW FILTER` | Current settings, saved/effective rules and individual controls. |
+| `SHOW FILTER RULE` | The same concise filter state. |
+| `SHOW FILTER FULL` | Adds geometry detail and preparation counts. |
 | `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
 
-`SHOW/FILTER` and `SH/FILTER` accept the same FULL/category arguments in both
-dialects. Their HELP topics accept those arguments too. The category names are
-BAND, MODE, SOURCE, EVENT, CONFIDENCE,
-PATH, DXCONT, DECONT, DXZONE, DEZONE, DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXSTATE,
-DESTATE, DXCALL, DECALL, BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC and NEARBY.
-CONF is an alias for CONFIDENCE, and PC93 is an alias for ANNOUNCE.
+`SHOW/FILTER` and `SH/FILTER` accept the same RULE/FULL arguments in both
+dialects; their HELP topics do too. Category readbacks are unsupported.
+Every occupied slot appears in slot order with its action and full canonical
+saved expression. Effective forms disclose the HUMAN default on source-less
+PASS rules. While NEARBY is ON, each also shows its projected expression or that
+a geography-only rule is suspended. Full saved expressions remain editable.
+FULL counts distinguish occupied slots and full, nearby and retained
+nodes/atoms/values; shared operands count once in retained values.
 
-The overview shows finite selections by name, wrapping onto continuation
-lines in stable order. This applies to BAND, MODE, SOURCE, EVENT, PATH,
-CONFIDENCE and DX/DE continents. It shows passing selections and useful
-explicit exclusions, without enumerating disabled choices. Unrestricted
-categories say `All`; explicit blocks can say `All except 80m`. Longer explicit
-band and mode selections can look like this:
+The view also reports NEARBY geometry (fine/coarse cells available, partly
+usable or unavailable) and BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC as
+separate ON/OFF/DEFAULT controls. There are no hidden category/base restrictions.
+The [NEARBY recovery contract](#grid-noise-and-nearby)
+apply when restored geometry is unavailable. Existing SELF/TOXIC and
+command/history exceptions remain distinct from ordinary rule matching.
 
-```text
-Bands         Only 1.25m, 10m, 12m, 13cm, 15m, 160m, 17m, 20m, 2200m, 23cm,
-              2m, 30m, 33cm, 40m, 60m, 630m, 6m, 70cm, 80m
-Modes         CW, FT2, FT4, FT8, JS8, LSB, MSK144, PSK, RTTY, SSTV, UNKNOWN,
-              USB; unknown modes included
-```
-
-Long callsign, DXCC, grid and zone lists retain clear counts, such as
-`Only 100 patterns; 3 blocked`. Those previews bound entry count and rendered
-length before collecting, sorting or joining values; large lists do not build
-all their detailed strings to produce counts. Finite selections preflight
-aggregate escaped size before key collection, then count the complete wrapped
-response. Canonical nonstandard keys retained in saved records remain visible
-when reachable by the matcher. An unusually large finite selection can exceed
-the response budget and return the explicit size error.
-
-Rows describe what the matcher does. Ordinary string and integer categories
-can remain restrictive when `allow_all=true` and their allow map is nonempty.
-EVENT instead uses key presence: entries stored as `false` still apply,
-`allow_all=true` ignores allow-list restrictions, and untagged spots always
-pass the EVENT check. PATH retains the existing UNLIKELY/CLOSED relationship.
-FULL/category show effective PASS/REJECT selections using ALL or NONE.
-ALL means unrestricted before applying listed REJECT entries. Ordinary false
-entries are omitted, and rejected entries are removed from PASS. A nonempty
-false-only allow map still produces PASS: NONE. REJECT ALL hides overridden
-entries. Reserved literal tokens and punctuation are quoted. For example:
-
-```text
-> SHOW FILTER EVENT
-User          N2WQ-1
-Preset        CONTEST (modified)
-
-Events
-  PASS: POTA, SOTA
-  REJECT: WWFF
-  Untagged spots are always included.
-
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
-```
-
-`SHOW FILTER FULL` uses the effective format for every list category. Switches
-show one ON/OFF value. DXCALL/DECALL retain ordered PASS/REJECT patterns, with
-REJECT taking precedence when patterns overlap. Patterns use ASCII letters,
-digits, `/` or `-`, with at most one `*` at the beginning or end. Examples are
-`K1ABC`, `W1*` and `*ABC`. `?` and interior or multiple stars are unsupported;
-one invalid entry refuses the entire command without changing any rules.
-Comma and space separators, case normalization and ordered patterns remain.
-Standalone `ALL` clears both lists for PASS or blocks all for REJECT. `*` is an
-ordinary all-matching list entry, so PASS `*` retains other REJECT patterns.
-`ALL` inside a list is a literal exact pattern. Existing saved legacy patterns
-are retained without an automatic migration. PATH expands inherited CLOSED
-behavior and honors explicit overrides. MODE explains UNKNOWN visibility;
-CONFIDENCE explains exempt modes; EVENT always explains untagged inclusion.
-Geography sections show PASS: ALL / REJECT: NONE with a suspension note when
-NEARBY bypasses them. SELF explains its ordinary-filter bypass while TOXIC
-still applies.
-
-Feature switches accept no value or one `ALL`: use `PASS BEACON` to enable
-beacons and `REJECT BEACON` to disable them. `PASS BEACON OFF` is refused;
-it does not change the switch. `PASS NOFILTER` and `PASS NOFILTER ALL` reset
-restrictions. Named CC shortcuts such as `SET/BEACON`, `SET/NOFT8` and
-`SET/NOFILTER` take no arguments. Inline category flags such as
-`SET/FILTER BAND/OFF` also take no extra values. An unexpected tail refuses
-the whole command without live or saved changes.
+The shipped login greeting includes a settings/filter block. New accounts see
+"Default settings and filters"; returning accounts see "Current settings and
+filters". Values come from actual restored/prepared state, including a looked-up
+grid and effective dedupe. Recognized old profiles get the reset notice and
+first-time guidance; old-library cleanup alone must not claim a profile reset.
+No display flattens OR/NOT expressions into independent mode/band/source lists.
+Custom greeting templates can place the block with `<SETTINGS_FILTERS>`.
 
 `SHOW DXCC` (also `SH DXCC`) requires one prefix or callsign. Extra values
 return usage without performing a lookup. `BYE`, `QUIT` and `EXIT` take no
@@ -511,52 +501,33 @@ Unusual saved strings remain exact, with quotes and escapes when needed;
 when describing an effective lane, unrecognized values are identified separately
 from unavailable policies.
 
-Machine YAML preserves stored flags, false entries and defaults. Use
-`GET YAML FILTER` for exact stored rules; `DEFAULT` remains distinct from
-explicit `true` or `false` there. NEARBY reports its effective ON/OFF state
-separately from whether its user cells are usable.
-When usable, short simple grids remain bare, such as `ON; grid FN31PR`
-in detail views (`On` in the overview).
-Stored grids needing escaping or wrapping use lossless quoted ASCII pieces,
-such as `ON; grid "FN31PR\u00e9"`; the same lossless rule applies to overview,
-FULL and NEARBY category output. Presentation preserves the original saved bytes.
-Enabled NEARBY suspends ordinary location rules even when cells are unavailable;
-unavailable cells reject ordinary DX spots on the affected bands:
-
-```text
-DX geography  Suspended by NEARBY; rules retained
-DE geography  Suspended by NEARBY; rules retained
-Nearby        On, unavailable; usable grid cells missing
-              DX spots on affected bands are rejected
-```
-
-No successful FULL response omits an active selection. Inactive or overridden
-stored entries do not count against human effective-content admission. The
-[landing-page examples](../README.md#output-examples) show the complete aligned
-overview and SETTINGS layout.
+Use `GET YAML FILTER SCHEMA 5` for machine-readable saved expressions and
+controls; `DEFAULT` remains distinct from explicit `true` or `false`.
+Configured NEARBY and geometry usability are separate facts. `SHOW SETTINGS`
+preserves exact saved GRID bytes even when they require escaped display.
+No successful filter readback omits a saved rule, including a suspended rule.
 
 Every human readback line has at most 78 printable ASCII characters followed
 by CRLF, including headers, active values, explanations, errors and pause
-footers. Exact strings use Go-style double-quoted ASCII escapes for whitespace,
+footers. Short numbered rules use directly reusable expression syntax, without
+outer display quotes. Long values use Go-style double-quoted ASCII escapes for whitespace,
 quotes, backslashes, control characters and non-ASCII values. Long individual
-values use complete quoted pieces joined by `+`:
+values use complete quoted pieces joined by `+`. For illustration, a displayed
+expression value may be split like this:
 
 ```text
-DX calls
-  PASS: "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
-        + "af\u00e9\t\"Q\"\\end  "
-  REJECT: NONE
-
-A + joins quoted pieces of one value; no characters are added.
+"COMMENT=\"CQ "
++ "\"\"DX\"\"\""
 ```
 
-Leading/trailing spaces inside quotes belong to the value. Indentation, line
-endings and `+` are presentation only. Escapes are never split, and decoding
-then joining the pieces reproduces the original string. Long active map keys
-use the same mechanism without stored booleans.
-String map keys sort lexicographically; integer map keys sort numerically.
-Pattern lists retain supplied order and duplicates. Empty effective selections
-use NONE; no word wrapping trims stored values.
+Decode the Go-quoted pieces and concatenate them to recover
+`COMMENT="CQ ""DX"""`. Indentation, line endings and `+` are presentation only.
+Leading/trailing spaces inside display quotes belong to the value; escapes
+are never split or trimmed. This display encoding is not expression syntax,
+and a long displayed row is not a copyable command. Expression quotes
+use doubled quotes and literal backslashes, not Go escapes. Human commands
+still have the configured line limit (128 bytes by default); use schema 5
+YAML for longer rules.
 
 `SHOW SETTINGS` uses readable labels such as Dialect, Grid, Noise, Dedupe and
 Path samples. An empty configured preference is `DEFAULT`, with the effective
@@ -585,7 +556,7 @@ Path samples  30 (user minimum); stations 30, beacons 30
 ```
 
 Disabled or unavailable prediction is identified explicitly. These numbers
-illustrate a configuration; production output reads active values.
+illustrate a configuration; runtime output reads active values.
 Diagnostics, pause state and protected temporary defaults appear under
 Session only. Pending delivery says `Paused for reading; at least 30s after
 delivery`, without claiming that the reading countdown has begun. Both human
@@ -602,12 +573,18 @@ pause is preserved. Later valid, processed PAUSE/RESUME commands supersede
 earlier pending completion effects; a subsequent human readback starts a fresh
 hold. Suppressed counts carry from delivery into the reading interval.
 
+For a 30-second reading interval, the human footer remains:
+
+```text
+Live spots paused during delivery and for at least 30s afterward.
+Type RESUME when ready. Missed spots are not replayed.
+```
+
 Each complete response is limited to 65,536 bytes after CRLF conversion,
 including its header and human footer. Generation either completes within
 the limit or returns an explicit error. ASCII-escape expansion is budgeted
-before unrestricted quoting or sorting. Exact-value scratch space is bounded
-by the line width; finite selections and compact count previews have their
-own preparation bounds.
+before unrestricted quoting. Exact-value scratch space is bounded by the line
+width, and the complete rule body is admitted before output allocation.
 
 ## Client YAML Configuration
 
@@ -615,13 +592,10 @@ The following canonical commands work independently of the human dialect:
 
 | Command | Purpose |
 | --- | --- |
-| `GET YAML FILTER [ID <id>]` | Read schema 1 filter values. |
-| `GET YAML SETTINGS [ID <id>]` | Read all writable settings. |
-| `GET YAML CONFIG [ID <id>]` | Read filters and settings together in one consistent snapshot. |
-| `GET YAML CAPABILITIES [ID <id>]` | Discover version, fields, supported choices, availability and limits. |
-| `GET YAML <resource> SCHEMA 2 [ID <id>]` | Opt in to schema 2, including state rules. |
-| `GET YAML <resource> SCHEMA 3 [ID <id>]` | Include state rules and per-mode minimum SNR. |
-| `GET YAML <resource> SCHEMA 4 [ID <id>]` | Also include literal comment PASS/REJECT lists. |
+| `GET YAML FILTER SCHEMA 5 [ID <id>]` | Read saved numbered rules, NEARBY and separate controls. |
+| `GET YAML SETTINGS SCHEMA 5 [ID <id>]` | Read all six writable settings. |
+| `GET YAML CONFIG SCHEMA 5 [ID <id>]` | Read filters and settings in one consistent snapshot. |
+| `GET YAML CAPABILITIES SCHEMA 5 [ID <id>]` | Discover schema, rule fields/operators/vocabularies and bounds. |
 | `PUT YAML FILTER`, `PUT YAML SETTINGS`, `PUT YAML CONFIG` | Replace the complete writable resource. |
 | `PATCH YAML FILTER`, `PATCH YAML SETTINGS`, `PATCH YAML CONFIG` | Change supplied fields, preserving omissions. |
 | `VALIDATE YAML CONFIG` | Check a complete proposal without applying or saving it. |
@@ -629,8 +603,9 @@ The following canonical commands work independently of the human dialect:
 GET replies contain `schema_version`, `request_id`, `resource`, an opaque
 `revision`, `configuration` and read-only `status`. GET assigns an ID if it is
 omitted; a supplied ID preserves case and must contain 1-32 ASCII letters,
-digits or hyphens. See the [complete SETTINGS envelope](../README.md#client-yaml-configuration)
-for an example with all status fields.
+digits or hyphens. Every GET, including SETTINGS and CAPABILITIES, requires
+explicit `SCHEMA 5` before its optional ID. Missing, older and unsupported
+schemas are refused, not translated.
 
 FILTER's writable `configuration` directly contains the filter fields;
 SETTINGS directly contains setting fields. CONFIG contains `filters` and
@@ -640,76 +615,116 @@ data. Preset association, effective choices, server defaults, diagnostics and
 pause state cannot be set through a configuration upload. The preset reference
 snapshot itself is not exposed in GET.
 `status.effective.nearby_active` means NEARBY is enabled with both user cells
-available. If it is false while the configured `nearby_enabled` is true, ordinary
-location rules remain suspended; invalid user cells reject spots on their bands.
+available. It does not replace the saved `nearby_enabled` value or full rules.
+The [restored-geometry recovery contract](#grid-noise-and-nearby), its
+SELF/history exceptions apply.
 CAPABILITIES is a read-only discovery resource; its `configuration` section
 describes the protocol rather than writable preferences.
 
-Existing GET commands keep schema 1 and its original field order. Schema 1
-PUT/PATCH/VALIDATE preserves state rules hidden from that format; supplying
-`dx_states` or `de_states` in a schema 1 upload is an unknown-field error.
-Schema 2 adds those two string RuleSets, accepting the 73 uppercase US/Canadian
-codes. Its complete PUT/VALIDATE requires both domains; PATCH preserves omitted
-fields. Upload headers stay unchanged: the body `schema_version: 1`, `2`, `3` or `4`
-selects its vocabulary. A single revision covers all preferences, so a hidden
-state-only change conflicts with a stale schema 1 write. Schema selection itself
-does not alter the revision, pause, preset or history continuation.
+PUT/PATCH/VALIDATE headers have exactly three words and no schema suffix.
+Their bodies require `schema_version: 5`. VALIDATE supports CONFIG only.
+Old body schemas and category fields are errors; there is no hidden-map
+preservation or older-schema success path.
 
-Schema 1 capabilities retain their original shape and advertise `[1, 2, 3]` in
-`schema_versions`. Request schema 2 capabilities to discover state fields and
-choices. Schema 1 writes retain their existing 64 KiB projection limit; the
-four hidden state maps are separately limited to 73 canonical keys each before
-cloning. Hidden MINSNR maps in schemas 1/2 retain their independent entry/key-byte
-bounds. Schema 3 exposes the full MINSNR map and checks its visible CONFIG budget.
-Schema 4 additionally exposes bounded comment lists. Older schemas independently
-validate hidden comment bounds without charging hidden bytes to visible output.
-Schema 2 writes must fit the complete schema 2 CONFIG response. Large
-ordinary human configurations remain supported; an oversized schema 2 GET
-returns an explicit error, with schema 1 still available to reduce the rules.
-No response is truncated.
+CAPABILITIES advertises `supported_schema_versions: [5]`, the eight filter and
+six settings field names, lowercase rule actions, DEFAULT/boolean choices,
+rule fields/operators/geographic flags, active vocabularies and rule limits.
+It also reports upload/response bounds, complete-PUT, collection-replacement
+and revision requirements. It is not the former per-server settings-choice
+availability matrix: runtime settings admission remains authoritative.
+Read-only `status.rules` reports configured/effective/suspended counts,
+per-slot effective expressions/suspension and full/nearby/retained
+node/atom/value counts, not MINSNR or COMMENT-map status.
+
+Current checkout routing is `telnet/machine_commands.go` to
+`handleV5MachineCommand`; `machine_v5_input.go` owns headers,
+`machine_v5_schema.go`/`machine_v5_schema_rules.go` own strict proposals,
+`machine_v5_commands.go` owns transactions and `machine_v5_readback.go` owns
+the bounded DTO response. Retained prepared rules are shared immutably when
+omitted from PATCH, not recompiled by rendering.
 
 ### Writable Values
 
 | Resource fields | Representation |
 | --- | --- |
-| `min_snr` (schemas 3/4) | A bounded map of exact uppercase mode names to signed integers; presence enables zero and negative thresholds. |
-| `comments`, `block_comments` (schema 4) | Exact printable ASCII phrase lists; 32 entries each, 1-64 bytes each; duplicates/overlaps are retained and REJECT wins. |
-| `bands`, `modes`, `sources`, `events`, `confidence`, `path_classes`, `dx_continents`, `de_continents`, `dx_grid2`, `de_grid2` | RuleSet: `allow_all`/`block_all` booleans and `allow`/`block` maps of string keys to booleans. |
-| `dx_states`, `de_states` (schemas 2/3/4) | The same four RuleSet members, with uppercase US mailing-state and Canadian province/territory codes as string keys. |
-| `dx_zones`, `de_zones`, `dx_dxcc`, `de_dxcc` | The same four RuleSet members, with integer rule keys. |
-| `dx_callsigns`, `block_dx_callsigns`, `de_callsigns`, `block_de_callsigns` | Ordered string lists; duplicate patterns are preserved. |
+| `rules` | Sequence of mappings requiring `slot` (integer 0–9), lowercase `action: pass` or `action: reject`, and `expr` (complete expression string). Duplicate slots fail. |
 | `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
 | `nearby_enabled` | Boolean. |
 | `dialect`, `grid`, `noise_class`, `dedupe_policy` | Strings; an empty string preserves the explicit default/lookup selection. |
 | `path_min_observation_count` | Integer; zero uses the cluster minimum. |
 | `solar_summary_minutes` | Integer: 0, 15, 30 or 60; zero means OFF. |
 
-Use canonical keys and the choices from CAPABILITIES. Both enabled and disabled
-map entries are stored exactly. Preserve explicit false, zero, empty values,
-empty collections and DEFAULT during a GET/edit/PUT cycle. Named preset
-normalization is not machine validation: unknown or unavailable choices, such
-as SLOW when disabled, fail unchanged rather than substituting another choice.
-EVENT maps use key presence rather than their stored boolean values. To remove
-an EVENT rule, supply its complete map without that key; setting it to `false`
-keeps the rule present. The existing all-selection flags still apply.
+FILTER contains exactly `rules`, `nearby_enabled` and the six controls listed
+above. SETTINGS contains exactly `dialect`, `grid`, `noise_class`,
+`dedupe_policy`, `path_min_observation_count` and `solar_summary_minutes`.
+CONFIG nests those resources under `filters` and `settings`.
 
-PUT requires every field in its resource, including all four members of every
-RuleSet. A missing field is an error. CONFIG requires complete filters and
-settings together. PATCH preserves omitted fields, including omitted RuleSet
-members. A supplied `bands.allow` replaces that entire map without merging
-individual entries; the remaining band members stay unchanged. Supplied lists
-replace the entire list, and `{}`/`[]` explicitly clear those collections.
+Preserve DEFAULT versus explicit false/true, empty default/lookup strings,
+zero sentinels and `rules: []` during GET/edit/PUT. Settings strings remain
+exact, subject to runtime validation; expression canonicalization normalizes
+syntax/domain operands while preserving COMMENT literal bytes. Named-preset
+adjustments are not machine validation: unknown/unavailable choices, such as
+SLOW when disabled, fail unchanged rather than silently falling back.
+
+PUT requires every field in its resource. CONFIG PUT and VALIDATE require
+complete filters and settings together. PATCH preserves omitted fields, but a
+supplied `rules` list replaces every occupied slot, not just matching slot IDs.
+`rules: []` clears all slots while omitted NEARBY and controls remain unchanged.
+There is no per-slot PATCH merge.
 
 ### Upload And Revision Examples
 
-A complete settings replacement uses the revision returned by your own GET:
+These are source-derived, codec-shaped examples, not executed server or codec
+validation results. First read your own current configuration:
+
+```text
+GET YAML CONFIG SCHEMA 5 ID Read-1
+```
+
+This separate request validates a complete CONFIG without applying/saving it:
+
+```text
+VALIDATE YAML CONFIG
+---
+schema_version: 5
+request_id: Validate-1
+configuration:
+  filters:
+    rules:
+      - slot: 0
+        action: pass
+        expr: 'MODE=CW,FT8 AND SOURCE=HUMAN'
+      - slot: 9
+        action: reject
+        expr: 'COMMENT="CQ ""DX"""'
+    nearby_enabled: false
+    include_beacons: DEFAULT
+    allow_wwv: true
+    allow_wcy: false
+    allow_announce: DEFAULT
+    allow_self: DEFAULT
+    allow_toxic: DEFAULT
+  settings:
+    dialect: ""
+    grid: ""
+    noise_class: ""
+    dedupe_policy: ""
+    path_min_observation_count: 0
+    solar_summary_minutes: 0
+...
+```
+
+For `PUT YAML CONFIG`, use the same complete shape and additionally supply
+`if_revision` from the current GET. FILTER and SETTINGS place their fields
+directly under `configuration`, without a `filters` or `settings` wrapper.
+A complete settings replacement is:
 
 ```text
 PUT YAML SETTINGS
 ---
-schema_version: 1
+schema_version: 5
 request_id: settings-Ab1
-if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
+if_revision: "replace-with-current-GET-revision"
 configuration:
   dialect: ""
   grid: FN42
@@ -725,9 +740,9 @@ CONFIG can change a dependent setting and filter together:
 ```text
 PATCH YAML CONFIG
 ---
-schema_version: 1
+schema_version: 5
 request_id: nearby-Ab1
-if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
+if_revision: "replace-with-current-GET-revision"
 configuration:
   filters:
     nearby_enabled: true
@@ -736,20 +751,19 @@ configuration:
 ...
 ```
 
-This succeeds only if the server can activate NEARBY for that grid. A PATCH
-can also replace just one rule map while retaining explicit false entries:
+Enabling NEARBY or changing GRID while ON requires usable geometry. For an
+already-ON restored configuration, rule-only recovery has the contract and
+source limitation described under [NEARBY](#grid-noise-and-nearby).
+A PATCH can clear every personal rule while preserving NEARBY and controls:
 
 ```text
 PATCH YAML FILTER
 ---
-schema_version: 1
-request_id: bands-Ab1
-if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
+schema_version: 5
+request_id: Clear-1
+if_revision: "replace-with-current-GET-revision"
 configuration:
-  bands:
-    allow: {20m: true, 40m: false}
-  dx_callsigns: ["W1*", "W1*"]
-  allow_wcy: DEFAULT
+  rules: []
 ...
 ```
 
@@ -757,10 +771,12 @@ Each example is a separate request; its sample revision is illustrative.
 PUT/PATCH require a matching revision, an opaque ASCII string of at most
 128 bytes. GET again after reconnect, server restart or a conflict before
 retrying. Pause, diagnostics and login metadata do not count as configuration
-edits. Reordering otherwise identical patterns does not change the revision
-or `(modified)`; the displayed order and duplicate multiplicity are retained.
+edits. Slot order is canonical, not a priority. Rule identity uses the
+canonical action/expression in each slot.
 
-Uploads require supported `schema_version: 1`, `2`, `3` or `4`, `request_id` and `configuration`.
+The strict writable envelope permits only `schema_version`, `request_id`,
+`if_revision` and `configuration`. Uploads require `schema_version: 5`,
+`request_id` and `configuration`.
 PUT/PATCH additionally require `if_revision`. VALIDATE CONFIG requires the
 complete configuration; `if_revision` is optional because it does not write.
 Its result reports `valid: true`, `applied: false` and `persisted: false` on
@@ -771,7 +787,7 @@ Validation or persistence failure leaves both the live and durable
 configuration unchanged. Machine writes preserve the associated preset and
 reference; changing preferences can set or clear `(modified)`. Even an
 unchanged PUT persists before success, so an earlier failed human autosave can
-be repaired without resetting solar timing, NEARBY restoration, diagnostics
+be repaired without resetting solar timing, NEARBY geometry, diagnostics
 or pause. A lost acknowledgement does not undo a committed write; GET again
 to discover the current revision and configuration.
 
@@ -779,7 +795,7 @@ A fully received unavailable-choice request gets a framed error, for example:
 
 ```yaml
 ---
-schema_version: 1
+schema_version: 5
 request_id: settings-Ab1
 resource: SETTINGS
 revision: 7faea7039a0b47a1bb8e462157b4c621-3
@@ -795,9 +811,10 @@ Send standalone `---` and `...` marker lines, terminated by LF or CRLF,
 around one ordinary YAML document. Body bytes preserve case and punctuation;
 terminal echo and editing controls do not modify the payload. Aliases,
 anchors, merge keys, custom tags, nulls, duplicate keys, unknown/read-only
-fields and additional documents are rejected. Numeric keys are checked for
-duplicates after interpretation, so `1` and `01` cannot select the same rule
-twice. Pattern-list duplicates are valid.
+fields and additional documents are rejected. Rule slots are checked for
+duplicates after integer interpretation, so two entries selecting slot 1 fail
+even if their numeric spellings differ. Rule entries accept only `slot`,
+`action` and `expr`; every entry is complete.
 
 The body limit is 65,536 bytes, excluding marker lines and counting actual
 LF/CRLF endings. The absolute reception deadline is 30 seconds from acceptance
@@ -860,12 +877,13 @@ to fit.
 The snapshot includes every persistent filter field and toggle, `NEARBY`,
 dialect, dedupe policy, grid, noise class, path sample minimum and solar summary
 cadence. It excludes login/IP history, diagnostic mode, temporary read pause,
-and derived caches. Legacy unmarked snapshots retain their migration rules;
-current-version snapshots preserve exact configured values. LOAD uses server
-restrictions: disabled dedupe policies use the enabled-policy fallback, and a
+and derived caches. Native v5 snapshots preserve configured values and full
+rules, including geography omitted from NEARBY's effective projection. LOAD uses
+server restrictions: disabled dedupe policies use the enabled-policy fallback, and a
 path sample override only applies above the current cluster minimum. Grid/H3
-cells and the `NEARBY` location-filter restoration snapshot are rebuilt. Stored
-`NEARBY` remains inactive with a warning when usable cells are unavailable.
+cells are rebuilt, not a location-filter restoration snapshot. Stored NEARBY
+remains enabled but unavailable with a warning when usable cells are absent;
+the [recovery contract](#grid-noise-and-nearby) retains the existing self exceptions.
 LOAD restarts the chosen SOLAR schedule at the next wall-clock-aligned tick;
 enabled nodes send summaries only when conditions are active.
 
@@ -916,18 +934,104 @@ clean up their temporary files; a cleanup failure is logged for the operator.
 
 ### Persistence Format And Rollback
 
-New records and snapshots carry `configuration_version: 4`. An absent marker
-selects historical legacy migration; version 1 retains all old exact values and
-initializes only the new state domains as unrestricted. Legacy/version 1/2 records
-acquire no MINSNR thresholds; version 2 state rules remain exact. Versions 0-3
-acquire empty comment lists; version 3 MINSNR remains exact. Nested preset
-baselines
-follow the same migration, preserving their modification status. New versions
-are written on the next ordinary successful save; there is no bulk rewrite. Invalid markers, explicit zero and unknown
-future versions are rejected; unreadable/unsupported user records are protected
-by temporary-defaults sessions. Collections may contain supported legacy and
-current entries together, but an unsupported entry prevents library mutation
-without rewriting it.
+User records, named preset entries and applied baselines require explicit
+`configuration_version: 5` and nested `configuration.filters/settings`.
+Strict codecs refuse older formats; login separately performs the recognized
+unversioned/version 1–4 reset described above. Current library entries and
+baselines must satisfy v5. Explicit-zero, malformed, future or unsafe documents
+remain protected. An encoder's zero version for a newly constructed in-memory
+DTO is not supported disk version 0. There is no category converter,
+marker-only upgrade or compatibility engine. Reset originals have adjacent
+`.pre-v5.bak` backups; existing v5 records and new presets are not reset again.
+
+Native records are not machine envelopes: they have no `schema_version`,
+`request_id` or `if_revision`. A codec-shaped record with an optional applied
+reference can look like this (illustrative, not executed validation):
+
+```yaml
+configuration_version: 5
+configuration:
+  filters:
+    rules:
+      - {slot: 0, action: pass, expr: 'MODE=CW AND SOURCE=HUMAN'}
+    nearby_enabled: false
+    include_beacons: DEFAULT
+    allow_wwv: DEFAULT
+    allow_wcy: DEFAULT
+    allow_announce: DEFAULT
+    allow_self: DEFAULT
+    allow_toxic: DEFAULT
+  settings:
+    dialect: ""
+    grid: ""
+    noise_class: ""
+    dedupe_policy: ""
+    path_min_observation_count: 0
+    solar_summary_minutes: 0
+preset:
+  name: CONTEST
+  baseline:
+    configuration_version: 5
+    configuration:
+      filters:
+        rules: []
+        nearby_enabled: false
+        include_beacons: DEFAULT
+        allow_wwv: DEFAULT
+        allow_wcy: DEFAULT
+        allow_announce: DEFAULT
+        allow_self: DEFAULT
+        allow_toxic: DEFAULT
+      settings:
+        dialect: ""
+        grid: ""
+        noise_class: ""
+        dedupe_policy: ""
+        path_min_observation_count: 0
+        solar_summary_minutes: 0
+recent_ips:
+  - 192.0.2.1
+last_login_utc: 2026-10-21T18:00:00Z
+```
+
+The retained baseline may differ from the current configuration and is not
+looked up afresh in the library. Login/IP metadata stays outside configuration.
+A library has a `presets` mapping, with a version on each named entry, not a
+top-level library version:
+
+```yaml
+presets:
+  CONTEST:
+    configuration_version: 5
+    configuration:
+      filters:
+        rules:
+          - {slot: 0, action: pass, expr: 'DXSTATE=NY,ON'}
+        nearby_enabled: false
+        include_beacons: DEFAULT
+        allow_wwv: DEFAULT
+        allow_wcy: DEFAULT
+        allow_announce: DEFAULT
+        allow_self: DEFAULT
+        allow_toxic: DEFAULT
+      settings:
+        dialect: ""
+        grid: ""
+        noise_class: ""
+        dedupe_policy: ""
+        path_min_observation_count: 0
+        solar_summary_minutes: 0
+```
+
+The native runtime record/configuration/preset wrappers use the v5 codecs in
+`filter/storage_v5_io_adapter.go`, `storage_v5.go`, `storage_v5_decode.go` and
+`preset_v5.go`. Those are current checkout routes, not published-main claims.
+Raw, normalized and prospective user records (including metadata/baseline)
+must each fit 1,048,576 bytes. Each standalone configuration/preset/baseline
+must fit 262,144 bytes in preset form; libraries allow 20 names and
+8,388,608 bytes. Shared physical-plus-logical decode work is separately bounded
+at 2,097,152 per record and 16,777,216 per collection. Decode work is not file
+size or retained heap bytes. Refusal preserves the original document.
 
 Per-SSID preference and association saves use synced, closed temporary files
 and atomic replacement. The configuration transaction covers reconnect's
@@ -1057,22 +1161,47 @@ Other active filters still apply. See
 
 While `NEARBY` is active:
 
-- the regular location filters are suspended
-- human `PASS`/`REJECT` attempts to change `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`, `DEDXCC`, `DXSTATE`, and `DESTATE` are rejected with a warning
-- `SHOW FILTER` reports `Nearby On` with the grid, or explains unavailable cells
+- effective expressions structurally omit only geographic leaves:
+  `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`,
+  `DEDXCC`, `DXSTATE` and `DESTATE`
+- removal is not substitution with true or false: an emptied subtree disappears,
+  a surviving single AND/OR child replaces its parent, and NOT disappears if
+  its child empties; an entirely emptied rule contributes neither PASS nor REJECT
+- BAND, MODE, calls, SOURCE, EVENT, COMMENT, FREQ, SNR, CONF and PATH survive
+- full saved expressions remain intact and editable, including geographic atoms
+- `SHOW FILTER`, RULE and FULL show saved/effective rules, suspension and geometry
 - spot delivery uses the least-suppressive available dedupe policy while usable grid-backed cells are present
 
-When `PASS NEARBY OFF` is used, the telnet layer restores the saved location-filter snapshot that existed before `NEARBY` was enabled.
+For example, `DXCONT=EU OR MODE=CW` projects to `MODE=CW`, not unrestricted
+true; a rule containing only `DXCONT=EU` is ignored while ON. OFF evaluates
+the latest full saved expressions, including edits made while ON, not a
+pre-ON restoration snapshot.
 
-`PASS NOFILTER` (`SET/NOFILTER` in CC) disables NEARBY and clears every filter,
-including the saved location restrictions. A later NEARBY OFF cannot restore
-those old restrictions. The user's GRID stays configured. `RESET FILTER`
-restores the cluster's new-user filter defaults instead.
+`RESET FILTER RULE <slot|ALL>` clears only those rules and preserves NEARBY.
+`RESET FILTER` clears all rules and turns NEARBY OFF, without changing GRID,
+other settings or separate controls. Neither restores new-user defaults.
+NOFILTER forms are refused, not translated.
 
-`NEARBY` state is persisted. On login:
+If NEARBY is already ON with unavailable restored
+GRID/cells, human and YAML rule-only edits are allowed when every other saved
+selection is unchanged. Retain the saved GRID and NEARBY ON. When both cells
+are unavailable, ordinary spots are blocked until geometry is repaired or
+NEARBY is OFF. This does not override live
+SELF's enabled-only bypass or command/history's SELF-independent self-match
+exception; both still honor TOXIC, and explicit history clauses still apply.
+Enabling NEARBY or changing GRID while ON still requires usable geometry.
 
-- the greeting warns when `NEARBY` is active
-- if the user has no usable grid or H3 cells are unavailable, NEARBY remains enabled but unavailable; geography rules stay suspended and DX spots on affected bands are rejected
+The rule-only YAML recovery exception bypasses only mapping availability for
+the unchanged saved GRID, not malformed GRID syntax or other settings checks.
+Existing human control/settings admission is unchanged. Partly usable geometry
+retains band-specific behavior: bands whose required user cell is available may
+work; the other bands reject. `TestGridMappingAvailability` exercises actual
+PATCH, PUT and VALIDATE with an explicit saved GRID and no mappings in a fresh
+child process. Private-cluster acceptance remains pending.
+
+NEARBY state is persisted. On login the greeting warns when it is active;
+unusable restored geometry leaves it ON, with full rules retained and effective
+geographic projection still selected. The recovery behavior above applies.
 
 ## Path Display
 
@@ -1123,23 +1252,29 @@ not replace the existing deterministic tests with overlapping goroutines.
 
 ## US State And Canadian Province Filters
 
-`PASS DXSTATE CA,TX,ON,QC` selects spotted stations with those registered address
-codes. `REJECT DESTATE AA,AE,AP` excludes spotters with those military postal
-codes. The same commands work through `cc` SET/FILTER and UNSET/FILTER aliases.
-Lists are case-insensitive and completely validated before mutation. Accepted
-values are the 60 FCC codes and AB, BC, MB, NB, NL, NS, NT, NU, ON, PE, QC, SK, YT.
+Use the shared numbered-rule grammar in either dialect:
 
-Unknown state passes an unrestricted or named REJECT-only category and fails
-an explicit PASS list. ALL and NOFILTER follow existing resets; categories
-combine with AND, values within a category with OR. SELF retains its existing
-matching exception. SHOW FILTER, FULL and category details display finite
-selections completely. NEARBY suspends state rules, locks their ordinary
-mutation and restores them when switched off, including after schema 1 writes.
+```text
+PASS RULE 0 DXSTATE=CA,TX,ON,QC
+REJECT RULE 9 DESTATE=AA,AE,AP
+```
+
+Operands normalize to canonical case and accept 60 FCC codes plus AB, BC, MB,
+NB, NL, NS, NT, NU, ON, PE, QC, SK, YT. They compare the spot's canonical
+observed metadata; missing, invalid or noncanonical metadata is unknown.
+`DXSTATE<>CA` is false for unknown State, but `NOT DXSTATE=CA` is true.
+A reject-only rule set can allow unknown State because no rejection matched,
+not because inequality evaluated true. Other PASS slots can broaden selection.
+NEARBY projects out State atoms while retaining editable full rules; OFF uses
+the latest full rules. SELF/history exceptions remain as described above.
 
 State enrichment remains active with either source's license enforcement
 disabled. Registered addresses can differ from operating location. The final
 corrected DX base call determines DXSTATE, and central ingest determines DESTATE.
-Portable operating prefixes do not imply a state. ISED uses a club address when
+License lookup uses home/base-call CTY jurisdiction, not a portable operating
+prefix. Canadian jurisdictions are ADIF 1/211/252; FCC enrichment uses the
+explicit `spot.IsFCCJurisdiction` set, not just ADIF 291. Only available/found
+registered-address evidence supplies State. ISED uses a club address when
 club data exists, otherwise the personal address. Exact active special calls
 use their listed ISED trustee; prefix substitutions use the ordinary assigned
 base call. Blank or conflicting evidence leaves State unknown. Prefix matches
@@ -1148,13 +1283,14 @@ are inclusive UTC days; cached Canadian facts revalidate at UTC midnight.
 
 Each registry has an independent snapshot and generation. Publication briefly
 makes that source unknown; FCC rebuilding also suppresses FCC facts during its
-import. Named State PASS lists exclude these unknown spots, while named REJECT
-lists allow them through that category. Failed builds retain the last good
+import. State comparisons are then false, including `<>`; NOT negates that
+result. A PASS requiring State does not qualify these spots, while a
+State-only REJECT does not veto them. Failed builds retain the last good
 snapshot. Refresh duration depends on installation and source size; see
 [FCC evidence](../docs/fcc-state-validation.md#full-sample) and
 [Canadian evidence](../docs/canadian-state-validation.md).
 
 Archive version 6 stores the observed State values. Versions 2–5 remain readable
-with unknown State; history never consults current registry addresses. Existing
-machine schemas 1/2 retain their formats; disk version 3 and explicit machine
-schema 3 also carry MINSNR. Older binaries can reject Canadian codes, so use matching backups for downgrade.
+with unknown State; history never consults current registry addresses.
+Configuration is separately schema 5/native disk v5, with no older-format
+conversion. Use matching backups for downgrade.

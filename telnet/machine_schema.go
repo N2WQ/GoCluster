@@ -4,29 +4,11 @@
 package telnet
 
 import (
-	"bytes"
-	"errors"
-	"io"
 	"strconv"
 	"strings"
 
-	"dxcluster/filter"
 	"gopkg.in/yaml.v3"
 )
-
-// machineRequest contains only detached writable values and fixed presence
-// masks. No Node or decoder survives decoding, so the preparation permit can be
-// released before transaction ownership, disk I/O or publication is awaited.
-type machineRequest struct {
-	SchemaVersion int
-	RequestID     string
-	IfRevision    string
-	Configuration filter.Configuration
-	resource      string
-	filterFields  uint32
-	settingFields uint8
-	ruleFields    [16]uint8
-}
 
 // machineSchemaError names a schema-controlled path, never an unbounded value
 // from the request. This keeps malformed-document error responses bounded.
@@ -39,93 +21,6 @@ func (e *machineSchemaError) Error() string { return e.path + ": " + e.reason }
 
 func schemaError(path, reason string) error {
 	return &machineSchemaError{path: path, reason: reason}
-}
-
-func decodeMachineRequest(body []byte, command machineCommand) (machineRequest, error) {
-	request := machineRequest{resource: command.Resource}
-	if len(body) > maxYAMLBytes {
-		return request, schemaError("document", "exceeds 65536-byte limit")
-	}
-	if command.Verb != "PUT" && command.Verb != "PATCH" && command.Verb != "VALIDATE" {
-		return request, schemaError("document", "command does not receive YAML")
-	}
-	if !machineResourceAllowed(command.Verb, command.Resource) {
-		return request, schemaError("configuration", "unsupported resource")
-	}
-	decoder := yaml.NewDecoder(bytes.NewReader(body))
-	var document, extra yaml.Node
-	if err := decoder.Decode(&document); err != nil {
-		return request, schemaError("document", "invalid YAML syntax")
-	}
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return request, schemaError("document", "exactly one YAML document is required")
-	}
-	// Retain an unambiguous supported envelope version for error replies even
-	// when a later node is invalid. This does not admit any request values.
-	if document.Kind == yaml.DocumentNode && len(document.Content) == 1 {
-		root := document.Content[0]
-		if root.Kind == yaml.MappingNode && len(root.Content)%2 == 0 {
-			var version *yaml.Node
-			duplicate := false
-			for i := 0; i < len(root.Content); i += 2 {
-				if root.Content[i].Value == "schema_version" {
-					duplicate = version != nil
-					if duplicate {
-						break
-					}
-					version = root.Content[i+1]
-				}
-			}
-			if version != nil && !duplicate {
-				if value, err := machineInteger(version, "schema_version", false); err == nil && (value >= 1 && value <= 4) {
-					request.SchemaVersion = value
-				}
-			}
-		}
-	}
-	if err := validateMachineNodes(&document); err != nil {
-		return request, err
-	}
-	if document.Kind != yaml.DocumentNode || len(document.Content) != 1 {
-		return request, schemaError("document", "expected a mapping")
-	}
-	envelope, err := machineObject(document.Content[0], "document", []string{"schema_version", "request_id", "if_revision", "configuration"}, false)
-	if err != nil {
-		return request, err
-	}
-	if request.RequestID, err = requiredMachineString(envelope, "request_id", "request_id"); err != nil {
-		return request, err
-	}
-	if !validMachineRequestID(request.RequestID) {
-		request.RequestID = ""
-		return request, schemaError("request_id", "expected 1-32 ASCII letters, digits or hyphens")
-	}
-	version := envelope["schema_version"]
-	if version == nil {
-		return request, schemaError("schema_version", "required field is missing")
-	}
-	if request.SchemaVersion, err = machineInteger(version, "schema_version", false); err != nil {
-		return request, err
-	}
-	if request.SchemaVersion < 1 || request.SchemaVersion > 4 {
-		return request, schemaError("schema_version", "unsupported schema version")
-	}
-	if revision := envelope["if_revision"]; revision != nil {
-		if request.IfRevision, err = machineString(revision, "if_revision"); err != nil {
-			return request, err
-		}
-		if !validMachineRevision(request.IfRevision) {
-			return request, schemaError("if_revision", "expected 1-128 printable ASCII bytes")
-		}
-	} else if command.Verb != "VALIDATE" {
-		return request, schemaError("if_revision", "required field is missing")
-	}
-	configuration := envelope["configuration"]
-	if configuration == nil {
-		return request, schemaError("configuration", "required field is missing")
-	}
-	err = request.decodeConfiguration(configuration, command.Verb != "PATCH")
-	return request, err
 }
 
 // validateMachineNodes makes one iterative pass without decoding values or
@@ -258,29 +153,4 @@ func validMachineRevision(revision string) bool {
 		}
 	}
 	return true
-}
-
-func (r *machineRequest) decodeConfiguration(node *yaml.Node, complete bool) error {
-	switch r.resource {
-	case "FILTER":
-		return r.decodeFilters(node, "configuration", complete)
-	case "SETTINGS":
-		return r.decodeSettings(node, "configuration", complete)
-	case "CONFIG":
-		containers, err := machineObject(node, "configuration", []string{"filters", "settings"}, complete)
-		if err != nil {
-			return err
-		}
-		if filters := containers["filters"]; filters != nil {
-			if err := r.decodeFilters(filters, "configuration.filters", complete); err != nil {
-				return err
-			}
-		}
-		if settings := containers["settings"]; settings != nil {
-			return r.decodeSettings(settings, "configuration.settings", complete)
-		}
-		return nil
-	default:
-		return schemaError("configuration", "unsupported resource")
-	}
 }

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"dxcluster/cty"
 	"dxcluster/filter"
 	"gopkg.in/yaml.v3"
 )
@@ -79,35 +78,6 @@ func encodeBoundedYAML(document any) (string, error) {
 	return string(response.data), nil
 }
 
-type readbackCategory struct {
-	name         string
-	rules        any
-	allow, block []string
-	toggle       filter.DefaultBool
-	kind         byte
-}
-
-func readbackCategories(f filter.FilterConfiguration) [27]readbackCategory {
-	return [27]readbackCategory{
-		{name: "BAND", rules: f.Bands}, {name: "MODE", rules: f.Modes},
-		{name: "MINSNR", kind: 's'},
-		{name: "COMMENT", allow: f.Comments, block: f.BlockComments, kind: 'c'},
-		{name: "SOURCE", rules: f.Sources}, {name: "EVENT", rules: f.Events},
-		{name: "CONFIDENCE", rules: f.Confidence}, {name: "PATH", rules: f.PathClasses},
-		{name: "DXCONT", rules: f.DXContinents}, {name: "DECONT", rules: f.DEContinents},
-		{name: "DXZONE", rules: f.DXZones}, {name: "DEZONE", rules: f.DEZones},
-		{name: "DXGRID2", rules: f.DXGrid2}, {name: "DEGRID2", rules: f.DEGrid2},
-		{name: "DXDXCC", rules: f.DXDXCC}, {name: "DEDXCC", rules: f.DEDXCC},
-		{name: "DXSTATE", rules: f.DXStates}, {name: "DESTATE", rules: f.DEStates},
-		{name: "DXCALL", allow: f.DXCallsigns, block: f.BlockDXCallsigns, kind: 'p'},
-		{name: "DECALL", allow: f.DECallsigns, block: f.BlockDECallsigns, kind: 'p'},
-		{name: "BEACON", toggle: f.IncludeBeacons, kind: 't'}, {name: "WWV", toggle: f.AllowWWV, kind: 't'},
-		{name: "WCY", toggle: f.AllowWCY, kind: 't'}, {name: "ANNOUNCE", toggle: f.AllowAnnounce, kind: 't'},
-		{name: "SELF", toggle: f.AllowSelf, kind: 't'}, {name: "TOXIC", toggle: f.AllowToxic, kind: 't'},
-		{name: "NEARBY", kind: 'n'},
-	}
-}
-
 func humanReadbackFooter(duration time.Duration) string {
 	if duration <= 0 {
 		duration = defaultReadPauseDuration
@@ -145,74 +115,46 @@ func writeHumanFooter(h *humanResponse, duration time.Duration) error {
 func (s *Server) renderHumanReadback(c *Client, resource, category string, duration time.Duration) (string, error) {
 	status := s.captureReadbackStatus(c, nil)
 	runtime := s.captureHumanRuntime(c)
-	// Build the request index before borrowing broadcast-visible filter/path
-	// locks. One snapshot serves both preflight and generation after refresh.
-	var dxcc *cty.DXCCIndex
-	if resource == "FILTER" && (category == "" || category == "FULL" || category == "DXDXCC" || category == "DEDXCC") {
-		var db *cty.CTYDatabase
-		if s != nil && s.ctyLookup != nil {
-			db = s.ctyLookup()
-		}
-		dxcc = cty.NewDXCCIndex(db)
-	}
 	var response string
 	err := c.withBorrowedConfiguration(func(cfg filter.Configuration) error {
 		status = attachReadbackConfiguration(status, c, cfg)
 		if !readbackMetadataFits(status, "", "") {
 			return errReadbackTooLarge
 		}
-		switch category {
-		case "CONF":
-			category = "CONFIDENCE"
-		case "PC93":
-			category = "ANNOUNCE"
-		}
 		if resource == "SETTINGS" && category != "" {
 			return fmt.Errorf("usage: SHOW SETTINGS")
+		}
+		if resource == "FILTER" && category != "" && category != "RULE" && category != "FULL" {
+			return fmt.Errorf("usage: SHOW FILTER [RULE|FULL]; use HELP RULE")
 		}
 		if resource == "SETTINGS" && !(filter.Configuration{Settings: cfg.Settings}).MinimumSizeFits(maxYAMLBytes) {
 			return errReadbackTooLarge
 		}
 		for _, countOnly := range []bool{true, false} {
-			h := humanResponse{countOnly: countOnly, dxcc: dxcc}
+			h := humanResponse{countOnly: countOnly}
 			if err := writeHumanHeader(&h, c, status); err != nil {
 				return err
 			}
-			switch {
-			case resource == "SETTINGS":
+			switch resource {
+			case "SETTINGS":
 				if err := writeHumanSettings(&h, cfg.Settings, status, runtime, duration); err != nil {
 					return err
 				}
-			case category == "":
-				if err := writeHumanOverview(&h, cfg.Filters, status); err != nil {
-					return err
-				}
 			default:
-				found := false
-				for _, item := range readbackCategories(cfg.Filters) {
-					if category != "FULL" && category != item.name {
-						continue
+				var err error
+				if category == "FULL" {
+					err = writeBooleanFilterSnapshot(&h, c.filter)
+				} else {
+					err = writeBooleanSettingsAndRules(&h, c, cfg, status, runtime, false)
+					if err == nil {
+						err = h.line("")
 					}
-					if found {
-						if err := h.line(""); err != nil {
-							return err
-						}
-					}
-					found = true
-					if err := writeHumanEffectiveCategory(&h, item, cfg.Filters, status); err != nil {
-						return err
+					if err == nil {
+						err = writeBooleanEditGuidance(&h)
 					}
 				}
-				if !found {
-					return fmt.Errorf("usage: SHOW FILTER [FULL|category]; use HELP SHOW FILTER")
-				}
-				if h.joined {
-					if err := h.line(""); err != nil {
-						return err
-					}
-					if err := h.line("A + joins quoted pieces of one value; no characters are added."); err != nil {
-						return err
-					}
+				if err != nil {
+					return err
 				}
 			}
 			if err := writeHumanFooter(&h, duration); err != nil {

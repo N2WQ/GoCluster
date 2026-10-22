@@ -25,7 +25,7 @@ func (f historyReaderFunc) ReadHistoryPage(req archive.HistoryRequest) (archive.
 func historyTestSession(reader historyReaderFunc) (*Server, *Client) {
 	s := &Server{clients: make(map[string]*Client), shutdown: make(chan struct{})}
 	s.processor = commands.NewProcessor(nil, reader, nil, func() *cty.CTYDatabase { return canonicalTestCTY() }, nil, nil)
-	c := &Client{server: s, callsign: "N2WQ", dialect: DialectGo, filter: filter.NewFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
+	c := &Client{server: s, callsign: "N2WQ", dialect: DialectGo, filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
 	s.clients[c.callsign] = c
 	return s, c
 }
@@ -107,7 +107,7 @@ func TestHistoryResponseDiscardedAfterSettingsChange(t *testing.T) {
 			<-entered
 			_, handled := s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
 				c.filterMu.Lock()
-				c.filter.BlockBands["20m"] = true
+				*c.filter = *testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})
 				c.filterMu.Unlock()
 				return "", true
 			})
@@ -117,7 +117,7 @@ func TestHistoryResponseDiscardedAfterSettingsChange(t *testing.T) {
 			if restore {
 				s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
 					c.filterMu.Lock()
-					delete(c.filter.BlockBands, "20m")
+					*c.filter = *unrestrictedTestFilter()
 					c.filterMu.Unlock()
 					return "", true
 				})
@@ -241,13 +241,13 @@ func TestHistoryTokensBelongToConnection(t *testing.T) {
 	})
 	runHistory(t, s, first, "SHOW DX 1")
 	token := first.historySearch.token
-	other := &Client{server: s, callsign: "N3WQ", filter: filter.NewFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+	other := &Client{server: s, callsign: "N3WQ", filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 	s.clients[other.callsign] = other
 	if text := runHistory(t, s, other, "SHOW DX NEXT "+token); !strings.Contains(text, "Invalid history continuation") || other.historySearch != nil || first.historySearch.token != token {
 		t.Fatalf("token crossed connection: %q", text)
 	}
 	first.interrupt()
-	reconnected := &Client{server: s, callsign: first.callsign, filter: filter.NewFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+	reconnected := &Client{server: s, callsign: first.callsign, filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 	s.clients[first.callsign] = reconnected
 	if text := runHistory(t, s, reconnected, "SHOW DX NEXT "+token); !strings.Contains(text, "Invalid history continuation") || reconnected.historySearch != nil {
 		t.Fatalf("token survived reconnect: %q", text)
@@ -262,7 +262,7 @@ func TestHistorySettingsChangeImmediatelyBeforePublication(t *testing.T) {
 	}
 	s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
 		c.filterMu.Lock()
-		c.filter.BlockBands["20m"] = true
+		*c.filter = *passRuleTestFilter(t, "BAND=40M")
 		c.filterMu.Unlock()
 		return "", true
 	})

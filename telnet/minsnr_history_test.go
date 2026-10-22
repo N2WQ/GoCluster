@@ -11,8 +11,7 @@ import (
 )
 
 func TestMinSNRHistorySnapshotAndDigest(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter()}
-	c.filter.MinSNR = map[string]int{"CW": 0}
+	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "MODE=CW AND SNR>=0 AND SOURCE=SKIMMER")}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.HasReport, sp.Report = true, 0
 	sp.IsHuman = false
@@ -20,7 +19,8 @@ func TestMinSNRHistorySnapshotAndDigest(t *testing.T) {
 	if !snapshot.matches(nil, sp) {
 		t.Fatal("exact threshold must pass history")
 	}
-	c.updateFilter(func(f *filter.Filter) { f.MinSNR["CW"] = 1 })
+	next := passRuleTestFilter(t, "MODE=CW AND SNR>=1 AND SOURCE=SKIMMER")
+	c.updateFilter(func(f *filter.Filter) { *f = *next })
 	if !snapshot.matches(nil, sp) || c.captureHistoryFilter().matches(nil, sp) || snapshot.digest == c.historyFilterDigest() {
 		t.Fatal("snapshot aliases live threshold or digest omits it")
 	}
@@ -38,7 +38,7 @@ func TestMinSNRHistoryCursorInvalidation(t *testing.T) {
 	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { return nil }
 	runHistory(t, s, c, "SHOW DX 1")
 	token := c.historySearch.token
-	newFilterCommandEngine().Handle(c, "PASS MINSNR CW 10")
+	newFilterCommandEngine().Handle(c, "PASS RULE 0 MODE=CW AND SNR>=10")
 	if text := runHistory(t, s, c, "SHOW DX NEXT "+token); !strings.Contains(text, "Invalid history continuation") || c.historySearch != nil {
 		t.Fatalf("old cursor accepted after threshold edit: %q", text)
 	}
@@ -64,7 +64,7 @@ func TestMinSNRHistoryPendingPageInvalidation(t *testing.T) {
 	done := make(chan bool, 1)
 	go func() { _, proceed := s.handleHistoryCommand(c, "SHOW DX K1ABC 1"); done <- proceed }()
 	<-entered
-	newFilterCommandEngine().Handle(c, "PASS MINSNR CW 1")
+	newFilterCommandEngine().Handle(c, "PASS RULE 0 MODE=CW AND SNR>=1")
 	close(releaseScan)
 	if !<-done {
 		t.Fatal("history restart could not be queued")
@@ -75,8 +75,9 @@ func TestMinSNRHistoryPendingPageInvalidation(t *testing.T) {
 }
 
 func TestMinSNRConcurrentMutation(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter()}
-	c.filter.MinSNR = map[string]int{"CW": 0}
+	first, second := passRuleTestFilter(t, "MODE=CW AND SNR>=0 AND SOURCE=SKIMMER"), passRuleTestFilter(t, "MODE=CW AND SNR>=1 AND SOURCE=SKIMMER")
+	c := &Client{callsign: "N0USER", filter: first}
+	states := [2]filter.Filter{*first, *second}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.HasReport, sp.Report = true, 0
 	sp.IsHuman = false
@@ -84,10 +85,7 @@ func TestMinSNRConcurrentMutation(t *testing.T) {
 	var group sync.WaitGroup
 	group.Go(func() {
 		for i := range 500 {
-			_, changed := newMinSNRHandler().apply(c, actionAllow, []string{"CW", []string{"0", "1"}[i%2]})
-			if !changed {
-				t.Error("valid threshold update rejected")
-			}
+			c.updateFilter(func(f *filter.Filter) { *f = states[i%2] })
 		}
 	})
 	group.Go(func() {

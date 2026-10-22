@@ -1,7 +1,6 @@
 package telnet
 
 import (
-	"reflect"
 	"testing"
 	"time"
 
@@ -11,70 +10,72 @@ import (
 
 func TestHumanPreferenceNearbyPublication(t *testing.T) {
 	requireH3Mappings(t)
-	for _, loadedWithoutSnapshot := range []bool{false, true} {
-		t.Run(map[bool]string{false: "snapshot", true: "loaded without snapshot"}[loadedWithoutSnapshot], func(t *testing.T) {
+	for _, restored := range []bool{false, true} {
+		t.Run(map[bool]string{false: "direct", true: "restored"}[restored], func(t *testing.T) {
 			s := presetTestServer(t)
 			s.filterEngine = newFilterCommandEngine()
 			c := configurationTestClient(s, "W1ABC-1")
 			c.grid, c.gridCell, c.gridCoarseCell = "FN31", pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")
 			c.configuredSettings, c.configurationInitialized = filter.SettingsConfiguration{Dialect: "go", Grid: "FN31", DedupePolicy: "FAST"}, true
-			c.filter.SetDXContinent("EU", true)
-			c.filter.SetDEZone(5, true)
-			c.filter.SetDXState("NY", true)
-			c.filter.LegacyMinConfidence = 17
+			c.filter = passRuleTestFilter(t, "DXCONT=EU AND DEZONE=5 AND DXSTATE=NY")
+			original := c.filter.PreparedRules()
 			pointer := c.filter
 			staged := newHumanPreferenceCandidate(c)
 			outcome := s.filterEngine.stageOwned(staged, "PASS NEARBY ON")
-			if !outcome.publish || c.filter.NearbyEnabled || c.filter.NearbySnapshot != nil {
+			if !outcome.publish || c.filter.NearbyEnabled || c.filter.PreparedRules() != original {
 				t.Fatal("NEARBY ON changed live state before publication")
 			}
 			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.filter != pointer || !c.filter.NearbyActive() || c.filter.NearbyUserFine != c.gridCell || c.filter.NearbyUserCoarse != c.gridCoarseCell || c.filter.NearbySnapshot == nil || c.filter.LegacyMinConfidence != 17 {
+			if c.filter != pointer || !c.filter.NearbyActive() || c.filter.NearbyUserFine != c.gridCell || c.filter.NearbyUserCoarse != c.gridCoarseCell || c.filter.PreparedRules() != original {
 				t.Fatal("ON publication lost runtime/filter ownership")
 			}
-			if loadedWithoutSnapshot {
-				c.filter.NearbySnapshot = nil
+			if restored {
+				reloaded := c.captureV5Configuration()
+				_, value, err := filter.PrepareV5Configuration(reloaded)
+				if err != nil {
+					t.Fatal(err)
+				}
+				value.NearbyUserFine, value.NearbyUserCoarse = c.gridCell, c.gridCoarseCell
+				*c.filter = value
+				original = c.filter.PreparedRules()
 			}
-			snapshot := c.filter.NearbySnapshot
 			staged = newHumanPreferenceCandidate(c)
 			outcome = s.stagePathSettingsCommand(staged, "SET NOISE URBAN")
 			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.filter.NearbySnapshot != snapshot || c.filter.NearbyUserFine != c.gridCell || c.filter.NearbyUserCoarse != c.gridCoarseCell || c.filter.LegacyMinConfidence != 17 {
+			if c.filter.NearbyUserFine != c.gridCell || c.filter.NearbyUserCoarse != c.gridCoarseCell || c.filter.PreparedRules() != original {
 				t.Fatal("unrelated setting reconstructed NEARBY")
 			}
 			staged = newHumanPreferenceCandidate(c)
 			outcome = s.stagePathSettingsCommand(staged, "SET GRID IO91")
-			if !outcome.publish || c.grid != "FN31" || c.filter.NearbySnapshot != snapshot {
+			if !outcome.publish || c.grid != "FN31" || c.filter.PreparedRules() != original {
 				t.Fatal("GRID stage changed live state")
 			}
 			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.grid != "IO91" || c.filter.NearbyUserFine != pathreliability.EncodeCell("IO91") || c.filter.NearbyUserCoarse != pathreliability.EncodeCoarseCell("IO91") || c.filter.NearbySnapshot != snapshot {
-				t.Fatal("active GRID publication lost cells/restoration snapshot")
+			if c.grid != "IO91" || c.filter.NearbyUserFine != pathreliability.EncodeCell("IO91") || c.filter.NearbyUserCoarse != pathreliability.EncodeCoarseCell("IO91") || c.filter.PreparedRules() != original {
+				t.Fatal("active GRID publication lost cells or immutable rules")
 			}
 			staged = newHumanPreferenceCandidate(c)
 			outcome = s.filterEngine.stageOwned(staged, "PASS NEARBY OFF")
-			if !outcome.publish || !c.filter.NearbyEnabled || c.filter.NearbySnapshot != snapshot {
+			if !outcome.publish || !c.filter.NearbyEnabled || c.filter.PreparedRules() != original {
 				t.Fatal("OFF stage changed live state")
 			}
 			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.filter != pointer || c.filter.NearbyEnabled || c.filter.NearbySnapshot != nil || c.filter.NearbyUserFine != pathreliability.InvalidCell || c.filter.NearbyUserCoarse != pathreliability.InvalidCell || c.grid != "IO91" || c.filter.AllDXContinents || !c.filter.DXContinents["EU"] || c.filter.AllDEZones || !c.filter.DEZones[5] || c.filter.AllDXStates || !c.filter.DXStates["NY"] {
-				t.Fatal("OFF failed literal prior-rule restoration/filter ownership")
+			if c.filter != pointer || c.filter.NearbyEnabled || c.filter.NearbyUserFine != pathreliability.InvalidCell || c.filter.NearbyUserCoarse != pathreliability.InvalidCell || c.grid != "IO91" || c.filter.PreparedRules() != original {
+				t.Fatal("OFF changed immutable rules/filter ownership or failed to clear effective cells")
 			}
-			for _, command := range []string{"PASS NOFILTER", "RESET FILTER"} {
+			for _, command := range []string{"RESET FILTER"} {
 				if err := c.filter.EnableNearby(c.gridCell, c.gridCoarseCell); err != nil {
 					t.Fatal(err)
 				}
 				staged = newHumanPreferenceCandidate(c)
 				outcome = s.filterEngine.stageOwned(staged, command)
 				s.publishHumanPreference(c, staged, outcome.forceSolar)
-				if !outcome.publish || c.filter != pointer || c.filter.NearbyEnabled || c.filter.NearbySnapshot != nil || c.grid != "IO91" {
+				if !outcome.publish || c.filter != pointer || c.filter.NearbyEnabled || c.grid != "IO91" {
 					t.Fatalf("%s publication retained NEARBY or changed GRID ownership", command)
 				}
-				if command == "PASS NOFILTER" && (!c.filter.AllDXContinents || !c.filter.AllDEZones || !c.filter.AllDXStates || len(c.filter.DXContinents) != 0 || len(c.filter.DEZones) != 0 || len(c.filter.DXStates) != 0) {
-					t.Fatal("NOFILTER restored restrictions after clearing")
-				}
-				if command == "RESET FILTER" && !filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Equal(filter.ConfigurationFromFilter(filter.NewFilter(), filter.SettingsConfiguration{})) {
-					t.Fatal("RESET publication lost configured new-user defaults")
+				if len(c.filter.PreparedRules().Definitions()) != 0 ||
+					original.Definitions()[0].Expr != "DXCONT=EU AND DEZONE=5 AND DXSTATE=NY" {
+					t.Fatal("RESET must clear active rules without mutating the old immutable program")
 				}
 			}
 		})
@@ -86,7 +87,7 @@ func TestHumanPreferenceSolarPublicationClockAndBroadcasterProgress(t *testing.T
 		t.Run(map[bool]string{false: "unrelated edit preserves tick", true: "same cadence SET reschedules"}[solarCommand], func(t *testing.T) {
 			s := presetTestServer(t)
 			c := configurationTestClient(s, "W1ABC-1")
-			c.filter.SetBand("20m", true)
+			c.filter = passRuleTestFilter(t, "BAND=20M")
 			c.configuredSettings = filter.SettingsConfiguration{Dialect: "go", DedupePolicy: "FAST", SolarSummaryMinutes: 15}
 			c.configurationInitialized = true
 			clock := time.Date(2026, 10, 9, 12, 14, 59, 0, time.UTC)
@@ -105,7 +106,7 @@ func TestHumanPreferenceSolarPublicationClockAndBroadcasterProgress(t *testing.T
 			if solarCommand {
 				outcome = s.stageSolarCommand(staged, "SET SOLAR 15")
 			} else {
-				outcome = newFilterCommandEngine().stageOwned(staged, "PASS BAND 20")
+				outcome = newFilterCommandEngine().stageOwned(staged, "PASS RULE 0 BAND=20M")
 			}
 			if !outcome.publish || outcome.forceSolar != solarCommand {
 				t.Fatal("handler did not declare its scheduling intent")
@@ -129,9 +130,9 @@ func TestHumanPreferenceSolarPublicationClockAndBroadcasterProgress(t *testing.T
 			}
 			// Matching edits still invalidate an existing cursor as before.
 			staged = newHumanPreferenceCandidate(c)
-			staged.filter.BlockBands = map[string]bool{"20m": true}
+			*staged.filter = *passRuleTestFilter(t, "BAND=40M")
 			s.publishHumanPreference(c, staged, false)
-			if c.historySearch != nil || c.historyGeneration != generation+1 || c.configurationRevision != revision+1 || !reflect.DeepEqual(c.filter.BlockBands, map[string]bool{"20m": true}) {
+			if c.historySearch != nil || c.historyGeneration != generation+1 || c.configurationRevision != revision+1 || c.filter.PreparedRules().Definitions()[0].Expr != "BAND=40M" {
 				t.Fatal("publication failed existing matching/revision invalidation")
 			}
 		})

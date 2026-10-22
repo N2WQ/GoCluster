@@ -9,119 +9,7 @@ import (
 
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
-	"dxcluster/spot"
 )
-
-func validateNamedRules(name string, rules filter.StringRules, valid func(string) bool) error {
-	for _, entries := range []map[string]bool{rules.Allow, rules.Block} {
-		for key := range entries {
-			if !valid(key) {
-				return fmt.Errorf("filters.%s contains an unsupported key", name)
-			}
-		}
-	}
-	return nil
-}
-
-func validateNumberRules(name string, rules filter.IntRules, valid func(int) bool) error {
-	for _, entries := range []map[int]bool{rules.Allow, rules.Block} {
-		for key := range entries {
-			if !valid(key) {
-				return fmt.Errorf("filters.%s contains an unsupported key", name)
-			}
-		}
-	}
-	return nil
-}
-
-func canonicalUpperChoice(valid func(string) bool) func(string) bool {
-	return func(value string) bool {
-		return value == strings.ToUpper(strings.TrimSpace(value)) && valid(value)
-	}
-}
-
-func (s *Server) validateMachineConfiguration(cfg filter.Configuration) error {
-	if err := cfg.ValidateCommentRules(); err != nil {
-		return err
-	}
-	if err := cfg.ValidateMinSNRRules(); err != nil {
-		return err
-	}
-	if err := cfg.ValidateStateRules(); err != nil {
-		return err
-	}
-	f := cfg.Filters
-	checks := []struct {
-		name  string
-		rules filter.StringRules
-		valid func(string) bool
-	}{
-		{"bands", f.Bands, func(v string) bool { return v == spot.NormalizeBand(v) && spot.IsValidBand(v) }},
-		{"modes", f.Modes, func(v string) bool {
-			return v != "" && v == spot.CanonicalModeForFilter(v) && filter.IsSupportedMode(v)
-		}},
-		{"sources", f.Sources, canonicalUpperChoice(filter.IsSupportedSource)},
-		{"events", f.Events, canonicalUpperChoice(filter.IsSupportedEvent)},
-		{"confidence", f.Confidence, canonicalUpperChoice(filter.IsSupportedConfidenceSymbol)},
-		{"path_classes", f.PathClasses, canonicalUpperChoice(filter.IsSupportedPathClass)},
-		{"dx_continents", f.DXContinents, canonicalUpperChoice(filter.IsSupportedContinent)},
-		{"de_continents", f.DEContinents, canonicalUpperChoice(filter.IsSupportedContinent)},
-		{"dx_grid2", f.DXGrid2, validMachineGrid2},
-		{"de_grid2", f.DEGrid2, validMachineGrid2},
-	}
-	for _, check := range checks {
-		if err := validateNamedRules(check.name, check.rules, check.valid); err != nil {
-			return err
-		}
-	}
-	for _, check := range []struct {
-		name  string
-		rules filter.IntRules
-		valid func(int) bool
-	}{
-		{"dx_zones", f.DXZones, filter.IsSupportedZone},
-		{"de_zones", f.DEZones, filter.IsSupportedZone},
-		// Human DXCC commands accept positive entity codes independently of the
-		// locally loaded CTY database. Client writes preserve that same domain.
-		{"dx_dxcc", f.DXDXCC, func(v int) bool { return v > 0 }},
-		{"de_dxcc", f.DEDXCC, func(v int) bool { return v > 0 }},
-	} {
-		if err := validateNumberRules(check.name, check.rules, check.valid); err != nil {
-			return err
-		}
-	}
-	for _, list := range [][]string{f.DXCallsigns, f.BlockDXCallsigns, f.DECallsigns, f.BlockDECallsigns} {
-		for _, pattern := range list {
-			if !validCallsignPattern(pattern) {
-				return fmt.Errorf("filters contains an invalid callsign pattern")
-			}
-		}
-	}
-	return s.validateMachineSettings(cfg.Settings)
-}
-
-func validMachineGrid2(value string) bool {
-	return len(value) == 2 && value[0] >= 'A' && value[0] <= 'R' && value[1] >= 'A' && value[1] <= 'R'
-}
-
-// Human and machine proposals share the matcher's exact/prefix/suffix domain.
-// Validate the complete list before publication; saved legacy rules are retained.
-func validCallsignPattern(value string) bool {
-	if value == "" || value != strings.TrimSpace(value) {
-		return false
-	}
-	if strings.Count(value, "*") > 1 || (strings.Contains(value, "*") && !strings.HasPrefix(value, "*") && !strings.HasSuffix(value, "*")) {
-		return false
-	}
-	for i := range len(value) {
-		b := value[i]
-		if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9') || b == '/' || b == '-' || b == '*' {
-			continue
-		}
-		return false
-	}
-	return true
-}
 
 // The general locator parser accepts a usable prefix. Command/configuration
 // boundaries require the complete token to be an exact supported locator.
@@ -134,6 +22,12 @@ func validExactGrid(grid string) bool {
 }
 
 func (s *Server) validateMachineSettings(settings filter.SettingsConfiguration) error {
+	return s.validateMachineSettingsWithGridRecovery(settings, false)
+}
+
+// Recovery waives only mapping availability for an unchanged saved GRID.
+// Exact syntax and every other setting's availability remain mandatory.
+func (s *Server) validateMachineSettingsWithGridRecovery(settings filter.SettingsConfiguration, allowUnavailableGrid bool) error {
 	if settings.Dialect != "" && settings.Dialect != "go" && settings.Dialect != "cc" {
 		return fmt.Errorf("settings.dialect must be go, cc or an empty default selection")
 	}
@@ -141,7 +35,7 @@ func (s *Server) validateMachineSettings(settings filter.SettingsConfiguration) 
 		if settings.Grid != strings.ToUpper(strings.TrimSpace(settings.Grid)) || !validExactGrid(settings.Grid) {
 			return fmt.Errorf("settings.grid must be a valid uppercase 4 or 6 character Maidenhead locator or empty for lookup")
 		}
-		if pathreliability.EncodeCell(settings.Grid) == pathreliability.InvalidCell {
+		if !allowUnavailableGrid && pathreliability.EncodeCell(settings.Grid) == pathreliability.InvalidCell {
 			return fmt.Errorf("settings.grid mapping is unavailable on this server")
 		}
 	}
@@ -174,24 +68,6 @@ func (s *Server) validateMachineSettings(settings filter.SettingsConfiguration) 
 	case 0, 15, 30, 60:
 	default:
 		return fmt.Errorf("settings.solar_summary_minutes must be 0, 15, 30 or 60")
-	}
-	return nil
-}
-
-// Supplied minima may retain an exact dormant key from the transaction-owned
-// previous snapshot. The proposed map must never prove its own prior retention.
-// Omitted maps use only finite grammar validation and remain hidden in v1/v2.
-func (r machineRequest) validateMinSNRSuppliedModes(before filter.Configuration) error {
-	if r.filterFields&(1<<27) == 0 {
-		return nil
-	}
-	for mode := range r.Configuration.Filters.MinSNR {
-		if filter.IsActiveMinSNRMode(mode) {
-			continue
-		}
-		if _, retained := before.Filters.MinSNR[mode]; !retained {
-			return fmt.Errorf("filters.min_snr contains an unavailable mode not previously retained")
-		}
 	}
 	return nil
 }

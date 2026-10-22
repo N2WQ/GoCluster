@@ -12,19 +12,20 @@ import (
 // stays outside the timed fan-out shape; correctness guards prevent a cheap
 // early rejection from masquerading as successful full-list matching.
 func BenchmarkCommentFilter(b *testing.B) {
-	for _, count := range []int{0, 1, MaxCommentPhrases} {
+	for _, count := range []int{0, 1, commentWorkloadPhrases} {
 		b.Run(fmt.Sprintf("phrases-%d", count), func(b *testing.B) {
-			f := NewFilter()
-			f.Reset()
 			sp := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
+			sp.IsHuman = true
 			sp.Comment = strings.Repeat("x", 128)
+			var allow, reject []string
 			for i := range count {
-				f.Comments = append(f.Comments, fmt.Sprintf("needle-%02d", i))
-				f.BlockComments = append(f.BlockComments, fmt.Sprintf("excluded-%02d", i))
+				allow = append(allow, fmt.Sprintf("needle-%02d", i))
+				reject = append(reject, fmt.Sprintf("excluded-%02d", i))
 			}
 			if count > 0 {
-				sp.Comment += " " + f.Comments[count-1]
+				sp.Comment += " " + allow[count-1]
 			}
+			f := nativeCommentFilter(b, allow, reject)
 			if !f.Matches(sp) {
 				b.Fatal("benchmark fixture must pass all filter gates")
 			}
@@ -45,11 +46,11 @@ func BenchmarkCommentHostile(b *testing.B) {
 	for _, shape := range []string{"prefix", "suffix", "periodic", "both-lists"} {
 		for _, size := range []int{128, 1024, 65500} {
 			b.Run(fmt.Sprintf("%s/bytes-%d", shape, size), func(b *testing.B) {
-				f := NewFilter()
-				f.Reset()
 				s := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
+				s.IsHuman = true
 				s.Comment = strings.Repeat("A", size)
-				for i := range MaxCommentPhrases {
+				var allow, reject []string
+				for i := range commentWorkloadPhrases {
 					phrase := strings.Repeat("A", 61) + fmt.Sprintf("%03d", i)
 					switch shape {
 					case "suffix":
@@ -57,10 +58,11 @@ func BenchmarkCommentHostile(b *testing.B) {
 					case "periodic":
 						phrase = strings.Repeat("AB", 30) + "A" + fmt.Sprintf("%03d", i)
 					case "both-lists":
-						f.Comments = append(f.Comments, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i+32))
+						allow = append(allow, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i+32))
 					}
-					f.BlockComments = append(f.BlockComments, phrase)
+					reject = append(reject, phrase)
 				}
+				f := nativeCommentFilter(b, allow, reject)
 				if shape == "periodic" {
 					s.Comment = strings.Repeat("AB", size/2)
 				}
@@ -84,21 +86,21 @@ func BenchmarkCommentCheapReject(b *testing.B) {
 	for _, gate := range []string{"band", "mode"} {
 		for _, size := range []int{128, 1024, 65500} {
 			b.Run(fmt.Sprintf("%s/bytes-%d", gate, size), func(b *testing.B) {
-				f := NewFilter()
-				f.Reset()
 				s := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
-				for i := range MaxCommentPhrases {
-					f.BlockComments = append(f.BlockComments, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i))
+				s.IsHuman = true
+				var reject []string
+				for i := range commentWorkloadPhrases {
+					reject = append(reject, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i))
 				}
+				f := nativeCommentFilter(b, nil, reject)
 				s.Comment = strings.Repeat("A", size)
 				if !f.Matches(s) {
 					b.Fatal("open-gate control must pass all comment rules")
 				}
 				if gate == "band" {
-					f.SetBand("40m", true)
+					f.preparedRules, _ = f.preparedRules.WithRule(RuleDefinition{9, RuleReject, "BAND=20m"})
 				} else {
-					f.BlockAllModes = true
-					f.SetMode("FT8", true)
+					f.preparedRules, _ = f.preparedRules.WithRule(RuleDefinition{9, RuleReject, "MODE=CW"})
 				}
 				b.ReportAllocs()
 				b.ResetTimer()
@@ -121,6 +123,7 @@ func BenchmarkCommentEarlyReject(b *testing.B) {
 				f := NewFilter()
 				f.Reset()
 				s := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
+				s.IsHuman = true
 				s.Comment = "CQ POTA UP 5"
 				phrase := "CQ"
 				if kind == "pass-miss" {
@@ -128,9 +131,9 @@ func BenchmarkCommentEarlyReject(b *testing.B) {
 				}
 				if component == "filter" {
 					if kind == "first-reject" {
-						f.BlockComments = []string{phrase}
+						f = nativeCommentFilter(b, nil, []string{phrase})
 					} else {
-						f.Comments = []string{phrase}
+						f = nativeCommentFilter(b, []string{phrase}, nil)
 					}
 				}
 				evaluate := func() bool { return f.Matches(s) }

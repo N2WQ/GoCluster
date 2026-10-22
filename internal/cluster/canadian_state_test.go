@@ -230,15 +230,22 @@ func TestCanadianResolverDeliveryRetainsRecordedHistory(t *testing.T) {
 					t.Fatalf("replacement DE province was not active: %+v", current)
 				}
 				canadianClusterAwaitArchive(t, writer)
-				f := filter.NewFilter()
-				f.SetDXState("BC", true)
-				f.SetDEState("QC", true)
+				_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+					Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXSTATE=BC AND DESTATE=QC"}},
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
 				page, err := writer.ReadHistoryPage(archive.HistoryRequest{Limit: 1, Now: time.Now().UTC(), Match: f.Matches})
 				if err != nil || len(page.Spots) != 1 || page.Spots[0].DXMetadata.State != "BC" || page.Spots[0].DEMetadata.State != "QC" {
 					t.Fatalf("history replaced recorded provinces: %v %+v", err, page.Spots)
 				}
-				f.ResetDXStates()
-				f.SetDXState("SK", true)
+				_, f, err = filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+					Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXSTATE=SK AND DESTATE=QC"}},
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
 				page, err = writer.ReadHistoryPage(archive.HistoryRequest{Limit: 1, Now: time.Now().UTC(), Match: f.Matches})
 				if err != nil || len(page.Spots) != 0 {
 					t.Fatal("history matched today's province instead of the recorded province")

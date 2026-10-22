@@ -23,7 +23,7 @@ func assertPersistenceWarning(t *testing.T, response string) {
 func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
 		for _, fault := range []string{"save", "malformed", "future", "protected"} {
-			for _, operation := range []string{"band", "comment-add", "comment-remove", "comment-reset", "reset", "nofilter", "dialect"} {
+			for _, operation := range []string{"band", "comment-add", "comment-remove", "comment-reset", "reset", "dialect"} {
 				t.Run(string(dialect)+"/"+fault+"/"+operation, func(t *testing.T) {
 					s := presetTestServer(t)
 					s.filterEngine = newFilterCommandEngine()
@@ -51,12 +51,10 @@ func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 						// Otherwise this is a valid session whose authoritative record
 						// becomes unreadable after login, exercising real preparation.
 					}
-					c.filter.SetBand("40m", true)
-					c.filter.Comments = []string{"OLD"}
-					before, err := c.captureConfiguration(0)
-					if err != nil {
-						t.Fatal(err)
-					}
+					c.filter = testRuleFilter(t,
+						filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=40M"},
+						filter.RuleDefinition{Slot: 1, Action: filter.RulePass, Expr: "COMMENT=OLD"})
+					before := c.captureV5Configuration()
 					oldBytes := presetDiskBytes(t, path)
 					attempts := 0
 					if fault == "save" {
@@ -66,16 +64,12 @@ func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 						}
 					}
 					line := map[string]string{
-						"band": "PASS BAND 20", "comment-add": "PASS COMMENT NEW",
-						"comment-remove": "REMOVE PASS COMMENT OLD", "comment-reset": "RESET FILTER COMMENT",
-						"reset": "RESET FILTER", "nofilter": "PASS NOFILTER", "dialect": "DIALECT cc",
+						"band": "PASS RULE 0 BAND=20M", "comment-add": "PASS RULE 2 COMMENT=NEW",
+						"comment-remove": "RESET FILTER RULE 1", "comment-reset": "RESET FILTER RULE ALL",
+						"reset": "RESET FILTER", "dialect": "DIALECT cc",
 					}[operation]
 					if dialect == DialectCC {
 						switch operation {
-						case "band":
-							line = "SET/FILTER BAND 20"
-						case "nofilter":
-							line = "SET/NOFILTER"
 						case "dialect":
 							line = "DIALECT go"
 						}
@@ -88,20 +82,20 @@ func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 						t.Fatalf("command not handled: %s", line)
 					}
 					assertPersistenceWarning(t, response)
-					after, err := c.captureConfiguration(0)
-					if err != nil || before.Equal(after) {
-						t.Fatalf("live command not applied: %v", err)
+					after := c.captureV5Configuration()
+					if before.Equal(after) {
+						t.Fatal("live command not applied")
 					}
 					valid := false
 					switch operation {
 					case "band":
-						valid = c.filter.Bands["20m"] && !c.filter.AllBands
+						valid = len(after.Filters.Rules) == 2 && after.Filters.Rules[0].Expr == "BAND=20M"
 					case "comment-add":
-						valid = strings.Join(c.filter.Comments, ",") == "OLD,NEW"
-					case "comment-remove", "comment-reset":
-						valid = len(c.filter.Comments) == 0
-					case "reset", "nofilter":
-						valid = c.filter.AllBands && len(c.filter.Comments) == 0
+						valid = len(after.Filters.Rules) == 3 && after.Filters.Rules[2].Expr == `COMMENT="NEW"`
+					case "comment-remove":
+						valid = len(after.Filters.Rules) == 1 && after.Filters.Rules[0].Slot == 0
+					case "comment-reset", "reset":
+						valid = len(after.Filters.Rules) == 0
 					case "dialect":
 						valid = c.dialect != dialect && after.Settings.Dialect == string(c.dialect)
 					}
@@ -128,8 +122,7 @@ func TestHumanPersistenceWarningPreservesSaveAttemptRules(t *testing.T) {
 			s.filterEngine = newFilterCommandEngine()
 			c := configurationTestClient(s, "W1ABC-1")
 			c.dialect = dialect
-			c.filter.SetBand("20m", true)
-			c.filter.Comments = []string{"POTA"}
+			c.filter = passRuleTestFilter(t, "BAND=20M")
 			if err := c.saveFilter(); err != nil {
 				t.Fatal(err)
 			}
@@ -138,7 +131,7 @@ func TestHumanPersistenceWarningPreservesSaveAttemptRules(t *testing.T) {
 				attempts++
 				return os.ErrPermission
 			}
-			for _, line := range []string{"DIALECT " + string(dialect), "PASS COMMENT pota", "REMOVE PASS COMMENT absent", "RESET FILTER COMMENT REJECT", "PASS BAND NOTABAND"} {
+			for _, line := range []string{"DIALECT " + string(dialect), "RESET FILTER RULE 9", "PASS RULE 1 BAND=NOTABAND", "PASS BAND 20"} {
 				response, handled := s.handleDialectCommand(c, line)
 				if !handled {
 					response, handled = s.filterEngine.Handle(c, line)
@@ -147,7 +140,7 @@ func TestHumanPersistenceWarningPreservesSaveAttemptRules(t *testing.T) {
 					t.Fatalf("no-op/invalid command attempted save: %s => %q (%d)", line, response, attempts)
 				}
 			}
-			response, _ := s.filterEngine.Handle(c, "PASS BAND 20")
+			response, _ := s.filterEngine.Handle(c, "PASS RULE 0 BAND=20M")
 			assertPersistenceWarning(t, response)
 			if attempts != 1 {
 				t.Fatal("ordinary repeated filter command stopped attempting save")

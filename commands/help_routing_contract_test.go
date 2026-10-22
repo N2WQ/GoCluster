@@ -16,9 +16,9 @@ type helpRoutingCase struct {
 }
 
 func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
-	history, readback, allow, block := "SHOW DX", "SHOW FILTER", "PASS", "REJECT"
+	history, readback := "SHOW DX", "SHOW FILTER"
 	if dialect == "cc" {
-		history, readback, allow, block = "SHOW/DX", "SHOW/FILTER", "SET/FILTER", "UNSET/FILTER"
+		history, readback = "SHOW/DX", "SHOW/FILTER"
 	}
 	return []helpRoutingCase{
 		{"HELP", "HELP", "HELP [command]"}, {"H", "HELP", "HELP [command]"},
@@ -47,26 +47,29 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"SH/PROP", "SHOW PROP", "SHOW PROP <call|prefix|grid> [band] [mode]"},
 		{"WHOSPOTSME 20", "WHOSPOTSME", "WHOSPOTSME [band]"},
 		{"SHOW FILTER FULL", readback, readback + " FULL"},
-		{"SHOW/FILTER BAND", readback, readback + " <category>"},
-		{"SH/FILTER CONF", readback, readback + " <category>"},
-		{"SH/FILTER PC93", readback, readback + " <category>"},
-		{"SHOW FILTER COMMENT", "SHOW FILTER COMMENT", "SHOW FILTER COMMENT"},
-		{"SHOW/FILTER COMMENT", "SHOW FILTER COMMENT", "SHOW FILTER COMMENT"},
-		{"SH/FILTER COMMENT", "SHOW FILTER COMMENT", "SHOW FILTER COMMENT"},
+		{"SHOW/FILTER RULE", readback, readback + " RULE"},
+		{"SH/FILTER FULL", readback, readback + " FULL"},
+		{"SHOW FILTER COMMENT", "SHOW FILTER COMMENT", "Usage: HELP RULE"},
+		{"SHOW/FILTER COMMENT", "SHOW FILTER COMMENT", "Usage: HELP RULE"},
+		{"SH/FILTER COMMENT", "SHOW FILTER COMMENT", "Usage: HELP RULE"},
 		{"SHOW SETTINGS", "SHOW SETTINGS", "Usage: SHOW SETTINGS"},
-		{"PASS", allow, allow + " <"}, {"REJECT", block, block + " <"},
-		{"PASS BAND 20", allow, allow + " <"}, {"REJECT MODE FT8", block, block + " <"},
-		{"PASS PC93 ALL", allow, allow + " <"}, {"REJECT SELF", block, block + " <"},
-		{"PASS COMMENT CQ DX", "PASS COMMENT", "PASS COMMENT <phrase>"},
-		{"REJECT COMMENT QRT", "REJECT COMMENT", "REJECT COMMENT <phrase>"},
-		{"REMOVE PASS COMMENT CQ DX", "REMOVE PASS COMMENT", "REMOVE PASS COMMENT <phrase>"},
-		{"REMOVE REJECT COMMENT QRT", "REMOVE REJECT COMMENT", "REMOVE REJECT COMMENT <phrase>"},
-		{"RESET FILTER COMMENT PASS", "RESET FILTER COMMENT", "RESET FILTER COMMENT [PASS|REJECT]"},
-		{"PASS MINSNR CW 10", "PASS MINSNR", "Usage: PASS MINSNR <mode[,mode...]|ALL>"},
-		{"REJECT MINSNR CW NONE", "REJECT MINSNR", "Usage: REJECT MINSNR <mode[,mode...]|ALL>"},
+		{"RULE", "RULE", "Usage: HELP RULE"},
+		{"PASS", "PASS", "PASS RULE <0..9> <expression>"}, {"REJECT", "REJECT", "REJECT RULE <0..9> <expression>"},
+		{"PASS RULE 0 MODE=CW", "PASS RULE", "PASS RULE <0..9> <expression>"},
+		{"REJECT RULE 9 SNR<10", "REJECT RULE", "REJECT RULE <0..9> <expression>"},
+		{"PASS BAND 20", "PASS", "HELP RULE"}, {"REJECT MODE FT8", "REJECT", "HELP RULE"},
+		{"PASS PC93 ALL", "PASS", "PC93 aliases ANNOUNCE."}, {"REJECT SELF", "REJECT", "SELF"},
+		{"PASS COMMENT CQ DX", "PASS COMMENT", "Usage: HELP RULE"},
+		{"REJECT COMMENT QRT", "REJECT COMMENT", "Usage: HELP RULE"},
+		{"REMOVE PASS COMMENT CQ DX", "REMOVE PASS COMMENT", "Usage: HELP RULE"},
+		{"REMOVE REJECT COMMENT QRT", "REMOVE REJECT COMMENT", "Usage: HELP RULE"},
+		{"RESET FILTER COMMENT PASS", "RESET FILTER COMMENT", "Usage: HELP RULE"},
+		{"PASS MINSNR CW 10", "PASS MINSNR", "Usage: HELP RULE"},
+		{"REJECT MINSNR CW NONE", "REJECT MINSNR", "Usage: HELP RULE"},
 		{"PASS NEARBY ON", "PASS NEARBY", "PASS NEARBY ON|OFF"},
 		{"REJECT NEARBY OFF", "PASS NEARBY", "PASS NEARBY ON|OFF"},
 		{"RESET FILTER", "RESET FILTER", "RESET FILTER"},
+		{"RESET FILTER RULE ALL", "RESET FILTER RULE", "RESET FILTER RULE <0..9|ALL>"},
 		{"SET GRID FN31", "SET GRID", "SET GRID <locator>"},
 		{"SET NOISE RURAL", "SET NOISE", "SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>"},
 		{"SET PATHSAMPLES DEFAULT", "SET PATHSAMPLES", "SET PATHSAMPLES <count|DEFAULT>"},
@@ -110,8 +113,8 @@ func TestHelpRoutingDispatchDerivedFamilies(t *testing.T) {
 		}
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
 			topic := "GET YAML " + resource
-			assertHelpRouting(t, p, dialect, helpRoutingCase{topic, topic, "Usage: " + topic + " [SCHEMA 2|3|4] [ID <id>]"})
-			assertHelpRouting(t, p, dialect, helpRoutingCase{topic + " SCHEMA 4 ID Read-1", topic, topic + " [SCHEMA 2|3|4] [ID <id>]"})
+			assertHelpRouting(t, p, dialect, helpRoutingCase{topic, topic, "Usage: " + topic + " SCHEMA 5 [ID <id>]"})
+			assertHelpRouting(t, p, dialect, helpRoutingCase{topic + " SCHEMA 5 ID Read-1", topic, topic + " SCHEMA 5 [ID <id>]"})
 		}
 		for _, verb := range []string{"PUT", "PATCH"} {
 			for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG"} {
@@ -125,10 +128,10 @@ func TestHelpRoutingDispatchDerivedFamilies(t *testing.T) {
 		assertHelpRouting(t, p, "cc", helpRoutingCase{topic, "SHOW/DX", "SHOW/DX NEXT <cursor>"})
 	}
 	for _, tc := range []helpRoutingCase{
-		{"SET/FILTER BAND/ON", "SET/FILTER", "SET/FILTER <list-type> <values>"},
-		{"UNSET/FILTER BAND 20", "UNSET/FILTER", "UNSET/FILTER <list-type> <values>"},
-		{"SET/FILTER DXBM/REJECT 20", "SET/FILTER", "SET/FILTER DXBM/REJECT <band-codes>"},
-		{"SET/NOFILTER", "SET/NOFILTER", "SET/NOFILTER"},
+		{"SET/FILTER BEACON/ON", "SET/FILTER", "SET/FILTER <switch> [ALL]"},
+		{"UNSET/FILTER BEACON", "UNSET/FILTER", "UNSET/FILTER <switch> [ALL]"},
+		{"SET/FILTER DXBM/REJECT 20", "SET/FILTER", "HELP RULE"},
+		{"SET/NOFILTER", "SET/NOFILTER", "Usage: HELP RULE"},
 	} {
 		assertHelpRouting(t, p, "cc", tc)
 	}
@@ -176,7 +179,6 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 			allowed["SHOW DX"], allowed["SH DX"], allowed["SH/DX"] = "SHOW/DX", "SHOW/DX", "SHOW/DX"
 			allowed["SHOW FILTER"], allowed["SH/FILTER"] = "SHOW/FILTER", "SHOW/FILTER"
 			allowed["SHOW/FILTER"] = "SHOW/FILTER"
-			allowed["PASS"], allowed["REJECT"] = "SET/FILTER", "UNSET/FILTER"
 		} else {
 			allowed["SH DX"] = "SHOW DX"
 			allowed["SHOW/FILTER"], allowed["SH/FILTER"] = "SHOW FILTER", "SHOW FILTER"
@@ -207,7 +209,6 @@ func TestHelpRoutingVisibleAliases(t *testing.T) {
 			{"HELP", "H"}, {"SHOW", "SH"}, {"SHOW BUILD", "SH BUILD"},
 			{"SHOW OWN", "SH OWN"}, {"SHOW DXCC", "SH DXCC"}, {"SHOW MYDX", "SH MYDX"},
 			{"PASS NEARBY", "REJECT NEARBY"}, {readback, filterAliases}, {history, historyAliases},
-			{"SHOW FILTER COMMENT", "SHOW/FILTER COMMENT, SH/FILTER COMMENT"},
 		} {
 			response := p.ProcessCommandForClient("HELP "+tc.topic, "W1ABC", "", nil, dialect)
 			if !strings.Contains(response, "\nAliases: "+tc.aliases+"\n") {
@@ -241,8 +242,8 @@ func TestHelpRoutingLoadedShortcutModesAndFixedPrecedence(t *testing.T) {
 			if prefix == "SET/NO" {
 				canonical = "SET/NO<MODE>"
 			}
-			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode, canonical, "Usage: " + canonical})
-			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode + " EXTRA", canonical, "Usage: " + canonical})
+			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode, canonical, "Usage: HELP RULE"})
+			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode + " EXTRA", canonical, "Usage: HELP RULE"})
 			if got := p.ProcessCommandForClient("HELP "+prefix+mode, "W1ABC", "", nil, "go"); !strings.HasPrefix(got, "Unknown help topic: ") {
 				t.Fatalf("GO HELP advertised loaded CC shortcut %q: %q", prefix+mode, got)
 			}
@@ -255,7 +256,7 @@ func TestHelpRoutingLoadedShortcutModesAndFixedPrecedence(t *testing.T) {
 	}
 	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/ANN", "SET/ANN", "Alias of PASS ANNOUNCE."})
 	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/NOANN", "SET/NOANN", "Alias of REJECT ANNOUNCE."})
-	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/NOFILTER", "SET/NOFILTER", "Usage: SET/NOFILTER"})
+	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/NOFILTER", "SET/NOFILTER", "Usage: HELP RULE"})
 }
 
 func FuzzHelpRoutingWholeTokenBoundaries(f *testing.F) {
@@ -269,7 +270,7 @@ func FuzzHelpRoutingWholeTokenBoundaries(f *testing.F) {
 		{"SHOW BUILD", "SHOW BUILD", "SHOW BUILD"}, {"SH DXCC", "SHOW DXCC", "SHOW DXCC <prefix|callsign>"},
 		{"SET SOLAR", "SET SOLAR", "SET SOLAR <15|30|60|OFF>"}, {"WHOSPOTSME", "WHOSPOTSME", "WHOSPOTSME [band]"},
 		{"DIALECT", "DIALECT", "DIALECT <go|cc>"}, {"RESUME", "RESUME", "RESUME"},
-		{"GET YAML CONFIG", "GET YAML CONFIG", "GET YAML CONFIG [SCHEMA 2|3|4] [ID <id>]"},
+		{"GET YAML CONFIG", "GET YAML CONFIG", "GET YAML CONFIG SCHEMA 5 [ID <id>]"},
 	}
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	f.Fuzz(func(t *testing.T, index uint8, separated bool, value uint8, cc bool) {

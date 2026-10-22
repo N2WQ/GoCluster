@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"dxcluster/filter"
-	"dxcluster/spot"
 )
 
 func TestFilterSwitchOriginalArguments(t *testing.T) {
@@ -35,19 +34,6 @@ func TestFilterSwitchOriginalArguments(t *testing.T) {
 					requireFilterArgumentControl(t, e, c, command+" all")
 				}
 			}
-			for _, command := range []string{"PASS NOFILTER", "SET/FILTER NOFILTER"} {
-				if dialect == DialectGo && strings.Contains(command, "/") {
-					continue
-				}
-				requireFilterArgumentControl(t, e, c, "REJECT BAND ALL")
-				for _, tail := range []string{"ON", "OFF", "ALL ALL", "BAND"} {
-					assertFilterArgumentRefusal(t, s, c, e, command+" "+tail)
-				}
-				requireFilterArgumentControl(t, e, c, command+" ALL")
-				if !c.filter.AllBands || c.filter.BlockAllBands {
-					t.Fatal("compatible NOFILTER ALL no longer resets the category")
-				}
-			}
 		})
 	}
 }
@@ -57,12 +43,9 @@ func TestCCShortcutOriginalArguments(t *testing.T) {
 	c := configurationTestClient(s, "W1ABC-1")
 	c.dialect = DialectCC
 	e := newFilterCommandEngine()
-	requireFilterArgumentControl(t, e, c, "PASS NOFILTER")
+	requireFilterArgumentControl(t, e, c, "RESET FILTER")
 	commands := []string{"SET/ANN", "SET/NOANN", "SET/BEACON", "SET/NOBEACON",
 		"SET/WWV", "SET/NOWWV", "SET/WCY", "SET/NOWCY", "SET/SELF", "SET/NOSELF",
-		"SET/SKIMMER", "SET/NOSKIMMER", "SET/NOFILTER"}
-	for _, mode := range spot.CCShortcutModes() {
-		commands = append(commands, "SET/"+mode, "SET/NO"+mode)
 	}
 	for _, command := range commands {
 		for _, tail := range []string{"ON", "OFF", "ALL", "FT8 CW"} {
@@ -72,16 +55,6 @@ func TestCCShortcutOriginalArguments(t *testing.T) {
 	}
 	// Literal consumer controls prevent arity tests from accepting a parser
 	// that simply refuses every shortcut or silently reverses its operation.
-	requireFilterArgumentControl(t, e, c, "PASS NOFILTER")
-	requireFilterArgumentControl(t, e, c, "SET/NOFT8")
-	if c.filter.Matches(spot.NewSpot("W6ABC", "K1ABC", 7074, "FT8")) ||
-		!c.filter.Matches(spot.NewSpot("W6ABC", "K1ABC", 14074, "CW")) {
-		t.Fatal("mode shortcut changed the wrong visibility")
-	}
-	requireFilterArgumentControl(t, e, c, "SET/FT8")
-	if !c.filter.Matches(spot.NewSpot("W6ABC", "K1ABC", 7074, "FT8")) {
-		t.Fatal("valid mode shortcut did not restore visibility")
-	}
 	requireFilterArgumentControl(t, e, c, "SET/NOBEACON")
 	if c.filter.BeaconsEnabled() {
 		t.Fatal("valid beacon shortcut did not disable beacons")
@@ -97,29 +70,23 @@ func TestCCInlineFlagOriginalArguments(t *testing.T) {
 	c := configurationTestClient(s, "W1ABC-1")
 	c.dialect = DialectCC
 	e := newFilterCommandEngine()
-	requireFilterArgumentControl(t, e, c, "PASS NOFILTER")
-	for _, domain := range []string{"BAND", "MODE", "SOURCE", "EVENT", "DXCALL", "DECALL",
-		"BEACON", "WWV", "WCY", "ANNOUNCE", "PC93", "SELF", "TOXIC", "NOFILTER"} {
+	requireFilterArgumentControl(t, e, c, "RESET FILTER")
+	for _, domain := range []string{"BEACON", "WWV", "WCY", "ANNOUNCE", "PC93", "SELF", "TOXIC"} {
 		for _, flag := range []string{"ON", "OFF"} {
 			command := "SET/FILTER " + domain + "/" + flag
 			for _, tail := range []string{"ON", "OFF", "ALL", "20 CW"} {
 				assertFilterArgumentRefusal(t, s, c, e, command+" "+tail)
 			}
-			if domain == "NOFILTER" && flag == "OFF" {
-				assertFilterArgumentRefusalFeedback(t, s, c, e, command, invalidFilterCommandMsg)
-				continue // Existing unsupported operation; do not invent semantics.
-			}
 			requireFilterArgumentControl(t, e, c, command)
 		}
 	}
-	requireFilterArgumentControl(t, e, c, "PASS NOFILTER")
-	requireFilterArgumentControl(t, e, c, "SET/FILTER BAND/OFF")
-	if !c.filter.BlockAllBands || c.filter.AllBands {
-		t.Fatal("argument-free /OFF lost its block-all operation")
+	requireFilterArgumentControl(t, e, c, "SET/FILTER BEACON/OFF")
+	if c.filter.BeaconsEnabled() {
+		t.Fatal("argument-free /OFF failed to disable beacon control")
 	}
-	requireFilterArgumentControl(t, e, c, "SET/FILTER BAND/ON")
-	if !c.filter.AllBands || c.filter.BlockAllBands {
-		t.Fatal("argument-free /ON lost its allow-all operation")
+	requireFilterArgumentControl(t, e, c, "SET/FILTER BEACON/ON")
+	if !c.filter.BeaconsEnabled() {
+		t.Fatal("argument-free /ON failed to enable beacon control")
 	}
 }
 
@@ -139,7 +106,7 @@ func assertFilterArgumentRefusal(t *testing.T, s *Server, c *Client, e *filterCo
 
 func assertFilterArgumentRefusalFeedback(t *testing.T, s *Server, c *Client, e *filterCommandEngine, command, exactFeedback string) {
 	t.Helper()
-	before := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone()
+	before := c.captureV5Configuration()
 	revision := c.configurationRevision
 	file := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 	saved, err := os.ReadFile(file)
@@ -157,19 +124,19 @@ func assertFilterArgumentRefusalFeedback(t *testing.T, s *Server, c *Client, e *
 		feedbackMatches = response == exactFeedback
 	}
 	if !handled || !feedbackMatches || attempts != 0 || err != nil || !bytes.Equal(saved, after) ||
-		!before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.configurationRevision != revision {
+		!before.Equal(c.captureV5Configuration()) || c.configurationRevision != revision {
 		t.Fatalf("original argument lost or refused command had effects: %q -> %q, commits=%d, err=%v", command, response, attempts, err)
 	}
 }
 
-func TestMalformedCCShortcutKeepsGoDialectHint(t *testing.T) {
+func TestRetiredCCShortcutProvidesRuleGuidanceInGoDialect(t *testing.T) {
 	c := newTestClient()
 	c.dialect = DialectGo
 	before := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone()
 	outcome := newFilterCommandEngine().stageOwned(c, "SET/NOFT8 ON")
-	if !outcome.handled || outcome.publish || !strings.Contains(outcome.response, "Command matches the cc dialect.") ||
+	if !outcome.handled || outcome.publish || !strings.Contains(outcome.response, "HELP RULE") ||
 		!before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) {
-		t.Fatalf("malformed shortcut lost the existing GO hint or mutated: %+v", outcome)
+		t.Fatalf("retired shortcut lost canonical guidance or mutated: %+v", outcome)
 	}
 }
 

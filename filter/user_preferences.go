@@ -74,12 +74,6 @@ func PrepareConfiguration(callsign string, cfg Configuration, ref *PresetReferen
 	if !spot.IsValidNormalizedCallsign(callsign) {
 		return nil, errors.New("invalid login callsign")
 	}
-	if err := cfg.ValidateStateRules(); err != nil {
-		return nil, err
-	}
-	if err := cfg.ValidateMinSNRRules(); err != nil {
-		return nil, err
-	}
 	for _, toggle := range cfg.Filters.toggles() {
 		if toggle > DefaultBoolTrue {
 			return nil, errors.New("invalid default boolean selection")

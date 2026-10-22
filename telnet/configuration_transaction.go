@@ -142,29 +142,29 @@ func (c *Client) captureConfiguration(limit int) (filter.Configuration, error) {
 }
 
 func (c *Client) refreshConfigurationRevision() {
-	c.initializeConfiguredSettings()
-	c.pathMu.RLock()
-	c.filterMu.RLock()
-	digest := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Fingerprint()
-	c.filterMu.RUnlock()
-	c.pathMu.RUnlock()
+	c.refreshV5ConfigurationRevision()
+}
+
+func (c *Client) observeConfigurationDigest(digest [32]byte) {
 	if c.configurationDigestSet && digest != c.configurationDigest {
 		c.configurationRevision++
 	}
 	c.configurationDigest, c.configurationDigestSet = digest, true
-	c.refreshHistoryRevision()
 }
 
-func (c *Client) configurationRevisionToken() (string, error) {
+func (c *Client) ensureConfigurationEpoch() error {
 	if c.configurationEpoch == "" {
 		var nonce [16]byte
 		if _, err := rand.Read(nonce[:]); err != nil {
-			return "", fmt.Errorf("create configuration revision: %w", err)
+			return fmt.Errorf("create configuration revision: %w", err)
 		}
 		c.configurationEpoch = hex.EncodeToString(nonce[:])
 	}
-	c.refreshConfigurationRevision()
-	return fmt.Sprintf("%s-%d", c.configurationEpoch, c.configurationRevision), nil
+	return nil
+}
+
+func (c *Client) configurationRevisionToken() (string, error) {
+	return c.v5ConfigurationRevisionToken()
 }
 
 func (s *Server) persistConfiguration(c *Client, cfg filter.Configuration, ref *filter.PresetReference) error {

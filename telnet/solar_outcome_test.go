@@ -148,7 +148,7 @@ func TestSolarReadbacksPreserveConfiguredAndRuntimeOwners(t *testing.T) {
 				clock := solarOutcomeUTC(12, 7)
 				s.nowFn = func() time.Time { return clock }
 				c := configurationTestClient(s, "W1ABC-14")
-				record := &filter.UserRecord{Filter: *filter.NewFilter(), Dialect: string(dialect), NoiseClass: "QUIET", DedupePolicy: "FAST", SolarSummaryMinutes: 15}
+				record := &filter.UserRecord{Filter: *testRuleFilter(t), Dialect: string(dialect), NoiseClass: "QUIET", DedupePolicy: "FAST", SolarSummaryMinutes: 15}
 				prepared, err := filter.PrepareUserRecord(c.callsign, record)
 				if err != nil {
 					t.Fatal(err)
@@ -211,11 +211,8 @@ func assertSolarOutcomeReadOwners(t *testing.T, s *Server, c *Client, available 
 			t.Fatalf("human availability/choice lost: %q, %v", settings, err)
 		}
 		assertHumanWire(t, settings)
-		for version := 1; version <= 4; version++ {
-			response, err := s.renderYAMLReadbackVersion(c, "CONFIG", "solar-14", revision, version)
-			if err != nil {
-				t.Fatal(err)
-			}
+		{
+			response := s.prepareV5MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", SchemaVersion: 5, RequestID: "solar-14"})
 			var document struct {
 				SchemaVersion int `yaml:"schema_version"`
 				Configuration struct {
@@ -231,9 +228,9 @@ func assertSolarOutcomeReadOwners(t *testing.T, s *Server, c *Client, available 
 			if err := yaml.Unmarshal([]byte(response), &document); err != nil {
 				t.Fatal(err)
 			}
-			if document.SchemaVersion != version || document.Configuration.Settings.SolarSummaryMinutes != 15 ||
+			if document.SchemaVersion != 5 || document.Configuration.Settings.SolarSummaryMinutes != 15 ||
 				document.Status.Configured.SolarSummaryMinutes != 15 || document.Status.Effective.SolarSummaryMinutes != effective {
-				t.Fatalf("schema %d lost configured/effective solar choice: %q", version, response)
+				t.Fatalf("schema 5 lost configured/effective solar choice: %q", response)
 			}
 		}
 	}

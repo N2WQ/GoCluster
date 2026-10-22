@@ -1,8 +1,15 @@
-# ADR-0267: Compatible Stored YAML Decoding
+---
+title: "ADR-0267: Compatible Stored YAML Decoding"
+description: Historical compatibility decoder and retained bounded traversal principles.
+---
 
 - Status: Accepted
 - Date: 2026-10-09
 - Decision Origin: Design
+
+[ADR-0317](ADR-0317-boolean-filter-replacement-mvp.md) replaces legacy schema
+acceptance and migration for the Boolean MVP. Operation-local bounded traversal
+and decoding-work admission remain; the active decoder handles schema 5 only.
 
 ## Context
 

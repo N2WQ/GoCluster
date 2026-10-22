@@ -58,8 +58,7 @@ func historyCommentAliasSession(t *testing.T, input string, ziutek bool, dialect
 	c.server, c.callsign, c.address, c.dialect = s, "W1ABC-16", "192.0.2.8:8000", dialect
 	c.noiseClass = "QUIET"
 	c.setDedupePolicy(dedupePolicyFast)
-	c.filter = filter.NewFilter()
-	c.filter.Reset()
+	c.filter = unrestrictedTestFilter()
 	c.controlChan = make(chan controlMessage, 8)
 	s.clients = map[string]*Client{c.callsign: c}
 	baseline, err := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{Dialect: string(dialect), NoiseClass: "QUIET", DedupePolicy: "FAST"}).Preset()
@@ -83,7 +82,7 @@ func historyCommentAliasSession(t *testing.T, input string, ziutek bool, dialect
 
 type historyCommentAliasState struct {
 	filter                             *filter.Filter
-	configuration, baseline            filter.Configuration
+	configuration, baseline            filter.V5Configuration
 	presetName, epoch                  string
 	revision                           uint64
 	configurationDigest, historyDigest [32]byte
@@ -103,8 +102,8 @@ func captureHistoryCommentAliasState(t *testing.T, c *Client) historyCommentAlia
 		t.Fatal(err)
 	}
 	state := historyCommentAliasState{
-		filter: c.filter, configuration: filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone(),
-		baseline: filter.ConfigurationFromPreset(c.presetReference.Baseline).Clone(), presetName: c.presetReference.Name,
+		filter: c.filter, configuration: c.captureV5Configuration(),
+		baseline: testPresetConfiguration(t, c.presetReference.Baseline), presetName: c.presetReference.Name,
 		epoch: c.configurationEpoch, revision: c.configurationRevision, configurationDigest: c.configurationDigest,
 		configurationSet: c.configurationDigestSet, historyDigest: c.historyDigest, historySet: c.historyDigestSet,
 		disk: disk, search: c.historySearch, generation: c.historyGeneration, closed: c.historyClosed,
@@ -133,12 +132,12 @@ func (before historyCommentAliasState) assertOwners(t *testing.T, c *Client, com
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := filter.ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
+	saved := filter.V5ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
 		Dialect: record.Dialect, Grid: record.Grid, NoiseClass: record.NoiseClass, DedupePolicy: record.DedupePolicy,
 		PathMinObservationCount: record.PathMinObservationCount, SolarSummaryMinutes: record.SolarSummaryMinutes,
 	})
 	if !before.configuration.Equal(saved) || record.Preset == nil || record.Preset.Name != before.presetName ||
-		!before.baseline.Equal(filter.ConfigurationFromPreset(record.Preset.Baseline)) || len(c.controlChan) != 0 {
+		!before.baseline.Equal(testPresetConfiguration(t, record.Preset.Baseline)) || len(c.controlChan) != 0 {
 		t.Fatal("immediate saved record differs or history left an unexpected queued response")
 	}
 	select {
@@ -266,7 +265,7 @@ func qualifyHistoryCommentAliasContinuation(t *testing.T, profile string, ziutek
 	}
 	readerRefusals := []string{"NEXT COMMENT :!", "MODE NEXT COMMENT :!"}
 	if profile == "supported" {
-		readerRefusals = append(readerRefusals, "MODE COMMENT up:5! REJECT BAND ALL", "MODE CW, COMMENT up:5!",
+		readerRefusals = append(readerRefusals, "MODE COMMENT up:5! REJECT RULE 9 BAND=20M", "MODE CW, COMMENT up:5!",
 			"MODE COMMENT COMMENT \x17:!", "MODE COMMENT COMMENT \b\b :!",
 			"MODE COMMENT COMMENT :\x15"+prefix+" MODE COMMENT :!")
 	}

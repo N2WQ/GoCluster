@@ -40,15 +40,16 @@ func TestCommentFilterPeerFrameBoundary(t *testing.T) {
 			if len(local.Comment) != commentBytes || local.Comment != comment || !strings.HasSuffix(local.Comment, marker) {
 				t.Fatalf("ingestion changed the maximum comment or tail: bytes=%d want=%d", len(local.Comment), commentBytes)
 			}
-			f := filter.NewFilter()
-			f.Reset()
-			f.Comments = []string{"TAIL:!MARK"}
-			if !f.Matches(local) {
-				t.Fatal("saved COMMENT did not match the final stored bytes")
-			}
-			f.Comments = []string{"TAIL:!MISSING"}
-			if f.Matches(local) {
-				t.Fatal("unmatched saved COMMENT admitted the peer spot")
+			for i, phrase := range []string{"TAIL:!MARK", "TAIL:!MISSING"} {
+				_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+					Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: `COMMENT="` + phrase + `"`}},
+				}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := f.Matches(local); got != (i == 0) {
+					t.Fatalf("saved COMMENT %q matched=%v; want %v", phrase, got, i == 0)
+				}
 			}
 			if used, _ := fixture.manager.parseBudget.usage(); used != 0 {
 				t.Fatalf("handler retained a parse lease: %d bytes", used)

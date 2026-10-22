@@ -86,8 +86,9 @@ func loadCommandFixtureInputs(t *testing.T, root string) (*config.Config, *cty.C
 		t.Fatal(err)
 	}
 	filter.UserDataDir = filepath.Join(root, "users")
-	filter.SetDefaultModeSelection(cfg.Filter.DefaultModes)
-	filter.SetDefaultSourceSelection(cfg.Filter.DefaultSources)
+	if err := filter.ConfigureDefaultRules(cfg.Filter.DefaultModes, cfg.Filter.DefaultSources); err != nil {
+		t.Fatal(err)
+	}
 	uls.SetLicenseChecksEnabled(false)
 	uls.SetCanadianLicenseChecksEnabled(false)
 	uls.SetLicenseDBPath(filepath.Join(root, "fcc.sqlite"))

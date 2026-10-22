@@ -87,7 +87,7 @@ func TestHistoryBandModeSelectionsRetainedByNextAndSelf(t *testing.T) {
 		}
 		return archive.HistoryPage{Spots: []*spot.Spot{second}, End: archive.HistoryExhausted}, nil
 	})
-	c.filter.BlockAllBands, c.filter.BlockAllModes = true, true
+	c.filter = testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M,40M"})
 	digest := c.historyFilterDigest()
 	text := runHistory(t, s, c, "SHOW DX 1 BAND 20,40 MODE CW,FT8 COMMENT pota up:5!")
 	if !strings.Contains(text, first.FormatDXCluster()) || c.historySearch == nil || c.historyFilterDigest() != digest {
@@ -121,9 +121,9 @@ func TestHistoryBandModeNarrowSavedFilters(t *testing.T) {
 				return archive.HistoryPage{End: archive.HistoryExhausted}, nil
 			})
 			if domain == "BAND" {
-				c.filter.SetBand("20m", false)
+				c.filter = testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})
 			} else {
-				c.filter.SetMode("CW", false)
+				c.filter = testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "MODE=CW"})
 			}
 			digest := c.historyFilterDigest()
 			if text := runHistory(t, s, c, "SHOW DX K1ABC BAND 20 MODE CW"); text != "No matching retained spots.\n" || c.historyFilterDigest() != digest {
@@ -152,7 +152,11 @@ func TestHistoryBandModePendingPageInvalidatedAfterRestore(t *testing.T) {
 	<-entered
 	for _, enabled := range []bool{false, true} {
 		s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
-			c.updateFilter(func(f *filter.Filter) { f.SetMode("CW", enabled) })
+			next := unrestrictedTestFilter()
+			if !enabled {
+				next = testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "MODE=CW"})
+			}
+			c.updateFilter(func(f *filter.Filter) { *f = *next })
 			return "", true
 		})
 	}
@@ -175,7 +179,7 @@ func TestHistoryBandModeCursorReplacementAndClose(t *testing.T) {
 		return archive.HistoryPage{Before: []byte("p"), End: archive.HistoryBudgetReached}, nil
 	})
 	var retired string
-	c.filter.ResetModes() // Both CW and FT8 must be visible during replacement.
+	c.filter = testRuleFilter(t) // Both CW and FT8 must be visible during replacement.
 	for i := range 100 {
 		command := "SHOW DX BAND 20 MODE CW"
 		if i%2 != 0 {

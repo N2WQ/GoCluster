@@ -47,10 +47,35 @@ func runFixedBenchmarkClockChild(t *testing.T, scenario string) {
 		if clock.Source() != "testing.B.Elapsed(shared live benchmark)" || clock.FrequencyHz() <= 0 {
 			b.Fatalf("wrong live benchmark clock identity: %q/%d", clock.Source(), clock.FrequencyHz())
 		}
-		if reference := NewClock(b); reference.FrequencyHz() != clock.FrequencyHz() {
+		reference := NewClock(b)
+		if reference.FrequencyHz() != clock.FrequencyHz() {
 			b.Fatalf("benchmark frequency=%d differs from platform frequency=%d", clock.FrequencyHz(), reference.FrequencyHz())
 		}
 		switch scenario {
+		case "clock_short_wait", "clock_short_wait_small_units", "clock_short_wait_large_units":
+			outerStart := b.Elapsed()
+			start := reference.NowNS()
+			innerStart := b.Elapsed()
+			waitBenchmarkInterval(b, 2*time.Millisecond)
+			innerEnd := b.Elapsed()
+			elapsed := reference.NowNS() - start
+			outerEnd := b.Elapsed()
+			switch scenario {
+			case "clock_short_wait_small_units":
+				elapsed /= 1000
+			case "clock_short_wait_large_units":
+				elapsed *= 1000
+			}
+			// Bracket the custom clock with testing's independently converted
+			// high-resolution timer; integer conversion can round by one ns.
+			lower, upper := int64(innerEnd-innerStart)-1, int64(outerEnd-outerStart)+1
+			if elapsed < int64(2*time.Millisecond) || elapsed > int64(5*time.Second) ||
+				elapsed < lower || elapsed > upper {
+				fmt.Printf("fixed-clock-interval-refused: elapsed=%s lower=%s upper=%s\n",
+					time.Duration(elapsed), time.Duration(lower), time.Duration(upper))
+				b.Fatalf("2ms wait measured %s, want [2ms,5s] and reference bounds [%s,%s]",
+					time.Duration(elapsed), time.Duration(lower), time.Duration(upper))
+			}
 		case "clock_domain":
 			fixedBenchmarkClockDomain(b, clock)
 		case "clock_concurrent":
@@ -74,13 +99,22 @@ func runFixedBenchmarkClockChild(t *testing.T, scenario string) {
 
 func fixedBenchmarkClockDomain(b *testing.B, clock *Clock) {
 	first := clock.NowNS()
-	time.Sleep(2 * time.Millisecond)
+	waitBenchmarkInterval(b, 2*time.Millisecond)
 	// Copies are distinct instances with the same immutable live benchmark
 	// origin, rather than independent elapsed clocks with plausible offsets.
 	second := *clock
 	left, middle, right := clock.NowNS(), second.NowNS(), clock.NowNS()
 	if first < 0 || first > left || left > middle || middle > right || right-first < int64(2*time.Millisecond) || right-first > int64(5*time.Second) {
 		b.Fatalf("shared domain/wait invalid: %d <= %d <= %d <= %d", first, left, middle, right)
+	}
+}
+
+// Windows Sleep and QPC do not use the same clock. An early QPC observation
+// must extend the stimulus, not weaken the elapsed-time assertion.
+func waitBenchmarkInterval(b *testing.B, duration time.Duration) {
+	start := b.Elapsed()
+	for remaining := duration - (b.Elapsed() - start); remaining > 0; remaining = duration - (b.Elapsed() - start) {
+		time.Sleep(remaining)
 	}
 }
 

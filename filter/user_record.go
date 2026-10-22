@@ -7,24 +7,20 @@
 package filter
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"time"
 
-	"dxcluster/strutil"
 	"gopkg.in/yaml.v3"
 )
 
 const maxRecentIPs = 5
 
 // UserRecord stores per-callsign metadata that should survive across sessions.
-// The Filter fields are inline so legacy files that only contain filters still load.
+// Native fields are transport-only; YAML is explicitly bound to the v5 DTO.
 type UserRecord struct {
 	ConfigurationVersion int `yaml:"configuration_version,omitempty"`
 	Filter               `yaml:",inline"`
@@ -43,115 +39,33 @@ type UserRecord struct {
 }
 
 // LoadUserRecord loads a persisted user record by callsign.
-// Key aspects: Migrates only legacy defaults and trims recent IPs; marked values
-// remain exact. Missing files return os.ErrNotExist; malformed/future files fail.
+// Key aspects: Exact v5 values only. Missing files return os.ErrNotExist;
+// unversioned, legacy, malformed and future files fail without rewriting.
 // Upstream: LoadUserFilter, TouchUserRecordIP, telnet login flows.
-// Downstream: yaml.Unmarshal, trimRecentIPs, Filter normalization helpers.
+// Downstream: strict v5 loading and runtime preparation.
 func LoadUserRecord(callsign string) (*UserRecord, error) {
-	callsign = strings.TrimSpace(callsign)
-	if callsign == "" {
-		return nil, errors.New("empty callsign")
-	}
-	path := userRecordPath(callsign)
-	file, err := os.Open(path)
+	record, err := LoadV5UserRecord(callsign)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = file.Close() }()
-	bs, err := readUserRecordBytes(file)
-	if err != nil {
-		return nil, err
-	}
-	decoder := yaml.NewDecoder(bytes.NewReader(bs))
-	var document yaml.Node
-	if err := decoder.Decode(&document); err != nil {
-		return nil, err
-	}
-	if len(document.Content) != 1 {
-		return nil, errors.New("user record must contain one YAML mapping")
-	}
-	record, _, err := decodeStoredUserRecordDocument(&document)
-	if err != nil {
-		return nil, err
-	}
-	var extra yaml.Node
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, errors.New("user record must contain one YAML document")
-	}
-	record.RecentIPs = trimRecentIPs(record.RecentIPs)
-	if _, err := encodeUserRecord(record); err != nil {
-		return nil, err
-	}
-	return record, nil
+	return RuntimeUserRecordFromV5(record)
 }
 
-// UnmarshalYAML preserves marked values exactly. Version one initializes only
-// the state domains; version two keeps states, version three admits MINSNR,
-// and version four additionally admits bounded comment lists.
-// Absent markers invoke historical migrations/defaults.
-// Explicit zero/null/future markers fail without changing persisted bytes.
+// UnmarshalYAML admits only the strict v5 DTO, without migration or defaults.
 func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
-	return decodeStoredOwnerNode(node, record)
-}
-
-func (record *UserRecord) unmarshalStored(node *yaml.Node, state *storageDecodeState) error {
-	version, err := storedConfigurationVersion(node)
+	var value V5UserRecord
+	if err := decodeV5StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
+		return err
+	}
+	prepared, _, err := prepareV5UserRecord(&value)
 	if err != nil {
 		return err
 	}
-	if err := validateStoredStateFields(node, version); err != nil {
-		return err
+	runtime, err := RuntimeUserRecordFromV5(prepared)
+	if err == nil {
+		*record = *runtime
 	}
-	if err := validateStoredMinSNRFields(node, version); err != nil {
-		return err
-	}
-	if err := validateStoredCommentFields(node, version); err != nil {
-		return err
-	}
-	if version != 0 {
-		if err := state.validateStoredMapping(node, reflect.TypeFor[UserRecord]()); err != nil {
-			return err
-		}
-		if err := state.validateCurrentStoredValues(node, reflect.TypeFor[UserRecord]()); err != nil {
-			return err
-		}
-	}
-	type plain UserRecord
-	var decoded plain
-	if err := state.decodePlain(node, &decoded); err != nil {
-		return err
-	}
-	if decoded.ConfigurationVersion != version {
-		return fmt.Errorf("%w: marker must be an explicit field", ErrUnsupportedConfigurationVersion)
-	}
-	*record = UserRecord(decoded)
-	if version == 0 {
-		record.migrateLegacyConfidence()
-		record.normalizeDefaults()
-		if strings.TrimSpace(record.Dialect) == "" {
-			record.Dialect = "go"
-		}
-		record.DedupePolicy = NormalizeDedupePolicy(record.DedupePolicy)
-		record.Grid = strutil.NormalizeUpper(record.Grid)
-		record.NoiseClass = strutil.NormalizeUpper(record.NoiseClass)
-		record.PathMinObservationCount = normalizePathMinObservationCount(record.PathMinObservationCount)
-		record.SolarSummaryMinutes = normalizeSolarSummaryMinutes(record.SolarSummaryMinutes)
-	}
-	if version < stateConfigurationVersion {
-		record.ResetDXStates()
-		record.ResetDEStates()
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
-		return err
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
-		return err
-	}
-	if err := ConfigurationFromFilter(&record.Filter, SettingsConfiguration{}).ValidateCommentRules(); err != nil {
-		return err
-	}
-	record.ConfigurationVersion = CurrentConfigurationVersion
-	return nil
+	return err
 }
 
 // TouchUserRecordIP updates recent IP history for a callsign and persists it.
@@ -323,20 +237,4 @@ func trimRecentIPs(recent []string) []string {
 // Downstream: filepath.Join, strings.ToUpper.
 func userRecordPath(callsign string) string {
 	return filepath.Join(UserDataDir, fmt.Sprintf("%s.yaml", strings.ToUpper(callsign)))
-}
-
-func normalizeSolarSummaryMinutes(minutes int) int {
-	switch minutes {
-	case 15, 30, 60:
-		return minutes
-	default:
-		return 0
-	}
-}
-
-func normalizePathMinObservationCount(count int) int {
-	if count <= 0 {
-		return 0
-	}
-	return count
 }

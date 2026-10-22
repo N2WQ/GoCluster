@@ -24,7 +24,7 @@ func TestHandleDedupeCommandSetShow(t *testing.T) {
 	}, nil)
 	client := &Client{
 		callsign: "N0CALL",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 	}
 	client.setDedupePolicy(dedupePolicyFast)
 
@@ -72,7 +72,7 @@ func TestHandleDedupeCommandFallbackToFast(t *testing.T) {
 	}, nil)
 	client := &Client{
 		callsign: "N0CALL",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 	}
 	client.setDedupePolicy(dedupePolicyFast)
 
@@ -106,19 +106,19 @@ func TestBroadcastRespectsDedupePolicyWindows(t *testing.T) {
 
 	fastClient := &Client{
 		callsign: "FAST1",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 		spotChan: make(chan *spotEnvelope, 16384),
 	}
 	fastClient.setDedupePolicy(dedupePolicyFast)
 	medClient := &Client{
 		callsign: "MED1",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 		spotChan: make(chan *spotEnvelope, 16384),
 	}
 	medClient.setDedupePolicy(dedupePolicyMed)
 	slowClient := &Client{
 		callsign: "SLOW1",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 		spotChan: make(chan *spotEnvelope, 16384),
 	}
 	slowClient.setDedupePolicy(dedupePolicySlow)
@@ -182,7 +182,7 @@ func TestNearbyEffectiveDedupeUsesFastForBroadcast(t *testing.T) {
 
 	client := &Client{
 		callsign: "SLOW1",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 		spotChan: make(chan *spotEnvelope, 1),
 	}
 	client.setDedupePolicy(dedupePolicySlow)
@@ -221,7 +221,7 @@ func TestEffectiveDedupePolicyRequiresUsableNearbyState(t *testing.T) {
 	}, nil)
 	client := &Client{
 		callsign: "SLOW1",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 	}
 	client.setDedupePolicy(dedupePolicySlow)
 	client.filter.NearbyEnabled = true
@@ -244,7 +244,7 @@ func TestNearbyEffectiveDedupeFallsBackWhenFastDisabled(t *testing.T) {
 	}, nil)
 	client := &Client{
 		callsign: "SLOW1",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 	}
 	client.setDedupePolicy(dedupePolicySlow)
 	if err := client.filter.EnableNearby(pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")); err != nil {

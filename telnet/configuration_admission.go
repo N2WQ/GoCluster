@@ -10,10 +10,11 @@ import (
 )
 
 func (s *Server) prepareConfigurationRecord(c *Client, cfg filter.Configuration, ref *filter.PresetReference) (*filter.PreparedUserRecord, error) {
-	if c.recordProtected {
-		return nil, errProtectedRecord
+	reference, err := filter.V5PresetReferenceFromRuntime(ref)
+	if err != nil {
+		return nil, err
 	}
-	return filter.PrepareConfiguration(c.callsign, cfg, ref, c.recentIPs)
+	return s.prepareV5ConfigurationRecord(c, cfg.V5(), reference)
 }
 
 func (s *Server) commitConfigurationRecord(prepared *filter.PreparedUserRecord) error {

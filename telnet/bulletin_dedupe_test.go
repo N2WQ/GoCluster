@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"testing"
 	"time"
-
-	"dxcluster/filter"
 )
 
 func TestBulletinDedupeSuppressesWWVWCYAndAnnouncements(t *testing.T) {
@@ -136,7 +134,7 @@ func newBulletinDedupeTestServer(now time.Time, window time.Duration, maxEntries
 	client := &Client{
 		callsign:    "ALLOW",
 		controlChan: make(chan controlMessage, 8),
-		filter:      filter.NewFilter(),
+		filter:      unrestrictedTestFilter(),
 	}
 	server.clients[client.callsign] = client
 	return server, client

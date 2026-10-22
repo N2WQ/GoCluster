@@ -35,8 +35,6 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 		value := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Clone().FilterValue()
 		value.NearbyUserFine = c.filter.NearbyUserFine
 		value.NearbyUserCoarse = c.filter.NearbyUserCoarse
-		// NearbySnapshot restores settings on a later command; matching never uses
-		// it, so the request need not retain that extra set of location maps.
 		owned.filter = &value
 	}
 	return historyFilterSnapshot{digest: c.historyFilterDigestLocked(), client: owned}
@@ -53,7 +51,7 @@ func (c *Client) historyFilterDigest() [32]byte {
 }
 
 func (c *Client) historyFilterDigestLocked() [32]byte {
-	cfg := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{
+	cfg := filter.V5ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{
 		Grid: c.grid, NoiseClass: c.noiseClass, PathMinObservationCount: c.pathMinObservationCount,
 	})
 	// History's existing self-match exception bypasses the self toggle. Bulletin
@@ -96,9 +94,7 @@ func (snapshot historyFilterSnapshot) matches(s *Server, sp *spot.Spot) bool {
 	if f == nil {
 		return false
 	}
-	pathClass := filter.PathClassInsufficient
-	if f.PathFilterActive() && !f.BlockAllPathClasses {
-		pathClass = s.pathClassForClient(snapshot.client, sp)
-	}
-	return f.MatchesWithPath(sp, pathClass)
+	matching := snapshot.client.captureMatchingSnapshot()
+	matched, _, _ := s.matchSnapshot(matching, sp)
+	return matched
 }

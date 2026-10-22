@@ -351,8 +351,7 @@ func startPSKRZeroWireServer(t *testing.T, observation int64) (*Server, net.Conn
 	}
 	client.setDedupePolicy(dedupePolicyFast)
 	client.filterMu.Lock()
-	client.filter.SetMode("FT8", true)
-	client.filter.SetMode("CW", true)
+	client.filter = passRuleTestFilter(t, "MODE=FT8,CW")
 	client.filterMu.Unlock()
 	return server, conn, reader, retire
 }

@@ -1,8 +1,15 @@
-# ADR-0261: Literal Comment Filters And Archive Searches
+---
+title: "ADR-0261: Literal Comment Filters And Archive Searches"
+description: Literal archive searches and historical personal comment lists.
+---
 
 - Status: Accepted
 - Date: 2026-10-08
 - Decision Origin: Design
+
+[ADR-0317](ADR-0317-boolean-filter-replacement-mvp.md) replaces personal-list,
+mutation and old-schema clauses for the Boolean MVP. Literal archive selection,
+stored-comment ownership and explicit-query self-spot behavior remain in force.
 
 ## Context
 

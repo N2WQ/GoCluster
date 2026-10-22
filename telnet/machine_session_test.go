@@ -80,7 +80,7 @@ func TestMachineFullSessionNativeAndZiutek(t *testing.T) {
 		t.Run(transport, func(t *testing.T) {
 			s, conn, reader, done := startMachineTestSession(t, transport)
 			defer closeHandshakeTranscriptSession(t, conn, done)
-			if _, err := io.WriteString(conn, "get yaml settings id Noise-1\r\n"); err != nil {
+			if _, err := io.WriteString(conn, "get yaml settings schema 5 id Noise-1\r\n"); err != nil {
 				t.Fatal(err)
 			}
 			response := readMachineTestFrame(t, reader)
@@ -100,7 +100,7 @@ func TestMachineFullSessionNativeAndZiutek(t *testing.T) {
 			client := s.clients["W1ABC-1"]
 			s.clientsMutex.RUnlock()
 			beforePause := client.readPauseUntilUnixNano.Load()
-			body := fmt.Sprintf("PATCH YAML SETTINGS\r\n---\r\nschema_version: 1\r\nrequest_id: edit-1\r\nif_revision: %s\r\nconfiguration:\r\n  noise_class: URBAN\r\n...\r\n", revision)
+			body := fmt.Sprintf("PATCH YAML SETTINGS\r\n---\r\nschema_version: 5\r\nrequest_id: edit-1\r\nif_revision: %s\r\nconfiguration:\r\n  noise_class: URBAN\r\n...\r\n", revision)
 			if _, err := io.WriteString(conn, body); err != nil {
 				t.Fatal(err)
 			}
@@ -113,14 +113,14 @@ func TestMachineFullSessionNativeAndZiutek(t *testing.T) {
 				t.Fatal("write failed revision or pause contract")
 			}
 			// A received invalid document is recoverable and still framed YAML.
-			if _, err := io.WriteString(conn, "PATCH YAML SETTINGS\r\n---\r\nschema_version: 1\r\nrequest_id: invalid-1\r\nif_revision: rev-1\r\nconfiguration: {noise_class: null}\r\n...\r\n"); err != nil {
+			if _, err := io.WriteString(conn, "PATCH YAML SETTINGS\r\n---\r\nschema_version: 5\r\nrequest_id: invalid-1\r\nif_revision: rev-1\r\nconfiguration: {noise_class: null}\r\n...\r\n"); err != nil {
 				t.Fatal(err)
 			}
 			response = readMachineTestFrame(t, reader)
 			if !strings.Contains(response, "code: invalid_document\r\n") || client.readPauseUntilUnixNano.Load() != beforePause {
 				t.Fatalf("invalid YAML response=%q", response)
 			}
-			if _, err := io.WriteString(conn, "GET YAML SETTINGS ID After-1\r\n"); err != nil {
+			if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 5 ID After-1\r\n"); err != nil {
 				t.Fatal(err)
 			}
 			response = readMachineTestFrame(t, reader)
@@ -177,7 +177,7 @@ func TestMachineCompleteGETHeaderErrorIsRecoverable(t *testing.T) {
 	if response := readMachineTestFrame(t, reader); !strings.Contains(response, "code: invalid_header") {
 		t.Fatal(response)
 	}
-	if _, err := io.WriteString(conn, "GET YAML SETTINGS ID retry-1\r\n"); err != nil {
+	if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 5 ID retry-1\r\n"); err != nil {
 		t.Fatal(err)
 	}
 	if response := readMachineTestFrame(t, reader); !strings.Contains(response, "request_id: retry-1") {

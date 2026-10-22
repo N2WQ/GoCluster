@@ -14,6 +14,11 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0108 | ULS Cancellation Fixture Deadline | Resolved | 2026-10-22 | progress cancellation, race fixture deadline, rollback | none | `docs/troubleshooting/TSR-0108-uls-cancellation-fixture-deadline.md` |
+| TSR-0107 | Short Wait Clock Domains | Resolved | 2026-10-22 | Windows QPC, Go sleep, strict clock-test stimulus | none | `docs/troubleshooting/TSR-0107-short-wait-clock-domains.md` |
+| TSR-0106 | Log Rotation Test Retention | Resolved | 2026-10-22 | deterministic logging fixtures, asynchronous retention | none | `docs/troubleshooting/TSR-0106-log-rotation-test-retention.md` |
+| TSR-0105 | Old Profile Login Upgrade | Resolved | 2026-10-21 | Boolean reset, settings preservation, shared presets, login | ADR-0318 | `docs/troubleshooting/TSR-0105-old-profile-login-upgrade.md` |
+| TSR-0104 | YAML Capability Operator Quoting | Resolved | 2026-10-21 | Boolean MVP, schema-5 discovery, PyYAML interoperability | none | `docs/troubleshooting/TSR-0104-yaml-capability-operator-quoting.md` |
 | TSR-0103 | Checkout Paths and Native Test Containment | Monitoring | 2026-10-19 | ordinary fixtures, Windows native membership, owner loss and retirement | ADR-0314 | `docs/troubleshooting/TSR-0103-checkout-paths-and-native-test-containment.md` |
 | TSR-0101 | Replay Deadline Scheduling | Monitoring | 2026-10-16 | chronological samples/holds, skipped traffic, deferred deadlines, EOF | none | `docs/troubleshooting/TSR-0101-replay-deadline-scheduling.md` |
 | TSR-0100 | Live Cache Qualification | Open | 2026-10-15 | rejected live indexes, delay updates, dense expiry, correctness-only extraction | ADR-0310 | `docs/troubleshooting/TSR-0100-live-cache-qualification.md` |

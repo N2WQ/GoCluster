@@ -17,8 +17,7 @@ func publishTestClient(t *testing.T, s *Server) (*Client, filter.Configuration, 
 	c.grid, c.gridDerived, c.noiseClass = "FN31", true, "QUIET"
 	c.gridCell, c.gridCoarseCell = pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")
 	c.setDedupePolicy(dedupePolicyMed)
-	c.filter.SetDXContinent("EU", true)
-	c.filter.DXCallsigns = []string{"K1*", "W1*", "K1*"}
+	c.filter = passRuleTestFilter(t, "DXCONT=EU AND DXCALL=K1*,W1*")
 	if err := c.filter.EnableNearby(c.gridCell, c.gridCoarseCell); err != nil {
 		t.Fatal(err)
 	}
@@ -56,7 +55,7 @@ func TestPublishUnchangedConfigurationPreservesRuntime(t *testing.T) {
 	}
 	ref := &filter.PresetReference{Name: "CONTEST", Baseline: baseline}
 	c.presetReference = ref
-	pointer, snapshot, state := c.filter, c.filter.NearbySnapshot, c.pathSnapshot()
+	pointer, programs, state := c.filter, c.filter.PreparedRules(), c.pathSnapshot()
 	revision := c.configurationRevision
 	prepared, warning := s.prepareConfigurationUpdate(c, before, before.Clone(), now)
 	if warning != "" {
@@ -66,7 +65,7 @@ func TestPublishUnchangedConfigurationPreservesRuntime(t *testing.T) {
 	c.advanceSolarSummaryAt(now.Add(30 * time.Minute))
 	expectedTick := time.Date(2026, 10, 5, 15, 0, 0, 0, time.UTC)
 	s.publishConfiguration(c, before.Clone(), prepared, ref, now)
-	if c.filter != pointer || c.filter.NearbySnapshot != snapshot || c.filter.NearbyUserFine != state.gridCell || c.filter.NearbyUserCoarse != state.gridCoarseCell || c.pathSnapshot() != state {
+	if c.filter != pointer || c.filter.PreparedRules() != programs || c.filter.NearbyUserFine != state.gridCell || c.filter.NearbyUserCoarse != state.gridCoarseCell || c.pathSnapshot() != state {
 		t.Fatal("unchanged publication reset GRID/NEARBY runtime state")
 	}
 	if !c.solarNextSummaryAt.Equal(expectedTick) || c.getSolarSummaryMinutes() != 30 {
@@ -80,54 +79,57 @@ func TestPublishUnchangedConfigurationPreservesRuntime(t *testing.T) {
 	}
 }
 
-func TestPublishOrderOnlyRulesPreservesRevisionAndRestoration(t *testing.T) {
+func TestPublishChangedRulePreservesUnrelatedRuntime(t *testing.T) {
 	s := presetTestServer(t)
 	c, before, now := publishTestClient(t, s)
-	next := before.Clone()
-	next.Filters.DXCallsigns = []string{"W1*", "K1*", "K1*"}
-	snapshot, tick, revision := c.filter.NearbySnapshot, c.solarNextSummaryAt, c.configurationRevision
+	replacement := passRuleTestFilter(t, "DXCONT=NA AND DXCALL=W1*")
+	replacement.NearbyEnabled = true
+	next := filter.ConfigurationFromFilter(replacement, before.Settings)
+	previous, state, tick, revision := c.filter.PreparedRules(), c.pathSnapshot(), c.solarNextSummaryAt, c.configurationRevision
 	prepared, _ := s.prepareConfigurationUpdate(c, before, next, now)
 	s.publishConfiguration(c, next, prepared, nil, now)
-	if strings.Join(c.filter.DXCallsigns, ",") != "W1*,K1*,K1*" || c.configurationRevision != revision {
-		t.Fatal("order-only update lost order or advanced semantic revision")
+	if c.filter.PreparedRules().Definitions()[0].Expr != "DXCONT=NA AND DXCALL=W1*" || c.configurationRevision != revision+1 {
+		t.Fatal("changed rule update lost definition or failed to advance revision")
 	}
-	if c.filter.NearbySnapshot != snapshot || c.solarNextSummaryAt != tick {
-		t.Fatal("order-only publication reset unrelated runtime state")
+	if c.pathSnapshot() != state || c.solarNextSummaryAt != tick ||
+		c.filter.NearbyUserFine != state.gridCell || c.filter.NearbyUserCoarse != state.gridCoarseCell ||
+		previous.Definitions()[0].Expr != "DXCONT=EU AND DXCALL=K1*,W1*" {
+		t.Fatal("changed-rule publication reset unrelated runtime state or mutated the old program")
 	}
 }
 
-func TestPublishNoisePreservesNearbyRestoration(t *testing.T) {
+func TestPublishNoisePreservesNearbyRulesAndCells(t *testing.T) {
 	s := presetTestServer(t)
 	c, before, now := publishTestClient(t, s)
 	next := before.Clone()
 	next.Settings.NoiseClass = "URBAN"
-	snapshot, tick := c.filter.NearbySnapshot, c.solarNextSummaryAt
+	programs, state, tick := c.filter.PreparedRules(), c.pathSnapshot(), c.solarNextSummaryAt
 	prepared, _ := s.prepareConfigurationUpdate(c, before, next, now)
 	s.publishConfiguration(c, next, prepared, nil, now)
-	if c.noiseClass != "URBAN" || c.filter.NearbySnapshot != snapshot || c.solarNextSummaryAt != tick {
+	if c.noiseClass != "URBAN" || c.filter.PreparedRules() != programs || c.solarNextSummaryAt != tick ||
+		c.filter.NearbyUserFine != state.gridCell || c.filter.NearbyUserCoarse != state.gridCoarseCell {
 		t.Fatal("noise change reset unrelated runtime state")
 	}
 	c.updateFilter(func(f *filter.Filter) { f.DisableNearby() })
-	if !c.filter.DXContinents["EU"] || c.filter.AllDXContinents {
-		t.Fatal("noise change discarded NEARBY restoration rules")
+	if c.filter.PreparedRules() != programs || programs.Definitions()[0].Expr != "DXCONT=EU AND DXCALL=K1*,W1*" {
+		t.Fatal("noise change discarded saved geographic rule")
 	}
 }
 
-func TestPublishLocationRulesReplaceNearbyRestoration(t *testing.T) {
+func TestPublishGeographyRuleSurvivesNearbyOff(t *testing.T) {
 	s := presetTestServer(t)
 	c, before, now := publishTestClient(t, s)
-	next := before.Clone()
-	next.Filters.DXContinents = filter.StringRules{Allow: map[string]bool{"NA": true, "EU": false}}
-	snapshot := c.filter.NearbySnapshot
+	replacement := passRuleTestFilter(t, "DXCONT=NA")
+	replacement.NearbyEnabled = true
+	next := filter.ConfigurationFromFilter(replacement, before.Settings)
 	prepared, _ := s.prepareConfigurationUpdate(c, before, next, now)
-	if prepared.filter.NearbySnapshot == snapshot {
-		t.Fatal("changed location rules retained the old restoration snapshot")
+	if prepared.filter.PreparedRules() != replacement.PreparedRules() {
+		t.Fatal("preparation discarded the replacement immutable rules")
 	}
 	s.publishConfiguration(c, next, prepared, nil, now)
 	c.updateFilter(func(f *filter.Filter) { f.DisableNearby() })
-	value, present := c.filter.DXContinents["EU"]
-	if !c.filter.DXContinents["NA"] || !present || value || c.filter.AllDXContinents {
-		t.Fatal("NEARBY OFF did not retain the new exact location rules")
+	if c.filter.PreparedRules() != replacement.PreparedRules() || c.filter.PreparedRules().Definitions()[0].Expr != "DXCONT=NA" {
+		t.Fatal("NEARBY OFF did not retain the new exact geographic rule")
 	}
 }
 
@@ -136,11 +138,11 @@ func TestPublishGridChangesNearbyCellsOnly(t *testing.T) {
 	c, before, now := publishTestClient(t, s)
 	next := before.Clone()
 	next.Settings.Grid = "IO91"
-	snapshot := c.filter.NearbySnapshot
+	programs := c.filter.PreparedRules()
 	prepared, _ := s.prepareConfigurationUpdate(c, before, next, now)
 	s.publishConfiguration(c, next, prepared, nil, now)
-	if c.grid != "IO91" || c.gridDerived || c.filter.NearbySnapshot != snapshot || c.filter.NearbyUserFine != pathreliability.EncodeCell("IO91") || c.filter.NearbyUserCoarse != pathreliability.EncodeCoarseCell("IO91") {
-		t.Fatal("GRID change discarded restoration or failed to replace derived cells")
+	if c.grid != "IO91" || c.gridDerived || c.filter.PreparedRules() != programs || c.filter.NearbyUserFine != pathreliability.EncodeCell("IO91") || c.filter.NearbyUserCoarse != pathreliability.EncodeCoarseCell("IO91") {
+		t.Fatal("GRID change discarded immutable rules or failed to replace derived cells")
 	}
 }
 

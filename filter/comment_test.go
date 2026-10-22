@@ -7,6 +7,30 @@ import (
 	"testing"
 )
 
+// Preserve the existing stress workload independently of retired list limits.
+const commentWorkloadPhrases = 32
+
+func nativeCommentFilter(t testing.TB, allow, reject []string) *Filter {
+	t.Helper()
+	var definitions []RuleDefinition
+	for i, phrases := range [][]string{allow, reject} {
+		action := RulePass
+		if i == 1 {
+			action = RuleReject
+		}
+		for len(phrases) > 0 {
+			count := min(len(phrases), 12)
+			quoted := make([]string, count)
+			for i := range count {
+				quoted[i] = `"` + strings.ReplaceAll(phrases[i], `"`, `""`) + `"`
+			}
+			definitions = append(definitions, RuleDefinition{len(definitions), action, "COMMENT=" + strings.Join(quoted, ",")})
+			phrases = phrases[count:]
+		}
+	}
+	return nativeRuleFilter(t, definitions...)
+}
+
 func TestCommentPhraseMatching(t *testing.T) {
 	for _, tc := range []struct {
 		comment, phrase string
@@ -35,8 +59,7 @@ func TestCommentPhraseMatching(t *testing.T) {
 }
 
 func TestCommentFilterTruthTableAndReset(t *testing.T) {
-	f := NewFilter()
-	s := &spot.Spot{Comment: "POTA QRT", Band: "20m", BandNorm: "20m", Mode: "CW"}
+	s := &spot.Spot{Comment: "POTA QRT", Band: "20m", BandNorm: "20m", Mode: "CW", IsHuman: true}
 	for _, tc := range []struct {
 		allow, reject []string
 		comment       string
@@ -47,23 +70,22 @@ func TestCommentFilterTruthTableAndReset(t *testing.T) {
 		{nil, []string{"QRT"}, "", true}, {[]string{"POTA"}, []string{"qrt"}, "POTA QRT", false},
 		{[]string{"pota", "POTA"}, []string{"POTA"}, "pota", false},
 	} {
-		f.Comments, f.BlockComments, s.Comment = tc.allow, tc.reject, tc.comment
+		f := nativeCommentFilter(t, tc.allow, tc.reject)
+		s.Comment = tc.comment
 		if got := f.MatchesWithPath(s, ""); got != tc.want {
 			t.Errorf("allow=%v reject=%v comment=%q got=%v", tc.allow, tc.reject, tc.comment, got)
 		}
 	}
-	f.Comments = []string{"POTA"}
-	f.BlockComments = []string{"QRT"}
+	f := nativeCommentFilter(t, []string{"POTA"}, []string{"QRT"})
 	f.Reset()
-	if len(f.Comments)+len(f.BlockComments) != 0 {
+	if f.PreparedRules() != nil {
 		t.Fatal("global reset retained comments")
 	}
 	for i := 0; i < 1000; i++ {
-		f.Comments = []string{fmt.Sprint(i)}
-		f.BlockComments = []string{fmt.Sprint(i)}
+		f = nativeCommentFilter(t, []string{fmt.Sprint(i)}, []string{fmt.Sprint(i)})
 		f.Reset()
 	}
-	if len(f.Comments)+len(f.BlockComments) != 0 {
+	if f.PreparedRules() != nil {
 		t.Fatal("churn retained rules")
 	}
 }
@@ -107,67 +129,48 @@ func TestCommentMatcherAdversarialBoundaries(t *testing.T) {
 }
 
 func TestCommentMaximumListsAndOtherGates(t *testing.T) {
-	f := NewFilter()
-	f.Reset()
 	s := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
-	for i := range MaxCommentPhrases {
-		f.BlockComments = append(f.BlockComments, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i))
-		f.Comments = append(f.Comments, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i+32))
+	var allow, reject []string
+	for i := range commentWorkloadPhrases {
+		reject = append(reject, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i))
+		allow = append(allow, strings.Repeat("A", 61)+fmt.Sprintf("%03d", i+32))
 	}
-	s.Comment = strings.Repeat("A", 65500-64) + f.Comments[31]
+	f := nativeCommentFilter(t, allow, reject)
+	s.Comment = strings.Repeat("A", 65500-64) + allow[31]
 	if !f.Matches(s) {
 		t.Fatal("last PASS phrase at final bytes did not match")
 	}
 	if got := testing.AllocsPerRun(3, func() { f.Matches(s) }); got != 0 {
 		t.Fatalf("normalized full filter allocated %v", got)
 	}
-	s.Comment += f.BlockComments[0]
+	s.Comment += reject[0]
 	if f.Matches(s) {
 		t.Fatal("REJECT lost precedence")
 	}
-	s.Comment = strings.Repeat("A", 65500-64) + f.Comments[31]
-	f.SetBand("40m", true)
+	s.Comment = strings.Repeat("A", 65500-64) + allow[31]
+	f.preparedRules, _ = f.preparedRules.WithRule(RuleDefinition{9, RuleReject, "BAND=20m"})
 	if f.Matches(s) {
 		t.Fatal("COMMENT bypassed band allowlist")
 	}
-	f.Reset()
-	f.Comments = []string{"000"}
+	f = nativeRuleFilter(t, RuleDefinition{0, RulePass, `MODE=FT8 AND COMMENT="000"`})
 	s.Comment = "000"
-	f.BlockAllModes = true
-	f.SetMode("FT8", true)
 	if f.Matches(s) {
 		t.Fatal("COMMENT bypassed mode allowlist")
 	}
 }
 
 func TestCommentConfigurationBoundsAndOwnership(t *testing.T) {
-	c := ConfigurationFromFilter(NewFilter(), SettingsConfiguration{})
-	c.Filters.Comments = make([]string, MaxCommentPhrases)
-	for i := range c.Filters.Comments {
-		c.Filters.Comments[i] = strings.Repeat("a", MaxCommentPhraseBytes)
-	}
-	c.Filters.BlockComments = append([]string(nil), c.Filters.Comments...)
-	if c.ValidateCommentRules() != nil {
-		t.Fatal("maximum rejected")
-	}
-	if c.MinimumSizeFits(4095) {
-		t.Fatal("preflight omitted phrase bytes")
-	}
+	f := nativeCommentFilter(t, []string{"POTA"}, []string{"QRT"})
+	c := ConfigurationFromFilter(f, SettingsConfiguration{})
 	copy := c.Clone()
-	copy.Filters.Comments[0] = "other"
-	if c.Filters.Comments[0] == "other" || c.Equal(copy) || c.Fingerprint() == copy.Fingerprint() {
-		t.Fatal("clone alias or undetected edit")
+	f.preparedRules = mustPrepareRuleSet(t, RuleDefinition{0, RulePass, `COMMENT="SOTA"`})
+	if !copy.Equal(c) || copy.Equal(ConfigurationFromFilter(f, SettingsConfiguration{})) {
+		t.Fatal("comment edit mutated a prior immutable configuration")
 	}
-	c.Filters.Comments = append(c.Filters.Comments, "extra")
-	if c.ValidateCommentRules() == nil {
-		t.Fatal("duplicate entries bypassed count cap")
-	}
-	if _, err := c.Preset(); err == nil {
-		t.Fatal("oversized preset accepted")
-	}
-	c.Filters.Comments = []string{strings.Repeat("a", 65)}
-	if c.ValidateCommentRules() == nil {
-		t.Fatal("oversized phrase accepted")
+	for _, source := range []string{`COMMENT=""`, `COMMENT=" "`, `COMMENT="` + strings.Repeat("a", 65) + `"`} {
+		if _, err := PrepareRuleSet([]RuleDefinition{{0, RulePass, source}}); err == nil {
+			t.Fatal("invalid phrase accepted")
+		}
 	}
 }
 

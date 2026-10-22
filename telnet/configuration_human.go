@@ -8,9 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
-
-	"dxcluster/cty"
-	"dxcluster/filter"
 )
 
 const (
@@ -24,8 +21,6 @@ type humanResponse struct {
 	countOnly bool
 	size      int
 	joined    bool
-	// dxcc is request-owned and shared by the counting and generation passes.
-	dxcc *cty.DXCCIndex
 }
 
 // line owns CRLF conversion and final size accounting in both passes. No partial
@@ -82,23 +77,6 @@ func (h *humanResponse) row(label, text string) error {
 	return h.prose(humanPrefix(label), humanPrefix(""), text)
 }
 
-func (h *humanResponse) group(label string, parts []string) error {
-	text := ""
-	for _, part := range parts {
-		if len(text)+3+len(part) > humanValueWidth && text != "" {
-			if err := h.row(label, text); err != nil {
-				return err
-			}
-			label, text = "", ""
-		}
-		if text != "" {
-			text += " | "
-		}
-		text += part
-	}
-	return h.row(label, text)
-}
-
 func simpleHumanValue(value string) bool {
 	if value == "" {
 		return false
@@ -148,39 +126,6 @@ func (h *humanResponse) quoted(prefix, value, suffix string) error {
 	return h.line(prefix + `"` + string(piece[:used]) + `"` + suffix)
 }
 
-// shortHumanValue is used only after checking the rendered budget. It allocates
-// at most limit bytes and never scans or quotes a long value just for a preview.
-func shortHumanValueSize(value string, limit int) (int, bool) {
-	if len(value) > limit {
-		return 0, false
-	}
-	if simpleHumanValue(value) {
-		return len(value), true
-	}
-	size := 2
-	for offset := 0; offset < len(value); {
-		_, width := utf8.DecodeRuneInString(value[offset:])
-		var scratch [16]byte
-		quoted := strconv.AppendQuoteToASCII(scratch[:0], value[offset:offset+width])
-		size += len(quoted) - 2
-		if size > limit {
-			return 0, false
-		}
-		offset += width
-	}
-	return size, size <= limit
-}
-
-func shortHumanValue(value string, limit int) (string, bool) {
-	if _, fits := shortHumanValueSize(value, limit); !fits {
-		return "", false
-	}
-	if simpleHumanValue(value) {
-		return value, true
-	}
-	return strconv.QuoteToASCII(value), true
-}
-
 func writeHumanHeader(h *humanResponse, c *Client, status configurationReadbackStatus) error {
 	if err := h.valueRow("User", c.callsign, ""); err != nil {
 		return err
@@ -196,25 +141,4 @@ func writeHumanHeader(h *humanResponse, c *Client, status configurationReadbackS
 		return err
 	}
 	return h.line("")
-}
-
-var humanCategoryNames = map[string]string{
-	"BAND": "Bands", "MODE": "Modes", "MINSNR": "Minimum SNR", "SOURCE": "Sources", "EVENT": "Events", "COMMENT": "Comments",
-	"CONFIDENCE": "Confidence", "PATH": "Path", "DXCONT": "DX continents",
-	"DECONT": "DE continents", "DXZONE": "DX zones", "DEZONE": "DE zones",
-	"DXGRID2": "DX grids", "DEGRID2": "DE grids", "DXDXCC": "DX DXCC",
-	"DEDXCC": "DE DXCC", "DXSTATE": "DX states", "DESTATE": "DE states", "DXCALL": "DX calls", "DECALL": "DE calls",
-	"BEACON": "Beacons", "WWV": "WWV", "WCY": "WCY", "ANNOUNCE": "Announce",
-	"SELF": "Self", "TOXIC": "Toxic", "NEARBY": "Nearby",
-}
-
-func humanToggle(value filter.DefaultBool) string {
-	switch value {
-	case filter.DefaultBoolFalse:
-		return "Off"
-	case filter.DefaultBoolTrue:
-		return "On"
-	default:
-		return "On (default)"
-	}
 }

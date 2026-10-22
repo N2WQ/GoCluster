@@ -5,7 +5,6 @@ import (
 	"time"
 	"unsafe"
 
-	"dxcluster/filter"
 	"dxcluster/spot"
 )
 
@@ -210,7 +209,7 @@ func newBroadcastWorkerTestClient(server *Server, buffer int) *Client {
 	return &Client{
 		server:   server,
 		callsign: "N0CALL",
-		filter:   filter.NewFilter(),
+		filter:   unrestrictedTestFilter(),
 		spotChan: make(chan *spotEnvelope, buffer),
 		done:     make(chan struct{}),
 	}

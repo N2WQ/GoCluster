@@ -4,7 +4,6 @@ import (
 	"sync"
 	"testing"
 
-	"dxcluster/filter"
 	"dxcluster/spot"
 )
 
@@ -104,7 +103,7 @@ func TestTryBroadcastSpotOwnedAdmissionAndRefusal(t *testing.T) {
 
 func TestDeliverSelfSpotSnapshotsPayload(t *testing.T) {
 	srv := NewServer(ServerOptions{ClientBuffer: 1}, nil)
-	f := filter.NewFilter()
+	f := unrestrictedTestFilter()
 	f.SetSelfEnabled(true)
 	client := &Client{
 		server:   srv,
@@ -155,7 +154,7 @@ func TestDeliverSelfSpotSnapshotsPayload(t *testing.T) {
 
 func TestDeliverSelfSpotOwnedReusesSnapshot(t *testing.T) {
 	srv := NewServer(ServerOptions{ClientBuffer: 1}, nil)
-	f := filter.NewFilter()
+	f := unrestrictedTestFilter()
 	f.SetSelfEnabled(true)
 	client := &Client{
 		server:   srv,

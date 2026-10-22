@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -16,15 +17,15 @@ import (
 func TestConfigurationHandoffDeadlineBehindOldOwnershipCheck(t *testing.T) {
 	s := presetTestServer(t)
 	old := configurationTestClient(s, "W1ABC-1")
-	old.filter = &filter.Filter{Bands: map[string]bool{"20m": true, "40m": false}}
+	old.filter = testRuleFilter(t,
+		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=20M"},
+		filter.RuleDefinition{Slot: 4, Action: filter.RuleReject, Expr: "BAND=40M"})
 	old.configuredSettings = filter.SettingsConfiguration{
 		Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST", PathMinObservationCount: 25, SolarSummaryMinutes: 15,
 	}
 	old.configurationInitialized = true
-	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: &filter.SavedPreset{
-		ConfigurationVersion: filter.CurrentConfigurationVersion, Filter: filter.Filter{Bands: map[string]bool{"20m": true, "40m": false}},
-		Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST",
-	}}
+	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: testSavedPreset(t,
+		filter.V5ConfigurationFromFilter(old.filter, filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}))}
 	s.registerClient(old)
 	// The registry write lock blocks the old save at its ownership check, after
 	// it obtains the fixed stripe. Reconnect must wait on that stripe first.
@@ -100,11 +101,14 @@ waitReconnect:
 	if next.configuredSettings != (filter.SettingsConfiguration{Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST", PathMinObservationCount: 25, SolarSummaryMinutes: 15}) {
 		t.Fatalf("reconnect restored different preferences: %+v", next.configuredSettings)
 	}
-	if len(next.filter.Bands) != 2 || !next.filter.Bands["20m"] || next.filter.Bands["40m"] {
-		t.Fatal("reconnect lost literal enabled/disabled filter entries")
+	if rules := next.filter.PreparedRules().Definitions(); len(rules) != 2 ||
+		rules[0] != (filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=20M"}) ||
+		rules[1] != (filter.RuleDefinition{Slot: 4, Action: filter.RuleReject, Expr: "BAND=40M"}) {
+		t.Fatal("reconnect lost literal Boolean definitions")
 	}
 	ref := next.presetReference
-	if ref == nil || ref.Name != "CONTEST" || ref.Baseline == nil || ref.Baseline.NoiseClass != "QUIET" || ref.Baseline.Dialect != "go" || ref.Baseline.DedupePolicy != "FAST" || len(ref.Baseline.Bands) != 2 || !ref.Baseline.Bands["20m"] || ref.Baseline.Bands["40m"] {
+	if ref == nil || ref.Name != "CONTEST" || ref.Baseline == nil || ref.Baseline.NoiseClass != "QUIET" || ref.Baseline.Dialect != "go" || ref.Baseline.DedupePolicy != "FAST" ||
+		!filter.V5ConfigurationFromFilter(next.filter, filter.SettingsConfiguration{}).Equal(filter.V5ConfigurationFromFilter(&ref.Baseline.Filter, filter.SettingsConfiguration{})) {
 		t.Fatal("reconnect did not restore the same independent preset reference")
 	}
 	assertHandoffDiskLiteral(t, path)
@@ -145,17 +149,17 @@ func assertHandoffDiskLiteral(t *testing.T, path string) {
 		path       []string
 		tag, value string
 	}{
-		{[]string{"configuration_version"}, "!!int", "4"},
-		{[]string{"noise_class"}, "!!str", "URBAN"},
-		{[]string{"dedupe_policy"}, "!!str", "FAST"},
-		{[]string{"path_min_observation_count"}, "!!int", "25"},
-		{[]string{"solar_summary_minutes"}, "!!int", "15"},
-		{[]string{"bands", "20m"}, "!!bool", "true"},
-		{[]string{"bands", "40m"}, "!!bool", "false"},
+		{[]string{"configuration_version"}, "!!int", "5"},
+		{[]string{"configuration", "settings", "noise_class"}, "!!str", "URBAN"},
+		{[]string{"configuration", "settings", "dedupe_policy"}, "!!str", "FAST"},
+		{[]string{"configuration", "settings", "path_min_observation_count"}, "!!int", "25"},
+		{[]string{"configuration", "settings", "solar_summary_minutes"}, "!!int", "15"},
+		{[]string{"configuration", "filters", "rules", "0", "expr"}, "!!str", "BAND=20M"},
+		{[]string{"configuration", "filters", "rules", "1", "expr"}, "!!str", "BAND=40M"},
 		{[]string{"preset", "name"}, "!!str", "CONTEST"},
-		{[]string{"preset", "baseline", "configuration_version"}, "!!int", "4"},
-		{[]string{"preset", "baseline", "noise_class"}, "!!str", "QUIET"},
-		{[]string{"preset", "baseline", "bands", "40m"}, "!!bool", "false"},
+		{[]string{"preset", "baseline", "configuration_version"}, "!!int", "5"},
+		{[]string{"preset", "baseline", "configuration", "settings", "noise_class"}, "!!str", "QUIET"},
+		{[]string{"preset", "baseline", "configuration", "filters", "rules", "1", "expr"}, "!!str", "BAND=40M"},
 	} {
 		node := doc.Content[0]
 		for _, field := range want.path {
@@ -166,6 +170,11 @@ func assertHandoffDiskLiteral(t *testing.T, path string) {
 						found = node.Content[i+1]
 						break
 					}
+				}
+			} else if node.Kind == yaml.SequenceNode {
+				index, err := strconv.Atoi(field)
+				if err == nil && index >= 0 && index < len(node.Content) {
+					found = node.Content[index]
 				}
 			}
 			if found == nil {

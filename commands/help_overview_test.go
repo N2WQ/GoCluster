@@ -62,35 +62,34 @@ func TestHelpCatalogDiscoverabilityAndWidths(t *testing.T) {
 	}
 }
 
-func TestConcreteFilterHelpEveryCategory(t *testing.T) {
+func TestBooleanRuleHelpCanonicalCatalog(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
-	// This inventory is intentionally separate from the renderer's rows.
-	categories := []string{"BAND", "MODE", "SOURCE", "EVENT", "COMMENT", "DXCALL", "DECALL", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC", "DEDXCC", "DXSTATE", "DESTATE", "DXGRID2", "DEGRID2", "CONFIDENCE", "PATH", "MINSNR"}
+	fields := []string{"BAND", "MODE", "SOURCE", "EVENT", "FREQ", "SNR", "COMMENT", "DXCALL", "DECALL", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC", "DEDXCC", "DXSTATE", "DESTATE", "DXGRID2", "DEGRID2", "CONF", "PATH"}
 	for _, dialect := range []string{"go", "cc"} {
-		for _, verb := range []string{"PASS", "REJECT"} {
-			text := p.ProcessCommandForClient("HELP "+verb, "N0CALL", "", nil, dialect)
-			flattened := strings.Join(strings.Fields(text), " ")
-			for _, note := range []string{"ASCII letters, digits, / or -", "at most one leading or trailing *", "invalid pattern refuses the entire list"} {
-				if !strings.Contains(flattened, note) {
-					t.Fatalf("%s %s omits callsign admission rule %q", dialect, verb, note)
-				}
+		text := p.ProcessCommandForClient("HELP RULE", "N0CALL", "", nil, dialect)
+		assertHelpWidth(t, text)
+		flat := strings.Join(strings.Fields(text), " ")
+		for _, want := range []string{
+			"A PASS rule without SOURCE selects HUMAN only.",
+			"If SOURCE appears anywhere in the rule, normal Boolean logic applies.",
+			"Users moving from old filters receive the same starting rule and keep their settings.",
+		} {
+			if !strings.Contains(flat, want) {
+				t.Fatalf("%s HELP RULE omitted source/onboarding policy %q", dialect, want)
 			}
-			for _, category := range categories {
-				prefix := verb
-				if dialect == "cc" && category != "COMMENT" && category != "MINSNR" {
-					prefix = "SET/FILTER"
-					if verb == "REJECT" {
-						prefix = "UNSET/FILTER"
-					}
-				}
-				if !strings.Contains(text, prefix+" "+category+" ") {
-					t.Fatalf("%s HELP %s lacks a %s example", dialect, verb, category)
-				}
+		}
+		for _, field := range fields {
+			if !strings.Contains(flat, field) {
+				t.Fatalf("%s HELP RULE omitted %s", dialect, field)
 			}
-			for _, want := range []string{"Supported bands:", "Supported modes:", "Supported events:", "Continents:", "US/Canada mailing codes (states, provinces, territories):", "Callsign patterns:", "SOURCE takes one value", "other filters still apply"} {
-				if !strings.Contains(text, want) {
-					t.Fatalf("%s HELP %s lacks %q", dialect, verb, want)
-				}
+		}
+		if !strings.Contains(text, `COMMENT="CQ ""DX""  !;=()[]"`) {
+			t.Fatalf("%s HELP RULE changed quoted literal bytes", dialect)
+		}
+		for _, topic := range []string{"PASS", "REJECT", "FILTERS"} {
+			text := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, dialect)
+			if !strings.Contains(text, "HELP RULE") || strings.Contains(text, "Fields:") {
+				t.Fatalf("%s HELP %s must reference, not duplicate, the canonical field catalog", dialect, topic)
 			}
 		}
 	}

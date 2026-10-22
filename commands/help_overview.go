@@ -6,9 +6,6 @@ package commands
 import (
 	"fmt"
 	"strings"
-
-	"dxcluster/filter"
-	"dxcluster/spot"
 )
 
 type helpRow struct{ command, description string }
@@ -38,117 +35,41 @@ func helpSection(lines []string, title string, rows ...helpRow) []string {
 	return append(lines, helpRowLines(rows...)...)
 }
 
-// filterVerb selects actual CC list syntax; COMMENT, MINSNR and NEARBY keep
-// their shared PASS/REJECT spellings in either dialect.
-func filterVerb(dialect, verb, category string) string {
-	if dialect == "cc" && category != "COMMENT" && category != "MINSNR" && category != "NEARBY" {
-		if verb == "PASS" {
-			return "SET/FILTER"
-		}
-		return "UNSET/FILTER"
-	}
-	return verb
-}
-
-func filterCategoryRows() []helpRow {
-	return []helpRow{
-		{"BAND", "Radio band, such as 20m or 40m."},
-		{"MODE", "Operating mode, such as CW, FT8 or USB."},
-		{"SOURCE", "HUMAN or SKIMMER reports."},
-		{"EVENT", "POTA, SOTA, IOTA, WWFF or LLOTA tags."},
-		{"COMMENT", "A phrase anywhere in the spot comment."},
-		{"DXCALL", "Spotted callsign or pattern, such as K1ABC or W1*."},
-		{"DECALL", "Spotter callsign or pattern."},
-		{"DXCONT", "Spotted station's continent."},
-		{"DECONT", "Spotter's continent."},
-		{"DXZONE", "Spotted station's CQ zone (1-40)."},
-		{"DEZONE", "Spotter's CQ zone (1-40)."},
-		{"DXDXCC", "Spotted station's country prefix or ADIF number."},
-		{"DEDXCC", "Spotter's country prefix or ADIF number."},
-		{"DXSTATE", "Spotted station's US/Canadian mailing code."},
-		{"DESTATE", "Spotter's US/Canadian mailing code."},
-		{"DXGRID2", "Spotted station's two-character grid, such as FN."},
-		{"DEGRID2", "Spotter's two-character grid."},
-		{"CONFIDENCE", "Callsign confidence symbols: ?, S, P, V, C, B."},
-		{"PATH", "HIGH, MEDIUM, LOW, UNLIKELY, CLOSED or INSUFFICIENT."},
-		{"MINSNR", "Minimum signal report in dB, selected by mode."},
-	}
-}
-
-func filterExampleRows(dialect string) []helpRow {
-	rows := []helpRow{
-		{"PASS BAND 20,40", "Add 20m and 40m to your band selections."},
-		{"REJECT BAND 80", "Block 80m spots."},
-		{"PASS MODE CW,FT8", "Enable CW and FT8; other modes stay unchanged."},
-		{"REJECT MODE FT8", "Disable FT8."},
-		{"PASS SOURCE HUMAN", "Allow human reports."},
-		{"REJECT SOURCE SKIMMER", "Block automated skimmer reports."},
-		{"REJECT EVENT POTA", "Block POTA-tagged spots."},
-		{"PASS COMMENT CQ", "Require a comment containing CQ."},
-		{"REJECT COMMENT QRT", "Block comments containing QRT."},
-		{"REJECT DXCALL W1*", "Block spotted calls beginning with W1."},
-		{"REJECT DECALL W1ABC", "Block reports from spotter W1ABC."},
-		{"PASS DXCONT EU", "Add Europe to your DX continent selections."},
-		{"PASS DECONT NA", "Add North America to your spotter selections."},
-		{"PASS DXZONE 14,15", "Add DX CQ zones 14 and 15."},
-		{"PASS DEZONE 5", "Add spotters in CQ zone 5."},
-		{"PASS DXDXCC DL", "Add Germany to your DX country selections."},
-		{"PASS DEDXCC K", "Add the United States to your spotter countries."},
-		{"PASS DXSTATE CT,MA", "Add DX stations in Connecticut and Massachusetts."},
-		{"PASS DESTATE ON", "Add spotters with Canadian province code ON."},
-		{"PASS DXGRID2 JO", "Add DX stations in grid field JO."},
-		{"PASS DEGRID2 FN", "Add spotters in grid field FN."},
-		{"REJECT CONFIDENCE ?", "Block spots marked with confidence symbol ?."},
-		{"REJECT PATH LOW", "Block spots classified as LOW path reliability."},
-		{"PASS MINSNR CW 10", "Set a minimum CW signal report of 10 dB."},
-	}
-	for i := range rows {
-		parts := strings.SplitN(rows[i].command, " ", 3)
-		rows[i].command = filterVerb(dialect, parts[0], parts[1]) + " " + parts[1] + " " + parts[2]
-	}
-	return rows
-}
-
 func filterRecipeLines(dialect string) []string {
-	lines := []string{"", "A complete recipe: only 20m/40m and only CW/FT8:"}
-	for _, row := range []struct{ verb, category, value string }{
-		{"REJECT", "BAND", "ALL"}, {"PASS", "BAND", "20,40"},
-		{"REJECT", "MODE", "ALL"}, {"PASS", "MODE", "CW,FT8"},
-	} {
-		lines = append(lines, "  "+filterVerb(dialect, row.verb, row.category)+" "+row.category+" "+row.value)
-	}
 	show := "SHOW FILTER"
 	if dialect == "cc" {
 		show = "SHOW/FILTER"
 	}
-	return append(lines, "  "+show, "", "  This changes BAND and MODE only. Other filters still apply.", "  Own-call spots have special exemptions; see HELP SHOW MYDX.")
+	return []string{
+		"", "A complete recipe: human-reported CW/FT8 on 20m/40m:",
+		"  RESET FILTER RULE ALL",
+		"  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8",
+		"  " + show,
+		"", "  This replaces all personal rules. NEARBY is unchanged.",
+		"  SELF ON can bypass personal rules; see HELP SHOW MYDX.",
+	}
 }
 
-func filterBasicsLines(dialect string) []string {
-	passBand := filterVerb(dialect, "PASS", "BAND") + " BAND ALL"
-	rejectEvent := filterVerb(dialect, "REJECT", "EVENT") + " EVENT ALL"
+func filterBasicsLines() []string {
 	return []string{
 		"", "Filter rules to remember:",
-		"  Filter categories have their own selection rules; see HELP PASS/REJECT.",
-		"  MODE preserves visibility for every mode you do not name.",
-		"  Different filter categories must all match, except own-call exemptions.",
-		"  MODE changes only the modes you name.",
-		"  " + passBand + " allows every band; other filters still apply.",
-		"  " + rejectEvent + " blocks tagged events, not untagged spots.",
-		"  COMMENT matches literal text without regard to letter case.",
-		"  COMMENT treats commas, quotes, * and ? as literal characters.",
-		"  COMMENT also treats ALL and NONE as literal phrases.",
-		"  Any allowed COMMENT phrase can match; a blocked phrase wins.",
-		"  Numeric PASS and REJECT MINSNR commands set the same minimum.",
-		"  MINSNR exempts human reports and reports without SNR.",
-		"  RESET FILTER restores cluster defaults, which may restrict spots.",
+		"  Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.",
+		"  Any PASS can qualify; any matching REJECT vetoes it.",
+		"  No active PASS means unrestricted except for matching REJECT rules.",
+		"  No rules means no personal restriction.",
+		"  New users start with an ordinary editable default PASS rule in slot 0.",
+		"  PASS without SOURCE means HUMAN only.",
+		"  Add AND SOURCE=HUMAN,SKIMMER to select humans and skimmers.",
+		"  To narrow it, replace/remove slot 0; adding another PASS broadens it.",
+		"  RESET FILTER clears rules and NEARBY, not separate controls/preferences.",
+		"  Reset does not reinstall default slot 0. See HELP RULE for full details.",
 	}
 }
 
 func helpOverviewLines(dialect string) []string {
-	show, short, readback, allow, block := "SHOW DX", "SH DX", "SHOW FILTER", "PASS", "REJECT"
+	show, short, readback := "SHOW DX", "SH DX", "SHOW FILTER"
 	if dialect == "cc" {
-		show, short, readback, allow, block = "SHOW/DX", "SH/DX", "SHOW/FILTER", "SET/FILTER", "UNSET/FILTER"
+		show, short, readback = "SHOW/DX", "SH/DX", "SHOW/FILTER"
 	}
 	lines := []string{"GoCluster help - " + strings.ToUpper(dialect) + " dialect"}
 	lines = helpSection(lines, "Getting started",
@@ -157,29 +78,41 @@ func helpOverviewLines(dialect string) []string {
 		helpRow{"SHOW SETTINGS", "See your preferences and session settings."},
 		helpRow{"SET GRID FN31", "Set your Maidenhead grid square."},
 		helpRow{"BYE", "Disconnect."})
-	lines = append(lines, "", "Type HELP followed by a command for details:", "  HELP "+show, "  HELP "+allow, "  HELP "+block, "  HELP PASS COMMENT")
+	lines = append(lines, "", "Type HELP followed by a command for details:", "  HELP "+show, "  HELP RULE", "  HELP PASS", "  HELP REJECT")
 	lines = helpSection(lines, "Reading and posting spots",
 		helpRow{show, "Show recent spots matching your filters."}, helpRow{"SHOW MYDX", "Same as " + show + "."},
 		helpRow{short, "Short form of " + show + "."}, helpRow{"DX", "Post a spot."},
 		helpRow{"SHOW DXCC", "Look up a callsign or country prefix."}, helpRow{"WHOSPOTSME", "Show recent spotter countries for your call."})
 	lines = helpSection(lines, "Examples",
 		helpRow{show + " 10", "Show the latest 10 matching spots."}, helpRow{show + " K1ABC 10", "Search for spots of K1ABC."},
-		helpRow{show + " 10 BAND 20", "Search for 10 matching spots on 20m."}, helpRow{"DX 14025.0 K1ABC CQ", "Post K1ABC on 14025.0 kHz with comment CQ."})
+		helpRow{show + " 10 BAND 20", "Search for 10 matching spots on 20m."},
+		helpRow{show + " 10 MODE CW", "Search for 10 matching CW spots."},
+		helpRow{show + " 10 COMMENT CQ", "Search stored comments for literal CQ."},
+		helpRow{"DX 14025.0 K1ABC CQ", "Post K1ABC on 14025.0 kHz with comment CQ."})
 	lines = helpSection(lines, "Changing filters",
-		helpRow{allow, "Allow selections."}, helpRow{block, "Block selections."}, helpRow{readback, "Show your current filters."},
-		helpRow{readback + " FULL", "Show complete filter selections."}, helpRow{readback + " MODE", "Show one filter category."},
-		helpRow{"RESET FILTER", "Restore the cluster's default filters."})
-	lines = append(lines, "", "What you can filter:", "  DX means the station being spotted; DE means the spotter.", "")
-	lines = append(lines, helpRowLines(filterCategoryRows()...)...)
-	lines = append(lines, "", allow+" and "+block+" examples:", "  Each example below is a separate change, not a combined recipe.", "")
-	lines = append(lines, helpRowLines(filterExampleRows(dialect)...)...)
+		helpRow{"PASS RULE", "Replace one slot with an allowing expression."},
+		helpRow{"REJECT RULE", "Replace one slot with a vetoing expression."},
+		helpRow{readback, "See your current settings and rules."},
+		helpRow{readback + " RULE", "Same as " + readback + "."},
+		helpRow{readback + " FULL", "Add geometry detail and rule counts."},
+		helpRow{"RESET FILTER RULE", "Clear one slot or ALL; preserve NEARBY."},
+		helpRow{"RESET FILTER", "Clear personal rules and turn NEARBY OFF."})
+	lines = append(lines, "", "What you can filter:",
+		"  Combine band, mode, source, geography, calls, comments and more.",
+		"  DX means the station being spotted; DE means the spotter.",
+		"  HELP RULE lists every field, supported value and expression limit.",
+		"", "Examples (separate full-rule replacements):",
+		"  PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN",
+		"  REJECT RULE 9 SNR<-15 OR COMMENT=\"test beacon\"")
 	lines = append(lines, filterRecipeLines(dialect)...)
-	lines = append(lines, filterBasicsLines(dialect)...)
+	lines = append(lines, filterBasicsLines()...)
 	lines = append(lines, commentOverviewLines()...)
 	lines = append(lines, featureOverviewLines(dialect)...)
 	lines = helpSection(lines, "Nearby filtering",
 		helpRow{"SET GRID FN31", "Set your location first."}, helpRow{"PASS NEARBY ON", "Enable nearby filtering."}, helpRow{"PASS NEARBY OFF", "Disable nearby filtering."})
-	lines = append(lines, "", "  NEARBY suspends location filters and retains their rules.", "  Type HELP PASS NEARBY for details.")
+	lines = append(lines, "", "  NEARBY omits only geography leaves; non-geography conditions survive.",
+		"  Emptied rules are ignored; saved full rules remain intact.",
+		"  Type HELP PASS NEARBY for details.")
 	lines = append(lines, preferencesOverviewLines()...)
 	lines = helpSection(lines, "Saving and loading presets",
 		helpRow{"SAVE PRESET <name>", "Save your filters and preferences under a name."}, helpRow{"LIST PRESET", "List your saved presets."},
@@ -191,17 +124,23 @@ func helpOverviewLines(dialect string) []string {
 	lines = append(lines, "", "  Filter and settings readbacks temporarily pause live spots.", "  Type RESUME when ready, or wait for the pause to expire.", "  Spots missed during a pause are not replayed.")
 	lines = helpSection(lines, "Diagnostics", helpRow{"SHOW BUILD", "Show server version and build information."},
 		helpRow{"SHOW OWN", "Show your login call and own-call identity."}, helpRow{"SET DIAG", "Select diagnostic information in spot comments."})
-	lines = helpSection(lines, "More help", helpRow{"HELP " + allow, "Complete allow rules and examples."}, helpRow{"HELP " + block, "Complete block rules and examples."},
-		helpRow{"HELP FILTERS", "Filter reference and supported values."}, helpRow{"HELP SYMBOLS", "Confidence and path reliability symbols."}, helpRow{"HELP <command>", "Detailed help for a command."})
+	lines = helpSection(lines, "More help", helpRow{"HELP RULE", "Canonical Boolean grammar, fields and values."},
+		helpRow{"HELP PASS", "Rule updates and separate enable controls."},
+		helpRow{"HELP REJECT", "Rule updates and separate disable controls."},
+		helpRow{"HELP FILTERS", "Navigate to rules and separate controls."}, helpRow{"HELP SYMBOLS", "Confidence and path reliability symbols."}, helpRow{"HELP <command>", "Detailed help for a command."})
 	lines = helpSection(lines, "Other commands", helpRow{"HELP", "Show this help."}, helpRow{"BYE", "Disconnect (also QUIT or EXIT)."})
 	return append(lines, "", "Syntax used in detailed help:", "  <value> means required; [value] means optional.", "  A|B means choose one. Do not type the brackets.")
 }
 
 func commentOverviewLines() []string {
-	lines := helpSection(nil, "Comment rules", helpRow{"PASS COMMENT", "Add an allowed comment phrase."},
-		helpRow{"REJECT COMMENT", "Add a blocked comment phrase."}, helpRow{"REMOVE PASS COMMENT", "Remove an allowed phrase."},
-		helpRow{"REMOVE REJECT COMMENT", "Remove a blocked phrase."}, helpRow{"RESET FILTER COMMENT", "Clear all comment rules."}, helpRow{"SHOW FILTER COMMENT", "Show your saved phrases."})
-	return append(lines, "", "Examples:", "  PASS COMMENT CQ DX", "  REJECT COMMENT QRT", "  REMOVE PASS COMMENT CQ DX", "  RESET FILTER COMMENT REJECT")
+	return []string{
+		"", "Comment rules:", `  PASS RULE 0 COMMENT="CQ DX"`,
+		`  REJECT RULE 9 COMMENT="QRT"`,
+		"  ASCII case-insensitive literal substrings, not regular expressions.",
+		`  Inside a quoted value, double a literal quote: COMMENT="CQ ""DX"""`,
+		"  Edit/clear the numbered slot to replace/remove the whole rule.",
+		"  SHOW DX COMMENT remains a history query, not a saved rule edit.",
+	}
 }
 
 func featureOverviewLines(dialect string) []string {
@@ -210,9 +149,9 @@ func featureOverviewLines(dialect string) []string {
 			helpRow{"SH/FILTER", "Short form of SHOW/FILTER."}, helpRow{"SET/ANN | SET/NOANN", "Allow or block announcements."},
 			helpRow{"SET/BEACON | SET/NOBEACON", "Allow or block beacon spots."}, helpRow{"SET/WWV | SET/NOWWV", "Allow or block WWV bulletins."},
 			helpRow{"SET/WCY | SET/NOWCY", "Allow or block WCY bulletins."}, helpRow{"SET/SELF | SET/NOSELF", "Allow or block your own spots."},
-			helpRow{"SET/SKIMMER", "Allow automated skimmer reports."}, helpRow{"SET/NOSKIMMER", "Block automated skimmer reports."},
-			helpRow{"SET/<MODE>", "Enable a mode; for example SET/FT8."}, helpRow{"SET/NO<MODE>", "Disable a mode; for example SET/NOFT8."},
-			helpRow{"SET/NOFILTER", "Clear filter restrictions."}, helpRow{"REJECT TOXIC", "Hide human spots already classified as toxic."},
+			helpRow{"SET/FILTER", "Separate switches and NEARBY only; see HELP."},
+			helpRow{"UNSET/FILTER", "Separate switches and NEARBY only; see HELP."},
+			helpRow{"REJECT TOXIC", "Hide human spots already classified as toxic."},
 			helpRow{"PASS TOXIC", "Allow human spots already classified as toxic."})
 	}
 	lines := make([]string, 0, 16)
@@ -233,80 +172,10 @@ func preferencesOverviewLines() []string {
 }
 
 func filterReferenceHelpLines(dialect string) []string {
-	lines := []string{"Filter reference:", "  DX means the station being spotted; DE means the spotter.", ""}
-	lines = append(lines, helpRowLines(filterCategoryRows()...)...)
-	lines = append(lines, filterHelpLines(dialect)...)
-	return append(lines, supportedFilterValuesLines()...)
-}
-
-func supportedFilterValuesLines() []string {
-	lines := make([]string, 0, 32)
-	for _, section := range []struct {
-		title  string
-		values []string
-	}{
-		{"Filter categories:", filterListTypes()}, {"Supported modes:", filter.SupportedModes()},
-		{"Supported events:", filter.SupportedEvents()}, {"Supported bands:", spot.SupportedBandNames()},
-		{"Supported sources:", filter.SupportedSources}, {"Continents:", []string{"AF", "AN", "AS", "EU", "NA", "OC", "SA"}},
-		{"US/Canada mailing codes (states, provinces, territories):", spot.StateCodes()},
-	} {
-		lines = append(lines, "", section.title)
-		lines = append(lines, wrapListLines(section.values)...)
-	}
-	return lines
-}
-
-// installConcreteFilterHelp adds teaching material without replacing the
-// existing usage, aliases or exception notes. CC PASS/REJECT help describes
-// their supported list equivalents rather than advertising GO-only execution.
-func installConcreteFilterHelp(catalog *helpCatalog, dialect string) {
-	for _, verb := range []string{"PASS", "REJECT"} {
-		key := verb
-		if dialect == "cc" {
-			key = filterVerb(dialect, verb, "BAND")
-		}
-		entry := catalog.entries[key]
-		entry.lines = append(entry.lines, "", "Categories:")
-		entry.lines = append(entry.lines, helpRowLines(filterCategoryRows()...)...)
-		entry.lines = append(entry.lines, "", "Examples (separate changes; other filters still apply):")
-		entry.lines = append(entry.lines, helpRowLines(detailedFilterExampleRows(dialect, verb)...)...)
-		entry.lines = append(entry.lines, filterRecipeLines(dialect)...)
-		entry.lines = append(entry.lines, filterBasicsLines(dialect)...)
-		entry.lines = appendNotes(entry.lines, []string{
-			"Most lists accept commas or spaces. SOURCE takes one value; COMMENT consumes the remaining text as one phrase.",
-			"CQ zones use integers 1-40; grid fields use two letters (for example FN or JO).",
-			"DXCC values use canonical CTY prefixes or positive ADIF integers, not arbitrary callsigns; lookup depends on the server CTY database.",
-			"CONFIDENCE accepts ?, S, P, V, C, B; PATH accepts HIGH, MEDIUM, LOW, UNLIKELY, CLOSED, INSUFFICIENT.",
-			"Callsign patterns: exact call, W1* (starts with W1), or *ABC (ends with ABC). Use ASCII letters, digits, / or -, with at most one leading or trailing *. ? is not a wildcard. An invalid pattern refuses the entire list.",
-			"Geography selections are suspended by NEARBY; turn it OFF before editing them.",
-			"Type HELP FILTERS for supported values, full rules and feature switches.",
-			"Type HELP SYMBOLS for confidence and path symbol meanings.",
-		})
-		entry.lines = append(entry.lines, supportedFilterValuesLines()...)
-		catalog.entries[key] = entry
-		if dialect == "cc" {
-			catalog.entries[verb] = entry
-		}
-	}
-}
-
-func detailedFilterExampleRows(dialect, verb string) []helpRow {
-	rows := []helpRow{
-		{"BAND 20,40", "20m and 40m bands."}, {"MODE CW,FT8", "CW and FT8 modes; other modes stay unchanged."},
-		{"SOURCE HUMAN", "Human reports."}, {"EVENT POTA", "POTA-tagged spots; untagged spots are unaffected."},
-		{"COMMENT CQ DX", "Comments containing the literal phrase CQ DX."},
-		{"DXCALL W1*", "Spotted calls beginning with W1."}, {"DECALL W1ABC", "Reports from spotter W1ABC."},
-		{"DXCONT EU", "DX stations in Europe."}, {"DECONT NA", "Spotters in North America."},
-		{"DXZONE 14,15", "DX CQ zones 14 and 15."}, {"DEZONE 5", "Spotters in CQ zone 5."},
-		{"DXDXCC DL", "DX stations in Germany."}, {"DEDXCC K", "Spotters in the United States."},
-		{"DXSTATE CT,MA", "DX mailing-address codes CT and MA."}, {"DESTATE ON", "Spotter mailing-address code ON."},
-		{"DXGRID2 JO", "DX stations in grid field JO."}, {"DEGRID2 FN", "Spotters in grid field FN."},
-		{"CONFIDENCE ?", "Spots marked with confidence symbol ?."}, {"PATH LOW", "Spots classified as LOW path reliability."},
-		{"MINSNR CW 10", "Set the inclusive CW minimum to 10 dB (either verb)."},
-	}
-	for i := range rows {
-		category, _, _ := strings.Cut(rows[i].command, " ")
-		rows[i].command = filterVerb(dialect, verb, category) + " " + rows[i].command
-	}
-	return rows
+	lines := []string{"Filter reference:", "  HELP RULE is the canonical Boolean grammar, field and value reference."}
+	lines = append(lines, filterBasicsLines()...)
+	lines = append(lines, filterRecipeLines(dialect)...)
+	lines = append(lines, featureOverviewLines(dialect)...)
+	return append(lines, "", "  HELP SYMBOLS explains confidence and path reliability symbols.",
+		"  Old category edits and CC filter/mode shortcuts are not translated.")
 }

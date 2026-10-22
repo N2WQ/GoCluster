@@ -25,14 +25,15 @@ func TestNearbyEndpointsLiveAndCapturedHistory(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%.0f/%s/%s/blockMode=%v", frequency, test.dx, test.de, test.blockMode), func(t *testing.T) {
 				server := &Server{}
-				client := &Client{callsign: "VE3ABC-7", filter: filter.NewFilter(),
+				client := &Client{callsign: "VE3ABC-7", filter: passRuleTestFilter(t, "DXCONT=EU"),
 					spotChan: make(chan *spotEnvelope, 1), done: make(chan struct{})}
-				client.filter.SetDXContinent("EU", true)
+				if test.blockMode {
+					client.filter = testRuleFilter(t,
+						filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "DXCONT=EU"},
+						filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "MODE=CW"})
+				}
 				if err := client.filter.EnableNearby(pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")); err != nil {
 					t.Fatal(err)
-				}
-				if test.blockMode {
-					client.filter.SetMode("CW", false)
 				}
 				s := spot.NewSpotNormalized("W6ABC", "N0XYZ", frequency, "CW")
 				s.DXMetadata = spot.CallMetadata{Grid: test.dx, Continent: "NA"}
@@ -57,7 +58,15 @@ func TestNearbyEndpointsLiveAndCapturedHistory(t *testing.T) {
 					}
 				}
 				// The history request retains its own rules after a later command.
-				client.filter.SetMode("CW", test.blockMode)
+				replacement := passRuleTestFilter(t, "DXCONT=EU")
+				if !test.blockMode {
+					replacement = testRuleFilter(t,
+						filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "DXCONT=EU"},
+						filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "MODE=CW"})
+				}
+				replacement.NearbyEnabled = true
+				replacement.NearbyUserFine, replacement.NearbyUserCoarse = client.filter.NearbyUserFine, client.filter.NearbyUserCoarse
+				*client.filter = *replacement
 				if test.want && client.filter.Matches(s) {
 					t.Fatal("live mode edit did not change the matching control")
 				}

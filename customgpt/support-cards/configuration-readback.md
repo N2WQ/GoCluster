@@ -2,7 +2,7 @@
 
 ## Match
 
-Use for human SHOW FILTER/FULL/category or SHOW SETTINGS output, canonical
+Use for human SHOW FILTER/RULE/FULL or SHOW SETTINGS output, canonical
 GET/PUT/PATCH/VALIDATE YAML configuration commands, revision conflicts, upload
 errors, protected temporary records, preset modification status or partial SAVE.
 If `getSupportRoute` is not decisive, follow source-map or troubleshooting links
@@ -17,14 +17,33 @@ command/error artifact that distinguishes the next step.
 
 ## Must Include
 
-- Short filter suggestions cover all 29 families with NOFILTER only for PASS
-  and PC93 identified as an ANNOUNCE alias. COMMENT keeps shared PASS/REJECT
-  syntax; DXBM errors also recommend shared commands. Retrieve HELP PASS/REJECT
-  for complete grammar. MODE alone preserves unnamed visibility. Use REJECT
-  MODE ALL before an exclusive selection and PASS MODE ALL to open it.
-  Registered US/Canadian mailing codes include provinces and territories.
-  Spot queued confirms intake; recipient filtering and processing determine
-  delivery. See [TSR-0066](../../docs/troubleshooting/TSR-0066-command-discovery-wording.md).
+- Login and SHOW FILTER use actual settings and numbered expressions, never
+  independent lists that lose AND/OR/NOT relationships. New accounts see
+  "Default settings and filters"; returning accounts see "Current settings and
+  filters". Legacy reset users retain settings and get a short reset notice.
+  Old-library cleanup alone is not a profile reset. Source eligibility is not
+  a feed-connection status. Short rules use command syntax; long exact display
+  pieces require decoding or YAML, not direct pasting.
+
+- Personal selection uses one prepared Boolean engine, not a category
+  compatibility gate. Both dialects use `PASS RULE <0..9> <expression>`,
+  `REJECT RULE <0..9> <expression>` and `HELP RULE`. Setting a slot replaces
+  its action and whole expression. Matching REJECT vetoes; PASS rules are ORed.
+  No active PASS means unrestricted personal selection except matching REJECTs.
+  Slots are not priorities. Adding PASS broadens selection; edit or remove an
+  existing PASS, including default slot 0, to narrow it. See
+  [Filters](../../telnet/README.md#filters).
+
+- New accounts and old-profile resets receive the same configured MODE/SOURCE
+  selection as editable PASS slot 0. Existing/restored Boolean empty rules stay empty.
+  A PASS without SOURCE means HUMAN only. Any SOURCE atom uses normal Boolean
+  logic for the entire rule. SOURCE=HUMAN,SKIMMER explicitly allows both.
+  REJECT has no HUMAN default; no active PASS allows all sources.
+  `RESET FILTER RULE <0..9|ALL>` clears selected slots, preserving NEARBY;
+  `RESET FILTER` clears all rules and turns NEARBY OFF. Neither reinstalls
+  defaults nor resets separate controls/settings. Old category, MODE-delta,
+  MINSNR, COMMENT-list, DXBM and NOFILTER mutations are refused, not translated.
+  There are no AR-style rule aliases or translators.
 
 - HELP accepts source-verified aliases and command arguments without executing
   them: SH BUILD/OWN/DXCC/MYDX/PROP, shared CC PASS/REJECT and both-dialect slash
@@ -32,13 +51,16 @@ command/error artifact that distinguishes the next step.
   unknown. Fixed CC shortcuts take precedence over loaded mode aliases. See
   [TSR-0065](../../docs/troubleshooting/TSR-0065-help-routing-alias-coverage.md).
 
-- CC HELP groups ordinary lists, switches and special grammar. Shared
-  PASS/REJECT forms also execute in CC. COMMENT has no SET/UNSET alias; MINSNR
-  requires modes plus a minimum or the verb's clear sentinel; NEARBY follows
-  explicit ON/OFF with either verb. Only SET strips inline flags for supported
-  ordinary categories/switches, plus NOFILTER/ON. Retrieve
+- BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate controls,
+  not expression fields. Shared PASS/REJECT switches take no value or ALL;
+  NEARBY follows explicit ON/OFF with either verb. CC SET/FILTER and
+  UNSET/FILTER retain controls only. Retrieve current
+  [commands HELP ownership](../../commands/README.md#help-source-of-truth)
+  for exact control/alias grammar. The category mechanics in
   [TSR-0064](../../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md)
-  and current HELP for the exact forms; do not infer all categories accept ALL.
+  and [TSR-0066](../../docs/troubleshooting/TSR-0066-command-discovery-wording.md)
+  are historical, not current mutation instructions. Spot queued confirms
+  intake, not delivery.
 
 - Stored user records have separate 1 MiB raw, normalized and exact-write limits;
   configuration and baseline each use the 256 KiB standalone-preset encoding.
@@ -49,19 +71,15 @@ command/error artifact that distinguishes the next step.
   on later saves or ordinary logout. A prospective oversized replacement rejects
   before publication. SAVE admits library and association before either write;
   only a later association I/O failure can produce partial success. Retrieve
-  [ADR-0270](../../docs/decisions/ADR-0270-complete-storage-admission.md).
+  [native storage](../../data/config/README.md#user-configuration-storage);
+  [ADR-0270](../../docs/decisions/ADR-0270-complete-storage-admission.md)
+  records admission history, not a pre-v5 migration contract.
 
-- DXDXCC/DEDXCC PASS/REJECT accept exact canonical CTY prefixes and existing
-  positive numeric ADIF codes, including mixed lists. Canonical input requires
-  CTY; unknown or conflicting labels reject the whole list without mutation.
-  IT9, I and IG9 select the same ADIF entity, not separate country subdivisions.
-  All human SHOW FILTER views use unambiguous canonical prefixes; FULL/category
-  show effective PASS/REJECT selections, including all labels per entity.
-  Conflicting labels are omitted; valid alternatives remain. Long overview counts
-  count entities. With no usable label, rules show `Unknown DXCC (12345)`;
-  each entity retains its own number in this fallback. YAML stays numeric.
-  SHOW DX/MYDX recognize canonical labels before portable callsign processing;
-  numeric history arguments remain counts. SHOW DXCC details are unchanged.
+- DXDXCC/DEDXCC expressions take positive ADIF integers, not CTY labels or
+  callsign lookups. `DXDXCC=248` selects the entity; `DXCALL=IT9*` is a literal
+  callsign-prefix pattern. SHOW DX/MYDX retain CTY-label precedence and numeric
+  count arguments; SHOW DXCC lookup is unchanged. Route to
+  [DXCC distinctions](../../telnet/README.md#canonical-dxcc-prefixes).
 
 - History MODE keyword aliases use the loaded filter-visible vocabulary.
   BAND/MODE/COMMENT aliases are values first or after a comma; otherwise a
@@ -73,48 +91,60 @@ command/error artifact that distinguishes the next step.
   or [TSR-0063](../../docs/troubleshooting/TSR-0063-history-comment-alias-boundary.md)
   for boundary and checker details; do not infer production archive/model quality.
 
-- Human SHOW FILTER uses aligned labels and wraps all passing finite selections
-  by name: BAND, MODE, SOURCE, EVENT, PATH, CONFIDENCE, DX/DE continents and states.
-  Explain All, None and useful explicit exclusions, including All except.
-  Do not enumerate disabled choices or replace finite names with counts.
-  Long callsign, DXCC, grid and zone lists retain counts, with grouped geography
-  and inclusion switches. Unknown-mode, untagged-event, confidence-exemption,
-  PATH legacy and NEARBY qualifications still apply.
-  FULL/category shows complete effective PASS/REJECT selections using ALL/NONE.
-  ALL means unrestricted before listed REJECT entries. Ordinary false entries
-  and rejected PASS entries are omitted; a false-only allow map gives PASS: NONE.
-  Switches show ON/OFF. Callsign patterns retain order with REJECT precedence.
-  PATH includes inherited CLOSED behavior; EVENT false keys remain active.
-  NEARBY suspends geography even when unavailable. Use GET YAML FILTER for
-  schema 1 flags, false entries and defaults; use SCHEMA 2 for state rules. SHOW SETTINGS separates
-  configured
-  selections and effective choices from session status; both show the preset.
+- `SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact
+  saved/effective numbered rules and individual controls. `SHOW FILTER FULL`
+  adds geometry detail and preparation counts. SHOW/FILTER and SH/FILTER retain RULE/FULL readback aliases;
+  category views are unsupported. SHOW SETTINGS separates configured selections,
+  effective choices and session status; both views show the preset.
+  [Human readbacks](../../telnet/README.md#human-configuration-readbacks)
+  own the output contract. Rendering reads immutable prepared rules; it does
+  not compile expressions or apply another category gate.
+- Missing/unknown values make every comparison false, including `<>`; NOT
+  negates that result. Blank MODE is known `UNKNOWN`; eventless spots use
+  `EVENT=NONE`. The expression field is `CONF`, not `CONFIDENCE`, and is unknown
+  for confidence-exempt modes. PATH classes match exactly: UNLIKELY excludes
+  CLOSED; `PATH=UNLIKELY,CLOSED` selects both. SNR is known for any present
+  report, including human and zero reports. Retrieve `HELP RULE` and
+  [field semantics](../../docs/domain-contract.md#expressions-and-field-semantics)
+  rather than applying old category exemptions.
 - Every human line is at most 78 printable ASCII characters followed by CRLF.
   Exact strings use quoted ASCII escapes. Complete quoted pieces joined by +
   preserve long values without trimming whitespace or splitting escapes.
-  Indentation, line endings and the + marker are not stored characters. Map
-  keys use stable ordering; callsign patterns retain supplied order. Compact
-  preview count and rendered length are bounded before sorting or joining.
-  Finite selections preflight aggregate escaped size before key collection;
-  every complete wrapped response must fit 65,536 bytes. An unusually large
-  retained finite selection can return an explicit size error.
+  These are Go-style display quotes/escapes, not expression quoting or
+  necessarily copyable commands. Decode each piece and concatenate without
+  separators; indentation, line endings and + are not stored characters.
+  Expressions instead double literal quotes and keep backslashes literal.
+  Every complete response must fit 65,536 bytes or return an explicit size
+  error. Human input keeps the configured limit, 128 bytes by default;
+  use schema 5 YAML for longer expressions.
 - Effective path minimums come from restored runtime state and loaded server
   configuration. With station/beacon floors 21/11, reconnect leaves a saved
   personal minimum of 15 inactive, so effective values remain 21/11. An active
   personal minimum of 30 gives 30/30. Explain disabled/unavailable prediction.
-- NEARBY distinguishes enabled from usable. Enabled NEARBY suspends ordinary
-  location rules even with unavailable cells; spots on affected bands fail
-  NEARBY matching instead of falling back to ordinary location rules.
-  Usable grids remain bare when short and simple, as in `On; grid FN31PR`;
-  otherwise, quoted ASCII pieces preserve the exact retained grid bytes.
+- NEARBY distinguishes enabled from usable. ON structurally removes only
+  geographic leaves, collapses surviving branches and ignores entirely emptied
+  rules; it does not substitute truth values. Full saved expressions remain
+  editable. OFF uses the latest full expressions, not a restoration snapshot.
+  Either endpoint can satisfy H3 geometry; 160m/80m/60m use the coarse cell,
+  other supported bands the fine cell. Enabling or changing GRID while ON
+  requires usable geometry. See [NEARBY](../../telnet/README.md#grid-noise-and-nearby).
+  SHOW SETTINGS preserves exact saved GRID bytes, using quoted ASCII pieces
+  when needed rather than trimming or repairing the retained value.
   Escaping an unusual saved grid is not itself a response-size failure;
   the complete rendered response still has to fit its byte budget.
-- Ordinary string/integer categories can remain restrictive with a nonempty
-  allow map even when allow_all is true. EVENT uses key presence, including
-  entries stored as false, ignores allow-list restrictions when allow_all is
-  true, and always includes untagged spots. PATH retains its UNLIKELY/CLOSED
-  relationship. To remove an EVENT rule through YAML, omit its key from the
-  replacement map rather than setting it to false.
+- Approved recovery requires human and YAML rule-only edits while already ON
+  with unusable restored GRID/cells, provided every other saved selection is
+  unchanged. Retain GRID/ON; both cells unavailable blocks ordinary spots until
+  repaired or OFF. Partly usable geometry keeps its existing band-specific behavior.
+  Preserve live SELF's enabled-only bypass and command/history's independent
+  self exception; both honor TOXIC, and explicit history clauses remain mandatory.
+  The YAML exception waives only mapping availability for the unchanged saved
+  GRID. Malformed GRID syntax and other invalid settings still fail. Existing
+  human control/settings admission is unchanged. The joined fresh-child
+  `TestGridMappingAvailability` fixture covers explicit GRID recovery through
+  PATCH, PUT and VALIDATE.
+  Route to the [recovery contract](../../docs/domain-contract.md#nearby-projection-and-recovery);
+  do not weaken selections as a workaround.
 - Human readbacks, including size errors, suppress spots before preparation,
   through queueing/delivery and for the full interval after successful write
   and flush. They ignore zero row thresholds and use 30 seconds for a zero
@@ -126,20 +156,34 @@ command/error artifact that distinguishes the next step.
   Its status and usage replies bypass automatic pause. SH HOLD and slash forms
   remain unsupported, and TAB remains invalid human wire input. Suppression
   counts describe eligible live traffic, not a command effect or cluster total.
-- Canonical machine reads are GET YAML FILTER/SETTINGS/CONFIG/CAPABILITIES.
+- Every machine GET requires explicit `SCHEMA 5`, including SETTINGS and
+  CAPABILITIES: `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 5 [ID <id>]`.
   Machine success/errors have no pause-state effects or human footer. Existing
   suppressed counts may still increase from live traffic during a prior pause.
 - GET separates exact writable configuration from read-only status. Preserve
   explicit false, zero, empty values/collections and DEFAULT selections. GET IDs
   are 1-32 ASCII letters/digits/hyphens and preserve case; CAPABILITIES is read-only.
-- PUT requires a complete FILTER, SETTINGS or CONFIG resource. PATCH retains
-  omissions; supplied maps/lists replace their whole collections. VALIDATE YAML
-  CONFIG checks a complete proposal without applying or saving it.
+- PUT/PATCH headers have no schema suffix; bodies require `schema_version: 5`.
+  PUT requires a complete FILTER, SETTINGS or CONFIG resource. PATCH retains
+  omissions; a supplied `rules` list replaces all slots, and `[]` clears it.
+  It is not a per-slot merge. VALIDATE YAML CONFIG checks a complete proposal
+  without applying or saving it. Rule entries require slot, lowercase action
+  pass/reject and expr. Missing/old schemas and category fields are refused,
+  not translated or preserved as hidden maps. Retrieve
+  [the client protocol](../../telnet/README.md#client-yaml-configuration)
+  for the strict writable envelope, field sets and examples. Duplicate
+  keys/slots, unknown/read-only fields, nulls, anchors, aliases, merges,
+  custom tags and extra documents fail unchanged.
+- `GET YAML CAPABILITIES SCHEMA 5` advertises `supported_schema_versions: [5]`,
+  rule vocabulary/operators and bounds, not the old settings-availability
+  matrix. Runtime settings validation and effective node config remain
+  authoritative. Rule status includes configured/effective/suspended entries
+  and full/nearby/retained counts.
 - PUT/PATCH use GET's matching revision as if_revision. GET again after reconnect,
   restart or conflict. Validation/persistence failure leaves live and saved
   configuration unchanged; unavailable choices are rejected. Even an unchanged
   PUT persists before success, repairing failed human autosave without resetting
-  solar scheduling, NEARBY restoration, diagnostics or pause.
+  solar scheduling, GRID/NEARBY state, diagnostics or pause.
 - Every new readback's 65,536-byte final budget includes CRLF, markers and human
   footers. Complete output or an explicit error replaces silent truncation.
   Machine proposals must fit a complete CONFIG readback with reserved metadata;
@@ -163,9 +207,9 @@ command/error artifact that distinguishes the next step.
 
 ## Must Avoid
 
-- Do not interpret REJECT DXDXCC IT9 as Sicily-only or a callsign-prefix block.
-  Do not suggest W6/K1ABC as canonical filter labels or a numeric history ADIF
-  selector. Do not replace machine YAML's numeric keys with human label groups.
+- Do not offer CTY-prefix DXCC rule operands, category mutation compatibility,
+  AR-style aliases or automatic conversion. Keep literal callsign patterns,
+  ADIF entity comparisons, CTY history selectors and SHOW DXCC lookup separate.
 
 - Do not invent SHOW YAML aliases, pagination, a force-revision command or an
   operator setting for raising these limits.
@@ -178,119 +222,107 @@ command/error artifact that distinguishes the next step.
   temporary defaults as a first troubleshooting step.
 - Do not treat a saved library snapshot as proof that its new SSID association
   persisted, or treat all SSIDs as one session configuration.
-- Do not interpret false EVENT entries as disabled, infer unrestricted ordinary
-  rules from allow_all alone, or calculate effective path minimums from a saved
-  preference that reconnect did not activate.
+- Do not apply category map/exemption semantics to expressions or calculate
+  effective path minimums from a saved preference reconnect did not activate.
 - Do not strip quoted spaces, join wrapped pieces with a separator, or treat
   the human effective format as the client YAML schema.
 
 ## US And Canadian State And Version Compatibility
 
-DXSTATE/DESTATE accept 60 US mailing codes and 13 Canadian province/territory codes. Unknown state passes
-unrestricted and REJECT-only rules, and fails an explicit PASS list. NEARBY
-suspends/locks/restores state rules. These values can differ from operating
-location; do not infer them from a portable prefix, grid or callsign district.
+DXSTATE/DESTATE compare observed canonical metadata against 60 FCC mailing codes
+and 13 Canadian province/territory codes. Missing/invalid State is unknown:
+`DXSTATE<>CA` is false, while `NOT DXSTATE=CA` is true. A reject-only set may
+admit unknown State because no rejection matched. NEARBY projects State atoms
+structurally; full rules remain editable. Registered address does not establish
+operating location; do not infer it from a portable prefix, grid or call district.
 Enrichment remains active when `fcc_uls.enabled` is false: that flag disables
 license rejection only. Missing/unavailable state stays empty.
-FCC extraction/rebuilding and ISED publication make their own cached calls unavailable: named state PASS
-filters exclude those spots, named REJECT filters admit them, and archived empty
-states remain empty after refresh. See the
+FCC extraction/rebuilding and ISED publication make their own cached calls
+unavailable. Apply unknown/NOT expression semantics, not an implicit PASS/REJECT
+exemption; archived empty State stays empty after refresh. See the
 [State filter documentation](../../telnet/README.md#us-state-and-canadian-province-filters)
 for the refresh interruption and its measured local duration.
 
-Default GET remains schema 1 and does not expose state fields. Request
-`GET YAML CONFIG SCHEMA 2` or `GET YAML FILTER SCHEMA 2` for `dx_states` and
-`de_states`; body schema_version selects upload vocabulary. Schema 1 writes
-preserve hidden state and state-only edits still advance the shared revision.
-Capabilities are versioned; schema 1 advertises supported versions without new
-choice-object fields. A near-limit schema 1 configuration can produce an explicit
-schema 2 size error; reduce ordinary rules using schema 1 rather than truncating
-or discarding hidden fields.
+Machine schema 5 is explicit on every GET. Native records require explicit
+`configuration_version: 5` and nested `configuration.filters/settings`.
+Named library entries and applied baselines each require version 5; a library
+has a `presets` mapping, not a top-level version or machine envelope.
+Pure v5 decoding refuses older formats. Login separately upgrades recognized
+unversioned/version 1–4 profiles once, preserving settings, separate controls
+and metadata while installing the same configured mode/source rule as a new account.
+Old preset entries/associations are cleared; existing v5 presets survive.
+Original backups precede replacement. Explicit disk zero, future, malformed
+and unsafe inputs remain protected. No version-marker edit or old-rule
+translation is supported. See [ADR-0318](../../docs/decisions/ADR-0318-old-profile-reset-upgrade.md).
+Stop writers before backup/repair/restore; one writer process owns the data
+directory. Atomic replacement writes, syncs and closes its temporary file first.
+Downgrades require matching binary/data backups.
 
-New saved records use version 4; legacy/version 1 initializes new states
-as unrestricted, version 2 states remain exact, and older versions acquire no
-MINSNR thresholds, including nested preset baselines. Protected malformed/future
-records must not be rewritten. New archive version 6 stores observed state;
-versions 2–5 have unknown state, with no current-FCC history hydration. Explain
-state PASS exclusions of older rows. Downgrades require matching binary/data
-backups; failed imports instead retain the last good FCC database.
+Archive version 6 separately stores observed State; older archive versions 2–5
+have unknown State, without current-registry hydration. This archive metadata
+history is not configuration migration. Failed FCC imports retain the last good
+FCC database. Route storage details to
+[User Configuration Storage](../../data/config/README.md#user-configuration-storage).
 
 ## Sources
 
 - [telnet/README.md human readbacks](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#human-configuration-readbacks)
 - [telnet/README.md client schema and framing](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#client-yaml-configuration)
 - [telnet/README.md named presets and persistence](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#named-presets)
-- [README.md output examples](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md#output-examples)
 - [commands/README.md HELP ownership](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md)
 - [data/config/README.md effective node YAML](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md)
+- [Boolean personal-rule contract](../../docs/domain-contract.md#boolean-personal-rules)
+
+The Boolean/v5 routes describe the current local MVP, not production deployment
+or completed private local-cluster acceptance. That acceptance remains pending. New source
+owners named here are local checkout paths, not claims of publication on main.
 
 Canadian licensing uses the required `ised` configuration block and independent
 paired ISED snapshot. `ised.enabled: false` keeps downloads and enrichment on.
 The same DXSTATE/DESTATE fields accept all 13 province/territory codes alongside
 the 60 FCC codes. Base-call CTY selects source, including foreign portable calls.
 Events use inclusive UTC dates; a prefix match means callsign plausibility,
-without proving eligibility. History uses stored State. Layout versions stay
-archive 6, saved preferences 4 and machine YAML 1/2/3/4; older binaries may reject
-Canadian codes, so downgrade with matching backups. Route source/failure details
-to [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md)
-and [configuration](../../data/config/README.md#canadian-ised-reference-data).
+without proving eligibility. History uses stored State. Archive version 6 is
+separate from native configuration v5 and machine schema 5. For source/failure
+details, see [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md)
+and [configuration](../../data/config/README.md#fcc-and-ised-reference-data-and-enforcement);
+any pre-v5 category/schema mechanics in the ADR are historical.
 
 ## MINSNR
 
-Numeric `PASS MINSNR CW,RTTY 10` and `REJECT MINSNR FT8,FT4 -10` both set an
-inclusive minimum per selected mode: automated reports must be at least that
-value. Zero and negative integers enable thresholds. Human spots and spots
-without SNR bypass MINSNR only; other filters still apply. Do not describe
-numeric REJECT as rejecting stronger signals or invent a SET MINSNR command.
-
-Mode lists accept comma or space separators and are validated before any edit.
-ALL must stand alone in the mode selector. A numeric ALL update covers current
-supported modes. PASS's value ALL and REJECT's value NONE clear selected rules;
-ALL in the selector clears every saved rule, including inactive ones. RESET
-FILTER and PASS NOFILTER also clear them. SHOW FILTER, FULL and MINSNR show
-sorted thresholds, configured/inactive counts and exemptions. Removed modes
-remain saved but inactive and reactivate only when the exact canonical name
-returns. Clear an inactive rule by its displayed exact name. Maps are limited
-to 128 total rules and 65,536 aggregate ASCII key bytes, including inactive keys.
-
-Thresholds are saved in profiles/presets, contribute to modified status and
-revision tokens, and invalidate history continuation when edited. Existing
-live/history self-spot exceptions still apply. Valid human edits keep existing
-live-first save/log behavior; machine persistence failures publish no change.
-
-Use `GET YAML FILTER SCHEMA 3` or `GET YAML CONFIG SCHEMA 3` for `min_snr`, a
-map of exact uppercase mode keys to signed integers. Schema 3 status includes
-configured/inactive counts and sorted inactive keys. A supplied map replaces
-all thresholds; `{}` clears it, while omitted PATCH preserves it. Full schema 3
-PUT/VALIDATE requires the map. A supplied unavailable name must already exist
-in the prior configuration; new unavailable keys fail validation. Schemas 1/2
-retain their shapes and preserve hidden thresholds. Default GET remains 1.
-
-Saved version 3 reads older records without inventing minima and preserves
-version 2 states and nested preset baselines. Downgrade requires matching
-profile/preset backups, rather than editing only the version marker. Archive
-format and report parsing do not change for this feature. See the
-[telnet MINSNR contract](../../telnet/README.md#minimum-snr) and
-[ADR-0258](../../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md).
+This retained heading routes former MINSNR questions to
+[Boolean SNR expressions](../../telnet/README.md#minimum-snr), not a saved
+threshold map. For example, `REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10`
+explicitly limits rejection to skimmer reports below 10. Without that source
+guard, present human reports also participate. Zero/negative reports are known;
+missing reports make comparisons false, including `<>`, and NOT negates that.
+[ADR-0258](../../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md)
+records historical pre-v5 category mechanics, not current exemptions or schema
+compatibility. Rule changes retain preset/revision/history invalidation and
+the human-versus-machine publication boundaries above.
 
 ## Literal Comment Rules
 
 Retrieve [the comment contract](../../telnet/README.md#comment-filters-and-searches)
-for PASS/REJECT COMMENT, REMOVE PASS/REJECT COMMENT and RESET FILTER COMMENT.
-These use stored comments, case-insensitive literal matching, 32 entries per
-list and 64 printable ASCII bytes per phrase. An active PASS list hides ordinary
-nonmatching/empty comments; EVENT's untagged exemption does not apply.
-Spaces/punctuation inside a phrase are literal. ALL/NONE/*/? are not operators.
+for saved atoms such as `COMMENT="CQ ""DX"""`. Each operand is 1–64 printable
+ASCII bytes with a non-space byte; matching is an ASCII case-insensitive literal
+substring, not regex/glob/word matching. Preserve case, punctuation and spaces;
+expression quotes double literal quotes, and backslash is literal.
+Use SHOW FILTER RULE or `GET YAML FILTER SCHEMA 5`. Edit/clear the whole slot,
+not a COMMENT list. Saved/effective readbacks consume retained immutable
+programs; no phrase-list compatibility is supported.
 
-Use SHOW FILTER COMMENT or GET YAML FILTER SCHEMA 4 for inspection. Schema 4
-requires `comments`/`block_comments` on full PUT/VALIDATE; PATCH omission preserves,
-supplied lists replace and `[]` clears. Exact YAML retains duplicates/overlap,
-counting every entry, with REJECT precedence. Schemas 1-3 preserve hidden rules.
-Disk saves now use version 4; existing v3 minima remain supported. Distinguish
-human live-edit/save warnings from atomic machine persistence failures.
+Rule budgets are ten slots, 1,024 raw and canonical bytes per expression,
+32 atoms/128 nodes/depth 8 per rule, 32 values per atom and 128 atoms/512 values
+total. Depth counts parentheses/NOT, not flat AND/OR height. These do not
+replace human-line, machine, stored-byte or decode-work bounds; retrieve
+[the primary limits](../../telnet/README.md#filters) before diagnosing refusal.
 
 SHOW DX/MYDX accepts COMMENT after selector/count options. Its phrase is mandatory
 even for self-spots, while saved filters retain existing self exceptions. Follow
 the returned NEXT command; comment edits invalidate continuation. A rare match
 may exhaust a page's scan budget, which is incomplete search rather than absence.
-See [ADR-0261](../../docs/decisions/ADR-0261-literal-comment-filter-and-history.md).
+See [archive history](../../commands/README.md#archive-history).
+[ADR-0261](../../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
+records historical saved-list mechanics; explicit archive phrase grammar is
+separate and unchanged.

@@ -1,8 +1,16 @@
-# GoCluster Operator Guide
+---
+title: GoCluster Operator Guide
+description: Operate a GoCluster node and use its telnet command and filtering surfaces.
+---
 
 This guide is for running a GoCluster node and connecting to it as a telnet
 DX-cluster user. For implementation details, use the package READMEs linked
 from the repository root.
+
+> [!IMPORTANT]
+> The current checkout is the test-only Boolean-filter MVP. Use isolated user and
+> archive paths; schema 5 does not convert old profiles or presets. Production
+> rollout and local-cluster acceptance are separate gates.
 
 ## Get A Binary
 
@@ -230,11 +238,12 @@ Log in with your callsign. Useful first commands:
   the saved cadence and report effective zero without promising delivery.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `SHOW FILTER`: show filter selections and restrictions.
-- `SHOW FILTER FULL` or `SHOW FILTER <category>`: show complete effective PASS/REJECT selections and ON/OFF switches.
+- `SHOW FILTER RULE` or `SHOW FILTER FULL`: show saved/effective numbered rules and separate controls.
 - `SHOW SETTINGS`: show configured choices, effective settings, and session status.
-- `PASS <type> <list>`: allow matching spots.
-- `REJECT <type> <list>`: block matching spots.
-- `RESET FILTER`: restore default filters.
+- `PASS RULE <0..9> <expression>`: add or replace a qualifying rule.
+- `REJECT RULE <0..9> <expression>`: add or replace a veto rule.
+- `RESET FILTER RULE <slot|ALL>`: clear rules without changing NEARBY.
+- `RESET FILTER`: clear rules and NEARBY, preserving settings and separate controls.
 - `SAVE PRESET <name>`: save filters and preferences to a named snapshot.
 - `LIST PRESET`: list the snapshots shared by your numeric SSIDs.
 - `LOAD PRESET <name>`: load a snapshot and save the current SSID's defaults.
@@ -267,75 +276,46 @@ but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
 
 ### Read Your Filters And Settings
 
-`SHOW FILTER` gives an aligned overview of passing selections. BAND, MODE,
-SOURCE, EVENT, PATH, CONFIDENCE and DX/DE continents show names and useful
-explicit exclusions, wrapping across lines. Unrestricted categories show
-`All`; an explicit block can show `All except 80m`. Disabled choices are not
-enumerated. Long callsign, DXCC, grid and zone lists use counts. DXCC labels use
-unambiguous canonical CTY prefixes in overview, FULL and category views. Shared
-entities display all such prefixes: IT9, I and IG9 all refer to ADIF 248.
-Conflicting labels are omitted; valid alternatives remain. Rules with no usable
-label display `Unknown DXCC (12345)`; YAML retains numeric ADIF keys. Geography rules
-and inclusion switches are grouped for reading. For example:
+Login shows actual settings and numbered Boolean rules. New users see
+"Default settings and filters"; returning users see "Current settings and
+filters". Recognized old profiles receive the same configured starting rules
+as new users while keeping saved settings and controls. The reset notice says
+"Your old filters were reset. Your settings were kept." Old presets are cleared;
+existing Boolean profiles and presets are not reset.
+
+`SHOW FILTER` shows current settings and rules without combining independent
+mode/band/source lists. Two PASS rules are alternatives, not a Cartesian
+product. For example, these rules select human CW on 20m or skimmer FT8 on 40m,
+excluding EU DX:
 
 ```text
-User          N2WQ-1
-Preset        CONTEST (modified)
-
-Bands         Only 20m, 40m
-Modes         CW, FT8; unknown modes hidden
-Sources       All (HUMAN, SKIMMER)
-Events        POTA; block WWFF; untagged included
-Confidence    All
-Path          All
-DX geography  Suspended by NEARBY; rules retained
-DE geography  Suspended by NEARBY; rules retained
-DX calls      Only 12 patterns; 3 blocked
-DE calls      All
-Nearby        On; grid FN31PR
-Include       Beacons: Off | WWV: On | WCY: On | Announce: On
-              Self: Off | Toxic: Off
-
-Detailed selections: SHOW FILTER FULL
-One category: SHOW FILTER <category>
-
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
+PASS RULE 0 MODE=CW AND BAND=20M
+PASS RULE 1 MODE=FT8 AND BAND=40M AND SOURCE=SKIMMER
+REJECT RULE 9 DXCONT=EU
 ```
 
-`SHOW FILTER FULL` lists complete effective selections; `SHOW FILTER BAND` limits the
-detail to one category. In the CC dialect, `SHOW/FILTER` and `SH/FILTER`
-support the same arguments. An example response to `SHOW FILTER EVENT`
-shows effective event selections, including active false-valued keys:
+A PASS without SOURCE selects HUMAN only. If SOURCE appears anywhere in the
+expression, normal Boolean logic applies. `SOURCE=HUMAN,SKIMMER` allows both.
+REJECT rules do not get a HUMAN default. Removing all active PASS rules allows
+all sources except matching REJECTs. An allowed source is not a feed-health
+indicator. SELF ON can bypass personal rules for spots of the user's own call.
 
-```text
-User          N2WQ-1
-Preset        CONTEST (modified)
+Create a new rule 0 to replace the starting selection. Using another slot
+adds an alternative PASS. Invalid edits change nothing. Accepted human edits
+are active immediately; a save failure explicitly says they were not saved.
 
-Events
-  PASS: POTA, SOTA
-  REJECT: WWFF
-  Untagged spots are always included.
-
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
-```
-
-The overview describes matching behavior; FULL/category shows complete
-effective PASS/REJECT selections with ALL/NONE and ON/OFF switches. Ordinary
-false entries are omitted; REJECT wins over PASS. Use GET YAML FILTER for stored
-flags, false entries and defaults. Ordinary string/integer categories can remain
-restrictive with a nonempty allow map even when `allow_all=true`. EVENT instead matches
-key presence, including keys stored as `false`, and ignores allow restrictions
-when `allow_all=true`. Untagged spots always pass its check. When editing YAML,
-remove an EVENT key from its replacement map to remove that rule. Setting the
-value to `false` keeps the key present. PATH retains its UNLIKELY/CLOSED rules.
+`SHOW FILTER RULE` shows the same concise rules; `SHOW FILTER FULL` adds
+geometry and preparation counts. Both dialects support `SHOW/FILTER` and
+`SH/FILTER`. Old category readbacks such as `SHOW FILTER BAND` are unsupported.
+NEARBY shows the effective expression or that a geography-only rule is suspended.
 
 Human readbacks use at most 78 printable ASCII characters per line, followed
-by CRLF. Exact strings use quoted ASCII escapes; long values use complete
+by CRLF. Short rules use command syntax. Long exact values use quoted ASCII
+escapes and complete
 quoted pieces joined with `+`. Spaces inside quotes are retained, and neither
 the marker nor continuation indentation is part of the value. Escapes are not
-split. Callsign patterns retain supplied order; map keys use stable ordering.
+split. Long display pieces are not directly copyable commands; use schema 5
+YAML for rules beyond the configured command-line limit.
 See [lossless wrapping examples](../telnet/README.md#human-configuration-readbacks).
 
 `SHOW SETTINGS` shows the configured choice and the behavior the server uses.
@@ -922,9 +902,10 @@ Numeric arguments remain counts. `SHOW DXCC` detail lookup is unchanged. See
 
 ## US State And Canadian Province Filtering And Upgrade
 
-Users can select `PASS DXSTATE CA,TX,ON,QC` or `REJECT DESTATE AA,AE,AP` using
-the existing State fields. Unknown State fails an explicit PASS list and passes
-a REJECT-only list. NEARBY suspends these rules until OFF. All 60 FCC and 13
+Users can select `PASS RULE 0 DXSTATE=CA,TX,ON,QC` or
+`REJECT RULE 1 DESTATE=AA,AE,AP`. Unknown State fails every comparison, including
+`<>`; NOT flips that result. NEARBY omits geographic atoms from effective rules
+while retaining full saved expressions. All 60 FCC and 13
 Canadian province/territory codes are accepted. The source is a registered
 address, which can differ from the station's operating location.
 
@@ -945,50 +926,42 @@ Canadian cache entries revalidate at midnight. Prefix checks prove callsign
 plausibility without proving residency or club/event eligibility.
 
 Archive version 6 retains observed State; versions 2–5 remain unknown and are
-never enriched on history reads. Preference disk version 3 and explicit machine
-schema 3 also carry MINSNR; machine schemas 1/2 keep their layouts. Schema 1
-writes preserve hidden State rules;
-schema 2 exposes them. Stop writers and retain matching binary/data backups
-before upgrade or downgrade: older binaries may reject Canadian codes in saved
-profiles and archive rows. Recover failed refreshes by retrying with the last
+never enriched on history reads. Preference schema 5 is independent of archive
+record versions. Recognized old user profiles receive a one-time reset-only
+login upgrade, not a conversion of old filter expressions.
+Keep matching binary/data backups for rollback, not a version-marker edit.
+Recover failed refreshes by retrying with the last
 good database in place. See [configuration](../data/config/README.md#fcc-and-ised-reference-data-and-enforcement)
 and [validation](canadian-state-validation.md).
 
 ## Per-Mode Minimum SNR
 
 ```text
-PASS MINSNR CW,RTTY 10
-REJECT MINSNR FT8,FT4 -10
-PASS MINSNR FT8 ALL
-REJECT MINSNR CW,RTTY NONE
-SHOW FILTER MINSNR
+REJECT RULE 8 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10
+REJECT RULE 9 SOURCE=SKIMMER AND MODE=FT8,FT4 AND SNR<-10
+SHOW FILTER RULE
 ```
 
-Numeric PASS and REJECT set the same inclusive minimum. Human spots and spots
-without SNR are exempt from MINSNR; other filters still apply. Zero and negative
-values are thresholds, and a missing setting means disabled. Other modes remain
-unchanged. ALL in the mode position must stand alone; numeric updates expand
-currently supported modes, while reset operations clear active and dormant rules.
-Removed modes retain inactive thresholds until their exact canonical mode returns.
-RESET FILTER and PASS NOFILTER clear every minimum.
+Choose unused slots or replace rules deliberately. SNR applies to every present
+report, including humans; SOURCE in these examples makes the exemption explicit.
+Missing SNR fails the comparison, so these REJECTs do not match missing reports.
+Zero and negative thresholds are valid. Clear a slot with
+`RESET FILTER RULE <slot>`; presets, revisions and history use the same rule set.
+Use `GET YAML CONFIG SCHEMA 5` for exact definitions. PATCH replaces a supplied
+whole rules list, with `[]` clearing it. See [SNR](../telnet/README.md#minimum-snr).
 
-Presets, reconnects and modified status retain these settings. Changes invalidate
-history continuation. Use GET YAML CONFIG SCHEMA 3 for exact `min_snr` values;
-schemas 1/2 preserve hidden thresholds. PATCH replaces a supplied map and `{}`
-clears it. Active and dormant rules share the finite entry/key-byte limits exposed
-by schema 3 CAPABILITIES. See [the transport contract](../telnet/README.md#minimum-snr).
+Literal comment filtering uses expressions such as
+`REJECT RULE 7 COMMENT="unwanted phrase"`. Matching is case-insensitive ASCII
+literal substring, not regex; phrases are 1–64 printable ASCII bytes with at least
+one non-space character. Use doubled double-quotes inside a quoted value.
+For archive searches, `SHOW DX [selector] [count] COMMENT <phrase>` remains a
+mandatory explicit selection even for self-spots and is retained by NEXT.
+See [comments](../telnet/README.md#comment-filters-and-searches).
 
-Literal comment filtering uses `PASS COMMENT <phrase>` and `REJECT COMMENT <phrase>`.
-PASS phrases use OR, REJECT wins and other ordinary filters still apply. Use
-`SHOW FILTER COMMENT`, `REMOVE PASS|REJECT COMMENT <phrase>` and
-`RESET FILTER COMMENT [PASS|REJECT]` to inspect/remove/clear rules. Each list holds
-32 phrases of at most 64 printable ASCII bytes; punctuation and repeated spaces
-are literal. For archive searching use `SHOW DX [selector] [count] COMMENT <phrase>`;
-the phrase is mandatory even for self-spots and is retained by NEXT. Rules persist
-in presets/profiles and explicit machine schema 4. Old schemas preserve hidden
-comments. See [the full comment contract](../telnet/README.md#comment-filters-and-searches).
-
-New saves use disk configuration version 4. Older records acquire no minimums
-and retain their previous rules, including version 2 States and version 3 minima.
-Versions before 4 acquire empty comment rules. Back up profiles and
-presets before upgrading; downgrade with a matching binary and data backup.
+Only native disk configuration version 5 and machine schema 5 are accepted.
+The experiment uses a private store. Login resets recognized old profiles to
+configured default modes, without a source restriction, while preserving
+settings, separate controls and metadata. Old presets are cleared without
+rewiping new v5 presets. Original backups and explicit errors protect against
+failed upgrades; malformed and future-version records remain protected.
+Implementing this path does not itself deploy it or authorize production writes.

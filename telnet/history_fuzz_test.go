@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"dxcluster/archive"
-	"dxcluster/filter"
 	"dxcluster/spot"
 )
 
@@ -121,9 +120,9 @@ func (s *cursorFuzzSession) settings(restore bool) {
 		s.server.runPreferenceCommand(s.client, "fixture", func(c *Client, _ string) (string, bool) {
 			c.filterMu.Lock()
 			if s.model.blocked {
-				c.filter.BlockBands["20m"] = true
+				*c.filter = *passRuleTestFilter(s.t, "BAND=40M")
 			} else {
-				delete(c.filter.BlockBands, "20m")
+				*c.filter = *unrestrictedTestFilter()
 			}
 			c.filterMu.Unlock()
 			return "", true
@@ -162,7 +161,7 @@ func (s *cursorFuzzSession) apply(operation, argument byte) {
 		s.client.interrupt()
 		s.retire()
 		retired := s.model.retired
-		s.client = &Client{callsign: "N2WQ", dialect: DialectGo, filter: filter.NewFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
+		s.client = &Client{callsign: "N2WQ", dialect: DialectGo, filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
 		s.server.clients[s.client.callsign] = s.client
 		s.model = cursorModel{retired: retired}
 	case cursorInvalid, cursorStaleToken:

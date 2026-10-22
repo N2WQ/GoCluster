@@ -166,7 +166,7 @@ These rules must be explicit, deterministic, and testable.
   attempt. History resets after matching C/A local Flush and establishment/replay
   plus60 uninterrupted healthy seconds. Global closure interrupts this interval
   without advancing cooldown. Refused records are never retained/replayed.
-- Required integer `peering.max_peers` is1–64 (shipped64), with no fallback.
+- Required integer `peering.max_peers` is1ï¿½64 (shipped64), with no fallback.
   Active enabled identities must fit N; direct construction validates before
   resources. Pending128 is unchanged; transport ownership is N+128. Complete
   publication reserves actual enabled identities, not phantom population N.
@@ -375,17 +375,23 @@ lenient modes must be explicit, documented, and test-covered.
   200,000 entries with the existing FCC TTL; Canadian facts also revalidate at
   UTC midnight. Old generation/date queries cannot publish stale facts.
   Unavailable facts are never cached.
-- State accepts 60 FCC and 13 Canadian codes. Named PASS lists exclude unknown
-  State; named REJECT lists admit it. NEARBY suspends/restores these rules.
+- State accepts 60 FCC and 13 Canadian codes as registered-address metadata,
+  not proof of operating location. `DXSTATE`/`DESTATE` Boolean atoms compare
+  canonical observed codes; missing, invalid or noncanonical State is unknown.
+  Every comparison, including `<>`, is false for unknown State; NOT negates
+  that result. NEARBY projects these atoms out of effective rules, retaining
+  the latest full saved expressions.
 - Archive version 6 records both observed States. Versions 2-5 remain unknown;
   history never consults today's registry to hydrate old records.
-- Machine YAML schema 1 preserves its shape and hidden State rules; explicit
-  schema 2 exposes the same State fields. Disk version 3 and machine schema 3
-  also carry MINSNR; State maps retain their 73-key bounds. Older binaries can reject Canadian codes; downgrade uses
-  matching backups.
+- Native configuration version 5 and explicit machine schema 5 carry numbered
+  rules, not State maps or hidden old-schema selections. Recognized old profiles
+  have the reset-only login upgrade below; future or malformed documents remain
+  protected. Downgrade uses matching
+  binary/data backups.
 
 See [ADR-0253](decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) and
-[ADR-0254](decisions/ADR-0254-canadian-ised-license-and-state-reuse.md).
+[ADR-0254](decisions/ADR-0254-canadian-ised-license-and-state-reuse.md) for
+metadata history; their pre-v5 category/schema mechanics are historical.
 
 Call correction checks a replacement's home-base license eligibility before
 identity, confidence, metadata or accepted-mutation accounting changes. A
@@ -396,37 +402,202 @@ are not rolled back and do not imply delivery. Replay uses frozen input bytes
 and simulated UTC eligibility, with process-time cache lifetime and explicit
 per-run cleanup. See [ADR-0302](decisions/ADR-0302-correction-evidence-admission-and-license-authority.md).
 
+## Boolean Personal Rules
+
+This is the approved normative Boolean MVP contract; see
+[accepted test-only ADR-0317](decisions/ADR-0317-boolean-filter-replacement-mvp.md).
+It does not authorize production deployment or establish private-cluster
+acceptance or representative performance qualification. There is one prepared
+Boolean personal-rule engine; the old category model has been removed.
+
+### Slots, Combination, Defaults And Reset
+
+- Slots 0-9 each hold one PASS or REJECT action and one complete expression.
+  `PASS RULE <0..9> <expression>` and `REJECT RULE <0..9> <expression>` use the
+  same grammar in GO and CC. Setting a slot replaces its action and expression.
+- Any matching active REJECT vetoes delivery. Otherwise active PASS rules are
+  ORed. With no active PASS, personal selection is unrestricted except for
+  REJECTs; with no rules there is no personal restriction. Slots are not
+  priorities. Adding a PASS broadens selection; narrow an existing PASS by
+  editing it rather than adding another.
+- New records and recognized old-profile resets receive the same validated
+  configured MODE and SOURCE selections as an ordinary editable PASS in slot 0.
+  Selections combine with AND; ALL, both sources or an empty source selection
+  writes SOURCE=HUMAN,SKIMMER explicitly. Startup validates defaults after
+  taxonomy loading and before clients.
+  Existing/restored empty records remain empty, including after reconnect.
+- A PASS rule with no SOURCE atom selects HUMAN only. Any SOURCE atom enables
+  ordinary Boolean evaluation of the entire expression, including OR and NOT.
+  COMMENT text is not a field occurrence. REJECT rules do not receive the
+  default. Preserve stored syntax and budgets; effective readback discloses
+  HUMAN. A geography-only suspended PASS stays absent, and no active PASS
+  remains unrestricted by source.
+- `RESET FILTER RULE <0..9|ALL>` clears only the selected slots, preserving
+  NEARBY. `RESET FILTER` clears all personal rules and turns NEARBY OFF.
+  Neither reinstalls slot 0 nor resets separate controls or profile settings.
+- Retired category, MODE-delta, MINSNR, COMMENT-list, DXBM and NOFILTER mutations
+  and old category aliases are refused, not translated. There is no `RESET RULE`
+  or `SET DX FILTER` alias. Existing separate-control commands and shortcuts
+  keep their own grammar.
+
+NEARBY and BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate
+controls, not expression fields. The six stored control choices preserve
+DEFAULT versus explicit false/true. Bulletin delivery remains independently
+controlled. Live qualifying self-spots require SELF enabled and must pass TOXIC;
+they bypass personal rules and NEARBY. Command/history saved self exceptions
+remain independent of SELF and still honor TOXIC. Explicit history selector,
+BAND, MODE and COMMENT selections remain mandatory even for self-spots and
+apply before counting.
+
+### Expressions And Field Semantics
+
+An atom is a field comparison. Expressions use parentheses and NOT, AND and OR,
+with precedence NOT > AND > OR and short-circuit evaluation. `=` against a
+comma list, bare or bracketed, matches any value. `<>` means none of the listed
+values only when the spot operand is known. Every comparison against unknown
+data is false, including `<>`; NOT negates that result. For example,
+`DXSTATE<>CA` is false for unknown State, while `NOT DXSTATE=CA` is true.
+A reject-only set can admit unknown State without making its `<>` atom true.
+There are no generic ALL/ON/OFF wildcard operands.
+
+The fields are BAND, MODE, SOURCE, EVENT, DXCALL, DECALL, DXCONT, DECONT,
+DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, DXGRID2, DEGRID2, FREQ,
+SNR, CONF, PATH and COMMENT. Equality/inequality apply to all; ordered
+`<`, `<=`, `>` and `>=` apply only to FREQ, SNR, DXZONE and DEZONE and
+take one value.
+
+- BAND uses supported normalized bands; MODE uses configured taxonomy/aliases.
+  Blank spot MODE is known UNKNOWN, not missing. SOURCE is HUMAN for
+  `Spot.IsHuman`, SKIMMER otherwise.
+- EVENT compares the taxonomy event bitset; NONE is known when no event is
+  present. Eventless spots have no exemption from expressions.
+- DXCALL reads `DXCall`; DECALL prefers `DECallStripped`, otherwise `DECall`.
+  Patterns contain letters/digits, slash or hyphen and at most one `*` at an
+  end, including `*` alone. No internal/multiple stars or `?` wildcard.
+  A lone star matches only a nonempty known call.
+- DXCONT/DECONT use supported continent codes; DXZONE/DEZONE use integral
+  CQ zones 1-40. DXDXCC/DEDXCC take positive ADIF integers, not CTY prefix
+  labels or callsign lookups. A positive spot ADIF is known without rule-time
+  CTY-membership validation. `DXDXCC=248` selects the entity;
+  `DXCALL=IT9*` selects a literal prefix. SHOW DXCC and history CTY selector
+  precedence remain separate.
+- DXSTATE/DESTATE use the observed canonical 60 FCC plus 13 Canadian codes
+  described above. Rule operands normalize case; missing, lowercase or invalid
+  spot codes are unknown. The home/base-call license jurisdiction used to
+  obtain State is distinct from positive ADIF geography metadata or a portable
+  operating prefix. DXGRID2/DEGRID2 compare two-letter fields AA-RR, not exact
+  user GRID settings.
+- FREQ operands are finite nonnegative kHz numbers. `=`/`<>` also accept
+  inclusive low-high ranges. A spot frequency is known only when finite and
+  positive. Comparisons use the actual floating value, with no epsilon or
+  additional rounding.
+- SNR is a strictly integral report, known exactly when `Spot.HasReport` is
+  true, including human, zero and negative reports. No implicit human
+  exemption applies; missing reports follow the ordinary unknown rule.
+- CONF is the field name, not CONFIDENCE. It is unknown for confidence-exempt
+  modes, with no exemption bypass inside an expression. For other modes blank
+  confidence normalizes to the known `?` glyph.
+- PATH classes match exactly: UNLIKELY excludes CLOSED. To select both use
+  `PATH=UNLIKELY,CLOSED`. Missing/invalid prediction becomes the known
+  INSUFFICIENT class.
+- COMMENT is an ASCII case-insensitive literal substring of the stored cleaned
+  comment, not regex/glob/word matching. Empty comments are unknown. Each
+  phrase is 1-64 printable ASCII bytes with a non-space byte. Preserve literal
+  case, punctuation and spaces; double a literal quote inside a double-quoted
+  value, and treat backslashes literally.
+
+The parser admits printable ASCII with ASCII-space whitespace, rejects trailing
+tokens and reports 1-based byte columns. Quote values containing spaces or
+punctuation. Non-COMMENT operands normalize under their field's rules, not by
+uppercasing all expression bytes. This example preserves two literal spaces:
+
+```text
+PASS RULE 0 COMMENT="CQ ""DX""  !;=()[]"
+REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10
+```
+
+Trial guardrails are ten slots, 128 total atoms and 512 total values. Each
+expression has independent 1,024-byte raw and canonical limits, 32 atoms,
+128 nodes and nesting depth 8; an atom has at most 32 values. Depth counts
+parentheses and NOT, not flat AND/OR tree height. These do not enlarge human,
+machine or stored-document limits. Any parse, domain, slot or budget refusal
+leaves the previous complete rule set intact.
+
+### NEARBY Projection And Recovery
+
+NEARBY ON selects a prepared effective expression by structurally removing only
+DX/DE continent, zone, DXCC, State and grid leaves, not substituting true/false.
+A NOT whose subtree disappears also disappears; an AND/OR with one surviving
+child collapses to that child. An entirely emptied rule is ignored, contributing
+neither PASS nor REJECT. Calls, BAND, MODE, SOURCE, EVENT, COMMENT, FREQ, SNR,
+CONF and PATH remain. Full saved expressions stay intact and editable.
+OFF evaluates the latest full rules, never a pre-ON map or restoration snapshot.
+
+Either the DX or DE endpoint may satisfy H3 geometry; an unavailable opposite
+endpoint cannot veto a match. 160m, 80m and 60m use the coarse cell; other
+supported bands use the fine cell. Enabling NEARBY or changing GRID while ON
+requires usable geometry. The saved GRID and dedupe choice remain saved;
+temporary NEARBY effective dedupe does not rewrite the user's selection.
+
+Already-ON restored NEARBY with unavailable
+GRID/cells must permit rule-only edits through human commands and YAML when
+every other saved selection is unchanged. Retain GRID and ON; geometry must
+admit no ordinary spots when both user cells are unavailable. Preserve the live SELF/TOXIC and
+command/history self exceptions above. Do not require clearing geography,
+changing unrelated selections or restoring an old map to edit the full rules.
+
+Rule-only YAML recovery waives only mapping availability for the unchanged saved
+GRID. Exact locator syntax and every other settings check remain mandatory.
+Existing human control/settings admission is unchanged. If only one user cell
+is available, the bands using that cell may work; the other bands reject.
+Readback reports this as partly usable geometry. The joined fresh-child
+`TestGridMappingAvailability` fixture covers actual PATCH, PUT and VALIDATE with
+an explicit saved GRID and genuinely unavailable mappings.
+
+### Prepared Matching And Readback
+
+Matching captures immutable prepared programs and scalar controls, cells and
+path inputs coherently under path-before-filter locks. Rule edits replace
+bounded sets and share only unchanged immutable programs. Live, command and
+history matching use this engine without an extra category gate; rendering
+reads retained programs rather than recompiling expressions. History captures
+per-page matching state under its configuration transaction; propagation
+observations remain current per candidate. Rule identity and runtime matching
+geometry participate in existing continuation/generation fences.
+
+`SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact saved/effective
+numbered rules and individual controls. `SHOW FILTER FULL` adds geometry detail
+and preparation counts. All views preserve actions, canonical expressions and
+NEARBY projection/suspension without flattening Boolean relationships.
+`SHOW/FILTER` and `SH/FILTER` remain readback aliases; category views do not.
+Human output uses at most 78 printable ASCII columns plus CRLF. Short rules
+use directly reusable command syntax. Long exact values use Go-style
+quoted/escaped complete `+` chunks concatenate losslessly; that display encoding
+is not expression quoting or necessarily copyable command syntax. Human input
+still has its configured limit, 128 bytes by default; use schema 5 YAML for
+longer expressions. Preserve the unconditional human reading hold through
+preparation, delivery and successful write/flush plus its reading interval,
+RESUME supersession, bounded queues and 65,536-byte complete-response limit.
+Machine operations remain pause-neutral.
+
+Source owners in the checkout are `filter/rule_set.go`, `filter/expr/`,
+`filter/rule_compile.go`, `filter/rule_evaluate.go`, `filter/rule_view.go`,
+`filter/rule_set_projection.go`, `filter/match_snapshot.go`,
+`telnet/matching_snapshot.go` and `telnet/history_filter.go`.
+`commands.BooleanRuleHelpLines` in `commands/boolean_rule_help.go` owns
+`HELP RULE`; see the [telnet contract](../telnet/README.md#filters).
+
 ## Per-Mode Minimum SNR
 
-`PASS MINSNR <modes|ALL> <integer dB>` and numeric `REJECT MINSNR` set
-identical inclusive minima for automated spots with a present report. A zero
-report is present when `HasReport` is true; zero and negative thresholds enable
-rules. Human spots and spots without a report bypass only this category. Other
-categories and existing live/history self-spot behavior remain in force.
-
-Exact canonical mode keys own the signed thresholds. Removed or newly aliased
-keys remain stored but inactive, reactivating if the exact canonical mode
-returns. All maps include active and dormant keys in their 128-entry and 65,536
-aggregate raw ASCII key-byte bounds. Human clears resolve retained exact names
-first. Numeric updates admit only current supported canonical modes; machine
-supplied maps may retain unavailable names only from the transaction's prior
-configuration. Invalid lists or maps publish no partial edit.
-
-PASS's value ALL and REJECT's value NONE clear selected minima. ALL alone in
-the selector expands supported modes for numeric updates and clears all saved
-minima for resets. Whole-filter resets also clear dormant entries. Configuration
-identity, presets, revision tokens and detached history predicates include the
-map; edits invalidate history continuation and pending publication.
-
-Saved version 3 and explicit machine schema 3 carry `min_snr`. Old saved versions
-acquire no minima and version 2 state rules remain exact. Machine schemas 1/2
-preserve hidden thresholds without adding fields to their status/choice shapes.
-Schema 3 status reports configured/inactive counts and sorted inactive keys;
-complete response budgets include that status. Source parsing, report units,
-aggregation, archive layouts and model semantics are unchanged.
-
-See [ADR-0258](decisions/ADR-0258-per-mode-minimum-snr-filter.md) and the
-[telnet command contract](../telnet/README.md#minimum-snr).
+Use Boolean SNR comparisons with explicit MODE and SOURCE guards, for example
+`REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10`.
+This rejects present skimmer reports below 10, not reports equal to 10, and
+does not implicitly exempt human reports in other SNR expressions. Missing
+reports follow unknown/NOT semantics. There is no saved `min_snr` map, dormant
+mode-threshold state or MINSNR mutation compatibility.
+Source parsing, report units, aggregation, archive layouts and model semantics
+are unchanged. [ADR-0258](decisions/ADR-0258-per-mode-minimum-snr-filter.md)
+describes historical pre-v5 category behavior, not the active contract.
 
 
 ## Station Reputation
@@ -442,20 +613,127 @@ on restart or state eviction. See
 
 ## Stored Configuration Admission
 
+Native user records require explicit `configuration_version: 5` and nested
+`configuration.filters/settings`. FILTER owns `rules`, `nearby_enabled` and
+the six controls `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`,
+`allow_self` and `allow_toxic`. SETTINGS retains `dialect`, `grid`,
+`noise_class`, `dedupe_policy`, `path_min_observation_count` and
+`solar_summary_minutes`. Rules contain `slot`, lowercase `action: pass|reject`
+and `expr`; expressions canonicalize without changing COMMENT literal bytes.
+Retain DEFAULT versus explicit control false/true, empty default strings and
+numeric zero selections, subject to runtime settings admission.
+
+User metadata `recent_ips` and `last_login_utc` stays outside configuration.
+An optional `preset` contains `name` and an independent `baseline` with its
+own `configuration_version: 5` and `configuration`. A named library contains
+only a `presets` mapping of normalized names to individual versioned v5
+configurations: no invented top-level library version or machine envelope.
+All current entries and baselines require v5. Strict v5 codecs do not interpret
+older schemas or accept explicit disk zero. Encoder DTO version zero is only
+an in-memory new-object convention, stamped to 5.
+
+An explicit login-owned upgrade handles recognized unversioned and version
+1â€“4 profiles. It discards category filters, NEARBY and the applied association,
+preserves six settings, separate controls and login metadata, and installs
+the same configured mode/source defaults as a new account in editable PASS
+slot 0. This is a one-time reset, not translation of old rules.
+Existing v5 profiles and new Boolean presets must not be reset again.
+Shared-library cleanup removes old entries under the existing base-call stripe
+and retains valid v5 entries. Back up originals before replacement; each file
+commits atomically, with explicit partial-failure/retry behavior rather than a
+cross-file atomicity claim. Future, malformed and unsafe/over-budget inputs
+remain protected. No production data reset is authorized merely by implementing
+or documenting this upgrade.
+
+Full callsign/SSID owns its user record and applied baseline; numeric SSIDs
+share the base-call named library, not login metadata or live settings.
+Ordinary saves retain the applied reference. Library overwrite/deletion does
+not change that independent baseline; differences show `(modified)`, and
+reversing them clears it. LOAD rebuilds geometry and records the applied
+snapshot, including reported server adjustments; unavailable geometry retains
+stored ON with a warning rather than rewriting rules. SAVE associates the same
+capture committed to the library.
+
 User-record physical reads, normalized encoding and exact prepared writes each
 have a 1,048,576-byte limit. Configuration and applied baseline use separate
-262,144-byte standalone SavedPreset encoding limits. One document-wide
-physical-plus-logical decoding-work budget includes repeated alias expansion:
+262,144-byte standalone SavedPreset encoding limits, also applying to each
+named preset. One document-wide physical-plus-logical decoding-work budget
+includes repeated alias expansion:
 2,097,152 units for a record and 16,777,216 for a collection. Work units are not
-heap or file bytes. Existing 20-name/8 MiB collection limits remain.
+heap or file bytes; nested baselines share the operation budget. Existing
+20-name/8,388,608-byte (8 MiB) collection limits remain.
 
 Admit human candidates and temporary records before publication. A refused
 destination permits fitting warned temporary changes; a prospective oversized
 replacement rejects without effects. Initial login protection is sticky, while
 warm failures retry authoritative metadata on later saves and ordinary logout.
+An unreadable/malformed/unsupported record stays untouched, including login/IP,
+ordinary preference and teardown saves. Protected login uses warned temporary
+defaults, not successful restoration. LOAD, machine writes and SAVE are refused
+for that session; SAVE fails before library replacement. A failed login metadata
+save after a successful read retains the restored preferences/reference with a
+warning.
+
 SAVE admits library and association before either write; only later I/O failure
-can leave documented library-only success. Machine and LOAD publish after commit.
-See [ADR-0270](decisions/ADR-0270-complete-storage-admission.md).
+can leave library-only success, retaining the previous live/disk association and
+baseline. Machine and LOAD publish only after committing the complete record.
+An unchanged machine write still persists, repairing a prior late human save
+failure without resetting unrelated state.
+
+The full-SSID configuration lease spans capture, admission, persistence and
+publication, fencing session replacement. SAVE takes the base-call library
+stripe after that lease and admits both immutable payloads before library-then-
+record commits; callbacks must not reenter preset APIs. Publication preserves
+path-before-filter lock order and stable Filter identity. Atomic replacement
+requires writing, syncing and closing the temporary file first. Stop writers
+before backup, repair or restore and use one writer process per data directory;
+downgrade requires a matching binary/data backup. Refusal never grants authority
+to replace a protected destination.
+
+Source owners are `filter/configuration_v5.go`, `filter/storage_v5.go`,
+`filter/storage_v5_decode.go`, `filter/storage_v5_io_adapter.go`,
+`filter/preset_v5.go` and the existing user-record/preset coordinators.
+See [operator storage](../data/config/README.md#user-configuration-storage) for
+native examples and [ADR-0270](decisions/ADR-0270-complete-storage-admission.md)
+for admission history, not pre-v5 migration authority.
+
+### Machine Schema 5
+
+Every `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 5 [ID <id>]` requires
+explicit schema 5, including SETTINGS/CAPABILITIES. PUT/PATCH YAML
+FILTER/SETTINGS/CONFIG have no schema header suffix; their bodies require
+`schema_version: 5`. `VALIDATE YAML CONFIG` alone validates a complete CONFIG
+without applying or saving. Missing/old schemas and category fields are refused
+without translation or hidden-field preservation.
+
+FILTER's `configuration` directly contains its eight fields; SETTINGS directly
+contains its six fields; CONFIG nests `filters` and `settings`. PUT/VALIDATE
+require complete resources. PATCH preserves omitted fields, but a supplied
+`rules` list replaces all slots; `rules: []` clears it. It is not a per-slot
+merge. Duplicate slots and mapping keys are errors.
+
+The strict single-document writable envelope contains `schema_version`,
+`request_id`, `if_revision` and `configuration`, not read-only status or preset
+baselines. IDs are 1-32 ASCII letters/digits/hyphens; PUT/PATCH require the
+current connection's matching revision, while VALIDATE permits an optional
+revision. Keep session/epoch/revision fences and refetch after conflicts.
+Reject unknown/read-only fields, nulls, anchors, aliases, merges, custom tags
+and extra documents. Preserve 65,536-byte upload and complete-response limits,
+framing, deadlines and terminal-error distinctions. Admit the resulting complete
+CONFIG readback including reserved metadata before writing; a valid large
+preset can LOAD even when that readback would exceed the response limit.
+No partial publication or truncation is a success.
+
+CAPABILITIES advertises `supported_schema_versions: [5]`, actual rule
+fields/operators/vocabularies, bounds and collection replacement, not the old
+per-server settings-choice matrix. Runtime settings admission remains
+authoritative. Status reports configured/effective/suspended rules, effective
+expressions and full/nearby/retained program counts, not retired maps.
+All machine operations, including errors, leave pause state alone.
+See the [client protocol](../telnet/README.md#client-yaml-configuration) and
+checkout owners `telnet/machine_v5_input.go`, `telnet/machine_v5_schema.go`,
+`telnet/machine_v5_schema_rules.go`, `telnet/machine_v5_commands.go` and
+`telnet/machine_v5_readback.go`.
 
 ## Human Preference Publication
 
@@ -464,9 +742,11 @@ state under the existing full-SSID transaction lease. Refused commands publish
 and persist nothing. Read-only commands retain their live readback paths.
 
 Accepted commands publish before attempting persistence; a save failure keeps
-the edit live and reports the existing warning. Repeated ordinary filter commands
-retain their save attempts, while unchanged DIALECT and idempotent COMMENT edits
-do not save. NEARBY restoration and effective cells remain runtime state.
+the edit live and reports the existing warning. Repeated numbered-rule sets
+retain save intent; removing an absent slot is an accepted no-op. Unchanged
+DIALECT remains unchanged without a save. Effective NEARBY projections and
+cells remain runtime state, not a saved restoration map. Full saved rules remain
+authoritative.
 
 Human SET SOLAR deliberately reapplies scheduling at publication, including an
 unchanged cadence. Other human edits preserve broadcaster progress. Unchanged
@@ -477,18 +757,15 @@ connection lifecycle ownership. See
 
 ## Literal Comment Filtering And Archive Selection
 
-COMMENT matches case-insensitive ASCII literal substrings of the stored comment,
-after ingestion cleanup and before display diagnostics or synthetic fallbacks.
-Each owned PASS/REJECT list retains at most 32 phrases of 1-64 printable ASCII
-bytes, with at least one non-space character. Any PASS qualifies; any REJECT
-match wins. Empty/nonmatching comments fail an active PASS list. Other ordinary
-filter categories and existing self-spot exceptions remain in force.
-
-Human commands trim only surrounding ASCII spaces and preserve interior spaces
-and punctuation literally. Case-equivalent additions are idempotent and move
-phrases out of the opposite list; individual removal deletes equivalent entries.
-Failed admission leaves both lists unchanged. Existing human live-edit/save
-failure behavior is preserved; machine writes remain persist-before-publication.
+Saved COMMENT conditions are atoms in numbered Boolean rules, after ingestion
+cleanup and before display diagnostics or synthetic fallbacks. They follow the
+literal bytes, unknown/NOT semantics and rule budgets above, not separate
+PASS/REJECT phrase lists. A slot edit replaces the whole expression/action;
+there is no phrase move, individual-list removal or COMMENT reset command.
+Human expression quoting uses doubled quotes and literal backslashes; display
+chunk encoding is separate. Failed admission leaves the whole rule set
+unchanged. Accepted human edits retain late-save warnings; machine writes
+remain commit-before-publication.
 
 An explicit SHOW DX/MYDX COMMENT phrase is mandatory even for self-spots, applies
 before row counts, and is retained by NEXT without changing preferences. Saved
@@ -515,12 +792,12 @@ start clauses. A keyword unsupported in the current category starts a clause,
 including after empty comma fields. Finish a list without a comma before starting
 another clause to avoid interpreting a configured keyword alias as a value.
 
-Explicit machine schema 4 and disk configuration version 4 add comments and
-block_comments. Schemas 1-3 retain their shapes and preserve hidden comment rules.
-Full PUT/VALIDATE requires both lists; PATCH omission preserves and supplied lists
-replace, including [] to clear. Exact YAML preserves case/order/duplicates/overlap;
-every entry counts toward limits and REJECT wins. Old records acquire empty lists,
-with state introduction pinned to 2 and MINSNR to 3. Malformed or oversized stored
-comment rules fail without truncation or protected-record rewrite. See
-[ADR-0261](decisions/ADR-0261-literal-comment-filter-and-history.md) and
+Explicit machine schema 5 and native configuration version 5 carry COMMENT
+expressions in `rules`, not `comments`/`block_comments` maps or lists. PATCH
+replaces a supplied complete rule list; omission preserves it. Old schema/disk
+documents are refused, not given hidden rules or migrated defaults. Malformed
+or oversized stored rules fail without truncation or protected-record rewrite.
+[ADR-0261](decisions/ADR-0261-literal-comment-filter-and-history.md) records
+historical pre-v5 saved-list behavior; the explicit archive phrase grammar and
+its ownership remain unchanged. See
 [telnet comments](../telnet/README.md#comment-filters-and-searches).

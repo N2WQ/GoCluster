@@ -453,14 +453,18 @@ type Client struct {
 // retryable only after the physical line was recovered; unsafe recovery wraps
 // it in humanInputError, which callers must handle first and terminate.
 type InputValidationError struct {
-	reason  string
-	context string
-	kind    inputErrorKind
-	maxLen  int
-	allowed string
+	reason   string
+	context  string
+	kind     inputErrorKind
+	maxLen   int
+	allowed  string
+	guidance string
 }
 
 func (e *InputValidationError) Error() string {
+	if e.guidance != "" {
+		return e.reason + ". " + e.guidance
+	}
 	return e.reason
 }
 
@@ -1921,8 +1925,8 @@ const (
 
 const (
 	invalidFilterCommandMsg = "Invalid filter command. Type HELP for usage.\n"
-	nearbyLoginWarningMsg   = "NEARBY filter is ON. Disable NEARBY if you want to use regular location filters"
-	nearbyLoginInactiveMsg  = "NEARBY filter is ON but inactive: grid not set or H3 tables unavailable.\n"
+	nearbyLoginWarningMsg   = "NEARBY is ON: geography is omitted from rules; other conditions still apply. HELP RULE explains the effective rules."
+	nearbyLoginInactiveMsg  = "NEARBY is ON but its location is unavailable. Spots remain blocked until SET GRID succeeds or NEARBY is OFF.\n"
 )
 
 func passFilterUsageMsg() string {
@@ -2083,7 +2087,7 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		admissionLogCounts:    make(map[string]uint64),
 		loginLineLimit:        config.LoginLineLimit,
 		commandLineLimit:      config.CommandLineLimit,
-		filterEngine:          newFilterCommandEngineWithCTY(config.CTYLookup),
+		filterEngine:          newFilterCommandEngine(),
 		latency:               newLatencyMetrics(),
 		reputationGate:        opts.ReputationGate,
 		startTime:             time.Now().UTC(),
@@ -2936,42 +2940,18 @@ func (s *Server) deliverJob(job broadcastJob) {
 			if !isSelfMatch(job.spot, client.callsign) {
 				continue
 			}
-			client.filterMu.RLock()
-			allowSelf := client.filter.SelfEnabled() && client.filter.AllowsToxicity(job.spot)
-			client.filterMu.RUnlock()
-			if !allowSelf {
+		}
+		matching := client.captureMatchingSnapshot()
+		if isSelfMatch(job.spot, client.callsign) {
+			if !matching.filter.SelfEnabled() || !matching.filter.AllowsToxicity(job.spot) {
 				continue
 			}
 		} else {
-			// Self-match spots can bypass filters when SELF is enabled.
-			if isSelfMatch(job.spot, client.callsign) {
-				client.filterMu.RLock()
-				allowSelf := client.filter.SelfEnabled() && client.filter.AllowsToxicity(job.spot)
-				client.filterMu.RUnlock()
-				if !allowSelf {
-					continue
-				}
-			} else {
-				pathClass := filter.PathClassInsufficient
-				client.filterMu.RLock()
-				f := client.filter
-				pathActive := f != nil && f.PathFilterActive()
-				pathBlockAll := f != nil && f.BlockAllPathClasses
-				client.filterMu.RUnlock()
-				if pathActive && !pathBlockAll {
-					if prediction, ok := s.computePathPredictionForClient(client, job.spot); ok {
-						pathClass = pathClassFromPrediction(prediction)
-						admissionPrediction = prediction
-						haveAdmissionPrediction = true
-					}
-				}
-				client.filterMu.RLock()
-				matches := f != nil && f.MatchesWithPath(job.spot, pathClass)
-				client.filterMu.RUnlock()
-				if !matches {
-					continue
-				}
+			matches, prediction, predicted := s.matchSnapshot(matching, job.spot)
+			if !matches {
+				continue
 			}
+			admissionPrediction, haveAdmissionPrediction = prediction, predicted
 		}
 		env := &spotEnvelope{spot: job.spot, enqueueAt: job.enqueueAt}
 		if haveAdmissionPrediction {
@@ -3817,7 +3797,19 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	// Send login confirmation
 	dialectSource := s.dialectSourceLabel(client.dialect, created, restored.loadError, s.filterEngine.defaultDialect)
 	dialectDefault := strings.ToUpper(string(s.filterEngine.defaultDialect))
-	greeting := formatGreeting(s.greetingTemplate, s.postLoginTemplateData(loginTime, client, prevLogin, prevIP, dialectSource, dialectDefault))
+	greetingData := s.postLoginTemplateData(loginTime, client, prevLogin, prevIP, dialectSource, dialectDefault)
+	if strings.Contains(s.greetingTemplate, "<SETTINGS_FILTERS>") {
+		greetingData.settingsFilters, err = s.renderBooleanLoginBlock(client, created, restored.profileReset)
+		if err != nil {
+			log.Printf("Login settings display failed for %s: %v", client.callsign, err)
+			greetingData.settingsFilters = "Settings display failed. Use SHOW FILTER.\n"
+		}
+		if strings.TrimSpace(nearbyWarning) != "" {
+			greetingData.settingsFilters = nearbyWarning + "\n" + greetingData.settingsFilters
+			nearbyWarning = ""
+		}
+	}
+	greeting := formatGreeting(s.greetingTemplate, greetingData)
 	if strings.TrimSpace(nearbyWarning) != "" {
 		if strings.TrimSpace(greeting) == "" {
 			greeting = nearbyWarning
@@ -4007,28 +3999,15 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 		}
 
 		// Process other commands
+		matching := client.captureMatchingSnapshot()
 		filterFn := func(spotEntry *spot.Spot) bool {
 			if spotEntry == nil {
 				return false
 			}
 			if isSelfMatch(spotEntry, client.callsign) {
-				client.filterMu.RLock()
-				allowed := client.filter.AllowsToxicity(spotEntry)
-				client.filterMu.RUnlock()
-				return allowed
+				return matching.filter.AllowsToxicity(spotEntry)
 			}
-			pathClass := filter.PathClassInsufficient
-			client.filterMu.RLock()
-			f := client.filter
-			pathActive := f != nil && f.PathFilterActive()
-			pathBlockAll := f != nil && f.BlockAllPathClasses
-			client.filterMu.RUnlock()
-			if pathActive && !pathBlockAll {
-				pathClass = s.pathClassForClient(client, spotEntry)
-			}
-			client.filterMu.RLock()
-			matches := f != nil && f.MatchesWithPath(spotEntry, pathClass)
-			client.filterMu.RUnlock()
+			matches, _, _ := s.matchSnapshot(matching, spotEntry)
 			return matches
 		}
 		response := s.processor.ProcessCommandForClient(line, client.callsign, spotterIP(client.address), filterFn, string(client.dialect))
@@ -4117,19 +4096,20 @@ func sendTelnetOption(conn net.Conn, command, option byte) {
 
 // templateData holds contextual values that can be substituted into operator-configured templates.
 type templateData struct {
-	now            time.Time
-	startTime      time.Time
-	userCount      int
-	callsign       string
-	cluster        string
-	lastLogin      time.Time
-	lastIP         string
-	dialect        string
-	dialectSource  string
-	dialectDefault string
-	dedupePolicy   string
-	grid           string
-	noiseClass     string
+	now             time.Time
+	startTime       time.Time
+	userCount       int
+	callsign        string
+	cluster         string
+	lastLogin       time.Time
+	lastIP          string
+	dialect         string
+	dialectSource   string
+	dialectDefault  string
+	dedupePolicy    string
+	grid            string
+	noiseClass      string
+	settingsFilters string
 }
 
 // formatGreeting replaces placeholders using the provided template data.
@@ -4386,23 +4366,46 @@ func (s *Server) computePathPredictionForClient(client *Client, sp *spot.Spot) (
 	if s == nil || client == nil || sp == nil || s.pathPredictor == nil {
 		return pathPrediction{}, false
 	}
+	if !s.pathPredictor.Config().Enabled {
+		return pathPrediction{}, false
+	}
+	state := client.resolvePathSnapshot(client.pathSnapshot())
+	return s.computePathPredictionForState(state, sp)
+}
+
+// Cache publication is conditional, but the returned state always belongs to
+// the captured grid. A concurrent GRID edit must not replace its resolved cell.
+func (c *Client) resolvePathSnapshot(state pathState) pathState {
+	if state.gridCell != pathreliability.InvalidCell {
+		return state
+	}
+	grid := strings.TrimSpace(state.grid)
+	cell := pathreliability.EncodeCell(grid)
+	if cell != pathreliability.InvalidCell {
+		c.pathMu.Lock()
+		if c.gridCell == pathreliability.InvalidCell && strings.EqualFold(strings.TrimSpace(c.grid), grid) {
+			c.gridCell = cell
+		}
+		c.pathMu.Unlock()
+	}
+	state.gridCell = cell
+	return state
+}
+
+// User settings are captured; propagation observations deliberately remain
+// current. This helper never consults mutable client settings.
+func (s *Server) computePathPredictionForState(state pathState, sp *spot.Spot) (pathPrediction, bool) {
+	if s == nil || sp == nil || s.pathPredictor == nil {
+		return pathPrediction{}, false
+	}
 	cfg := s.pathPredictor.Config()
 	if !cfg.Enabled {
 		return pathPrediction{}, false
 	}
-	state := client.pathSnapshot()
-	userCell := state.gridCell
 	grid := strings.TrimSpace(state.grid)
+	userCell := state.gridCell
 	if userCell == pathreliability.InvalidCell && grid != "" {
-		cell := pathreliability.EncodeCell(grid)
-		if cell != pathreliability.InvalidCell {
-			client.pathMu.Lock()
-			if client.gridCell == pathreliability.InvalidCell && strings.EqualFold(strings.TrimSpace(client.grid), grid) {
-				client.gridCell = cell
-			}
-			userCell = client.gridCell
-			client.pathMu.Unlock()
-		}
+		userCell = pathreliability.EncodeCell(grid)
 	}
 	if userCell == pathreliability.InvalidCell {
 		return pathPrediction{}, false
@@ -5399,6 +5402,7 @@ func applyTemplateTokens(msg string, data templateData) string {
 		"<DEDUPE>", data.dedupePolicy,
 		"<GRID>", data.grid,
 		"<NOISE>", data.noiseClass,
+		"<SETTINGS_FILTERS>", data.settingsFilters,
 	)
 	return replacer.Replace(msg)
 }
@@ -5446,7 +5450,11 @@ func (s *Server) formatInputValidationMessage(err *InputValidationError) string 
 		maxLen:  err.maxLen,
 		allowed: err.allowed,
 	}
-	return applyInputTemplateTokens(template, data)
+	message := applyInputTemplateTokens(template, data)
+	if err.guidance != "" {
+		message = strings.TrimRight(message, "\r\n") + "\n" + err.guidance + "\n"
+	}
+	return message
 }
 
 func formatUptime(now, start time.Time) string {
@@ -6384,7 +6392,7 @@ func wordEraseCount(line []byte) int {
 // true, comma is also accepted to preserve legacy comma-delimited filter syntax.
 // allowDot permits '.' for numeric inputs and spot comments. CRLF is handled
 // separately by ReadLine.
-func newInputTooLongError(context string, maxLen int, allowed string) error {
+func newInputTooLongError(context string, maxLen int, allowed string) *InputValidationError {
 	return &InputValidationError{
 		reason:  fmt.Sprintf("%s input exceeds %d-byte limit", context, maxLen),
 		context: context,
@@ -6394,7 +6402,7 @@ func newInputTooLongError(context string, maxLen int, allowed string) error {
 	}
 }
 
-func newInputInvalidCharError(context string, maxLen int, allowed string, b byte) error {
+func newInputInvalidCharError(context string, maxLen int, allowed string, b byte) *InputValidationError {
 	return &InputValidationError{
 		reason:  fmt.Sprintf("%s input contains forbidden byte 0x%02X", context, b),
 		context: context,

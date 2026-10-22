@@ -4,7 +4,6 @@
 package telnet
 
 import (
-	"maps"
 	"strings"
 	"time"
 
@@ -64,24 +63,12 @@ func (s *Server) prepareUpdatedGrid(c, prepared *Client, configured string) {
 }
 
 func prepareUpdatedNearby(c, prepared *Client, before, next filter.Configuration) string {
-	locationsEqual := sameLocationRules(before.Filters, next.Filters)
 	gridEqual := before.Settings.Grid == next.Settings.Grid
 	c.filterMu.RLock()
-	priorSnapshot := c.filter.NearbySnapshot
 	priorFine, priorCoarse := c.filter.NearbyUserFine, c.filter.NearbyUserCoarse
 	c.filterMu.RUnlock()
-	if before.Filters.NearbyEnabled == next.Filters.NearbyEnabled && locationsEqual && gridEqual {
-		// Location snapshots are immutable until replacement. DisableNearby
-		// copies their maps, so sharing this runtime pointer retains restoration.
-		prepared.filter.NearbySnapshot = priorSnapshot
-		prepared.filter.NearbyUserFine, prepared.filter.NearbyUserCoarse = priorFine, priorCoarse
-		return ""
-	}
 	if !next.Filters.NearbyEnabled {
 		return ""
-	}
-	if before.Filters.NearbyEnabled && locationsEqual {
-		prepared.filter.NearbySnapshot = priorSnapshot
 	}
 	fine, coarse := prepared.gridCell, prepared.gridCoarseCell
 	if before.Filters.NearbyEnabled && gridEqual {
@@ -96,18 +83,6 @@ func prepareUpdatedNearby(c, prepared *Client, before, next filter.Configuration
 	return ""
 }
 
-func sameRules[K string | int](a, b filter.RuleSet[K]) bool {
-	return a.AllowAll == b.AllowAll && a.BlockAll == b.BlockAll && maps.Equal(a.Allow, b.Allow) && maps.Equal(a.Block, b.Block)
-}
-
-func sameLocationRules(a, b filter.FilterConfiguration) bool {
-	return sameRules(a.DXContinents, b.DXContinents) && sameRules(a.DEContinents, b.DEContinents) &&
-		sameRules(a.DXZones, b.DXZones) && sameRules(a.DEZones, b.DEZones) &&
-		sameRules(a.DXGrid2, b.DXGrid2) && sameRules(a.DEGrid2, b.DEGrid2) &&
-		sameRules(a.DXDXCC, b.DXDXCC) && sameRules(a.DEDXCC, b.DEDXCC) &&
-		sameRules(a.DXStates, b.DXStates) && sameRules(a.DEStates, b.DEStates)
-}
-
 // publishConfiguration has no fallible work. Stable Filter identity and the
 // path→filter lock order protect fan-out readers, while the transaction stripe
 // protects configuration metadata. Unchanged cadence retains the live solar
@@ -120,8 +95,15 @@ func (s *Server) publishConfiguration(c *Client, next filter.Configuration, prep
 // Machine updates use the same publication path with resetSolar=false so an
 // unchanged write preserves broadcaster progress made during disk persistence.
 func (s *Server) publishPreparedConfiguration(c *Client, next filter.Configuration, prepared *Client, ref *filter.PresetReference, now time.Time, resetSolar bool) {
+	s.publishConfigurationState(c, next.Settings, prepared, ref, now, resetSolar)
+	c.refreshConfigurationRevision()
+}
+
+// State transfer is shared by versioned coordinators. The caller owns its
+// transaction lease and refreshes the matching configuration/history digest.
+func (s *Server) publishConfigurationState(c *Client, settings filter.SettingsConfiguration, prepared *Client, ref *filter.PresetReference, now time.Time, resetSolar bool) {
 	c.initializeConfiguredSettings()
-	solarChanged := c.configuredSettings.SolarSummaryMinutes != next.Settings.SolarSummaryMinutes
+	solarChanged := c.configuredSettings.SolarSummaryMinutes != settings.SolarSummaryMinutes
 	c.pathMu.Lock()
 	c.filterMu.Lock()
 	*c.filter = *prepared.filter
@@ -131,14 +113,13 @@ func (s *Server) publishPreparedConfiguration(c *Client, next filter.Configurati
 	c.dialect = prepared.dialect
 	c.setDedupePolicy(prepared.getDedupePolicy())
 	if solarChanged || resetSolar {
-		c.setSolarSummaryMinutes(next.Settings.SolarSummaryMinutes, now)
+		c.setSolarSummaryMinutes(settings.SolarSummaryMinutes, now)
 	}
-	c.configuredSettings = next.Settings
+	c.configuredSettings = settings
 	c.configurationInitialized = true
 	c.presetReference = ref
 	c.filterMu.Unlock()
 	c.pathMu.Unlock()
-	c.refreshConfigurationRevision()
 }
 
 // Human commands publish their staged runtime Filter directly, preserving
@@ -148,6 +129,11 @@ func (s *Server) publishPreparedConfiguration(c *Client, next filter.Configurati
 // Publication transfers the staged collections to the live client. The command
 // must discard the adapter and never mutate those collections after this call.
 func (s *Server) publishHumanPreference(c, staged *Client, forceSolar bool) {
+	s.publishHumanPreferenceState(c, staged, forceSolar)
+	c.refreshConfigurationRevision()
+}
+
+func (s *Server) publishHumanPreferenceState(c, staged *Client, forceSolar bool) {
 	c.pathMu.Lock()
 	c.filterMu.Lock()
 	if c.filter != nil && staged.filter != nil {
@@ -164,5 +150,4 @@ func (s *Server) publishHumanPreference(c, staged *Client, forceSolar bool) {
 	c.configuredSettings, c.configurationInitialized = staged.configuredSettings, true
 	c.filterMu.Unlock()
 	c.pathMu.Unlock()
-	c.refreshConfigurationRevision()
 }

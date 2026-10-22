@@ -9,9 +9,9 @@ Getting started:
 
 Type HELP followed by a command for details:
   HELP SHOW/DX
-  HELP SET/FILTER
-  HELP UNSET/FILTER
-  HELP PASS COMMENT
+  HELP RULE
+  HELP PASS
+  HELP REJECT
 
 Reading and posting spots:
   SHOW/DX                Show recent spots matching your filters.
@@ -25,107 +25,55 @@ Examples:
   SHOW/DX 10             Show the latest 10 matching spots.
   SHOW/DX K1ABC 10       Search for spots of K1ABC.
   SHOW/DX 10 BAND 20     Search for 10 matching spots on 20m.
+  SHOW/DX 10 MODE CW     Search for 10 matching CW spots.
+  SHOW/DX 10 COMMENT CQ  Search stored comments for literal CQ.
   DX 14025.0 K1ABC CQ    Post K1ABC on 14025.0 kHz with comment CQ.
 
 Changing filters:
-  SET/FILTER             Allow selections.
-  UNSET/FILTER           Block selections.
-  SHOW/FILTER            Show your current filters.
-  SHOW/FILTER FULL       Show complete filter selections.
-  SHOW/FILTER MODE       Show one filter category.
-  RESET FILTER           Restore the cluster's default filters.
+  PASS RULE              Replace one slot with an allowing expression.
+  REJECT RULE            Replace one slot with a vetoing expression.
+  SHOW/FILTER            See your current settings and rules.
+  SHOW/FILTER RULE       Same as SHOW/FILTER.
+  SHOW/FILTER FULL       Add geometry detail and rule counts.
+  RESET FILTER RULE      Clear one slot or ALL; preserve NEARBY.
+  RESET FILTER           Clear personal rules and turn NEARBY OFF.
 
 What you can filter:
+  Combine band, mode, source, geography, calls, comments and more.
   DX means the station being spotted; DE means the spotter.
+  HELP RULE lists every field, supported value and expression limit.
 
-  BAND                   Radio band, such as 20m or 40m.
-  MODE                   Operating mode, such as CW, FT8 or USB.
-  SOURCE                 HUMAN or SKIMMER reports.
-  EVENT                  POTA, SOTA, IOTA, WWFF or LLOTA tags.
-  COMMENT                A phrase anywhere in the spot comment.
-  DXCALL                 Spotted callsign or pattern, such as K1ABC or W1*.
-  DECALL                 Spotter callsign or pattern.
-  DXCONT                 Spotted station's continent.
-  DECONT                 Spotter's continent.
-  DXZONE                 Spotted station's CQ zone (1-40).
-  DEZONE                 Spotter's CQ zone (1-40).
-  DXDXCC                 Spotted station's country prefix or ADIF number.
-  DEDXCC                 Spotter's country prefix or ADIF number.
-  DXSTATE                Spotted station's US/Canadian mailing code.
-  DESTATE                Spotter's US/Canadian mailing code.
-  DXGRID2                Spotted station's two-character grid, such as FN.
-  DEGRID2                Spotter's two-character grid.
-  CONFIDENCE             Callsign confidence symbols: ?, S, P, V, C, B.
-  PATH                   HIGH, MEDIUM, LOW, UNLIKELY, CLOSED or INSUFFICIENT.
-  MINSNR                 Minimum signal report in dB, selected by mode.
+Examples (separate full-rule replacements):
+  PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN
+  REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"
 
-SET/FILTER and UNSET/FILTER examples:
-  Each example below is a separate change, not a combined recipe.
-
-  SET/FILTER BAND 20,40       Add 20m and 40m to your band selections.
-  UNSET/FILTER BAND 80        Block 80m spots.
-  SET/FILTER MODE CW,FT8      Enable CW and FT8; other modes stay unchanged.
-  UNSET/FILTER MODE FT8       Disable FT8.
-  SET/FILTER SOURCE HUMAN     Allow human reports.
-  UNSET/FILTER SOURCE SKIMMER Block automated skimmer reports.
-  UNSET/FILTER EVENT POTA     Block POTA-tagged spots.
-  PASS COMMENT CQ             Require a comment containing CQ.
-  REJECT COMMENT QRT          Block comments containing QRT.
-  UNSET/FILTER DXCALL W1*     Block spotted calls beginning with W1.
-  UNSET/FILTER DECALL W1ABC   Block reports from spotter W1ABC.
-  SET/FILTER DXCONT EU        Add Europe to your DX continent selections.
-  SET/FILTER DECONT NA        Add North America to your spotter selections.
-  SET/FILTER DXZONE 14,15     Add DX CQ zones 14 and 15.
-  SET/FILTER DEZONE 5         Add spotters in CQ zone 5.
-  SET/FILTER DXDXCC DL        Add Germany to your DX country selections.
-  SET/FILTER DEDXCC K         Add the United States to your spotter countries.
-  SET/FILTER DXSTATE CT,MA    Add DX stations in Connecticut and
-                              Massachusetts.
-  SET/FILTER DESTATE ON       Add spotters with Canadian province code ON.
-  SET/FILTER DXGRID2 JO       Add DX stations in grid field JO.
-  SET/FILTER DEGRID2 FN       Add spotters in grid field FN.
-  UNSET/FILTER CONFIDENCE ?   Block spots marked with confidence symbol ?.
-  UNSET/FILTER PATH LOW       Block spots classified as LOW path reliability.
-  PASS MINSNR CW 10           Set a minimum CW signal report of 10 dB.
-
-A complete recipe: only 20m/40m and only CW/FT8:
-  UNSET/FILTER BAND ALL
-  SET/FILTER BAND 20,40
-  UNSET/FILTER MODE ALL
-  SET/FILTER MODE CW,FT8
+A complete recipe: human-reported CW/FT8 on 20m/40m:
+  RESET FILTER RULE ALL
+  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8
   SHOW/FILTER
 
-  This changes BAND and MODE only. Other filters still apply.
-  Own-call spots have special exemptions; see HELP SHOW MYDX.
+  This replaces all personal rules. NEARBY is unchanged.
+  SELF ON can bypass personal rules; see HELP SHOW MYDX.
 
 Filter rules to remember:
-  Filter categories have their own selection rules; see HELP PASS/REJECT.
-  MODE preserves visibility for every mode you do not name.
-  Different filter categories must all match, except own-call exemptions.
-  MODE changes only the modes you name.
-  SET/FILTER BAND ALL allows every band; other filters still apply.
-  UNSET/FILTER EVENT ALL blocks tagged events, not untagged spots.
-  COMMENT matches literal text without regard to letter case.
-  COMMENT treats commas, quotes, * and ? as literal characters.
-  COMMENT also treats ALL and NONE as literal phrases.
-  Any allowed COMMENT phrase can match; a blocked phrase wins.
-  Numeric PASS and REJECT MINSNR commands set the same minimum.
-  MINSNR exempts human reports and reports without SNR.
-  RESET FILTER restores cluster defaults, which may restrict spots.
+  Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.
+  Any PASS can qualify; any matching REJECT vetoes it.
+  No active PASS means unrestricted except for matching REJECT rules.
+  No rules means no personal restriction.
+  New users start with an ordinary editable default PASS rule in slot 0.
+  PASS without SOURCE means HUMAN only.
+  Add AND SOURCE=HUMAN,SKIMMER to select humans and skimmers.
+  To narrow it, replace/remove slot 0; adding another PASS broadens it.
+  RESET FILTER clears rules and NEARBY, not separate controls/preferences.
+  Reset does not reinstall default slot 0. See HELP RULE for full details.
 
 Comment rules:
-  PASS COMMENT           Add an allowed comment phrase.
-  REJECT COMMENT         Add a blocked comment phrase.
-  REMOVE PASS COMMENT    Remove an allowed phrase.
-  REMOVE REJECT COMMENT  Remove a blocked phrase.
-  RESET FILTER COMMENT   Clear all comment rules.
-  SHOW FILTER COMMENT    Show your saved phrases.
-
-Examples:
-  PASS COMMENT CQ DX
-  REJECT COMMENT QRT
-  REMOVE PASS COMMENT CQ DX
-  RESET FILTER COMMENT REJECT
+  PASS RULE 0 COMMENT="CQ DX"
+  REJECT RULE 9 COMMENT="QRT"
+  ASCII case-insensitive literal substrings, not regular expressions.
+  Inside a quoted value, double a literal quote: COMMENT="CQ ""DX"""
+  Edit/clear the numbered slot to replace/remove the whole rule.
+  SHOW DX COMMENT remains a history query, not a saved rule edit.
 
 CC shortcuts:
   SH/FILTER                 Short form of SHOW/FILTER.
@@ -134,11 +82,8 @@ CC shortcuts:
   SET/WWV | SET/NOWWV       Allow or block WWV bulletins.
   SET/WCY | SET/NOWCY       Allow or block WCY bulletins.
   SET/SELF | SET/NOSELF     Allow or block your own spots.
-  SET/SKIMMER               Allow automated skimmer reports.
-  SET/NOSKIMMER             Block automated skimmer reports.
-  SET/<MODE>                Enable a mode; for example SET/FT8.
-  SET/NO<MODE>              Disable a mode; for example SET/NOFT8.
-  SET/NOFILTER              Clear filter restrictions.
+  SET/FILTER                Separate switches and NEARBY only; see HELP.
+  UNSET/FILTER              Separate switches and NEARBY only; see HELP.
   REJECT TOXIC              Hide human spots already classified as toxic.
   PASS TOXIC                Allow human spots already classified as toxic.
 
@@ -147,7 +92,8 @@ Nearby filtering:
   PASS NEARBY ON         Enable nearby filtering.
   PASS NEARBY OFF        Disable nearby filtering.
 
-  NEARBY suspends location filters and retains their rules.
+  NEARBY omits only geography leaves; non-geography conditions survive.
+  Emptied rules are ignored; saved full rules remain intact.
   Type HELP PASS NEARBY for details.
 
 Preferences and propagation:
@@ -195,9 +141,10 @@ Diagnostics:
   SET DIAG               Select diagnostic information in spot comments.
 
 More help:
-  HELP SET/FILTER        Complete allow rules and examples.
-  HELP UNSET/FILTER      Complete block rules and examples.
-  HELP FILTERS           Filter reference and supported values.
+  HELP RULE              Canonical Boolean grammar, fields and values.
+  HELP PASS              Rule updates and separate enable controls.
+  HELP REJECT            Rule updates and separate disable controls.
+  HELP FILTERS           Navigate to rules and separate controls.
   HELP SYMBOLS           Confidence and path reliability symbols.
   HELP <command>         Detailed help for a command.
 

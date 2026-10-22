@@ -1,8 +1,15 @@
-# ADR-0258: Per-Mode Minimum SNR Filter
+---
+title: "ADR-0258: Per-Mode Minimum SNR Filter"
+description: Historical category-based MINSNR decision, superseded for the Boolean MVP.
+---
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-10-07
 - Decision Origin: Design
+
+For the Boolean MVP, [ADR-0317](ADR-0317-boolean-filter-replacement-mvp.md)
+replaces this feature with typed SNR expressions. This historical decision does
+not describe the active MVP commands or schema.
 
 ## Context
 

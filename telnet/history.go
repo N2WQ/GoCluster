@@ -34,11 +34,10 @@ type historyRequest struct {
 	older      bool
 }
 
-// refreshHistoryRevision runs inside the configuration transaction. A change
+// observeHistoryDigest runs inside the configuration transaction. A change
 // followed by restoration still invalidates the cursor because each publication
 // advances this generation. Propagation observations never enter the digest.
-func (c *Client) refreshHistoryRevision() {
-	digest := c.historyFilterDigest()
+func (c *Client) observeHistoryDigest(digest [32]byte) {
 	c.historyMu.Lock()
 	defer c.historyMu.Unlock()
 	if c.historyDigestSet && digest != c.historyDigest {

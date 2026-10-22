@@ -560,8 +560,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"Requires SET GRID. Uses H3 L1 on 160/80/60m and L2 on all other bands.",
 			"While usable NEARBY is active, spot delivery uses the least-suppressive available dedupe lane.",
 			"SHOW DEDUPE reports when NEARBY changes the effective dedupe lane.",
-			"Location filters are suspended while NEARBY is ON.",
-			"Setting location filters while NEARBY is ON is rejected with a warning.",
+			"NEARBY omits only geography leaves from effective Boolean expressions.",
+			"Emptied rules are ignored; non-geography conditions survive and full rules stay saved.",
+			"Rule edits need no usable GRID; geometry may remain unavailable.",
 			"NEARBY state persists across sessions and shows a login warning when active.",
 		},
 	)
@@ -579,14 +580,6 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		},
 	)
 	add("SET SOLAR", "SET SOLAR - Solar summary cadence.", setSolarLines)
-
-	resetFilterLines := helpEntryLines(
-		"RESET FILTER - Reset filters to configured defaults.",
-		[]string{"RESET FILTER"},
-		nil,
-		nil,
-	)
-	add("RESET FILTER", "RESET FILTER - Reset filters to defaults.", resetFilterLines)
 
 	presetNotes := []string{
 		"Presets are shared across your numeric SSIDs; commands work in both dialects.",
@@ -696,18 +689,16 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		)
 		add("SH/FILTER", "SH/FILTER - Alias of SHOW/FILTER.", shFilterLines)
 
-		add("SET/FILTER", "SET/FILTER - Allow filter matches.", ccFilterHelpLines("SET/FILTER"))
-		add("UNSET/FILTER", "UNSET/FILTER - Block filter matches.", ccFilterHelpLines("UNSET/FILTER"))
+		add("SET/FILTER", "SET/FILTER - Enable separate controls.", ccFilterHelpLines("SET/FILTER"))
+		add("UNSET/FILTER", "UNSET/FILTER - Disable separate controls.", ccFilterHelpLines("UNSET/FILTER"))
 
-		setNoFilterLines := helpEntryLines(
-			"SET/NOFILTER - Allow everything (CC dialect).",
-			[]string{"SET/NOFILTER"},
-			nil,
-			[]string{
-				"Resets filters to a fully permissive state.",
-			},
-		)
-		add("SET/NOFILTER", "SET/NOFILTER - Allow everything.", setNoFilterLines)
+		for _, topic := range []string{"SET/NOFILTER", "SET/SKIMMER", "SET/NOSKIMMER", "SET/<MODE>", "SET/NO<MODE>"} {
+			summary := topic + " - Replaced by numbered Boolean rules."
+			add(topic, summary, helpEntryLines(summary, []string{"HELP RULE"}, nil, []string{
+				"This CC filter/mode shortcut is refused, not translated.",
+				"Use PASS RULE, REJECT RULE or RESET FILTER; see HELP RULE.",
+			}))
+		}
 
 		addCCToggle := func(cmd, summary, alias string) {
 			lines := helpEntryLines(
@@ -730,31 +721,6 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		addCCToggle("SET/NOWCY", "Disable WCY bulletins.", "REJECT WCY")
 		addCCToggle("SET/SELF", "Enable self spots.", "PASS SELF")
 		addCCToggle("SET/NOSELF", "Disable self spots.", "REJECT SELF")
-		addCCToggle("SET/SKIMMER", "Allow skimmer spots.", "PASS SOURCE SKIMMER")
-		addCCToggle("SET/NOSKIMMER", "Block skimmer spots.", "REJECT SOURCE SKIMMER")
-
-		setModeLines := helpEntryLines(
-			"SET/<MODE> - Allow a mode (CC dialect).",
-			[]string{"SET/<MODE>"},
-			nil,
-			[]string{
-				"Alias of PASS MODE <MODE>.",
-			},
-		)
-		setModeLines = appendListSection(setModeLines, "Modes:", spot.CCShortcutModes())
-		add("SET/<MODE>", "SET/<MODE> - Allow a mode.", setModeLines)
-
-		setNoModeLines := helpEntryLines(
-			"SET/NO<MODE> - Block a mode (CC dialect).",
-			[]string{"SET/NO<MODE>"},
-			nil,
-			[]string{
-				"Alias of REJECT MODE <MODE>.",
-			},
-		)
-		setNoModeLines = appendListSection(setNoModeLines, "Modes:", spot.CCShortcutModes())
-		add("SET/NO<MODE>", "SET/NO<MODE> - Block a mode.", setNoModeLines)
-
 		catalog.order = []string{
 			"HELP",
 			"DX",
@@ -780,13 +746,14 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW/FILTER",
 			"SH/FILTER",
 			"RESET FILTER",
+			"PASS",
+			"REJECT",
 			"SET/FILTER",
 			"SAVE PRESET",
 			"LIST PRESET",
 			"LOAD PRESET",
 			"DELETE PRESET",
 			"UNSET/FILTER",
-			"SET/NOFILTER",
 			"SET/ANN",
 			"SET/NOANN",
 			"SET/BEACON",
@@ -797,10 +764,6 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SET/NOWCY",
 			"SET/SELF",
 			"SET/NOSELF",
-			"SET/SKIMMER",
-			"SET/NOSKIMMER",
-			"SET/<MODE>",
-			"SET/NO<MODE>",
 			"DIALECT",
 			"BYE",
 		}
@@ -824,62 +787,6 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			},
 		)
 		add("SHOW FILTER", "SHOW FILTER - Display filter state.", showFilterLines)
-
-		passLines := helpEntryLines(
-			"PASS - Allow filter matches.",
-			[]string{"PASS <type> <list>"},
-			nil,
-			[]string{
-				"Use the category examples for selection rules and accepted values.",
-				"BAND/MODE accept commas or spaces; ALL applies to that category.",
-				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
-				"DXSTATE/DESTATE accept US/Canadian registered mailing codes.",
-				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
-				"State filters are suspended and retained while NEARBY is enabled.",
-				"IT9 selects the whole entity shared with I and IG9.",
-				"For MODE, list entries are enabled without changing modes not listed.",
-				"MINSNR takes a mode list and dB minimum; numeric PASS and REJECT are equivalent.",
-				"Use PASS MODE UNKNOWN or PASS MODE ALL to restore blank-mode spots.",
-			},
-		)
-		passLines = appendListSection(passLines, "Types:", filterListTypes())
-		passLines = appendListSection(passLines, "Feature toggles:", []string{
-			"PASS BEACON",
-			"PASS WWV",
-			"PASS WCY",
-			"PASS ANNOUNCE",
-			"PASS SELF",
-			"PASS TOXIC",
-		})
-		add("PASS", "PASS - Allow filter matches.", passLines)
-
-		rejectLines := helpEntryLines(
-			"REJECT - Block filter matches.",
-			[]string{"REJECT <type> <list>"},
-			nil,
-			[]string{
-				"Use the category examples for selection rules and accepted values.",
-				"BAND/MODE accept commas or spaces; ALL applies to that category.",
-				"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
-				"DXSTATE/DESTATE accept US/Canadian registered mailing codes.",
-				"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
-				"State filters are suspended and retained while NEARBY is enabled.",
-				"IT9 blocks the whole entity shared with I and IG9.",
-				"For MODE, list entries are rejected without changing modes not listed.",
-				"MINSNR takes a mode list and dB minimum; numeric PASS and REJECT are equivalent.",
-				"UNKNOWN is the MODE token for blank-mode spots.",
-			},
-		)
-		rejectLines = appendListSection(rejectLines, "Types:", filterListTypes())
-		rejectLines = appendListSection(rejectLines, "Feature toggles:", []string{
-			"REJECT BEACON",
-			"REJECT WWV",
-			"REJECT WCY",
-			"REJECT ANNOUNCE",
-			"REJECT SELF",
-			"REJECT TOXIC",
-		})
-		add("REJECT", "REJECT - Block filter matches.", rejectLines)
 
 		showDXLines := helpEntryLines(
 			"SHOW DX - Alias of SHOW MYDX (stored history).",
@@ -957,7 +864,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 
 	installConfigurationHelp(&catalog, dialect)
 	installCommentHelp(&catalog)
-	installConcreteFilterHelp(&catalog, dialect)
+	installBooleanRuleHelp(&catalog)
 	installHelpRoutingAliases(&catalog, dialect)
 	return catalog
 }
@@ -1071,71 +978,6 @@ func wrapTextLines(text string, indentNext string) []string {
 	}
 	if strings.TrimSpace(line) != "" {
 		lines = append(lines, line)
-	}
-	return lines
-}
-
-func filterHelpLines(dialect string) []string {
-	lines := []string{
-		"",
-		"Filter core rules:",
-		"PASS <type> <list> adds to allowlist and removes from blocklist.",
-		"REJECT <type> <list> adds to blocklist and removes from allowlist.",
-		"PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
-		"Numeric PASS/REJECT MINSNR set the same inclusive per-mode minimum.",
-		"MINSNR exempts human spots and spots without SNR; other filters apply.",
-		"COMMENT uses one literal phrase, 1-64 printable ASCII bytes; max 32 per list.",
-		"Any COMMENT PASS qualifies; matching REJECT wins; empty comments fail PASS.",
-		"DXDXCC/DEDXCC accept canonical CTY prefixes or positive ADIF numbers.",
-		"DXSTATE/DESTATE accept US/Canadian registered mailing codes.",
-		"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
-		"State filters are suspended and retained while NEARBY is enabled.",
-		"Canonical prefixes select whole entities; IT9 also selects I and IG9.",
-		"Unknown prefixes reject the whole list; canonical input requires CTY.",
-		"UNKNOWN is the MODE token for blank-mode spots.",
-		"If an item appears in both lists, block wins.",
-		"",
-		"ALL for ordinary list categories:",
-		"PASS <list-type> ALL - allow everything for that list category",
-		"REJECT <list-type> ALL - block everything for most list categories",
-		"REJECT EVENT ALL - block only tagged EVENT spots",
-		"COMMENT treats ALL and NONE literally; RESET FILTER COMMENT clears rules.",
-		"RESET FILTER resets all filters to configured defaults for new users.",
-		"",
-		"Feature toggles (not list-based):",
-		"PASS BEACON | REJECT BEACON",
-		"PASS WWV | REJECT WWV",
-		"PASS WCY | REJECT WCY",
-		"PASS ANNOUNCE | REJECT ANNOUNCE",
-		"PASS SELF | REJECT SELF",
-		"PASS TOXIC | REJECT TOXIC",
-		"Feature switches accept no value or ALL; other values are refused.",
-		"PASS NEARBY ON|OFF",
-	}
-	lines = append(lines, "", "Event filters:")
-	lines = append(lines, wrapTextLines("EVENT recognizes the taxonomy EVENT families as standalone comment tokens or acronym-prefixed references such as POTA-1234. Only the event family is filtered; the reference remains in the comment.", "    ")...)
-	lines = append(lines, wrapTextLines("Spots with no recognized EVENT tag are not affected by EVENT filters, including REJECT EVENT ALL.", "    ")...)
-	if strings.EqualFold(strings.TrimSpace(dialect), "cc") {
-		ccModeLine := "SET/<MODE> | SET/NO<MODE> (" + strings.Join(spot.CCShortcutModes(), ", ") + ")"
-		lines = append(lines,
-			"",
-			"CC shortcuts:",
-			"SET/ANN | SET/NOANN",
-			"SET/BEACON | SET/NOBEACON",
-			"SET/WWV | SET/NOWWV",
-			"SET/WCY | SET/NOWCY",
-			"SET/SKIMMER | SET/NOSKIMMER",
-		)
-		lines = append(lines, wrapTextLines(ccModeLine, "  ")...)
-		lines = append(lines,
-			"SET/NOFILTER",
-			"CC shortcuts take no extra arguments.",
-			"SHOW/FILTER | SH/FILTER",
-		)
-		lines = append(lines, "")
-		lines = append(lines, ccFilterHelpLines("SET/FILTER")...)
-		lines = append(lines, "")
-		lines = append(lines, ccFilterHelpLines("UNSET/FILTER")...)
 	}
 	return lines
 }
@@ -1325,14 +1167,6 @@ func parseShowHistoryRequest(args []string, commandLabel string) (showHistoryReq
 		return req, ""
 	default:
 		return showHistoryRequest{}, showHistoryUsage(commandLabel)
-	}
-}
-
-func filterListTypes() []string {
-	return []string{
-		"BAND", "MODE", "SOURCE", "EVENT", "COMMENT", "DXCALL", "DECALL", "DXGRID2",
-		"DEGRID2", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC",
-		"DEDXCC", "DXSTATE", "DESTATE", "CONFIDENCE", "PATH", "MINSNR",
 	}
 }
 

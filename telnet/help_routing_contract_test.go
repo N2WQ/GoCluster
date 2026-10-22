@@ -34,11 +34,7 @@ func newHelpOwnerSession(t *testing.T, dialect DialectName) *helpOwnerSession {
 	s.nowFn = func() time.Time { return time.Date(2026, 10, 10, 12, 7, 0, 0, time.UTC) }
 	c := configurationTestClient(s, "W1ABC-18")
 	c.dialect, c.noiseClass = dialect, "QUIET"
-	c.filter.Reset()
-	c.filter.AllBands, c.filter.Bands = false, map[string]bool{"20m": true}
-	c.filter.AllModes, c.filter.Modes = false, map[string]bool{"CW": true}
-	c.filter.Comments = []string{"CQ DX"}
-	c.filter.MinSNR = map[string]int{"CW": 10}
+	c.filter = passRuleTestFilter(t, `BAND=20M AND MODE=CW AND COMMENT="CQ DX" AND (SOURCE=HUMAN OR SNR>=10)`)
 	c.configuredSettings = filter.SettingsConfiguration{Dialect: string(dialect), NoiseClass: "QUIET", DedupePolicy: "FAST", SolarSummaryMinutes: 15}
 	c.configurationInitialized = true
 	c.setDedupePolicy(dedupePolicyFast)
@@ -124,12 +120,13 @@ func (x *helpOwnerSession) assertSaved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := filter.ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
+	saved := filter.V5ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
 		Dialect: record.Dialect, Grid: record.Grid, NoiseClass: record.NoiseClass, DedupePolicy: record.DedupePolicy,
 		PathMinObservationCount: record.PathMinObservationCount, SolarSummaryMinutes: record.SolarSummaryMinutes,
 	})
-	if !saved.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) || record.Preset == nil || c.presetReference == nil ||
-		record.Preset.Name != c.presetReference.Name || !filter.ConfigurationFromPreset(record.Preset.Baseline).Equal(filter.ConfigurationFromPreset(c.presetReference.Baseline)) {
+	if !saved.Equal(c.captureV5Configuration()) || record.Preset == nil || c.presetReference == nil ||
+		record.Preset.Name != c.presetReference.Name ||
+		!filter.V5ConfigurationFromFilter(&record.Preset.Baseline.Filter, filter.SettingsConfiguration{}).Equal(filter.V5ConfigurationFromFilter(&c.presetReference.Baseline.Filter, filter.SettingsConfiguration{})) {
 		t.Fatal("owner acknowledgement did not match immediately saved configuration/association")
 	}
 }
@@ -141,12 +138,12 @@ func TestHelpRoutingRealReadbackSettingPresetAndHistoryOwners(t *testing.T) {
 				x := newHelpOwnerSession(t, dialect)
 				s, c := x.server, x.client
 				pointer := c.filter
-				for _, command := range []string{"SHOW FILTER BAND", "SHOW/FILTER BAND", "SH/FILTER BAND"} {
+				for _, command := range []string{"SHOW FILTER RULE", "SHOW/FILTER RULE", "SH/FILTER RULE"} {
 					if !s.handleHumanReadback(c, helpOwnerInput(t, command, ziutek)) {
 						t.Fatalf("real readback owner rejected %q", command)
 					}
 					response := helpOwnerControl(t, c)
-					if !strings.Contains(response, "Bands\r\n  PASS: 20m\r\n  REJECT: NONE\r\n") {
+					if !strings.Contains(booleanDisplayedExpression(t, response, "PASS RULE 0"), "BAND=20M") {
 						t.Fatalf("alias did not read actual selected band: %q", response)
 					}
 				}
@@ -193,15 +190,15 @@ func TestHelpRoutingRealReadbackSettingPresetAndHistoryOwners(t *testing.T) {
 				if !strings.Contains(runHistory(t, s, c, helpOwnerInput(t, "SH MYDX 1", ziutek)), "K1ABC") || x.reads != 1 || c.historySearch == nil {
 					t.Fatal("SH MYDX did not reach archive/cursor owner")
 				}
-				if dispatch := s.handleMachineCommand(c, "GET YAML CONFIG SCHEMA 4 ID owner-18"); !dispatch.handled || dispatch.terminal {
+				if dispatch := s.handleMachineCommand(c, "GET YAML CONFIG SCHEMA 5 ID owner-18"); !dispatch.handled || dispatch.terminal {
 					t.Fatal("GET argument header did not reach machine owner")
 				}
 				var document struct {
-					SchemaVersion int                  `yaml:"schema_version"`
-					RequestID     string               `yaml:"request_id"`
-					Configuration filter.Configuration `yaml:"configuration"`
+					SchemaVersion int                    `yaml:"schema_version"`
+					RequestID     string                 `yaml:"request_id"`
+					Configuration filter.V5Configuration `yaml:"configuration"`
 				}
-				if err := yaml.Unmarshal([]byte(helpOwnerControl(t, c)), &document); err != nil || document.SchemaVersion != 4 || document.RequestID != "owner-18" || document.Configuration.Settings.SolarSummaryMinutes != 30 {
+				if err := yaml.Unmarshal([]byte(helpOwnerControl(t, c)), &document); err != nil || document.SchemaVersion != 5 || document.RequestID != "owner-18" || document.Configuration.Settings.SolarSummaryMinutes != 30 {
 					t.Fatalf("actual machine readback did not preserve correlated setting: %+v / %v", document, err)
 				}
 				x.assertHelpHasNoEffects(t, ziutek)
@@ -219,19 +216,19 @@ func (x *helpOwnerSession) assertHelpHasNoEffects(t *testing.T, ziutek bool) {
 	before := captureHistoryCommentAliasState(t, c)
 	files, runtime, next := helpOwnerFiles(t), c.pathSnapshot(), c.solarNextSummaryAt
 	diag, writes, reads := c.getDiagMode(), x.writes, x.reads
-	filterTopic, allowTopic := "SHOW FILTER", "PASS"
+	filterTopic := "SHOW FILTER"
 	if c.dialect == DialectCC {
-		filterTopic, allowTopic = "SHOW/FILTER", "SET/FILTER"
+		filterTopic = "SHOW/FILTER"
 	}
 	// Exhaustive aliases belong to commands' routing inventory. These witnesses
 	// cover each interceptor class with both codecs and dialects.
 	for _, tc := range []struct{ topic, canonical, content string }{
 		{"SH MYDX 1", "SHOW MYDX", "SHOW MYDX NEXT <cursor>"},
-		{"SHOW/FILTER BAND", filterTopic, filterTopic + " <category>"},
-		{"PASS BAND 20", allowTopic, allowTopic + " <"},
+		{"SHOW/FILTER RULE", filterTopic, filterTopic + " RULE"},
+		{"RULE", "RULE", "PASS RULE"},
 		{"SET SOLAR 60", "SET SOLAR", "SET SOLAR <15|30|60|OFF>"},
 		{"SAVE PRESET WOULD-WRITE", "SAVE PRESET", "SAVE PRESET <name>"},
-		{"GET YAML CONFIG SCHEMA 4 ID help-18", "GET YAML CONFIG", "GET YAML CONFIG [SCHEMA 2|3|4] [ID <id>]"},
+		{"GET YAML CONFIG SCHEMA 5 ID help-18", "GET YAML CONFIG", "GET YAML CONFIG SCHEMA 5 [ID <id>]"},
 	} {
 		line := helpOwnerInput(t, "HELP "+tc.topic, ziutek)
 		assertHelpOwnerInterceptorsDecline(t, s, c, line)
@@ -297,37 +294,20 @@ func TestHelpRoutingLoadedShortcutAliasesReachTheirRealOwners(t *testing.T) {
 		}
 		x.assertSaved(t)
 	}
-	run("SET/MODE_ALIAS")
-	row := spot.NewSpot("K1ABC", "W2ABC", 14030, "TEST_MODE")
-	row.Comment, row.IsHuman = "CQ DX", true
-	if !c.filter.Modes["TEST_MODE"] || !c.filter.Modes["CW"] || !c.filter.Matches(row) {
-		t.Fatal("loaded alias did not select canonical mode and actual visibility")
-	}
-	run("SET/NOTEST_MODE")
-	if !c.filter.BlockModes["TEST_MODE"] || c.filter.Matches(row) || !c.filter.Modes["CW"] {
-		t.Fatal("negative loaded shortcut did not block canonical mode")
-	}
-	modes := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone().Filters.Modes
+	rules := c.filter.PreparedRules()
 	run("SET/NOANN")
 	run("SET/ANN")
-	if !c.filter.AnnounceEnabled() || !reflect.DeepEqual(modes, filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Filters.Modes) {
+	if !c.filter.AnnounceEnabled() || c.filter.PreparedRules() != rules {
 		t.Fatal("fixed ANN owner lost to loaded mode alias")
 	}
-	run("SET/NOFILTER")
-	if !c.filter.AllModes || len(c.filter.BlockModes) != 0 || len(c.filter.Comments) != 0 || !c.filter.AllBands {
-		t.Fatal("fixed NOFILTER owner lost to loaded mode alias")
-	}
-	for _, command := range []string{"SET/DISABLED_MODE", "SET/NODISABLED_MODE", "SET/UNKNOWN_MODE", "SET/TEST_MODE EXTRA"} {
-		before, files, writes := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone(), helpOwnerFiles(t), x.writes
+	for _, command := range []string{"SET/MODE_ALIAS", "SET/NOTEST_MODE", "SET/NOFILTER", "SET/DISABLED_MODE", "SET/NODISABLED_MODE", "SET/UNKNOWN_MODE", "SET/TEST_MODE EXTRA"} {
+		before, files, writes := c.captureV5Configuration(), helpOwnerFiles(t), x.writes
 		owners := captureHistoryCommentAliasState(t, c)
 		response, handled := engine.Handle(c, command)
-		if command == "SET/TEST_MODE EXTRA" && (!handled || response != "Usage: SET/TEST_MODE\nNo changes applied.\n") {
-			t.Fatalf("execution accepted ignored shortcut tail: %q", response)
+		if handled && !strings.Contains(response, "No changes applied.") {
+			t.Fatalf("retired shortcut was not explicitly refused: %q -> %q", command, response)
 		}
-		if command != "SET/TEST_MODE EXTRA" && (handled || response != "") {
-			t.Fatalf("ineligible shortcut acquired an executable owner: %q -> %q", command, response)
-		}
-		if !before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) || writes != x.writes || !reflect.DeepEqual(files, helpOwnerFiles(t)) {
+		if !before.Equal(c.captureV5Configuration()) || writes != x.writes || !reflect.DeepEqual(files, helpOwnerFiles(t)) {
 			t.Fatalf("ineligible shortcut had effects: %q -> %q", command, response)
 		}
 		owners.assertOwners(t, c, x.writes-writes)

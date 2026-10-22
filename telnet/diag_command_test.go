@@ -63,7 +63,7 @@ func TestFormatSpotForClientDedupeDiagUsesNearbyEffectivePolicy(t *testing.T) {
 		DedupeMedEnabled:  true,
 		DedupeSlowEnabled: true,
 	}, nil)
-	client := &Client{filter: filter.NewFilter()}
+	client := &Client{filter: testRuleFilter(t)}
 	client.setDedupePolicy(dedupePolicySlow)
 	client.setDiagMode(diagModeDedupe)
 	if err := client.filter.EnableNearby(pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")); err != nil {

@@ -12,16 +12,16 @@ import (
 
 func TestMachineCommandLinePreservesIdentifierCase(t *testing.T) {
 	var echoed bytes.Buffer
-	c := &Client{reader: bufio.NewReader(strings.NewReader("get yaml settings id noise-Ab1\r\n")), writer: bufio.NewWriter(&echoed), echoInput: true}
+	c := &Client{reader: bufio.NewReader(strings.NewReader("get yaml settings schema 5 id noise-Ab1\r\n")), writer: bufio.NewWriter(&echoed), echoInput: true}
 	line, err := c.readCommandLine(128)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if line != "get yaml settings id noise-Ab1" {
+	if line != "get yaml settings schema 5 id noise-Ab1" {
 		t.Fatalf("header case changed: %q", line)
 	}
-	cmd, handled, err := parseMachineHeader(line)
-	if err != nil || !handled || cmd != (machineCommand{Verb: "GET", Resource: "SETTINGS", RequestID: "noise-Ab1"}) {
+	cmd, handled, err := parseV5MachineHeader(line)
+	if err != nil || !handled || cmd != (machineCommand{Verb: "GET", Resource: "SETTINGS", SchemaVersion: 5, RequestID: "noise-Ab1"}) {
 		t.Fatalf("unexpected parsed header: %+v, handled=%v, err=%v", cmd, handled, err)
 	}
 	if !strings.HasSuffix(echoed.String(), "noise-Ab1\r\n") {
@@ -105,9 +105,9 @@ func TestParseMachineHeader(t *testing.T) {
 		handled bool
 		bad     bool
 	}{
-		{"GET YAML FILTER", machineCommand{Verb: "GET", Resource: "FILTER"}, true, false},
-		{"gEt YaMl CoNfIg iD x-Ab9", machineCommand{Verb: "GET", Resource: "CONFIG", RequestID: "x-Ab9"}, true, false},
-		{"GET YAML CAPABILITIES ID " + strings.Repeat("a", 32), machineCommand{Verb: "GET", Resource: "CAPABILITIES", RequestID: strings.Repeat("a", 32)}, true, false},
+		{"GET YAML FILTER SCHEMA 5", machineCommand{Verb: "GET", Resource: "FILTER", SchemaVersion: 5}, true, false},
+		{"gEt YaMl CoNfIg sChEmA 5 iD x-Ab9", machineCommand{Verb: "GET", Resource: "CONFIG", RequestID: "x-Ab9", SchemaVersion: 5}, true, false},
+		{"GET YAML CAPABILITIES SCHEMA 5 ID " + strings.Repeat("a", 32), machineCommand{Verb: "GET", Resource: "CAPABILITIES", RequestID: strings.Repeat("a", 32), SchemaVersion: 5}, true, false},
 		{"PUT YAML SETTINGS", machineCommand{Verb: "PUT", Resource: "SETTINGS"}, true, false},
 		{"PATCH YAML FILTER", machineCommand{Verb: "PATCH", Resource: "FILTER"}, true, false},
 		{"VALIDATE YAML CONFIG", machineCommand{Verb: "VALIDATE", Resource: "CONFIG"}, true, false},
@@ -124,7 +124,7 @@ func TestParseMachineHeader(t *testing.T) {
 		{"GETTING DX", machineCommand{}, false, false},
 	} {
 		t.Run(tt.input, func(t *testing.T) {
-			got, handled, err := parseMachineHeader(tt.input)
+			got, handled, err := parseV5MachineHeader(tt.input)
 			if got != tt.command || handled != tt.handled || (err != nil) != tt.bad {
 				t.Fatalf("got %+v handled=%v err=%v; want %+v handled=%v bad=%v", got, handled, err, tt.command, tt.handled, tt.bad)
 			}
@@ -139,7 +139,7 @@ func TestMalformedMachineHeaderKeepsTailOutsideHeader(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		cmd, handled, err := parseMachineHeader(line)
+		cmd, handled, err := parseV5MachineHeader(line)
 		if !handled || err == nil || cmd.Verb != verb {
 			t.Fatalf("malformed header unrecognized: %+v %v", cmd, err)
 		}
@@ -156,19 +156,22 @@ func TestMalformedMachineHeaderKeepsTailOutsideHeader(t *testing.T) {
 }
 
 func FuzzMachineHeader(f *testing.F) {
-	for _, header := range []string{"GET YAML SETTINGS ID noise-1", "PUT YAML CONFIG EXTRA", "PUT_ YAML CONFIG", "VALIDATE YAML CONFIG", "GETTING DX", "GET YAML FILTER ID " + strings.Repeat("a", 33)} {
+	for _, header := range []string{"GET YAML SETTINGS SCHEMA 5 ID noise-1", "PUT YAML CONFIG EXTRA", "PUT_ YAML CONFIG", "VALIDATE YAML CONFIG", "GETTING DX", "GET YAML FILTER ID " + strings.Repeat("a", 33)} {
 		f.Add(header)
 	}
 	f.Fuzz(func(t *testing.T, header string) {
 		if len(header) > 256 {
 			t.Skip()
 		}
-		cmd, handled, err := parseMachineHeader(header)
+		cmd, handled, err := parseV5MachineHeader(header)
 		if !handled || err != nil {
 			return
 		}
 		if cmd.Verb != "GET" && cmd.RequestID != "" {
 			t.Fatal("upload header admitted a request ID")
+		}
+		if cmd.Verb == "GET" && cmd.SchemaVersion != 5 {
+			t.Fatal("GET admitted an implicit or older schema")
 		}
 		if len(cmd.RequestID) > 32 {
 			t.Fatal("oversized identifier admitted")

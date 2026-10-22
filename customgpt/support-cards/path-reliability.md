@@ -159,10 +159,13 @@ inspect user-visible diagnostics:
   and above 7000 km from the same Maidenhead grid-center endpoints used in the
   VOACAP circuit. Cached records still reuse the existing fine path-cell
   granularity, so near-threshold method reuse follows the res-2 cache boundary.
-- Closed fallback spots can be filtered with `PASS/REJECT PATH CLOSED`;
-  existing `PASS/REJECT PATH UNLIKELY` filters still include them for
-  compatibility. Native 160m `CLOSED` is a low-darkness solar proxy; VOACAP
-  `CLOSED` is an SNR threshold result.
+- Closed fallback spots can be selected with numbered Boolean rules such as
+  `PASS RULE 0 PATH=CLOSED` or rejected with `REJECT RULE 9 PATH=CLOSED`.
+  PATH classes match exactly: `PATH=UNLIKELY` excludes CLOSED; use
+  `PATH=UNLIKELY,CLOSED` when both are wanted. See `HELP RULE` and the
+  [telnet filter contract](../../telnet/README.md#filters) for rule combination.
+  Native 160m `CLOSED` is a low-darkness solar proxy; VOACAP `CLOSED` is an
+  SNR threshold result.
 - `Path predictions (5m)` counts final emitted `voacap_closed`,
   `voacap_aligned`, `voacap_sparse_upgrade`, `voacap_open`,
   `native160_closed`, `native160_low`, and `native160_unlikely` glyphs.

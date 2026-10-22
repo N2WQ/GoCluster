@@ -19,6 +19,15 @@ import (
 	"dxcluster/download"
 )
 
+func stateCancellationContext(t *testing.T) (context.Context, context.CancelFunc) {
+	t.Helper()
+	deadline, ok := t.Deadline()
+	if !ok {
+		t.Fatal("cancellation fixture requires a bounded outer test deadline")
+	}
+	return context.WithDeadline(t.Context(), deadline)
+}
+
 // The existing context boundary observes real output progress. Cancellation is
 // triggered by written bytes, rather than a timer racing a small extraction.
 func TestRefreshCancellationAfterSubstantialExtraction(t *testing.T) {
@@ -36,7 +45,7 @@ func TestRefreshCancellationAfterSubstantialExtraction(t *testing.T) {
 	defer server.Close()
 	dir := t.TempDir()
 	cfg := config.FCCULSConfig{URL: server.URL, Archive: filepath.Join(dir, "cancel.zip"), DBPath: path}
-	base, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	base, cancel := stateCancellationContext(t)
 	defer cancel()
 	const threshold = 256 << 10
 	var extracted atomic.Int64
@@ -100,7 +109,9 @@ func TestStateImportCancellationAfterSubstantialRows(t *testing.T) {
 	for id := 1; id <= rows; id++ {
 		prefix.WriteString(sourceRow("EN", id, fmt.Sprintf("K%dCANCEL", id), "L", "TX"))
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Progress owns cancellation; the test deadline is only a hang watchdog,
+	// not a ten-second throughput requirement for instrumented SQLite work.
+	ctx, cancel := stateCancellationContext(t)
 	defer cancel()
 	tail := strings.Repeat(sourceRow("EN", 1, "K1CANCEL", "L", "TX"), rows)
 	source := &stateCancelBoundaryReader{

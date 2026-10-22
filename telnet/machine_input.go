@@ -5,7 +5,6 @@ package telnet
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // machineCommand is a bounded header, separate from the case-sensitive YAML body.
@@ -30,7 +29,7 @@ func (e *machineInputError) Error() string { return e.Err.Error() }
 func (e *machineInputError) Unwrap() error { return e.Err }
 
 func (c *Client) readCommandLine(maxLen int) (string, error) {
-	return c.readInputLine(maxLen, "command", true, true, true, true, true)
+	return c.readBooleanCommandLine(maxLen)
 }
 
 // readInputLine preserves the established human/login editing and echo rules.
@@ -38,6 +37,10 @@ func (c *Client) readCommandLine(maxLen int) (string, error) {
 // admit taxonomy underscores after login; login and recognized machine headers
 // retain their existing character restrictions.
 func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWildcard, allowConfidence, allowDot, machineAware bool) (string, error) {
+	return c.readInputLineWithRuleSyntax(maxLen, context, allowComma, allowWildcard, allowConfidence, allowDot, machineAware, false)
+}
+
+func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowComma, allowWildcard, allowConfidence, allowDot, machineAware, ruleSyntax bool) (string, error) {
 	if maxLen <= 0 {
 		maxLen = defaultCommandLineLimit
 	}
@@ -112,25 +115,43 @@ func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWild
 		}
 		allowed := ""
 		commentByte := machineAware && b >= 32 && b <= 126 && commentArgumentsStarted(line)
+		ruleArguments := false
+		if machineAware && ruleSyntax {
+			_, ruleArguments = booleanRuleExpressionStart(line)
+		}
+		ruleByte := ruleArguments && b >= 32 && b <= 126
 		humanUnderscore := machineAware && b == '_' && machineIntent(line) == ""
-		if len(line) >= maxLen || (!commentByte && !humanUnderscore && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
+		if len(line) >= maxLen || (!commentByte && !ruleByte && !humanUnderscore && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
 			allowed = allowedCharacterList(allowComma, allowWildcard, allowConfidence, allowDot)
 			if machineAware && machineIntent(line) == "" {
 				allowed += ", '_'"
 			}
+			if ruleArguments {
+				allowed = "printable ASCII within a RULE expression"
+			}
 		}
 		if len(line) >= maxLen {
 			c.logRejectedInput(context, fmt.Sprintf("exceeded %d-byte limit", maxLen))
-			return fail(newInputTooLongError(context, maxLen, allowed))
+			inputErr := newInputTooLongError(context, maxLen, allowed)
+			if ruleArguments {
+				inputErr.guidance = "No changes applied."
+			}
+			return fail(inputErr)
 		}
 		if allowed != "" {
 			c.logRejectedInput(context, fmt.Sprintf("forbidden byte 0x%02X", b))
-			return fail(newInputInvalidCharError(context, maxLen, allowed, b))
+			inputErr := newInputInvalidCharError(context, maxLen, allowed, b)
+			if ruleSyntax && booleanInputNeedsHint(line, b) {
+				inputErr.guidance = "Use PASS RULE <0-9> <expression> or REJECT RULE <0-9> <expression>. No changes applied."
+			} else if ruleArguments {
+				inputErr.guidance = "No changes applied."
+			}
+			return fail(inputErr)
 		}
 		normalized := uppercaseInputByte(b)
 		if c.echoInput {
 			echo := normalized
-			if machineAware && machineIntent(line) != "" && machineArgumentsStarted(line) {
+			if ruleArguments || machineAware && machineIntent(line) != "" && machineArgumentsStarted(line) {
 				echo = b
 			}
 			if err := c.writeRaw([]byte{echo}); err != nil {
@@ -144,7 +165,13 @@ func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWild
 		}
 	}
 	if machineAware && machineIntent(line) == "" {
-		for i := range line {
+		end := len(line)
+		if ruleSyntax {
+			if start, ok := booleanRuleExpressionStart(line); ok {
+				end = start
+			}
+		}
+		for i := 0; i < end; i++ {
 			line[i] = uppercaseInputByte(line[i])
 		}
 	}
@@ -226,49 +253,6 @@ func asciiWordEqual(input []byte, word string) bool {
 		}
 	}
 	return true
-}
-
-func parseMachineHeader(line string) (machineCommand, bool, error) {
-	cmd := machineCommand{Verb: machineIntent([]byte(line))}
-	if cmd.Verb == "" {
-		return cmd, false, nil
-	}
-	args := strings.Fields(line)
-	if len(args) < 3 || !strings.EqualFold(args[1], "YAML") {
-		return cmd, true, fmt.Errorf("expected %s YAML <resource>", cmd.Verb)
-	}
-	cmd.Resource = strings.ToUpper(args[2])
-	if !machineResourceAllowed(cmd.Verb, cmd.Resource) {
-		return cmd, true, fmt.Errorf("unsupported resource for %s YAML", cmd.Verb)
-	}
-	if cmd.Verb != "GET" {
-		if len(args) != 3 {
-			return cmd, true, fmt.Errorf("%s YAML accepts no additional header arguments", cmd.Verb)
-		}
-		return cmd, true, nil
-	}
-	remaining := args[3:]
-	if len(remaining) >= 2 && strings.EqualFold(remaining[0], "SCHEMA") {
-		if remaining[1] != "2" && remaining[1] != "3" && remaining[1] != "4" {
-			return cmd, true, fmt.Errorf("GET YAML SCHEMA requires version 2, 3 or 4")
-		}
-		switch remaining[1] {
-		case "4":
-			cmd.SchemaVersion = 4
-		case "3":
-			cmd.SchemaVersion = 3
-		default:
-			cmd.SchemaVersion = 2
-		}
-		remaining = remaining[2:]
-	}
-	if len(remaining) != 0 {
-		if len(remaining) != 2 || !strings.EqualFold(remaining[0], "ID") || !validMachineRequestID(remaining[1]) {
-			return cmd, true, fmt.Errorf("GET YAML permits [SCHEMA 2|3|4] [ID <1-32 ASCII letters, digits or hyphens>]")
-		}
-		cmd.RequestID = remaining[1]
-	}
-	return cmd, true, nil
 }
 
 func machineResourceAllowed(verb, resource string) bool {

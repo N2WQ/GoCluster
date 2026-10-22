@@ -41,7 +41,7 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 				s.dedupeFastEnabled, s.dedupeMedEnabled, s.dedupeSlowEnabled = tc.fast, tc.med, tc.slow
 				s.defaultDedupePolicy, s.defaultDedupeSet = dedupePolicySlow, true
 				c := configurationTestClient(s, "W1ABC-1")
-				record := &filter.UserRecord{Filter: *filter.NewFilter(), Dialect: string(dialect), DedupePolicy: tc.raw}
+				record := &filter.UserRecord{Filter: *testRuleFilter(t), Dialect: string(dialect), DedupePolicy: tc.raw}
 				prepared, err := filter.PrepareUserRecord(c.callsign, record)
 				if err != nil {
 					t.Fatal(err)

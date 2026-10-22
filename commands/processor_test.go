@@ -614,12 +614,23 @@ func TestHelpPerDialect(t *testing.T) {
 			}
 		}
 		reference := p.ProcessCommandForClient("HELP FILTERS", "N2WQ", "", nil, dialect)
-		for _, want := range []string{"Filter categories:", "Supported bands:", "REJECT EVENT ALL"} {
+		for _, want := range []string{"HELP RULE", "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8", "separate controls"} {
 			if !strings.Contains(reference, want) {
 				t.Fatalf("%s reference missing %q", dialect, want)
 			}
 		}
-		if dialect == "cc" && (!strings.Contains(text, "SHOW/DX") || !strings.Contains(text, "SET/ANN") || !strings.Contains(reference, "SET/FILTER <list-type>/ON")) {
+		for _, obsolete := range []string{"Filter categories:", "REJECT EVENT ALL", "SET/FILTER <list-type>/ON"} {
+			if strings.Contains(reference, obsolete) {
+				t.Fatalf("%s reference advertises obsolete category mutation %q", dialect, obsolete)
+			}
+		}
+		rules := p.ProcessCommandForClient("HELP RULE", "N2WQ", "", nil, dialect)
+		for _, want := range []string{"Fields:", "BAND:", "PASS RULE <0..9> <expression>"} {
+			if !strings.Contains(rules, want) {
+				t.Fatalf("%s canonical rule reference missing %q", dialect, want)
+			}
+		}
+		if dialect == "cc" && (!strings.Contains(text, "SHOW/DX") || !strings.Contains(text, "SET/ANN") || !strings.Contains(reference, "SET/FILTER")) {
 			t.Fatal("CC aliases or reference missing")
 		}
 	}
@@ -883,17 +894,15 @@ func TestHelpPauseAcrossDialects(t *testing.T) {
 func TestHelpTopicCCDialect(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 
-	resp := p.ProcessCommandForClient("HELP SET/FT8", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Modes:") || !strings.Contains(resp, "FT8") {
-		t.Fatalf("expected mode shortcuts in help, got %q", resp)
+	for _, mode := range []string{"FT8", "FT2"} {
+		resp := p.ProcessCommandForClient("HELP SET/"+mode, "N2WQ", "", nil, "cc")
+		if !strings.Contains(resp, "Usage: HELP RULE") || !strings.Contains(resp, "refused, not translated") ||
+			strings.Contains(resp, "Modes:") || strings.Contains(resp, "Alias of PASS MODE") {
+			t.Fatalf("expected numbered-rule guidance for old %s shortcut, got %q", mode, resp)
+		}
 	}
 
-	resp = p.ProcessCommandForClient("HELP SET/FT2", "N2WQ", "", nil, "cc")
-	if !strings.Contains(resp, "Modes:") || !strings.Contains(resp, "FT2") {
-		t.Fatalf("expected FT2 mode shortcut in help, got %q", resp)
-	}
-
-	resp = p.ProcessCommandForClient("HELP SHOW DX", "N2WQ", "", nil, "cc")
+	resp := p.ProcessCommandForClient("HELP SHOW DX", "N2WQ", "", nil, "cc")
 	if !strings.Contains(resp, "SHOW/DX - Alias of SHOW MYDX") {
 		t.Fatalf("expected HELP SHOW DX to map to SHOW/DX in cc, got %q", resp)
 	}
@@ -932,8 +941,8 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
 		{"PASS NEARBY", []string{"PASS NEARBY - Toggle nearby filtering", "Usage: PASS NEARBY ON|OFF", "least-suppressive", "available dedupe lane"}},
 		{"SHOW FILTER", []string{"SHOW FILTER - Display current filter state.", "Usage: SHOW FILTER"}},
-		{"PASS", []string{"PASS - Allow filter matches", "Usage: PASS <type> <list>", "Types:"}},
-		{"REJECT", []string{"REJECT - Block filter matches", "Usage: REJECT <type> <list>", "Types:"}},
+		{"PASS", []string{"PASS - Allow matching spots", "Usage: PASS RULE <0..9> <expression>", "HELP RULE"}},
+		{"REJECT", []string{"REJECT - Veto matching spots", "Usage: REJECT RULE <0..9> <expression>", "HELP RULE"}},
 		{"RESET FILTER", []string{"RESET FILTER - Reset filters", "Usage: RESET FILTER"}},
 		{"DIALECT", []string{"DIALECT - Show or switch filter command dialect", "DIALECT LIST"}},
 		{"BYE", []string{"BYE - Disconnect", "Usage: BYE"}},
@@ -971,9 +980,9 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
 		{"PASS NEARBY", []string{"PASS NEARBY - Toggle nearby filtering", "Usage: PASS NEARBY ON|OFF", "least-suppressive", "available dedupe lane"}},
 		{"SHOW/FILTER", []string{"SHOW/FILTER - Display current filter state.", "Usage: SHOW/FILTER"}},
-		{"SET/FILTER", []string{"SET/FILTER - Allow filter matches", "Example: SET/FILTER BAND/ON", "DXBM"}},
-		{"UNSET/FILTER", []string{"UNSET/FILTER - Block filter matches", "Usage: UNSET/FILTER <list-type> <values>", "DXBM"}},
-		{"SET/NOFILTER", []string{"SET/NOFILTER - Allow everything", "Usage: SET/NOFILTER"}},
+		{"SET/FILTER", []string{"SET/FILTER - Enable separate controls", "Example: SET/FILTER BEACON/OFF", "HELP RULE"}},
+		{"UNSET/FILTER", []string{"UNSET/FILTER - Disable separate controls", "Usage: UNSET/FILTER <switch> [ALL]", "HELP RULE"}},
+		{"SET/NOFILTER", []string{"SET/NOFILTER - Replaced by numbered Boolean rules", "Usage: HELP RULE"}},
 		{"SET/ANN", []string{"SET/ANN - Enable announcements", "Alias of PASS ANNOUNCE"}},
 		{"SET/NOANN", []string{"SET/NOANN - Disable announcements", "Alias of REJECT ANNOUNCE"}},
 		{"SET/BEACON", []string{"SET/BEACON - Enable beacon spots", "Alias of PASS BEACON"}},
@@ -984,10 +993,10 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SET/NOWCY", []string{"SET/NOWCY - Disable WCY bulletins", "Alias of REJECT WCY"}},
 		{"SET/SELF", []string{"SET/SELF - Enable self spots", "Alias of PASS SELF"}},
 		{"SET/NOSELF", []string{"SET/NOSELF - Disable self spots", "Alias of REJECT SELF"}},
-		{"SET/SKIMMER", []string{"SET/SKIMMER - Allow skimmer spots", "Alias of PASS SOURCE SKIMMER"}},
-		{"SET/NOSKIMMER", []string{"SET/NOSKIMMER - Block skimmer spots", "Alias of REJECT SOURCE SKIMMER"}},
-		{"SET/FT2", []string{"SET/<MODE> - Allow a mode", "Alias of PASS MODE <MODE>"}},
-		{"SET/NOFT2", []string{"SET/NO<MODE> - Block a mode", "Alias of REJECT MODE <MODE>"}},
+		{"SET/SKIMMER", []string{"SET/SKIMMER - Replaced by numbered Boolean rules", "HELP RULE"}},
+		{"SET/NOSKIMMER", []string{"SET/NOSKIMMER - Replaced by numbered Boolean rules", "HELP RULE"}},
+		{"SET/FT2", []string{"SET/<MODE> - Replaced by numbered Boolean rules", "HELP RULE"}},
+		{"SET/NOFT2", []string{"SET/NO<MODE> - Replaced by numbered Boolean rules", "HELP RULE"}},
 		{"DIALECT", []string{"DIALECT - Show or switch filter command dialect", "DIALECT LIST"}},
 		{"BYE", []string{"BYE - Disconnect", "Usage: BYE"}},
 	}

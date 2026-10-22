@@ -1,8 +1,6 @@
 package commands
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -55,19 +53,19 @@ func helpWordingStateCodes() []string {
 
 func helpWordingExtractMailingCodes(t *testing.T, response string) []string {
 	t.Helper()
-	const heading = "US/Canada mailing codes (states, provinces, territories):\n"
+	const heading = "DX/DESTATE:"
 	if strings.Count(response, heading) != 1 {
 		t.Fatalf("missing or duplicate mailing-code section: %q", response)
 	}
 	_, tail, _ := strings.Cut(response, heading)
 	var rows []string
 	for _, row := range strings.Split(tail, "\n") {
-		if strings.TrimSpace(row) == "" {
+		if strings.HasPrefix(strings.TrimSpace(row), "CONF:") {
 			break
 		}
 		rows = append(rows, row)
 	}
-	return strings.FieldsFunc(strings.Join(rows, " "), func(r rune) bool { return r == ',' || r == ' ' })
+	return strings.FieldsFunc(strings.Join(rows, " "), func(r rune) bool { return r == ',' || r == ' ' || r == '\n' || r == '\r' })
 }
 
 func TestHelpWordingRegisteredMailingVocabulary(t *testing.T) {
@@ -77,50 +75,36 @@ func TestHelpWordingRegisteredMailingVocabulary(t *testing.T) {
 	}
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
-		for _, topic := range []string{"FILTERS", "PASS", "REJECT"} {
+		for _, topic := range []string{"RULE"} {
 			response := p.ProcessCommandForClient("HELP "+topic, "W1ABC-18", "", nil, dialect)
 			assertHelpWidth(t, response)
 			if codes := helpWordingExtractMailingCodes(t, response); !slices.Equal(codes, want) {
 				t.Fatalf("%s HELP %s omitted, duplicated or changed mailing codes: %v", dialect, topic, codes)
 			}
 		}
-		for _, topic := range []string{"", "FILTERS", "PASS", "REJECT"} {
-			response := p.ProcessCommandForClient(strings.TrimSpace("HELP "+topic), "W1ABC-18", "", nil, dialect)
-			flat := strings.Join(strings.Fields(response), " ")
-			for _, description := range []string{
-				"DXSTATE Spotted station's US/Canadian mailing code.",
-				"DESTATE Spotter's US/Canadian mailing code.",
-			} {
-				if !strings.Contains(flat, description) {
-					t.Fatalf("%s HELP %s misdescribed the shared mailing vocabulary: %q", dialect, topic, response)
-				}
-			}
-		}
-		readback := "SHOW FILTER"
-		if dialect == "cc" {
-			readback = "SHOW/FILTER"
-		}
-		response := p.ProcessCommandForClient("HELP "+readback, "W1ABC-18", "", nil, dialect)
-		if !strings.Contains(strings.Join(strings.Fields(response), " "), "DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown.") ||
+		response := p.ProcessCommandForClient("HELP RULE", "W1ABC-18", "", nil, dialect)
+		if !strings.Contains(strings.Join(strings.Fields(response), " "), "DXSTATE/DESTATE use US/Canadian registered mailing codes; missing values are unknown.") ||
 			strings.Contains(response, "show FCC mailing-address codes") {
 			t.Fatalf("%s readback help attributes Canadian data to FCC: %q", dialect, response)
 		}
 	}
 }
 
-func TestHelpWordingModeSpecificVisibilityAndExclusiveRecipe(t *testing.T) {
+func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
-		for _, topic := range []string{"", "PASS", "REJECT"} {
+		for _, topic := range []string{"", "FILTERS"} {
 			response := p.ProcessCommandForClient(strings.TrimSpace("HELP "+topic), "W1ABC-18", "", nil, dialect)
 			assertHelpWidth(t, response)
 			flat := strings.Join(strings.Fields(response), " ")
 			for _, required := range []string{
-				"Filter categories have their own selection rules; see HELP PASS/REJECT.",
-				"MODE preserves visibility for every mode you do not name.",
+				"Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.",
+				"Any PASS can qualify; any matching REJECT vetoes it.",
+				"No active PASS means unrestricted except for matching REJECT rules.",
+				"Reset does not reinstall default slot 0.",
 			} {
 				if !strings.Contains(flat, required) {
-					t.Fatalf("%s HELP %s omits MODE-specific qualification %q", dialect, topic, required)
+					t.Fatalf("%s HELP %s omits Boolean qualification %q", dialect, topic, required)
 				}
 			}
 			for _, misleading := range []string{
@@ -134,33 +118,28 @@ func TestHelpWordingModeSpecificVisibilityAndExclusiveRecipe(t *testing.T) {
 					t.Fatalf("%s HELP %s retains unsupported/generalized wording %q", dialect, topic, misleading)
 				}
 			}
-			block, allow := "REJECT MODE ALL", "PASS MODE CW,FT8"
-			if dialect == "cc" {
-				block, allow = "UNSET/FILTER MODE ALL", "SET/FILTER MODE CW,FT8"
-			}
-			if !strings.Contains(response, "  "+block+"\n  "+allow+"\n") {
-				t.Fatalf("%s HELP %s lost the block-before-pass exclusive MODE recipe", dialect, topic)
+			if !strings.Contains(response, "  RESET FILTER RULE ALL\n  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8\n") {
+				t.Fatalf("%s HELP %s lost the full-replacement exclusive recipe", dialect, topic)
 			}
 		}
 	}
 }
 
-func TestHelpWordingModeOpeningDocumentsExecutableCommand(t *testing.T) {
-	// Decision/troubleshooting records may retain an explicit correction note.
-	// Reject their original executable claims, not the historical command name.
-	for _, tc := range []struct{ path, unsupportedRecipe string }{
-		{"telnet/README.md", "RESET MODE"},
-		{"docs/decisions/ADR-0052-region-aware-mode-inference-and-unknown-filter-token.md", "PASS MODE ALL and RESET MODE continue to allow blank-mode spots."},
-		{"docs/decisions/ADR-0272-mode-visibility-deltas.md", "PASS MODE ALL or RESET MODE opens MODE explicitly."},
-		{"docs/troubleshooting/TSR-0053-mode-delta-whitelist-transition.md", "PASS MODE ALL or RESET MODE explicitly opens the MODE filter."},
-	} {
-		data, err := os.ReadFile(filepath.Join("..", filepath.FromSlash(tc.path)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		flat := strings.Join(strings.Fields(strings.ReplaceAll(string(data), "`", "")), " ")
-		if strings.Contains(flat, tc.unsupportedRecipe) || !strings.Contains(flat, "PASS MODE ALL") {
-			t.Fatalf("%s must teach PASS MODE ALL without its unsupported executable recipe %q", tc.path, tc.unsupportedRecipe)
+func TestHelpWordingMachineSchema5Only(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	for _, dialect := range []string{"go", "cc"} {
+		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
+			topic := "GET YAML " + resource
+			response := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect)
+			flat := strings.Join(strings.Fields(response), " ")
+			for _, want := range []string{topic + " SCHEMA 5 [ID <id>]", "Explicit SCHEMA 5 is required", "older schemas are refused", "No old machine-schema migration"} {
+				if !strings.Contains(flat, want) {
+					t.Fatalf("%s %s omitted %q", dialect, topic, want)
+				}
+			}
+			if strings.Contains(flat, "SCHEMA 2|3|4") || strings.Contains(flat, "Default schema 1") {
+				t.Fatalf("%s %s advertises an obsolete machine schema", dialect, topic)
+			}
 		}
 	}
 }

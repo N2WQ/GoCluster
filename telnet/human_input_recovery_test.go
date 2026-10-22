@@ -37,14 +37,14 @@ func newHumanRecoveryClient(t *testing.T, input []byte, ziutek bool) (*Client, *
 
 func TestHumanRejectionPreservesNextPhysicalLine(t *testing.T) {
 	tails := [][]byte{
-		[]byte("!REJECT BAND ALL\n"),
-		[]byte("!\x15REJECT BAND ALL\b\n"),
-		[]byte("!REJECT BAND ALL\r\n"),
-		[]byte("!REJECT BAND ALL\r\x00"),
+		[]byte("!REJECT RULE 9 BAND=20M\n"),
+		[]byte("!\x15REJECT RULE 9 BAND=20M\b\n"),
+		[]byte("!REJECT RULE 9 BAND=20M\r\n"),
+		[]byte("!REJECT RULE 9 BAND=20M\r\x00"),
 		{'!', IAC, IAC, '\r', '\n'},
 		{'!', IAC, SB, 31, '\r', '\n', IAC, IAC, '\n', IAC, SE, 'X', '\n'},
-		[]byte(strings.Repeat("A", 129) + "REJECT BAND ALL\n"),
-		[]byte("DX 14074 K1ABC CW !REJECT BAND ALL\n"),
+		[]byte(strings.Repeat("A", 129) + "REJECT RULE 9 BAND=20M\n"),
+		[]byte("DX 14074 K1ABC CW !REJECT RULE 9 BAND=20M\n"),
 	}
 	for _, ziutek := range []bool{false, true} {
 		for _, tail := range tails {
@@ -430,7 +430,7 @@ func TestInputWireOrdinaryReadDoesNotAllocate(t *testing.T) {
 }
 
 func FuzzHumanRecoveryBoundary(f *testing.F) {
-	f.Add([]byte("\r\nREJECT BAND ALL"))
+	f.Add([]byte("\r\nREJECT RULE 9 BAND=20M"))
 	f.Add([]byte{IAC, SE, IAC, IAC, '\r'})
 	f.Fuzz(func(t *testing.T, payload []byte) {
 		if len(payload) > 4096 {

@@ -6,14 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
 func TestPreparedUserRecordCapturesBytesAndPath(t *testing.T) {
+	const capturedExpr = `BAND=20M AND COMMENT="CW !"`
 	usePresetTestDir(t)
 	directory := UserDataDir
 	off, on := false, true
@@ -23,8 +23,8 @@ func TestPreparedUserRecordCapturesBytesAndPath(t *testing.T) {
 		Dialect:      "cc", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "SLOW",
 		Preset: &PresetReference{Name: "CONTEST", Baseline: testSavedPreset()},
 	}
-	record.Bands, record.AllBands = map[string]bool{"20m": false}, false
-	record.DXCallsigns, record.Comments = []string{"K1*", "W1*"}, []string{"CW !"}
+	record.preparedRules = mustPrepareRuleSet(t, RuleDefinition{0, RulePass, `BAND=20m AND COMMENT="CW !"`})
+	wantBaselineRules := record.Preset.Baseline.PreparedRules().Definitions()
 	record.IncludeBeacons = &off
 	record.AllowWWV, record.AllowWCY = &on, nil
 	prepared, err := PrepareUserRecord(" n2wq-1 ", record)
@@ -35,7 +35,7 @@ func TestPreparedUserRecordCapturesBytesAndPath(t *testing.T) {
 	if prepared.ByteLen() != len(expected) || prepared.path != filepath.Join(directory, "N2WQ-1.yaml") {
 		t.Fatal("prepared record did not capture its exact bytes/path")
 	}
-	for _, literal := range []string{"20m: false\n", "include_beacons: false\n", "name: CONTEST\n", "last_login_utc: 2026-10-09T12:34:56Z\n"} {
+	for _, literal := range []string{capturedExpr, "include_beacons: false\n", "name: CONTEST\n", "last_login_utc: 2026-10-09T12:34:56Z\n"} {
 		if !bytes.Contains(expected, []byte(literal)) {
 			t.Fatalf("prepared bytes omit %q", literal)
 		}
@@ -44,14 +44,13 @@ func TestPreparedUserRecordCapturesBytesAndPath(t *testing.T) {
 	if err != nil || len(files) != 0 || len(record.RecentIPs) != 6 || record.ConfigurationVersion != 0 {
 		t.Fatal("preparation changed durable state or caller metadata")
 	}
-	record.Bands["20m"], record.AllBands = true, true
-	record.DXCallsigns[0], record.Comments[0], record.RecentIPs[0] = "CHANGED", "CHANGED", "CHANGED"
+	record.RecentIPs[0] = "CHANGED"
+	record.preparedRules = mustPrepareRuleSet(t, RuleDefinition{0, RulePass, "MODE=FT8"})
 	off, on = true, false
 	record.AllowWCY = &on
 	record.LastLoginUTC, record.Grid, record.Dialect = time.Time{}, "CHANGED", "go"
 	record.Preset.Name = "CHANGED"
-	record.Preset.Baseline.Bands["20m"] = false
-	record.Preset.Baseline.DXCallsigns[0] = "CHANGED"
+	record.Preset.Baseline.preparedRules = nil
 	otherDirectory := t.TempDir()
 	UserDataDir = otherDirectory
 	if err := prepared.Commit(); err != nil {
@@ -66,10 +65,11 @@ func TestPreparedUserRecordCapturesBytesAndPath(t *testing.T) {
 	}
 	UserDataDir = directory
 	loaded, err := LoadUserRecord("N2WQ-1")
-	if err != nil || loaded.Bands["20m"] || loaded.AllBands || loaded.IncludeBeacons == nil || *loaded.IncludeBeacons ||
+	if err != nil || loaded.IncludeBeacons == nil || *loaded.IncludeBeacons ||
 		loaded.AllowWWV == nil || !*loaded.AllowWWV || loaded.AllowWCY != nil ||
-		loaded.DXCallsigns[0] != "K1*" || loaded.Comments[0] != "CW !" || len(loaded.RecentIPs) != 5 ||
-		loaded.RecentIPs[0] != "a" || loaded.Preset == nil || loaded.Preset.Name != "CONTEST" {
+		len(loaded.PreparedRules().Definitions()) != 1 || loaded.PreparedRules().Definitions()[0].Expr != capturedExpr ||
+		len(loaded.RecentIPs) != 5 || loaded.RecentIPs[0] != "a" || loaded.Preset == nil || loaded.Preset.Name != "CONTEST" ||
+		!slices.Equal(loaded.Preset.Baseline.PreparedRules().Definitions(), wantBaselineRules) {
 		t.Fatalf("captured record did not restore its original values: %v", err)
 	}
 }
@@ -131,7 +131,8 @@ func TestPreparedPreferencesMetadataAndAssociation(t *testing.T) {
 				t.Fatal(err)
 			}
 			expected := bytes.Clone(prepared.data)
-			set.Grid, set.DXCallsigns[0], set.Bands["20m"], ips[0] = "CHANGED", "CHANGED", false, "CHANGED"
+			set.Grid, ips[0] = "CHANGED", "CHANGED"
+			set.preparedRules = mustPrepareRuleSet(t, RuleDefinition{0, RulePass, "MODE=FT8"})
 			// A changed record after preparation must not cause commit to reload or
 			// merge again. This deliberately controlled edit grants no concurrency
 			// authority to real callers, which still hold their SSID lease.
@@ -171,7 +172,8 @@ func TestPreparedConfigurationCapturesExplicitReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := bytes.Clone(prepared.data)
-	ref.Name, set.Grid, set.DXCallsigns[0] = "CHANGED", "CHANGED", "CHANGED"
+	ref.Name, set.Grid = "CHANGED", "CHANGED"
+	set.preparedRules = nil
 	if err := prepared.Commit(); err != nil {
 		t.Fatal(err)
 	}
@@ -181,7 +183,7 @@ func TestPreparedConfigurationCapturesExplicitReference(t *testing.T) {
 	}
 	loaded, err := LoadUserRecord("N2WQ-1")
 	if err != nil || !loaded.LastLoginUTC.IsZero() || loaded.Preset == nil || loaded.Preset.Name != "CONTEST" ||
-		loaded.Preset.Baseline.Grid != "FN31" || loaded.Preset.Baseline.DXCallsigns[0] != "K1*" {
+		loaded.Preset.Baseline.Grid != "FN31" || !loaded.Preset.Baseline.PreparedRules().Equal(testSavedPreset().PreparedRules()) {
 		t.Fatalf("missing-record metadata or captured baseline changed: %v", err)
 	}
 }
@@ -210,8 +212,8 @@ func TestPreparedRecordValidationBoundaries(t *testing.T) {
 	if _, err := PrepareUserRecord("", nil); err == nil || err.Error() != "nil user record" {
 		t.Fatal("record nil-before-callsign order changed")
 	}
-	if _, err := PrepareUserRecord("not a login", &UserRecord{}); err != nil {
-		t.Fatal("ordinary record preparation added login grammar validation")
+	if _, err := PrepareUserRecord("not a login", &UserRecord{}); err == nil {
+		t.Fatal("ordinary record preparation bypassed full-SSID identity validation")
 	}
 	if _, err := PrepareUserPreferences("not a login", nil, nil); err == nil || err.Error() != "invalid login callsign" {
 		t.Fatal("preference login-before-nil order changed")
@@ -224,13 +226,8 @@ func TestPreparedRecordValidationBoundaries(t *testing.T) {
 		if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		badState := Configuration{Filters: FilterConfiguration{DXStates: StringRules{Allow: map[string]bool{"BAD": true}}}}
-		if _, err := PrepareConfiguration("N2WQ-1", badState, nil, nil); err == nil || err.Error() != "filters.dx_states contains an unsupported key" {
-			t.Fatal("configuration state validation no longer precedes authoritative loading")
-		}
-		badComment := Configuration{Filters: FilterConfiguration{Comments: []string{"é"}}}
-		if _, err := PrepareConfiguration("N2WQ-1", badComment, nil, nil); err == nil || !strings.HasPrefix(err.Error(), "load current user record:") {
-			t.Fatal("configuration comment validation moved before authoritative loading")
+		if _, err := PrepareConfiguration("N2WQ-1", Configuration{}, nil, nil); err == nil || !strings.HasPrefix(err.Error(), "load current user record:") {
+			t.Fatal("configuration preparation accepted malformed authoritative state")
 		}
 		if _, err := PrepareUserPreferences("N2WQ-1", &SavedPreset{}, nil); err == nil || !strings.HasPrefix(err.Error(), "load current user record:") {
 			t.Fatal("preference preparation accepted malformed/future authoritative state")
@@ -251,21 +248,15 @@ func TestPreparedRecordRefusalHasNoEffects(t *testing.T) {
 	UserDataDir = filepath.Join(UserDataDir, "not-created")
 	for _, record := range []*UserRecord{
 		{ConfigurationVersion: CurrentConfigurationVersion + 1},
-		{Filter: Filter{DXStates: map[string]bool{"BAD": true}}},
-		{Filter: Filter{MinSNR: map[string]int{"bad": 0}}},
-		{Filter: Filter{Comments: []string{"é"}}},
+		{Filter: Filter{AllowWWV: nil}, Grid: strings.Repeat("A", MaxPresetBytes+1)},
 		{Preset: &PresetReference{Name: "lower", Baseline: testSavedPreset()}},
 	} {
-		before, err := yaml.Marshal(record)
-		if err != nil {
-			t.Fatal(err)
-		}
+		before := *record
 		called := false
 		if err := saveUserRecord("N2WQ-1", record, func(_ string, _ []byte) error { called = true; return nil }); err == nil || called {
 			t.Fatal("refused record reached a writer")
 		}
-		after, err := yaml.Marshal(record)
-		if err != nil || !bytes.Equal(before, after) {
+		if !reflect.DeepEqual(before, *record) {
 			t.Fatal("refused preparation mutated its input")
 		}
 		if _, err := os.Stat(UserDataDir); !errors.Is(err, os.ErrNotExist) {
@@ -283,7 +274,7 @@ func TestPreparedPresetCollectionCapturesBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	expected := bytes.Clone(prepared)
-	set.Grid, set.DXCallsigns[0] = "CHANGED", "CHANGED"
+	set.Grid, set.preparedRules = "CHANGED", nil
 	delete(collection.Presets, "CONTEST")
 	if !bytes.Equal(prepared, expected) || !bytes.Contains(prepared, []byte("CONTEST:\n")) || !bytes.Contains(prepared, []byte("grid: FN31\n")) {
 		t.Fatal("private prepared collection retains mutable input")

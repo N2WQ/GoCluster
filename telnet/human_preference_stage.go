@@ -54,7 +54,7 @@ func (outcome humanCommandOutcome) persistenceFailure(c *Client, err error) stri
 		label = "dialect"
 	}
 	log.Printf("Warning: failed to persist %s for %s: %v", label, c.callsign, err)
-	return outcome.response + fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\n", err)
+	return outcome.response + fmt.Sprintf("warning: failed to persist; changes are active but were not saved: %v\nThey may be lost when you reconnect.\n", err)
 }
 
 // newHumanPreferenceCandidate requires the enclosing configuration lease. It
@@ -90,11 +90,7 @@ func newHumanPreferenceCandidate(c *Client) *Client {
 	staged.setDedupePolicy(c.getDedupePolicy())
 	if c.filter != nil {
 		value := filter.ConfigurationFromFilter(c.filter, settings).Clone().FilterValue()
-		value.LegacyMinConfidence = c.filter.LegacyMinConfidence
 		value.NearbyUserFine, value.NearbyUserCoarse = c.filter.NearbyUserFine, c.filter.NearbyUserCoarse
-		// DisableNearby copies maps from this immutable runtime snapshot. It must
-		// remain available for OFF even after an unrelated human setting changes.
-		value.NearbySnapshot = c.filter.NearbySnapshot
 		staged.filter = &value
 	}
 	return staged
@@ -135,6 +131,9 @@ func (s *Server) runHumanPreferenceOwned(c *Client, line string, stage func(*Cli
 		if err := s.commitConfigurationRecord(prepared); err != nil {
 			return outcome.persistenceFailure(c, err), outcome.handled
 		}
+		if outcome.warning == humanWarningFilter {
+			return outcome.response + "Saved and active.\r\n", outcome.handled
+		}
 	}
 	return outcome.response, outcome.handled
 }
@@ -143,11 +142,11 @@ func (s *Server) runHumanPreferenceOwned(c *Client, line string, stage func(*Cli
 // potentially large live summaries out of the detached candidate path. It uses
 // only the existing parsers; domain validation still belongs to staged execution.
 func (e *filterCommandEngine) preflightHumanFilterOwned(c *Client, line string) (humanCommandOutcome, bool) {
-	if _, handled, valid := parseCommentFilterCommand(line); handled {
-		if !valid {
-			return humanHandled(commentCommandUsage), false
-		}
+	if _, handled, _ := parseBooleanRuleCommand(line); handled {
 		return humanCommandOutcome{}, true
+	}
+	if e.booleanLegacyMutation(line, c.dialect) {
+		return booleanRuleRefusal(booleanRuleDiscovery), false
 	}
 	tokens := strings.Fields(strings.TrimSpace(line))
 	upper := make([]string, len(tokens))

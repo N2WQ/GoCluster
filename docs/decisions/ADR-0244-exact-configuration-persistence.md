@@ -1,8 +1,16 @@
-# ADR-0244: Exact Configuration Persistence and Preset Continuity
+---
+title: "ADR-0244: Exact Configuration Persistence and Preset Continuity"
+description: Exact settings, atomic writes, applied baselines and session ownership.
+---
 
 - Status: Accepted
 - Date: 2026-10-05
 - Decision Origin: Design
+
+[ADR-0317](ADR-0317-boolean-filter-replacement-mvp.md) replaces category-shaped
+configuration, old-version acceptance and migration for the Boolean MVP.
+Atomicity, per-SSID ownership, exact non-filter preferences, applied baselines
+and distinct human/machine persistence outcomes remain in force.
 
 ## Context
 

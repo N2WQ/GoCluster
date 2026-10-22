@@ -1,0 +1,49 @@
+// File role: Coherent, allocation-free personal matching captures for fan-out.
+// Immutable programs and scalar controls/path inputs outlive the short locks;
+// prediction and comment matching never run under broadcast-visible locks.
+package telnet
+
+import (
+	"dxcluster/filter"
+	"dxcluster/spot"
+)
+
+type clientMatchingSnapshot struct {
+	filter filter.MatchSnapshot
+	path   pathState
+}
+
+func (c *Client) captureMatchingSnapshot() clientMatchingSnapshot {
+	if c == nil {
+		return clientMatchingSnapshot{}
+	}
+	c.pathMu.RLock()
+	c.filterMu.RLock()
+	snapshot := clientMatchingSnapshot{
+		filter: c.filter.MatchSnapshot(),
+		path: pathState{
+			grid: c.grid, gridDerived: c.gridDerived,
+			gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
+			noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
+		},
+	}
+	c.filterMu.RUnlock()
+	c.pathMu.RUnlock()
+	if snapshot.filter.PathFilterActive() {
+		snapshot.path = c.resolvePathSnapshot(snapshot.path)
+	}
+	return snapshot
+}
+
+func (s *Server) matchSnapshot(snapshot clientMatchingSnapshot, sp *spot.Spot) (bool, pathPrediction, bool) {
+	pathClass := filter.PathClassInsufficient
+	var prediction pathPrediction
+	var predicted bool
+	if sp != nil && snapshot.filter.PathFilterActive() {
+		prediction, predicted = s.computePathPredictionForState(snapshot.path, sp)
+		if predicted {
+			pathClass = pathClassFromPrediction(prediction)
+		}
+	}
+	return snapshot.filter.MatchesWithPath(sp, pathClass), prediction, predicted
+}

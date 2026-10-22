@@ -1,7 +1,7 @@
 // File role: Routes usage questions for existing command heads and aliases.
 // The finite HELP catalog is request-owned metadata, never executable dispatch.
 // Whole-token, longest-head matching preserves narrow topics and rejects prefix
-// collisions. CC shortcut eligibility remains owned by the loaded taxonomy.
+// collisions. Historical CC mode-shortcut guidance follows the loaded taxonomy.
 package commands
 
 import (
@@ -60,8 +60,8 @@ func (catalog helpCatalog) normalizeTopic(dialect, topic string) string {
 		return matched
 	}
 	if dialect == "cc" {
-		// Fixed shortcut heads above win before mode aliases, as in telnet.
-		// HELP discards argument tails; execution still validates their arity.
+		// Fixed controls win before historical mode-shortcut guidance.
+		// HELP discards argument tails; execution remains owned by telnet.
 		command, _, _ := strings.Cut(upper, " ")
 		if strings.HasPrefix(command, "SET/NO") && spot.IsCCShortcutMode(strings.TrimPrefix(command, "SET/NO")) {
 			return "SET/NO<MODE>"

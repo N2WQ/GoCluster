@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ad874f5dd671f3e8`
+- Source fingerprint: `79d58415629ab615`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 9 | 19 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 147 |
+| `dxcluster/commands` | `commands` | 11 | 20 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 148 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 48 | 106 |
+| `dxcluster/telnet` | `telnet` | 53 | 112 |
 
 ## In-Scope Package Edges
 
@@ -38,6 +38,7 @@
 | `dxcluster/commands` | `dxcluster/buffer` |
 | `dxcluster/commands` | `dxcluster/cty` |
 | `dxcluster/commands` | `dxcluster/filter` |
+| `dxcluster/commands` | `dxcluster/filter/expr` |
 | `dxcluster/commands` | `dxcluster/reputation` |
 | `dxcluster/commands` | `dxcluster/strutil` |
 | `dxcluster/internal/cluster` | `dxcluster/archive` |
@@ -82,6 +83,7 @@
 | `dxcluster/telnet` | `dxcluster/archive` |
 | `dxcluster/telnet` | `dxcluster/cty` |
 | `dxcluster/telnet` | `dxcluster/filter` |
+| `dxcluster/telnet` | `dxcluster/filter/expr` |
 | `dxcluster/telnet` | `dxcluster/internal/netutil` |
 | `dxcluster/telnet` | `dxcluster/internal/qualificationstage` |
 | `dxcluster/telnet` | `dxcluster/internal/ratelimit` |
@@ -96,6 +98,8 @@
 ### `dxcluster/commands`
 
 Source files:
+- `commands/boolean_rule_catalog.go`
+- `commands/boolean_rule_help.go`
 - `commands/cc_filter_help.go`
 - `commands/comment_help.go`
 - `commands/configuration_help.go`
@@ -107,6 +111,7 @@ Source files:
 - `commands/processor.go`
 
 Test files:
+- `commands/boolean_rule_help_test.go`
 - `commands/cc_filter_help_test.go`
 - `commands/command_arity_test.go`
 - `commands/comment_history_benchmark_test.go`
@@ -172,6 +177,7 @@ Test files:
 - `internal/cluster/accepted_learning_shutdown_test.go`
 - `internal/cluster/activity_admission_wiring_test.go`
 - `internal/cluster/archive_fanout_delivery_test.go`
+- `internal/cluster/boolean_defaults_test.go`
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
 - `internal/cluster/confidence_attribution_delivery_test.go`
@@ -625,29 +631,29 @@ Test files:
 ### `dxcluster/telnet`
 
 Source files:
+- `telnet/boolean_input.go`
+- `telnet/boolean_onboarding.go`
+- `telnet/boolean_rule_commands.go`
+- `telnet/boolean_rule_readback.go`
 - `telnet/bulletin_dedupe.go`
 - `telnet/comment_commands.go`
 - `telnet/comment_input.go`
 - `telnet/configuration_admission.go`
-- `telnet/configuration_capabilities.go`
 - `telnet/configuration_human.go`
-- `telnet/configuration_human_comments.go`
-- `telnet/configuration_human_dxcc.go`
-- `telnet/configuration_human_effective.go`
-- `telnet/configuration_human_finite.go`
-- `telnet/configuration_human_minsnr.go`
-- `telnet/configuration_human_summary.go`
 - `telnet/configuration_publish.go`
 - `telnet/configuration_readback.go`
 - `telnet/configuration_render.go`
 - `telnet/configuration_session.go`
 - `telnet/configuration_transaction.go`
+- `telnet/configuration_v5_admission.go`
+- `telnet/configuration_v5_transaction.go`
 - `telnet/dedupe_readback.go`
 - `telnet/events.go`
 - `telnet/filter_commands.go`
 - `telnet/filter_usage.go`
 - `telnet/history.go`
 - `telnet/history_filter.go`
+- `telnet/history_v5.go`
 - `telnet/human_input_recovery.go`
 - `telnet/human_preference_stage.go`
 - `telnet/input_wire.go`
@@ -658,9 +664,15 @@ Source files:
 - `telnet/machine_schema.go`
 - `telnet/machine_schema_fields.go`
 - `telnet/machine_upload.go`
+- `telnet/machine_v5_commands.go`
+- `telnet/machine_v5_input.go`
+- `telnet/machine_v5_readback.go`
+- `telnet/machine_v5_readback_capabilities.go`
+- `telnet/machine_v5_schema.go`
+- `telnet/machine_v5_schema_nodes.go`
+- `telnet/machine_v5_schema_rules.go`
 - `telnet/machine_validation.go`
-- `telnet/machine_versions.go`
-- `telnet/minsnr_commands.go`
+- `telnet/matching_snapshot.go`
 - `telnet/peer_membership.go`
 - `telnet/preset_commands.go`
 - `telnet/qualification_observer.go`
@@ -671,29 +683,31 @@ Source files:
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
 - `telnet/show_prop.go`
-- `telnet/state_commands.go`
 - `telnet/writer_normalize.go`
 
 Test files:
+- `telnet/boolean_activation_test.go`
+- `telnet/boolean_input_fuzz_test.go`
+- `telnet/boolean_input_test.go`
+- `telnet/boolean_onboarding_test.go`
+- `telnet/boolean_rule_commands_fuzz_test.go`
+- `telnet/boolean_rule_commands_test.go`
+- `telnet/boolean_rule_readback_test.go`
 - `telnet/bulletin_dedupe_test.go`
-- `telnet/callsign_pattern_command_test.go`
 - `telnet/canadian_login_test.go`
 - `telnet/cc_filter_help_contract_test.go`
 - `telnet/command_fixture_options_test.go`
 - `telnet/command_fixture_test.go`
 - `telnet/comment_benchmark_test.go`
-- `telnet/comment_commands_test.go`
 - `telnet/comment_input_test.go`
 - `telnet/configuration_admission_test.go`
+- `telnet/configuration_boolean_boundary_test.go`
 - `telnet/configuration_handoff_test.go`
-- `telnet/configuration_human_dxcc_test.go`
-- `telnet/configuration_human_effective_test.go`
-- `telnet/configuration_human_finite_test.go`
-- `telnet/configuration_human_summary_test.go`
 - `telnet/configuration_human_test.go`
 - `telnet/configuration_publish_test.go`
 - `telnet/configuration_readback_test.go`
 - `telnet/configuration_session_test.go`
+- `telnet/configuration_upgrade_test.go`
 - `telnet/dedupe_collision_test.go`
 - `telnet/dedupe_policy_test.go`
 - `telnet/dedupe_readback_test.go`
@@ -704,7 +718,6 @@ Test files:
 - `telnet/filter_argument_admission_test.go`
 - `telnet/filter_discovery_contract_test.go`
 - `telnet/glyph_test.go`
-- `telnet/grid2_commands_test.go`
 - `telnet/grid_command_test.go`
 - `telnet/handshake_mode_test.go`
 - `telnet/handshake_transcript_test.go`
@@ -716,13 +729,13 @@ Test files:
 - `telnet/history_fuzz_test.go`
 - `telnet/history_selection_test.go`
 - `telnet/history_test.go`
+- `telnet/history_v5_test.go`
 - `telnet/human_input_recovery_test.go`
 - `telnet/human_preference_handoff_test.go`
 - `telnet/human_preference_publish_test.go`
 - `telnet/human_preference_stage_test.go`
 - `telnet/latency_test.go`
 - `telnet/machine_commands_test.go`
-- `telnet/machine_comments_test.go`
 - `telnet/machine_deadline_lifecycle_test.go`
 - `telnet/machine_failure_persistence_test.go`
 - `telnet/machine_input_test.go`
@@ -730,11 +743,16 @@ Test files:
 - `telnet/machine_session_test.go`
 - `telnet/machine_transport_coverage_test.go`
 - `telnet/machine_upload_test.go`
-- `telnet/minsnr_commands_test.go`
+- `telnet/machine_v5_commands_concurrency_test.go`
+- `telnet/machine_v5_commands_failure_test.go`
+- `telnet/machine_v5_commands_test.go`
+- `telnet/machine_v5_commands_transport_test.go`
+- `telnet/machine_v5_input_test.go`
+- `telnet/machine_v5_readback_test.go`
+- `telnet/machine_v5_schema_fuzz_test.go`
+- `telnet/machine_v5_schema_test.go`
+- `telnet/matching_snapshot_test.go`
 - `telnet/minsnr_history_test.go`
-- `telnet/minsnr_machine_test.go`
-- `telnet/minsnr_readback_test.go`
-- `telnet/mode_delta_test.go`
 - `telnet/nearby_endpoint_test.go`
 - `telnet/nofilter_nearby_test.go`
 - `telnet/path_first_wave_comparison_test.go`
@@ -773,7 +791,6 @@ Test files:
 - `telnet/show_prop_test.go`
 - `telnet/solar_command_test.go`
 - `telnet/solar_outcome_test.go`
-- `telnet/state_commands_test.go`
 - `telnet/state_machine_test.go`
 - `telnet/taxonomy_input_test.go`
 - `telnet/writer_v15_append_test.go`
@@ -811,7 +828,7 @@ Test files:
 | [ADR-0276](docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md) | Accepted | 2026-10-10 | toxicity, optional YAML, defaults, duration admission | `path:internal/cluster` |
 | [ADR-0275](docs/decisions/ADR-0275-runtime-output-retirement.md) | Accepted | 2026-10-10 | output lifecycle, bounded grace, holds and downstream ownership | `path:internal/cluster, path:peer, path:telnet` |
 | [ADR-0273](docs/decisions/ADR-0273-history-comment-alias-boundary.md) | Accepted | 2026-10-10 | commands, telnet, history, aliases, literal phrases | `area:commands, area:telnet, path:commands, path:telnet` |
-| [ADR-0272](docs/decisions/ADR-0272-mode-visibility-deltas.md) | Accepted | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | `area:telnet, path:telnet` |
+| [ADR-0272](docs/decisions/ADR-0272-mode-visibility-deltas.md) | Superseded | 2026-10-09 | filter, telnet, MODE, persistence, effective feedback | `area:telnet, path:telnet` |
 | [ADR-0271](docs/decisions/ADR-0271-shared-station-reputation.md) | Accepted | 2026-10-09 | reputation, telnet, station identity, allowance, history ownership | `area:telnet` |
 | [ADR-0270](docs/decisions/ADR-0270-complete-storage-admission.md) | Accepted | 2026-10-09 | filter, telnet, quotas, temporary settings, SAVE ordering | `area:telnet, path:telnet` |
 | [ADR-0269](docs/decisions/ADR-0269-detached-human-preference-publication.md) | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | `area:telnet, path:telnet` |
@@ -821,7 +838,7 @@ Test files:
 | [ADR-0262](docs/decisions/ADR-0262-history-band-mode-selections.md) | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0261](docs/decisions/ADR-0261-literal-comment-filter-and-history.md) | Accepted | 2026-10-08 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0260](docs/decisions/ADR-0260-cccluster-outbound-handshake.md) | Accepted | 2026-10-08 | peer, handshake, ccluster, deadlines, retry progress | `area:peer, path:peer` |
-| [ADR-0258](docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md) | Accepted | 2026-10-07 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:telnet` |
+| [ADR-0258](docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md) | Superseded | 2026-10-07 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:telnet` |
 | [ADR-0254](docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md) | Accepted | 2026-10-07 | uls, config, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:telnet` |
 | [ADR-0253](docs/decisions/ADR-0253-fcc-state-enrichment-and-filtering.md) | Accepted | 2026-10-07 | uls, spot, archive, filter, telnet, commands, runtime | `area:commands, area:spot, area:telnet, path:internal/cluster, path:telnet` |
 | [ADR-0252](docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md) | Accepted | 2026-10-06 | release scripts, build metadata | `path:peer` |

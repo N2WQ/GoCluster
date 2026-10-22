@@ -49,7 +49,8 @@ func TestMachineGETOverflowReleasesOwnershipBeforeBlockedReporter(t *testing.T) 
 	getDone := make(chan struct{})
 	var queued bool
 	go func() {
-		queued = s.getMachineConfiguration(c, machineCommand{Verb: "GET", Resource: "SETTINGS", RequestID: "read-1"})
+		dispatch := s.handleMachineCommand(c, "GET YAML SETTINGS SCHEMA 5 ID read-1")
+		queued = dispatch.handled && !dispatch.terminal
 		close(getDone)
 	}()
 	waitConfigurationTest(t, reportEntered)
@@ -78,7 +79,7 @@ func TestConfigurationSaveAndReconnectHandoff(t *testing.T) {
 	old := configurationTestClient(s, "W1ABC-1")
 	old.configuredSettings = filter.SettingsConfiguration{Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST"}
 	old.configurationInitialized = true
-	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: &filter.SavedPreset{Filter: *filter.NewFilter(), Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}}
+	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})}
 	s.registerClient(old)
 	entered, finish := make(chan struct{}), make(chan struct{})
 	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
@@ -221,7 +222,7 @@ func TestConfigurationProtectedTemporaryDefaults(t *testing.T) {
 func TestConfigurationLoginMetadataFailureRestoresPreferences(t *testing.T) {
 	s := presetTestServer(t)
 	call := "W1ABC-1"
-	if err := filter.SaveUserRecord(call, &filter.UserRecord{Filter: *filter.NewFilter(), Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "SLOW"}); err != nil {
+	if err := filter.SaveUserRecord(call, &filter.UserRecord{Filter: *testRuleFilter(t), Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "SLOW"}); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(filter.UserDataDir, call+".yaml")

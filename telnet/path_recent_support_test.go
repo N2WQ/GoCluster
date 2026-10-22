@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"dxcluster/filter"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
@@ -41,8 +40,7 @@ func recentConsumerFixture(t *testing.T, cfg pathreliability.Config, at time.Tim
 	}
 	p := pathreliability.NewPredictor(cfg, []string{band})
 	s := &Server{pathPredictor: p, pathDisplay: true, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return at }}
-	c := &Client{filter: filter.NewFilter(), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: rx, gridCoarseCell: rc, noiseClass: "QUIET"}
-	c.filter.SetMode("FT8", true)
+	c := &Client{filter: passRuleTestFilter(t, "MODE=FT8"), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: rx, gridCoarseCell: rc, noiseClass: "QUIET"}
 	frequency := 14074.0
 	if band == "160m" {
 		frequency = 1840
@@ -103,7 +101,7 @@ func TestPathRecentSupportPolicy(t *testing.T) {
 					reports, receivers, required = 11, 2, 2
 				}
 				recentConsumerReports(t, s, c, sp, reports, receivers, 1, -10, at, at, false)
-				c.filter.SetPathClass(filter.PathClassHigh, true)
+				c.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=HIGH")
 				c.setDiagMode(diagModePath)
 				env := deliverPathPredictionReuseSpot(t, s, c, sp)
 				if env.pathPrediction == nil {
@@ -136,8 +134,7 @@ func TestPathRecentSupportPolicy(t *testing.T) {
 					t.Fatal("PATH HIGH admitted insufficient aged support")
 				default:
 				}
-				c.filter.SetPathClass(filter.PathClassHigh, false)
-				c.filter.SetPathClass(filter.PathClassInsufficient, true)
+				c.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=INSUFFICIENT")
 				env = deliverPathPredictionReuseSpot(t, s, c, sp)
 				line = s.formatSpotEnvelopeForClient(c, env)
 				wantUnits := "/u10.5|"
@@ -291,7 +288,7 @@ func TestPathRecentSupportReportPresentWidth(t *testing.T) {
 			}
 			recentConsumerReports(t, s, c, sp, reports, 6, 1, -10, at, at, false)
 			c.setDiagMode(diagModePath)
-			c.filter.SetPathClass(filter.PathClassInsufficient, true)
+			c.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=INSUFFICIENT")
 			env := deliverPathPredictionReuseSpot(t, s, c, sp)
 			line := strings.TrimRight(s.formatSpotEnvelopeForClient(c, env), "\r\n")
 			want := "DX de N0S7:      14074.00  K1S7        FT8 -10 dB n21/u10.5|lo    IO91   0403Z"

@@ -13,7 +13,6 @@ import (
 
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
-	"gopkg.in/yaml.v3"
 )
 
 func presetTestServer(t *testing.T) *Server {
@@ -24,6 +23,24 @@ func presetTestServer(t *testing.T) *Server {
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinObservationCount = 19
 	return &Server{dedupeFastEnabled: true, dedupeMedEnabled: true, dedupeSlowEnabled: true, pathPredictor: pathreliability.NewPredictor(cfg, []string{"20m"}), noiseModel: cfg.NoiseModel(), nearbyLoginWarning: nearbyLoginWarningMsg}
+}
+
+func testSavedPreset(t testing.TB, configuration filter.V5Configuration) *filter.SavedPreset {
+	t.Helper()
+	set, err := filter.RuntimeSavedPresetFromV5(&filter.V5SavedPreset{Configuration: configuration})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return set
+}
+
+func testPresetConfiguration(t testing.TB, preset *filter.SavedPreset) filter.V5Configuration {
+	t.Helper()
+	value, err := filter.V5SavedPresetFromRuntime(preset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value.Configuration
 }
 
 func TestParsePresetCommand(t *testing.T) {
@@ -65,8 +82,7 @@ func TestPresetCommands(t *testing.T) {
 		t.Run(string(dialect), func(t *testing.T) {
 			origin := newTestClient()
 			origin.callsign, origin.dialect = "N2WQ-1", dialect
-			origin.filter.SetBand("20m", true)
-			origin.filter.AddDXCallsignPattern("K1*")
+			origin.filter = passRuleTestFilter(t, "BAND=20M AND DXCALL=K1*")
 			origin.filter.SetWWVEnabled(false)
 			origin.grid, origin.noiseClass = "FN31", "URBAN"
 			origin.pathMinObservationCount = 30
@@ -76,7 +92,7 @@ func TestPresetCommands(t *testing.T) {
 			if !handled || !strings.Contains(response, "Saved preset CONTEST-LIVE-1") {
 				t.Fatalf("SAVE: %q", response)
 			}
-			origin.filter.SetBand("40m", true)
+			origin.filter = passRuleTestFilter(t, "BAND=40M")
 			target := newTestClient()
 			target.callsign, target.dialect = "N2WQ-2", dialect
 			target.setDiagMode(diagModeSource)
@@ -94,7 +110,9 @@ func TestPresetCommands(t *testing.T) {
 			if !handled || !strings.Contains(response, "Loaded preset CONTEST-LIVE-1") {
 				t.Fatalf("LOAD: %q", response)
 			}
-			if target.filter != pointer || !target.filter.Bands["20m"] || target.filter.Bands["40m"] || target.filter.WWVEnabled() || target.grid != "FN31" || target.noiseClass != "URBAN" || target.pathMinObservationCount != 30 || target.getSolarSummaryMinutes() != 30 || target.getDedupePolicy() != dedupePolicySlow || target.dialect != dialect {
+			if target.filter != pointer || len(target.filter.PreparedRules().Definitions()) != 1 ||
+				target.filter.PreparedRules().Definitions()[0].Expr != "BAND=20M AND DXCALL=K1*" ||
+				target.filter.WWVEnabled() || target.grid != "FN31" || target.noiseClass != "URBAN" || target.pathMinObservationCount != 30 || target.getSolarSummaryMinutes() != 30 || target.getDedupePolicy() != dedupePolicySlow || target.dialect != dialect {
 				t.Fatal("LOAD failed to restore all preferences independently")
 			}
 			if target.getDiagMode() != diagModeSource || target.readPauseUntilUnixNano.Load() != 12345 {
@@ -104,11 +122,11 @@ func TestPresetCommands(t *testing.T) {
 			if err != nil || record.Grid != "FN31" || record.PathMinObservationCount != 30 || record.SolarSummaryMinutes != 30 || record.Dialect != string(dialect) {
 				t.Fatalf("reconnect defaults=%+v err=%v", record, err)
 			}
-			if !record.LastLoginUTC.Equal(login) || strings.Join(record.RecentIPs, ",") != "192.0.2.2" || !origin.filter.Bands["40m"] {
+			if !record.LastLoginUTC.Equal(login) || strings.Join(record.RecentIPs, ",") != "192.0.2.2" || origin.filter.PreparedRules().Definitions()[0].Expr != "BAND=40M" {
 				t.Fatal("LOAD changed login metadata or another connected SSID")
 			}
 			response, handled = s.handlePresetCommand(target, "DELETE PRESET contest-live-1")
-			if !handled || !strings.Contains(response, "Deleted preset CONTEST-LIVE-1") || target.grid != "FN31" || !target.filter.Bands["20m"] {
+			if !handled || !strings.Contains(response, "Deleted preset CONTEST-LIVE-1") || target.grid != "FN31" || target.filter.PreparedRules().Definitions()[0].Expr != "BAND=20M AND DXCALL=K1*" {
 				t.Fatalf("DELETE changed active settings: %q", response)
 			}
 			response, _ = s.handlePresetCommand(origin, "LOAD PRESET contest-live-1")
@@ -123,12 +141,16 @@ func TestPresetLoadFailure(t *testing.T) {
 	s := presetTestServer(t)
 	client := newTestClient()
 	client.callsign, client.grid, client.noiseClass = "N2WQ-2", "IO91", "QUIET"
+	client.filter = passRuleTestFilter(t, "MODE=CW")
 	client.setDedupePolicy(dedupePolicyFast)
 	client.setSolarSummaryMinutes(15, time.Now())
 	if err := client.saveFilter(); err != nil {
 		t.Fatal(err)
 	}
-	set := &filter.SavedPreset{Filter: *filter.NewFilter(), Grid: "FN31", NoiseClass: "URBAN", Dialect: "cc", DedupePolicy: "SLOW", SolarSummaryMinutes: 30, PathMinObservationCount: 40}
+	set := testSavedPreset(t, filter.V5Configuration{
+		Filters:  filter.V5FilterConfiguration{Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8"}}},
+		Settings: filter.SettingsConfiguration{Grid: "FN31", NoiseClass: "URBAN", Dialect: "cc", DedupePolicy: "SLOW", SolarSummaryMinutes: 30, PathMinObservationCount: 40},
+	})
 	if err := filter.SavePreset("N2WQ-1", "new", set); err != nil {
 		t.Fatal(err)
 	}
@@ -141,10 +163,7 @@ func TestPresetLoadFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	beforeBytes, err := yaml.Marshal(before)
-	if err != nil {
-		t.Fatal(err)
-	}
+	beforeConfiguration := testPresetConfiguration(t, before)
 	beforePath, pointer, beforeTick := client.pathSnapshot(), client.filter, client.solarNextSummaryAt
 	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error {
 		if client.grid != "IO91" || client.dialect != DialectGo {
@@ -161,8 +180,7 @@ func TestPresetLoadFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	afterBytes, err := yaml.Marshal(after)
-	if err != nil || !bytes.Equal(beforeBytes, afterBytes) || client.pathSnapshot() != beforePath || client.filter != pointer || client.solarNextSummaryAt != beforeTick {
+	if !beforeConfiguration.Equal(testPresetConfiguration(t, after)) || client.pathSnapshot() != beforePath || client.filter != pointer || client.solarNextSummaryAt != beforeTick {
 		t.Fatal("failed LOAD changed live settings")
 	}
 	afterDisk, err := os.ReadFile(path)
@@ -188,7 +206,7 @@ func TestPresetLoadRuntimeState(t *testing.T) {
 	origin.pathMinObservationCount = 40
 	origin.setDedupePolicy(dedupePolicySlow)
 	origin.setSolarSummaryMinutes(30, time.Now())
-	origin.filter.SetDXContinent("EU", true)
+	origin.filter = passRuleTestFilter(t, "DXCONT=EU")
 	if err := origin.filter.EnableNearby(origin.gridCell, origin.gridCoarseCell); err != nil {
 		t.Fatal(err)
 	}
@@ -201,14 +219,15 @@ func TestPresetLoadRuntimeState(t *testing.T) {
 	if response, _ := s.handlePresetCommand(target, "LOAD PRESET NEARBY"); !strings.Contains(response, "dedupe SLOW unavailable; using FAST") {
 		t.Fatal(response)
 	}
-	if !target.filter.NearbyEnabled || target.filter.NearbySnapshot == nil || target.filter.NearbyUserFine != pathreliability.EncodeCell("FN31") || target.gridCell != pathreliability.EncodeCell("FN31") || target.gridCoarseCell != pathreliability.EncodeCoarseCell("FN31") || target.getDedupePolicy() != dedupePolicyFast {
+	if !target.filter.NearbyEnabled || target.filter.NearbyUserFine != pathreliability.EncodeCell("FN31") || target.gridCell != pathreliability.EncodeCell("FN31") || target.gridCoarseCell != pathreliability.EncodeCoarseCell("FN31") || target.getDedupePolicy() != dedupePolicyFast {
 		t.Fatal("derived runtime state was not rebuilt")
 	}
 	if tick := target.solarNextSummaryAt; tick.Before(start) || tick.Sub(start) > 30*time.Minute || tick.Minute()%30 != 0 || tick.Second() != 0 {
 		t.Fatalf("wrong solar schedule: %v", tick)
 	}
+	programs := target.filter.PreparedRules()
 	target.filter.DisableNearby()
-	if !target.filter.DXContinents["EU"] || target.filter.AllDXContinents {
+	if target.filter.PreparedRules() != programs || programs.Definitions()[0].Expr != "DXCONT=EU" {
 		t.Fatal("NEARBY OFF lost saved location filters")
 	}
 	set, err := filter.LoadPreset("N2WQ", "NEARBY")
@@ -232,7 +251,9 @@ func TestPresetLoadRuntimeState(t *testing.T) {
 		t.Fatal(err)
 	}
 	response, _ := s.handlePresetCommand(target, "LOAD PRESET UNLOCATED")
-	if !strings.Contains(response, nearbyLoginInactiveMsg) || !target.filter.NearbyEnabled || target.filter.NearbySnapshot != nil || target.filter.NearbyUserFine != pathreliability.InvalidCell {
+	if !strings.Contains(response, nearbyLoginInactiveMsg) || !target.filter.NearbyEnabled ||
+		target.filter.NearbyUserFine != pathreliability.InvalidCell || target.filter.NearbyUserCoarse != pathreliability.InvalidCell ||
+		target.filter.PreparedRules().Definitions()[0].Expr != "DXCONT=EU" {
 		t.Fatalf("NEARBY without usable cells: %q", response)
 	}
 }
@@ -241,7 +262,7 @@ func TestPresetLoadConcurrentReaders(t *testing.T) {
 	s := presetTestServer(t)
 	client := newTestClient()
 	client.callsign = "N2WQ-2"
-	if err := filter.SavePreset("N2WQ-1", "ONE", &filter.SavedPreset{Filter: *filter.NewFilter(), Grid: "FN31", DedupePolicy: "MED"}); err != nil {
+	if err := filter.SavePreset("N2WQ-1", "ONE", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Grid: "FN31", DedupePolicy: "MED"}})); err != nil {
 		t.Fatal(err)
 	}
 	stop := make(chan struct{})
@@ -254,7 +275,7 @@ func TestPresetLoadConcurrentReaders(t *testing.T) {
 			default:
 			}
 			client.filterMu.RLock()
-			_ = client.filter.String()
+			_ = client.filter.MatchSnapshot()
 			client.filterMu.RUnlock()
 			_ = client.pathSnapshot()
 			_ = client.getSolarSummaryMinutes()
@@ -304,7 +325,7 @@ func TestPresetSessionTranscriptAndReconnect(t *testing.T) {
 					if dialect == DialectCC {
 						show = "SHOW/FILTER"
 					}
-					commands = append(commands, struct{ line, want string }{show, "Type RESUME when ready. Missed spots are not replayed."}, struct{ line, want string }{"RESET FILTER", "Filters reset to defaults"})
+					commands = append(commands, struct{ line, want string }{show, "Type RESUME when ready. Missed spots are not replayed."}, struct{ line, want string }{"RESET FILTER", "NEARBY OFF"})
 				}
 				for _, command := range commands {
 					if _, err := io.WriteString(conn, command.line+"\r\n"); err != nil {

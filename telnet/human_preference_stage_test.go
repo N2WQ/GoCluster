@@ -19,9 +19,8 @@ func TestHumanPreferenceCandidateRawIsolation(t *testing.T) {
 	c := configurationTestClient(s, "W1ABC-1")
 	c.grid, c.gridDerived, c.noiseClass, c.pathMinObservationCount = "FN31", true, "URBAN", 40
 	c.gridCell, c.gridCoarseCell = 1, 2
-	c.filter.Bands, c.filter.DXCallsigns, c.filter.Comments = map[string]bool{"20m": false}, []string{"K1*"}, []string{"POTA"}
+	c.filter = passRuleTestFilter(t, "BAND=20M AND DXCALL=K1* AND COMMENT=POTA")
 	c.filter.AllowWWV = filter.DefaultBoolFalse.Pointer()
-	c.filter.LegacyMinConfidence = 17
 	if err := c.filter.EnableNearby(1, 2); err != nil {
 		t.Fatal(err)
 	}
@@ -41,23 +40,25 @@ func TestHumanPreferenceCandidateRawIsolation(t *testing.T) {
 	c.setDedupePolicy(dedupePolicySlow)
 	c.setSolarSummaryMinutes(30, time.Date(2026, 10, 9, 12, 1, 0, 0, time.UTC))
 	// Capture RAW state before any capture/revision helper. Those helpers would
-	// initialize settings and mask a constructor that mutates legacy live input.
+	// initialize settings and mask a constructor that mutates raw live input.
 	settings, initialized := c.configuredSettings, c.configurationInitialized
 	digest, digestSet, epoch, revision := c.configurationDigest, c.configurationDigestSet, c.configurationEpoch, c.configurationRevision
 	history, historyDigest, historySet, generation := c.historySearch, c.historyDigest, c.historyDigestSet, c.historyGeneration
-	state, tick, pointer, snapshot := c.pathSnapshot(), c.solarNextSummaryAt, c.filter, c.filter.NearbySnapshot
-	before := filter.ConfigurationFromFilter(c.filter, settings).Clone()
+	state, tick, pointer := c.pathSnapshot(), c.solarNextSummaryAt, c.filter
+	before := filter.V5ConfigurationFromFilter(c.filter, settings).Clone()
+	programs := c.filter.PreparedRules()
 	staged := newHumanPreferenceCandidate(c)
 	if staged.filter == c.filter || staged.done != nil || staged.conn != nil || staged.reader != nil || staged.writer != nil || staged.controlChan != nil || staged.spotChan != nil || staged.historySearch != nil || staged.recentIPs != nil || staged.presetReference != nil {
 		t.Fatal("candidate copied writable preferences or connection/lifecycle ownership")
 	}
-	if staged.configuredSettings.Grid != "" || staged.grid != "FN31" || !staged.gridDerived || staged.getDedupePolicy() != dedupePolicySlow || staged.filter.LegacyMinConfidence != 17 || staged.filter.NearbySnapshot != snapshot || staged.filter.NearbyUserFine != 1 || staged.filter.NearbyUserCoarse != 2 {
+	if staged.configuredSettings.Grid != "" || staged.grid != "FN31" || !staged.gridDerived || staged.getDedupePolicy() != dedupePolicySlow || staged.filter.PreparedRules() != programs || staged.filter.NearbyUserFine != 1 || staged.filter.NearbyUserCoarse != 2 {
 		t.Fatal("candidate lost configured/effective or NEARBY runtime distinction")
 	}
-	staged.filter.Bands["20m"], staged.filter.DXCallsigns[0], staged.filter.Comments[0], *staged.filter.AllowWWV = true, "CHANGED", "CHANGED", true
+	*staged.filter.AllowWWV = true
+	*staged.filter = *passRuleTestFilter(t, "MODE=FT8")
 	staged.grid, staged.configuredSettings.Grid = "CHANGED", "CHANGED"
 	staged.filter.DisableNearby()
-	if !before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.filter != pointer || c.filter.NearbySnapshot != snapshot || !c.filter.NearbyActive() || c.pathSnapshot() != state || c.solarNextSummaryAt != tick {
+	if !before.Equal(filter.V5ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.filter != pointer || c.filter.PreparedRules() != programs || !c.filter.NearbyActive() || c.pathSnapshot() != state || c.solarNextSummaryAt != tick {
 		t.Fatal("discarded candidate changed live preferences/runtime")
 	}
 	if c.configuredSettings != settings || c.configurationInitialized != initialized || c.configurationDigest != digest || c.configurationDigestSet != digestSet || c.configurationEpoch != epoch || c.configurationRevision != revision || c.historySearch != history || c.historyDigest != historyDigest || c.historyDigestSet != historySet || c.historyGeneration != generation || c.readPauseEpoch != 8 || !c.readPausePending.Load() || c.getDiagMode() != diagModeSource || !c.recordProtected {
@@ -78,14 +79,11 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 			s.filterEngine = newFilterCommandEngine()
 			c := configurationTestClient(s, "W1ABC-1")
 			c.dialect = dialect
-			c.filter.Comments = []string{"POTA"}
+			c.filter = passRuleTestFilter(t, "COMMENT=POTA")
 			if err := c.saveFilter(); err != nil {
 				t.Fatal(err)
 			}
-			before, err := c.captureConfiguration(0)
-			if err != nil {
-				t.Fatal(err)
-			}
+			before := c.captureV5Configuration()
 			path := filepath.Join(filter.UserDataDir, "W1ABC-1.yaml")
 			disk, err := os.ReadFile(path)
 			if err != nil {
@@ -93,7 +91,7 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 			}
 			attempts := 0
 			s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { attempts++; return nil }
-			for _, line := range []string{"PASS BAND 20 NOTABAND", "PASS MODE CW NOTAMODE", "PASS DXCONT EU INVALID", "PASS COMMENT é", "PASS COMMENT pota", "REMOVE PASS COMMENT absent"} {
+			for _, line := range []string{"PASS BAND 20 NOTABAND", "PASS MODE CW NOTAMODE", "PASS DXCONT EU INVALID", "PASS RULE 1 COMMENT=é", "PASS RULE 1 BAND=NOTABAND", "RESET FILTER RULE 9"} {
 				staged := newHumanPreferenceCandidate(c)
 				outcome := s.filterEngine.stageOwned(staged, line)
 				if !outcome.handled || outcome.publish || outcome.forceSolar {
@@ -105,14 +103,14 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 			}
 			// A deliberately faulty handler models partial mutation followed by
 			// refusal. The coordinator must discard the candidate even then.
-			s.filterEngine.registerDomain(&domainHandler{name: "FAULT", apply: func(staged *Client, _ filterAction, _ []string) (string, bool) {
-				staged.updateFilter(func(f *filter.Filter) { f.BlockAllBands = true })
-				return "Refused after candidate mutation\n", false
-			}})
-			if _, handled := s.filterEngine.Handle(c, "PASS FAULT"); !handled || attempts != 0 {
+			refused := passRuleTestFilter(t, "BAND=40M")
+			if _, handled := s.runHumanPreferenceOwned(c, "fixture", func(staged *Client, _ string) humanCommandOutcome {
+				staged.updateFilter(func(f *filter.Filter) { *f = *refused })
+				return humanHandled("Refused after candidate mutation\n")
+			}); !handled || attempts != 0 {
 				t.Fatal("faulty refusing handler saved its partial mutation")
 			}
-			if !before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.filter.BlockAllBands {
+			if !before.Equal(c.captureV5Configuration()) {
 				t.Fatal("refused stage changed live selections")
 			}
 			after, err := os.ReadFile(path)
@@ -129,12 +127,12 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 			if attempts != 0 {
 				t.Fatal("read-only/unchanged setting saved")
 			}
-			outcome := s.filterEngine.stageOwned(newHumanPreferenceCandidate(c), "PASS BAND 20")
+			outcome := s.filterEngine.stageOwned(newHumanPreferenceCandidate(c), "PASS RULE 1 BAND=20M")
 			if !outcome.handled || !outcome.publish {
 				t.Fatal("ordinary PASS lost explicit save intent")
 			}
-			s.filterEngine.Handle(c, "PASS BAND 20")
-			s.filterEngine.Handle(c, "PASS BAND 20")
+			s.filterEngine.Handle(c, "PASS RULE 1 BAND=20M")
+			s.filterEngine.Handle(c, "PASS RULE 1 BAND=20M")
 			if attempts != 2 {
 				t.Fatal("ordinary repeated PASS stopped saving")
 			}
@@ -219,9 +217,8 @@ func TestHumanPreferenceFilterPreflightRoutes(t *testing.T) {
 	}{
 		{"DX 14074 K1ABC CW", "", false},
 		{"", "", false},
-		{"SET/NOFILTER", "Command matches the cc dialect. Switch with DIALECT CC or use the GO syntax.\n", true},
+		{"SET/NOFILTER", booleanRuleRefusal(booleanRuleDiscovery).response, true},
 		{"RESET WRONG", "Usage: RESET FILTER\nType HELP for usage.\n", true},
-		{"PASS COMMENT é", commentCommandUsage, true},
 	} {
 		outcome, needsStage := s.filterEngine.preflightHumanFilterOwned(c, test.line)
 		if needsStage || outcome.publish || outcome.handled != test.handled || outcome.response != test.response {
@@ -232,10 +229,14 @@ func TestHumanPreferenceFilterPreflightRoutes(t *testing.T) {
 			t.Fatalf("nonmutation route output/save changed: %s => %q", test.line, response)
 		}
 	}
-	if outcome, needsStage := s.filterEngine.preflightHumanFilterOwned(c, "SHOW FILTER"); needsStage || !outcome.handled || outcome.publish || outcome.response != formatFilterSnapshot(c.filter, s.filterEngine.ctyLookup) {
+	want, err := formatBooleanFilterSnapshot(c.filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if outcome, needsStage := s.filterEngine.preflightHumanFilterOwned(c, "SHOW FILTER"); needsStage || !outcome.handled || outcome.publish || outcome.response != want {
 		t.Fatal("live filter summary entered detached staging")
 	}
-	if _, needsStage := s.filterEngine.preflightHumanFilterOwned(c, "PASS BAND 20"); !needsStage {
+	if _, needsStage := s.filterEngine.preflightHumanFilterOwned(c, "PASS RULE 1 BAND=20M"); !needsStage {
 		t.Fatal("recognized mutation bypassed staging")
 	}
 }

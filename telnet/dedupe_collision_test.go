@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"dxcluster/dedup"
-	"dxcluster/filter"
 	"dxcluster/spot"
 )
 
@@ -38,7 +37,7 @@ func TestBroadcastCollisionDedupePolicies(t *testing.T) {
 			srv := NewServer(ServerOptions{BroadcastQueue: 4, DedupeFastEnabled: true, DedupeMedEnabled: true, DedupeSlowEnabled: true}, nil)
 			var clients []*Client
 			for i, policy := range []dedupePolicy{dedupePolicyFast, dedupePolicyMed, dedupePolicySlow} {
-				client := &Client{callsign: fmt.Sprintf("N%dTEST", i), filter: filter.NewFilter(), spotChan: make(chan *spotEnvelope, 4)}
+				client := &Client{callsign: fmt.Sprintf("N%dTEST", i), filter: testRuleFilter(t), spotChan: make(chan *spotEnvelope, 4)}
 				client.setDedupePolicy(policy)
 				clients = append(clients, client)
 			}

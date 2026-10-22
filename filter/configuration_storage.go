@@ -1,6 +1,4 @@
-// File role: Presence-aware disk versioning and bounded applied-preset references.
-// Absent markers select legacy migration; later versions add exact state/SNR rules.
-// Invalid/future versions fail before records or shared presets can be rewritten.
+// File role: Applied-preset references and strict v5 stored-value validation.
 package filter
 
 import (
@@ -8,18 +6,15 @@ import (
 	"fmt"
 	"reflect"
 	"strconv"
-	"strings"
 	"time"
 
-	"dxcluster/spot"
 	"gopkg.in/yaml.v3"
 )
 
-// ErrUnsupportedConfigurationVersion prevents rewriting unrecognized disk state.
+// ErrUnsupportedConfigurationVersion protects unrecognized disk state.
 var ErrUnsupportedConfigurationVersion = errors.New("unsupported configuration version")
 
-// PresetReference identifies the applied snapshot, independently of later
-// changes or deletion in the shared named library. Only one baseline is retained.
+// PresetReference retains one applied baseline independently of library edits.
 type PresetReference struct {
 	Name     string       `yaml:"name"`
 	Baseline *SavedPreset `yaml:"baseline"`
@@ -28,7 +23,7 @@ type PresetReference struct {
 // Clone validates and detaches the single bounded applied snapshot.
 func (ref *PresetReference) Clone() (*PresetReference, error) {
 	if ref == nil {
-		return nil, nil //nolint:nilnil // A nil reference is the valid absence of an associated preset.
+		return nil, nil //nolint:nilnil // Absence is an explicit association.
 	}
 	name, err := NormalizePresetName(ref.Name)
 	if err != nil || name != ref.Name {
@@ -41,198 +36,21 @@ func (ref *PresetReference) Clone() (*PresetReference, error) {
 	return &PresetReference{Name: name, Baseline: baseline}, nil
 }
 
-// UnmarshalYAML validates the applied name and baseline before admitting a record.
+// UnmarshalYAML validates the applied name and v5 baseline before admission.
 func (ref *PresetReference) UnmarshalYAML(node *yaml.Node) error {
-	return decodeStoredOwnerNode(node, ref)
-}
-
-func (ref *PresetReference) unmarshalStored(node *yaml.Node, state *storageDecodeState) error {
-	if err := state.validateStoredMapping(node, reflect.TypeFor[PresetReference]()); err != nil {
+	var value V5PresetReference
+	if err := decodeV5StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
 		return err
 	}
-	if err := state.validateCurrentStoredValues(node, reflect.TypeFor[PresetReference]()); err != nil {
-		return err
+	runtime, err := RuntimePresetReferenceFromV5(&value)
+	if err == nil {
+		*ref = *runtime
 	}
-	type plain PresetReference
-	var decoded plain
-	if err := state.decodePlain(node, &decoded); err != nil {
-		return err
-	}
-	detached, err := (*PresetReference)(&decoded).Clone()
-	if err != nil {
-		return err
-	}
-	*ref = *detached
-	return nil
+	return err
 }
 
-func storedConfigurationVersion(node *yaml.Node) (int, error) {
-	if node.Kind != yaml.MappingNode {
-		return 0, errors.New("stored configuration must be a mapping")
-	}
-	seen := false
-	version := 0
-	for i := 0; i < len(node.Content); i += 2 {
-		if node.Content[i].Value != "configuration_version" {
-			continue
-		}
-		if seen {
-			return 0, errors.New("duplicate configuration_version")
-		}
-		seen = true
-		value := node.Content[i+1]
-		if value.Kind != yaml.ScalarNode || value.Tag != "!!int" {
-			return 0, fmt.Errorf("%w: marker must be an integer", ErrUnsupportedConfigurationVersion)
-		}
-		if err := value.Decode(&version); err != nil || (version < 1 || version > CurrentConfigurationVersion) {
-			return 0, fmt.Errorf("%w: expected 1 through %d", ErrUnsupportedConfigurationVersion, CurrentConfigurationVersion)
-		}
-	}
-	return version, nil
-}
-
-// validateStoredStateFields admits states only in version two. Validate the
-// fixed vocabulary before Node.Decode allocates rule maps, including fields
-// inherited through legacy YAML merges. Only merge sources are followed: an
-// unrelated legacy field must not change the historical migration contract.
-func validateStoredStateFields(node *yaml.Node, version int) error {
-	pending := []*yaml.Node{node}
-	seen := make(map[*yaml.Node]bool)
-	for len(pending) != 0 {
-		current := pending[len(pending)-1]
-		pending = pending[:len(pending)-1]
-		if current == nil || seen[current] {
-			continue
-		}
-		seen[current] = true
-		switch current.Kind {
-		case yaml.AliasNode:
-			pending = append(pending, current.Alias)
-			continue
-		case yaml.SequenceNode:
-			pending = append(pending, current.Content...)
-			continue
-		case yaml.MappingNode:
-		default:
-			continue // Decode owns malformed merge shape errors.
-		}
-		if err := validateStoredStateMapping(current, version, &pending); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-// Each YAML node is visited once even when merge aliases form a cycle. State
-// presence in any merge source is rejected for legacy records before decoding.
-func validateStoredStateMapping(node *yaml.Node, version int, pending *[]*yaml.Node) error {
-	for i := 0; i < len(node.Content); i += 2 {
-		key := node.Content[i]
-		// Match yaml.v3's merge recognition before aliases are resolved as
-		// ordinary field names; an aliased << key is not a merge directive.
-		if key.Kind == yaml.ScalarNode && key.Value == "<<" && key.Tag == "!!merge" {
-			*pending = append(*pending, node.Content[i+1])
-			continue
-		}
-		if key.Kind == yaml.AliasNode && key.Alias != nil {
-			key = key.Alias
-		}
-		name := key.Value
-		switch name {
-		case "dxstates", "blockdxstates", "destates", "blockdestates",
-			"alldxstates", "blockalldxstates", "alldestates", "blockalldestates":
-			if version < stateConfigurationVersion {
-				return fmt.Errorf("state field %s requires configuration version %d", name, stateConfigurationVersion)
-			}
-		default:
-			continue
-		}
-		switch name {
-		case "dxstates", "blockdxstates", "destates", "blockdestates":
-			value := node.Content[i+1]
-			if value.Kind == yaml.AliasNode && value.Alias != nil {
-				value = value.Alias
-			}
-			if value.Kind != yaml.MappingNode || len(value.Content)/2 > maxStateRuleEntries {
-				return fmt.Errorf("invalid bounded state map %s", name)
-			}
-			for j := 0; j < len(value.Content); j += 2 {
-				key := value.Content[j]
-				if key.Kind == yaml.AliasNode && key.Alias != nil {
-					key = key.Alias
-				}
-				if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || !spot.IsState(key.Value) {
-					return fmt.Errorf("state map %s contains an unsupported key", name)
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// Custom node decoding does not inherit Decoder.KnownFields. Enforce the same
-// fixed struct schema here, including inline Filter fields, before decoding.
-func validateStoredMapping(node *yaml.Node, typ reflect.Type) error {
-	if node.Kind != yaml.MappingNode {
-		return errors.New("stored configuration must be a mapping")
-	}
-	fields := make(map[string]reflect.Type)
-	addStoredFields(fields, typ)
-	for i := 0; i < len(node.Content); i += 2 {
-		key := node.Content[i]
-		if key.Kind != yaml.ScalarNode || key.Tag != "!!str" || fields[key.Value] == nil {
-			return fmt.Errorf("unknown stored configuration field %q", key.Value)
-		}
-	}
-	return nil
-}
-
-func addStoredFields(fields map[string]reflect.Type, typ reflect.Type) {
-	for i := range typ.NumField() {
-		field := typ.Field(i)
-		if field.PkgPath != "" {
-			continue
-		}
-		tag := strings.Split(field.Tag.Get("yaml"), ",")
-		if tag[0] == "-" {
-			continue
-		}
-		inline := false
-		for _, flag := range tag[1:] {
-			inline = inline || flag == "inline"
-		}
-		if inline {
-			addStoredFields(fields, field.Type)
-			continue
-		}
-		name := tag[0]
-		if name == "" {
-			name = strings.ToLower(field.Name)
-		}
-		fields[name] = field.Type
-	}
-}
-
-// Exact records cannot turn malformed nulls or string booleans into zero values.
-// Missing pointer toggles still denote DEFAULT; legacy decoding remains separate.
-func validateCurrentStoredValues(node *yaml.Node, typ reflect.Type) error {
-	fields := make(map[string]reflect.Type)
-	addStoredFields(fields, typ)
-	for i := 0; i < len(node.Content); i += 2 {
-		field := node.Content[i].Value
-		if err := validateStoredValue(node.Content[i+1], fields[field]); err != nil {
-			return fmt.Errorf("invalid stored field %s: %w", field, err)
-		}
-	}
-	return nil
-}
-
-func validateStoredValue(node *yaml.Node, typ reflect.Type) error {
-	return validateStoredValueWithFields(node, typ, validateCurrentStoredValues)
-}
-
-// The struct validator supplies field metadata only. Every value keeps its
-// original ordered validation, including aliased keys and interpreted duplicates.
+// Struct validation supplies field metadata only. Values retain their ordered
+// checks, including aliased keys and interpreted duplicates.
 func validateStoredValueWithFields(node *yaml.Node, typ reflect.Type, validateFields func(*yaml.Node, reflect.Type) error) error {
 	if node.Kind == yaml.AliasNode && node.Alias != nil {
 		node = node.Alias
@@ -242,6 +60,10 @@ func validateStoredValueWithFields(node *yaml.Node, typ reflect.Type, validateFi
 	}
 	for typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
+	}
+	if typ == reflect.TypeFor[DefaultBool]() {
+		var value DefaultBool
+		return value.UnmarshalYAML(node)
 	}
 	if typ == reflect.TypeFor[time.Time]() {
 		if node.Kind != yaml.ScalarNode || node.Tag != "!!timestamp" && node.Tag != "!!str" {
@@ -253,10 +75,6 @@ func validateStoredValueWithFields(node *yaml.Node, typ reflect.Type, validateFi
 	case reflect.Struct:
 		if node.Kind != yaml.MappingNode {
 			return errors.New("expected a mapping")
-		}
-		// SavedPreset owns its presence/version checks and legacy migration.
-		if typ == reflect.TypeFor[SavedPreset]() {
-			return nil
 		}
 		return validateFields(node, typ)
 	case reflect.Map:

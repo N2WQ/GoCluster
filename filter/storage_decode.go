@@ -1,7 +1,5 @@
-// File role: Operation-owned compatible decoding of persisted user/preset YAML.
-// The original typed traversal is accounted before bulk materialization. Its
-// yaml.v3 alias guards reset at the old plain Node.Decode boundaries, while the
-// document's physical/logical work remains shared and bounded before bulk decode.
+// File role: Operation-owned bounded decoding of persisted v5 user/preset YAML.
+// Physical/logical work and yaml.v3 alias guards precede bulk materialization.
 package filter
 
 import (
@@ -44,7 +42,6 @@ type storageDecodeGuard struct {
 	merged        map[any]bool
 	knownFields   bool
 	typeErrors    []string
-	marker        int
 	presetEntries *storagePresetEntries
 }
 
@@ -72,10 +69,6 @@ func (state *storageDecodeState) observePresetEntry(entries *storagePresetEntrie
 		state.presetCountExceeded = true
 	}
 }
-
-type storagePlainUserRecord UserRecord
-type storagePlainSavedPreset SavedPreset
-type storagePlainPresetReference PresetReference
 
 func checkedStorageAdd(value *uint64, amount uint64) error {
 	if amount > math.MaxUint64-*value {
@@ -156,7 +149,7 @@ func (state *storageDecodeState) visit(node *yaml.Node, guard *storageDecodeGuar
 		}
 	}
 	// Keep yaml.v3 v3.0.1's separate prefix guard exactly. Scalar byte charges
-	// never participate in this ratio, and every old Node.Decode starts it anew.
+	// never participate in this ratio; each operation owns a fresh guard.
 	allowed := 0.99
 	if guard.visits >= 4000000 {
 		allowed = 0.10
@@ -249,17 +242,6 @@ func (state *storageDecodeState) validateStoredMapping(node *yaml.Node, typ refl
 	return nil
 }
 
-func (state *storageDecodeState) validateCurrentStoredValues(node *yaml.Node, typ reflect.Type) error {
-	fields := state.storedFields(typ)
-	for i := 0; i < len(node.Content); i += 2 {
-		field := node.Content[i].Value
-		if err := validateStoredValueWithFields(node.Content[i+1], fields[field].typ, state.validateCurrentStoredValues); err != nil {
-			return fmt.Errorf("invalid stored field %s: %w", field, err)
-		}
-	}
-	return nil
-}
-
 func storedTypeError(guard *storageDecodeGuard, node *yaml.Node, typ reflect.Type) {
 	guard.typeErrors = append(guard.typeErrors, fmt.Sprintf("line %d: cannot unmarshal %s into %s", node.Line, node.ShortTag(), typ))
 }
@@ -314,9 +296,6 @@ func (state *storageDecodeState) decode(node *yaml.Node, typ reflect.Type, out r
 				out = out.Elem()
 			}
 			typ = typ.Elem()
-		}
-		if handled, good, err := state.decodeOwner(node, typ, out, guard); handled {
-			return reflect.Value{}, good, err
 		}
 	}
 	switch node.Kind {
@@ -379,7 +358,7 @@ func (state *storageDecodeState) decodeMapping(node *yaml.Node, typ reflect.Type
 }
 
 func (state *storageDecodeState) decodeMappingContents(node *yaml.Node, typ reflect.Type, out reflect.Value, guard *storageDecodeGuard) (reflect.Value, bool, error) {
-	if !state.materialize && state.limits.presets > 0 && typ == reflect.TypeFor[map[string]*SavedPreset]() {
+	if !state.materialize && state.limits.presets > 0 && storagePresetMapType(typ) {
 		previous := guard.presetEntries
 		if previous == nil {
 			guard.presetEntries = &storagePresetEntries{keys: make(map[string]bool, state.limits.presets+1)}
@@ -434,12 +413,9 @@ func (state *storageDecodeState) decodeMappingContents(node *yaml.Node, typ refl
 			if out.IsValid() {
 				target = out.FieldByIndex(field.index)
 			}
-			value, valid, err := state.decode(node.Content[i+1], field.typ, target, guard)
+			_, _, err = state.decode(node.Content[i+1], field.typ, target, guard)
 			if err != nil {
 				return reflect.Value{}, false, err
-			}
-			if valid && name.String() == "configuration_version" {
-				guard.marker = int(value.Int())
 			}
 		}
 	} else {
@@ -491,7 +467,7 @@ func (state *storageDecodeState) decodeMapEntries(node *yaml.Node, typ reflect.T
 		if err != nil {
 			return err
 		}
-		if entries := guard.presetEntries; entries != nil && typ == reflect.TypeFor[map[string]*SavedPreset]() {
+		if entries := guard.presetEntries; entries != nil && storagePresetMapType(typ) {
 			// The first frame creates a map even when empty; merge frames borrow
 			// that existing map. Match insertion of null values without building it.
 			if good || node.Content[i+1].ShortTag() == "!!null" && (entries.depth == 1 || !entries.keys[key.String()]) {
@@ -503,6 +479,10 @@ func (state *storageDecodeState) decodeMapEntries(node *yaml.Node, typ reflect.T
 		}
 	}
 	return nil
+}
+
+func storagePresetMapType(typ reflect.Type) bool {
+	return typ == reflect.TypeFor[map[string]*V5SavedPreset]()
 }
 
 func (state *storageDecodeState) decodeMerge(parent, merge *yaml.Node, typ reflect.Type, out reflect.Value, guard *storageDecodeGuard) error {

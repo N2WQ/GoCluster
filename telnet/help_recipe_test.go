@@ -1,9 +1,6 @@
 package telnet
 
 import (
-	"maps"
-	"reflect"
-	"slices"
 	"strings"
 	"testing"
 
@@ -29,22 +26,18 @@ func TestHelpBandModeRecipe(t *testing.T) {
 					}
 				}
 			}
-			run("PASS NOFILTER")
-			run("PASS COMMENT CQ")
-			allow, block, show := "PASS", "REJECT", "SHOW FILTER"
+			run("PASS RULE 0 SOURCE=HUMAN AND COMMENT=CQ")
+			run("REJECT RULE 9 DXCALL=W1*")
+			show := "SHOW FILTER"
 			if dialect == DialectCC {
-				allow, block, show = "SET/FILTER", "UNSET/FILTER", "SHOW/FILTER"
+				show = "SHOW/FILTER"
 			}
-			run(allow + " SOURCE HUMAN")
-			run(block + " DXCALL W1*")
-			sources := maps.Clone(client.filter.Sources)
-			comments := slices.Clone(client.filter.Comments)
-			blockedCalls := slices.Clone(client.filter.BlockDXCallsigns)
-			for _, line := range []string{block + " BAND ALL", allow + " BAND 20,40", block + " MODE ALL", allow + " MODE CW,FT8", show} {
+			reject := client.filter.PreparedRules().Definitions()[1]
+			for _, line := range []string{"PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN AND COMMENT=CQ", show} {
 				run(line)
 			}
-			if !maps.Equal(sources, client.filter.Sources) || !reflect.DeepEqual(comments, client.filter.Comments) || !reflect.DeepEqual(blockedCalls, client.filter.BlockDXCallsigns) {
-				t.Fatal("recipe changed unrelated source, comment or callsign selections")
+			if rules := client.filter.PreparedRules().Definitions(); len(rules) != 2 || rules[1] != reject {
+				t.Fatal("recipe changed independent callsign rejection")
 			}
 			for _, tc := range []struct {
 				call, mode, comment string

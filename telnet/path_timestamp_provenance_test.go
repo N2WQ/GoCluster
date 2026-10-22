@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"dxcluster/filter"
 	"dxcluster/pathreliability"
 	"dxcluster/solarweather"
 	"dxcluster/spot"
@@ -48,8 +47,7 @@ func timestampProvenanceFixture(t *testing.T, cfg pathreliability.Config, reques
 		t.Fatalf("fixture report rejected: %+v", admission)
 	}
 	s := &Server{pathPredictor: p, pathDisplay: true, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return requested }}
-	c := &Client{filter: filter.NewFilter(), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
-	c.filter.SetMode("FT8", true)
+	c := &Client{filter: passRuleTestFilter(t, "MODE=FT8"), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
 	freq := 14074.0
 	if band == "160m" {
 		freq = 1840
@@ -167,7 +165,7 @@ func TestTimestampProvenanceAdmissionReuseAndFixedComment(t *testing.T) {
 			forecast.Record.HourUTC = requested.Hour()
 			fallback := &timestampProvenanceFallback{forecast: forecast}
 			s.pathClosedFallback = fallback
-			c.filter.SetPathClass(filter.PathClassClosed, true)
+			c.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=CLOSED")
 			c.setDiagMode(diagModePath)
 			env := deliverPathPredictionReuseSpot(t, s, c, sp)
 			if env.pathPrediction == nil || !env.pathPrediction.at.Equal(requested) || env.pathPrediction.result.ObservedSamplingUnix != reference.Unix() {

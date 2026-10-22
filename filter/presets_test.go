@@ -53,16 +53,14 @@ func TestPresetUnderscoreNamesRejected(t *testing.T) {
 
 func testSavedPreset() *SavedPreset {
 	f := NewFilter()
-	f.SetBand("20m", true)
-	f.SetMode("CW", true)
-	f.SetSource("HUMAN", true)
-	f.AddDXCallsignPattern("K1*")
-	f.AddBlockDECallsignPattern("W1XYZ")
-	f.SetDXDXCC(291, true)
-	f.SetDXContinent("EU", false)
-	f.SetDEZone(5, true)
-	f.SetDXGrid2Prefix("FN", true)
-	f.SetConfidenceSymbol("?", false)
+	set, err := PrepareRuleSet([]RuleDefinition{
+		{0, RulePass, "BAND=20m AND MODE=CW AND SOURCE=HUMAN AND DXCALL=K1* AND DXDXCC=291 AND DEZONE=5 AND DXGRID2=FN"},
+		{1, RuleReject, "DECALL=W1XYZ OR DXCONT=EU OR CONF=?"},
+	})
+	if err != nil {
+		panic(err)
+	}
+	f.preparedRules = set
 	f.SetBeaconEnabled(false)
 	f.SetWWVEnabled(false)
 	f.SetWCYEnabled(false)
@@ -135,7 +133,6 @@ func TestPresetPreferencesRoundTrip(t *testing.T) {
 	usePresetTestDir(t)
 	set := testSavedPreset()
 	set.NearbyEnabled = true
-	set.NearbySnapshot = &NearbyLocationSnapshot{AllDXContinents: true}
 	set.NearbyUserFine, set.NearbyUserCoarse = 10, 11
 	want, err := yaml.Marshal(set)
 	if err != nil {
@@ -144,8 +141,7 @@ func TestPresetPreferencesRoundTrip(t *testing.T) {
 	if err := SavePreset("N2WQ", "all", set); err != nil {
 		t.Fatal(err)
 	}
-	set.Bands["40m"] = true
-	set.DXCallsigns[0] = "NEW*"
+	set.preparedRules = mustPrepareRuleSet(t, RuleDefinition{0, RulePass, "BAND=40m AND DXCALL=NEW*"})
 	*set.AllowWWV = true
 	loaded, err := LoadPreset("N2WQ-1", "ALL")
 	if err != nil {
@@ -155,11 +151,10 @@ func TestPresetPreferencesRoundTrip(t *testing.T) {
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("round trip changed preferences: err=%v\nwant=%s\ngot=%s", err, want, got)
 	}
-	if loaded.NearbySnapshot != nil || loaded.NearbyUserFine != pathreliability.InvalidCell || loaded.NearbyUserCoarse != pathreliability.InvalidCell {
+	if loaded.NearbyUserFine != pathreliability.InvalidCell || loaded.NearbyUserCoarse != pathreliability.InvalidCell {
 		t.Fatal("runtime NEARBY caches survived serialization")
 	}
-	loaded.Bands["80m"] = true
-	loaded.DXCallsigns[0] = "MUTATED*"
+	loaded.preparedRules = nil
 	*loaded.AllowToxic = true
 	again, err := LoadPreset("N2WQ-2", "all")
 	if err != nil {
@@ -212,12 +207,12 @@ func TestPresetCountAndSizeBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	large := testSavedPreset()
-	large.DXCallsigns = []string{"A"}
+	large.Grid = "A"
 	encoded, err := yaml.Marshal(large)
 	if err != nil {
 		t.Fatal(err)
 	}
-	large.DXCallsigns[0] = strings.Repeat("A", (256<<10)-len(encoded)+1)
+	large.Grid = strings.Repeat("A", (256<<10)-len(encoded)+1)
 	encoded, err = yaml.Marshal(large)
 	if err != nil || len(encoded) != 256<<10 {
 		t.Fatalf("boundary fixture size=%d err=%v", len(encoded), err)
@@ -225,29 +220,30 @@ func TestPresetCountAndSizeBounds(t *testing.T) {
 	if err := SavePreset("K1ABC", "LARGE", large); err != nil {
 		t.Fatalf("exact boundary: %v", err)
 	}
-	large.DXCallsigns[0] += "A"
+	large.Grid += "A"
 	if err := SavePreset("K1ABC", "LARGE", large); err == nil {
 		t.Fatal("oversized replacement accepted")
 	}
 	loaded, err := LoadPreset("K1ABC", "large")
-	if err != nil || len(loaded.DXCallsigns[0]) != len(large.DXCallsigns[0])-1 {
+	if err != nil || len(loaded.Grid) != len(large.Grid)-1 {
 		t.Fatal("oversized replacement damaged prior snapshot")
 	}
 }
 
 func TestPresetCorruptCollections(t *testing.T) {
 	usePresetTestDir(t)
-	tooMany := presetCollection{Presets: make(map[string]*SavedPreset)}
+	tooMany := V5PresetCollection{Presets: make(map[string]*V5SavedPreset)}
 	for i := range 21 {
-		tooMany.Presets[fmt.Sprintf("S%d", i)] = testSavedPreset()
+		tooMany.Presets[fmt.Sprintf("S%d", i)] = &V5SavedPreset{ConfigurationVersion: 5}
 	}
 	tooManyBytes, err := yaml.Marshal(tooMany)
 	if err != nil {
 		t.Fatal(err)
 	}
-	oversized := testSavedPreset()
-	oversized.DXCallsigns = []string{strings.Repeat("A", 256<<10)}
-	oversizedBytes, err := yaml.Marshal(presetCollection{Presets: map[string]*SavedPreset{"LARGE": oversized}})
+	oversized := &V5SavedPreset{ConfigurationVersion: 5, Configuration: V5Configuration{
+		Settings: SettingsConfiguration{Grid: strings.Repeat("A", 256<<10)},
+	}}
+	oversizedBytes, err := yaml.Marshal(V5PresetCollection{Presets: map[string]*V5SavedPreset{"LARGE": oversized}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,10 +295,10 @@ func TestPresetCollectionReadBoundary(t *testing.T) {
 
 func TestPresetNormalizedSizeBound(t *testing.T) {
 	usePresetTestDir(t)
-	set := testSavedPreset()
-	set.ConfigurationVersion = 0                // This fixture exercises absent-marker legacy migration.
-	set.Grid = strings.Repeat("\u023f", 90_000) // Uppercase uses three UTF-8 bytes instead of two.
-	data, err := yaml.Marshal(presetCollection{Presets: map[string]*SavedPreset{"GROW": set}})
+	set := &V5SavedPreset{ConfigurationVersion: 5, Configuration: V5Configuration{
+		Settings: SettingsConfiguration{Grid: strings.Repeat("\x01", 90_000)},
+	}}
+	data, err := yaml.Marshal(V5PresetCollection{Presets: map[string]*V5SavedPreset{"GROW": set}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -317,27 +313,18 @@ func TestPresetNormalizedSizeBound(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := LoadPreset("N2WQ-1", "GROW"); err == nil {
-		t.Fatal("normalization bypassed the serialized preference bound")
+		t.Fatal("escaped encoding bypassed the standalone preference bound")
 	}
 }
 
 func TestPresetOversizedLiveInput(t *testing.T) {
-	for _, kind := range []string{"pattern", "map", "metadata"} {
-		set := testSavedPreset()
-		switch kind {
-		case "pattern":
-			set.DXCallsigns = []string{strings.Repeat("A", 1<<20)}
-		case "map":
-			set.Bands = map[string]bool{strings.Repeat("A", 1<<20): true}
-		case "metadata":
-			set.Grid = strings.Repeat("A", 1<<20)
-		}
-		if presetFitsMinimumSize(set) {
-			t.Fatalf("%s bypassed early bound", kind)
-		}
-		if _, err := set.Clone(); err == nil {
-			t.Fatalf("%s oversized input accepted", kind)
-		}
+	set := testSavedPreset()
+	set.Grid = strings.Repeat("A", 1<<20)
+	if ConfigurationFromPreset(set).MinimumSizeFits(MaxPresetBytes) {
+		t.Fatal("metadata bypassed early bound")
+	}
+	if _, err := set.Clone(); err == nil {
+		t.Fatal("oversized metadata accepted")
 	}
 }
 

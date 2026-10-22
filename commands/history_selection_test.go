@@ -127,8 +127,17 @@ func TestHistoryBandModeMatchingBeforeCount(t *testing.T) {
 		}
 	}
 	command, _, _ := p.ParseHistoryCommand("SHOW DX K1ABC BAND 20 MODE CW COMMENT POTA", "go")
-	f := filter.NewFilter()
-	f.SetBand("20m", false)
+	_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{
+		Filters: filter.V5FilterConfiguration{
+			Rules: []filter.RuleDefinition{{Slot: 9, Action: filter.RuleReject, Expr: "BAND=20M"}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Matches(rows[4]) || !f.Matches(rows[5]) {
+		t.Fatal("saved Boolean fixture must reject 20m while retaining 40m")
+	}
 	page, err := p.ReadHistoryPage(command.Query, nil, f.Matches, time.Now(), nil)
 	if err != nil || len(page.Spots) != 0 {
 		t.Fatalf("explicit selection overrode saved filter: %+v %v", page, err)

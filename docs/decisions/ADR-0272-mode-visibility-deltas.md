@@ -1,8 +1,15 @@
-# ADR-0272: MODE Visibility Deltas
+---
+title: "ADR-0272: MODE Visibility Deltas"
+description: Historical MODE category deltas, superseded for the Boolean MVP.
+---
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-10-09
 - Decision Origin: Troubleshooting chat
+
+For the Boolean MVP, [ADR-0317](ADR-0317-boolean-filter-replacement-mvp.md)
+replaces category deltas with numbered expression rules. The decision below
+remains the record for older releases, not current MVP behavior.
 
 ## Context
 

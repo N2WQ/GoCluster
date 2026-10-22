@@ -122,7 +122,7 @@ func TestCommentCommandHelp(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		for _, topic := range []string{"PASS COMMENT", "REJECT COMMENT", "REMOVE PASS COMMENT", "REMOVE REJECT COMMENT", "RESET FILTER COMMENT", "SHOW FILTER COMMENT"} {
 			text := p.ProcessCommandForClient("HELP "+topic, "W1AAA", "", nil, dialect)
-			if !strings.Contains(text, "Usage: "+topic) {
+			if !strings.Contains(text, "Usage: HELP RULE") || !strings.Contains(text, "refused, not translated") || strings.Contains(text, "Usage: "+topic) {
 				t.Fatalf("%s %s: %q", dialect, topic, text)
 			}
 			for _, line := range strings.Split(text, "\n") {

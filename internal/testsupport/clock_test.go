@@ -3,6 +3,7 @@ package testsupport
 import (
 	"math"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -32,14 +33,18 @@ func TestClockSharedDomain(t *testing.T) {
 }
 
 func TestClockShortWait(t *testing.T) {
-	clock := NewClock(t)
-	start := clock.NowNS()
-	time.Sleep(2 * time.Millisecond)
-	elapsed := clock.NowNS() - start
-	// A generous upper bound tolerates ordinary scheduler delays while exposing
-	// a wrong unit or clock conversion. This is a timer check, not a latency gate.
-	if elapsed < int64(2*time.Millisecond) || elapsed > int64(5*time.Second) {
-		t.Fatalf("2ms wait measured %s, want [2ms,5s]", time.Duration(elapsed))
+	requireFixedBenchmarkClockChild(t, "clock_short_wait")
+}
+
+func TestClockShortWaitRejectsWrongUnits(t *testing.T) {
+	for _, scenario := range []string{"clock_short_wait_small_units", "clock_short_wait_large_units"} {
+		t.Run(scenario, func(t *testing.T) {
+			output := runFixedBenchmarkChild(t, scenario, true)
+			if !strings.Contains(output, "fixed-clock-interval-refused:") ||
+				strings.Contains(output, "fixed-benchmark-valid-receipt:") {
+				t.Fatalf("incorrect clock units escaped the interval check:\n%s", output)
+			}
+		})
 	}
 }
 

@@ -160,9 +160,16 @@ func TestStateArchiveMixedVersionHistory(t *testing.T) {
 		{"pass_known", true, 2}, {"reject_known", false, 7},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			f := filter.NewFilter()
-			f.SetDXState("CA", test.pass)
-			f.SetDXState("ON", test.pass)
+			action := filter.RuleReject
+			if test.pass {
+				action = filter.RulePass
+			}
+			_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+				Rules: []filter.RuleDefinition{{Slot: 0, Action: action, Expr: "DXSTATE=CA,ON"}},
+			}})
+			if err != nil {
+				t.Fatal(err)
+			}
 			page, err := w.ReadHistoryPage(HistoryRequest{Limit: 10, Now: now, Match: f.Matches})
 			if err != nil || len(page.Spots) != test.want {
 				t.Fatalf("mixed history: rows=%d err=%v", len(page.Spots), err)

@@ -4,7 +4,6 @@
 package filter
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -13,13 +12,11 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strings"
 	"sync"
 
 	"dxcluster/spot"
-	"dxcluster/strutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -51,7 +48,7 @@ type SavedPreset struct {
 }
 
 // Clone returns a detached, exact preference snapshot. Callers must guard
-// the source maps while cloning; runtime-only Filter fields are rebuilt on LOAD.
+// the source controls while cloning; runtime-only cells are rebuilt on LOAD.
 func (set *SavedPreset) Clone() (*SavedPreset, error) {
 	if set == nil {
 		return nil, errors.New("nil saved preset")
@@ -62,75 +59,17 @@ func (set *SavedPreset) Clone() (*SavedPreset, error) {
 	return ConfigurationFromPreset(set).Preset()
 }
 
-// UnmarshalYAML migrates legacy snapshots and adds unrestricted states to v1.
-// Version two preserves state rules, version three adds MINSNR, and version
-// four adds bounded literal comment lists.
+// UnmarshalYAML admits only explicit v5 snapshots without migration/defaults.
 func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
-	return decodeStoredOwnerNode(node, set)
-}
-
-func (set *SavedPreset) unmarshalStored(node *yaml.Node, state *storageDecodeState) error {
-	version, err := storedConfigurationVersion(node)
-	if err != nil {
+	var value V5SavedPreset
+	if err := decodeV5StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
 		return err
 	}
-	if err := validateStoredStateFields(node, version); err != nil {
-		return err
+	runtime, err := RuntimeSavedPresetFromV5(&value)
+	if err == nil {
+		*set = *runtime
 	}
-	if err := validateStoredMinSNRFields(node, version); err != nil {
-		return err
-	}
-	if err := validateStoredCommentFields(node, version); err != nil {
-		return err
-	}
-	if err := state.validateStoredMapping(node, reflect.TypeFor[SavedPreset]()); err != nil {
-		return err
-	}
-	if version != 0 {
-		if err := state.validateCurrentStoredValues(node, reflect.TypeFor[SavedPreset]()); err != nil {
-			return err
-		}
-	}
-	type plain SavedPreset
-	var decoded plain
-	if err := state.decodePlain(node, &decoded); err != nil {
-		return err
-	}
-	if decoded.ConfigurationVersion != version {
-		return fmt.Errorf("%w: marker must be an explicit field", ErrUnsupportedConfigurationVersion)
-	}
-	*set = SavedPreset(decoded)
-	if version == 0 {
-		set.normalize()
-	}
-	if version < stateConfigurationVersion {
-		set.ResetDXStates()
-		set.ResetDEStates()
-	}
-	if err := ConfigurationFromFilter(&set.Filter, SettingsConfiguration{}).ValidateStateRules(); err != nil {
-		return err
-	}
-	if err := ConfigurationFromFilter(&set.Filter, SettingsConfiguration{}).ValidateMinSNRRules(); err != nil {
-		return err
-	}
-	if err := ConfigurationFromFilter(&set.Filter, SettingsConfiguration{}).ValidateCommentRules(); err != nil {
-		return err
-	}
-	set.ConfigurationVersion = CurrentConfigurationVersion
-	return nil
-}
-
-func (set *SavedPreset) normalize() {
-	set.migrateLegacyConfidence()
-	set.normalizeDefaults()
-	if strings.TrimSpace(set.Dialect) == "" {
-		set.Dialect = "go"
-	}
-	set.DedupePolicy = NormalizeDedupePolicy(set.DedupePolicy)
-	set.Grid = strutil.NormalizeUpper(set.Grid)
-	set.NoiseClass = strutil.NormalizeUpper(set.NoiseClass)
-	set.PathMinObservationCount = normalizePathMinObservationCount(set.PathMinObservationCount)
-	set.SolarSummaryMinutes = normalizeSolarSummaryMinutes(set.SolarSummaryMinutes)
+	return err
 }
 
 // NormalizePresetName validates the ASCII command identifier and returns its
@@ -271,8 +210,7 @@ func ListPresets(callsign string) ([]string, error) {
 	return names, nil
 }
 
-// LoadPreset returns detached preferences, or ErrPresetNotFound. Legacy records
-// migrate at the read boundary; marked records preserve exact selections.
+// LoadPreset returns detached exact v5 preferences, or ErrPresetNotFound.
 func LoadPreset(callsign, name string) (*SavedPreset, error) {
 	name, err := NormalizePresetName(name)
 	if err != nil {
@@ -293,8 +231,7 @@ func LoadPreset(callsign, name string) (*SavedPreset, error) {
 	if !exists {
 		return nil, fmt.Errorf("preset %s: %w", name, ErrPresetNotFound)
 	}
-	// Legacy migration can grow preferences. Clone rechecks the independent
-	// preset bound before LOAD can publish any state.
+	// Clone rechecks the independent preset bound before LOAD can publish.
 	return set.Clone()
 }
 
@@ -330,32 +267,6 @@ func (store presetStore) delete(callsign, name string) error {
 	return nil
 }
 
-func checkPresetSize(set *SavedPreset) error {
-	if set == nil {
-		return errors.New("nil saved preset")
-	}
-	// Existing live callsign/DXCC lists can grow across commands. Reject an
-	// impossible snapshot before yaml.Marshal allocates a node tree for them.
-	if !presetFitsMinimumSize(set) {
-		return storageAdmissionf("preset exceeds %d KiB", MaxPresetBytes/1024)
-	}
-	bs, err := yaml.Marshal(set)
-	if err != nil {
-		return err
-	}
-	if len(bs) > MaxPresetBytes {
-		return storageAdmissionf("preset exceeds %d KiB", MaxPresetBytes/1024)
-	}
-	return nil
-}
-
-// This is a lower bound, never a replacement for the exact encoded-byte check.
-// Maps need at least "key: true\n" and list entries at least "- value\n";
-// quoting/indentation only increases the eventual size. Runtime caches are omitted.
-func presetFitsMinimumSize(set *SavedPreset) bool {
-	return set != nil && ConfigurationFromPreset(set).MinimumSizeFits(MaxPresetBytes)
-}
-
 func readPresetCollection(path string) (*presetCollection, error) {
 	file, err := os.Open(path)
 	if errors.Is(err, os.ErrNotExist) {
@@ -372,33 +283,17 @@ func readPresetCollection(path string) (*presetCollection, error) {
 	if len(bs) > maxPresetCollectionBytes {
 		return nil, storageAdmissionf("preset collection exceeds 8 MiB")
 	}
-	decoder := yaml.NewDecoder(bytes.NewReader(bs))
-	var document yaml.Node
-	if err := decoder.Decode(&document); err != nil {
-		return nil, fmt.Errorf("invalid preset collection: %w", err)
-	}
-	collection, _, err := decodeStoredPresetCollectionDocument(&document)
-	if err != nil && !errors.Is(err, errPresetCollectionCount) {
-		return nil, fmt.Errorf("invalid preset collection: %w", err)
-	}
-	var extra yaml.Node
-	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		return nil, errors.New("preset collection must contain one YAML document")
-	}
+	stored, err := DecodeV5PresetCollection(bs)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid preset collection: %w", err)
 	}
-	if collection.Presets == nil || len(collection.Presets) > MaxPresets {
-		return nil, errPresetCollectionCount
-	}
-	for name, set := range collection.Presets {
-		canonical, err := NormalizePresetName(name)
-		if err != nil || name != canonical {
-			return nil, fmt.Errorf("invalid stored preset name %q", name)
+	collection := &presetCollection{Presets: make(map[string]*SavedPreset, len(stored.Presets))}
+	for name, set := range stored.Presets {
+		value, err := RuntimeSavedPresetFromV5(set)
+		if err != nil {
+			return nil, err
 		}
-		if err := checkPresetSize(set); err != nil {
-			return nil, fmt.Errorf("invalid stored preset %s: %w", name, err)
-		}
+		collection.Presets[name] = value
 	}
 	return collection, nil
 }
@@ -419,12 +314,9 @@ func (store presetStore) persist(path string, collection *presetCollection) erro
 // existing preset stripe through preparation and replacement; this helper does
 // not expose an unlocked snapshot that another SSID could later overwrite.
 func preparePresetCollection(collection *presetCollection) ([]byte, error) {
-	bs, err := yaml.Marshal(collection)
+	stored, err := v5PresetCollectionFromRuntime(collection)
 	if err != nil {
 		return nil, err
 	}
-	if len(bs) > maxPresetCollectionBytes {
-		return nil, storageAdmissionf("preset collection exceeds 8 MiB")
-	}
-	return bs, nil
+	return EncodeV5PresetCollection(stored)
 }

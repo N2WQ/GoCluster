@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"dxcluster/filter"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
@@ -43,9 +42,7 @@ func TestS6PopulationSelectionDisplayFilterAndDiag(t *testing.T) {
 				}
 			}
 			s := &Server{pathPredictor: p, pathDisplay: true, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return now }}
-			c := &Client{filter: filter.NewFilter(), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: rx, noiseClass: "QUIET"}
-			c.filter.SetMode("FT8", true)
-			c.filter.SetPathClass(filter.PathClassLow, true)
+			c := &Client{filter: passRuleTestFilter(t, "MODE=FT8 AND PATH=LOW"), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: rx, noiseClass: "QUIET"}
 			c.setDiagMode(diagModePath)
 			sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 			sp.BandNorm, sp.DXCellID, sp.DXMetadata.Grid, sp.IsBeacon = "20m", uint16(tx), "IO91", beacon
@@ -65,8 +62,7 @@ func TestS6PopulationSelectionDisplayFilterAndDiag(t *testing.T) {
 			if len(strings.TrimRight(line, "\r\n")) != 78 || !strings.Contains(line, "n37/u37|") {
 				t.Fatalf("regional DIAG or fixed width changed: %q", line)
 			}
-			c.filter.SetPathClass(filter.PathClassLow, false)
-			c.filter.SetPathClass(filter.PathClassHigh, true)
+			c.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=HIGH")
 			s.deliverJob(broadcastJob{spot: sp, clients: []*Client{c}, allowFast: true, allowMed: true, allowSlow: true})
 			select {
 			case rejected := <-c.spotChan:

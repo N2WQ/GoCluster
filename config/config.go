@@ -849,9 +849,9 @@ type DedupConfig struct {
 // FilterConfig holds default filter behavior for new users.
 type FilterConfig struct {
 	DefaultModes []string `yaml:"default_modes"`
-	// DefaultSources controls the initial SOURCE filter (HUMAN/SKIMMER) applied
-	// when a callsign has no saved filter file under data/users/.
-	// When empty or omitted, new users accept both categories (SOURCE=ALL).
+	// DefaultSources joins DefaultModes in a new user's editable PASS rule 0.
+	// Empty or omitted sources do not restrict HUMAN/SKIMMER; an existing or
+	// explicitly empty saved rule set never reinstalls this new-user default.
 	DefaultSources []string `yaml:"default_sources"`
 }
 

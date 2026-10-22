@@ -1,9 +1,19 @@
-# GoCluster DX Cluster
+---
+title: GoCluster DX Cluster
+description: Connect to GoCluster, use numbered Boolean filters, and operate a bounded DX cluster.
+---
 
 GoCluster helps amateur radio operators find stations on the air. It collects
 **spots** (reports of a station heard at a particular frequency) and sends them
 to your telnet client or logging program. You can choose which spots to see,
 hide repeated reports, and view optional hints about radio conditions.
+
+> [!IMPORTANT]
+> This checkout contains the Boolean-filter MVP, using schema 5 and a fresh
+> isolated user store. It is not a production rollout or a claim that published
+> release assets already contain this change. Recognized old profiles receive
+> a one-time filter reset at login while retaining settings; old machine schemas
+> remain refused. See the [upgrade contract](telnet/README.md#login-and-session-behavior).
 
 ## On This Page
 
@@ -118,88 +128,102 @@ command must fit the node's byte limit (128 by default), excluding its line endi
 
 ## Filter Examples
 
-Filters let you choose which reports to see. Different categories work
-together: allowing a band does not bypass your mode, location, or other filters.
-Use `SHOW FILTER` to confirm the result. Filter readbacks temporarily pause
-live spots. Type `RESUME` when ready, or wait for the pause to expire.
+Use numbered `PASS RULE` and `REJECT RULE` expressions to choose reports.
+Any matching REJECT wins. Otherwise, any matching PASS qualifies. With no PASS
+rules there is no personal PASS restriction; an empty set has no hidden base
+filters. Separate controls, such as SELF and TOXIC, still apply.
 
-`PASS` allows named values or phrases; `REJECT` blocks them. MODE preserves
-visibility for every mode you do not name: `PASS MODE CW` keeps previously
-visible modes visible. Other list categories can switch from allowing all
-values to a selection. Use `SHOW FILTER` to check the result. `ALL` applies to
-the named category; COMMENT treats it as a literal phrase.
+Slots 0 through 9 identify rules, not priorities. Adding another PASS broadens
+your selection rather than adding an AND condition. To require two conditions,
+put both in one expression, such as `BAND=20m AND MODE=CW`. NOT binds before AND,
+then OR; parentheses let you override that order.
 
-Each recipe below is separate. Commands within a recipe are entered in order.
-Recipes that start with `REJECT ... ALL` replace that category's selections.
-Save a preset first if you want to restore your exact previous setup. Clearing
-a category's restrictions allows all its values; it does not restore an older
-selection.
+New users receive an ordinary editable PASS rule in slot 0 containing the
+configured default modes and sources. Users leaving the old filter system
+receive the same starting rule while keeping their settings. Edit that rule when narrowing
+the default selection. `SHOW FILTER RULE` displays full saved expressions and
+their effective forms while NEARBY is ON. Readbacks temporarily pause live spots;
+type `RESUME` when ready.
+
+A PASS rule without SOURCE selects HUMAN only. Include
+`AND SOURCE=HUMAN,SKIMMER` to allow both source types, or `AND SOURCE=SKIMMER`
+for automated spots only. If SOURCE appears anywhere in a rule, normal Boolean
+logic applies. REJECT rules do not get a HUMAN default. No active PASS still
+means all sources are eligible except matching REJECTs.
+
+Each recipe below is separate. Save a preset before using a recipe that begins
+with RESET FILTER: it clears your rules and turns NEARBY OFF. Old category
+mutation commands are refused with guidance to `HELP RULE`.
 
 ### Show Only 20m And 40m
 
 ```text
-REJECT BAND ALL
-PASS BAND 20m,40m
-SHOW FILTER BAND
+RESET FILTER
+PASS RULE 0 BAND=20m,40m
+SHOW FILTER RULE
 ```
 
-Other filter categories still apply. To clear band restrictions, use
-`PASS BAND ALL`.
+The comma list selects either band. Add `AND MODE=CW` to the same expression
+if both the band selection and CW are required.
 
 ### Show Only CW
 
 ```text
-REJECT MODE ALL
-PASS MODE CW
-SHOW FILTER MODE
+RESET FILTER
+PASS RULE 0 MODE=CW
+SHOW FILTER RULE
 ```
 
-To clear mode restrictions, use `PASS MODE ALL`. `UNKNOWN` is the mode token
-for reports whose mode is blank.
+Use `RESET FILTER RULE 0` to remove this rule. `UNKNOWN` is the known MODE token
+for reports whose decoded mode is blank.
 
 ### Hide FT8 Reports
 
 ```text
-REJECT MODE FT8
-SHOW FILTER MODE
+REJECT RULE 9 MODE=FT8
+SHOW FILTER RULE
 ```
 
-To allow FT8 again, use `PASS MODE FT8`; this adds it to the allowed modes.
-Use `PASS MODE ALL` if you want every mode instead.
+This veto applies even when a PASS rule matches. Remove it with
+`RESET FILTER RULE 9`; the remaining PASS rules still determine what qualifies.
+Choose an unused slot if slot 9 already contains a rule you want to keep.
 
 ### Show Only Human Reports
 
 ```text
-REJECT SOURCE ALL
-PASS SOURCE HUMAN
-SHOW FILTER SOURCE
+RESET FILTER
+PASS RULE 0 SOURCE=HUMAN
+SHOW FILTER RULE
 ```
 
-`SKIMMER` is the automated-source category. To clear source restrictions,
-use `PASS SOURCE ALL`.
+`SKIMMER` is the automated-source category. To select both sources explicitly,
+use `PASS RULE 0 SOURCE=HUMAN,SKIMMER`. Removing the last PASS also removes the
+PASS restriction entirely.
 
 ### Choose Locations, Callsigns, Or Events
 
-| Goal | Example | Clear this category's restrictions |
-| --- | --- | --- |
-| Select DX continents | `PASS DXCONT EU,AF` | `PASS DXCONT ALL` |
-| Select DX countries/entities (**DXCC**) | `PASS DXDXCC K,VE` | `PASS DXDXCC ALL` |
-| Select US/Canadian mailing states, provinces or territories | `PASS DXSTATE CA,TX,ON,QC` | `PASS DXSTATE ALL` |
-| Select callsign patterns (`*` is a wildcard) | `PASS DXCALL K1*,W1AW` | `PASS DXCALL ALL` |
-| Select event families | `PASS EVENT POTA,SOTA` | `PASS EVENT ALL` |
+Each expression below can replace slot 0 with `PASS RULE 0 <expression>`.
+Combine required selections with AND in that same expression.
 
-These examples update one category at a time. `DX` filters refer to the spotted
-station; `DE` filters refer to the reporting station. Country/entity filters
-accept canonical prefixes or positive ADIF entity numbers. A prefix can cover
-several related prefixes; for example, `IT9` selects the same entity as `I`
-and `IG9`.
+| Goal | Expression |
+| --- | --- |
+| Select DX continents | `DXCONT=EU,AF` |
+| Select DX countries/entities (**DXCC**) | `DXDXCC=291,1` |
+| Select registered US/Canadian states or provinces | `DXSTATE=CA,TX,ON,QC` |
+| Select callsign patterns | `DXCALL=K1*,W1AW` |
+| Select event families | `EVENT=POTA,SOTA` |
+| Select literal comment text | `COMMENT="CQ test"` |
 
-Event filters affect recognized event tags, such as POTA (Parks on the Air)
-and SOTA (Summits on the Air). **Untagged spots still pass the EVENT category**,
-even with `REJECT EVENT ALL`; other filters still apply. State/province filters
-use registered addresses, which may differ from the operating location.
+`DX` refers to the spotted station; `DE` refers to the reporting station.
+DXCC fields accept positive numeric ADIF identifiers, not prefix aliases.
+Call patterns support an exact name, a single leading or trailing wildcard,
+or a lone `*`.
 
-For more options, use `HELP PASS` or the [filter reference](telnet/README.md#filters).
+EVENT is literal: `EVENT=POTA,SOTA` does not admit untagged spots.
+Add `NONE` to include untagged spots. State/province values are registered
+addresses, not proof of operating location. Unknown values fail comparisons,
+including `<>`; NOT flips that result. Use `HELP RULE` or the
+[filter reference](telnet/README.md#filters) for the full field contract.
 
 ### Focus On Nearby Reports
 
@@ -215,10 +239,11 @@ NEARBY keeps reports with either the DX station or the spotter in your nearby
 area. The area is broader on 160m, 80m, and 60m than on other supported bands;
 it is not a fixed distance radius.
 
-While enabled, NEARBY suspends continent, zone, DXCC, grid, state, and province
-filters for both DX and DE. Attempts to change those location filters are
-rejected. Band, mode, and other filters still apply. Turn it off with
-`PASS NEARBY OFF` to restore your saved location filters.
+While enabled, NEARBY removes geographic conditions from effective expressions:
+DX/DE continent, zone, DXCC, grid and State. Other conditions remain.
+For example, `MODE=CW OR DXCONT=EU` becomes `MODE=CW`; geography-only rules
+are ignored. Full saved rules stay editable while ON. Turn it off with
+`PASS NEARBY OFF` to use the latest full expressions.
 
 NEARBY survives reconnecting. If it is enabled but your grid cannot be used,
 spots on affected bands are rejected. Check `SHOW FILTER`; set a usable grid
@@ -226,10 +251,10 @@ or turn NEARBY off. See [NEARBY details](telnet/README.md#grid-noise-and-nearby)
 
 ### Reset Your Filters
 
-`RESET FILTER` restores the cluster's configured defaults for new users.
-It changes your existing filters, including minimum-SNR rules; **it does not
-necessarily enable every spot**. Save a preset first if you want to keep your
-current setup.
+`RESET FILTER` empties all personal rules and turns NEARBY OFF. It preserves
+GRID, settings and separate controls and does not reinstall new-user defaults.
+Use `RESET FILTER RULE <slot>` or `RESET FILTER RULE ALL` to clear rules while
+leaving NEARBY unchanged. Save a preset first to retain the current setup.
 
 ## Named Presets
 
@@ -358,11 +383,16 @@ and [path reference](pathreliability/README.md) for interpretation.
 
 ### Minimum SNR Filtering
 
-`PASS MINSNR CW,RTTY 10` sets an inclusive minimum of 10 dB for those modes.
-Numeric PASS and REJECT forms set the same minimum. Human reports and reports
-without SNR are exempt; other filters still apply. Negative thresholds are valid.
-Clear a mode's threshold with `PASS MINSNR FT8 ALL`, and inspect saved thresholds
-with `SHOW FILTER MINSNR`. See the [minimum-SNR reference](telnet/README.md#minimum-snr).
+SNR comparisons use an integer report whenever present, including human reports.
+To reject weak automated CW/RTTY reports while leaving human or missing reports
+unaffected by this rule, use an unused slot:
+
+```text
+REJECT RULE 8 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10
+```
+
+Remove it with `RESET FILTER RULE 8`. This does not bypass other rules.
+See the [SNR reference](telnet/README.md#minimum-snr).
 
 ### Toxic Comment Filtering
 
@@ -520,24 +550,25 @@ Path samples  30 (user minimum); stations 30, beacons 30
               Cluster minimums: stations 21, beacons 11
 ```
 
+Login shows actual settings and numbered rules under "Default settings and
+filters" for new accounts or "Current settings and filters" for returning
+accounts. Upgraded users keep their settings and receive a short reset notice.
+Rules are never flattened into independent mode/band/source lists.
+
 Human readbacks use at most 78 printable ASCII characters per line, followed
-by CRLF. Exact strings use quoted ASCII escapes. A long value is split into
-quoted pieces joined by `+`, without adding or removing characters:
+by CRLF. Short rules are commands you can reuse:
 
 ```text
-DX calls
-  PASS: "  W1ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ c"
-        + "af\u00e9\t\"Q\"\\end  "
-  REJECT: NONE
-
-A + joins quoted pieces of one value; no characters are added.
+PASS RULE 0 MODE=CW AND BAND=20M
+PASS RULE 1 MODE=FT8 AND BAND=40M AND SOURCE=SKIMMER
 ```
 
-Spaces inside quotes belong to the value. Indentation, line endings and the
-`+` marker do not. FULL/category omit inactive ordinary entries and show
-effective PASS/REJECT selections; callsign patterns retain supplied order,
-with REJECT taking precedence. Map keys use stable ordering. Use GET YAML FILTER
-for exact stored flags, false entries and defaults.
+Long values use exact quoted ASCII pieces joined by `+`. Decode and concatenate
+the pieces without adding spaces; display quotes and the `+` are not command
+syntax. Use schema 5 YAML for rules beyond the command-line limit.
+`SHOW FILTER FULL` adds preparation counts and geometry detail. Category
+readbacks are unsupported. `GET YAML FILTER SCHEMA 5` exposes exact saved rules,
+individual controls and effective expressions.
 
 See recent countries that have heard your baseline call:
 
@@ -581,7 +612,7 @@ read pause is disabled. Repeating `PAUSE` sets a fresh duration; automatic
 pauses can extend an active pause but cannot shorten it. Command replies and
 other control traffic continue, and missed live spots are not replayed.
 
-Human `SHOW FILTER`, FULL/category readbacks and `SHOW SETTINGS` suppress spots
+Human `SHOW FILTER`, RULE/FULL readbacks and `SHOW SETTINGS` suppress spots
 from command acceptance through preparation, queueing and delivery. Their full
 reading interval starts after the server completes its write and flush; terminal
 rendering time is unknown. They use a positive configured pause duration, or
@@ -719,6 +750,7 @@ Use `HELP` on your connection for the commands supported by your active dialect.
 The section below mirrors the default `go` dialect `HELP` output from [`commands/processor.go`](commands/processor.go) using the shipped config in [`data/config`](data/config).
 
 <!-- BEGIN DEFAULT_GO_HELP -->
+
 ```text
 GoCluster help - GO dialect
 
@@ -731,9 +763,9 @@ Getting started:
 
 Type HELP followed by a command for details:
   HELP SHOW DX
+  HELP RULE
   HELP PASS
   HELP REJECT
-  HELP PASS COMMENT
 
 Reading and posting spots:
   SHOW DX                Show recent spots matching your filters.
@@ -747,106 +779,55 @@ Examples:
   SHOW DX 10             Show the latest 10 matching spots.
   SHOW DX K1ABC 10       Search for spots of K1ABC.
   SHOW DX 10 BAND 20     Search for 10 matching spots on 20m.
+  SHOW DX 10 MODE CW     Search for 10 matching CW spots.
+  SHOW DX 10 COMMENT CQ  Search stored comments for literal CQ.
   DX 14025.0 K1ABC CQ    Post K1ABC on 14025.0 kHz with comment CQ.
 
 Changing filters:
-  PASS                   Allow selections.
-  REJECT                 Block selections.
-  SHOW FILTER            Show your current filters.
-  SHOW FILTER FULL       Show complete filter selections.
-  SHOW FILTER MODE       Show one filter category.
-  RESET FILTER           Restore the cluster's default filters.
+  PASS RULE              Replace one slot with an allowing expression.
+  REJECT RULE            Replace one slot with a vetoing expression.
+  SHOW FILTER            See your current settings and rules.
+  SHOW FILTER RULE       Same as SHOW FILTER.
+  SHOW FILTER FULL       Add geometry detail and rule counts.
+  RESET FILTER RULE      Clear one slot or ALL; preserve NEARBY.
+  RESET FILTER           Clear personal rules and turn NEARBY OFF.
 
 What you can filter:
+  Combine band, mode, source, geography, calls, comments and more.
   DX means the station being spotted; DE means the spotter.
+  HELP RULE lists every field, supported value and expression limit.
 
-  BAND                   Radio band, such as 20m or 40m.
-  MODE                   Operating mode, such as CW, FT8 or USB.
-  SOURCE                 HUMAN or SKIMMER reports.
-  EVENT                  POTA, SOTA, IOTA, WWFF or LLOTA tags.
-  COMMENT                A phrase anywhere in the spot comment.
-  DXCALL                 Spotted callsign or pattern, such as K1ABC or W1*.
-  DECALL                 Spotter callsign or pattern.
-  DXCONT                 Spotted station's continent.
-  DECONT                 Spotter's continent.
-  DXZONE                 Spotted station's CQ zone (1-40).
-  DEZONE                 Spotter's CQ zone (1-40).
-  DXDXCC                 Spotted station's country prefix or ADIF number.
-  DEDXCC                 Spotter's country prefix or ADIF number.
-  DXSTATE                Spotted station's US/Canadian mailing code.
-  DESTATE                Spotter's US/Canadian mailing code.
-  DXGRID2                Spotted station's two-character grid, such as FN.
-  DEGRID2                Spotter's two-character grid.
-  CONFIDENCE             Callsign confidence symbols: ?, S, P, V, C, B.
-  PATH                   HIGH, MEDIUM, LOW, UNLIKELY, CLOSED or INSUFFICIENT.
-  MINSNR                 Minimum signal report in dB, selected by mode.
+Examples (separate full-rule replacements):
+  PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN
+  REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"
 
-PASS and REJECT examples:
-  Each example below is a separate change, not a combined recipe.
-
-  PASS BAND 20,40        Add 20m and 40m to your band selections.
-  REJECT BAND 80         Block 80m spots.
-  PASS MODE CW,FT8       Enable CW and FT8; other modes stay unchanged.
-  REJECT MODE FT8        Disable FT8.
-  PASS SOURCE HUMAN      Allow human reports.
-  REJECT SOURCE SKIMMER  Block automated skimmer reports.
-  REJECT EVENT POTA      Block POTA-tagged spots.
-  PASS COMMENT CQ        Require a comment containing CQ.
-  REJECT COMMENT QRT     Block comments containing QRT.
-  REJECT DXCALL W1*      Block spotted calls beginning with W1.
-  REJECT DECALL W1ABC    Block reports from spotter W1ABC.
-  PASS DXCONT EU         Add Europe to your DX continent selections.
-  PASS DECONT NA         Add North America to your spotter selections.
-  PASS DXZONE 14,15      Add DX CQ zones 14 and 15.
-  PASS DEZONE 5          Add spotters in CQ zone 5.
-  PASS DXDXCC DL         Add Germany to your DX country selections.
-  PASS DEDXCC K          Add the United States to your spotter countries.
-  PASS DXSTATE CT,MA     Add DX stations in Connecticut and Massachusetts.
-  PASS DESTATE ON        Add spotters with Canadian province code ON.
-  PASS DXGRID2 JO        Add DX stations in grid field JO.
-  PASS DEGRID2 FN        Add spotters in grid field FN.
-  REJECT CONFIDENCE ?    Block spots marked with confidence symbol ?.
-  REJECT PATH LOW        Block spots classified as LOW path reliability.
-  PASS MINSNR CW 10      Set a minimum CW signal report of 10 dB.
-
-A complete recipe: only 20m/40m and only CW/FT8:
-  REJECT BAND ALL
-  PASS BAND 20,40
-  REJECT MODE ALL
-  PASS MODE CW,FT8
+A complete recipe: human-reported CW/FT8 on 20m/40m:
+  RESET FILTER RULE ALL
+  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8
   SHOW FILTER
 
-  This changes BAND and MODE only. Other filters still apply.
-  Own-call spots have special exemptions; see HELP SHOW MYDX.
+  This replaces all personal rules. NEARBY is unchanged.
+  SELF ON can bypass personal rules; see HELP SHOW MYDX.
 
 Filter rules to remember:
-  Filter categories have their own selection rules; see HELP PASS/REJECT.
-  MODE preserves visibility for every mode you do not name.
-  Different filter categories must all match, except own-call exemptions.
-  MODE changes only the modes you name.
-  PASS BAND ALL allows every band; other filters still apply.
-  REJECT EVENT ALL blocks tagged events, not untagged spots.
-  COMMENT matches literal text without regard to letter case.
-  COMMENT treats commas, quotes, * and ? as literal characters.
-  COMMENT also treats ALL and NONE as literal phrases.
-  Any allowed COMMENT phrase can match; a blocked phrase wins.
-  Numeric PASS and REJECT MINSNR commands set the same minimum.
-  MINSNR exempts human reports and reports without SNR.
-  RESET FILTER restores cluster defaults, which may restrict spots.
+  Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.
+  Any PASS can qualify; any matching REJECT vetoes it.
+  No active PASS means unrestricted except for matching REJECT rules.
+  No rules means no personal restriction.
+  New users start with an ordinary editable default PASS rule in slot 0.
+  PASS without SOURCE means HUMAN only.
+  Add AND SOURCE=HUMAN,SKIMMER to select humans and skimmers.
+  To narrow it, replace/remove slot 0; adding another PASS broadens it.
+  RESET FILTER clears rules and NEARBY, not separate controls/preferences.
+  Reset does not reinstall default slot 0. See HELP RULE for full details.
 
 Comment rules:
-  PASS COMMENT           Add an allowed comment phrase.
-  REJECT COMMENT         Add a blocked comment phrase.
-  REMOVE PASS COMMENT    Remove an allowed phrase.
-  REMOVE REJECT COMMENT  Remove a blocked phrase.
-  RESET FILTER COMMENT   Clear all comment rules.
-  SHOW FILTER COMMENT    Show your saved phrases.
-
-Examples:
-  PASS COMMENT CQ DX
-  REJECT COMMENT QRT
-  REMOVE PASS COMMENT CQ DX
-  RESET FILTER COMMENT REJECT
+  PASS RULE 0 COMMENT="CQ DX"
+  REJECT RULE 9 COMMENT="QRT"
+  ASCII case-insensitive literal substrings, not regular expressions.
+  Inside a quoted value, double a literal quote: COMMENT="CQ ""DX"""
+  Edit/clear the numbered slot to replace/remove the whole rule.
+  SHOW DX COMMENT remains a history query, not a saved rule edit.
 
 Feature switches:
   Use PASS to enable or REJECT to disable:
@@ -867,7 +848,8 @@ Nearby filtering:
   PASS NEARBY ON         Enable nearby filtering.
   PASS NEARBY OFF        Disable nearby filtering.
 
-  NEARBY suspends location filters and retains their rules.
+  NEARBY omits only geography leaves; non-geography conditions survive.
+  Emptied rules are ignored; saved full rules remain intact.
   Type HELP PASS NEARBY for details.
 
 Preferences and propagation:
@@ -915,9 +897,10 @@ Diagnostics:
   SET DIAG               Select diagnostic information in spot comments.
 
 More help:
-  HELP PASS              Complete allow rules and examples.
-  HELP REJECT            Complete block rules and examples.
-  HELP FILTERS           Filter reference and supported values.
+  HELP RULE              Canonical Boolean grammar, fields and values.
+  HELP PASS              Rule updates and separate enable controls.
+  HELP REJECT            Rule updates and separate disable controls.
+  HELP FILTERS           Navigate to rules and separate controls.
   HELP SYMBOLS           Confidence and path reliability symbols.
   HELP <command>         Detailed help for a command.
 
@@ -929,6 +912,7 @@ Syntax used in detailed help:
   <value> means required; [value] means optional.
   A|B means choose one. Do not type the brackets.
 ```
+
 <!-- END DEFAULT_GO_HELP -->
 
 </details>

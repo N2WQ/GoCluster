@@ -123,7 +123,7 @@ func runPathShardingWireMode(t *testing.T, cfg pathreliability.Config, modeDir s
 	reader := bufio.NewReader(conn)
 	readShardingWireGreeting(t, conn, reader)
 	client.filterMu.Lock()
-	client.filter.SetMode("FT8", true)
+	client.filter = passRuleTestFilter(t, "MODE=FT8")
 	client.filterMu.Unlock()
 	client.pathMu.Lock()
 	client.grid, client.gridCell, client.gridCoarseCell, client.noiseClass = "FN31", userFine, userCoarse, "QUIET"

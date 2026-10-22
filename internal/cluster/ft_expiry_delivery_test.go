@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"io"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -143,9 +144,12 @@ func TestP4FTExpiryDeliveredBeforeLateArrival(t *testing.T) {
 // establish admission and finish any read pause before publishing the burst.
 func p4FTEnableReceiver(t *testing.T, conn net.Conn, reader *bufio.Reader) {
 	t.Helper()
-	for _, command := range []struct{ line, reply string }{
-		{"PASS MODE FT8", "Modes enabled: FT8"},
-		{"RESUME", "Live spots resumed."},
+	for _, command := range []struct {
+		line    string
+		replies []string
+	}{
+		{"PASS RULE 1 MODE=FT8", []string{"Rule 1 set.", "Rule 1 replaced."}},
+		{"RESUME", []string{"Live spots resumed.", "Live spots were not paused."}},
 	} {
 		if err := conn.SetDeadline(time.Now().Add(3 * time.Second)); err != nil {
 			t.Fatal(err)
@@ -157,7 +161,7 @@ func p4FTEnableReceiver(t *testing.T, conn net.Conn, reader *bufio.Reader) {
 		for i := 0; i < 16; i++ {
 			line := customSCPDeliveryReadLine(t, reader)
 			t.Logf("FT admission reply: %q", line)
-			if strings.Contains(line, command.reply) || command.line == "RESUME" && strings.Contains(line, "Live spots were not paused.") {
+			if slices.Contains(command.replies, strings.TrimSuffix(line, "\r\n")) {
 				acknowledged = true
 				break
 			}

@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -19,6 +18,7 @@ import (
 
 type restoredLogin struct {
 	created       bool
+	profileReset  bool
 	previousLogin time.Time
 	previousIP    string
 	loadError     error
@@ -54,8 +54,21 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 
 func (s *Server) restoreClientRecordOwned(c *Client, loginTime time.Time) restoredLogin {
 	result := restoredLogin{}
-	record, err := filter.LoadUserRecord(c.callsign)
-	if errors.Is(err, os.ErrNotExist) {
+	record, upgrade, err := filter.UpgradeUserRecordForLoginWithOutcome(c.callsign, s.commitLoginRecord)
+	result.profileReset = upgrade.ProfileReset
+	if upgrade.ProfileReset {
+		result.warning = "Your old filters were reset. Your settings were kept.\n"
+	} else if upgrade.PresetLibraryCleaned && record != nil {
+		result.warning = "Old shared presets were reset; your Boolean rules were kept.\n"
+	} else if upgrade.PresetLibraryCleaned {
+		result.warning = "Old shared presets were reset, but your profile could not be upgraded.\n"
+	}
+	if record != nil && errors.Is(err, filter.ErrLoginUpgradeLibrary) {
+		result.warning += "Your saved profile was restored, but old preset cleanup failed. Preset commands may remain unavailable; other preferences can still be saved.\n"
+		log.Printf("Warning: failed old preset cleanup for %s: %v", c.callsign, err)
+		err = nil
+	}
+	if errors.Is(err, filter.ErrLoginUpgradeProfileMissing) {
 		record = &filter.UserRecord{
 			Filter: *filter.NewFilter(), Dialect: "go",
 			DedupePolicy: s.effectiveDefaultDedupePolicy().label(),
@@ -65,7 +78,7 @@ func (s *Server) restoreClientRecordOwned(c *Client, loginTime time.Time) restor
 	if err != nil {
 		c.recordProtected = true
 		result.loadError = err
-		result.warning = "Your saved user record could not be read. Using temporary defaults; changes in this session will not be saved. SAVE PRESET is unavailable.\n"
+		result.warning += "Your saved user record could not be read or upgraded. Using temporary defaults; changes in this session will not be saved. SAVE PRESET is unavailable.\n"
 		record = &filter.UserRecord{
 			Filter: *filter.NewFilter(), Dialect: string(s.configurationDefaultDialect()),
 			DedupePolicy: s.effectiveDefaultDedupePolicy().label(),
@@ -79,15 +92,25 @@ func (s *Server) restoreClientRecordOwned(c *Client, loginTime time.Time) restor
 		record.LastLoginUTC = loginTime
 		prepared, saveErr := filter.PrepareUserRecord(c.callsign, record)
 		if saveErr == nil {
-			if s.commitLoginRecordFn != nil {
-				saveErr = s.commitLoginRecordFn(prepared)
-			} else {
-				saveErr = prepared.Commit()
-			}
+			saveErr = s.commitLoginRecord(prepared)
 		}
 		if saveErr != nil {
-			result.warning = "Restored your saved configuration, but could not save this login's timestamp/IP.\n"
+			if result.created {
+				result.warning += "Your starting settings are active but could not be saved. They may be lost when you reconnect.\n"
+			} else {
+				result.warning += "Restored your saved configuration, but could not save this login's timestamp/IP.\n"
+			}
 			log.Printf("Warning: failed to save login metadata for %s: %v", c.callsign, saveErr)
+		} else if result.created {
+			// A new SSID can inherit an old base-call library. Only inspect it
+			// after the new profile exists; never replace its new-user defaults.
+			_, cleanup, cleanupErr := filter.UpgradeUserRecordForLoginWithOutcome(c.callsign, nil)
+			if cleanupErr != nil {
+				result.warning += "Your new profile was saved, but shared preset cleanup could not finish. Preset commands may remain unavailable.\n"
+				log.Printf("Warning: new-SSID preset cleanup failed for %s: %v", c.callsign, cleanupErr)
+			} else if cleanup.PresetLibraryCleaned {
+				result.warning += "Old shared presets were reset; your new-user filter defaults are unchanged.\n"
+			}
 		}
 	}
 	c.recentIPs = boundedSessionIPs(record.RecentIPs)
@@ -113,6 +136,13 @@ func (s *Server) restoreClientRecordOwned(c *Client, loginTime time.Time) restor
 	c.refreshConfigurationRevision()
 	result.warning += warning
 	return result
+}
+
+func (s *Server) commitLoginRecord(prepared *filter.PreparedUserRecord) error {
+	if s.commitLoginRecordFn != nil {
+		return s.commitLoginRecordFn(prepared)
+	}
+	return prepared.Commit()
 }
 
 func (s *Server) configurationDefaultDialect() DialectName {

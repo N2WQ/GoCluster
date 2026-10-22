@@ -17,8 +17,7 @@ import (
 
 func nearbyEndpointFilter(t *testing.T) *Filter {
 	t.Helper()
-	f := NewFilter()
-	f.SetDXContinent("EU", true)
+	f := nativeRuleFilter(t, RuleDefinition{0, RulePass, "DXCONT=EU"})
 	if err := f.EnableNearby(pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +48,7 @@ func TestNearbyIndependentEndpoints(t *testing.T) {
 				if got := f.MatchesWithPath(s, PathClassInsufficient); got != test.want {
 					t.Fatalf("MatchesWithPath = %v, want %v", got, test.want)
 				}
-				f.SetMode("CW", false)
+				f.preparedRules, _ = f.preparedRules.WithRule(RuleDefinition{9, RuleReject, "MODE=CW"})
 				if f.Matches(s) {
 					t.Fatal("nearby endpoint bypassed the unrelated mode refusal")
 				}

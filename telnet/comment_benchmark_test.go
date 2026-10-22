@@ -56,8 +56,9 @@ func TestCommentFanout(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			server, job := newCommentFanoutFixture(t, 8, 128)
 			if tc.blockComment {
+				reject := testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "COMMENT=AAA"})
 				for _, client := range job.clients {
-					client.filter.BlockComments = []string{"AAA"}
+					*client.filter = *reject
 				}
 			}
 			if tc.self {
@@ -85,13 +86,19 @@ func newCommentFanoutFixture(t testing.TB, count, commentBytes int) (*Server, br
 	s.Comment = strings.Repeat("A", commentBytes)
 	job := broadcastJob{spot: s, clients: make([]*Client, count), allowFast: true,
 		allowMed: true, allowSlow: true, enqueueAt: time.Now().UTC()}
+	var definitions []filter.RuleDefinition
+	for slot := range 4 {
+		var phrases []string
+		for offset := range 8 {
+			phrases = append(phrases, `"`+strings.Repeat("A", 61)+fmt.Sprintf("%03d", slot*8+offset)+`"`)
+		}
+		definitions = append(definitions, filter.RuleDefinition{Slot: slot, Action: filter.RuleReject, Expr: "COMMENT=" + strings.Join(phrases, ",")})
+	}
+	prepared := testRuleFilter(t, definitions...)
 	for i := range job.clients {
 		client := newBroadcastWorkerTestClient(server, 1)
 		client.callsign = fmt.Sprintf("N%dCMT", i)
-		client.filter.Reset()
-		for j := range filter.MaxCommentPhrases {
-			client.filter.BlockComments = append(client.filter.BlockComments, strings.Repeat("A", 61)+fmt.Sprintf("%03d", j))
-		}
+		*client.filter = *prepared
 		if isSelfMatch(s, client.callsign) {
 			t.Fatal("fanout benchmark fixture unexpectedly matches SELF")
 		}

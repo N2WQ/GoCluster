@@ -1,7 +1,6 @@
 package telnet
 
 import (
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -16,13 +15,13 @@ func TestHistoryFilterSnapshotOwnsMatchingInputs(t *testing.T) {
 		name   string
 		mutate func(*Client)
 	}{
-		{"band map", func(c *Client) { c.filter.BlockBands["20m"] = true }},
-		{"call patterns", func(c *Client) { c.filter.DXCallsigns[0] = "W6*" }},
+		{"band rule", func(c *Client) { *c.filter = *passRuleTestFilter(t, "BAND=40M") }},
+		{"call pattern rule", func(c *Client) { *c.filter = *passRuleTestFilter(t, "DXCALL=W6*") }},
 		{"toggle pointer", func(c *Client) { *c.filter.AllowToxic = false }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Client{callsign: "N0USER", filter: filter.NewFilter()}
-			c.filter.DXCallsigns = []string{"K1*"}
+			c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "DXCALL=K1*")}
+			c.filter.AllowToxic = filter.DefaultBoolTrue.Pointer()
 			sp := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
 			sp.ToxicityStatus = spot.ToxicityToxic
 			snapshot := c.captureHistoryFilter()
@@ -42,65 +41,26 @@ func TestHistoryFilterSnapshotOwnsMatchingInputs(t *testing.T) {
 	}
 }
 
-func TestHistoryFilterSnapshotDetachesEveryRuleCollection(t *testing.T) {
-	c := &Client{filter: filter.NewFilter()}
-	live := reflect.ValueOf(c.filter).Elem()
-	for i := range live.NumField() {
-		field := live.Field(i)
-		if field.Kind() == reflect.Map {
-			if field.IsNil() {
-				field.Set(reflect.MakeMap(field.Type()))
-			}
-			key := reflect.New(field.Type().Key()).Elem()
-			if key.Kind() == reflect.String {
-				key.SetString("fixture")
-			} else {
-				key.SetInt(7)
-			}
-			value := reflect.New(field.Type().Elem()).Elem()
-			if value.Kind() == reflect.Int {
-				key.SetString("CW")
-				value.SetInt(0)
-			} else {
-				value.SetBool(true)
-			}
-			field.SetMapIndex(key, value)
-		}
-		if field.Kind() == reflect.Slice {
-			field.Set(reflect.ValueOf([]string{"fixture"}))
-		}
-	}
+func TestHistoryFilterSnapshotOwnsControlsAndImmutableRules(t *testing.T) {
+	c := &Client{filter: passRuleTestFilter(t, "MODE=CW")}
+	c.filter.IncludeBeacons, c.filter.AllowToxic = filter.DefaultBoolTrue.Pointer(), filter.DefaultBoolTrue.Pointer()
 	snapshot := c.captureHistoryFilter()
-	owned := reflect.ValueOf(snapshot.client.filter).Elem()
-	for i := range live.NumField() {
-		original, detached := live.Field(i), owned.Field(i)
-		name := live.Type().Field(i).Name
-		switch original.Kind() {
-		case reflect.Map:
-			count := original.Len()
-			if original.Pointer() == detached.Pointer() || !reflect.DeepEqual(original.Interface(), detached.Interface()) {
-				t.Errorf("%s not faithfully detached", name)
-			}
-			original.Clear()
-			if detached.Len() != count {
-				t.Errorf("%s changed with original", name)
-			}
-		case reflect.Slice:
-			original.Index(0).SetString("changed")
-			if detached.Index(0).String() != "fixture" {
-				t.Errorf("%s still borrows backing storage", name)
-			}
-		case reflect.Pointer:
-			if original.Type().Elem().Kind() == reflect.Bool && original.Pointer() == detached.Pointer() {
-				t.Errorf("%s still borrows toggle", name)
-			}
-		}
+	owned := snapshot.client.filter
+	if owned == c.filter || owned.PreparedRules() != c.filter.PreparedRules() ||
+		owned.IncludeBeacons == c.filter.IncludeBeacons || owned.AllowToxic == c.filter.AllowToxic {
+		t.Fatal("snapshot must share only immutable programs, not mutable controls")
+	}
+	definitions := owned.PreparedRules().Definitions()
+	definitions[0].Expr = "MODE=FT8"
+	*c.filter.IncludeBeacons, *c.filter.AllowToxic = false, false
+	if owned.PreparedRules().Definitions()[0].Expr != "MODE=CW" || !owned.BeaconsEnabled() || !owned.ToxicEnabled() {
+		t.Fatal("snapshot borrowed public definitions or control pointers")
 	}
 }
 
 func TestHistoryFilterSnapshotNearbyRuntimeCells(t *testing.T) {
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter(), grid: "FN31", gridCell: userCell}
+	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "MODE=CW"), grid: "FN31", gridCell: userCell}
 	if err := c.filter.EnableNearby(userCell, userCoarse); err != nil {
 		t.Fatal(err)
 	}
@@ -123,14 +83,14 @@ func TestHistoryFilterSnapshotNearbyRuntimeCells(t *testing.T) {
 	if snapshot.digest == c.historyFilterDigest() {
 		t.Fatal("runtime NEARBY changes must affect digest")
 	}
-	if snapshot.client.filter.NearbySnapshot != nil {
-		t.Fatal("restore-only location maps must not be retained by page")
+	if snapshot.client.filter.PreparedRules() != c.filter.PreparedRules() ||
+		snapshot.client.filter.NearbyUserFine != userCell || snapshot.client.filter.NearbyUserCoarse != userCoarse {
+		t.Fatal("page lost immutable rules or captured effective cells")
 	}
 }
 
 func TestHistoryFilterSnapshotSelfMatchPreservesHistoryException(t *testing.T) {
-	c := &Client{callsign: "K1ABC-7", filter: filter.NewFilter()}
-	c.filter.BlockAllBands = true
+	c := &Client{callsign: "K1ABC-7", filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})}
 	no := false
 	c.filter.AllowSelf = &no
 	c.filter.AllowToxic = &no
@@ -149,7 +109,7 @@ func TestHistoryFilterSnapshotSelfMatchPreservesHistoryException(t *testing.T) {
 }
 
 func TestHistoryFilterDigestRelevantProjection(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter(), grid: "FN31", noiseClass: "QUIET"}
+	c := &Client{callsign: "N0USER", filter: unrestrictedTestFilter(), grid: "FN31", noiseClass: "QUIET"}
 	initial := c.historyFilterDigest()
 	no := false
 	c.filter.AllowWWV, c.filter.AllowWCY, c.filter.AllowAnnounce, c.filter.AllowSelf = &no, &no, &no, &no
@@ -163,7 +123,7 @@ func TestHistoryFilterDigestRelevantProjection(t *testing.T) {
 		name   string
 		mutate func()
 	}{
-		{"matching rule", func() { c.filter.BlockBands["20m"] = true }},
+		{"matching rule", func() { *c.filter = *passRuleTestFilter(t, "BAND=40M") }},
 		{"toxicity", func() { c.filter.AllowToxic = &no }},
 		{"grid", func() { c.grid = "IO91" }},
 		{"noise", func() { c.noiseClass = "URBAN" }},
@@ -181,7 +141,7 @@ func TestHistoryFilterDigestRelevantProjection(t *testing.T) {
 
 func TestHistoryFilterDigestLazyCellCacheStable(t *testing.T) {
 	requireH3Mappings(t)
-	c := &Client{filter: filter.NewFilter(), grid: "FN31"}
+	c := &Client{filter: unrestrictedTestFilter(), grid: "FN31"}
 	before := c.historyFilterDigest()
 	snapshot := c.captureHistoryFilter()
 	c.gridCell = pathreliability.EncodeCell(c.grid)
@@ -197,10 +157,7 @@ func TestHistoryFilterSnapshotSeesCurrentPropagationObservations(t *testing.T) {
 	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
 	now := time.Now().UTC()
 	s := &Server{pathPredictor: predictor, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return now }}
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter(), grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
-	c.filter.ResetModes()
-	c.filter.AllPathClasses = false
-	c.filter.PathClasses[filter.PathClassHigh] = true
+	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "PATH=HIGH"), grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
 	sp := spot.NewSpot("K1ABC", "N2ABC", 14074, "FT8")
 	sp.DXCellID, sp.DXMetadata.Grid = uint16(dxCell), "IO91"
 	snapshot := c.captureHistoryFilter()
@@ -223,17 +180,16 @@ func TestHistoryFilterSnapshotSeesCurrentPropagationObservations(t *testing.T) {
 }
 
 func TestHistoryFilterSnapshotConcurrentLiveRuleMutation(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: filter.NewFilter()}
-	c.filter.DXCallsigns = []string{"K1*"}
+	first, second := passRuleTestFilter(t, "DXCALL=K1*"), passRuleTestFilter(t, "BAND=40M AND DXCALL=W6*")
+	c := &Client{callsign: "N0USER", filter: first}
+	states := [2]filter.Filter{*first, *second}
 	snapshot := c.captureHistoryFilter()
 	sp := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		for i := range 1000 {
 			c.filterMu.Lock()
-			c.filter.BlockBands["20m"] = i%2 == 0
-			c.filter.DXCallsigns[0] = "W6*"
-			*c.filter.AllowToxic = i%2 == 0
+			*c.filter = states[i%2]
 			c.filterMu.Unlock()
 		}
 	})

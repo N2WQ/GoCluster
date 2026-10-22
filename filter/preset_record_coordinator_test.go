@@ -78,7 +78,7 @@ func TestSavePresetAndRecordCommitsCapturedBytes(t *testing.T) {
 		// Library bytes already exist; association preparation has also captured
 		// its own immutable bytes before this callback changes the source.
 		set.Grid = "CHANGED"
-		set.DXCallsigns = []string{"CHANGED"}
+		set.preparedRules = nil
 		return prepared, nil
 	}, nil, true)
 	if err != nil || !saved {

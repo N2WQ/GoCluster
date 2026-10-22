@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"dxcluster/filter"
 	"dxcluster/pathreliability"
 )
 
@@ -57,7 +56,7 @@ func writerV15PredictionFixture(t *testing.T, age time.Duration, noiseChange boo
 		pathreliability.InvalidCell, pathreliability.InvalidCell, "20m", -12, 1,
 		pathreliability.ObservationTimes{ObservedAt: at, ArrivedAt: at}, false, 1)
 	sp.Time = time.Date(2026, time.October, 2, 12, 34, 0, 0, time.UTC)
-	client.filter.SetPathClass(filter.PathClassHigh, true)
+	client.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=HIGH")
 	env := deliverPathPredictionReuseSpot(t, server, client, sp)
 	now := server.now().Add(age)
 	server.nowFn = func() time.Time { return now }

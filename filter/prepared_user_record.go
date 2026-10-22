@@ -5,8 +5,6 @@ package filter
 
 import (
 	"errors"
-	"path/filepath"
-	"strings"
 )
 
 // PreparedUserRecord owns an immutable target path and final YAML bytes. It
@@ -54,23 +52,9 @@ func (prepared *PreparedUserRecord) validate() error {
 // preparation. Configuration, baseline and exact final record bytes must fit
 // their independent bounds before a replacement payload can be returned.
 func PrepareUserRecord(callsign string, record *UserRecord) (*PreparedUserRecord, error) {
-	if record == nil {
-		return nil, errors.New("nil user record")
-	}
-	callsign = strings.TrimSpace(callsign)
-	if callsign == "" {
-		return nil, errors.New("empty callsign")
-	}
-	data, err := encodeUserRecord(record)
+	stored, err := V5UserRecordFromRuntime(record)
 	if err != nil {
 		return nil, err
 	}
-	// Capture relative UserDataDir against this working directory. Later changes
-	// to either setting cannot redirect a prepared replacement. No symlinks or
-	// filesystem objects are resolved or created during preparation.
-	path, err := filepath.Abs(userRecordPath(callsign))
-	if err != nil {
-		return nil, err
-	}
-	return &PreparedUserRecord{path: path, data: data}, nil
+	return PrepareV5UserRecord(callsign, stored)
 }

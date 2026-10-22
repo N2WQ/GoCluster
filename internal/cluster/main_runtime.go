@@ -457,8 +457,6 @@ func (r *clusterRuntime) initializeCallCacheAndMeta() {
 	spot.ConfigureNormalizeCallCache(r.cfg.CallCache.Size, callCacheTTL)
 	rbn.ConfigureCallCache(r.cfg.CallCache.Size, callCacheTTL)
 	pskreporter.ConfigureCallCache(r.cfg.CallCache.Size, callCacheTTL)
-	filter.SetDefaultModeSelection(r.cfg.Filter.DefaultModes)
-	filter.SetDefaultSourceSelection(r.cfg.Filter.DefaultSources)
 	if err := filter.EnsureUserDataDir(); err != nil {
 		log.Printf("Warning: unable to initialize filter directory: %v", err)
 	}
@@ -540,6 +538,9 @@ func (r *clusterRuntime) validateTaxonomyReferences() bool {
 		if !spot.IsKnownMode(mode) {
 			return r.failStartup("Invalid path_reliability.mode_thresholds mode %q: mode is not declared in spot_taxonomy.yaml", mode)
 		}
+	}
+	if err := filter.ConfigureDefaultRules(r.cfg.Filter.DefaultModes, r.cfg.Filter.DefaultSources); err != nil {
+		return r.failStartup("Invalid configured default Boolean rule: %v", err)
 	}
 	return true
 }

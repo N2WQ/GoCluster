@@ -12,30 +12,27 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		filterAliases = []string{"SHOW FILTER", "SH/FILTER"}
 	}
 	filterNotes := []string{
-		"The overview wraps finite selections and useful explicit exclusions.",
-		"Long callsign, DXCC, grid and zone lists use counts.",
-		"DXCC entries show all unambiguous canonical CTY prefixes per entity.",
-		"Conflicting labels are omitted; valid alternatives remain.",
-		"FULL/category show effective PASS/REJECT selections, using ALL or NONE.",
-		"MINSNR shows per-mode minimum reports and retained inactive modes.",
-		"COMMENT shows saved literal PASS/REJECT phrases; explicit resets clear them.",
-		"Unresolved rules show Unknown DXCC followed by their stored number.",
+		"Shows numbered saved rules, effective NEARBY expressions and separate controls.",
+		"RULE and FULL request the same complete bounded filter state.",
+		"PASS rules are ORed; REJECT vetoes them. Slot IDs are not priorities.",
+		"No rules means no personal restriction. Default slot 0 is editable.",
+		"NEARBY omits geography leaves only; emptied rules are ignored and full saved rules stay intact.",
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",
-		"Switches show ON/OFF; REJECT takes precedence over PASS patterns.",
-		"GET YAML FILTER preserves stored flags, false entries and numeric ADIF keys.",
-		"DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown.",
+		"Display quotes/escapes are not expression syntax; joined + pieces concatenate exactly.",
+		"Separate controls show ON/OFF or DEFAULT; RESET FILTER does not reset them.",
+		"Use GET YAML FILTER SCHEMA 5 for machine-readable rule expressions.",
 		"Preset (modified) means preferences differ from the applied snapshot.",
 		"These readbacks always pause live spots, even if automatic pause is disabled.",
 		"The reading interval starts after server delivery; RESUME ends it now.",
 		"Responses are complete within 65,536 bytes or return an explicit size error.",
 	}
 	catalog.entries[filterTopic] = helpEntry{
-		summary: filterTopic + " - Display filters and selections.",
+		summary: filterTopic + " - Display rules and separate controls.",
 		lines: helpEntryLines(filterTopic+" - Display current filter state.",
-			[]string{filterTopic, filterTopic + " FULL", filterTopic + " <category>"}, filterAliases, filterNotes),
+			[]string{filterTopic, filterTopic + " RULE", filterTopic + " FULL"}, filterAliases, filterNotes),
 	}
 	if dialect == "cc" {
-		catalog.entries["SH/FILTER"] = helpEntry{summary: "SH/FILTER - Alias of SHOW/FILTER.", lines: helpEntryLines("SH/FILTER - Display current filter state.", []string{"SH/FILTER [FULL|category]"}, []string{"SHOW/FILTER", "SHOW FILTER"}, filterNotes)}
+		catalog.entries["SH/FILTER"] = helpEntry{summary: "SH/FILTER - Alias of SHOW/FILTER.", lines: helpEntryLines("SH/FILTER - Display current filter state.", []string{"SH/FILTER [RULE|FULL]"}, []string{"SHOW/FILTER", "SHOW FILTER"}, filterNotes)}
 	}
 	add := func(topic, summary string, usage, notes []string) {
 		catalog.entries[topic] = helpEntry{summary: topic + " - " + summary, lines: helpEntryLines(topic+" - "+summary, usage, nil, notes)}
@@ -48,19 +45,17 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"The complete response, including its pause footer, is limited to 65,536 bytes.",
 	})
 	for _, verb := range []string{"PASS", "REJECT"} {
-		clear := "ALL"
-		if verb == "REJECT" {
-			clear = "NONE"
+		topic := verb + " MINSNR"
+		catalog.entries[topic] = helpEntry{
+			summary: topic + " - Replaced by Boolean SNR expressions.",
+			lines: helpEntryLines(topic+" - Replaced by Boolean SNR expressions.", []string{"HELP RULE"}, nil, []string{
+				"MINSNR category commands are refused, not translated.",
+				"Use SNR comparisons in numbered rules. Reports from human spots also count.",
+				"To retain the former human exemption, include SOURCE=SKIMMER in the rule.",
+				"Example: REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW AND SNR<10",
+				"Missing SNR makes comparisons false; NOT reverses that result.",
+			}),
 		}
-		add(verb+" MINSNR", "Set or clear per-mode minimum SNR.", []string{verb + " MINSNR <mode[,mode...]|ALL> <integer dB|" + clear + ">"}, []string{
-			"Numeric PASS and REJECT set the same inclusive minimum: report >= dB.",
-			"Zero and negative integers are valid; human and missing-SNR spots are exempt.",
-			"Other filters still apply. Selected modes change; other modes stay unchanged.",
-			"ALL in the mode position must stand alone; numeric updates select supported modes.",
-			verb + " MINSNR ALL " + clear + " clears every saved threshold, including inactive modes.",
-			"Removed modes stay saved but inactive and reactivate if their exact mode returns.",
-			"SHOW FILTER MINSNR lists thresholds; RESET FILTER and PASS NOFILTER clear them.",
-		})
 	}
 	for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
 		topic := "GET YAML " + resource
@@ -68,35 +63,31 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 			"Returns one framed YAML document; machine commands never change pause state.",
 			"Optional ID uses 1-32 ASCII letters, digits or hyphens and preserves case.",
 			"Responses include schema version, request ID and an opaque revision.",
-			"Default schema 1 is unchanged. SCHEMA 2 includes DESTATE/DXSTATE rules.",
-			"SCHEMA 3 also includes the min_snr map; older schemas preserve hidden thresholds.",
-			"SCHEMA 4 adds comments and block_comments; older writes preserve these lists.",
+			"Explicit SCHEMA 5 is required; omitted and older schemas are refused.",
+			"Schema 5 carries numbered rules and separate controls, not category maps.",
+			"No old machine-schema migration or command translation is provided.",
 			"The final CRLF response is limited to 65,536 bytes, including framing.",
 		}
 		if resource != "CAPABILITIES" {
 			notes = append(notes, "Edit the writable configuration section; status is read-only.")
 		}
-		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " [SCHEMA 2|3|4] [ID <id>]"}, notes)
+		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " SCHEMA 5 [ID <id>]"}, notes)
 	}
 	for _, verb := range []string{"PUT", "PATCH"} {
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG"} {
 			topic := verb + " YAML " + resource
 			notes := []string{
 				"Send standalone --- and ... marker lines around one plain YAML document.",
-				"Include schema_version: 1, 2, 3 or 4, request_id, if_revision and configuration.",
+				"Include schema_version: 5, request_id, if_revision and configuration.",
 				"GET again after reconnect or a revision conflict before retrying a write.",
 				"Validation or persistence failure leaves live and saved configuration unchanged.",
 				"Unavailable choices are rejected; named preset baselines are preserved.",
 				"Body limit: 65,536 bytes; total upload deadline: 30 seconds.",
 				"Oversized, expired or unreliable framing closes the connection.",
 				"A complete invalid document gets a YAML error and keeps the connection open.",
-				"Schema 1 preserves hidden state rules and bounds its CONFIG projection.",
-				"Schema 2 includes state rules; full CONFIG must fit 65,536 bytes.",
-				"Schema 3 includes min_snr: a mode-to-signed-integer map; {} clears it.",
-				"Supplied min_snr replaces the map; omitted PATCH preserves it.",
-				"Schema 4 includes comments and block_comments: up to 32 phrases per list.",
-				"Phrases: 1-64 printable ASCII bytes; YAML preserves case, spaces and duplicates.",
-				"Supplied lists replace them; [] clears; PATCH omission preserves each list.",
+				"Schema 5 uses numbered rules; legacy category fields and older schemas are refused.",
+				"Supplied rules replace the complete rule list; [] clears it.",
+				"PATCH omission preserves rules. No old machine-schema migration is provided.",
 				"No aliases, anchors, merge keys, custom tags, nulls or extra documents.",
 			}
 			if verb == "PUT" {
@@ -119,7 +110,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		if topic == "SAVE PRESET" {
 			notes = append(notes, "Temporary-defaults sessions cannot SAVE; the preset library stays unchanged.", "If snapshot save succeeds but association save fails, the old association is retained.")
 		} else {
-			notes = append(notes, "A valid large preset may LOAD even when FULL or YAML readback exceeds 65,536 bytes.")
+			notes = append(notes, "Rules and separate controls use the same bounded validation as direct edits.")
 		}
 		entry.lines = appendNotes(entry.lines, notes)
 		catalog.entries[topic] = entry
