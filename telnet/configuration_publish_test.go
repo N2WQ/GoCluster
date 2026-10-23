@@ -42,6 +42,47 @@ func publishTestClient(t *testing.T, s *Server) (*Client, filter.Configuration, 
 	return c, before, now
 }
 
+func TestPrepareNearbyPreservesExactCells(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		fine, coarse pathreliability.CellID
+	}{
+		{"both", 11, 22},
+		{"fine-only", 11, pathreliability.InvalidCell},
+		{"coarse-only", pathreliability.InvalidCell, 22},
+		{"neither", pathreliability.InvalidCell, pathreliability.InvalidCell},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := presetTestServer(t)
+			c, before, now := publishTestClient(t, s)
+			c.filter.UpdateNearbyUserCells(tc.fine, tc.coarse)
+			c.gridCell, c.gridCoarseCell = 33, 44
+			state, pointer := c.pathSnapshot(), c.filter
+			s.gridLookup = func(string) (string, bool, bool) {
+				t.Fatal("unchanged GRID triggered a lookup")
+				return "", false, false
+			}
+			prepared, warning := s.prepareConfigurationUpdate(c, before, before.Clone(), now)
+			if !prepared.filter.NearbyEnabled ||
+				prepared.filter.NearbyUserFine != tc.fine || prepared.filter.NearbyUserCoarse != tc.coarse {
+				t.Fatalf("candidate cells=(%d,%d), want (%d,%d)",
+					prepared.filter.NearbyUserFine, prepared.filter.NearbyUserCoarse, tc.fine, tc.coarse)
+			}
+			wantWarning := ""
+			if tc.fine == pathreliability.InvalidCell || tc.coarse == pathreliability.InvalidCell {
+				wantWarning = nearbyLoginInactiveMsg
+			}
+			if warning != wantWarning || prepared.pathSnapshot() != state {
+				t.Fatal("preparation changed availability reporting or path state")
+			}
+			if c.filter != pointer || c.pathSnapshot() != state ||
+				c.filter.NearbyUserFine != tc.fine || c.filter.NearbyUserCoarse != tc.coarse {
+				t.Fatal("preparation mutated live state")
+			}
+		})
+	}
+}
+
 func TestPublishUnchangedConfigurationPreservesRuntime(t *testing.T) {
 	s := presetTestServer(t)
 	c, before, now := publishTestClient(t, s)

@@ -73,6 +73,8 @@ func prepareUpdatedNearby(c, prepared *Client, before, next filter.Configuration
 	fine, coarse := prepared.gridCell, prepared.gridCoarseCell
 	if before.Filters.NearbyEnabled && gridEqual {
 		fine, coarse = priorFine, priorCoarse
+		// Preserve existing partial geometry without relaxing new-location admission.
+		prepared.filter.UpdateNearbyUserCells(fine, coarse)
 	}
 	if fine == pathreliability.InvalidCell || coarse == pathreliability.InvalidCell {
 		return nearbyLoginInactiveMsg

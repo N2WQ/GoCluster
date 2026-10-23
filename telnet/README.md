@@ -1184,7 +1184,10 @@ NOFILTER forms are refused, not translated.
 
 If NEARBY is already ON with unavailable restored
 GRID/cells, human and YAML rule-only edits are allowed when every other saved
-selection is unchanged. Retain the saved GRID and NEARBY ON. When both cells
+selection is unchanged. Retain the saved GRID and NEARBY ON.
+With unchanged GRID, preserve each existing NEARBY cell exactly, including
+unavailable cells; do not substitute path-cache cells.
+When both cells
 are unavailable, ordinary spots are blocked until geometry is repaired or
 NEARBY is OFF. This does not override live
 SELF's enabled-only bypass or command/history's SELF-independent self-match

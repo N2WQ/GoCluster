@@ -12,6 +12,7 @@ import (
 
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
+	"dxcluster/spot"
 )
 
 func TestV5MachineCoordinatorFailuresPreserveLiveAndDisk(t *testing.T) {
@@ -114,6 +115,87 @@ func TestV5MachineCoordinatorFailuresPreserveLiveAndDisk(t *testing.T) {
 				t.Fatal("failed coordinator changed live state, history or durable bytes")
 			}
 		})
+	}
+}
+
+func TestV5MachineCoordinatorNearbyPartialGeometry(t *testing.T) {
+	requireH3Mappings(t)
+	for _, geometry := range []struct {
+		name       string
+		coarseOnly bool
+	}{{"fine-only", false}, {"coarse-only", true}} {
+		for _, verb := range []string{"PATCH", "PUT"} {
+			for _, resource := range []string{"FILTER", "CONFIG"} {
+				t.Run(geometry.name+"/"+verb+"/"+resource, func(t *testing.T) {
+					s, c, cfg := v5CoordinatorFixture(t)
+					cfg.Filters.NearbyEnabled = true
+					cfg, f, err := filter.PrepareV5Configuration(cfg)
+					if err != nil {
+						t.Fatal(err)
+					}
+					c.filter, c.configuredSettings = &f, cfg.Settings
+					c.grid, c.gridDerived = "FN31", true
+					// Path caches intentionally differ from NEARBY's retained location.
+					c.gridCell, c.gridCoarseCell = pathreliability.EncodeCell("IO91"), pathreliability.EncodeCoarseCell("IO91")
+					fine, coarse := pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")
+					if fine == pathreliability.InvalidCell || coarse == pathreliability.InvalidCell {
+						t.Fatal("fixture requires usable FN31 mappings")
+					}
+					if geometry.coarseOnly {
+						fine = pathreliability.InvalidCell
+					} else {
+						coarse = pathreliability.InvalidCell
+					}
+					c.filter.UpdateNearbyUserCells(fine, coarse)
+					state, pointer := c.pathSnapshot(), c.filter
+					assertMatches := func(mode string, allowed bool) {
+						t.Helper()
+						for _, frequency := range []float64{14030, 3530} {
+							sp := spot.NewSpot("K1ABC", "N2AAA", frequency, mode)
+							sp.IsHuman, sp.DXMetadata.Grid = true, "FN31"
+							want := allowed && (frequency == 3530) == geometry.coarseOnly
+							got, _, _ := s.matchSnapshot(c.captureMatchingSnapshot(), sp)
+							if got != want {
+								t.Fatalf("%s %.0f matched=%v, want %v", mode, frequency, got, want)
+							}
+						}
+					}
+					assertMatches("CW", true)
+					assertMatches("RTTY", false)
+					v5CoordinatorSeed(t, c, cfg)
+					set, err := filter.PrepareRuleSet([]filter.RuleDefinition{{
+						Slot: 0, Action: filter.RulePass, Expr: "(MODE=CW OR MODE=RTTY) AND DXCONT=EU",
+					}})
+					if err != nil {
+						t.Fatal(err)
+					}
+					next := cfg
+					next.Filters = cfg.Filters.WithRuleSet(set)
+					var body any = next.Filters
+					if resource == "CONFIG" {
+						body = next
+					}
+					if verb == "PATCH" {
+						body = map[string]any{"rules": next.Filters.Rules}
+						if resource == "CONFIG" {
+							body = map[string]any{"filters": body}
+						}
+					}
+					cmd, request := v5CoordinatorProposal(t, c, verb, resource, body)
+					v5CoordinatorSuccess(t, s.applyV5MachineRequest(c, cmd, request), true)
+					if c.filter != pointer || !c.filter.NearbyEnabled || c.pathSnapshot() != state ||
+						c.filter.NearbyUserFine != fine || c.filter.NearbyUserCoarse != coarse {
+						t.Fatal("YAML rule update changed existing NEARBY or path state")
+					}
+					assertMatches("CW", true)
+					assertMatches("RTTY", true)
+					record, err := filter.LoadV5UserRecord(c.callsign)
+					if err != nil || !record.Configuration.Equal(next) || !c.captureV5Configuration().Equal(next) {
+						t.Fatalf("YAML rule update lost saved rules/settings: %v", err)
+					}
+				})
+			}
+		}
 	}
 }
 
