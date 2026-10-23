@@ -328,7 +328,7 @@ func TestAdmissionMachineQuotaFailureAndValidateAreNonmutating(t *testing.T) {
 		if verb == "VALIDATE" {
 			command = machineCommand{Verb: verb, Resource: "CONFIG"}
 			var err error
-			request, err = decodeV5MachineRequest(machineRequestFixture(completeValidationConfigurationTest(), false), command)
+			request, err = decodeV5MachineRequest(machineRequestFixture(completeValidationConfigurationTest(), false), command, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

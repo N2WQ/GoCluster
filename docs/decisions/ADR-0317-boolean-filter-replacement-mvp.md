@@ -9,6 +9,9 @@ description: Numbered Boolean rules, geography-only NEARBY projection, and isola
 
 ## Context
 
+[ADR-0321](ADR-0321-boolean-canonical-dxcc-input.md) restores canonical DXCC
+operand input in human/YAML requests while retaining numeric rules and schema 5.
+
 [ADR-0319](ADR-0319-boolean-onboarding-and-source-default.md) refines onboarding
 and exact-expression presentation.
 [ADR-0320](ADR-0320-explicit-source-filtering.md) supersedes its source policy:

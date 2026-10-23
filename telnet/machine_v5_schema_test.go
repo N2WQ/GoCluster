@@ -61,7 +61,7 @@ func TestV5MachineSchemaCompleteResources(t *testing.T) {
 					configuration = "filters:\n" + indentMachineFixture(v5CompleteFilterFixture) +
 						"settings:\n" + indentMachineFixture(machineCompleteSettingsFixture)
 				}
-				request, err := decodeV5MachineRequest(v5MachineRequestFixture(configuration, verb != "VALIDATE"), machineCommand{Verb: verb, Resource: resource})
+				request, err := decodeV5MachineRequest(v5MachineRequestFixture(configuration, verb != "VALIDATE"), machineCommand{Verb: verb, Resource: resource}, nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -123,7 +123,7 @@ func TestV5MachineSchemaPatchPresenceAndPreparedReuse(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			before, oldSet := v5PreparedFixture(t)
 			saved := before.Clone()
-			request, err := decodeV5MachineRequest(v5MachineRequestFixture(tt.configuration, true), machineCommand{Verb: "PATCH", Resource: tt.resource})
+			request, err := decodeV5MachineRequest(v5MachineRequestFixture(tt.configuration, true), machineCommand{Verb: "PATCH", Resource: tt.resource}, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -172,7 +172,7 @@ func TestV5MachineSchemaPatchPresenceAndPreparedReuse(t *testing.T) {
 		})
 	}
 	// Public DTO edits cannot redirect apply to a stale definition/program pair.
-	request, err := decodeV5MachineRequest(v5MachineRequestFixture("rules: [{slot: 0, action: pass, expr: 'mode=cw'}]\n", true), machineCommand{Verb: "PATCH", Resource: "FILTER"})
+	request, err := decodeV5MachineRequest(v5MachineRequestFixture("rules: [{slot: 0, action: pass, expr: 'mode=cw'}]\n", true), machineCommand{Verb: "PATCH", Resource: "FILTER"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,14 +225,14 @@ func TestV5MachineSchemaRejectsMalformedProposals(t *testing.T) {
 		{"too-large", strings.Repeat(" ", maxYAMLBytes+1), "FILTER", "document"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := decodeV5MachineRequest([]byte(tt.body), machineCommand{Verb: "PATCH", Resource: tt.resource})
+			_, err := decodeV5MachineRequest([]byte(tt.body), machineCommand{Verb: "PATCH", Resource: tt.resource}, nil)
 			if err == nil || !strings.HasPrefix(err.Error(), tt.path+":") {
 				t.Fatalf("expected path %q, got %v", tt.path, err)
 			}
 		})
 	}
 	for _, command := range []machineCommand{{Verb: "GET", Resource: "CONFIG"}, {Verb: "VALIDATE", Resource: "FILTER"}, {Verb: "PUT", Resource: "CAPABILITIES"}, {Verb: "PATCH", Resource: "UNKNOWN"}} {
-		if _, err := decodeV5MachineRequest([]byte(base), command); err == nil {
+		if _, err := decodeV5MachineRequest([]byte(base), command, nil); err == nil {
 			t.Fatalf("accepted invalid body command: %+v", command)
 		}
 	}
@@ -268,7 +268,7 @@ func TestV5MachineSchemaCompletenessAndRulePaths(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				_, err = decodeV5MachineRequest(v5MachineRequestFixture(string(data), true), machineCommand{Verb: "PUT", Resource: resource})
+				_, err = decodeV5MachineRequest(v5MachineRequestFixture(string(data), true), machineCommand{Verb: "PUT", Resource: resource}, nil)
 				if err == nil || !strings.Contains(err.Error(), "configuration."+name+":") {
 					t.Fatalf("missing %s did not fail at its path: %v", name, err)
 				}
@@ -296,7 +296,7 @@ func TestV5MachineSchemaCompletenessAndRulePaths(t *testing.T) {
 			if resource == "CONFIG" {
 				configuration, path = "filters:\n"+indentMachineFixture(configuration), "configuration.filters.rules[0]"
 			}
-			_, err := decodeV5MachineRequest(v5MachineRequestFixture(configuration, true), machineCommand{Verb: "PATCH", Resource: resource})
+			_, err := decodeV5MachineRequest(v5MachineRequestFixture(configuration, true), machineCommand{Verb: "PATCH", Resource: resource}, nil)
 			if err == nil || !strings.Contains(err.Error(), path+tt.path) {
 				t.Fatalf("%s %s: wrong path/column: %v", resource, tt.rule, err)
 			}
@@ -304,7 +304,7 @@ func TestV5MachineSchemaCompletenessAndRulePaths(t *testing.T) {
 	}
 	// Duplicate identity wins even when an earlier expression is malformed.
 	configuration := "rules: [{slot: 0, action: pass, expr: bad}, {slot: 0, action: reject, expr: bad}]\n"
-	_, err := decodeV5MachineRequest(v5MachineRequestFixture(configuration, true), machineCommand{Verb: "PATCH", Resource: "FILTER"})
+	_, err := decodeV5MachineRequest(v5MachineRequestFixture(configuration, true), machineCommand{Verb: "PATCH", Resource: "FILTER"}, nil)
 	if err == nil || !strings.Contains(err.Error(), "configuration.rules[1].slot: duplicate") {
 		t.Fatalf("duplicate was compiled as a replacement: %v", err)
 	}
@@ -348,7 +348,7 @@ func TestV5MachineSchemaRuleBudgets(t *testing.T) {
 		{"slots-over", []string{"SNR=1", "SNR=1", "SNR=1", "SNR=1", "SNR=1", "SNR=1", "SNR=1", "SNR=1", "SNR=1", "SNR=1", "SNR=1"}, false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			request, err := decodeV5MachineRequest(v5MachineRequestFixture(v5RuleListFixture(tt.sources), true), machineCommand{Verb: "PATCH", Resource: "FILTER"})
+			request, err := decodeV5MachineRequest(v5MachineRequestFixture(v5RuleListFixture(tt.sources), true), machineCommand{Verb: "PATCH", Resource: "FILTER"}, nil)
 			if (err == nil) != tt.valid {
 				t.Fatalf("valid=%v err=%v", tt.valid, err)
 			}
@@ -362,11 +362,11 @@ func TestV5MachineSchemaRuleBudgets(t *testing.T) {
 func TestV5MachineSchemaExactDocumentByteLimit(t *testing.T) {
 	body := v5MachineRequestFixture("rules: []\n", true)
 	body = append(body, bytes.Repeat([]byte(" "), maxYAMLBytes-len(body))...)
-	if _, err := decodeV5MachineRequest(body, machineCommand{Verb: "PATCH", Resource: "FILTER"}); err != nil {
+	if _, err := decodeV5MachineRequest(body, machineCommand{Verb: "PATCH", Resource: "FILTER"}, nil); err != nil {
 		t.Fatalf("exact byte bound rejected: %v", err)
 	}
 
-	if _, err := decodeV5MachineRequest(append(body, ' '), machineCommand{Verb: "PATCH", Resource: "FILTER"}); err == nil {
+	if _, err := decodeV5MachineRequest(append(body, ' '), machineCommand{Verb: "PATCH", Resource: "FILTER"}, nil); err == nil {
 		t.Fatal("overlong document admitted")
 	}
 }
@@ -375,7 +375,7 @@ func TestV5MachineSchemaDefersSettingSemantics(t *testing.T) {
 	// Only the later server coordinator knows runtime settings availability and
 	// overrides. This boundary must not default or silently repair exact scalars.
 	body := v5MachineRequestFixture("dialect: unrecognized\ngrid: \"\"\nnoise_class: other\ndedupe_policy: other\npath_min_observation_count: -1\nsolar_summary_minutes: -1\n", true)
-	request, err := decodeV5MachineRequest(body, machineCommand{Verb: "PUT", Resource: "SETTINGS"})
+	request, err := decodeV5MachineRequest(body, machineCommand{Verb: "PUT", Resource: "SETTINGS"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

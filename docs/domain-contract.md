@@ -1,4 +1,7 @@
-# docs/domain-contract.md
+---
+title: Domain And Operational Contract
+description: Runtime, protocol and operational invariants for GoCluster.
+---
 
 This document defines the domain and operational contract for the telnet/packet
 DX cluster.
@@ -479,11 +482,18 @@ take one value.
   end, including `*` alone. No internal/multiple stars or `?` wildcard.
   A lone star matches only a nonempty known call.
 - DXCONT/DECONT use supported continent codes; DXZONE/DEZONE use integral
-  CQ zones 1-40. DXDXCC/DEDXCC take positive ADIF integers, not CTY prefix
-  labels or callsign lookups. A positive spot ADIF is known without rule-time
-  CTY-membership validation. `DXDXCC=248` selects the entity;
+  CQ zones 1-40. Human and machine DXDXCC/DEDXCC operands accept positive ADIF
+  integers or exact canonical CTY Prefix labels. One request-owned lazy index
+  resolves all labels, across fields and slots, before full-rule preparation
+  completes or NEARBY projection removes geography. Unknown/conflicting labels
+  refuse the whole proposal. Numeric inputs require no CTY; integer overflow
+  cannot fall through to label resolution. All prepared definitions, readbacks
+  and stored expressions are numeric; native loaders and matching remain
+  CTY-independent. Repetitions still consume current operand budgets.
+  A positive spot ADIF is known without CTY-membership validation.
+  `DXDXCC=IT9` normalizes to entity 248 with that CTY association;
   `DXCALL=IT9*` selects a literal prefix. SHOW DXCC and history CTY selector
-  precedence remain separate.
+  precedence remain separate. See [ADR-0321](decisions/ADR-0321-boolean-canonical-dxcc-input.md).
 - DXSTATE/DESTATE use the observed canonical 60 FCC plus 13 Canadian codes
   described above. Rule operands normalize case; missing, lowercase or invalid
   spot codes are unknown. The home/base-call license jurisdiction used to

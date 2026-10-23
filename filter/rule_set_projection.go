@@ -6,8 +6,8 @@ import (
 	"dxcluster/filter/expr"
 )
 
-func prepareRule(definition RuleDefinition) (preparedRule, error) {
-	normal, err := compileRule(definition.Expr)
+func prepareRule(definition RuleDefinition, resolve func(string) (int, error)) (preparedRule, error) {
+	normal, err := compileRuleWithDXCCResolver(definition.Expr, resolve)
 	if err != nil {
 		return preparedRule{}, fmt.Errorf("rule slot %d: %w", definition.Slot, err)
 	}

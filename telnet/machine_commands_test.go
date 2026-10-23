@@ -20,7 +20,7 @@ func decodeProposalTest(t *testing.T, c *Client, verb, resource, config string) 
 	}
 	command := machineCommand{Verb: verb, Resource: resource}
 	body := fmt.Sprintf("schema_version: 5\nrequest_id: edit-1\nif_revision: %s\nconfiguration:\n%s", revision, config)
-	request, err := decodeV5MachineRequest([]byte(body), command)
+	request, err := decodeV5MachineRequest([]byte(body), command, nil)
 	if err != nil {
 		t.Fatalf("decode literal proposal: %v", err)
 	}

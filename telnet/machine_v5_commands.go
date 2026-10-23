@@ -46,7 +46,7 @@ func (s *Server) prepareV5MachineRequest(c *Client, body []byte, cmd machineComm
 	if err != nil {
 		return v5MachineRequest{}, err
 	}
-	request, err := decodeV5MachineRequest(body, cmd)
+	request, err := decodeV5MachineRequest(body, cmd, newRuleDXCCResolver(s.ctyLookup))
 	release()
 	return request, err
 }

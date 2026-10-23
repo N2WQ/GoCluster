@@ -219,7 +219,10 @@ Combine required selections with AND in that same expression.
 | Select literal comment text | `COMMENT="CQ test"` |
 
 `DX` refers to the spotted station; `DE` refers to the reporting station.
-DXCC fields accept positive numeric ADIF identifiers, not prefix aliases.
+DXCC fields accept positive numeric ADIF identifiers and exact canonical CTY
+labels, for example `DXDXCC=K,VE` or `DXDXCC<>K`. Labels need CTY and normalize
+to numeric codes in responses, readbacks and saved rules. They select whole
+entities, not callsign prefixes; numeric-only rules need no CTY.
 Call patterns support an exact name, a single leading or trailing wildcard,
 or a lone `*`.
 

@@ -19,7 +19,7 @@ func FuzzV5MachineRequest(f *testing.F) {
 			return
 		}
 		resource := [3]string{"FILTER", "SETTINGS", "CONFIG"}[selector%3]
-		request, err := decodeV5MachineRequest(body, machineCommand{Verb: "PATCH", Resource: resource})
+		request, err := decodeV5MachineRequest(body, machineCommand{Verb: "PATCH", Resource: resource}, nil)
 		if err != nil {
 			return
 		}

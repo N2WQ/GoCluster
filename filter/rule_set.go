@@ -59,7 +59,7 @@ func PrepareRuleSet(definitions []RuleDefinition) (*PreparedRuleSet, error) {
 	rules := make([]preparedRule, 0, len(definitions))
 	atoms, values := 0, 0
 	for _, definition := range definitions {
-		rule, err := prepareRule(definition)
+		rule, err := prepareRule(definition, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -124,10 +124,17 @@ func (s *PreparedRuleSet) Definitions() []RuleDefinition {
 // WithRule prepares only the changed slot. Budget failures leave this set and
 // every previously published snapshot untouched.
 func (s *PreparedRuleSet) WithRule(definition RuleDefinition) (*PreparedRuleSet, error) {
+	return s.WithRuleDXCCResolver(definition, nil)
+}
+
+// WithRuleDXCCResolver resolves canonical DXCC operands during preparation only.
+// The caller owns one resolver per request; neither it nor its state is retained.
+// Nil preserves numeric-only preparation for native records, presets and defaults.
+func (s *PreparedRuleSet) WithRuleDXCCResolver(definition RuleDefinition, resolve func(string) (int, error)) (*PreparedRuleSet, error) {
 	if err := validateRuleDefinition(definition); err != nil {
 		return nil, err
 	}
-	rule, err := prepareRule(definition)
+	rule, err := prepareRule(definition, resolve)
 	if err != nil {
 		return nil, err
 	}

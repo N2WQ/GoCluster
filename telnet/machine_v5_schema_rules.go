@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func decodeV5MachineRules(node *yaml.Node, path string) (*filter.PreparedRuleSet, error) {
+func decodeV5MachineRules(node *yaml.Node, path string, resolve func(string) (int, error)) (*filter.PreparedRuleSet, error) {
 	if node.Kind != yaml.SequenceNode || node.Tag != "!!seq" {
 		return nil, schemaError(path, "expected a sequence")
 	}
@@ -55,7 +55,7 @@ func decodeV5MachineRules(node *yaml.Node, path string) (*filter.PreparedRuleSet
 	}
 	var set *filter.PreparedRuleSet
 	for i := range node.Content {
-		next, err := set.WithRule(definitions[i])
+		next, err := set.WithRuleDXCCResolver(definitions[i], resolve)
 		if err != nil {
 			reason := "col 1: " + err.Error()
 			var syntax *expr.SyntaxError

@@ -120,7 +120,7 @@ func TestV5MachineReadbackResourceShapesAndEffectiveRules(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		request, err := decodeV5MachineRequest(body, machineCommand{Verb: "PUT", Resource: resource})
+		request, err := decodeV5MachineRequest(body, machineCommand{Verb: "PUT", Resource: resource}, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,7 +270,7 @@ func TestV5MachineReadbackEmptyAndNoCompilation(t *testing.T) {
 	request, err := decodeV5MachineRequest(v5MachineRequestFixture(v5RuleListFixture([]string{
 		"MODE=CW", "MODE=CW", "MODE=CW", "MODE=CW", "MODE=CW",
 		"MODE=CW", "MODE=CW", "MODE=CW", "MODE=CW", "MODE=CW",
-	}), true), machineCommand{Verb: "PATCH", Resource: "FILTER"})
+	}), true), machineCommand{Verb: "PATCH", Resource: "FILTER"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

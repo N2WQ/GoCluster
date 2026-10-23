@@ -1,4 +1,7 @@
-# Support Card: Configuration Readbacks And Client YAML
+---
+title: "Support Card: Configuration Readbacks And Client YAML"
+description: Support boundaries for human configuration readbacks and schema-5 requests.
+---
 
 ## Match
 
@@ -77,9 +80,13 @@ command/error artifact that distinguishes the next step.
   [ADR-0270](../../docs/decisions/ADR-0270-complete-storage-admission.md)
   records admission history, not a pre-v5 migration contract.
 
-- DXDXCC/DEDXCC expressions take positive ADIF integers, not CTY labels or
-  callsign lookups. `DXDXCC=248` selects the entity; `DXCALL=IT9*` is a literal
-  callsign-prefix pattern. SHOW DX/MYDX retain CTY-label precedence and numeric
+- DXDXCC/DEDXCC human and YAML request operands accept positive ADIF integers
+  and exact canonical CTY labels, not callsign lookups. `DXDXCC<>K` normalizes
+  to `DXDXCC<>291`; `DXDXCC=IT9` selects entity 248 while `DXCALL=IT9*` is a
+  literal callsign-prefix pattern. Labels need CTY; unknown/conflicting labels
+  refuse the whole edit even with NEARBY ON. One snapshot covers the request.
+  Readbacks and saved rules are numeric; native loaders remain numeric-only.
+  Numeric-only requests and saved-rule reload need no CTY. SHOW DX/MYDX retain CTY-label precedence and numeric
   count arguments; SHOW DXCC lookup is unchanged. Route to
   [DXCC distinctions](../../telnet/README.md#canonical-dxcc-prefixes).
 
@@ -209,8 +216,9 @@ command/error artifact that distinguishes the next step.
 
 ## Must Avoid
 
-- Do not offer CTY-prefix DXCC rule operands, category mutation compatibility,
-  AR-style aliases or automatic conversion. Keep literal callsign patterns,
+- Do not offer callsign lookup keys as canonical DXCC labels, prefix-bearing
+  native saved files, category mutation compatibility, AR-style aliases or
+  automatic conversion. Keep literal callsign patterns,
   ADIF entity comparisons, CTY history selectors and SHOW DXCC lookup separate.
 
 - Do not invent SHOW YAML aliases, pagination, a force-revision command or an

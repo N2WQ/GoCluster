@@ -30,6 +30,10 @@ type compiledRuleNode struct {
 }
 
 func compileRule(source string) (*compiledRule, error) {
+	return compileRuleWithDXCCResolver(source, nil)
+}
+
+func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error)) (*compiledRule, error) {
 	syntax, err := expr.Parse(source)
 	if err != nil {
 		return nil, err
@@ -60,7 +64,7 @@ func compileRule(source string) (*compiledRule, error) {
 				}
 			}
 		}
-		predicate, err := compileRulePredicate(&node.Atom)
+		predicate, err := compileRulePredicate(&node.Atom, resolve)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +83,7 @@ func ruleCompileError(column int, format string, args ...any) error {
 	return &expr.SyntaxError{Column: column, Message: fmt.Sprintf(format, args...)}
 }
 
-func compileRulePredicate(atom *expr.Atom) (rulePredicate, error) {
+func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error)) (rulePredicate, error) {
 	field, ok := ruleFieldForName(atom.Field)
 	if !ok {
 		return rulePredicate{}, ruleCompileError(atom.Column, "unsupported field %q", atom.Field)
@@ -98,7 +102,7 @@ func compileRulePredicate(atom *expr.Atom) (rulePredicate, error) {
 	}
 	for i := range atom.Values {
 		value := &atom.Values[i]
-		text, err := predicate.compileValue(value, ordered)
+		text, err := predicate.compileValue(value, ordered, resolve)
 		if err != nil {
 			return rulePredicate{}, err
 		}
@@ -108,7 +112,7 @@ func compileRulePredicate(atom *expr.Atom) (rulePredicate, error) {
 	return predicate, nil
 }
 
-func (p *rulePredicate) compileValue(value *expr.Value, ordered bool) (string, error) {
+func (p *rulePredicate) compileValue(value *expr.Value, ordered bool, resolve func(string) (int, error)) (string, error) {
 	switch p.field {
 	case ruleFieldFreq:
 		frequency, err := compileRuleFrequency(value.Text, !ordered)
@@ -121,7 +125,14 @@ func (p *rulePredicate) compileValue(value *expr.Value, ordered bool) (string, e
 			return low, nil
 		}
 		return low + "-" + strconv.FormatFloat(frequency.high, 'f', -1, 64), nil
-	case ruleFieldSNR, ruleFieldDXZone, ruleFieldDEZone, ruleFieldDXDXCC, ruleFieldDEDXCC:
+	case ruleFieldDXDXCC, ruleFieldDEDXCC:
+		number, err := compileRuleDXCCValue(value, resolve)
+		if err != nil {
+			return "", err
+		}
+		p.integers = append(p.integers, number)
+		return strconv.Itoa(number), nil
+	case ruleFieldSNR, ruleFieldDXZone, ruleFieldDEZone:
 		number, err := strconv.Atoi(value.Text)
 		if err != nil {
 			return "", ruleCompileError(value.Column, "expected a strictly integral value for %q: %s", value.Text, err)
@@ -129,14 +140,45 @@ func (p *rulePredicate) compileValue(value *expr.Value, ordered bool) (string, e
 		if (p.field == ruleFieldDXZone || p.field == ruleFieldDEZone) && !IsSupportedZone(number) {
 			return "", ruleCompileError(value.Column, "CQ zone must be 1..40")
 		}
-		if (p.field == ruleFieldDXDXCC || p.field == ruleFieldDEDXCC) && number <= 0 {
-			return "", ruleCompileError(value.Column, "DXCC must be a positive ADIF integer")
-		}
 		p.integers = append(p.integers, number)
 		return strconv.Itoa(number), nil
 	default:
 		return p.compileText(value)
 	}
+}
+
+func compileRuleDXCCValue(value *expr.Value, resolve func(string) (int, error)) (int, error) {
+	number, err := strconv.Atoi(value.Text)
+	if err != nil {
+		// Classify the whole token: Atoi can report overflow before reaching a
+		// nonnumeric suffix in a canonical label. Only integers bypass resolution.
+		if resolve == nil || ruleDXCCIntegerToken(value.Text) {
+			return 0, ruleCompileError(value.Column, "expected a strictly integral value for %q: %s", value.Text, err)
+		}
+		number, err = resolve(value.Text)
+		if err != nil {
+			return 0, ruleCompileError(value.Column, "invalid DXCC value %q: %s", value.Text, err)
+		}
+	}
+	if number <= 0 {
+		return 0, ruleCompileError(value.Column, "DXCC must be a positive ADIF integer")
+	}
+	return number, nil
+}
+
+func ruleDXCCIntegerToken(value string) bool {
+	if value != "" && (value[0] == '+' || value[0] == '-') {
+		value = value[1:]
+	}
+	if value == "" {
+		return false
+	}
+	for i := range len(value) {
+		if value[i] < '0' || value[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *rulePredicate) compileText(value *expr.Value) (string, error) {

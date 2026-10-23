@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"dxcluster/cty"
 	"dxcluster/filter"
 )
 
@@ -116,7 +117,11 @@ func (e *filterCommandEngine) stageBooleanFilterCommand(c *Client, line string) 
 		return booleanRuleRefusal("Personal filter unavailable.")
 	}
 	previous := c.filter.PreparedRules()
-	next, err := command.prepare(previous)
+	var lookup func() *cty.CTYDatabase
+	if c.server != nil {
+		lookup = c.server.ctyLookup
+	}
+	next, err := command.prepare(previous, newRuleDXCCResolver(lookup))
 	if err != nil {
 		return booleanRuleRefusal("Invalid rule: " + err.Error() + "\n" + booleanRuleSetUsage)
 	}
@@ -145,12 +150,33 @@ func (e *filterCommandEngine) stageBooleanFilterCommand(c *Client, line string) 
 	return humanCommandOutcome{response: response, handled: true, publish: publish, warning: humanWarningFilter}
 }
 
-func (command booleanRuleCommand) prepare(previous *filter.PreparedRuleSet) (*filter.PreparedRuleSet, error) {
+// One lazy index belongs to the whole request, including all machine rule slots.
+// Numeric operands never call this closure; no CTY state survives preparation.
+func newRuleDXCCResolver(lookup func() *cty.CTYDatabase) func(string) (int, error) {
+	var index *cty.DXCCIndex
+	var initialized bool
+	return func(label string) (int, error) {
+		if !initialized {
+			initialized = true
+			if lookup != nil {
+				if db := lookup(); db != nil {
+					index = cty.NewDXCCIndex(db)
+				}
+			}
+		}
+		if index == nil {
+			return 0, fmt.Errorf("CTY database is not available")
+		}
+		return index.ResolveCanonical(label)
+	}
+}
+
+func (command booleanRuleCommand) prepare(previous *filter.PreparedRuleSet, resolve func(string) (int, error)) (*filter.PreparedRuleSet, error) {
 	switch command.edit {
 	case booleanRuleSet:
-		return previous.WithRule(filter.RuleDefinition{
+		return previous.WithRuleDXCCResolver(filter.RuleDefinition{
 			Slot: command.slot, Action: command.action, Expr: command.expression,
-		})
+		}, resolve)
 	case booleanRuleRemove:
 		return previous.WithoutRule(command.slot)
 	default:

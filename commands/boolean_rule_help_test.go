@@ -19,6 +19,9 @@ func TestBooleanRuleHelpSharedReference(t *testing.T) {
 		"Emptied rules are ignored.", "Other conditions still apply.",
 		"Saved rules stay unchanged.", "Phrases match anywhere in a comment.",
 		"Matching ignores ASCII letter case.",
+		"exact CTY canonical labels",
+		"DXDXCC<>K becomes DXDXCC<>291",
+		"Unknown or conflicting labels reject the entire edit.",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("shared Boolean reference omitted %q", required)
@@ -59,6 +62,7 @@ func TestBooleanRuleHelpReadableLayout(t *testing.T) {
 				"PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN",
 				`REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"`,
 				"PASS RULE 2 NOT (DXCONT=EU OR BAND=20M)",
+				"PASS RULE 0 MODE=CW AND DXDXCC<>K",
 			} {
 				if !strings.Contains(text, "\n  "+example+"\n") {
 					t.Fatalf("literal example was changed or wrapped: %q", example)

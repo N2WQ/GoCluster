@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0321 | Boolean Canonical DXCC Input | Accepted | 2026-10-23 | DXDXCC/DEDXCC, human/YAML input, request CTY snapshot | Numeric-only Boolean input of ADR-0317; refines restoration of ADR-0248 | none | [ADR-0321](decisions/ADR-0321-boolean-canonical-dxcc-input.md) |
 | ADR-0320 | Explicit Source Filtering | Accepted | 2026-10-22 | Boolean rules, SOURCE, readback, shipped defaults | Implicit source policy/readback and shipped HUMAN-only selection of ADR-0319 | none | [ADR-0320](decisions/ADR-0320-explicit-source-filtering.md) |
 | ADR-0319 | Boolean Onboarding And Source Default | Accepted | 2026-10-22 | Boolean rules, login, source defaults, exact readback | Modes-only reset clause of ADR-0318; source/readback clauses of ADR-0317 | ADR-0320 replaces implicit source policy/readback and shipped HUMAN-only selection | [ADR-0319](decisions/ADR-0319-boolean-onboarding-and-source-default.md) |
 | ADR-0318 | Old Profile Reset Upgrade | Accepted | 2026-10-21 | login, legacy settings, preset cleanup, backup/atomicity | Recognized old-profile refusal-only clauses of ADR-0317 | ADR-0319 replaces modes-only reset selection | [ADR-0318](decisions/ADR-0318-old-profile-reset-upgrade.md) |

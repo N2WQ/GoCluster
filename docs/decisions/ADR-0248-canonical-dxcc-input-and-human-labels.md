@@ -1,4 +1,7 @@
-# ADR-0248: Canonical DXCC Input And Human Labels
+---
+title: "ADR-0248: Canonical DXCC Input And Human Labels"
+description: Historical canonical DXCC selection and human labels before Boolean replacement.
+---
 
 - Status: Accepted
 - Date: 2026-10-06
@@ -10,6 +13,11 @@ in force. History selector branches after canonical-label precedence, paging,
 retention and failure reporting are refined by
 [ADR-0251](ADR-0251-exact-call-paged-history.md). The text below preserves the
 accepted historical decision.
+
+[ADR-0321](ADR-0321-boolean-canonical-dxcc-input.md) restores canonical operand
+resolution for numbered Boolean human/YAML rules, retaining numeric expressions
+and repeated-operand accounting rather than category deduplication or label
+expansion. The historical category syntax below is not restored.
 
 ## Context
 

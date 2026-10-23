@@ -1,4 +1,7 @@
-# Commands And HELP
+---
+title: Commands And HELP
+description: Command ownership and compiled HELP contracts for GoCluster.
+---
 
 This directory is the source of truth for telnet command help. The public `HELP` output is built in [`processor.go`](processor.go), not copied from a separate static document.
 
@@ -43,6 +46,11 @@ HELP and then Boolean rule HELP before routing aliases. The registered
 `BooleanRuleHelpLines` provider owns expression wording, not the unregistered
 telnet `formatBooleanRuleHelp` helper. `configuration_help.go` owns human
 readback and machine command topics; execution remains under telnet.
+
+DXDXCC/DEDXCC rule operands accept exact canonical CTY labels and positive ADIF
+numbers in human commands and YAML requests. Labels resolve once per request;
+accepted expressions and saved rules use numeric codes. HELP distinguishes
+entity selection (`DXDXCC=IT9`, ADIF 248) from literal calls (`DXCALL=IT9*`).
 
 Separate controls retain their own grammar. Shared PASS/REJECT control forms
 work in both dialects; CC SET/FILTER and UNSET/FILTER support BEACON, WWV, WCY,
@@ -412,15 +420,17 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 History selection is described above; canonical labels retain precedence over
 exact calls and prefixes.
 
-Numbered DXDXCC/DEDXCC expressions accept positive ADIF integers only:
+Numbered DXDXCC/DEDXCC expressions accept positive ADIF integers and exact
+canonical CTY labels in human and YAML requests:
 
 ```text
-REJECT RULE 9 DXDXCC=248
+REJECT RULE 9 DXDXCC=IT9
 REJECT RULE 8 DXCALL=IT9*
 ```
 
 The first selects the whole ADIF entity; the second is a literal callsign-prefix
-pattern. Neither performs CTY lookup. Positive operands need no CTY membership
+pattern. Labels resolve once per request and normalize to numeric codes, so the
+first reads back as `DXDXCC=248`. Positive numeric operands need no CTY or membership
 check; missing/nonpositive spot ADIF metadata is unknown. `SHOW DXCC` lookup
 and archive selector precedence are separate, unchanged paths. See
 [canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).

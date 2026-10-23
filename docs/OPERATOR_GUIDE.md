@@ -888,12 +888,18 @@ For config loader details, see `data/config/README.md`.
 
 ### Canonical DXCC filter and history inputs
 
-Use `PASS DXDXCC K,VE,248`, `REJECT DXDXCC IT9`, or `REJECT DEDXCC 3D2/R`.
+Use `PASS RULE 0 DXDXCC=K,VE,248`, `REJECT RULE 9 DXDXCC=IT9`, or
+`REJECT RULE 8 DEDXCC=3D2/R`. For CW excluding the U.S. entity, use
+`PASS RULE 0 MODE=CW AND DXDXCC<>K`.
 Prefixes match canonical CTY labels exactly after trimming and uppercasing;
 filter aliases/callsigns such as W6 and K1ABC are rejected. Invalid mixed lists
 change nothing. Canonical input needs CTY; numeric-only filters retain their
 existing positive-code behavior. IT9 selects the whole entity shared with I and
-IG9, not Sicily alone. Use `REJECT DXCALL IT9*` for a callsign-prefix block.
+IG9, not Sicily alone. Use `REJECT RULE 9 DXCALL=IT9*` for a callsign-prefix block.
+Human and YAML requests share this input contract. One snapshot covers a whole
+request; accepted expressions, SHOW, YAML readback and saved rules use numeric
+ADIF codes. Saved rules survive CTY unavailability and are not reinterpreted
+after a refresh. Native storage loading and schema 5 are unchanged.
 
 `SHOW MYDX 3D2/R 10` and `SHOW DX K 10` search by entity. Canonical labels take
 precedence over portable callsign parsing; existing callsign searches still work.

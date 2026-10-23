@@ -29,7 +29,7 @@ func indentMachineFixture(value string) string {
 func TestMachineActiveSchemaRefusesOldVersions(t *testing.T) {
 	for version := 1; version < 5; version++ {
 		body := fmt.Sprintf("schema_version: %d\nrequest_id: old-1\nif_revision: rev-1\nconfiguration: {noise_class: URBAN}\n", version)
-		if _, err := decodeV5MachineRequest([]byte(body), machineCommand{Verb: "PATCH", Resource: "SETTINGS"}); err == nil ||
+		if _, err := decodeV5MachineRequest([]byte(body), machineCommand{Verb: "PATCH", Resource: "SETTINGS"}, nil); err == nil ||
 			!strings.Contains(err.Error(), "schema version 5") {
 			t.Fatalf("schema %d was accepted or failed for an unrelated reason: %v", version, err)
 		}

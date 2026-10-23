@@ -2,12 +2,105 @@ package filter
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"dxcluster/filter/expr"
 	"dxcluster/spot"
 )
+
+func TestRuleCompileDXCCResolver(t *testing.T) {
+	longLabel := strings.Repeat("9", 50) + "/R"
+	for _, test := range []struct {
+		source, want string
+		calls        int
+	}{
+		{`DXDXCC=K AND DEDXCC<>3D2/R`, `DXDXCC=291 AND DEDXCC<>460`, 2},
+		{`DXDXCC=K,291 AND COMMENT=MiXeD AND COMMENT="DXDXCC=K"`,
+			`DXDXCC=291,291 AND COMMENT="MiXeD" AND COMMENT="DXDXCC=K"`, 1},
+		{`DXDXCC=0291 AND DEDXCC="+291"`, `DXDXCC=291 AND DEDXCC=291`, 0},
+		{`DXDXCC=99999`, `DXDXCC=99999`, 0},
+		{`DXDXCC=` + longLabel, `DXDXCC=460`, 1},
+		{`DXDXCC=0`, "", 0},
+		{`DEDXCC=-1`, "", 0},
+		{`DXDXCC=` + strings.Repeat("9", 50), "", 0},
+		{`DEDXCC="` + strings.Repeat("9", 50) + `"`, "", 0},
+		{`DXDXCC=291.0`, "", 1},
+		{`DXDXCC=1e2`, "", 1},
+		{`DXDXCC=ZZ`, "", 1},
+		{`DXDXCC>K`, "", 0},
+		{`SNR=K`, "", 0},
+	} {
+		t.Run(test.source, func(t *testing.T) {
+			calls := 0
+			resolve := func(label string) (int, error) {
+				calls++
+				switch label {
+				case "K":
+					return 291, nil
+				case "3D2/R", longLabel:
+					return 460, nil
+				default:
+					return 0, fmt.Errorf("unknown canonical label")
+				}
+			}
+			program, err := compileRuleWithDXCCResolver(test.source, resolve)
+			if calls != test.calls {
+				t.Fatalf("resolver calls %d, want %d", calls, test.calls)
+			}
+			if test.want == "" {
+				if err == nil || program != nil {
+					t.Fatal("invalid operand accepted")
+				}
+				return
+			}
+			if err != nil || program.canonical != test.want {
+				t.Fatalf("got %v, %v; want %q", program, err, test.want)
+			}
+			again, err := compileRule(program.canonical)
+			if err != nil || again.canonical != test.want {
+				t.Fatalf("numeric recompile without resolver failed: %v", err)
+			}
+		})
+	}
+	for _, number := range []int{0, -1} {
+		if _, err := compileRuleWithDXCCResolver("DXDXCC=K", func(string) (int, error) {
+			return number, nil
+		}); err == nil {
+			t.Fatalf("resolver returned nonpositive ADIF %d", number)
+		}
+	}
+}
+
+func TestRuleCompileDXCCOriginalColumnAndCanonicalLimit(t *testing.T) {
+	calls := 0
+	resolve := func(string) (int, error) { calls++; return 291, nil }
+	_, err := compileRuleWithDXCCResolver("DXDXCC=K AND COMMENT=MiXeD AND DEZONE=41", resolve)
+	var syntax *expr.SyntaxError
+	if !errors.As(err, &syntax) || syntax.Column != 39 || calls != 1 {
+		t.Fatalf("original typed-error column lost: %v, calls %d", err, calls)
+	}
+	prefix := "DXDXCC=K" + strings.Repeat(` AND COMMENT="`+strings.Repeat("x", 64)+`"`, 12) + ` AND COMMENT="`
+	for _, rawLength := range []int{1022, 1023} {
+		source := prefix + strings.Repeat("x", rawLength-len(prefix)-1) + `"`
+		if _, err := expr.Parse(source); err != nil {
+			t.Fatalf("fixture failed before domain normalization: %v", err)
+		}
+		calls = 0
+		program, err := compileRuleWithDXCCResolver(source, resolve)
+		if calls != 1 {
+			t.Fatal("fixture did not reach DXCC normalization")
+		}
+		if rawLength == 1022 {
+			if err != nil || len(program.canonical) != expr.MaxBytes {
+				t.Fatalf("exact canonical limit rejected: %v", err)
+			}
+		} else if err == nil || !strings.Contains(err.Error(), "canonical") {
+			t.Fatalf("normalized canonical overflow accepted: %v", err)
+		}
+	}
+}
 
 func TestRuleCompileCanonical(t *testing.T) {
 	for _, test := range []struct {

@@ -74,7 +74,7 @@ func v5CoordinatorProposal(t *testing.T, c *Client, verb, resource string, confi
 		t.Fatal(err)
 	}
 	cmd := machineCommand{Verb: verb, Resource: resource}
-	request, err := decodeV5MachineRequest(body, cmd)
+	request, err := c.server.prepareV5MachineRequest(c, body, cmd)
 	if err != nil {
 		t.Fatalf("proposal decode: %v\n%s", err, body)
 	}

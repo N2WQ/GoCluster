@@ -1,4 +1,7 @@
-# Telnet Surface
+---
+title: Telnet Surface
+description: Login, command, configuration and delivery contracts for telnet clients.
+---
 
 This directory owns the telnet session layer: login flow, prompt handling, filter commands, client fan-out, and path display.
 
@@ -184,7 +187,7 @@ ALL/ON/OFF wildcard operands.
 | `DXCALL`, `DECALL` | Exact callsign patterns, one prefix/suffix `*`, or `*` alone; see below. |
 | `DXCONT`, `DECONT` | Supported continent codes. |
 | `DXZONE`, `DEZONE` | Integral CQ zones 1–40. |
-| `DXDXCC`, `DEDXCC` | Positive ADIF integers, not CTY labels or callsign lookups. |
+| `DXDXCC`, `DEDXCC` | Positive ADIF integers or exact CTY canonical labels; labels normalize to numeric codes. No callsign lookup. |
 | `DXSTATE`, `DESTATE` | Canonical observed US/Canadian registered mailing codes; missing/invalid metadata is unknown. |
 | `DXGRID2`, `DEGRID2` | Two-letter Maidenhead fields, `AA` through `RR`. |
 | `FREQ` | Finite nonnegative operands in kHz; `=`/`<>` also accept inclusive low-high ranges. Spot frequency is known only when finite and positive. No extra rounding or epsilon is added. |
@@ -334,18 +337,31 @@ are historical, not a supported compatibility engine.
 
 ## Canonical DXCC Prefixes
 
-Numbered DXDXCC/DEDXCC comparisons accept positive ADIF integers only:
+Numbered DXDXCC/DEDXCC comparisons accept positive ADIF integers and exact
+canonical CTY labels in human commands and YAML PUT/PATCH/VALIDATE requests:
 
 ```text
-REJECT RULE 9 DXDXCC=248
+PASS RULE 0 MODE=CW AND DXDXCC<>K
+REJECT RULE 9 DEDXCC=IT9,3D2/R
 REJECT RULE 8 DXCALL=IT9*
 ```
 
-The first blocks the whole ADIF entity; the second matches a literal callsign
-prefix. CTY labels such as IT9, I and IG9 are not expression operands for DXCC.
-Positive operands need no rule-time CTY membership verification; a spot's ADIF
-metadata must be positive to be known. Saved and effective rule readbacks show
-canonical expressions, not a category-prefix expansion.
+The first becomes `MODE=CW AND DXDXCC<>291`. With the corresponding CTY data,
+the second becomes `DEDXCC=248,460`: I, IG9 and IT9 all select entity 248, not
+only Sicily. The third matches literal callsign spelling, not a DXCC entity.
+Labels match canonical Prefix fields after trimming and uppercasing, not
+callsign lookup keys; W6 is not an alias merely because it looks up under K.
+Slash labels retain their canonical meaning. Unknown or conflicting labels
+refuse the entire edit, even with NEARBY ON.
+
+One lazy CTY snapshot covers all labels in one request, including every YAML
+slot. Numeric-only requests need no CTY or membership check. Accepted responses,
+readbacks and saved rules contain numeric expressions; reload and matching never
+resolve labels. A later CTY refresh does not reinterpret saved numeric operands.
+Native profile/preset files remain numeric-only, without a schema change.
+Repeated operands retain their order and count toward the existing limits.
+The Boolean grammar is unchanged; write a signed positive number as `"+291"`.
+A spot's ADIF metadata must be positive to be known, including for `<>`.
 
 SHOW DX and SHOW MYDX recognize canonical CTY labels before exact-call or
 prefix classification, including SHOW MYDX 3D2/R 10. Numeric history arguments

@@ -28,7 +28,7 @@ type v5MachineRequest struct {
 	preparedRules *filter.PreparedRuleSet
 }
 
-func decodeV5MachineRequest(body []byte, command machineCommand) (v5MachineRequest, error) {
+func decodeV5MachineRequest(body []byte, command machineCommand, resolve func(string) (int, error)) (v5MachineRequest, error) {
 	request := v5MachineRequest{resource: command.Resource}
 	if len(body) > maxYAMLBytes {
 		return request, schemaError("document", "exceeds 65536-byte limit")
@@ -89,14 +89,14 @@ func decodeV5MachineRequest(body []byte, command machineCommand) (v5MachineReque
 	if configuration == nil {
 		return request, schemaError("configuration", "required field is missing")
 	}
-	err = request.decodeConfiguration(configuration, command.Verb != "PATCH")
+	err = request.decodeConfiguration(configuration, command.Verb != "PATCH", resolve)
 	return request, err
 }
 
-func (r *v5MachineRequest) decodeConfiguration(node *yaml.Node, complete bool) error {
+func (r *v5MachineRequest) decodeConfiguration(node *yaml.Node, complete bool, resolve func(string) (int, error)) error {
 	switch r.resource {
 	case "FILTER":
-		return r.decodeFilters(node, "configuration", complete)
+		return r.decodeFilters(node, "configuration", complete, resolve)
 	case "SETTINGS":
 		return r.decodeSettings(node, "configuration", complete)
 	case "CONFIG":
@@ -105,7 +105,7 @@ func (r *v5MachineRequest) decodeConfiguration(node *yaml.Node, complete bool) e
 			return err
 		}
 		if filters := containers["filters"]; filters != nil {
-			if err := r.decodeFilters(filters, "configuration.filters", complete); err != nil {
+			if err := r.decodeFilters(filters, "configuration.filters", complete, resolve); err != nil {
 				return err
 			}
 		}
@@ -118,7 +118,7 @@ func (r *v5MachineRequest) decodeConfiguration(node *yaml.Node, complete bool) e
 	}
 }
 
-func (r *v5MachineRequest) decodeFilters(node *yaml.Node, path string, complete bool) error {
+func (r *v5MachineRequest) decodeFilters(node *yaml.Node, path string, complete bool, resolve func(string) (int, error)) error {
 	fields, err := machineObject(node, path, machineV5FilterFields[:], complete)
 	if err != nil {
 		return err
@@ -133,7 +133,7 @@ func (r *v5MachineRequest) decodeFilters(node *yaml.Node, path string, complete 
 		fieldPath := path + "." + name
 		switch i {
 		case 0:
-			r.preparedRules, err = decodeV5MachineRules(field, fieldPath)
+			r.preparedRules, err = decodeV5MachineRules(field, fieldPath, resolve)
 			if err == nil {
 				*f = f.WithRuleSet(r.preparedRules)
 			}
