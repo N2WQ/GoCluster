@@ -9,6 +9,11 @@ description: Consistent starting rules, explicit skimmer selection, and exact ru
 
 ## Context
 
+[ADR-0320](ADR-0320-explicit-source-filtering.md) supersedes the implicit
+HUMAN policy, its synthetic readback, and the shipped HUMAN-only selection.
+The remaining onboarding and upgrade decisions below continue to apply.
+The source policy recorded here is historical.
+
 First-login and returning-user walkthroughs exposed two surprises: replacing
 the starting rule could silently enable automated spots, and independent
 mode/band/source summaries could misrepresent expressions containing OR or NOT.
@@ -98,4 +103,4 @@ outside this change.
   [domain](../domain-contract.md).
 - Regression: [source truth cases](../../filter/rule_source_policy_test.go)
   and [login/edit/reconnect journeys](../../telnet/boolean_onboarding_test.go).
-- Superseded by: none.
+- Superseded in part by [ADR-0320](ADR-0320-explicit-source-filtering.md).

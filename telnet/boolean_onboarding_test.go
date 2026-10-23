@@ -37,7 +37,7 @@ func shippedBooleanGreeting(t *testing.T) string {
 }
 
 func TestBooleanOnboardingLoginJourneys(t *testing.T) {
-	if err := filter.ConfigureDefaultRules([]string{"CW", "FT8"}, []string{"HUMAN"}); err != nil {
+	if err := filter.ConfigureDefaultRules([]string{"CW", "FT8"}, []string{"HUMAN", "SKIMMER"}); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -113,8 +113,8 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 					t.Fatalf("first Boolean guidance has the wrong audience:\n%s", transcript)
 				}
 				if first {
-					want := []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,FT8 AND SOURCE=HUMAN"}}
-					if !slices.Equal(cfg.Filters.Rules, want) || !strings.Contains(transcript, "RBN and PSKReporter: OFF") {
+					want := []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,FT8 AND SOURCE=HUMAN,SKIMMER"}}
+					if !slices.Equal(cfg.Filters.Rules, want) || strings.Contains(transcript, "Report sources: HUMAN only") {
 						t.Fatalf("new and upgraded starting rules differ: %+v\n%s", cfg.Filters.Rules, transcript)
 					}
 				} else if journey == "empty" {
@@ -173,7 +173,8 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 		expression  string
 		human, skim bool
 	}{
-		{"MODE=CW", true, false},
+		{"MODE=CW", true, true},
+		{"MODE=CW AND SOURCE=HUMAN", true, false},
 		{"MODE=CW AND SOURCE=SKIMMER", false, true},
 		{"MODE=CW AND SOURCE=HUMAN,SKIMMER", true, true},
 		{"MODE=FT8 OR SOURCE=SKIMMER", false, true},
@@ -184,6 +185,7 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 			s.filterEngine = newFilterCommandEngine()
 			c := configurationTestClient(s, "LZ3NY-11")
 			c.spotChan = make(chan *spotEnvelope, 1)
+			s.registerClient(c)
 			if result := s.restoreClientRecordOwned(c, time.Now().UTC()); result.loadError != nil {
 				t.Fatal(result.loadError)
 			}
@@ -196,26 +198,18 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 				t.Fatal(err)
 			}
 			cfg := c.captureV5Configuration()
-			body, err := yaml.Marshal(struct {
-				Schema        int                          `yaml:"schema_version"`
-				RequestID     string                       `yaml:"request_id"`
-				IfRevision    string                       `yaml:"if_revision"`
-				Configuration filter.V5FilterConfiguration `yaml:"configuration"`
-			}{5, "onboarding-1", "revision-1", cfg.Filters})
-			if err != nil {
-				t.Fatal(err)
+			s.filterEngine.Handle(c, "RESET FILTER")
+			cmd, request := v5CoordinatorProposal(t, c, "PUT", "FILTER", cfg.Filters)
+			v5CoordinatorSuccess(t, s.applyV5MachineRequest(c, cmd, request), true)
+			machine := c.captureMatchingSnapshot()
+			if response, handled := s.handlePresetCommand(c, "SAVE PRESET SOURCES"); !handled ||
+				!strings.Contains(response, "Saved preset SOURCES") {
+				t.Fatalf("preset save failed: %s", response)
 			}
-			request, err := decodeV5MachineRequest(body, machineCommand{Verb: "PUT", Resource: "FILTER"})
-			if err != nil {
-				t.Fatal(err)
-			}
-			candidate, err := request.apply(cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, machine, err := filter.PrepareV5Configuration(candidate)
-			if err != nil {
-				t.Fatal(err)
+			s.filterEngine.Handle(c, "RESET FILTER")
+			if response, handled := s.handlePresetCommand(c, "LOAD PRESET SOURCES"); !handled ||
+				!strings.Contains(response, "Loaded preset SOURCES") || !c.captureV5Configuration().Equal(cfg) {
+				t.Fatalf("preset load changed saved expression: %s", response)
 			}
 			for _, human := range []bool{true, false} {
 				want := test.skim
@@ -224,7 +218,8 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 				}
 				sp := spot.NewSpot("LZ1ABC", "LZ2ABC", 14025, "CW")
 				sp.IsHuman = human
-				if record.Matches(sp) != want || machine.Matches(sp) != want ||
+				machineMatch, _, _ := s.matchSnapshot(machine, sp)
+				if record.Matches(sp) != want || machineMatch != want || c.filter.Matches(sp) != want ||
 					c.captureHistoryFilter().matches(s, sp) != want {
 					t.Fatalf("saved/YAML/history mismatch human=%v want=%v", human, want)
 				}
@@ -287,7 +282,8 @@ func TestBooleanOnboardingFirstEditAndReconnectTCP(t *testing.T) {
 			})
 			call := "LZ3NY-12"
 			conn, reader, done, greeting := connectUpgradeSession(t, s, call)
-			if !strings.Contains(greeting, "Default settings and filters:") {
+			if !strings.Contains(greeting, "Default settings and filters:") ||
+				!strings.Contains(greeting, "Report sources: HUMAN only") {
 				t.Fatal("new login did not explain starting state")
 			}
 			first, response := upgradeWireGet(t, conn, reader, "PASS RULE 0 BAND=20M AND MODE=CW\r\nSHOW FILTER\r\nRESUME\r\n")

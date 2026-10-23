@@ -2,7 +2,6 @@ package filter
 
 import (
 	"reflect"
-	"strings"
 	"testing"
 
 	"dxcluster/spot"
@@ -12,19 +11,20 @@ func TestRuleSetWholeExpressionSourcePolicy(t *testing.T) {
 	for _, test := range []struct {
 		source         string
 		human, skimmer bool
-		implicit       bool
 	}{
-		{`MODE=CW`, true, false, true},
-		{`MODE=CW OR MODE=FT8`, true, false, true},
-		{`NOT (MODE=USB OR NOT MODE=CW)`, true, false, true},
-		{`COMMENT="SOURCE=SKIMMER"`, true, false, true},
-		{`SOURCE=HUMAN OR MODE=CW`, true, true, false},
-		{`MODE=CW OR (MODE=USB AND NOT SOURCE=SKIMMER)`, true, true, false},
-		{`NOT SOURCE=HUMAN`, false, true, false},
-		{`SOURCE<>HUMAN`, false, true, false},
-		{`SOURCE=SKIMMER AND MODE=CW`, false, true, false},
-		{`MODE=CW AND SOURCE=HUMAN AND SOURCE=SKIMMER`, false, false, false},
-		{`NOT (SOURCE=HUMAN OR MODE=CW)`, false, false, false},
+		{`MODE=CW`, true, true},
+		{`MODE=CW OR MODE=FT8`, true, true},
+		{`NOT (MODE=USB OR NOT MODE=CW)`, true, true},
+		{`COMMENT="SOURCE=SKIMMER"`, true, true},
+		{`MODE=CW AND SOURCE=HUMAN`, true, false},
+		{`MODE=CW AND SOURCE=HUMAN,SKIMMER`, true, true},
+		{`SOURCE=HUMAN OR MODE=CW`, true, true},
+		{`MODE=CW OR (MODE=USB AND NOT SOURCE=SKIMMER)`, true, true},
+		{`NOT SOURCE=HUMAN`, false, true},
+		{`SOURCE<>HUMAN`, false, true},
+		{`SOURCE=SKIMMER AND MODE=CW`, false, true},
+		{`MODE=CW AND SOURCE=HUMAN AND SOURCE=SKIMMER`, false, false},
+		{`NOT (SOURCE=HUMAN OR MODE=CW)`, false, false},
 	} {
 		t.Run(test.source, func(t *testing.T) {
 			set := mustPrepareRuleSet(t, RuleDefinition{0, RulePass, test.source})
@@ -48,16 +48,12 @@ func TestRuleSetWholeExpressionSourcePolicy(t *testing.T) {
 					}
 				}
 				row := set.Readback(nearby)[0]
-				want := row.Expr
-				if test.implicit {
-					want = "(" + want + ") AND SOURCE=HUMAN"
-				}
-				if row.ImplicitHumanOnly != test.implicit || row.EffectiveExpr != want || row.Suspended {
+				if row.EffectiveExpr != row.Expr || row.Suspended {
 					t.Fatalf("incorrect effective source disclosure: %+v", row)
 				}
 			}
 			if !reflect.DeepEqual(saved, set.Definitions()) {
-				t.Fatal("effective source guard changed saved syntax")
+				t.Fatal("source evaluation changed saved syntax")
 			}
 		})
 	}
@@ -80,7 +76,7 @@ func TestRuleSetSourcePolicyAbsentPassAndReject(t *testing.T) {
 		}
 		if len(definitions) == 2 {
 			row := set.Readback(true)[0]
-			if !row.Suspended || row.ImplicitHumanOnly || row.EffectiveExpr != "" {
+			if !row.Suspended || row.EffectiveExpr != "" {
 				t.Fatalf("suspended PASS acquired effective source condition: %+v", row)
 			}
 		}
@@ -90,10 +86,10 @@ func TestRuleSetSourcePolicyAbsentPassAndReject(t *testing.T) {
 		RuleDefinition{2, RuleReject, "COMMENT=blocked"})
 	for _, human := range []bool{false, true} {
 		for _, mode := range []string{"CW", "FT8"} {
-			want := human && mode == "CW" || !human && mode == "FT8"
+			want := mode == "CW" || !human && mode == "FT8"
 			value := &spot.Spot{Mode: mode, IsHuman: human}
 			if got := set.Matches(value, "", false); got != want {
-				t.Fatalf("rule-local source guard changed PASS union: human=%v mode=%s", human, mode)
+				t.Fatalf("source selection changed PASS union: human=%v mode=%s", human, mode)
 			}
 			value.Comment = "blocked"
 			if set.Matches(value, "", false) {
@@ -109,18 +105,18 @@ func TestRuleSetSourcePolicyFullBudget(t *testing.T) {
 	before := set.Counts()
 	for _, nearby := range []bool{false, true} {
 		for _, human := range []bool{false, true} {
-			if got := set.Matches(&spot.Spot{IsHuman: human, HasReport: true, Report: 1}, "", nearby); got != human {
+			if got := set.Matches(&spot.Spot{IsHuman: human, HasReport: true, Report: 1}, "", nearby); !got {
 				t.Fatalf("full budget human=%v nearby=%v got %v", human, nearby, got)
 			}
 		}
 		for _, row := range set.Readback(nearby) {
-			if !row.ImplicitHumanOnly || !strings.HasSuffix(row.EffectiveExpr, ") AND SOURCE=HUMAN") {
-				t.Fatal("full-budget effective condition not disclosed")
+			if row.EffectiveExpr != row.Expr {
+				t.Fatal("full-budget expression acquired a hidden condition")
 			}
 		}
 	}
 	if before.Normal != want || before.Nearby != want || before.Retained != want || set.Counts() != before {
-		t.Fatalf("implicit guard consumed syntax budget: %+v", set.Counts())
+		t.Fatalf("source evaluation changed syntax budget: %+v", set.Counts())
 	}
 	assertPreparedRulePrograms(t, set)
 }

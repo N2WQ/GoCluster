@@ -62,6 +62,7 @@ func TestLoginUpgradeOutcomeSeparatesProfileAndLibrary(t *testing.T) {
 		{"v5-empty", false, false, nil, LoginUpgradeOutcome{}},
 		{"v5-empty-library", false, true, nil, LoginUpgradeOutcome{PresetLibraryCleaned: true}},
 		{"v5-custom-library", false, true, []RuleDefinition{{3, RulePass, "MODE=CW"}}, LoginUpgradeOutcome{PresetLibraryCleaned: true}},
+		{"v5-explicit-human", false, false, []RuleDefinition{{0, RulePass, "MODE=CW AND SOURCE=HUMAN"}}, LoginUpgradeOutcome{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			usePresetTestDir(t)
@@ -89,8 +90,8 @@ func TestLoginUpgradeOutcomeSeparatesProfileAndLibrary(t *testing.T) {
 				}
 				if len(test.rules) > 0 {
 					if !record.Matches(&spot.Spot{Mode: "CW", IsHuman: true}) ||
-						record.Matches(&spot.Spot{Mode: "CW"}) {
-						t.Fatal("saved source-less v5 PASS did not acquire HUMAN semantics on load")
+						record.Matches(&spot.Spot{Mode: "CW"}) != (test.name != "v5-explicit-human") {
+						t.Fatal("restored rule did not retain its explicit source selection")
 					}
 				}
 			}

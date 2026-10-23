@@ -30,7 +30,6 @@ type RuleDefinition struct {
 type preparedRule struct {
 	definition     RuleDefinition
 	normal, nearby *compiledRule
-	humanOnly      bool
 }
 
 // PreparedRuleSet owns at most ten sorted slots. Programs and their operands
@@ -218,7 +217,7 @@ func (s *PreparedRuleSet) Matches(sp *spot.Spot, pathClass string, nearby bool) 
 		if rule.definition.Action == RulePass {
 			if program := rule.program(nearby); program != nil {
 				hasPass = true
-				if (!rule.humanOnly || sp.IsHuman) && program.evaluate(&view, program.root) {
+				if program.evaluate(&view, program.root) {
 					return true
 				}
 			}

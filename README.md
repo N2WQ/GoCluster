@@ -145,11 +145,15 @@ the default selection. `SHOW FILTER RULE` displays full saved expressions and
 their effective forms while NEARBY is ON. Readbacks temporarily pause live spots;
 type `RESUME` when ready.
 
-A PASS rule without SOURCE selects HUMAN only. Include
-`AND SOURCE=HUMAN,SKIMMER` to allow both source types, or `AND SOURCE=SKIMMER`
-for automated spots only. If SOURCE appears anywhere in a rule, normal Boolean
-logic applies. REJECT rules do not get a HUMAN default. No active PASS still
-means all sources are eligible except matching REJECTs.
+A PASS rule without SOURCE allows both HUMAN and SKIMMER reports.
+Use `AND SOURCE=HUMAN` for human reports only, or `AND SOURCE=SKIMMER`
+for automated reports only. SOURCE follows ordinary AND/OR/NOT logic.
+Neither PASS nor REJECT adds an implicit source restriction.
+
+The shipped starting rule now selects both sources. Existing saved rules with
+explicit `SOURCE=HUMAN` stay human-only, including previously generated defaults.
+Saved expressions and presets are not rewritten. Source-less saved PASS rules
+now also admit matching skimmer reports. Feed connections are unchanged.
 
 Each recipe below is separate. Save a preset before using a recipe that begins
 with RESET FILTER: it clears your rules and turns NEARBY OFF. Old category
@@ -803,7 +807,7 @@ Examples (separate full-rule replacements):
 
 A complete recipe: human-reported CW/FT8 on 20m/40m:
   RESET FILTER RULE ALL
-  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8
+  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN
   SHOW FILTER
 
   This replaces all personal rules. NEARBY is unchanged.
@@ -815,8 +819,8 @@ Filter rules to remember:
   No active PASS means unrestricted except for matching REJECT rules.
   No rules means no personal restriction.
   New users start with an ordinary editable default PASS rule in slot 0.
-  PASS without SOURCE means HUMAN only.
-  Add AND SOURCE=HUMAN,SKIMMER to select humans and skimmers.
+  PASS without SOURCE allows humans and skimmers.
+  Add AND SOURCE=HUMAN to select human reports only.
   To narrow it, replace/remove slot 0; adding another PASS broadens it.
   RESET FILTER clears rules and NEARBY, not separate controls/preferences.
   Reset does not reinstall default slot 0. See HELP RULE for full details.

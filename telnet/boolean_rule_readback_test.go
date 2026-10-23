@@ -86,7 +86,7 @@ func TestBooleanFilterSnapshotSavedEffectiveSuspendedAndCounts(t *testing.T) {
 	if got := booleanDisplayedExpression(t, body, "PASS RULE 0"); got != canonical.Filters.Rules[0].Expr {
 		t.Fatalf("saved expression changed: %q", got)
 	}
-	wantEffective := `(MODE=CW OR COMMENT=" MiXeD  ! ""Q"" \ ") AND SOURCE=HUMAN`
+	wantEffective := `MODE=CW OR COMMENT=" MiXeD  ! ""Q"" \ "`
 	if got := booleanDisplayedExpression(t, body, "Effective"); got != wantEffective {
 		t.Fatalf("effective expression changed: %q", got)
 	}

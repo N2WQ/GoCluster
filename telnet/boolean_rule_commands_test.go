@@ -219,7 +219,7 @@ func TestBooleanRuleCommandsNearbyProjectionAndUnavailableCells(t *testing.T) {
 		assertBooleanAccepted(t, outcome)
 		rows := candidate.filter.PreparedRules().Readback(true)
 		if rows[0].Expr != `DXCONT=EU AND (MODE=CW OR COMMENT="Mixed  DX!")` ||
-			rows[0].EffectiveExpr != `(MODE=CW OR COMMENT="Mixed  DX!") AND SOURCE=HUMAN` || rows[0].Suspended {
+			rows[0].EffectiveExpr != `MODE=CW OR COMMENT="Mixed  DX!"` || rows[0].Suspended {
 			t.Fatalf("edit erased full geography or failed to project: %+v", rows[0])
 		}
 		if candidate.configuredSettings != cfg.Settings || !candidate.filter.NearbyEnabled ||

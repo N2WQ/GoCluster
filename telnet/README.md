@@ -149,11 +149,13 @@ replaces both; it is not a delta or an addition to a category list.
   configured MODE/SOURCE selection as an ordinary editable PASS in slot 0.
   Both sources are written explicitly as SOURCE=HUMAN,SKIMMER.
   Existing/restored Boolean empty rules remain empty.
-- A PASS rule without any SOURCE atom selects HUMAN only. If SOURCE appears
-  anywhere, normal Boolean logic applies, including OR and NOT. Text inside
-  COMMENT is not a SOURCE atom. REJECT rules do not get a HUMAN default.
-  Effective readback includes the HUMAN restriction; stored expressions and
-  parser budgets remain unchanged. No active PASS still allows all sources.
+- A PASS rule without SOURCE allows HUMAN and SKIMMER. SOURCE follows ordinary
+  Boolean logic, including OR and NOT. Text inside COMMENT is literal text.
+  Neither PASS nor REJECT adds an implicit source restriction.
+  Shipped defaults select both sources; operator-configured defaults still apply.
+  Existing rules with explicit SOURCE=HUMAN remain human-only, including
+  previously generated defaults. Saved profiles and presets are not rewritten.
+  Existing source-less PASS rules now admit matching skimmer reports too.
 
 For example, replace slot 0 to require both the bands and modes:
 
@@ -452,8 +454,8 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 `SHOW/FILTER` and `SH/FILTER` accept the same RULE/FULL arguments in both
 dialects; their HELP topics do too. Category readbacks are unsupported.
 Every occupied slot appears in slot order with its action and full canonical
-saved expression. Effective forms disclose the HUMAN default on source-less
-PASS rules. While NEARBY is ON, each also shows its projected expression or that
+saved expression. No synthetic source condition is added.
+While NEARBY is ON, each also shows its projected expression or that
 a geography-only rule is suspended. Full saved expressions remain editable.
 FULL counts distinguish occupied slots and full, nearby and retained
 nodes/atoms/values; shared operands count once in retained values.

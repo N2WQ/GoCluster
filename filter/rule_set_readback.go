@@ -16,15 +16,10 @@ type RuleSetCounts struct {
 
 // RuleReadback preserves the full canonical definition in RuleDefinition.Expr.
 // EffectiveExpr is empty and Suspended is true only for an absent NEARBY rule.
-// EffectiveExpr includes the implicit HUMAN guard when applicable; it describes
-// behavior, not saved syntax, and can therefore exceed the parsed syntax budget.
 type RuleReadback struct {
 	RuleDefinition
 	EffectiveExpr string
 	Suspended     bool
-	// ImplicitHumanOnly is true only for an active source-less PASS rule.
-	// EffectiveExpr discloses this guard; saved Expr and syntax counts do not.
-	ImplicitHumanOnly bool
 }
 
 // Readback returns at most ten detached records; toggling NEARBY never changes
@@ -41,10 +36,6 @@ func (s *PreparedRuleSet) Readback(nearby bool) []RuleReadback {
 		result[i].Suspended = program == nil
 		if program != nil {
 			result[i].EffectiveExpr = program.canonical
-			result[i].ImplicitHumanOnly = rule.humanOnly
-			if rule.humanOnly {
-				result[i].EffectiveExpr = "(" + program.canonical + ") AND SOURCE=HUMAN"
-			}
 		}
 	}
 	return result

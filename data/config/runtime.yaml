@@ -105,3 +105,4 @@ filter:
     - SSTV
   default_sources: # New-user source allowlist.
     - HUMAN
+    - SKIMMER

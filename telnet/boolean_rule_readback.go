@@ -77,7 +77,7 @@ func writeBooleanRuleRows(h *humanResponse, f *filter.Filter) error {
 		if err := writeBooleanSavedRule(h, rule.RuleDefinition); err != nil {
 			return err
 		}
-		if nearby || rule.ImplicitHumanOnly {
+		if nearby {
 			if rule.Suspended {
 				if err := h.row("Effective", "Suspended: geography-only rule while NEARBY ON."); err != nil {
 					return err

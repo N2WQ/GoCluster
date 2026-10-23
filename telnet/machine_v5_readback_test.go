@@ -77,7 +77,7 @@ func TestV5MachineReadbackResourceShapesAndEffectiveRules(t *testing.T) {
 			t.Fatalf("wrong bounded row count: %d", len(entries))
 		}
 		for i, want := range []v5ReadbackRule{
-			{Slot: 0, Action: filter.RulePass, EffectiveExpr: `(MODE=CW OR COMMENT=" MiXeD ""Q"" \ ") AND SOURCE=HUMAN`},
+			{Slot: 0, Action: filter.RulePass, EffectiveExpr: `MODE=CW OR COMMENT=" MiXeD ""Q"" \ "`},
 			{Slot: 5, Action: filter.RuleReject, Suspended: true},
 			{Slot: 9, Action: filter.RuleReject, EffectiveExpr: "SNR<-10"},
 		} {
@@ -147,7 +147,7 @@ func TestV5MachineReadbackResourceShapesAndEffectiveRules(t *testing.T) {
 		t.Fatal("NEARBY OFF retained suspended rules")
 	}
 	entries := rules["entries"].([]any)
-	if entries[0].(map[string]any)["effective_expr"] != "("+cfg.Filters.Rules[0].Expr+") AND SOURCE=HUMAN" {
+	if entries[0].(map[string]any)["effective_expr"] != cfg.Filters.Rules[0].Expr {
 		t.Fatal("NEARBY OFF did not show full effective expression")
 	}
 }

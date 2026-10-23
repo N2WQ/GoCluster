@@ -118,7 +118,7 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 					t.Fatalf("%s HELP %s retains unsupported/generalized wording %q", dialect, topic, misleading)
 				}
 			}
-			if !strings.Contains(response, "  RESET FILTER RULE ALL\n  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8\n") {
+			if !strings.Contains(response, "  RESET FILTER RULE ALL\n  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN\n") {
 				t.Fatalf("%s HELP %s lost the full-replacement exclusive recipe", dialect, topic)
 			}
 		}

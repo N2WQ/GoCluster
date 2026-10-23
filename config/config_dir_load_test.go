@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -46,6 +47,9 @@ dedup:
 	}
 	if cfg.Telnet.SkipHandshake != TelnetHandshakeMinimal || cfg.Archive.RetentionSeconds != DefaultArchiveRetentionSeconds || cfg.Archive.Synchronous != "off" {
 		t.Fatalf("shipped handshake/archive settings changed: handshake=%q retention=%d synchronous=%q", cfg.Telnet.SkipHandshake, cfg.Archive.RetentionSeconds, cfg.Archive.Synchronous)
+	}
+	if !slices.Equal(cfg.Filter.DefaultSources, []string{"HUMAN", "SKIMMER"}) {
+		t.Fatalf("shipped source defaults changed: %v", cfg.Filter.DefaultSources)
 	}
 }
 

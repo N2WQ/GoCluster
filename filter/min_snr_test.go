@@ -20,7 +20,7 @@ func TestNativeSNRRulesBoundariesAndExplicitExemptions(t *testing.T) {
 			for _, present := range []bool{false, true} {
 				for _, report := range []int{minimum - 1, minimum, minimum + 1} {
 					s := minSNRTestSpot("CW", report, present, human)
-					if f.Matches(s) != (human && present && report >= minimum) {
+					if f.Matches(s) != (present && report >= minimum) {
 						t.Fatal("source-less PASS or SNR boundary truth changed")
 					}
 				}

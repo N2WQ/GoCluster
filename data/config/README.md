@@ -390,9 +390,11 @@ New accounts and recognized old-profile resets receive the validated configured
 `filter.default_modes` and `filter.default_sources` as an
 ordinary editable PASS rule in slot 0. The expression combines MODE and SOURCE
 with AND; ALL, both sources or an empty source selection explicitly writes
-SOURCE=HUMAN,SKIMMER. A user-authored PASS without SOURCE means HUMAN only;
-REJECT rules do not receive that default. Startup
-validates the configured rule after taxonomy loading. Existing/restored v5
+SOURCE=HUMAN,SKIMMER. The shipped default_sources lists HUMAN and SKIMMER.
+A PASS without SOURCE imposes no source restriction, just like REJECT.
+Explicit SOURCE=HUMAN rules remain human-only, including saved defaults.
+Changing the shipped configuration does not rewrite saved profiles or presets.
+Startup validates the configured rule after taxonomy loading. Existing/restored v5
 records with `rules: []` stay empty. Adding another PASS broadens selection;
 edit or remove slot 0 to narrow it. `RESET FILTER RULE <0..9|ALL>` clears only
 selected slots and preserves NEARBY. `RESET FILTER` clears all rules and turns

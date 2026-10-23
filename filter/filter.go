@@ -1,7 +1,7 @@
 // Package filter implements bounded, prepared Boolean spot rules and v5
 // preferences. A matching REJECT vetoes; otherwise any PASS can admit a spot.
-// A PASS without any SOURCE atom admits HUMAN only; absence of active PASS
-// rules is unrestricted. Separate delivery controls and exact NEARBY geometry
+// Omitted fields impose no restriction; absence of active PASS rules is
+// unrestricted. Separate delivery controls and exact NEARBY geometry
 // remain mandatory gates.
 package filter
 

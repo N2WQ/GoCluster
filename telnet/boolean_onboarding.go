@@ -92,7 +92,8 @@ func writeBooleanEditGuidance(h *humanResponse) error {
 		"To change rule 0, create a new rule 0.",
 		"A different PASS number adds another selection.",
 		"Any PASS can match. A matching REJECT blocks the spot.",
-		"PASS without SOURCE means HUMAN only. No active PASS allows all sources.",
+		"PASS without SOURCE allows humans and skimmers.",
+		"Add AND SOURCE=HUMAN to select human reports only.",
 	} {
 		if err := h.prose("", "", text); err != nil {
 			return err
@@ -127,7 +128,7 @@ func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, 
 				if len(rules) == 1 && rules[0].Action == filter.RulePass &&
 					strings.HasPrefix(rules[0].Expr, "MODE=") &&
 					strings.HasSuffix(rules[0].Expr, " AND SOURCE=HUMAN") {
-					if err := h.line("RBN and PSKReporter: OFF"); err != nil {
+					if err := h.line("Report sources: HUMAN only"); err != nil {
 						return err
 					}
 				}
@@ -139,7 +140,7 @@ func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, 
 				}
 				for _, text := range []string{
 					"To receive CW and FT8 from humans and skimmers:",
-					"  PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN,SKIMMER",
+					"  PASS RULE 0 MODE=CW,FT8",
 				} {
 					if err := h.line(text); err != nil {
 						return err

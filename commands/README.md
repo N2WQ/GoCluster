@@ -187,9 +187,10 @@ Setting a slot replaces its action and entire expression. Slots are not
 priorities; another PASS broadens selection. No active PASS means unrestricted
 personal selection except matching REJECTs. New accounts and old-profile resets
 receive the same editable default PASS slot 0; restored Boolean empty rules stay empty.
-A PASS rule without SOURCE selects HUMAN only. Any SOURCE atom opts into
-ordinary Boolean semantics for the whole rule. Use SOURCE=HUMAN,SKIMMER to
-explicitly allow both sources. REJECT rules remain unrestricted by this default.
+A PASS rule without SOURCE allows HUMAN and SKIMMER.
+SOURCE follows ordinary Boolean semantics, including OR and NOT.
+Explicit SOURCE=HUMAN stays human-only, including saved default rules.
+No saved expressions are rewritten. Shipped defaults now select both sources.
 RESET FILTER RULE clears selected slots while preserving NEARBY; RESET FILTER
 clears all slots and turns NEARBY OFF. Neither reinstalls defaults nor changes
 separate controls/settings. See [the full rule contract](../telnet/README.md#filters).

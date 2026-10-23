@@ -49,7 +49,7 @@ Examples (separate full-rule replacements):
 
 A complete recipe: human-reported CW/FT8 on 20m/40m:
   RESET FILTER RULE ALL
-  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8
+  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN
   SHOW/FILTER
 
   This replaces all personal rules. NEARBY is unchanged.
@@ -61,8 +61,8 @@ Filter rules to remember:
   No active PASS means unrestricted except for matching REJECT rules.
   No rules means no personal restriction.
   New users start with an ordinary editable default PASS rule in slot 0.
-  PASS without SOURCE means HUMAN only.
-  Add AND SOURCE=HUMAN,SKIMMER to select humans and skimmers.
+  PASS without SOURCE allows humans and skimmers.
+  Add AND SOURCE=HUMAN to select human reports only.
   To narrow it, replace/remove slot 0; adding another PASS broadens it.
   RESET FILTER clears rules and NEARBY, not separate controls/preferences.
   Reset does not reinstall default slot 0. See HELP RULE for full details.

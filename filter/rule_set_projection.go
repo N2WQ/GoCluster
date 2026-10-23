@@ -25,20 +25,7 @@ func prepareRule(definition RuleDefinition) (preparedRule, error) {
 	// Only preparation needs syntax. Retaining it would duplicate the bounded
 	// node vectors and operands for the entire lifetime of every saved rule.
 	normal.syntax = nil
-	// Source presence belongs to the whole saved expression, never a projected
-	// branch or a COMMENT literal. Keep the fallback outside syntax so it cannot
-	// consume budgets or turn a suspended geography-only rule into an active one.
-	humanOnly := definition.Action == RulePass
-	if humanOnly {
-		for i := range normal.nodes {
-			node := &normal.nodes[i]
-			if node.kind == expr.AtomKind && node.predicate.field == ruleFieldSource {
-				humanOnly = false
-				break
-			}
-		}
-	}
-	return preparedRule{definition: definition, normal: normal, nearby: nearby, humanOnly: humanOnly}, nil
+	return preparedRule{definition: definition, normal: normal, nearby: nearby}, nil
 }
 
 func projectNearbyRule(normal *compiledRule) (*compiledRule, error) {

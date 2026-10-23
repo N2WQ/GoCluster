@@ -36,9 +36,11 @@ command/error artifact that distinguishes the next step.
 
 - New accounts and old-profile resets receive the same configured MODE/SOURCE
   selection as editable PASS slot 0. Existing/restored Boolean empty rules stay empty.
-  A PASS without SOURCE means HUMAN only. Any SOURCE atom uses normal Boolean
-  logic for the entire rule. SOURCE=HUMAN,SKIMMER explicitly allows both.
-  REJECT has no HUMAN default; no active PASS allows all sources.
+  A PASS without SOURCE allows HUMAN and SKIMMER. SOURCE comparisons use normal
+  Boolean logic. Explicit SOURCE=HUMAN stays human-only, including saved defaults.
+  The shipped starting selection now includes both sources. Existing profiles
+  and presets are not rewritten; source-less saved PASS rules now admit matching
+  skimmer reports too. Neither PASS nor REJECT adds an implicit source condition.
   `RESET FILTER RULE <0..9|ALL>` clears selected slots, preserving NEARBY;
   `RESET FILTER` clears all rules and turns NEARBY OFF. Neither reinstalls
   defaults nor resets separate controls/settings. Old category, MODE-delta,

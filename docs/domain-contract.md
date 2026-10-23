@@ -426,12 +426,15 @@ Boolean personal-rule engine; the old category model has been removed.
   writes SOURCE=HUMAN,SKIMMER explicitly. Startup validates defaults after
   taxonomy loading and before clients.
   Existing/restored empty records remain empty, including after reconnect.
-- A PASS rule with no SOURCE atom selects HUMAN only. Any SOURCE atom enables
-  ordinary Boolean evaluation of the entire expression, including OR and NOT.
-  COMMENT text is not a field occurrence. REJECT rules do not receive the
-  default. Preserve stored syntax and budgets; effective readback discloses
-  HUMAN. A geography-only suspended PASS stays absent, and no active PASS
-  remains unrestricted by source.
+- Omitted SOURCE imposes no source restriction on PASS or REJECT.
+  Explicit SOURCE comparisons follow ordinary Boolean evaluation, including OR
+  and NOT. COMMENT text is not a field occurrence. Readbacks add no synthetic
+  source guard. A geography-only suspended PASS stays absent.
+  Apply this meaning to restored profiles and presets without rewriting them.
+  Explicit SOURCE=HUMAN stays human-only, including old generated defaults.
+  Shipped default_sources includes HUMAN and SKIMMER; operator selections remain
+  authoritative. New accounts and old-profile upgrades use those configured
+  defaults. Existing Boolean records and resets do not receive new defaults.
 - `RESET FILTER RULE <0..9|ALL>` clears only the selected slots, preserving
   NEARBY. `RESET FILTER` clears all personal rules and turns NEARBY OFF.
   Neither reinstalls slot 0 nor resets separate controls or profile settings.

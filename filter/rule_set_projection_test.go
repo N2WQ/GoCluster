@@ -41,7 +41,7 @@ func TestRuleSetNearbyProjectionTruth(t *testing.T) {
 			reject := mustPrepareRuleSet(t, RuleDefinition{9, RuleReject, test.source})
 			saved := set.Definitions()
 			readback := set.Readback(true)
-			if len(readback) != 1 || readback[0].EffectiveExpr != "("+test.effective+") AND SOURCE=HUMAN" || readback[0].Suspended || !readback[0].ImplicitHumanOnly {
+			if len(readback) != 1 || readback[0].EffectiveExpr != test.effective || readback[0].Suspended {
 				t.Fatalf("effective got %#v, want %q", readback, test.effective)
 			}
 			for i := range probes {

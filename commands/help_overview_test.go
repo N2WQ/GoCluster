@@ -70,8 +70,8 @@ func TestBooleanRuleHelpCanonicalCatalog(t *testing.T) {
 		assertHelpWidth(t, text)
 		flat := strings.Join(strings.Fields(text), " ")
 		for _, want := range []string{
-			"A PASS rule without SOURCE selects HUMAN only.",
-			"If SOURCE appears anywhere in the rule, normal Boolean logic applies.",
+			"PASS without SOURCE allows humans and skimmers.",
+			"SOURCE follows the same Boolean logic as other fields.",
 			"Users moving from old filters get this rule too.",
 			"They keep their settings.",
 		} {

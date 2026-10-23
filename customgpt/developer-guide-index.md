@@ -151,9 +151,10 @@ their logic. Reset/existing v5 empty records never reinstall defaults.
 Pure v5 codecs and machine schemas remain strict; see
 [ADR-0318](../docs/decisions/ADR-0318-old-profile-reset-upgrade.md) and
 [ADR-0319](../docs/decisions/ADR-0319-boolean-onboarding-and-source-default.md).
-A PASS without a SOURCE atom selects HUMAN only. Any SOURCE atom uses normal
-Boolean semantics for the entire rule; REJECT has no HUMAN default. No active
-PASS still allows all sources. Login/readbacks preserve exact expressions,
+A PASS without SOURCE allows HUMAN and SKIMMER. SOURCE comparisons use normal
+Boolean semantics. Explicit SOURCE=HUMAN stays human-only, including saved
+defaults. Shipped defaults now select both sources; saved expressions and
+presets are not rewritten. Login/readbacks preserve exact expressions,
 never independent field summaries that lose Boolean relationships.
 
 These are verified **local checkout** owners, not new raw-main publication

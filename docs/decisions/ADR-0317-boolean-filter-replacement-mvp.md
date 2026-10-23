@@ -9,9 +9,10 @@ description: Numbered Boolean rules, geography-only NEARBY projection, and isola
 
 ## Context
 
-[ADR-0319](ADR-0319-boolean-onboarding-and-source-default.md) refines source
-semantics and human presentation: source-less PASS rules select HUMAN only,
-and login/readbacks preserve expressions rather than flattening selections.
+[ADR-0319](ADR-0319-boolean-onboarding-and-source-default.md) refines onboarding
+and exact-expression presentation.
+[ADR-0320](ADR-0320-explicit-source-filtering.md) supersedes its source policy:
+omitted SOURCE imposes no restriction, and shipped defaults select both sources.
 
 [ADR-0318](ADR-0318-old-profile-reset-upgrade.md) supersedes this MVP's
 refusal-only treatment of recognized old profiles with a reset-only login

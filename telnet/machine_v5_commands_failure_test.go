@@ -214,7 +214,7 @@ func TestV5MachineCoordinatorNearbyPreparedProjection(t *testing.T) {
 	}
 	doc := v5ReadbackDocument(t, s.prepareV5MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", RequestID: "nearby"}))
 	rules := doc["status"].(map[string]any)["rules"].(map[string]any)
-	if rules["entries"].([]any)[0].(map[string]any)["effective_expr"] != "(MODE=CW) AND SOURCE=HUMAN" ||
+	if rules["entries"].([]any)[0].(map[string]any)["effective_expr"] != "MODE=CW" ||
 		doc["status"].(map[string]any)["effective"].(map[string]any)["nearby_active"] != true ||
 		!slices.Equal(c.captureV5Configuration().Filters.Rules, cfg.Filters.Rules) {
 		t.Fatal("actual readback lost full rules or effective geographic projection")
