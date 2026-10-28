@@ -75,5 +75,6 @@ require modifying the spot archive.
 ## Links
 
 - Related decision: [ADR-0063](ADR-0063-configurable-bulletin-dedupe.md)
+- Recovery and login refinements: [ADR-0324](ADR-0324-bulletin-recovery-and-login-order.md)
 - Related docs: [commands](../../commands/README.md#wwv-and-wcy-bulletins),
   [telnet](../../telnet/README.md#wwv-and-wcy-bulletin-history)

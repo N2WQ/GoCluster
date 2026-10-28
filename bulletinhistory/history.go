@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -65,6 +66,11 @@ type Store struct {
 	closed           bool
 	closeOnce        sync.Once
 	closeErr         error
+	// needsRecovery is owned by the persistence worker after Open returns.
+	// A failed load must never be followed by a replacement until preserved.
+	needsRecovery bool
+	// Per-store seam permits worker failure-path tests without global hooks.
+	preserveSnapshot func(string) error
 }
 
 // Open loads a bounded snapshot and starts the persistence owner. Missing or
@@ -87,6 +93,7 @@ func Open(path string, dedupeWindow time.Duration, dedupeMaxEntries int) *Store 
 	s.state.Version = 1
 	s.stats.DedupeLimit = dedupeMaxEntries
 	if err := s.load(); err != nil {
+		s.needsRecovery = true
 		s.storageErrorLocked(err)
 		log.Printf("Bulletin history storage unavailable: %v", err)
 	}
@@ -142,6 +149,7 @@ func (s *Store) Record(kind, line string, received time.Time) {
 	}
 	originalHash := sha256.Sum256([]byte(line))
 	text, truncated := truncate(line)
+	text = safeDisplayText(text)
 	// Keep at most the bounded display text, not the original's backing array.
 	text = strings.Clone(text)
 	s.mu.Lock()
@@ -222,6 +230,18 @@ func truncate(line string) (string, bool) {
 		count++
 	}
 	return line, false
+}
+
+// safeDisplayText neutralizes terminal controls without changing framing or
+// original-based duplicate identity. It also protects snapshots saved by older
+// versions, which can contain valid UTF-8 control characters.
+func safeDisplayText(text string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, text)
 }
 
 // ReportLoss marks a known dropped bulletin for the affected type.
@@ -339,7 +359,7 @@ func (s *Store) render(kind string, limit int, now time.Time) string {
 		fmt.Fprintf(&b, "No %s bulletin in the last 24 hours.\n", kind)
 	}
 	for _, record := range items {
-		fmt.Fprintf(&b, "%s received %s UTC: %s", kind, record.Time.UTC().Format("2006-01-02 15:04:05"), record.Text)
+		fmt.Fprintf(&b, "%s received %s UTC: %s", kind, record.Time.UTC().Format("2006-01-02 15:04:05"), safeDisplayText(record.Text))
 		if record.Truncated {
 			b.WriteString(" [truncated]")
 		}

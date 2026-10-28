@@ -65,6 +65,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.
 - `archive.yaml` - deployment/runtime settings for archive enablement, storage path, backpressure, cleanup cadence, and single-window retention; expired rows are removed with timestamp range deletion rather than operator-tuned cleanup batches.
 - `archive.yaml` also requires `bulletin_archive.path`, the independent WWV/WCY JSON snapshot file. Set it to a writable file outside the spot archive's Pebble directory. For example, `data/bulletins/history.json` works whether spot archiving is enabled or disabled. Deploy this setting with the updated executable.
+- If the bulletin snapshot cannot be loaded, the cluster preserves a recovery copy before replacing it. Check the storage warning and keep the recovery file for investigation. If preservation fails, new history stays in memory until the storage problem is resolved. See [bulletin history](../../telnet/README.md#wwv-and-wcy-bulletin-history) for recovery details.
 - Before rolling back to a bulletin-history executable limited to 24 records per type, back up the snapshot and restore a compatible copy. That older executable can reject and overwrite a snapshot containing 25–48 records. A pre-bulletin executable does not use the snapshot.
 - `data.yaml` - deployment/runtime settings for CTY/FCC/ISED/skew sources, grid/cache tuning, data paths, and H3 table path.
 - `prop_report.yaml` - deployment/runtime settings for scheduled propagation-report generation controls.
@@ -197,6 +198,13 @@ Telnet message tokens (usable in `runtime.yaml`):
   plus `<SETTINGS_FILTERS>` for the bounded settings/rule block and first-time
   guidance. The shipped greeting uses this token instead of duplicating
   dialect/grid/noise/dedupe lines. Custom templates can place or omit the block.
+- `<STARTUP_INFO>` places the startup notices and WWV/WCY history in the
+  post-login greeting. Only its first occurrence displays the block; later
+  occurrences are removed. The shipped greeting places it before the prompt.
+  Without it, startup notices and history precede the complete greeting.
+  Deploy the updated executable and greeting together. Before rolling back to
+  an older executable, remove this token from the active greeting; older
+  executables display it literally.
 - Input guardrails `input_too_long_message`/`input_invalid_char_message`: `<CONTEXT>`, `<MAX_LEN>`, `<ALLOWED>`.
 - Dialect status `dialect_welcome_message`: `<DIALECT>`, `<DIALECT_SOURCE>`, `<DIALECT_DEFAULT>` (source labels come from `dialect_source_default_label`/`dialect_source_persisted_label`).
 - Path reliability `path_status_message`: `<GRID>`, `<NOISE>`.

@@ -412,6 +412,30 @@ output warns that history may be incomplete because a previous storage failure
 may have prevented recording a shutdown marker. Live bulletin text is not
 truncated by this archive limit. See [command details](../commands/README.md#wwv-and-wcy-bulletins).
 
+Archived bulletin display removes or replaces control characters, including
+when reading older snapshots. Live announcements retain their existing text
+and filtering behavior. Duplicate detection uses the original bulletin text.
+
+If a snapshot cannot be loaded, the storage worker must preserve an independent
+recovery copy before it replaces the snapshot. The fixed recovery paths are
+`<snapshot>.recovery` and `<snapshot>.recovery.tmp`. Check the cluster log for
+the storage warning and preserve these files for investigation. An unreadable
+or oversized original, or a conflicting or incomplete recovery file, can block
+new snapshots; new bulletins remain in memory and may be lost on restart. Once
+the underlying problem is corrected, the worker retries. If a recovery slot is
+occupied by unrelated or incomplete data, move it to a safe location before
+retrying; do not discard the only recoverable copy. History output continues to
+warn about a possible gap after storage recovers. Filesystem and hardware
+failure guarantees depend on the platform and its storage. The cluster owns
+the active snapshot while running: stop it before replacing or editing that
+snapshot. History held only in memory can be lost when the cluster stops.
+
+The shipped greeting places `<STARTUP_INFO>` before its prompt, after the
+welcome. Custom greetings without that marker are preserved and follow the
+startup information. The marker and rollback instructions are documented in
+the [configuration guide](../data/config/README.md).
+Live messages can interleave with startup output.
+
 ## Archive History And Continuation
 
 `SHOW DX` and `SHOW MYDX` share archive history selection and paging. Counts

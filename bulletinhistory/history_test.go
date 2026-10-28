@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 func newTestStore(t *testing.T, window time.Duration, keys int) (*Store, string) {
@@ -37,6 +39,60 @@ func TestHistoryTruncationAndOriginalDedupe(t *testing.T) {
 	}
 	if got := s.Render("WCY", true, now.Add(2*time.Second)); strings.Contains(got, "[truncated]") {
 		t.Fatalf("255/256 characters truncated: %q", got)
+	}
+}
+
+func TestArchiveSanitizesOldAndNewTextWithoutChangingIdentity(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "history.json")
+	now := time.Now().UTC().Truncate(time.Second)
+	oldText := "old\x1b[2J\rCR\nLF\x00NUL\x7fDEL\u009bCSI"
+	saved := snapshot{Version: 1, Sequence: 1, Watermark: now,
+		WWV: []Record{{Time: now, Text: oldText, Sequence: 1}}}
+	data, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := Open(path, time.Minute, 8)
+	defer s.Close()
+	// Two distinct originals can look the same after display sanitization.
+	s.Record("WCY", "new\x1btext", now)
+	s.Record("WCY", "new\x00text", now)
+	s.Record("WCY", "new\x1btext", now)
+	s.Record("WCY", "bad\xffutf8", now)
+	for _, kind := range []string{"WWV", "WCY"} {
+		for _, got := range []string{s.Render(kind, false, now), s.RenderRecent(kind, now), s.Render(kind, true, now)} {
+			if !utf8.ValidString(got) {
+				t.Fatalf("invalid UTF-8: %q", got)
+			}
+			for _, r := range got {
+				if unicode.IsControl(r) && r != '\n' {
+					t.Fatalf("control rune %U: %q", r, got)
+				}
+			}
+		}
+	}
+	wwv := s.Render("WWV", true, now)
+	if !strings.Contains(wwv, "old [2J CR LF NUL DEL CSI") {
+		t.Fatalf("old text not neutralized: %q", wwv)
+	}
+	wcy := s.Render("WCY", true, now)
+	if strings.Count(wcy, "new text") != 2 || !strings.Contains(wcy, "bad�utf8") || s.Stats().Duplicates != 1 {
+		t.Fatalf("identity or utf8 changed: %q, %+v", wcy, s.Stats())
+	}
+}
+
+func TestArchiveSanitizationKeepsOriginalTruncationBoundary(t *testing.T) {
+	s, _ := newTestStore(t, 0, 0)
+	now := time.Now().UTC()
+	for _, n := range []int{255, 256, 257} {
+		s.Record("WWV", fmt.Sprintf("%d", n)+strings.Repeat("\x00", n-3), now)
+	}
+	got := s.Render("WWV", true, now)
+	if strings.Count(got, "[truncated]") != 1 {
+		t.Fatalf("unexpected truncation markers: %q", got)
 	}
 }
 

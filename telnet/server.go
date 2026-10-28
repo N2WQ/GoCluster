@@ -3827,45 +3827,54 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			nearbyWarning = ""
 		}
 	}
-	greeting := formatGreeting(s.greetingTemplate, greetingData)
-	if strings.TrimSpace(nearbyWarning) != "" {
-		if strings.TrimSpace(greeting) == "" {
-			greeting = nearbyWarning
-		} else {
-			if !strings.HasSuffix(greeting, "\n") {
-				greeting += "\n"
-			}
-			greeting += nearbyWarning
-		}
+	// Format only the operator's template, never bulletin content. Unmarked
+	// custom greetings remain intact and follow the separate startup messages.
+	before, after, marked := strings.Cut(s.greetingTemplate, "<STARTUP_INFO>")
+	if !marked {
+		after, before = before, ""
+	} else {
+		after = strings.ReplaceAll(after, "<STARTUP_INFO>", "")
 	}
-	if strings.TrimSpace(greeting) != "" {
-		if !s.sendClientMessage(client, greeting, "greeting") {
+	before = formatGreeting(before, greetingData)
+	after = formatGreeting(after, greetingData)
+	var startup []string
+	addStartup := func(msg string) {
+		if strings.TrimSpace(msg) == "" {
 			return
 		}
+		if !strings.HasSuffix(msg, "\n") {
+			msg += "\n"
+		}
+		startup = append(startup, msg)
 	}
+	addStartup(nearbyWarning)
 	dialectMsg := formatDialectWelcome(s.dialectWelcomeMsg, dialectTemplateData{
 		dialect:        strings.ToUpper(string(client.dialect)),
 		source:         dialectSource,
 		defaultDialect: dialectDefault,
 	})
-	if strings.TrimSpace(dialectMsg) != "" {
-		if !s.sendClientMessage(client, dialectMsg, "dialect welcome") {
-			return
-		}
-	}
+	addStartup(dialectMsg)
 	if s.pathPredictor != nil && s.pathDisplay {
-		if msg := s.formatPathStatusMessage(client); strings.TrimSpace(msg) != "" {
-			if !s.sendClientMessage(client, msg, "path status") {
-				return
-			}
-		}
+		addStartup(s.formatPathStatusMessage(client))
 	}
 	if s.bulletinHistory != nil {
 		for _, kind := range []string{"WWV", "WCY"} {
-			if !s.sendClientMessage(client, s.bulletinHistory.Render(kind, false, s.now()), "bulletin login") {
-				return
-			}
+			addStartup(s.bulletinHistory.Render(kind, false, s.now()))
 		}
+	}
+	if len(startup) > 0 && before != "" && !strings.HasSuffix(before, "\n") {
+		before += "\n"
+	}
+	if !s.sendClientMessage(client, before, "greeting") {
+		return
+	}
+	for _, msg := range startup {
+		if !s.sendClientMessage(client, msg, "startup information") {
+			return
+		}
+	}
+	if !s.sendClientMessage(client, after, "greeting") {
+		return
 	}
 
 	// Read commands from client

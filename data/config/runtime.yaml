@@ -44,6 +44,7 @@ telnet:
     Last login: <LAST_LOGIN> from <LAST_IP>
     <SETTINGS_FILTERS>
     
+    <STARTUP_INFO>
     <CALL> de <CLUSTER> <DATETIME>>
   login_empty_message: |
     Callsign cannot be empty. Please try again.

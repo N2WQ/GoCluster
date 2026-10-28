@@ -44,12 +44,10 @@ func TestBulletinLoginAndShowBypassLiveFiltersTCP(t *testing.T) {
 	// No client is registered when these two source callbacks arrive.
 	s.BroadcastWWVAt("WWV", "WWV de K1AAA: first-wwv", time.Now().Add(-time.Minute))
 	s.BroadcastWWVAt("WCY", "WCY de K1AAA: first-wcy", time.Now().Add(-time.Minute))
-	conn, reader, done, _ := connectUpgradeSession(t, s, "K1BUL")
-	login := bulletinReadThrough(t, conn, reader, "first-wcy")
-	if !strings.Contains(login, "first-wwv") {
-		t.Fatalf("login missing WWV: %q", login)
+	conn, reader, done, login := connectUpgradeSession(t, s, "K1BUL")
+	if !strings.Contains(login, "first-wwv") || !strings.Contains(login, "first-wcy") || !strings.Contains(login, "WCY history may be incomplete.") {
+		t.Fatalf("login missing bulletin or warning: %q", login)
 	}
-	bulletinReadThrough(t, conn, reader, "WCY history may be incomplete.")
 	for _, kind := range []string{"WWV", "WCY"} {
 		if _, err := io.WriteString(conn, "REJECT "+kind+"\r\n"); err != nil {
 			t.Fatal(err)
@@ -58,12 +56,10 @@ func TestBulletinLoginAndShowBypassLiveFiltersTCP(t *testing.T) {
 	}
 	closeHandshakeTranscriptSession(t, conn, done)
 
-	conn2, reader2, _, _ := connectUpgradeSession(t, s, "K1BUL")
-	login = bulletinReadThrough(t, conn2, reader2, "first-wcy")
-	if !strings.Contains(login, "first-wwv") {
-		t.Fatalf("filtered login missing WWV: %q", login)
+	conn2, reader2, _, login := connectUpgradeSession(t, s, "K1BUL")
+	if !strings.Contains(login, "first-wwv") || !strings.Contains(login, "first-wcy") || !strings.Contains(login, "WCY history may be incomplete.") {
+		t.Fatalf("filtered login missing bulletin or warning: %q", login)
 	}
-	bulletinReadThrough(t, conn2, reader2, "WCY history may be incomplete.")
 	// Both are archived even though the user receives no live bulletin.
 	s.BroadcastWWVAt("WWV", "WWV de K1AAA: later-wwv", time.Now())
 	s.BroadcastWWVAt("WCY", "WCY de K1AAA: later-wcy", time.Now())
@@ -195,8 +191,7 @@ func TestBulletinV5BothDialectsSelectFiveAndLoginOne(t *testing.T) {
 		opts.BulletinHistory = store
 		opts.LoginGreeting = "READY\n"
 	})
-	conn, reader, _, _ := connectUpgradeSession(t, s, "K1BUL")
-	login := bulletinReadThrough(t, conn, reader, "WCY history may be incomplete.")
+	conn, reader, _, login := connectUpgradeSession(t, s, "K1BUL")
 	if strings.Count(login, "WWV received ") != 1 || strings.Count(login, "WCY received ") != 1 ||
 		!strings.Contains(login, "WWV-item-05") || !strings.Contains(login, "WCY-item-05") || strings.Contains(login, "item-04") {
 		t.Fatalf("login must show exactly the latest per type: %q", login)
@@ -265,8 +260,7 @@ func TestBulletinFull48MaxUnicodeTCP(t *testing.T) {
 		opts.AutoReadPauseMinRows = 10
 		opts.AutoReadPauseDuration = 30 * time.Second
 	})
-	conn, reader, _, _ := connectUpgradeSession(t, s, "K1BUL")
-	login := bulletinReadThrough(t, conn, reader, "WCY history may be incomplete.")
+	conn, reader, _, login := connectUpgradeSession(t, s, "K1BUL")
 	if strings.Count(login, "WWV received ") != 1 || !strings.Contains(login, "B00048") {
 		t.Fatalf("login did not show only newest WWV: %q", login)
 	}

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 )
@@ -34,16 +35,22 @@ func (s *Store) load() error {
 		return errors.New("bulletin history path is empty")
 	}
 	f, err := os.Open(s.path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+		// A dangling symlink also produces ENOENT on Open. Only a genuinely
+		// absent directory entry is a first installation; an existing link or
+		// an inconclusive metadata error must remain protected by recovery.
+		return distinguishMissingSnapshot(s.path, err, os.Lstat)
 	}
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxSnapshotBytes+1))
+	closeErr := f.Close()
 	if err != nil {
 		return err
+	}
+	if closeErr != nil {
+		return closeErr
 	}
 	if len(data) > maxSnapshotBytes {
 		return errors.New("bulletin history snapshot exceeds size limit")
@@ -59,6 +66,17 @@ func (s *Store) load() error {
 	}
 	s.pruneLocked(time.Now().UTC())
 	return nil
+}
+
+func distinguishMissingSnapshot(path string, openErr error, lstat func(string) (os.FileInfo, error)) error {
+	_, statErr := lstat(path)
+	if errors.Is(statErr, os.ErrNotExist) || errors.Is(statErr, syscall.ENOTDIR) {
+		return nil
+	}
+	if statErr != nil {
+		return fmt.Errorf("inspect missing bulletin history: %w", statErr)
+	}
+	return fmt.Errorf("open existing bulletin history %s: %w", path, openErr)
 }
 
 // decodeSnapshot admits only bounded, strictly decoded and validated state.
@@ -148,6 +166,24 @@ func (s *Store) worker() {
 }
 
 func (s *Store) save(clean bool) error {
+	if s.needsRecovery {
+		preserve := s.preserveSnapshot
+		if preserve == nil {
+			preserve = preserveFailedSnapshot
+		}
+		if err := preserve(s.path); err != nil {
+			err = fmt.Errorf("cannot preserve failed snapshot; new history is memory-only: %w", err)
+			s.mu.Lock()
+			changed := s.storageErrorLocked(err)
+			s.mu.Unlock()
+			if changed {
+				log.Printf("Bulletin history storage unavailable: %v", err)
+			}
+			return err
+		}
+		s.needsRecovery = false
+		log.Printf("Bulletin history failed snapshot preserved at %s.recovery; history may be incomplete", s.path)
+	}
 	s.mu.Lock()
 	state := s.snapshotLocked(clean)
 	s.mu.Unlock()

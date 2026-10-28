@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0111 | Bulletin History Recovery and Display | Monitoring | 2026-10-28 | WWV/WCY, snapshot recovery, login display | ADR-0324 | `docs/troubleshooting/TSR-0111-bulletin-history-recovery-and-display.md` |
 | TSR-0110 | Boolean DXCC Prefix Input | Resolved | 2026-10-23 | canonical labels, human/YAML preparation, numeric persistence | ADR-0321 | `docs/troubleshooting/TSR-0110-boolean-dxcc-prefix-input.md` |
 | TSR-0109 | YAML Rule Edits Lose Partial NEARBY Geometry | Resolved | 2026-10-22 | YAML rules, NEARBY runtime cells, partial geometry | none | `docs/troubleshooting/TSR-0109-yaml-rule-edits-partial-nearby-geometry.md` |
 | TSR-0108 | ULS Cancellation Fixture Deadline | Resolved | 2026-10-22 | progress cancellation, race fixture deadline, rollback | none | `docs/troubleshooting/TSR-0108-uls-cancellation-fixture-deadline.md` |
