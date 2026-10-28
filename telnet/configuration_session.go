@@ -14,6 +14,7 @@ import (
 
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
+	"dxcluster/spot"
 )
 
 type restoredLogin struct {
@@ -27,21 +28,57 @@ type restoredLogin struct {
 	total         int
 }
 
-var errSessionFull = errors.New("maximum registered sessions reached")
+var (
+	errSessionFull     = errors.New("maximum registered sessions reached")
+	errBaseSessionFull = errors.New("maximum sessions for station reached")
+)
 
-// loginCapacityFull makes only an early rejection decision. An unavailable lock
+// Entries exist only while a station has registered sessions or reservations.
+// All counts and membership transitions are protected by clientsMutex.
+type baseSessionCount struct {
+	registered int
+	pending    int
+}
+
+func (s *Server) setBaseSessionCountLocked(base string, count baseSessionCount) {
+	if count.registered == 0 && count.pending == 0 {
+		delete(s.baseSessionCounts, base)
+	} else {
+		if s.baseSessionCounts == nil {
+			s.baseSessionCounts = make(map[string]baseSessionCount)
+		}
+		s.baseSessionCounts[base] = count
+	}
+}
+
+// A registered exact identity is a replacement, not a new occupied slot.
+// Global registered-full precedence preserves the existing server-full notice.
+func (s *Server) loginCapacityErrorLocked(c *Client, base string) error {
+	if s.clients[c.callsign] != nil {
+		return nil
+	}
+	if s.maxConnections > 0 && len(s.clients) >= s.maxConnections {
+		return errSessionFull
+	}
+	if s.maxSessionsPerBaseCall > 0 && s.baseSessionCounts[base].registered >= s.maxSessionsPerBaseCall {
+		return errBaseSessionFull
+	}
+	return nil
+}
+
+// loginCapacityError makes only an early rejection decision. An unavailable lock
 // is not evidence of capacity; admission always rechecks while owning the stripe.
-func (s *Server) loginCapacityFull(c *Client) bool {
+func (s *Server) loginCapacityError(c *Client, base string) error {
 	checked := s.clientsMutex.TryRLock()
-	full := false
+	var err error
 	if checked {
-		full = s.maxConnections > 0 && len(s.clients) >= s.maxConnections && s.clients[c.callsign] == nil
+		err = s.loginCapacityErrorLocked(c, base)
 		s.clientsMutex.RUnlock()
 	}
 	if s.testLoginCapacityProbe != nil {
-		s.testLoginCapacityProbe(c, checked, full)
+		s.testLoginCapacityProbe(c, checked, err != nil)
 	}
-	return full
+	return err
 }
 
 // acquireLoginCapacity owns the callsign stripe when it returns. New identities
@@ -49,33 +86,45 @@ func (s *Server) loginCapacityFull(c *Client) bool {
 // Never wait for capacity with the stripe held: another callsign on the same
 // stripe may need to finish its final save before it can leave the registry.
 func (s *Server) acquireLoginCapacity(c *Client, deadline time.Time) (release func(), reserved bool, err error) {
+	base := spot.NormalizeOwnCallsign(c.callsign)
 	for {
 		// A full registry can reject a different identity immediately, even if
 		// its stripe is busy with an unrelated save. A possible replacement must
 		// still acquire the stripe and recheck before any profile work.
-		if s.loginCapacityFull(c) {
-			return nil, false, errSessionFull
+		if err := s.loginCapacityError(c, base); err != nil {
+			return nil, false, err
 		}
-		var recheck func() bool
-		if s.maxConnections > 0 {
-			recheck = func() bool { return s.loginCapacityFull(c) }
+		var recheck func() error
+		if s.maxConnections > 0 || s.maxSessionsPerBaseCall > 0 {
+			recheck = func() error { return s.loginCapacityError(c, base) }
 		}
 		release, err = s.acquireConfigurationWithRecheck(c, false, true, deadline, recheck)
 		if err != nil {
 			return nil, false, err
 		}
 		s.clientsMutex.Lock()
-		if s.maxConnections <= 0 || s.clients[c.callsign] != nil {
+		if s.clients[c.callsign] != nil {
 			s.clientsMutex.Unlock()
 			return release, false, nil
 		}
-		if len(s.clients) >= s.maxConnections {
+		if err = s.loginCapacityErrorLocked(c, base); err != nil {
 			s.clientsMutex.Unlock()
 			release()
-			return nil, false, errSessionFull
+			return nil, false, err
 		}
-		if len(s.clients)+s.sessionReservations < s.maxConnections {
+		globalAvailable := s.maxConnections <= 0 || len(s.clients)+s.sessionReservations < s.maxConnections
+		baseCount := s.baseSessionCounts[base]
+		baseAvailable := s.maxSessionsPerBaseCall <= 0 || baseCount.registered+baseCount.pending < s.maxSessionsPerBaseCall
+		if globalAvailable && baseAvailable {
+			if s.maxConnections <= 0 && s.maxSessionsPerBaseCall <= 0 {
+				s.clientsMutex.Unlock()
+				return release, false, nil
+			}
 			s.sessionReservations++
+			if s.maxSessionsPerBaseCall > 0 {
+				baseCount.pending++
+				s.setBaseSessionCountLocked(base, baseCount)
+			}
 			s.clientsMutex.Unlock()
 			return release, true, nil
 		}
@@ -120,9 +169,15 @@ func (s *Server) signalSessionCapacityLocked() {
 	}
 }
 
-func (s *Server) releaseSessionReservation() {
+func (s *Server) releaseSessionReservation(c *Client) {
+	base := spot.NormalizeOwnCallsign(c.callsign)
 	s.clientsMutex.Lock()
 	s.sessionReservations--
+	if s.maxSessionsPerBaseCall > 0 {
+		count := s.baseSessionCounts[base]
+		count.pending--
+		s.setBaseSessionCountLocked(base, count)
+	}
 	s.signalSessionCapacityLocked()
 	s.clientsMutex.Unlock()
 }
@@ -135,7 +190,7 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 	defer release()
 	defer func() {
 		if reserved {
-			s.releaseSessionReservation()
+			s.releaseSessionReservation(c)
 		}
 	}()
 	result := s.restoreClientRecordOwned(c, loginTime)
@@ -297,6 +352,7 @@ func (s *Server) prepareConfiguration(c *Client, cfg filter.Configuration, now t
 }
 
 func (s *Server) registerClientOwned(c *Client, reserved bool, deadline time.Time) (*Client, int, error) {
+	base := spot.NormalizeOwnCallsign(c.callsign)
 	s.clientsMutex.Lock()
 	// Stop closes shutdown before taking this lock. Checking under the same
 	// lock ensures Stop either sees this registration or prevents it entirely.
@@ -325,6 +381,16 @@ func (s *Server) registerClientOwned(c *Client, reserved bool, deadline time.Tim
 	s.clients[c.callsign] = c
 	if reserved {
 		s.sessionReservations--
+	}
+	if s.maxSessionsPerBaseCall > 0 {
+		count := s.baseSessionCounts[base]
+		if reserved {
+			count.pending--
+		}
+		if evicted == nil {
+			count.registered++
+		}
+		s.setBaseSessionCountLocked(base, count)
 	}
 	s.signalSessionCapacityLocked()
 	s.peerMembershipRevision++
@@ -359,7 +425,7 @@ func (s *Server) registerClient(c *Client) {
 	}
 	evicted, total, err := s.registerClientOwned(c, reserved, time.Time{})
 	if err != nil && reserved {
-		s.releaseSessionReservation()
+		s.releaseSessionReservation(c)
 	}
 	release()
 	if err != nil {
@@ -383,10 +449,16 @@ func (s *Server) unregisterClient(c *Client) {
 			log.Printf("Warning: failed to persist filter for %s during unregister: %v", c.callsign, err)
 		}
 	}
+	base := spot.NormalizeOwnCallsign(c.callsign)
 	s.clientsMutex.Lock()
 	removed := s.clients[c.callsign] == c
 	if removed {
 		delete(s.clients, c.callsign)
+		if s.maxSessionsPerBaseCall > 0 {
+			count := s.baseSessionCounts[base]
+			count.registered--
+			s.setBaseSessionCountLocked(base, count)
+		}
 		s.signalSessionCapacityLocked()
 		s.peerMembershipRevision++
 		s.shardsDirty.Store(true)

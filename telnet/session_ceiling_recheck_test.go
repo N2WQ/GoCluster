@@ -182,7 +182,9 @@ func TestSessionCeilingRecheckReservedButNotFull(t *testing.T) {
 		t.Fatalf("setup did not reserve last slot: reserved=%t err=%v", reserved, err)
 	}
 	var reservationOnce sync.Once
-	releaseReservation := func() { reservationOnce.Do(func() { s.releaseSessionReservation(); releaseReservationStripe() }) }
+	releaseReservation := func() {
+		reservationOnce.Do(func() { s.releaseSessionReservation(reservedClient); releaseReservationStripe() })
+	}
 	t.Cleanup(releaseReservation)
 	release, err := s.acquireConfiguration(holder, false, true, time.Time{})
 	if err != nil {

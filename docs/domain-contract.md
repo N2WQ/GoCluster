@@ -55,14 +55,30 @@ pressure.
 - A new identity is rejected when registered sessions fill the ceiling, before
   its profile or shared preset library is changed. The full-server notice is
   best effort; the connection is closed even if the notice cannot be delivered.
+- A positive `telnet.max_sessions_per_base_call` also limits registered sessions
+  for each base callsign. Zero disables this limit. Base identity follows
+  `spot.NormalizeOwnCallsign`: numeric SSIDs are removed, while portable
+  location forms remain distinct. Full normalized callsigns and SSIDs remain
+  separate profile and replacement identities. Both ceilings are decided and
+  reserved atomically before profile or shared preset writes; a matching
+  registered identity can replace its owner without consuming another slot.
+- A new identity rejected by the station ceiling receives a best-effort
+  station-specific notice and is closed. If both ceilings reject it, the global
+  full-server notice takes precedence. Capacity rejection does not change the
+  profile, upgrade backups, or shared preset library.
 - When in-progress logins occupy the remaining capacity, another new identity
-  waits for their outcome and rechecks admission, subject to its existing login
-  deadline, cancellation and shutdown. No fairness or arrival order is promised.
+  waits for their outcome and rechecks both ceilings, subject to its existing
+  login deadline, cancellation and shutdown. No fairness or arrival order is promised.
   Separate pre-login limits and the existing per-identity profile handoff remain
   in force. Other login failures retain their existing persistence behavior.
 - Runtime YAML requires a positive value for `telnet.max_connections`. Direct
   server callers may set `MaxConnections` to zero or less to disable this
   registered-session ceiling; pre-login limits remain separate.
+- Runtime YAML requires an explicit nonnegative `telnet.max_sessions_per_base_call`.
+  The shipped value 10 is operator policy, not a calibrated safety threshold.
+  Station accounting is coupled to active sessions and reservations; historical
+  station identities do not accumulate. Pre-login limits remain separate, and
+  callsign validation does not authenticate the user.
 
 ## Source identity normalization
 

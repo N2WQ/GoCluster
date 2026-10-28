@@ -45,7 +45,7 @@ func (s *Server) acquireConfiguration(c *Client, final, handoff bool, deadline t
 // waiter owns one ticker, bounded by the existing prelogin admission limit.
 const sessionCapacityRecheckInterval = 50 * time.Millisecond
 
-func (s *Server) acquireConfigurationWithRecheck(c *Client, final, handoff bool, deadline time.Time, recheck func() bool) (func(), error) {
+func (s *Server) acquireConfigurationWithRecheck(c *Client, final, handoff bool, deadline time.Time, recheck func() error) (func(), error) {
 	if s == nil {
 		return func() {}, nil
 	}
@@ -103,8 +103,8 @@ func (s *Server) acquireConfigurationWithRecheck(c *Client, final, handoff bool,
 					return nil, errClientClosed
 				default:
 				}
-				if recheck() {
-					return nil, errSessionFull
+				if err := recheck(); err != nil {
+					return nil, err
 				}
 			}
 		}

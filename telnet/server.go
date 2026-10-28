@@ -175,6 +175,8 @@ type Server struct {
 	clients                             map[string]*Client                         // Map of callsign → Client
 	clientsMutex                        sync.RWMutex                               // Protects clients and session capacity accounting
 	sessionReservations                 int                                        // New identities preparing login; protected by clientsMutex
+	maxSessionsPerBaseCall              int                                        // Per-station session ceiling; zero disables it
+	baseSessionCounts                   map[string]baseSessionCount                // Only stations with live owners or reservations
 	sessionCapacityChanged              chan struct{}                              // Waiters observe capacity changes under clientsMutex
 	testLoginCapacityProbe              func(*Client, bool, bool)                  // Optional deterministic admission-test observer
 	testAfterClientRemoval              func(*Client)                              // Optional deterministic teardown-test barrier
@@ -749,6 +751,7 @@ type broadcastMetrics struct {
 	preloginStateEvictions     uint64
 	preloginStateFullRejects   uint64
 	preloginActive             int64
+	baseSessionRejects         uint64
 }
 
 func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops, senderFailures uint64) {
@@ -780,21 +783,23 @@ func (m *broadcastMetrics) preloginSnapshot() (active int64, rejectGlobalCap, re
 }
 
 type preloginAdmissionSnapshot struct {
-	Active             int64
-	RejectGlobalCap    uint64
-	RejectIPRate       uint64
-	RejectSubnetRate   uint64
-	RejectGlobalRate   uint64
-	RejectASNRate      uint64
-	RejectCountryRate  uint64
-	RejectIPConcurrent uint64
-	Timeouts           uint64
-	StateEvictions     uint64
-	StateFullRejects   uint64
-	TrackedIPs         int
-	TrackedSubnets     int
-	TrackedASNs        int
-	TrackedCountries   int
+	Active              int64
+	RejectGlobalCap     uint64
+	RejectIPRate        uint64
+	RejectSubnetRate    uint64
+	RejectGlobalRate    uint64
+	RejectASNRate       uint64
+	RejectCountryRate   uint64
+	RejectIPConcurrent  uint64
+	Timeouts            uint64
+	StateEvictions      uint64
+	StateFullRejects    uint64
+	TrackedIPs          int
+	TrackedSubnets      int
+	TrackedASNs         int
+	TrackedCountries    int
+	TrackedSessionBases int
+	BaseSessionRejects  uint64
 }
 
 func (s *Server) preloginAdmissionSnapshot() preloginAdmissionSnapshot {
@@ -807,22 +812,27 @@ func (s *Server) preloginAdmissionSnapshot() preloginAdmissionSnapshot {
 	trackedASNs := len(s.preloginByASN)
 	trackedCountries := len(s.preloginByCountry)
 	s.preloginMu.Unlock()
+	s.clientsMutex.RLock()
+	trackedSessionBases := len(s.baseSessionCounts)
+	s.clientsMutex.RUnlock()
 	return preloginAdmissionSnapshot{
-		Active:             atomic.LoadInt64(&s.metrics.preloginActive),
-		RejectGlobalCap:    atomic.LoadUint64(&s.metrics.preloginRejectGlobalCap),
-		RejectIPRate:       atomic.LoadUint64(&s.metrics.preloginRejectIPRate),
-		RejectSubnetRate:   atomic.LoadUint64(&s.metrics.preloginRejectSubnetRate),
-		RejectGlobalRate:   atomic.LoadUint64(&s.metrics.preloginRejectGlobalRate),
-		RejectASNRate:      atomic.LoadUint64(&s.metrics.preloginRejectASNRate),
-		RejectCountryRate:  atomic.LoadUint64(&s.metrics.preloginRejectCountryRate),
-		RejectIPConcurrent: atomic.LoadUint64(&s.metrics.preloginRejectIPConcurrent),
-		Timeouts:           atomic.LoadUint64(&s.metrics.preloginTimeouts),
-		StateEvictions:     atomic.LoadUint64(&s.metrics.preloginStateEvictions),
-		StateFullRejects:   atomic.LoadUint64(&s.metrics.preloginStateFullRejects),
-		TrackedIPs:         trackedIPs,
-		TrackedSubnets:     trackedSubnets,
-		TrackedASNs:        trackedASNs,
-		TrackedCountries:   trackedCountries,
+		Active:              atomic.LoadInt64(&s.metrics.preloginActive),
+		RejectGlobalCap:     atomic.LoadUint64(&s.metrics.preloginRejectGlobalCap),
+		RejectIPRate:        atomic.LoadUint64(&s.metrics.preloginRejectIPRate),
+		RejectSubnetRate:    atomic.LoadUint64(&s.metrics.preloginRejectSubnetRate),
+		RejectGlobalRate:    atomic.LoadUint64(&s.metrics.preloginRejectGlobalRate),
+		RejectASNRate:       atomic.LoadUint64(&s.metrics.preloginRejectASNRate),
+		RejectCountryRate:   atomic.LoadUint64(&s.metrics.preloginRejectCountryRate),
+		RejectIPConcurrent:  atomic.LoadUint64(&s.metrics.preloginRejectIPConcurrent),
+		Timeouts:            atomic.LoadUint64(&s.metrics.preloginTimeouts),
+		StateEvictions:      atomic.LoadUint64(&s.metrics.preloginStateEvictions),
+		StateFullRejects:    atomic.LoadUint64(&s.metrics.preloginStateFullRejects),
+		TrackedIPs:          trackedIPs,
+		TrackedSubnets:      trackedSubnets,
+		TrackedASNs:         trackedASNs,
+		TrackedCountries:    trackedCountries,
+		TrackedSessionBases: trackedSessionBases,
+		BaseSessionRejects:  atomic.LoadUint64(&s.metrics.baseSessionRejects),
 	}
 }
 
@@ -1259,7 +1269,14 @@ func (s *Server) logAdmissionReject(reason preloginRejectReason, addr string) {
 	}
 	s.preloginMu.Unlock()
 	if shouldSample {
-		log.Printf("Admission reject sample: reason=%s addr=%s", key, addr)
+		if reason == "max_sessions_per_base_call" {
+			s.clientsMutex.RLock()
+			trackedBases := len(s.baseSessionCounts)
+			s.clientsMutex.RUnlock()
+			log.Printf("Admission reject sample: reason=%s addr=%s tracked_session_bases=%d", key, addr, trackedBases)
+		} else {
+			log.Printf("Admission reject sample: reason=%s addr=%s", key, addr)
+		}
 	}
 }
 
@@ -1963,6 +1980,7 @@ type ServerOptions struct {
 	PathStatusMessage         string
 	ClusterCall               string
 	MaxConnections            int
+	MaxSessionsPerBaseCall    int
 	BroadcastWorkers          int
 	BroadcastQueue            int
 	WorkerQueue               int
@@ -2031,102 +2049,103 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 	config := normalizeServerOptions(opts)
 	useZiutek := strings.EqualFold(config.Transport, "ziutek")
 	server := &Server{
-		port:                  config.Port,
-		welcomeMessage:        config.WelcomeMessage,
-		maxConnections:        config.MaxConnections,
-		duplicateLoginMsg:     config.DuplicateLoginMsg,
-		greetingTemplate:      config.LoginGreeting,
-		loginPrompt:           config.LoginPrompt,
-		loginEmptyMessage:     config.LoginEmptyMessage,
-		loginInvalidMsg:       config.LoginInvalidMessage,
-		inputTooLongMsg:       config.InputTooLongMessage,
-		inputInvalidMsg:       config.InputInvalidCharMessage,
-		dialectWelcomeMsg:     config.DialectWelcomeMessage,
-		dialectSourceDef:      config.DialectSourceDefault,
-		dialectSourcePers:     config.DialectSourcePersisted,
-		pathStatusMsg:         config.PathStatusMessage,
-		clusterCall:           config.ClusterCall,
-		clients:               make(map[string]*Client),
-		shutdown:              make(chan struct{}),
-		broadcast:             make(chan *broadcastPayload, config.BroadcastQueue),
-		broadcastWorkers:      config.BroadcastWorkers,
-		workerQueueSize:       config.WorkerQueue,
-		batchInterval:         config.BroadcastBatchInterval,
-		batchMax:              defaultBroadcastBatch,
-		writerBatchMaxBytes:   config.WriterBatchMaxBytes,
-		writerBatchWait:       config.WriterBatchWait,
-		rejectWorkers:         config.RejectWorkers,
-		rejectQueueSize:       config.RejectQueueSize,
-		rejectWriteDeadline:   config.RejectWriteDeadline,
-		rejectQueue:           make(chan rejectJob, config.RejectQueueSize),
-		keepaliveInterval:     time.Duration(config.KeepaliveSeconds) * time.Second,
-		clientBufferSize:      config.ClientBuffer,
-		controlQueueSize:      config.ControlQueue,
-		autoReadPauseMinRows:  config.AutoReadPauseMinRows,
-		autoReadPauseDuration: config.AutoReadPauseDuration,
-		bulletinDedupe:        newBulletinDedupeCache(config.BulletinDedupeWindow, config.BulletinDedupeMaxEntries),
-		bulletinHistory:       config.BulletinHistory,
-		handshakeMode:         config.HandshakeMode,
-		transport:             config.Transport,
-		useZiutek:             useZiutek,
-		echoMode:              config.EchoMode,
-		processor:             processor,
-		readIdleTimeout:       config.ReadIdleTimeout,
-		loginTimeout:          config.LoginTimeout,
-		maxPreloginSessions:   config.MaxPreloginSessions,
-		preloginTimeout:       config.PreloginTimeout,
-		acceptRatePerIP:       config.AcceptRatePerIP,
-		acceptBurstPerIP:      config.AcceptBurstPerIP,
-		acceptRatePerSubnet:   config.AcceptRatePerSubnet,
-		acceptBurstPerSubnet:  config.AcceptBurstPerSubnet,
-		acceptRateGlobal:      config.AcceptRateGlobal,
-		acceptBurstGlobal:     config.AcceptBurstGlobal,
-		acceptRatePerASN:      config.AcceptRatePerASN,
-		acceptBurstPerASN:     config.AcceptBurstPerASN,
-		acceptRatePerCountry:  config.AcceptRatePerCountry,
-		acceptBurstPerCountry: config.AcceptBurstPerCountry,
-		preloginConcPerIP:     config.PreloginConcurrencyPerIP,
-		preloginByIP:          make(map[string]preloginIPState),
-		preloginBySubnet:      make(map[string]preloginLimiterState),
-		preloginByASN:         make(map[string]preloginLimiterState),
-		preloginByCountry:     make(map[string]preloginLimiterState),
-		preloginTrackedMax:    defaultPreloginStateCap(config.MaxPreloginSessions),
-		preloginStateIdleTTL:  preloginStateIdleTTL(config.PreloginTimeout),
-		admissionLogInterval:  config.AdmissionLogInterval,
-		admissionLogSample:    config.AdmissionLogSampleRate,
-		admissionLogMaxLines:  config.AdmissionLogMaxLines,
-		admissionLogCounts:    make(map[string]uint64),
-		loginLineLimit:        config.LoginLineLimit,
-		commandLineLimit:      config.CommandLineLimit,
-		filterEngine:          newFilterCommandEngine(),
-		latency:               newLatencyMetrics(),
-		reputationGate:        opts.ReputationGate,
-		startTime:             time.Now().UTC(),
-		pathPredictor:         opts.PathPredictor,
-		pathClosedFallback:    opts.PathClosedFallback,
-		pathDisplay:           opts.PathDisplayEnabled,
-		solarWeather:          opts.SolarWeather,
-		noiseModel:            config.NoiseModel,
-		gridLookup:            opts.GridLookup,
-		ctyLookup:             config.CTYLookup,
-		usLicenseCheck:        config.USLicenseCheck,
-		canadianLicenseCheck:  config.CanadianLicenseCheck,
-		defaultDedupePolicy:   parseDedupePolicy(config.DefaultDedupePolicy),
-		defaultDedupeSet:      true,
-		dedupeFastEnabled:     config.DedupeFastEnabled,
-		dedupeMedEnabled:      config.DedupeMedEnabled,
-		dedupeSlowEnabled:     config.DedupeSlowEnabled,
-		nearbyLoginWarning:    normalizeWarningLine(config.NearbyLoginWarning),
-		loginAttemptReporter:  config.LoginAttemptReporter,
-		connectionReporter:    config.ConnectionReporter,
-		dropExtremeRate:       config.DropExtremeRate,
-		dropExtremeWindow:     config.DropExtremeWindow,
-		dropExtremeMinAtt:     config.DropExtremeMinAttempts,
-		queueDropLog:          ratelimit.NewCounter(defaultDropLogInterval),
-		workerDropLog:         ratelimit.NewCounter(defaultDropLogInterval),
-		clientDropLog:         ratelimit.NewCounter(defaultDropLogInterval),
-		rejectDropLog:         ratelimit.NewCounter(defaultDropLogInterval),
-		loginValidationLog:    ratelimit.NewCounter(defaultDropLogInterval),
+		port:                   config.Port,
+		welcomeMessage:         config.WelcomeMessage,
+		maxConnections:         config.MaxConnections,
+		maxSessionsPerBaseCall: config.MaxSessionsPerBaseCall,
+		duplicateLoginMsg:      config.DuplicateLoginMsg,
+		greetingTemplate:       config.LoginGreeting,
+		loginPrompt:            config.LoginPrompt,
+		loginEmptyMessage:      config.LoginEmptyMessage,
+		loginInvalidMsg:        config.LoginInvalidMessage,
+		inputTooLongMsg:        config.InputTooLongMessage,
+		inputInvalidMsg:        config.InputInvalidCharMessage,
+		dialectWelcomeMsg:      config.DialectWelcomeMessage,
+		dialectSourceDef:       config.DialectSourceDefault,
+		dialectSourcePers:      config.DialectSourcePersisted,
+		pathStatusMsg:          config.PathStatusMessage,
+		clusterCall:            config.ClusterCall,
+		clients:                make(map[string]*Client),
+		shutdown:               make(chan struct{}),
+		broadcast:              make(chan *broadcastPayload, config.BroadcastQueue),
+		broadcastWorkers:       config.BroadcastWorkers,
+		workerQueueSize:        config.WorkerQueue,
+		batchInterval:          config.BroadcastBatchInterval,
+		batchMax:               defaultBroadcastBatch,
+		writerBatchMaxBytes:    config.WriterBatchMaxBytes,
+		writerBatchWait:        config.WriterBatchWait,
+		rejectWorkers:          config.RejectWorkers,
+		rejectQueueSize:        config.RejectQueueSize,
+		rejectWriteDeadline:    config.RejectWriteDeadline,
+		rejectQueue:            make(chan rejectJob, config.RejectQueueSize),
+		keepaliveInterval:      time.Duration(config.KeepaliveSeconds) * time.Second,
+		clientBufferSize:       config.ClientBuffer,
+		controlQueueSize:       config.ControlQueue,
+		autoReadPauseMinRows:   config.AutoReadPauseMinRows,
+		autoReadPauseDuration:  config.AutoReadPauseDuration,
+		bulletinDedupe:         newBulletinDedupeCache(config.BulletinDedupeWindow, config.BulletinDedupeMaxEntries),
+		bulletinHistory:        config.BulletinHistory,
+		handshakeMode:          config.HandshakeMode,
+		transport:              config.Transport,
+		useZiutek:              useZiutek,
+		echoMode:               config.EchoMode,
+		processor:              processor,
+		readIdleTimeout:        config.ReadIdleTimeout,
+		loginTimeout:           config.LoginTimeout,
+		maxPreloginSessions:    config.MaxPreloginSessions,
+		preloginTimeout:        config.PreloginTimeout,
+		acceptRatePerIP:        config.AcceptRatePerIP,
+		acceptBurstPerIP:       config.AcceptBurstPerIP,
+		acceptRatePerSubnet:    config.AcceptRatePerSubnet,
+		acceptBurstPerSubnet:   config.AcceptBurstPerSubnet,
+		acceptRateGlobal:       config.AcceptRateGlobal,
+		acceptBurstGlobal:      config.AcceptBurstGlobal,
+		acceptRatePerASN:       config.AcceptRatePerASN,
+		acceptBurstPerASN:      config.AcceptBurstPerASN,
+		acceptRatePerCountry:   config.AcceptRatePerCountry,
+		acceptBurstPerCountry:  config.AcceptBurstPerCountry,
+		preloginConcPerIP:      config.PreloginConcurrencyPerIP,
+		preloginByIP:           make(map[string]preloginIPState),
+		preloginBySubnet:       make(map[string]preloginLimiterState),
+		preloginByASN:          make(map[string]preloginLimiterState),
+		preloginByCountry:      make(map[string]preloginLimiterState),
+		preloginTrackedMax:     defaultPreloginStateCap(config.MaxPreloginSessions),
+		preloginStateIdleTTL:   preloginStateIdleTTL(config.PreloginTimeout),
+		admissionLogInterval:   config.AdmissionLogInterval,
+		admissionLogSample:     config.AdmissionLogSampleRate,
+		admissionLogMaxLines:   config.AdmissionLogMaxLines,
+		admissionLogCounts:     make(map[string]uint64),
+		loginLineLimit:         config.LoginLineLimit,
+		commandLineLimit:       config.CommandLineLimit,
+		filterEngine:           newFilterCommandEngine(),
+		latency:                newLatencyMetrics(),
+		reputationGate:         opts.ReputationGate,
+		startTime:              time.Now().UTC(),
+		pathPredictor:          opts.PathPredictor,
+		pathClosedFallback:     opts.PathClosedFallback,
+		pathDisplay:            opts.PathDisplayEnabled,
+		solarWeather:           opts.SolarWeather,
+		noiseModel:             config.NoiseModel,
+		gridLookup:             opts.GridLookup,
+		ctyLookup:              config.CTYLookup,
+		usLicenseCheck:         config.USLicenseCheck,
+		canadianLicenseCheck:   config.CanadianLicenseCheck,
+		defaultDedupePolicy:    parseDedupePolicy(config.DefaultDedupePolicy),
+		defaultDedupeSet:       true,
+		dedupeFastEnabled:      config.DedupeFastEnabled,
+		dedupeMedEnabled:       config.DedupeMedEnabled,
+		dedupeSlowEnabled:      config.DedupeSlowEnabled,
+		nearbyLoginWarning:     normalizeWarningLine(config.NearbyLoginWarning),
+		loginAttemptReporter:   config.LoginAttemptReporter,
+		connectionReporter:     config.ConnectionReporter,
+		dropExtremeRate:        config.DropExtremeRate,
+		dropExtremeWindow:      config.DropExtremeWindow,
+		dropExtremeMinAtt:      config.DropExtremeMinAttempts,
+		queueDropLog:           ratelimit.NewCounter(defaultDropLogInterval),
+		workerDropLog:          ratelimit.NewCounter(defaultDropLogInterval),
+		clientDropLog:          ratelimit.NewCounter(defaultDropLogInterval),
+		rejectDropLog:          ratelimit.NewCounter(defaultDropLogInterval),
+		loginValidationLog:     ratelimit.NewCounter(defaultDropLogInterval),
 	}
 	server.wrapConnFn = server.defaultWrapConn
 	return server
@@ -3788,9 +3807,14 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	client.callsign = callsign
 	restored, err := s.restoreAndRegisterClient(client, loginTime, loginDeadline)
 	if err != nil {
-		if errors.Is(err, errSessionFull) {
-			s.logAdmissionReject(preloginRejectReason("max_connections"), address)
-			if client.SendAndClose("Server full. Try again later.\n") == nil {
+		if errors.Is(err, errSessionFull) || errors.Is(err, errBaseSessionFull) {
+			reason, message := preloginRejectReason("max_connections"), "Server full. Try again later.\n"
+			if errors.Is(err, errBaseSessionFull) {
+				reason, message = "max_sessions_per_base_call", "Station session limit reached. Try again later.\n"
+				atomic.AddUint64(&s.metrics.baseSessionRejects, 1)
+			}
+			s.logAdmissionReject(reason, address)
+			if client.SendAndClose(message) == nil {
 				// Retain the prelogin ticket while the single writer sends the
 				// notice. A stalled reader cannot retain the socket indefinitely.
 				deadline := s.rejectWriteDeadline

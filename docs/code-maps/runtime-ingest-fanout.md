@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `718aad2ad6ff3d45`
+- Source fingerprint: `9a10f7b8dc73488e`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 12 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 149 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 150 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 54 | 115 |
+| `dxcluster/telnet` | `telnet` | 54 | 122 |
 
 ## In-Scope Package Edges
 
@@ -310,6 +310,7 @@ Test files:
 - `internal/cluster/stabilizer_transition_license_test.go`
 - `internal/cluster/support_basis_delivery_test.go`
 - `internal/cluster/support_basis_family_bench_test.go`
+- `internal/cluster/telnet_base_session_config_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_test.go`
 - `internal/cluster/temporal_acceptance_delivery_test.go`
@@ -692,6 +693,9 @@ Source files:
 - `telnet/writer_normalize.go`
 
 Test files:
+- `telnet/base_session_quota_cleanup_test.go`
+- `telnet/base_session_quota_test.go`
+- `telnet/base_session_quota_wire_test.go`
 - `telnet/boolean_activation_test.go`
 - `telnet/boolean_input_fuzz_test.go`
 - `telnet/boolean_input_test.go`
@@ -794,6 +798,10 @@ Test files:
 - `telnet/server_sender_test.go`
 - `telnet/server_spot_snapshot_test.go`
 - `telnet/server_template_test.go`
+- `telnet/session_ceiling_departure_test.go`
+- `telnet/session_ceiling_lifecycle_test.go`
+- `telnet/session_ceiling_recheck_test.go`
+- `telnet/session_ceiling_test.go`
 - `telnet/settings_arity_test.go`
 - `telnet/show_hold_command_test.go`
 - `telnet/show_hold_delivery_test.go`
@@ -812,6 +820,8 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0326 | Accepted | 2026-10-28 | telnet admission, station capacity, reconnect, persistence | `area:telnet` |
+| ADR-0325 | Accepted | 2026-10-28 | telnet admission, session capacity, reconnect, persistence | `area:telnet` |
 | ADR-0323 | Accepted | 2026-10-28 | bulletin history, login, commands, persistence | `area:commands` |
 | [ADR-0322](docs/decisions/ADR-0322-local-user-login-ssids.md) | Accepted | 2026-10-28 | telnet, login syntax, SSID, profile identity | `area:telnet, path:telnet` |
 | [ADR-0314](docs/decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md) | Accepted | 2026-10-19 | test paths, native Windows ownership, runner identity | `path:internal/cluster` |

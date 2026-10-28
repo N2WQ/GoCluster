@@ -31,11 +31,25 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
   identity at capacity is rejected; the server attempts to send a full-server
   message before closing the connection. Capacity rejection does not change its
   saved profile or shared preset library.
-- When an in-progress login is using the remaining capacity, another new
-  identity can wait for that login to resolve, within its existing login
-  deadline. No ordering or fairness between waiting logins is guaranteed.
+- `telnet.max_sessions_per_base_call` limits registered sessions for one base
+  callsign; the shipped value is 10, and 0 disables this limit. For example,
+  `K1ABC-1` and `K1ABC-2` count toward `K1ABC`, but keep separate profiles.
+  Existing own-call normalization removes numeric SSIDs; portable location
+  forms such as `VE3/K1ABC` remain separate from `K1ABC`. The same full
+  normalized callsign can replace its session at either limit. A different
+  identity at the station limit is rejected with a station-specific notice;
+  when both limits reject the login, the global full-server notice takes
+  precedence. Notice delivery is best effort.
+- Admission reject summaries include the station-limit reason. Sampled station
+  rejection logs also include `tracked_session_bases`, the number of base
+  callsigns currently held by registered sessions or pending logins.
+- When an in-progress login is using the remaining capacity under either
+  limit, another new identity can wait for that login to resolve, within its
+  existing login deadline. No ordering or fairness between waiting logins is guaranteed.
   Separate pre-login concurrency, rate and timeout limits still apply, including
   to reconnects. A pre-login rejection can therefore prevent a replacement.
+- Callsign validation does not authenticate the person connecting. An accepted
+  same-identity login can displace an existing session.
 - The greeting can include dialect, grid, noise, and dedupe status from config.
 - Dialect choice and filter state are persisted per callsign.
 - If `NEARBY` is active, the login greeting warns the user.

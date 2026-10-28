@@ -60,6 +60,15 @@ Configuration is split by concern so you only edit the relevant file:
 
 - `app.yaml` - deployment/runtime settings for server identity, stats interval, console UI, system logging, propagation logging, and optional dropped-call logs.
 - `runtime.yaml` - deployment/runtime settings plus operator policy for default filters, telnet messages, and `who_spots_me.window_minutes`.
+- `runtime.yaml` requires `telnet.max_sessions_per_base_call`, a nonnegative
+  integer. The shipped value `10` limits registered sessions per normalized
+  base callsign; `0` disables this limit. The value is operator policy, not a
+  calibrated threshold. The global `telnet.max_connections` limit and separate
+  pre-login gates continue to apply. See [telnet login](../../telnet/README.md#login-and-session-behavior).
+- To deploy the station limit, add this key to the active private `runtime.yaml`
+  and deploy the updated executable together. The updated executable fails
+  startup if the key is missing or invalid. An older executable ignores the key
+  and does not enforce the station limit.
 - `ingest.yaml` - deployment/runtime settings for RBN/PSKReporter/human/DXSummit source enablement, source cadence, and call cache bounds.
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.
