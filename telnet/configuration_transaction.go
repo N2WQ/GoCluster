@@ -38,6 +38,14 @@ func configurationStripe(callsign string) uint64 {
 // New handoffs may enter without membership, but must retain this lease through
 // authoritative record loading, preparation, metadata persistence and registration.
 func (s *Server) acquireConfiguration(c *Client, final, handoff bool, deadline time.Time) (func(), error) {
+	return s.acquireConfigurationWithRecheck(c, final, handoff, deadline, nil)
+}
+
+// A blocked login retries capacity at most twenty times per second. Each such
+// waiter owns one ticker, bounded by the existing prelogin admission limit.
+const sessionCapacityRecheckInterval = 50 * time.Millisecond
+
+func (s *Server) acquireConfigurationWithRecheck(c *Client, final, handoff bool, deadline time.Time, recheck func() bool) (func(), error) {
 	if s == nil {
 		return func() {}, nil
 	}
@@ -58,14 +66,48 @@ func (s *Server) acquireConfiguration(c *Client, final, handoff bool, deadline t
 	if final {
 		done, shutdown = nil, nil
 	}
+	// An uncontended acquisition needs no periodic timer. Only login admission
+	// supplies a recheck; ordinary saves and final teardown retain their behavior.
+	acquired := false
 	select {
 	case stripe <- struct{}{}:
-	case <-done:
-		return nil, errClientClosed
-	case <-shutdown:
-		return nil, errClientClosed
-	case <-expired:
-		return nil, fmt.Errorf("configuration handoff exceeded login deadline")
+		acquired = true
+	default:
+	}
+	if !acquired {
+		var ticker *time.Ticker
+		var retry <-chan time.Time
+		if recheck != nil {
+			ticker = time.NewTicker(sessionCapacityRecheckInterval)
+			retry = ticker.C
+			defer ticker.Stop()
+		}
+		for !acquired {
+			select {
+			case stripe <- struct{}{}:
+				acquired = true
+			case <-done:
+				return nil, errClientClosed
+			case <-shutdown:
+				return nil, errClientClosed
+			case <-expired:
+				return nil, fmt.Errorf("configuration handoff exceeded login deadline")
+			case <-retry:
+				if !deadline.IsZero() && !time.Now().Before(deadline) {
+					return nil, fmt.Errorf("configuration handoff exceeded login deadline")
+				}
+				select {
+				case <-done:
+					return nil, errClientClosed
+				case <-shutdown:
+					return nil, errClientClosed
+				default:
+				}
+				if recheck() {
+					return nil, errSessionFull
+				}
+			}
+		}
 	}
 	release := func() { <-stripe }
 	if !final {

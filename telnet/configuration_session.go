@@ -29,6 +29,21 @@ type restoredLogin struct {
 
 var errSessionFull = errors.New("maximum registered sessions reached")
 
+// loginCapacityFull makes only an early rejection decision. An unavailable lock
+// is not evidence of capacity; admission always rechecks while owning the stripe.
+func (s *Server) loginCapacityFull(c *Client) bool {
+	checked := s.clientsMutex.TryRLock()
+	full := false
+	if checked {
+		full = s.maxConnections > 0 && len(s.clients) >= s.maxConnections && s.clients[c.callsign] == nil
+		s.clientsMutex.RUnlock()
+	}
+	if s.testLoginCapacityProbe != nil {
+		s.testLoginCapacityProbe(c, checked, full)
+	}
+	return full
+}
+
 // acquireLoginCapacity owns the callsign stripe when it returns. New identities
 // reserve a slot before profile I/O; a current owner can be replaced in place.
 // Never wait for capacity with the stripe held: another callsign on the same
@@ -38,14 +53,14 @@ func (s *Server) acquireLoginCapacity(c *Client, deadline time.Time) (release fu
 		// A full registry can reject a different identity immediately, even if
 		// its stripe is busy with an unrelated save. A possible replacement must
 		// still acquire the stripe and recheck before any profile work.
-		if s.clientsMutex.TryRLock() {
-			full := s.maxConnections > 0 && len(s.clients) >= s.maxConnections && s.clients[c.callsign] == nil
-			s.clientsMutex.RUnlock()
-			if full {
-				return nil, false, errSessionFull
-			}
+		if s.loginCapacityFull(c) {
+			return nil, false, errSessionFull
 		}
-		release, err = s.acquireConfiguration(c, false, true, deadline)
+		var recheck func() bool
+		if s.maxConnections > 0 {
+			recheck = func() bool { return s.loginCapacityFull(c) }
+		}
+		release, err = s.acquireConfigurationWithRecheck(c, false, true, deadline, recheck)
 		if err != nil {
 			return nil, false, err
 		}
@@ -378,6 +393,9 @@ func (s *Server) unregisterClient(c *Client) {
 	}
 	total := len(s.clients)
 	s.clientsMutex.Unlock()
+	if removed && s.testAfterClientRemoval != nil {
+		s.testAfterClientRemoval(c)
+	}
 	release()
 	if removed {
 		s.notifyPeerMembershipChange()

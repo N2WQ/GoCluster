@@ -34,6 +34,16 @@ identity waits for the outcome and rechecks admission. Its existing login
 deadline, cancellation and shutdown bound the wait. No fairness or ordering
 between waiters is guaranteed.
 
+While a login waits for its configuration stripe, it also retries a
+nonblocking full-capacity check approximately every 50 milliseconds. A busy
+registry does not block the retry. If registered sessions fill the ceiling and
+the full normalized identity is absent, the login can be rejected without
+waiting for an unrelated stripe owner to finish. A still-registered matching
+identity retains the existing replacement path. The retry is subject to the
+original login deadline, cancellation and shutdown; scheduling and a busy
+registry can delay a check. It does not establish a hard deadline for blocked
+registry-lock acquisition or profile storage operations elsewhere in login.
+
 Runtime YAML requires a positive `telnet.max_connections`; a direct server
 caller can disable the registered-session ceiling with `MaxConnections` zero
 or less. This does not disable separate pre-login limits.
@@ -63,6 +73,10 @@ or less. This does not disable separate pre-login limits.
 - In-progress logins can delay other attempts until they complete or the
   waiting attempt's deadline expires. Pre-login limits can reject a reconnect
   before its callsign is evaluated.
+- Stripe waiters use bounded periodic capacity checks while the ceiling is
+  enabled. Scheduling and registry contention mean 50 milliseconds is a retry
+  interval, not a guaranteed response time. Pre-login admission bounds the
+  number of waiting client attempts.
 
 ### Operational impact
 
@@ -80,5 +94,5 @@ separate pre-login settings and diagnostics to investigate earlier refusals.
 - Related decisions: [ADR-0041](ADR-0041-telnet-tier-a-prelogin-admission-gate.md),
   [ADR-0244](ADR-0244-exact-configuration-persistence.md),
   [ADR-0322](ADR-0322-local-user-login-ssids.md).
-- Related TSRs: none.
+- Related TSRs: [TSR-0112](../troubleshooting/TSR-0112-full-session-stripe-wait.md).
 - Supersedes / superseded by: none.

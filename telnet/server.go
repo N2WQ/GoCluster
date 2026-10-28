@@ -176,6 +176,8 @@ type Server struct {
 	clientsMutex                        sync.RWMutex                               // Protects clients and session capacity accounting
 	sessionReservations                 int                                        // New identities preparing login; protected by clientsMutex
 	sessionCapacityChanged              chan struct{}                              // Waiters observe capacity changes under clientsMutex
+	testLoginCapacityProbe              func(*Client, bool, bool)                  // Optional deterministic admission-test observer
+	testAfterClientRemoval              func(*Client)                              // Optional deterministic teardown-test barrier
 	configurationTxnOnce                sync.Once                                  // Initializes fixed full-callsign transaction stripes
 	configurationTxnStripes             [64]chan struct{}                          // No historical callsign state is retained
 	yamlPreparationOnce                 sync.Once                                  // Initializes four bounded YAML preparation permits
