@@ -183,6 +183,9 @@ type Server struct {
 	testLoginCapacityProbe              func(*Client, bool, bool)                  // Optional deterministic admission-test observer
 	testLoginCapacityWait               func(*Client)                              // Optional observer after releasing the stripe to wait
 	testAfterClientRemoval              func(*Client)                              // Optional deterministic teardown-test barrier
+	testCommandPacingNow                func() time.Time                           // Optional monotonic-compatible pacing clock for tests
+	testCommandPacingWait               func(*Client)                              // Optional deterministic wait observer
+	testCommandPacingTimerStarted       func(*Client)                              // Optional observer after the wait timer starts
 	configurationTxnOnce                sync.Once                                  // Initializes fixed full-callsign transaction stripes
 	configurationTxnStripes             [64]chan struct{}                          // No historical callsign state is retained
 	yamlPreparationOnce                 sync.Once                                  // Initializes four bounded YAML preparation permits
@@ -262,6 +265,8 @@ type Server struct {
 	latency                             latencyMetrics                           // latency samples for delivery path
 	loginLineLimit                      int                                      // Maximum bytes accepted for login/callsign input
 	commandLineLimit                    int                                      // Maximum bytes accepted for post-login commands
+	commandRatePerSecond                int                                      // Per-session command rate; zero disables it
+	commandBurst                        int                                      // Initial and maximum per-session allowance
 	filterEngine                        *filterCommandEngine                     // Table-driven filter command parser/executor
 	reputationGate                      *reputation.Gate                         // Optional reputation gate for login metadata
 	startTime                           time.Time                                // Process start time for uptime tokens
@@ -759,6 +764,7 @@ type broadcastMetrics struct {
 	trackedSessionBases        atomic.Int64
 	ipSessionRejects           uint64
 	trackedSessionIPs          atomic.Int64
+	commandPacingWaits         atomic.Uint64
 }
 
 func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops, senderFailures uint64) {
@@ -2040,6 +2046,8 @@ type ServerOptions struct {
 	AdmissionLogMaxLines      int
 	LoginLineLimit            int
 	CommandLineLimit          int
+	CommandRatePerSecond      int
+	CommandBurst              int
 	DropExtremeRate           float64
 	DropExtremeWindow         time.Duration
 	DropExtremeMinAttempts    int
@@ -2136,6 +2144,8 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		admissionLogCounts:     make(map[string]uint64),
 		loginLineLimit:         config.LoginLineLimit,
 		commandLineLimit:       config.CommandLineLimit,
+		commandRatePerSecond:   config.CommandRatePerSecond,
+		commandBurst:           config.CommandBurst,
 		filterEngine:           newFilterCommandEngine(),
 		latency:                newLatencyMetrics(),
 		reputationGate:         opts.ReputationGate,
@@ -2350,6 +2360,9 @@ func normalizeHandshakeMode(value string) string {
 
 // Start begins listening for telnet connections
 func (s *Server) Start() error {
+	if err := validateCommandPacingOptions(s.commandRatePerSecond, s.commandBurst); err != nil {
+		return fmt.Errorf("invalid telnet command pacing configuration: %w", err)
+	}
 	addr := fmt.Sprintf(":%d", s.port)
 	listener, err := listenWithReuse(addr)
 	if err != nil {
@@ -3035,6 +3048,15 @@ func (s *Server) BroadcastMetricSnapshot() (queueDrops, clientDrops, senderFailu
 	return s.metrics.snapshot()
 }
 
+// CommandPacingWaits returns attempts that entered a pacing wait, including
+// waits later canceled. It is cumulative for this server and safe during Stop.
+func (s *Server) CommandPacingWaits() uint64 {
+	if s == nil {
+		return 0
+	}
+	return s.metrics.commandPacingWaits.Load()
+}
+
 // RejectMetricSnapshot returns asynchronous reject-path counters.
 func (s *Server) RejectMetricSnapshot() (handled, queueDrops uint64) {
 	if s == nil {
@@ -3673,6 +3695,13 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			preloginTicket.Release()
 		}
 	}()
+	// startWithListener is also used by internal fixtures. Invalid direct
+	// options must not silently disable pacing on that path.
+	if err := validateCommandPacingOptions(s.commandRatePerSecond, s.commandBurst); err != nil {
+		log.Printf("Invalid telnet command pacing configuration: %v", err)
+		_ = conn.Close()
+		return
+	}
 
 	spotQueueSize := s.clientBufferSize
 	if spotQueueSize <= 0 {
@@ -3936,6 +3965,11 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 		return
 	}
 
+	// A fresh session gets its own full burst. The reader owns the pacer.
+	var pacer *commandPacer
+	if s.commandRatePerSecond > 0 {
+		pacer = newCommandPacer(s.commandRatePerSecond, s.commandBurst, s.commandPacingNow())
+	}
 	// Read commands from client
 	for {
 		if err := client.setReadDeadline(time.Now().Add(s.readIdleTimeout)); err != nil {
@@ -3968,6 +4002,9 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			}
 			var inputErr *InputValidationError
 			if errors.As(err, &inputErr) {
+				if !s.awaitCommandAllowance(client, pacer) {
+					return
+				}
 				if msg := s.formatInputValidationMessage(inputErr); strings.TrimSpace(msg) != "" {
 					if !s.sendClientMessage(client, msg, "command validation") {
 						return
@@ -3978,8 +4015,11 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			log.Printf("Client %s disconnected: %v", client.callsign, err)
 			return
 		}
+		if !s.awaitCommandAllowance(client, pacer) {
+			return
+		}
 
-		// Treat blank lines as client keepalives: echo CRLF so idle clients see traffic.
+		// Blank lines are client keepalives; preserve the existing response path.
 		if strings.TrimSpace(line) == "" {
 			if !s.sendClientMessage(client, "\r\n", "command keepalive") {
 				return

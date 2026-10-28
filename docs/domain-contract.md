@@ -46,6 +46,31 @@ pressure.
 - Do not retain subslices of shared read buffers when data must outlive the read
   cycle.
 
+## Telnet command pacing
+
+- Pace post-login command attempts per session with an initially full token
+  bucket. The shipped rate is 5 per second with burst 30. Runtime YAML requires
+  integer `telnet.command_rate_per_second` in 0..1,000,000,000 and integer
+  `telnet.command_burst` in 1..1,000,000,000. A zero rate disables pacing.
+- Count each completed line, including blank keepalives, unknown commands and
+  machine headers, and each safely recovered invalid human line. Do not count
+  login input, Telnet negotiation, idle timeouts or framed YAML body lines.
+  Process attempts in order after a token is available. The limiter delays
+  excess attempts; it does not reject them or disconnect for their rate.
+- Preserve immediate terminal handling for reader-level unsafe failures. A
+  complete malformed machine header is paced before its existing dispatch and
+  terminal rules. Preserve whole-line recovery, machine framing, and no
+  dispatch of a rejected line or machine body as another command.
+- At most one attempt is read ahead, in addition to existing bounded transport
+  buffers. Reader echo, validation, recovery and their existing logs precede
+  pacing; pacing is not byte-flood protection. Shutdown and session replacement
+  cancel waits. A peer EOF may not be observed until the next read or writer
+  failure. A fresh connection starts a fresh burst; sessions do not share rates.
+- `Command pacing waits` is the cumulative count of attempts that enter a
+  pacing wait, including waits later cancelled, reset on server restart. It is
+  not a count of users, rejected commands or total wait time. The shipped values
+  have not been calibrated against production startup or contest workloads.
+
 ## Telnet session capacity
 
 - A positive `telnet.max_connections` is a strict ceiling on registered telnet

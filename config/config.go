@@ -201,6 +201,8 @@ type TelnetConfig struct {
 	MaxConnections         int  `yaml:"max_connections"`
 	MaxSessionsPerBaseCall int  `yaml:"max_sessions_per_base_call"`
 	MaxSessionsPerIP       int  `yaml:"max_sessions_per_ip"`
+	CommandRatePerSecond   int  `yaml:"command_rate_per_second"`
+	CommandBurst           int  `yaml:"command_burst"`
 	// MaxPreloginSessions bounds unauthenticated sessions so socket floods do not
 	// consume unbounded resources before callsign login completes.
 	MaxPreloginSessions int `yaml:"max_prelogin_sessions"`
@@ -1588,6 +1590,9 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 		diagnostics.addError(errText)
 	}
 	if err := validateRawPeeringMaxPeers(raw); err != nil {
+		diagnostics.addError(err.Error())
+	}
+	for _, err := range validateRawTelnetCommandRate(raw) {
 		diagnostics.addError(err.Error())
 	}
 

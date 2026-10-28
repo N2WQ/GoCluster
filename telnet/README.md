@@ -131,6 +131,37 @@ their configured reputation-drop diagnostics for the detailed cause.
 
 The handshake transcript tests in this package cover the visible login sequence.
 
+## Command Pacing
+
+Each logged-in connection has its own command allowance. The shipped settings
+allow a burst of 30 attempts, replenished at 5 attempts per second. The allowance
+starts full for each session. After it is used, the server waits for capacity
+before processing the next attempt; it does not reject or disconnect the client
+because of the rate. Commands stay in order, so pipelined commands, keepalives,
+and logout may take longer. Actual startup and contest traffic have not been
+measured against these values.
+
+An attempt is a complete command line, including an empty keepalive, an unknown
+command, a machine request header, or an invalid or overlong human line recovered
+at a safe boundary. Telnet negotiation and the lines of a framed YAML upload do
+not consume separate allowances. Login input has its existing separate controls.
+An unsafe partial line or reader-level framing error keeps its existing immediate
+terminal handling; a complete invalid machine header is paced before its normal
+error handling. Existing machine framing and whole-line recovery remain in force.
+
+The server reads at most one command attempt ahead of pacing, in addition to
+existing bounded input buffers. Input echo, validation and recovery occur while
+reading, before pacing; this is not a byte-rate limit. Shutdown or replacement
+cancels a wait. A remote disconnect may be noticed only on the next read or a
+writer failure. Each connection has its own allowance, so reconnecting starts a
+new burst and several sessions do not share a rate.
+
+Operators set `telnet.command_rate_per_second` and `telnet.command_burst` in
+`runtime.yaml`; rate `0` disables pacing. The Telnet status display reports
+`Command pacing waits`, the cumulative number of attempts that began waiting,
+including waits later cancelled. The count resets when the server restarts; it
+does not count unique users, rejected commands, or total wait time.
+
 ## Rejected Input And Recovery
 
 An invalid or overlong human line is rejected as a whole. Text after the rejected

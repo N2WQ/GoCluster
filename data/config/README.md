@@ -79,6 +79,17 @@ Configuration is split by concern so you only edit the relevant file:
   deploy the updated executable together. The updated executable fails startup
   if the key is missing or invalid. An older executable ignores the key and
   does not enforce the IP limit.
+- `runtime.yaml` requires `telnet.command_rate_per_second` and
+  `telnet.command_burst`. The shipped values are `5` commands per second and a
+  burst of `30` per session. Rate `0` disables pacing. The rate must be an
+  integer from 0 through 1,000,000,000; burst must be an integer from 1 through
+  1,000,000,000, including when pacing is disabled. These are operator choices,
+  not thresholds calibrated against production startup or contest traffic.
+- To deploy command pacing, add both keys to the active private `runtime.yaml`
+  and deploy the updated executable together. Missing or invalid keys prevent
+  startup. An older executable does not enforce command pacing. See [Telnet
+  command pacing](../../telnet/README.md#command-pacing) for the counted input,
+  wait behavior, and operating limits.
 - `ingest.yaml` - deployment/runtime settings for RBN/PSKReporter/human/DXSummit source enablement, source cadence, and call cache bounds.
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.

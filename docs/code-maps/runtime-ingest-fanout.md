@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d09aa775bfb8e883`
+- Source fingerprint: `74796ed1f49b5445`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 12 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 151 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 153 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 54 | 129 |
+| `dxcluster/telnet` | `telnet` | 55 | 131 |
 
 ## In-Scope Package Edges
 
@@ -311,6 +311,8 @@ Test files:
 - `internal/cluster/support_basis_delivery_test.go`
 - `internal/cluster/support_basis_family_bench_test.go`
 - `internal/cluster/telnet_base_session_config_test.go`
+- `internal/cluster/telnet_command_pacing_status_test.go`
+- `internal/cluster/telnet_command_rate_config_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_test.go`
 - `internal/cluster/telnet_ip_session_config_test.go`
@@ -644,6 +646,7 @@ Source files:
 - `telnet/boolean_rule_readback.go`
 - `telnet/bulletin_dedupe.go`
 - `telnet/bulletin_history.go`
+- `telnet/command_pacing.go`
 - `telnet/comment_commands.go`
 - `telnet/comment_input.go`
 - `telnet/configuration_admission.go`
@@ -710,6 +713,8 @@ Test files:
 - `telnet/cc_filter_help_contract_test.go`
 - `telnet/command_fixture_options_test.go`
 - `telnet/command_fixture_test.go`
+- `telnet/command_pacing_test.go`
+- `telnet/command_pacing_transport_test.go`
 - `telnet/comment_benchmark_test.go`
 - `telnet/comment_input_test.go`
 - `telnet/configuration_admission_test.go`
@@ -828,6 +833,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0328 | Accepted | 2026-10-28 | telnet commands, input pacing, operator settings | `area:commands, area:telnet` |
 | ADR-0327 | Accepted | 2026-10-28 | telnet admission, IP capacity, reconnect, persistence | `area:telnet` |
 | ADR-0326 | Accepted | 2026-10-28 | telnet admission, station capacity, reconnect, persistence | `area:telnet` |
 | ADR-0325 | Accepted | 2026-10-28 | telnet admission, session capacity, reconnect, persistence | `area:telnet` |

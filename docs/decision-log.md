@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0328 | Per-Session Telnet Command Pacing | Accepted | 2026-10-28 | telnet commands, input pacing, operator settings | none; complements ADR-0325, ADR-0326 and ADR-0327 | none | [ADR-0328](decisions/ADR-0328-per-session-telnet-command-pacing.md) |
 | ADR-0327 | Per-IP Telnet Session Ceiling | Accepted | 2026-10-28 | telnet admission, IP capacity, reconnect, persistence | none; complements ADR-0325 and ADR-0326 | none | [ADR-0327](decisions/ADR-0327-per-ip-telnet-session-ceiling.md) |
 | ADR-0326 | Per-Base Callsign Session Ceiling | Accepted | 2026-10-28 | telnet admission, station capacity, reconnect, persistence | none; complements ADR-0325 | none | [ADR-0326](decisions/ADR-0326-per-base-callsign-session-ceiling.md) |
 | ADR-0325 | Strict Telnet Session Ceiling | Accepted | 2026-10-28 | telnet admission, session capacity, reconnect, persistence | none; complements ADR-0041 and ADR-0244 | none | [ADR-0325](decisions/ADR-0325-strict-telnet-session-ceiling.md) |

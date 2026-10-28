@@ -1184,6 +1184,8 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		MaxConnections:            r.cfg.Telnet.MaxConnections,
 		MaxSessionsPerBaseCall:    r.cfg.Telnet.MaxSessionsPerBaseCall,
 		MaxSessionsPerIP:          r.cfg.Telnet.MaxSessionsPerIP,
+		CommandRatePerSecond:      r.cfg.Telnet.CommandRatePerSecond,
+		CommandBurst:              r.cfg.Telnet.CommandBurst,
 		BroadcastWorkers:          r.cfg.Telnet.BroadcastWorkers,
 		BroadcastQueue:            r.cfg.Telnet.BroadcastQueue,
 		WorkerQueue:               r.cfg.Telnet.WorkerQueue,

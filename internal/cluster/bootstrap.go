@@ -807,6 +807,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		}
 
 		var queueDrops, clientDrops, senderFailures uint64
+		var commandPacingWaits uint64
 		var preloginActive int64
 		var preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts uint64
 		var bulletinDedupe telnet.BulletinDedupeSnapshot
@@ -814,6 +815,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		var clientCount int
 		if telnetSrv != nil {
 			queueDrops, clientDrops, senderFailures = telnetSrv.BroadcastMetricSnapshot()
+			commandPacingWaits = telnetSrv.CommandPacingWaits()
 			preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts, _, _ = telnetSrv.PreloginMetricSnapshot()
 			bulletinDedupe = telnetSrv.BulletinDedupeSnapshot()
 			history := telnetSrv.BulletinHistoryStats()
@@ -901,6 +903,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			toxicityLine,
 			pipelineLine, // 7
 			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W). Bulletins: %d accepted / %d suppressed / %d evicted / %d tracked. Prelogin: %d active / rejects %d (G) %d (R) %d (C) / %d (T)%s", clientCount, queueDrops, clientDrops, senderFailures, bulletinDedupe.Accepted, bulletinDedupe.Suppressed, bulletinDedupe.Evicted, bulletinDedupe.Tracked, preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts, bulletinHistorySummary), // 8
+			fmt.Sprintf("Telnet command pacing waits: %d", commandPacingWaits),
 		)
 
 		prevSourceCounts = sourceTotals
@@ -4457,8 +4460,13 @@ func formatNetworkSummaryLine(telnetSrv *telnet.Server) string {
 
 func formatNetworkLines(telnetSrv *telnet.Server, clientList []string) []string {
 	clientLines := formatClientListLines(clientList)
-	lines := make([]string, 0, 1+len(clientLines))
+	lines := make([]string, 0, 2+len(clientLines))
 	lines = append(lines, formatNetworkSummaryLine(telnetSrv))
+	var commandPacingWaits uint64
+	if telnetSrv != nil {
+		commandPacingWaits = telnetSrv.CommandPacingWaits()
+	}
+	lines = append(lines, fmt.Sprintf("[yellow]Command pacing waits[-]: %d", commandPacingWaits))
 	lines = append(lines, clientLines...)
 	return lines
 }
