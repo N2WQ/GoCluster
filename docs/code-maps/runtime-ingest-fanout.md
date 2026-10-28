@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `47261d156fad20df`
+- Source fingerprint: `e538ffea87cdedec`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 32 | 148 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 53 | 112 |
+| `dxcluster/telnet` | `telnet` | 53 | 113 |
 
 ## In-Scope Package Edges
 
@@ -735,6 +735,7 @@ Test files:
 - `telnet/human_preference_publish_test.go`
 - `telnet/human_preference_stage_test.go`
 - `telnet/latency_test.go`
+- `telnet/login_ssid_test.go`
 - `telnet/machine_commands_test.go`
 - `telnet/machine_deadline_lifecycle_test.go`
 - `telnet/machine_failure_persistence_test.go`
@@ -803,6 +804,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| [ADR-0322](docs/decisions/ADR-0322-local-user-login-ssids.md) | Accepted | 2026-10-28 | telnet, login syntax, SSID, profile identity | `area:telnet, path:telnet` |
 | [ADR-0314](docs/decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md) | Accepted | 2026-10-19 | test paths, native Windows ownership, runner identity | `path:internal/cluster` |
 | [ADR-0311](docs/decisions/ADR-0311-stabilizer-transition-matrix.md) | Accepted | 2026-10-16 | console, terminal-path accounting, bounded stats | `path:internal/cluster` |
 | [ADR-0309](docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md) | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | `path:telnet` |

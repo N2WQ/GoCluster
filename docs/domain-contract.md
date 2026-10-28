@@ -24,6 +24,12 @@ pressure.
 
 ## Input parsing
 
+- After existing login callsign normalization, local user admission permits at
+  most one final hyphen and one or two ASCII SSID digits (`0` through `99`).
+  Rejection occurs before CTY/license lookup and profile restoration; accepted
+  full normalized spellings, including leading zeroes, retain separate records.
+- Existing stored profiles for rejected logins are not migrated or deleted.
+  Spot, peer and shared callsign validation contracts are unchanged.
 - Use streaming parse with bounded per-connection buffers.
 - Default human bounds are 32 bytes for login and 128 bytes for commands;
   configured line limits apply before dispatch.

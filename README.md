@@ -268,6 +268,8 @@ leaving NEARBY unchanged. Save a preset first to retain the current setup.
 Your preferences normally save automatically and return when you reconnect
 with the same full login callsign. `N2WQ` and `N2WQ-1` have separate saved
 preferences. A numeric suffix such as `-1` is called an **SSID**.
+For login, use one or two digits from `0` to `99`. `-01` and `-1` have
+separate saved preferences. A longer or non-numeric SSID is rejected.
 
 A preset is a named snapshot of your filters and preferences:
 

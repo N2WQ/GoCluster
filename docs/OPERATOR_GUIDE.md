@@ -560,6 +560,11 @@ framing contract, error codes, and limits.
 
 ### Login Identity And Diagnostics
 
+User login permits one optional final SSID of one or two ASCII digits, `0`
+through `99`, after existing callsign normalization. `-01` and `-1` remain
+distinct login profiles. Rejected older identities keep their saved files, but
+cannot reconnect with the rejected spelling; files are not migrated or deleted.
+
 Numeric SSIDs on the spotted DX call are removed regardless of ingest source.
 For example, a new DX call of `K1ABC-2` is materialized and displayed as
 `K1ABC`. Telnet login identity remains the full login call, while manual spots,

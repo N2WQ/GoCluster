@@ -90,7 +90,23 @@ func (s *Server) validateLoginCallsign(call string) loginValidationResult {
 // invalid input cannot force expensive reference-data work.
 func isValidLoginCallsign(call string) bool {
 	call = strings.TrimSpace(call)
-	return spot.IsValidNormalizedCallsign(call) && containsASCIILetter(call) && !strings.Contains(call, "#")
+	if !spot.IsValidNormalizedCallsign(call) || !containsASCIILetter(call) || strings.Contains(call, "#") {
+		return false
+	}
+	// The SSID is part of the full login identity, so validate it without
+	// canonicalizing its spelling or changing shared spot/peer call rules.
+	if dash := strings.IndexByte(call, '-'); dash >= 0 {
+		ssid := call[dash+1:]
+		if len(ssid) < 1 || len(ssid) > 2 {
+			return false
+		}
+		for i := 0; i < len(ssid); i++ {
+			if ssid[i] < '0' || ssid[i] > '9' {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // containsASCIILetter keeps numeric-only tokens from being treated as valid

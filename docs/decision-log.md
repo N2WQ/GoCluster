@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0322 | Local User Login SSIDs | Accepted | 2026-10-28 | telnet, login syntax, SSID, profile identity | refines ADR-0110 for local login SSIDs | none | `docs/decisions/ADR-0322-local-user-login-ssids.md` |
 | ADR-0321 | Boolean Canonical DXCC Input | Accepted | 2026-10-23 | DXDXCC/DEDXCC, human/YAML input, request CTY snapshot | Numeric-only Boolean input of ADR-0317; refines restoration of ADR-0248 | none | [ADR-0321](decisions/ADR-0321-boolean-canonical-dxcc-input.md) |
 | ADR-0320 | Explicit Source Filtering | Accepted | 2026-10-22 | Boolean rules, SOURCE, readback, shipped defaults | Implicit source policy/readback and shipped HUMAN-only selection of ADR-0319 | none | [ADR-0320](decisions/ADR-0320-explicit-source-filtering.md) |
 | ADR-0319 | Boolean Onboarding And Source Default | Accepted | 2026-10-22 | Boolean rules, login, source defaults, exact readback | Modes-only reset clause of ADR-0318; source/readback clauses of ADR-0317 | ADR-0320 replaces implicit source policy/readback and shipped HUMAN-only selection | [ADR-0319](decisions/ADR-0319-boolean-onboarding-and-source-default.md) |
@@ -235,7 +236,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0113 | Support-Agent PowerShell Script Retrieval | Accepted | 2026-05-04 | customgpt, supportability, scripts, actions | - | - | `docs/decisions/ADR-0113-support-agent-powershell-script-retrieval.md` |
 | ADR-0112 | Support-Agent Deployment Bundle Isolation | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0112-support-agent-deployment-bundle-isolation.md` |
 | ADR-0111 | Support-Agent Large-File Recovery | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0111-support-agent-large-file-recovery.md` |
-| ADR-0110 | Call-Like CTY Admission | Accepted | 2026-05-04 | spot, CTY, telnet, ingest, peer, replay | ADR-0090 | - | `docs/decisions/ADR-0110-call-like-cty-admission.md` |
+| ADR-0110 | Call-Like CTY Admission | Accepted | 2026-05-04 | spot, CTY, telnet, ingest, peer, replay | ADR-0090 | ADR-0322 refines local-login SSID syntax | `docs/decisions/ADR-0110-call-like-cty-admission.md` |
 | ADR-0109 | Support-Agent Bearer Authentication | Superseded | 2026-05-04 | customgpt, supportability, actions, security | - | ADR-0257 | `docs/decisions/ADR-0109-support-agent-bearer-auth.md` |
 | ADR-0108 | Repo-Derived Support-Agent Routes | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0108-repo-derived-support-agent-routes.md` |
 | ADR-0107 | Support-Agent Action Contract Alignment | Accepted | 2026-05-04 | customgpt, supportability, actions | - | - | `docs/decisions/ADR-0107-support-agent-action-contract-alignment.md` |

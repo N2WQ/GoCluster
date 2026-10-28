@@ -4,6 +4,8 @@
 - Date: 2026-05-04
 - Decision Origin: Incident
 
+Local user-login SSID syntax is refined by [ADR-0322](ADR-0322-local-user-login-ssids.md).
+
 ## Context
 ADR-0090 added CTY-backed local telnet login validation, but reused the shared
 callsign syntax predicate and CTY portable lookup as an admission proof. That

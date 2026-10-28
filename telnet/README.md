@@ -13,6 +13,12 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
   per-user state is loaded.
 - Valid login tokens must include a concrete call-like identity segment such as
   `K1ABC`, `DL6LD`, `4U1UN`, `P5/N1K`, or `W6TEST-1`.
+- After existing callsign normalization, an optional login SSID must be one
+  final hyphen followed by one or two ASCII digits (`0` through `99`). For
+  example, `K1ABC-01` is valid and `K1ABC-100` is not. `K1ABC-1/P` is
+  normalized to `K1ABC-1`. The spelling `-01` remains distinct from `-1`.
+  Rejected logins do not load or change a user profile; old records are not
+  migrated or deleted.
 - When CTY data is loaded, login calls must resolve to a known CTY prefix.
 - Base US calls (ADIF 291) must pass FCC validation; Canadian base calls (ADIF 1, 211, 252) must pass ISED assignment/plausibility checks when enabled and available. Portable location prefixes do not change the licensing source.
 - Local TEST calls with CTY-valid US prefixes, such as `W6TEST` or `W6TEST-1`,
