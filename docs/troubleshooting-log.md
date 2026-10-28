@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0113 | Telnet Station Diagnostics Contention | Monitoring | 2026-10-28 | telnet diagnostics, shutdown, rejection cleanup | ADR-0326 | `docs/troubleshooting/TSR-0113-telnet-station-diagnostics-contention.md` |
 | TSR-0112 | Full Telnet Server Stripe Wait | Monitoring | 2026-10-28 | telnet admission, session ceiling, configuration handoff | ADR-0325 | `docs/troubleshooting/TSR-0112-full-session-stripe-wait.md` |
 | TSR-0111 | Bulletin History Recovery and Display | Monitoring | 2026-10-28 | WWV/WCY, snapshot recovery, login display | ADR-0324 | `docs/troubleshooting/TSR-0111-bulletin-history-recovery-and-display.md` |
 | TSR-0110 | Boolean DXCC Prefix Input | Resolved | 2026-10-23 | canonical labels, human/YAML preparation, numeric persistence | ADR-0321 | `docs/troubleshooting/TSR-0110-boolean-dxcc-prefix-input.md` |

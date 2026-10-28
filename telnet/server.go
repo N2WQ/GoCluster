@@ -752,6 +752,7 @@ type broadcastMetrics struct {
 	preloginStateFullRejects   uint64
 	preloginActive             int64
 	baseSessionRejects         uint64
+	trackedSessionBases        atomic.Int64
 }
 
 func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops, senderFailures uint64) {
@@ -812,9 +813,6 @@ func (s *Server) preloginAdmissionSnapshot() preloginAdmissionSnapshot {
 	trackedASNs := len(s.preloginByASN)
 	trackedCountries := len(s.preloginByCountry)
 	s.preloginMu.Unlock()
-	s.clientsMutex.RLock()
-	trackedSessionBases := len(s.baseSessionCounts)
-	s.clientsMutex.RUnlock()
 	return preloginAdmissionSnapshot{
 		Active:              atomic.LoadInt64(&s.metrics.preloginActive),
 		RejectGlobalCap:     atomic.LoadUint64(&s.metrics.preloginRejectGlobalCap),
@@ -831,7 +829,7 @@ func (s *Server) preloginAdmissionSnapshot() preloginAdmissionSnapshot {
 		TrackedSubnets:      trackedSubnets,
 		TrackedASNs:         trackedASNs,
 		TrackedCountries:    trackedCountries,
-		TrackedSessionBases: trackedSessionBases,
+		TrackedSessionBases: int(s.metrics.trackedSessionBases.Load()),
 		BaseSessionRejects:  atomic.LoadUint64(&s.metrics.baseSessionRejects),
 	}
 }
@@ -1270,9 +1268,7 @@ func (s *Server) logAdmissionReject(reason preloginRejectReason, addr string) {
 	s.preloginMu.Unlock()
 	if shouldSample {
 		if reason == "max_sessions_per_base_call" {
-			s.clientsMutex.RLock()
-			trackedBases := len(s.baseSessionCounts)
-			s.clientsMutex.RUnlock()
+			trackedBases := s.metrics.trackedSessionBases.Load()
 			log.Printf("Admission reject sample: reason=%s addr=%s tracked_session_bases=%d", key, addr, trackedBases)
 		} else {
 			log.Printf("Admission reject sample: reason=%s addr=%s", key, addr)

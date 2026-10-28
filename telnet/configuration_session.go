@@ -49,6 +49,9 @@ func (s *Server) setBaseSessionCountLocked(base string, count baseSessionCount) 
 		}
 		s.baseSessionCounts[base] = count
 	}
+	// Publish diagnostic cardinality without making readers acquire the registry
+	// lock. Admission decisions continue to use the map while holding that lock.
+	s.metrics.trackedSessionBases.Store(int64(len(s.baseSessionCounts)))
 }
 
 // A registered exact identity is a replacement, not a new occupied slot.

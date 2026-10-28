@@ -45,6 +45,11 @@ Keep station accounting tied to registered sessions and active reservations;
 remove entries when no longer owned so historical callsigns do not accumulate.
 Expose its current size in the admission metrics snapshot and sampled station
 rejection logs. Aggregate rejection logs retain the station-specific reason.
+Publish the tracked-station count as an observational atomic gauge while the
+registry lock protects map updates. Reading that count in the snapshot or
+sampled rejection log must not acquire the registry lock. The registry map,
+not the gauge, remains authoritative for admission; the overall metrics
+snapshot is not a single atomic transaction.
 Preserve per-SSID configuration handoff and the retired-owner save fence.
 
 ## Alternatives considered
@@ -95,5 +100,6 @@ separate. No saved-profile migration is required.
 - Related decisions: [ADR-0325](ADR-0325-strict-telnet-session-ceiling.md),
   [ADR-0244](ADR-0244-exact-configuration-persistence.md),
   [ADR-0322](ADR-0322-local-user-login-ssids.md).
-- Related TSRs: [TSR-0112](../troubleshooting/TSR-0112-full-session-stripe-wait.md).
+- Related TSRs: [TSR-0112](../troubleshooting/TSR-0112-full-session-stripe-wait.md),
+  [TSR-0113](../troubleshooting/TSR-0113-telnet-station-diagnostics-contention.md).
 - Supersedes / superseded by: none.
