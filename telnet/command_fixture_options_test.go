@@ -30,6 +30,7 @@ func commandFixtureOptions(cfg *config.Config, db *cty.CTYDatabase) ServerOption
 		DialectWelcomeMessage: c.DialectWelcomeMessage, DialectSourceDefault: c.DialectSourceDefaultLabel,
 		DialectSourcePersisted: c.DialectSourcePersistedLabel, PathStatusMessage: c.PathStatusMessage,
 		MaxConnections: c.MaxConnections, MaxSessionsPerBaseCall: c.MaxSessionsPerBaseCall,
+		MaxSessionsPerIP:         c.MaxSessionsPerIP,
 		MaxPreloginSessions:      c.MaxPreloginSessions,
 		PreloginTimeout:          time.Duration(c.PreloginTimeoutSeconds) * time.Second,
 		PreloginConcurrencyPerIP: c.PreloginConcurrencyPerIP,

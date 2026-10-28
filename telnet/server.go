@@ -177,8 +177,11 @@ type Server struct {
 	sessionReservations                 int                                        // New identities preparing login; protected by clientsMutex
 	maxSessionsPerBaseCall              int                                        // Per-station session ceiling; zero disables it
 	baseSessionCounts                   map[string]baseSessionCount                // Only stations with live owners or reservations
+	maxSessionsPerIP                    int                                        // Per-peer IP session ceiling; zero disables it
+	ipSessionCounts                     map[string]ipSessionCount                  // Only IPs with live owners or reservations
 	sessionCapacityChanged              chan struct{}                              // Waiters observe capacity changes under clientsMutex
 	testLoginCapacityProbe              func(*Client, bool, bool)                  // Optional deterministic admission-test observer
+	testLoginCapacityWait               func(*Client)                              // Optional observer after releasing the stripe to wait
 	testAfterClientRemoval              func(*Client)                              // Optional deterministic teardown-test barrier
 	configurationTxnOnce                sync.Once                                  // Initializes fixed full-callsign transaction stripes
 	configurationTxnStripes             [64]chan struct{}                          // No historical callsign state is retained
@@ -397,6 +400,7 @@ type Client struct {
 	connected               time.Time              // Timestamp when client connected
 	server                  *Server                // Back-reference to server for formatting/helpers
 	address                 string                 // Client's IP address
+	ipSessionKey            string                 // Registered IP quota identity; guarded by clientsMutex
 	recentIPs               []string               // Most-recent-first IP history for this callsign
 	spotChan                chan *spotEnvelope     // Buffered channel for spot delivery (configurable capacity)
 	controlChan             chan controlMessage    // Buffered channel for control/bulletin delivery
@@ -753,6 +757,8 @@ type broadcastMetrics struct {
 	preloginActive             int64
 	baseSessionRejects         uint64
 	trackedSessionBases        atomic.Int64
+	ipSessionRejects           uint64
+	trackedSessionIPs          atomic.Int64
 }
 
 func (m *broadcastMetrics) snapshot() (queueDrops, clientDrops, senderFailures uint64) {
@@ -801,6 +807,8 @@ type preloginAdmissionSnapshot struct {
 	TrackedCountries    int
 	TrackedSessionBases int
 	BaseSessionRejects  uint64
+	TrackedSessionIPs   int
+	IPSessionRejects    uint64
 }
 
 func (s *Server) preloginAdmissionSnapshot() preloginAdmissionSnapshot {
@@ -831,6 +839,8 @@ func (s *Server) preloginAdmissionSnapshot() preloginAdmissionSnapshot {
 		TrackedCountries:    trackedCountries,
 		TrackedSessionBases: int(s.metrics.trackedSessionBases.Load()),
 		BaseSessionRejects:  atomic.LoadUint64(&s.metrics.baseSessionRejects),
+		TrackedSessionIPs:   int(s.metrics.trackedSessionIPs.Load()),
+		IPSessionRejects:    atomic.LoadUint64(&s.metrics.ipSessionRejects),
 	}
 }
 
@@ -928,6 +938,13 @@ func remoteIP(addr net.Addr) string {
 		return parsed.String()
 	}
 	return host
+}
+
+func peerAddressString(addr net.Addr) string {
+	if addr == nil {
+		return ""
+	}
+	return addr.String()
 }
 
 func (s *Server) releasePrelogin(ip string) {
@@ -1267,10 +1284,14 @@ func (s *Server) logAdmissionReject(reason preloginRejectReason, addr string) {
 	}
 	s.preloginMu.Unlock()
 	if shouldSample {
-		if reason == "max_sessions_per_base_call" {
+		switch reason {
+		case "max_sessions_per_base_call":
 			trackedBases := s.metrics.trackedSessionBases.Load()
 			log.Printf("Admission reject sample: reason=%s addr=%s tracked_session_bases=%d", key, addr, trackedBases)
-		} else {
+		case "max_sessions_per_ip":
+			trackedIPs := s.metrics.trackedSessionIPs.Load()
+			log.Printf("Admission reject sample: reason=%s addr=%s tracked_session_ips=%d", key, addr, trackedIPs)
+		default:
 			log.Printf("Admission reject sample: reason=%s addr=%s", key, addr)
 		}
 	}
@@ -1977,6 +1998,7 @@ type ServerOptions struct {
 	ClusterCall               string
 	MaxConnections            int
 	MaxSessionsPerBaseCall    int
+	MaxSessionsPerIP          int
 	BroadcastWorkers          int
 	BroadcastQueue            int
 	WorkerQueue               int
@@ -2049,6 +2071,7 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		welcomeMessage:         config.WelcomeMessage,
 		maxConnections:         config.MaxConnections,
 		maxSessionsPerBaseCall: config.MaxSessionsPerBaseCall,
+		maxSessionsPerIP:       config.MaxSessionsPerIP,
 		duplicateLoginMsg:      config.DuplicateLoginMsg,
 		greetingTemplate:       config.LoginGreeting,
 		loginPrompt:            config.LoginPrompt,
@@ -3616,7 +3639,7 @@ func (s *Server) acceptConnections() {
 
 		ticket, rejectReason := s.tryAcquirePrelogin(conn.RemoteAddr())
 		if ticket == nil {
-			addr := conn.RemoteAddr().String()
+			addr := peerAddressString(conn.RemoteAddr())
 			total := s.recordPreloginReject(rejectReason)
 			s.logAdmissionReject(rejectReason, addr)
 			s.reportLoginAttempt("blocked", string(rejectReason), "", addr, "")
@@ -3641,7 +3664,7 @@ func (s *Server) acceptConnections() {
 
 // handleClient manages a single client connection
 func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
-	address := conn.RemoteAddr().String()
+	address := peerAddressString(conn.RemoteAddr())
 	log.Printf("New connection from %s", address)
 	s.reportConnection("connect", "accepted", "", address)
 	preloginTicket := ticket
@@ -3803,11 +3826,16 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	client.callsign = callsign
 	restored, err := s.restoreAndRegisterClient(client, loginTime, loginDeadline)
 	if err != nil {
-		if errors.Is(err, errSessionFull) || errors.Is(err, errBaseSessionFull) {
+		if errors.Is(err, errSessionFull) || errors.Is(err, errBaseSessionFull) || errors.Is(err, errIPSessionFull) || errors.Is(err, errInvalidSessionIP) {
 			reason, message := preloginRejectReason("max_connections"), "Server full. Try again later.\n"
 			if errors.Is(err, errBaseSessionFull) {
 				reason, message = "max_sessions_per_base_call", "Station session limit reached. Try again later.\n"
 				atomic.AddUint64(&s.metrics.baseSessionRejects, 1)
+			} else if errors.Is(err, errIPSessionFull) {
+				reason, message = "max_sessions_per_ip", "IP session limit reached. Try again later.\n"
+				atomic.AddUint64(&s.metrics.ipSessionRejects, 1)
+			} else if errors.Is(err, errInvalidSessionIP) {
+				reason, message = "invalid_session_ip", "Unable to verify connection address.\n"
 			}
 			s.logAdmissionReject(reason, address)
 			if client.SendAndClose(message) == nil {

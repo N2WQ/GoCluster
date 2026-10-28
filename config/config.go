@@ -200,6 +200,7 @@ type TelnetConfig struct {
 	TLSEnabled             bool `yaml:"tls_enabled"`
 	MaxConnections         int  `yaml:"max_connections"`
 	MaxSessionsPerBaseCall int  `yaml:"max_sessions_per_base_call"`
+	MaxSessionsPerIP       int  `yaml:"max_sessions_per_ip"`
 	// MaxPreloginSessions bounds unauthenticated sessions so socket floods do not
 	// consume unbounded resources before callsign login completes.
 	MaxPreloginSessions int `yaml:"max_prelogin_sessions"`

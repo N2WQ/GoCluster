@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -29,8 +31,10 @@ type restoredLogin struct {
 }
 
 var (
-	errSessionFull     = errors.New("maximum registered sessions reached")
-	errBaseSessionFull = errors.New("maximum sessions for station reached")
+	errSessionFull      = errors.New("maximum registered sessions reached")
+	errBaseSessionFull  = errors.New("maximum sessions for station reached")
+	errIPSessionFull    = errors.New("maximum sessions for IP reached")
+	errInvalidSessionIP = errors.New("connection peer is not an IP address")
 )
 
 // Entries exist only while a station has registered sessions or reservations.
@@ -38,6 +42,49 @@ var (
 type baseSessionCount struct {
 	registered int
 	pending    int
+}
+
+// IP entries are retained only while a registered session or reservation owns
+// them; the client registry mutex protects all count transitions.
+type ipSessionCount struct {
+	registered int
+	pending    int
+}
+
+// A new identity reserves global/station capacity; a cross-IP replacement
+// reserves only its destination IP. Empty fields mean no reservation.
+type loginReservation struct {
+	identity bool
+	ip       string
+}
+
+func (r loginReservation) active() bool { return r.identity || r.ip != "" }
+
+// sessionIP derives the quota key from the observed peer, never a stored or
+// forwarded address. A zone remains part of a scoped IPv6 identity.
+func sessionIP(address string) (string, error) {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		host = strings.TrimSpace(address)
+	}
+	parsed, err := netip.ParseAddr(strings.TrimSpace(host))
+	if err != nil {
+		return "", errInvalidSessionIP
+	}
+	return parsed.Unmap().String(), nil
+}
+
+func (s *Server) setIPSessionCountLocked(ip string, count ipSessionCount) {
+	if count.registered == 0 && count.pending == 0 {
+		delete(s.ipSessionCounts, ip)
+	} else {
+		if s.ipSessionCounts == nil {
+			s.ipSessionCounts = make(map[string]ipSessionCount)
+		}
+		s.ipSessionCounts[ip] = count
+	}
+	// Readers must not reacquire the registry lock during reporting or close.
+	s.metrics.trackedSessionIPs.Store(int64(len(s.ipSessionCounts)))
 }
 
 func (s *Server) setBaseSessionCountLocked(base string, count baseSessionCount) {
@@ -56,26 +103,39 @@ func (s *Server) setBaseSessionCountLocked(base string, count baseSessionCount) 
 
 // A registered exact identity is a replacement, not a new occupied slot.
 // Global registered-full precedence preserves the existing server-full notice.
-func (s *Server) loginCapacityErrorLocked(c *Client, base string) error {
-	if s.clients[c.callsign] != nil {
-		return nil
+func (s *Server) loginCapacityErrorLocked(c *Client, base, ip string) error {
+	owner := s.clients[c.callsign]
+	if owner == nil {
+		if s.maxConnections > 0 && len(s.clients) >= s.maxConnections {
+			return errSessionFull
+		}
+		if s.maxSessionsPerBaseCall > 0 && s.baseSessionCounts[base].registered >= s.maxSessionsPerBaseCall {
+			return errBaseSessionFull
+		}
 	}
-	if s.maxConnections > 0 && len(s.clients) >= s.maxConnections {
-		return errSessionFull
-	}
-	if s.maxSessionsPerBaseCall > 0 && s.baseSessionCounts[base].registered >= s.maxSessionsPerBaseCall {
-		return errBaseSessionFull
+	if s.maxSessionsPerIP > 0 {
+		if owner != nil {
+			if owner.ipSessionKey == "" {
+				return errInvalidSessionIP
+			}
+			if owner.ipSessionKey == ip {
+				return nil
+			}
+		}
+		if s.ipSessionCounts[ip].registered >= s.maxSessionsPerIP {
+			return errIPSessionFull
+		}
 	}
 	return nil
 }
 
 // loginCapacityError makes only an early rejection decision. An unavailable lock
 // is not evidence of capacity; admission always rechecks while owning the stripe.
-func (s *Server) loginCapacityError(c *Client, base string) error {
+func (s *Server) loginCapacityError(c *Client, base, ip string) error {
 	checked := s.clientsMutex.TryRLock()
 	var err error
 	if checked {
-		err = s.loginCapacityErrorLocked(c, base)
+		err = s.loginCapacityErrorLocked(c, base, ip)
 		s.clientsMutex.RUnlock()
 	}
 	if s.testLoginCapacityProbe != nil {
@@ -88,48 +148,63 @@ func (s *Server) loginCapacityError(c *Client, base string) error {
 // reserve a slot before profile I/O; a current owner can be replaced in place.
 // Never wait for capacity with the stripe held: another callsign on the same
 // stripe may need to finish its final save before it can leave the registry.
-func (s *Server) acquireLoginCapacity(c *Client, deadline time.Time) (release func(), reserved bool, err error) {
+func (s *Server) acquireLoginCapacity(c *Client, deadline time.Time) (release func(), reserved loginReservation, err error) {
 	base := spot.NormalizeOwnCallsign(c.callsign)
+	ip := ""
+	if s.maxSessionsPerIP > 0 {
+		ip, err = sessionIP(c.address)
+		if err != nil {
+			return nil, loginReservation{}, err
+		}
+	}
 	for {
 		// A full registry can reject a different identity immediately, even if
 		// its stripe is busy with an unrelated save. A possible replacement must
 		// still acquire the stripe and recheck before any profile work.
-		if err := s.loginCapacityError(c, base); err != nil {
-			return nil, false, err
+		if err := s.loginCapacityError(c, base, ip); err != nil {
+			return nil, loginReservation{}, err
 		}
 		var recheck func() error
-		if s.maxConnections > 0 || s.maxSessionsPerBaseCall > 0 {
-			recheck = func() error { return s.loginCapacityError(c, base) }
+		if s.maxConnections > 0 || s.maxSessionsPerBaseCall > 0 || s.maxSessionsPerIP > 0 {
+			recheck = func() error { return s.loginCapacityError(c, base, ip) }
 		}
 		release, err = s.acquireConfigurationWithRecheck(c, false, true, deadline, recheck)
 		if err != nil {
-			return nil, false, err
+			return nil, loginReservation{}, err
 		}
 		s.clientsMutex.Lock()
-		if s.clients[c.callsign] != nil {
-			s.clientsMutex.Unlock()
-			return release, false, nil
-		}
-		if err = s.loginCapacityErrorLocked(c, base); err != nil {
+		if err = s.loginCapacityErrorLocked(c, base, ip); err != nil {
 			s.clientsMutex.Unlock()
 			release()
-			return nil, false, err
+			return nil, loginReservation{}, err
 		}
-		globalAvailable := s.maxConnections <= 0 || len(s.clients)+s.sessionReservations < s.maxConnections
+		owner := s.clients[c.callsign]
+		newIdentity := owner == nil
+		needsIP := s.maxSessionsPerIP > 0
+		if needsIP && owner != nil {
+			needsIP = owner.ipSessionKey != ip
+		}
+		globalAvailable := !newIdentity || s.maxConnections <= 0 || len(s.clients)+s.sessionReservations < s.maxConnections
 		baseCount := s.baseSessionCounts[base]
-		baseAvailable := s.maxSessionsPerBaseCall <= 0 || baseCount.registered+baseCount.pending < s.maxSessionsPerBaseCall
-		if globalAvailable && baseAvailable {
-			if s.maxConnections <= 0 && s.maxSessionsPerBaseCall <= 0 {
-				s.clientsMutex.Unlock()
-				return release, false, nil
+		baseAvailable := !newIdentity || s.maxSessionsPerBaseCall <= 0 || baseCount.registered+baseCount.pending < s.maxSessionsPerBaseCall
+		ipCount := s.ipSessionCounts[ip]
+		ipAvailable := !needsIP || ipCount.registered+ipCount.pending < s.maxSessionsPerIP
+		if globalAvailable && baseAvailable && ipAvailable {
+			if newIdentity && (s.maxConnections > 0 || s.maxSessionsPerBaseCall > 0 || s.maxSessionsPerIP > 0) {
+				s.sessionReservations++
+				reserved.identity = true
 			}
-			s.sessionReservations++
-			if s.maxSessionsPerBaseCall > 0 {
+			if reserved.identity && s.maxSessionsPerBaseCall > 0 {
 				baseCount.pending++
 				s.setBaseSessionCountLocked(base, baseCount)
 			}
+			if needsIP {
+				ipCount.pending++
+				s.setIPSessionCountLocked(ip, ipCount)
+				reserved.ip = ip
+			}
 			s.clientsMutex.Unlock()
-			return release, true, nil
+			return release, reserved, nil
 		}
 		if s.sessionCapacityChanged == nil {
 			s.sessionCapacityChanged = make(chan struct{})
@@ -137,8 +212,11 @@ func (s *Server) acquireLoginCapacity(c *Client, deadline time.Time) (release fu
 		changed := s.sessionCapacityChanged
 		s.clientsMutex.Unlock()
 		release()
+		if s.testLoginCapacityWait != nil {
+			s.testLoginCapacityWait(c)
+		}
 		if err = s.waitLoginCapacity(c, changed, deadline); err != nil {
-			return nil, false, err
+			return nil, loginReservation{}, err
 		}
 	}
 }
@@ -172,14 +250,21 @@ func (s *Server) signalSessionCapacityLocked() {
 	}
 }
 
-func (s *Server) releaseSessionReservation(c *Client) {
+func (s *Server) releaseSessionReservation(c *Client, reserved loginReservation) {
 	base := spot.NormalizeOwnCallsign(c.callsign)
 	s.clientsMutex.Lock()
-	s.sessionReservations--
-	if s.maxSessionsPerBaseCall > 0 {
+	if reserved.identity {
+		s.sessionReservations--
+	}
+	if reserved.identity && s.maxSessionsPerBaseCall > 0 {
 		count := s.baseSessionCounts[base]
 		count.pending--
 		s.setBaseSessionCountLocked(base, count)
+	}
+	if reserved.ip != "" {
+		count := s.ipSessionCounts[reserved.ip]
+		count.pending--
+		s.setIPSessionCountLocked(reserved.ip, count)
 	}
 	s.signalSessionCapacityLocked()
 	s.clientsMutex.Unlock()
@@ -192,8 +277,8 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 	}
 	defer release()
 	defer func() {
-		if reserved {
-			s.releaseSessionReservation(c)
+		if reserved.active() {
+			s.releaseSessionReservation(c, reserved)
 		}
 	}()
 	result := s.restoreClientRecordOwned(c, loginTime)
@@ -211,7 +296,7 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 	if err != nil {
 		return result, err
 	}
-	reserved = false
+	reserved = loginReservation{}
 	result.evicted, result.total = evicted, total
 	return result, nil
 }
@@ -354,8 +439,16 @@ func (s *Server) prepareConfiguration(c *Client, cfg filter.Configuration, now t
 	return prepared, warning
 }
 
-func (s *Server) registerClientOwned(c *Client, reserved bool, deadline time.Time) (*Client, int, error) {
+func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadline time.Time) (*Client, int, error) {
 	base := spot.NormalizeOwnCallsign(c.callsign)
+	ip := ""
+	if s.maxSessionsPerIP > 0 {
+		var err error
+		ip, err = sessionIP(c.address)
+		if err != nil {
+			return nil, 0, err
+		}
+	}
 	s.clientsMutex.Lock()
 	// Stop closes shutdown before taking this lock. Checking under the same
 	// lock ensures Stop either sees this registration or prevents it entirely.
@@ -376,24 +469,48 @@ func (s *Server) registerClientOwned(c *Client, reserved bool, deadline time.Tim
 		s.clients = make(map[string]*Client)
 	}
 	evicted := s.clients[c.callsign]
+	oldIP := ""
+	if s.maxSessionsPerIP > 0 && evicted != nil {
+		oldIP = evicted.ipSessionKey
+		if oldIP == "" {
+			s.clientsMutex.Unlock()
+			return nil, 0, errInvalidSessionIP
+		}
+	}
 	if evicted != nil && evicted != c {
 		evicted.invalidateHumanReadback()
 	}
 	s.peerSessionID++
 	c.peerSessionID = s.peerSessionID
+	c.ipSessionKey = ip
 	s.clients[c.callsign] = c
-	if reserved {
+	if reserved.identity {
 		s.sessionReservations--
 	}
 	if s.maxSessionsPerBaseCall > 0 {
 		count := s.baseSessionCounts[base]
-		if reserved {
+		if reserved.identity {
 			count.pending--
 		}
 		if evicted == nil {
 			count.registered++
 		}
 		s.setBaseSessionCountLocked(base, count)
+	}
+	if s.maxSessionsPerIP > 0 {
+		if evicted != nil && oldIP != ip {
+			oldCount := s.ipSessionCounts[oldIP]
+			oldCount.registered--
+			s.setIPSessionCountLocked(oldIP, oldCount)
+		}
+		if evicted == nil || oldIP != ip {
+			count := s.ipSessionCounts[ip]
+			if reserved.ip != "" {
+				count.pending--
+			}
+			count.registered++
+			s.setIPSessionCountLocked(ip, count)
+		}
 	}
 	s.signalSessionCapacityLocked()
 	s.peerMembershipRevision++
@@ -427,8 +544,8 @@ func (s *Server) registerClient(c *Client) {
 		return
 	}
 	evicted, total, err := s.registerClientOwned(c, reserved, time.Time{})
-	if err != nil && reserved {
-		s.releaseSessionReservation(c)
+	if err != nil && reserved.active() {
+		s.releaseSessionReservation(c, reserved)
 	}
 	release()
 	if err != nil {
@@ -461,6 +578,12 @@ func (s *Server) unregisterClient(c *Client) {
 			count := s.baseSessionCounts[base]
 			count.registered--
 			s.setBaseSessionCountLocked(base, count)
+		}
+		if s.maxSessionsPerIP > 0 {
+			ip := c.ipSessionKey
+			count := s.ipSessionCounts[ip]
+			count.registered--
+			s.setIPSessionCountLocked(ip, count)
 		}
 		s.signalSessionCapacityLocked()
 		s.peerMembershipRevision++

@@ -69,6 +69,16 @@ Configuration is split by concern so you only edit the relevant file:
   and deploy the updated executable together. The updated executable fails
   startup if the key is missing or invalid. An older executable ignores the key
   and does not enforce the station limit.
+- `runtime.yaml` also requires `telnet.max_sessions_per_ip`, a nonnegative
+  integer. The shipped value `10` limits sessions from one observed connection
+  IP; `0` disables this limit. The value is operator policy, not a calibrated
+  threshold. Shared routers, clubs, contests, and proxies can place multiple
+  users behind one address. The global and station limits and separate
+  pre-login gates continue to apply.
+- To deploy the IP limit, add this key to the active private `runtime.yaml` and
+  deploy the updated executable together. The updated executable fails startup
+  if the key is missing or invalid. An older executable ignores the key and
+  does not enforce the IP limit.
 - `ingest.yaml` - deployment/runtime settings for RBN/PSKReporter/human/DXSummit source enablement, source cadence, and call cache bounds.
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.

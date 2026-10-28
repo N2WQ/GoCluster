@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0327 | Per-IP Telnet Session Ceiling | Accepted | 2026-10-28 | telnet admission, IP capacity, reconnect, persistence | none; complements ADR-0325 and ADR-0326 | none | [ADR-0327](decisions/ADR-0327-per-ip-telnet-session-ceiling.md) |
 | ADR-0326 | Per-Base Callsign Session Ceiling | Accepted | 2026-10-28 | telnet admission, station capacity, reconnect, persistence | none; complements ADR-0325 | none | [ADR-0326](decisions/ADR-0326-per-base-callsign-session-ceiling.md) |
 | ADR-0325 | Strict Telnet Session Ceiling | Accepted | 2026-10-28 | telnet admission, session capacity, reconnect, persistence | none; complements ADR-0041 and ADR-0244 | none | [ADR-0325](decisions/ADR-0325-strict-telnet-session-ceiling.md) |
 | ADR-0324 | Bulletin Recovery and Login Order | Accepted | 2026-10-28 | bulletin recovery, archived display, login | refines ADR-0323 | none | [ADR-0324](decisions/ADR-0324-bulletin-recovery-and-login-order.md) |

@@ -219,6 +219,7 @@ var runtimeAllowEmptySettings = map[string]struct{}{
 
 var runtimeAllowZeroSettings = map[string]struct{}{
 	"telnet.max_sessions_per_base_call":                                        {},
+	"telnet.max_sessions_per_ip":                                               {},
 	"go_runtime.memory_limit_mib":                                              {},
 	"go_runtime.gc_percent":                                                    {},
 	"go_runtime.max_procs":                                                     {},

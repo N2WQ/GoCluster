@@ -27,27 +27,49 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
   reference-data refresh or missing local database.
 - `telnet.max_connections` limits registered sessions. A reconnect with the
   same full normalized callsign and SSID can replace its existing session even
-  when the server is full. A different SSID is a separate session. A new
-  identity at capacity is rejected; the server attempts to send a full-server
-  message before closing the connection. Capacity rejection does not change its
-  saved profile or shared preset library.
+  when the server is full, subject to the IP limit below. A different SSID is a
+  separate session. A new identity at capacity is rejected; the server attempts
+  to send a full-server message before closing the connection. Capacity rejection
+  does not change its saved profile or shared preset library.
 - `telnet.max_sessions_per_base_call` limits registered sessions for one base
   callsign; the shipped value is 10, and 0 disables this limit. For example,
   `K1ABC-1` and `K1ABC-2` count toward `K1ABC`, but keep separate profiles.
   Existing own-call normalization removes numeric SSIDs; portable location
   forms such as `VE3/K1ABC` remain separate from `K1ABC`. The same full
-  normalized callsign can replace its session at either limit. A different
-  identity at the station limit is rejected with a station-specific notice;
+  normalized callsign can replace its session at either limit, subject to the
+  IP limit below. A different identity at the station limit is rejected with a
+  station-specific notice;
   when both limits reject the login, the global full-server notice takes
   precedence. Notice delivery is best effort.
 - Admission reject summaries include the station-limit reason. Sampled station
   rejection logs also include `tracked_session_bases`, the number of base
   callsigns currently held by registered sessions or pending logins.
-- When an in-progress login is using the remaining capacity under either
-  limit, another new identity can wait for that login to resolve, within its
-  existing login deadline. No ordering or fairness between waiting logins is guaranteed.
+- `telnet.max_sessions_per_ip` limits sessions from an observed connection IP;
+  the shipped value is 10, and 0 disables this limit. Registered sessions and
+  in-progress admissions count toward the limit. Multiple users behind a shared
+  router, club network, contest network, or proxy can share one allowance.
+  IPv4-mapped IPv6 addresses count with the equivalent IPv4 address. IPv6 scope
+  zones are retained, so the same scoped address on different zones counts
+  separately. The server uses the connection peer address, not a forwarded
+  client address; this is an exact-IP limit, not a subnet limit. A station that
+  changes IPv6 addresses can use separate allowances.
+- A same-full-identity reconnect from the same IP can replace its owner at the
+  IP limit. A reconnect from a different IP needs capacity at the destination;
+  if that IP is full with registered sessions, the reconnect is rejected and
+  the current owner and its saved data are preserved. If a new identity is
+  full at multiple registered-session limits, notices take global, station,
+  then IP precedence. Notices are best effort. With the IP limit enabled, a
+  missing or invalid observed IP is rejected before profile writes. Disabling
+  the IP limit preserves handling of non-nil peer addresses; a nil peer is
+  handled defensively rather than causing a panic.
+- When in-progress logins are using the remaining capacity under any enabled
+  limit, a new identity or a cross-IP replacement can wait for their outcome
+  within its existing login deadline. No ordering or fairness between waiting
+  logins is guaranteed.
   Separate pre-login concurrency, rate and timeout limits still apply, including
   to reconnects. A pre-login rejection can therefore prevent a replacement.
+  Blocked storage or registry access can still delay the login beyond that
+  deadline.
 - Callsign validation does not authenticate the person connecting. An accepted
   same-identity login can displace an existing session.
 - The greeting can include dialect, grid, noise, and dedupe status from config.

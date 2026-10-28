@@ -20,6 +20,7 @@ telnet:
   tls_enabled: false
   max_connections: 100 # Hard cap on logged-in telnet sessions.
   max_sessions_per_base_call: 10 # Sessions per base callsign; 0 disables this limit.
+  max_sessions_per_ip: 10 # Sessions per observed IP address; 0 disables this limit.
   max_prelogin_sessions: 100      # Hard cap on unauthenticated sessions (Tier-A DoS guardrail)
   prelogin_timeout_seconds: 30    # Accept->callsign timeout for unauthenticated sessions
   accept_rate_per_ip: 3           # Per-IP prelogin admit rate (tokens/sec)

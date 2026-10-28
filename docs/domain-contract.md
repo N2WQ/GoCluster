@@ -66,9 +66,24 @@ pressure.
   station-specific notice and is closed. If both ceilings reject it, the global
   full-server notice takes precedence. Capacity rejection does not change the
   profile, upgrade backups, or shared preset library.
+- A positive `telnet.max_sessions_per_ip` limits registered sessions for each
+  observed connection IP, including admissions in progress. Zero disables this
+  limit. The peer IP is canonicalized, IPv4-mapped IPv6 is grouped with IPv4,
+  and an IPv6 scope zone remains part of the identity. Ports do not identify
+  separate IPs. The connection peer is authoritative; forwarded addresses and
+  subnet groupings are not used. When enabled, a missing or invalid peer IP is
+  rejected before profile writes. When disabled, non-nil peer address handling
+  stays the same; a nil peer is handled defensively rather than panicking.
+- Exact-identity replacement at the same IP reuses its existing IP slot.
+  Replacement from a different IP needs destination capacity. If registered
+  sessions fill that IP's limit, reject without changing the old owner or saved
+  profile, backups, or shared presets. Reserve IP, station and global capacity
+  atomically as applicable. For a new identity rejected by multiple registered
+  ceilings, use global, station, then IP notice precedence.
 - When in-progress logins occupy the remaining capacity, another new identity
-  waits for their outcome and rechecks both ceilings, subject to its existing
-  login deadline, cancellation and shutdown. No fairness or arrival order is promised.
+  or cross-IP replacement waits for their outcome and rechecks all ceilings,
+  subject to its existing login deadline, cancellation and shutdown. No fairness
+  or arrival order is promised.
   Separate pre-login limits and the existing per-identity profile handoff remain
   in force. Other login failures retain their existing persistence behavior.
 - Runtime YAML requires a positive value for `telnet.max_connections`. Direct
@@ -79,6 +94,10 @@ pressure.
   Station accounting is coupled to active sessions and reservations; historical
   station identities do not accumulate. Pre-login limits remain separate, and
   callsign validation does not authenticate the user.
+- Runtime YAML also requires an explicit nonnegative `telnet.max_sessions_per_ip`;
+  the shipped value 10 is operator policy, not a calibrated threshold. IP
+  accounting is coupled to registered owners and active reservations, and
+  historical address entries do not accumulate. Pre-login gates remain separate.
 
 ## Source identity normalization
 

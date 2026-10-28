@@ -1183,6 +1183,7 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		ClusterCall:               r.cfg.Server.NodeID,
 		MaxConnections:            r.cfg.Telnet.MaxConnections,
 		MaxSessionsPerBaseCall:    r.cfg.Telnet.MaxSessionsPerBaseCall,
+		MaxSessionsPerIP:          r.cfg.Telnet.MaxSessionsPerIP,
 		BroadcastWorkers:          r.cfg.Telnet.BroadcastWorkers,
 		BroadcastQueue:            r.cfg.Telnet.BroadcastQueue,
 		WorkerQueue:               r.cfg.Telnet.WorkerQueue,

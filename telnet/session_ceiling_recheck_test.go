@@ -178,12 +178,12 @@ func TestSessionCeilingRecheckReservedButNotFull(t *testing.T) {
 	contender := configurationTestClient(s, recheckCollidingCall(t, holder.callsign))
 	reservedClient := configurationTestClient(s, recheckDifferentStripeCall(t, holder.callsign))
 	releaseReservationStripe, reserved, err := s.acquireLoginCapacity(reservedClient, time.Now().Add(5*time.Second))
-	if err != nil || !reserved {
-		t.Fatalf("setup did not reserve last slot: reserved=%t err=%v", reserved, err)
+	if err != nil || !reserved.identity {
+		t.Fatalf("setup did not reserve last slot: reserved=%+v err=%v", reserved, err)
 	}
 	var reservationOnce sync.Once
 	releaseReservation := func() {
-		reservationOnce.Do(func() { s.releaseSessionReservation(reservedClient); releaseReservationStripe() })
+		reservationOnce.Do(func() { s.releaseSessionReservation(reservedClient, reserved); releaseReservationStripe() })
 	}
 	t.Cleanup(releaseReservation)
 	release, err := s.acquireConfiguration(holder, false, true, time.Time{})

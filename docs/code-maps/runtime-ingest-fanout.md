@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e5b526df36101105`
+- Source fingerprint: `d09aa775bfb8e883`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 12 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 150 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 151 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 54 | 123 |
+| `dxcluster/telnet` | `telnet` | 54 | 129 |
 
 ## In-Scope Package Edges
 
@@ -313,6 +313,7 @@ Test files:
 - `internal/cluster/telnet_base_session_config_test.go`
 - `internal/cluster/telnet_family_suppressor_bench_test.go`
 - `internal/cluster/telnet_family_suppressor_test.go`
+- `internal/cluster/telnet_ip_session_config_test.go`
 - `internal/cluster/temporal_acceptance_delivery_test.go`
 - `internal/cluster/temporal_fresh_delivery_test.go`
 - `internal/cluster/temporal_overflow_delivery_test.go`
@@ -745,6 +746,12 @@ Test files:
 - `telnet/human_preference_handoff_test.go`
 - `telnet/human_preference_publish_test.go`
 - `telnet/human_preference_stage_test.go`
+- `telnet/ip_session_quota_lifecycle_test.go`
+- `telnet/ip_session_quota_real_peer_test.go`
+- `telnet/ip_session_quota_replacements_test.go`
+- `telnet/ip_session_quota_test.go`
+- `telnet/ip_session_quota_wait_departure_test.go`
+- `telnet/ip_session_quota_wire_test.go`
 - `telnet/latency_test.go`
 - `telnet/login_ssid_test.go`
 - `telnet/login_startup_test.go`
@@ -821,6 +828,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0327 | Accepted | 2026-10-28 | telnet admission, IP capacity, reconnect, persistence | `area:telnet` |
 | ADR-0326 | Accepted | 2026-10-28 | telnet admission, station capacity, reconnect, persistence | `area:telnet` |
 | ADR-0325 | Accepted | 2026-10-28 | telnet admission, session capacity, reconnect, persistence | `area:telnet` |
 | ADR-0323 | Accepted | 2026-10-28 | bulletin history, login, commands, persistence | `area:commands` |
