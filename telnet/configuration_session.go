@@ -27,27 +27,118 @@ type restoredLogin struct {
 	total         int
 }
 
+var errSessionFull = errors.New("maximum registered sessions reached")
+
+// acquireLoginCapacity owns the callsign stripe when it returns. New identities
+// reserve a slot before profile I/O; a current owner can be replaced in place.
+// Never wait for capacity with the stripe held: another callsign on the same
+// stripe may need to finish its final save before it can leave the registry.
+func (s *Server) acquireLoginCapacity(c *Client, deadline time.Time) (release func(), reserved bool, err error) {
+	for {
+		// A full registry can reject a different identity immediately, even if
+		// its stripe is busy with an unrelated save. A possible replacement must
+		// still acquire the stripe and recheck before any profile work.
+		if s.clientsMutex.TryRLock() {
+			full := s.maxConnections > 0 && len(s.clients) >= s.maxConnections && s.clients[c.callsign] == nil
+			s.clientsMutex.RUnlock()
+			if full {
+				return nil, false, errSessionFull
+			}
+		}
+		release, err = s.acquireConfiguration(c, false, true, deadline)
+		if err != nil {
+			return nil, false, err
+		}
+		s.clientsMutex.Lock()
+		if s.maxConnections <= 0 || s.clients[c.callsign] != nil {
+			s.clientsMutex.Unlock()
+			return release, false, nil
+		}
+		if len(s.clients) >= s.maxConnections {
+			s.clientsMutex.Unlock()
+			release()
+			return nil, false, errSessionFull
+		}
+		if len(s.clients)+s.sessionReservations < s.maxConnections {
+			s.sessionReservations++
+			s.clientsMutex.Unlock()
+			return release, true, nil
+		}
+		if s.sessionCapacityChanged == nil {
+			s.sessionCapacityChanged = make(chan struct{})
+		}
+		changed := s.sessionCapacityChanged
+		s.clientsMutex.Unlock()
+		release()
+		if err = s.waitLoginCapacity(c, changed, deadline); err != nil {
+			return nil, false, err
+		}
+	}
+}
+
+func (s *Server) waitLoginCapacity(c *Client, changed <-chan struct{}, deadline time.Time) error {
+	var timer *time.Timer
+	var expired <-chan time.Time
+	if !deadline.IsZero() {
+		timer = time.NewTimer(time.Until(deadline))
+		expired = timer.C
+		defer timer.Stop()
+	}
+	select {
+	case <-changed:
+		return nil
+	case <-c.done:
+		return errClientClosed
+	case <-s.shutdown:
+		return errClientClosed
+	case <-expired:
+		return fmt.Errorf("configuration handoff exceeded login deadline")
+	}
+}
+
+// signalSessionCapacityLocked wakes bounded prelogin waiters after an occupancy
+// transition. The condition and notification are both protected by clientsMutex.
+func (s *Server) signalSessionCapacityLocked() {
+	if s.sessionCapacityChanged != nil {
+		close(s.sessionCapacityChanged)
+		s.sessionCapacityChanged = nil
+	}
+}
+
+func (s *Server) releaseSessionReservation() {
+	s.clientsMutex.Lock()
+	s.sessionReservations--
+	s.signalSessionCapacityLocked()
+	s.clientsMutex.Unlock()
+}
+
 func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Time) (restoredLogin, error) {
-	release, err := s.acquireConfiguration(c, false, true, deadline)
+	release, reserved, err := s.acquireLoginCapacity(c, deadline)
 	if err != nil {
 		return restoredLogin{}, err
 	}
+	defer release()
+	defer func() {
+		if reserved {
+			s.releaseSessionReservation()
+		}
+	}()
 	result := s.restoreClientRecordOwned(c, loginTime)
 	select {
 	case <-c.done:
-		release()
 		return result, errClientClosed
 	case <-s.shutdown:
-		release()
 		return result, errClientClosed
 	default:
 	}
 	if !time.Now().Before(deadline) {
-		release()
 		return result, fmt.Errorf("configuration handoff exceeded login deadline")
 	}
-	evicted, total := s.registerClientOwned(c)
-	release()
+	evicted, total, err := s.registerClientOwned(c, reserved, deadline)
+	if err != nil {
+		return result, err
+	}
+	reserved = false
 	result.evicted, result.total = evicted, total
 	return result, nil
 }
@@ -190,8 +281,23 @@ func (s *Server) prepareConfiguration(c *Client, cfg filter.Configuration, now t
 	return prepared, warning
 }
 
-func (s *Server) registerClientOwned(c *Client) (*Client, int) {
+func (s *Server) registerClientOwned(c *Client, reserved bool, deadline time.Time) (*Client, int, error) {
 	s.clientsMutex.Lock()
+	// Stop closes shutdown before taking this lock. Checking under the same
+	// lock ensures Stop either sees this registration or prevents it entirely.
+	select {
+	case <-c.done:
+		s.clientsMutex.Unlock()
+		return nil, 0, errClientClosed
+	case <-s.shutdown:
+		s.clientsMutex.Unlock()
+		return nil, 0, errClientClosed
+	default:
+	}
+	if !deadline.IsZero() && !time.Now().Before(deadline) {
+		s.clientsMutex.Unlock()
+		return nil, 0, fmt.Errorf("configuration handoff exceeded login deadline")
+	}
 	if s.clients == nil {
 		s.clients = make(map[string]*Client)
 	}
@@ -202,11 +308,15 @@ func (s *Server) registerClientOwned(c *Client) (*Client, int) {
 	s.peerSessionID++
 	c.peerSessionID = s.peerSessionID
 	s.clients[c.callsign] = c
+	if reserved {
+		s.sessionReservations--
+	}
+	s.signalSessionCapacityLocked()
 	s.peerMembershipRevision++
 	total := len(s.clients)
 	s.shardsDirty.Store(true)
 	s.clientsMutex.Unlock()
-	return evicted, total
+	return evicted, total, nil
 }
 
 func (s *Server) finishClientRegistration(c, evicted *Client, total int) {
@@ -228,12 +338,18 @@ func (s *Server) finishClientRegistration(c, evicted *Client, total int) {
 }
 
 func (s *Server) registerClient(c *Client) {
-	release, err := s.acquireConfiguration(c, false, true, time.Time{})
+	release, reserved, err := s.acquireLoginCapacity(c, time.Time{})
 	if err != nil {
 		return
 	}
-	evicted, total := s.registerClientOwned(c)
+	evicted, total, err := s.registerClientOwned(c, reserved, time.Time{})
+	if err != nil && reserved {
+		s.releaseSessionReservation()
+	}
 	release()
+	if err != nil {
+		return
+	}
 	s.finishClientRegistration(c, evicted, total)
 }
 
@@ -256,6 +372,7 @@ func (s *Server) unregisterClient(c *Client) {
 	removed := s.clients[c.callsign] == c
 	if removed {
 		delete(s.clients, c.callsign)
+		s.signalSessionCapacityLocked()
 		s.peerMembershipRevision++
 		s.shardsDirty.Store(true)
 	}

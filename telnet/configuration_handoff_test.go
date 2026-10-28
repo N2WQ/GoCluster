@@ -16,6 +16,7 @@ import (
 
 func TestConfigurationHandoffDeadlineBehindOldOwnershipCheck(t *testing.T) {
 	s := presetTestServer(t)
+	s.maxConnections = 1
 	old := configurationTestClient(s, "W1ABC-1")
 	old.filter = testRuleFilter(t,
 		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=20M"},

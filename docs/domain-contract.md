@@ -46,6 +46,24 @@ pressure.
 - Do not retain subslices of shared read buffers when data must outlive the read
   cycle.
 
+## Telnet session capacity
+
+- A positive `telnet.max_connections` is a strict ceiling on registered telnet
+  sessions, including concurrent logins. A same-identity replacement does not
+  add a session: identity is the full normalized callsign and SSID. Different
+  SSID spellings, including leading zeroes, remain separate identities.
+- A new identity is rejected when registered sessions fill the ceiling, before
+  its profile or shared preset library is changed. The full-server notice is
+  best effort; the connection is closed even if the notice cannot be delivered.
+- When in-progress logins occupy the remaining capacity, another new identity
+  waits for their outcome and rechecks admission, subject to its existing login
+  deadline, cancellation and shutdown. No fairness or arrival order is promised.
+  Separate pre-login limits and the existing per-identity profile handoff remain
+  in force. Other login failures retain their existing persistence behavior.
+- Runtime YAML requires a positive value for `telnet.max_connections`. Direct
+  server callers may set `MaxConnections` to zero or less to disable this
+  registered-session ceiling; pre-login limits remain separate.
+
 ## Source identity normalization
 
 - Validated peer PC11, PC61, and PC26 DE/spotter calls strip only a terminal

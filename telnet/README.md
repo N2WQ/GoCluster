@@ -25,6 +25,17 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
   bypass license validation but still require CTY validity.
 - CTY or license data outages fail open so operators are not locked out by a
   reference-data refresh or missing local database.
+- `telnet.max_connections` limits registered sessions. A reconnect with the
+  same full normalized callsign and SSID can replace its existing session even
+  when the server is full. A different SSID is a separate session. A new
+  identity at capacity is rejected; the server attempts to send a full-server
+  message before closing the connection. Capacity rejection does not change its
+  saved profile or shared preset library.
+- When an in-progress login is using the remaining capacity, another new
+  identity can wait for that login to resolve, within its existing login
+  deadline. No ordering or fairness between waiting logins is guaranteed.
+  Separate pre-login concurrency, rate and timeout limits still apply, including
+  to reconnects. A pre-login rejection can therefore prevent a replacement.
 - The greeting can include dialect, grid, noise, and dedupe status from config.
 - Dialect choice and filter state are persisted per callsign.
 - If `NEARBY` is active, the login greeting warns the user.
@@ -33,6 +44,8 @@ Restoration uses the full login call, including its SSID. Configuration,
 associated preset name and its reference snapshot stay consistent through
 replacement of an older connection. An old session cannot overwrite the new
 session's record, including through a save already underway during reconnect.
+The no-write guarantee above applies to capacity rejection. Other login
+failures retain their existing persistence behavior.
 
 If a valid record is restored but updating the login timestamp/IP fails, login
 continues with those preferences and a warning.

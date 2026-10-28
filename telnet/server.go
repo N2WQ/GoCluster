@@ -173,7 +173,9 @@ type Server struct {
 	clusterCall                         string                                     // Cluster/node callsign for greeting substitution
 	listener                            net.Listener                               // TCP listener
 	clients                             map[string]*Client                         // Map of callsign → Client
-	clientsMutex                        sync.RWMutex                               // Protects clients map
+	clientsMutex                        sync.RWMutex                               // Protects clients and session capacity accounting
+	sessionReservations                 int                                        // New identities preparing login; protected by clientsMutex
+	sessionCapacityChanged              chan struct{}                              // Waiters observe capacity changes under clientsMutex
 	configurationTxnOnce                sync.Once                                  // Initializes fixed full-callsign transaction stripes
 	configurationTxnStripes             [64]chan struct{}                          // No historical callsign state is retained
 	yamlPreparationOnce                 sync.Once                                  // Initializes four bounded YAML preparation permits
@@ -3595,18 +3597,6 @@ func (s *Server) acceptConnections() {
 			}
 		}
 
-		// Enforce configured connection limit before spinning up a client goroutine.
-		if s.maxConnections > 0 {
-			addr := conn.RemoteAddr().String()
-			s.clientsMutex.RLock()
-			current := len(s.clients)
-			s.clientsMutex.RUnlock()
-			if current >= s.maxConnections {
-				s.enqueueReject(conn, addr, "Server full. Try again later.\r\n", fmt.Sprintf("max connections reached (%d)", s.maxConnections))
-				continue
-			}
-		}
-
 		ticket, rejectReason := s.tryAcquirePrelogin(conn.RemoteAddr())
 		if ticket == nil {
 			addr := conn.RemoteAddr().String()
@@ -3796,6 +3786,25 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	client.callsign = callsign
 	restored, err := s.restoreAndRegisterClient(client, loginTime, loginDeadline)
 	if err != nil {
+		if errors.Is(err, errSessionFull) {
+			s.logAdmissionReject(preloginRejectReason("max_connections"), address)
+			if client.SendAndClose("Server full. Try again later.\n") == nil {
+				// Retain the prelogin ticket while the single writer sends the
+				// notice. A stalled reader cannot retain the socket indefinitely.
+				deadline := s.rejectWriteDeadline
+				if deadline <= 0 {
+					deadline = defaultRejectWriteDeadline
+				}
+				timer := time.NewTimer(deadline)
+				select {
+				case <-client.done:
+				case <-s.shutdown:
+				case <-timer.C:
+				}
+				timer.Stop()
+			}
+			return
+		}
 		log.Printf("Configuration handoff failed for %s: %v", client.callsign, err)
 		return
 	}

@@ -76,6 +76,7 @@ func TestMachineGETOverflowReleasesOwnershipBeforeBlockedReporter(t *testing.T) 
 
 func TestConfigurationSaveAndReconnectHandoff(t *testing.T) {
 	s := presetTestServer(t)
+	s.maxConnections = 1
 	old := configurationTestClient(s, "W1ABC-1")
 	old.configuredSettings = filter.SettingsConfiguration{Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST"}
 	old.configurationInitialized = true
