@@ -38,6 +38,7 @@ workflow rules.
 | Boolean personal-rule engine and immutable matching | [Boolean contracts and local owners](#boolean-personal-rules), [telnet filters](../telnet/README.md#filters), [normative domain contract](../docs/domain-contract.md#boolean-personal-rules) |
 | Presets, native-v5 preferences and SSID ownership | [telnet presets](../telnet/README.md#named-presets), [operator storage](../data/config/README.md#user-configuration-storage); local checkout: `filter/configuration_v5.go`, `filter/storage_v5.go`, `filter/storage_v5_decode.go`, `filter/storage_v5_io_adapter.go`, `filter/preset_v5.go`; coordination remains in `telnet/preset_commands.go`, `filter/presets.go`, `filter/user_preferences.go` |
 | Command HELP and command dispatch | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md), `commands/` |
+| WWV/WCY history, login and five-report SHOW/slash commands | [bulletin history](../telnet/README.md#wwv-and-wcy-bulletin-history), [ADR-0323](../docs/decisions/ADR-0323-wwv-wcy-bulletin-history.md), `commands/bulletin_command.go` |
 | Spot record, formatting, confidence, correction | [spot/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/spot/README.md), `spot/` |
 | Path reliability | [pathreliability/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/pathreliability/README.md), `pathreliability/` |
 | Config loading and validation | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), `config/` |

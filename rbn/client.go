@@ -106,10 +106,19 @@ type Client struct {
 	stopOnce    sync.Once
 	spotsOnce   sync.Once
 
-	rawChan chan<- string // optional passthrough for non-DX lines (minimal parser only)
+	// These hooks are configured before Start and owned by the reader. The raw
+	// channel remains nonblocking; the reporter must also return promptly.
+	rawChan         chan<- RawLine
+	rawDropReporter func(line string, receivedAt time.Time)
 
 	badCallReporterMu sync.RWMutex
 	badCallReporter   BadCallReporter
+}
+
+// RawLine carries the source-reader receipt time across the bounded raw queue.
+type RawLine struct {
+	Line       string
+	ReceivedAt time.Time
 }
 
 type spotToken struct {
@@ -267,9 +276,17 @@ func (c *Client) SetTelnetTransport(transport string) {
 // Key aspects: Non-blocking delivery to avoid ingest stalls.
 // Upstream: main.go wiring for peer/raw feeds.
 // Downstream: parseSpot raw line forwarding.
-func (c *Client) SetRawPassthrough(ch chan<- string) {
+func (c *Client) SetRawPassthrough(ch chan<- RawLine) {
 	if c != nil {
 		c.rawChan = ch
+	}
+}
+
+// SetRawPassthroughDropReporter reports full-queue drops without retrying them.
+// Configure it before starting the client; the callback must not block.
+func (c *Client) SetRawPassthroughDropReporter(fn func(line string, receivedAt time.Time)) {
+	if c != nil {
+		c.rawDropReporter = fn
 	}
 }
 
@@ -636,8 +653,11 @@ func (c *Client) serveGeneration(gen *connectionGeneration) (err error) {
 		}
 		if c.minimalParse && c.rawChan != nil {
 			select {
-			case c.rawChan <- line:
+			case c.rawChan <- RawLine{Line: line, ReceivedAt: now}:
 			default:
+				if c.rawDropReporter != nil {
+					c.rawDropReporter(line, now)
+				}
 			}
 		}
 	}

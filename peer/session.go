@@ -323,13 +323,18 @@ func (s *session) Run() error {
 		if line == "" {
 			continue
 		}
-		if _, err := s.withParsedFrame(line, deadline, s.handleEstablishedFrame); err != nil {
+		// Parser-budget acquisition may wait; record network receipt first so
+		// history ordering does not depend on parsing or downstream backlog.
+		receivedAt := time.Now().UTC()
+		if _, err := s.withParsedFrame(line, deadline, func(frame *Frame) (bool, error) {
+			return s.handleEstablishedFrame(frame, receivedAt)
+		}); err != nil {
 			return err
 		}
 	}
 }
 
-func (s *session) handleEstablishedFrame(frame *Frame) (bool, error) {
+func (s *session) handleEstablishedFrame(frame *Frame, receivedAt time.Time) (bool, error) {
 	if frame.Type == "PC51" {
 		return false, s.handlePing(frame)
 	}
@@ -337,7 +342,7 @@ func (s *session) handleEstablishedFrame(frame *Frame) (bool, error) {
 		// A delayed CC completion does not start another exchange.
 		return false, s.sendControlLine("PC22^")
 	}
-	s.manager.HandleFrame(frame, s)
+	s.manager.handleFrameAt(frame, s, receivedAt)
 	return false, nil
 }
 

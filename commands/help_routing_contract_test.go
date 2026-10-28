@@ -29,6 +29,14 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"DX K1ABC 14030 CQ", "DX", "DX <callsign> <freq_khz> [comment]"},
 		{"SH BUILD", "SHOW BUILD", "SHOW BUILD"}, {"SHOW BUILD", "SHOW BUILD", "SHOW BUILD"},
 		{"SH OWN", "SHOW OWN", "SHOW OWN"}, {"SHOW OWN", "SHOW OWN", "SHOW OWN"},
+		{"SHOW WWV", "SHOW WWV", "SHOW WWV [FULL]"}, {"SH WWV", "SHOW WWV", "SHOW WWV [FULL]"},
+		{"SHOW WWV FULL", "SHOW WWV", "SHOW WWV [FULL]"}, {"SH WWV FULL", "SHOW WWV", "SHOW WWV [FULL]"},
+		{"SHOW/WWV", "SHOW WWV", "SHOW WWV [FULL]"}, {"SH/WWV", "SHOW WWV", "SHOW WWV [FULL]"},
+		{"SHOW/WWV FULL", "SHOW WWV", "SHOW WWV [FULL]"}, {"SH/WWV FULL", "SHOW WWV", "SHOW WWV [FULL]"},
+		{"SHOW WCY", "SHOW WCY", "SHOW WCY [FULL]"}, {"SH WCY", "SHOW WCY", "SHOW WCY [FULL]"},
+		{"SHOW WCY FULL", "SHOW WCY", "SHOW WCY [FULL]"}, {"SH WCY FULL", "SHOW WCY", "SHOW WCY [FULL]"},
+		{"SHOW/WCY", "SHOW WCY", "SHOW WCY [FULL]"}, {"SH/WCY", "SHOW WCY", "SHOW WCY [FULL]"},
+		{"SHOW/WCY FULL", "SHOW WCY", "SHOW WCY [FULL]"}, {"SH/WCY FULL", "SHOW WCY", "SHOW WCY [FULL]"},
 		{"SH DXCC DL", "SHOW DXCC", "SHOW DXCC <prefix|callsign>"},
 		{"SH DXCC", "SHOW DXCC", "SHOW DXCC <prefix|callsign>"},
 		{"SHOW DXCC DL", "SHOW DXCC", "SHOW DXCC <prefix|callsign>"},
@@ -143,6 +151,7 @@ func TestHelpRoutingUnknownHeadsAndDialectRestrictions(t *testing.T) {
 		for _, topic := range []string{
 			"SH FILTER", "SH SETTINGS", "SH DEDUPE", "SH HOLD", "SHOW/MYDX", "SH/MYDX",
 			"SHOW BUILDX", "SH BUILDX", "SHOW DXCCX DL", "SHOW MYDXX", "SHOW FILTERX", "SHOW SETTINGSX",
+			"SHOW WWVX", "SH WWVX", "SHOW WCYX", "SH WCYX", "SHOW/WWVX", "SH/WCYX", "SH/WWV/10",
 			"WHOSPOTSMEX", "RESUMED", "DIALECTX", "SET SOLARX 30", "SET GRIDX FN31", "SET PATHSAMPLESX DEFAULT",
 			"SAVE PRESETX CON", "GET YAML CONFIGX", "SET/NOFILTERX", "SHOW/PROPX FN31", "SH/PROPX FN31",
 		} {
@@ -165,6 +174,8 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 	common := map[string]string{
 		"H": "HELP", "SH": "SHOW", "QUIT": "BYE", "EXIT": "BYE", "REJECT NEARBY": "PASS NEARBY",
 		"SH BUILD": "SHOW BUILD", "SH OWN": "SHOW OWN", "SH DXCC": "SHOW DXCC", "SH MYDX": "SHOW MYDX",
+		"SH WWV": "SHOW WWV", "SH WCY": "SHOW WCY", // ParseBulletinCommand owns both executable heads.
+		"SHOW/WWV": "SHOW WWV", "SH/WWV": "SHOW WWV", "SHOW/WCY": "SHOW WCY", "SH/WCY": "SHOW WCY",
 		"SH PROP": "SHOW PROP", "SHOW/PROP": "SHOW PROP", "SH/PROP": "SHOW PROP",
 		"SHOW/FILTER COMMENT": "SHOW FILTER COMMENT", "SH/FILTER COMMENT": "SHOW FILTER COMMENT",
 	}
@@ -208,6 +219,7 @@ func TestHelpRoutingVisibleAliases(t *testing.T) {
 		for _, tc := range []struct{ topic, aliases string }{
 			{"HELP", "H"}, {"SHOW", "SH"}, {"SHOW BUILD", "SH BUILD"},
 			{"SHOW OWN", "SH OWN"}, {"SHOW DXCC", "SH DXCC"}, {"SHOW MYDX", "SH MYDX"},
+			{"SHOW WWV", "SH WWV, SHOW/WWV, SH/WWV"}, {"SHOW WCY", "SH WCY, SHOW/WCY, SH/WCY"},
 			{"PASS NEARBY", "REJECT NEARBY"}, {readback, filterAliases}, {history, historyAliases},
 		} {
 			response := p.ProcessCommandForClient("HELP "+tc.topic, "W1ABC", "", nil, dialect)

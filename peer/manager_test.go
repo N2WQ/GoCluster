@@ -261,7 +261,7 @@ func TestHandleFramePC92DuplicateDoesNotReapplyOrRelay(t *testing.T) {
 func TestHandleFrameWWVDuplicateHopVariantSuppressed(t *testing.T) {
 	m := newProtocolTestManager(t)
 	var delivered int
-	m.SetWWVBroadcast(func(kind, line string) {
+	m.SetWWVBroadcast(func(kind, line string, receivedAt time.Time) {
 		delivered++
 	})
 
@@ -279,6 +279,27 @@ func TestHandleFrameWWVDuplicateHopVariantSuppressed(t *testing.T) {
 
 	if delivered != 1 {
 		t.Fatalf("expected one WWV delivery after duplicate suppression, got %d", delivered)
+	}
+}
+
+func TestBulletinPeerReceiptTimeSurvivesDispatch(t *testing.T) {
+	m := newProtocolTestManager(t)
+	wantTime := time.Date(2026, 10, 28, 12, 34, 56, 789, time.UTC)
+	var gotKind, gotLine string
+	var gotTime time.Time
+	m.SetWWVBroadcast(func(kind, line string, receivedAt time.Time) {
+		gotKind, gotLine, gotTime = kind, line, receivedAt
+	})
+	frame, err := ParseFrame("PC23^19-Apr-2026^1200Z^120^5^1^No storms^W1AW^NODE^H95^")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := &session{manager: m, remoteCall: "SRC"}
+	if _, err := s.handleEstablishedFrame(frame, wantTime); err != nil {
+		t.Fatal(err)
+	}
+	if gotKind != "WWV" || !strings.Contains(gotLine, "No storms") || !gotTime.Equal(wantTime) {
+		t.Fatalf("unexpected bulletin kind=%q line=%q received=%v, want %v", gotKind, gotLine, gotTime, wantTime)
 	}
 }
 

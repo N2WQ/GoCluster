@@ -64,6 +64,8 @@ Configuration is split by concern so you only edit the relevant file:
 - `peering.yaml` - deployment/runtime settings for peer links and ACLs.
 - `reputation.yaml` - deployment/runtime settings plus operator policy for reputation gates.
 - `archive.yaml` - deployment/runtime settings for archive enablement, storage path, backpressure, cleanup cadence, and single-window retention; expired rows are removed with timestamp range deletion rather than operator-tuned cleanup batches.
+- `archive.yaml` also requires `bulletin_archive.path`, the independent WWV/WCY JSON snapshot file. Set it to a writable file outside the spot archive's Pebble directory. For example, `data/bulletins/history.json` works whether spot archiving is enabled or disabled. Deploy this setting with the updated executable.
+- Before rolling back to a bulletin-history executable limited to 24 records per type, back up the snapshot and restore a compatible copy. That older executable can reject and overwrite a snapshot containing 25–48 records. A pre-bulletin executable does not use the snapshot.
 - `data.yaml` - deployment/runtime settings for CTY/FCC/ISED/skew sources, grid/cache tuning, data paths, and H3 table path.
 - `prop_report.yaml` - deployment/runtime settings for scheduled propagation-report generation controls.
 - `openai.yaml` - optional secret-bearing tool config for LLM report generation.

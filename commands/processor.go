@@ -411,6 +411,22 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("SHOW DXCC", "SHOW DXCC - Look up DXCC/ADIF and zones.", showDXCCLines)
 
+	for _, kind := range []string{"WWV", "WCY"} {
+		topic := "SHOW " + kind
+		lines := helpEntryLines(
+			topic+" - Show recent "+kind+" bulletins.",
+			[]string{topic + " [FULL]"},
+			[]string{"SH " + kind, "SHOW/" + kind, "SH/" + kind},
+			[]string{
+				"Without FULL, shows the latest five retained bulletins.",
+				"FULL shows retained bulletins received in the last 24 hours.",
+				"Retains at most 48 per type; warnings identify incomplete history.",
+				"This request and the login display bypass live bulletin filters.",
+			},
+		)
+		add(topic, topic+" - Show recent "+kind+" bulletins.", lines, "SH "+kind, "SHOW/"+kind, "SH/"+kind)
+	}
+
 	showPropLines := helpEntryLines(
 		"SHOW PROP - Show point-to-point propagation outlook.",
 		[]string{"SHOW PROP <call|prefix|grid> [band] [mode]"},
@@ -625,7 +641,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	if dialect == "cc" {
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
+			[]string{"SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW WWV [FULL]", "SHOW WCY [FULL]", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
 			[]string{"SH"},
 			[]string{
 				"Use HELP SHOW/DX for the history alias.",
@@ -728,6 +744,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SH/DX",
 			"SHOW MYDX",
 			"SHOW DXCC",
+			"SHOW WWV",
+			"SHOW WCY",
 			"SHOW PROP",
 			"SHOW BUILD",
 			"SHOW OWN",
@@ -770,7 +788,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	} else {
 		showLines := helpEntryLines(
 			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW DX [count|selector]", "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
+			[]string{"SHOW DX [count|selector]", "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW WWV [FULL]", "SHOW WCY [FULL]", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
 			[]string{"SH"},
 			[]string{
 				"Use HELP SHOW DX for the history alias.",
@@ -834,6 +852,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SH DX",
 			"SHOW MYDX",
 			"SHOW DXCC",
+			"SHOW WWV",
+			"SHOW WCY",
 			"SHOW PROP",
 			"SHOW BUILD",
 			"SHOW OWN",

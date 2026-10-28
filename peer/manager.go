@@ -60,7 +60,7 @@ type Manager struct {
 
 	legacyCh                   chan legacyWork
 	rawBroadcast               func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
-	wwvBroadcast               func(kind, line string)
+	wwvBroadcast               func(kind, line string, receivedAt time.Time)
 	announceBroadcast          func(line string)
 	directMessage              func(to, line string)
 	reconnects                 atomic.Uint64
@@ -307,10 +307,16 @@ func (m *Manager) PublishWWV(ev WWVEvent) {
 	if m == nil {
 		return
 	}
-	m.broadcastWWV(ev)
+	m.broadcastWWV(ev, time.Now().UTC())
 }
 
 func (m *Manager) HandleFrame(frame *Frame, sess *session) {
+	m.handleFrameAt(frame, sess, time.Now().UTC())
+}
+
+// handleFrameAt preserves the receipt time captured before parser-budget waits.
+// Other peer admission and deduplication continue using their existing clock.
+func (m *Manager) handleFrameAt(frame *Frame, sess *session, receivedAt time.Time) {
 	if frame == nil {
 		return
 	}
@@ -343,7 +349,7 @@ func (m *Manager) HandleFrame(frame *Frame, sess *session) {
 	case "PC23", "PC73":
 		if ev, ok := parseWWV(frame); ok {
 			if m.bulletinDedupe.markSeen(wwvKey(frame), now) {
-				m.broadcastWWV(ev)
+				m.broadcastWWV(ev, receivedAt)
 			}
 		}
 	case "PC93":
@@ -489,7 +495,7 @@ func (m *Manager) DiagnosticStats() peerdiag.Stats {
 
 // SetWWVBroadcast installs a callback used to forward WWV/WCY bulletins to telnet clients.
 // When unset, PC23/PC73 frames are parsed but not delivered.
-func (m *Manager) SetWWVBroadcast(fn func(kind, line string)) {
+func (m *Manager) SetWWVBroadcast(fn func(kind, line string, receivedAt time.Time)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.wwvBroadcast = fn
@@ -538,7 +544,7 @@ func (m *Manager) broadcastSpot(s *spot.Spot, hop int, origin string, exclude *s
 	}
 }
 
-func (m *Manager) broadcastWWV(ev WWVEvent) {
+func (m *Manager) broadcastWWV(ev WWVEvent, receivedAt time.Time) {
 	if m == nil {
 		return
 	}
@@ -550,7 +556,7 @@ func (m *Manager) broadcastWWV(ev WWVEvent) {
 	cb := m.wwvBroadcast
 	m.mu.RUnlock()
 	if cb != nil {
-		cb(kind, line)
+		cb(kind, line, receivedAt)
 	}
 }
 

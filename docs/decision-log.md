@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0323 | WWV and WCY Bulletin History | Accepted | 2026-10-28 | bulletin history, login, commands, persistence | none; complements ADR-0063 | none | [ADR-0323](decisions/ADR-0323-wwv-wcy-bulletin-history.md) |
 | ADR-0322 | Local User Login SSIDs | Accepted | 2026-10-28 | telnet, login syntax, SSID, profile identity | refines ADR-0110 for local login SSIDs | none | `docs/decisions/ADR-0322-local-user-login-ssids.md` |
 | ADR-0321 | Boolean Canonical DXCC Input | Accepted | 2026-10-23 | DXDXCC/DEDXCC, human/YAML input, request CTY snapshot | Numeric-only Boolean input of ADR-0317; refines restoration of ADR-0248 | none | [ADR-0321](decisions/ADR-0321-boolean-canonical-dxcc-input.md) |
 | ADR-0320 | Explicit Source Filtering | Accepted | 2026-10-22 | Boolean rules, SOURCE, readback, shipped defaults | Implicit source policy/readback and shipped HUMAN-only selection of ADR-0319 | none | [ADR-0320](decisions/ADR-0320-explicit-source-filtering.md) |

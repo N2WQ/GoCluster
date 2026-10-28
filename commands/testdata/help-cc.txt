@@ -21,6 +21,12 @@ Reading and posting spots:
   SHOW DXCC              Look up a callsign or country prefix.
   WHOSPOTSME             Show recent spotter countries for your call.
 
+Space weather bulletins:
+  SHOW WWV               Show the latest five WWV bulletins.
+  SHOW WCY               Show the latest five WCY bulletins.
+  SHOW WWV FULL          Show retained WWV bulletins from the last 24 hours.
+  SHOW WCY FULL          Show retained WCY bulletins from the last 24 hours.
+
 Examples:
   SHOW/DX 10             Show the latest 10 matching spots.
   SHOW/DX K1ABC 10       Search for spots of K1ABC.

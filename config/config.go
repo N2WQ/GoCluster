@@ -133,46 +133,47 @@ func normalizeTelnetHandshakeMode(value TelnetHandshakeMode) (TelnetHandshakeMod
 // Merged runtime files populate the main YAML tree; feature-root files populate
 // typed fields below without changing their file-local YAML shapes.
 type Config struct {
-	Server              ServerConfig         `yaml:"server"`
-	Telnet              TelnetConfig         `yaml:"telnet"`
-	WhoSpotsMe          WhoSpotsMeConfig     `yaml:"who_spots_me"`
-	UI                  UIConfig             `yaml:"ui"`
-	GoRuntime           GoRuntimeConfig      `yaml:"go_runtime"`
-	Logging             LoggingConfig        `yaml:"logging"`
-	PropReport          PropReportConfig     `yaml:"prop_report"`
-	RBN                 RBNConfig            `yaml:"rbn"`
-	RBNDigital          RBNConfig            `yaml:"rbn_digital"`
-	HumanTelnet         HumanTelnetRegistry  `yaml:"human_telnet"`
-	PSKReporter         PSKReporterConfig    `yaml:"pskreporter"`
-	DXSummit            DXSummitConfig       `yaml:"dxsummit"`
-	Archive             ArchiveConfig        `yaml:"archive"`
-	Dedup               DedupConfig          `yaml:"dedup"`
-	FloodControl        FloodControlConfig   `yaml:"flood_control"`
-	Filter              FilterConfig         `yaml:"filter"`
-	Stats               StatsConfig          `yaml:"stats"`
-	CallCorrection      CallCorrectionConfig `yaml:"call_correction"`
-	CallCache           CallCacheConfig      `yaml:"call_cache"`
-	Harmonics           HarmonicConfig       `yaml:"harmonics"`
-	SpotPolicy          SpotPolicy           `yaml:"spot_policy"`
-	ModeInference       ModeInferenceConfig  `yaml:"mode_inference"`
-	CTY                 CTYConfig            `yaml:"cty"`
-	Buffer              BufferConfig         `yaml:"buffer"`
-	Skew                SkewConfig           `yaml:"skew"`
-	FCCULS              FCCULSConfig         `yaml:"fcc_uls"`
-	ISED                ISEDConfig           `yaml:"ised"`
-	Peering             PeeringConfig        `yaml:"peering"`
-	Reputation          ReputationConfig     `yaml:"reputation"`
-	GridDBPath          string               `yaml:"grid_db"`
-	GridFlushSec        int                  `yaml:"grid_flush_seconds"`
-	GridCacheSize       int                  `yaml:"grid_cache_size"`
-	GridCacheTTLSec     int                  `yaml:"grid_cache_ttl_seconds"`
-	GridBlockCacheMB    int                  `yaml:"grid_block_cache_mb"`
-	GridBloomFilterBits int                  `yaml:"grid_bloom_filter_bits"`
-	GridMemTableSizeMB  int                  `yaml:"grid_memtable_size_mb"`
-	GridL0Compaction    int                  `yaml:"grid_l0_compaction_threshold"`
-	GridL0StopWrites    int                  `yaml:"grid_l0_stop_writes_threshold"`
-	GridWriteQueueDepth int                  `yaml:"grid_write_queue_depth"`
-	H3TablePath         string               `yaml:"h3_table_path"`
+	Server              ServerConfig          `yaml:"server"`
+	Telnet              TelnetConfig          `yaml:"telnet"`
+	WhoSpotsMe          WhoSpotsMeConfig      `yaml:"who_spots_me"`
+	UI                  UIConfig              `yaml:"ui"`
+	GoRuntime           GoRuntimeConfig       `yaml:"go_runtime"`
+	Logging             LoggingConfig         `yaml:"logging"`
+	PropReport          PropReportConfig      `yaml:"prop_report"`
+	RBN                 RBNConfig             `yaml:"rbn"`
+	RBNDigital          RBNConfig             `yaml:"rbn_digital"`
+	HumanTelnet         HumanTelnetRegistry   `yaml:"human_telnet"`
+	PSKReporter         PSKReporterConfig     `yaml:"pskreporter"`
+	DXSummit            DXSummitConfig        `yaml:"dxsummit"`
+	Archive             ArchiveConfig         `yaml:"archive"`
+	BulletinArchive     BulletinArchiveConfig `yaml:"bulletin_archive"`
+	Dedup               DedupConfig           `yaml:"dedup"`
+	FloodControl        FloodControlConfig    `yaml:"flood_control"`
+	Filter              FilterConfig          `yaml:"filter"`
+	Stats               StatsConfig           `yaml:"stats"`
+	CallCorrection      CallCorrectionConfig  `yaml:"call_correction"`
+	CallCache           CallCacheConfig       `yaml:"call_cache"`
+	Harmonics           HarmonicConfig        `yaml:"harmonics"`
+	SpotPolicy          SpotPolicy            `yaml:"spot_policy"`
+	ModeInference       ModeInferenceConfig   `yaml:"mode_inference"`
+	CTY                 CTYConfig             `yaml:"cty"`
+	Buffer              BufferConfig          `yaml:"buffer"`
+	Skew                SkewConfig            `yaml:"skew"`
+	FCCULS              FCCULSConfig          `yaml:"fcc_uls"`
+	ISED                ISEDConfig            `yaml:"ised"`
+	Peering             PeeringConfig         `yaml:"peering"`
+	Reputation          ReputationConfig      `yaml:"reputation"`
+	GridDBPath          string                `yaml:"grid_db"`
+	GridFlushSec        int                   `yaml:"grid_flush_seconds"`
+	GridCacheSize       int                   `yaml:"grid_cache_size"`
+	GridCacheTTLSec     int                   `yaml:"grid_cache_ttl_seconds"`
+	GridBlockCacheMB    int                   `yaml:"grid_block_cache_mb"`
+	GridBloomFilterBits int                   `yaml:"grid_bloom_filter_bits"`
+	GridMemTableSizeMB  int                   `yaml:"grid_memtable_size_mb"`
+	GridL0Compaction    int                   `yaml:"grid_l0_compaction_threshold"`
+	GridL0StopWrites    int                   `yaml:"grid_l0_stop_writes_threshold"`
+	GridWriteQueueDepth int                   `yaml:"grid_write_queue_depth"`
+	H3TablePath         string                `yaml:"h3_table_path"`
 	// GridDBCheckOnMiss controls whether grid updates consult Pebble on cache miss
 	// to avoid redundant writes. When nil, Load defaults it to true to preserve
 	// historical behavior.
@@ -681,6 +682,11 @@ type ArchiveConfig struct {
 	Synchronous string `yaml:"synchronous"`
 	// AutoDeleteCorruptDB removes the archive DB on startup if corruption is detected.
 	AutoDeleteCorruptDB bool `yaml:"auto_delete_corrupt_db"`
+}
+
+// BulletinArchiveConfig selects the independent WWV/WCY history snapshot.
+type BulletinArchiveConfig struct {
+	Path string `yaml:"path"`
 }
 
 // PeeringConfig controls DXSpider node-to-node peering.
@@ -1990,6 +1996,27 @@ func normalizeArchiveAndStatsConfig(cfg *Config, _ loadRawPresence) error {
 	}
 	if strings.TrimSpace(cfg.Archive.DBPath) == "" {
 		cfg.Archive.DBPath = "data/archive/pebble"
+	}
+	cfg.BulletinArchive.Path = strings.TrimSpace(cfg.BulletinArchive.Path)
+	if cfg.BulletinArchive.Path == "" {
+		return fmt.Errorf("invalid bulletin_archive.path: must not be blank")
+	}
+	bulletinPath, err := filepath.Abs(cfg.BulletinArchive.Path)
+	if err != nil {
+		return fmt.Errorf("invalid bulletin_archive.path: %w", err)
+	}
+	spotPath, err := filepath.Abs(cfg.Archive.DBPath)
+	if err != nil {
+		return fmt.Errorf("invalid archive.db_path: %w", err)
+	}
+	if strings.EqualFold(filepath.VolumeName(spotPath), filepath.VolumeName(bulletinPath)) {
+		rel, relErr := filepath.Rel(spotPath, bulletinPath)
+		if relErr != nil {
+			return fmt.Errorf("compare archive paths: %w", relErr)
+		}
+		if rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel)) {
+			return fmt.Errorf("bulletin_archive.path must be outside archive.db_path")
+		}
 	}
 	syncMode := strings.ToLower(strings.TrimSpace(cfg.Archive.Synchronous))
 	if syncMode == "" {

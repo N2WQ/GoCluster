@@ -149,6 +149,7 @@ The operator-facing commands handled here are:
 - `SHOW DX`
 - `SHOW MYDX`
 - `SHOW DXCC`
+- `SHOW WWV [FULL]` and `SHOW WCY [FULL]`
 - `SHOW PROP`
 - `SHOW BUILD`
   shows the startup-resolved UTC `YYMMDD` version, release tag, and Go toolchain
@@ -319,6 +320,27 @@ temporary-defaults sessions cannot SAVE, LOAD or commit machine writes.
 The 20-name, 256 KiB-per-preset and 8 MiB collection limits remain separate
 from the readback budget, so a valid large preset may LOAD even when FULL/YAML
 readback returns a size error.
+
+### WWV and WCY bulletins
+
+`SHOW WWV` and `SHOW WCY` show the latest five retained bulletins of that type,
+in receipt order. Add `FULL` to show its retained bulletins received in the
+last 24 hours. Both dialects also accept `SH WWV`, `SHOW/WWV`, and `SH/WWV`,
+with equivalent WCY forms. Add `FULL` after a space to any form. Numeric count
+suffixes are not supported. Each type retains at most 48 bulletins, so an
+active feed can fill the history before 24 hours have
+elapsed. Warnings identify known or possible gaps. Archived bulletin text is
+limited to 256 characters; longer text is marked as truncated.
+
+Login shows the latest available WWV and WCY bulletin, and these commands show
+requested bulletins, even if the corresponding live bulletin filter is off.
+After login, live announcements follow the normal WWV and WCY filters. Receipt
+time is when this cluster received the bulletin, not necessarily the time of the
+underlying report. History is saved separately from the spot archive and can
+start empty after installation or be incomplete after a storage failure or an
+unclean shutdown.
+For 24 hours after every startup, output warns that history may be incomplete:
+a previous storage failure may have prevented recording a shutdown marker.
 
 ### Archive history
 

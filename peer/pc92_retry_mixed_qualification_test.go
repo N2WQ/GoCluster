@@ -71,7 +71,7 @@ func newRetryMixedQualification(m *Manager, calls []string) *retryMixedQualifica
 	m.ingest = q.input
 	m.SetAnnouncementBroadcast(func(line string) { q.observeMessage(line, false, "") })
 	m.SetDirectMessage(func(call, line string) { q.observeMessage(line, true, call) })
-	m.SetWWVBroadcast(func(_, line string) { q.observeBulletin(line) })
+	m.SetWWVBroadcast(func(_, line string, _ time.Time) { q.observeBulletin(line) })
 	return q
 }
 

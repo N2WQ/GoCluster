@@ -134,6 +134,7 @@ func TestLoadRejectsMissingRequiredRuntimeSetting(t *testing.T) {
 	for _, tc := range []struct{ file, key string }{
 		{"runtime.yaml", "telnet.port"}, {"runtime.yaml", "telnet.skip_handshake"},
 		{"archive.yaml", "archive.retention_seconds"}, {"archive.yaml", "archive.synchronous"},
+		{"archive.yaml", "bulletin_archive.path"},
 	} {
 		t.Run(tc.key, func(t *testing.T) {
 			dir := testConfigDir(t)

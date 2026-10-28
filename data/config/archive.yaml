@@ -21,3 +21,7 @@ archive:
   # Retention and cleanup.
   cleanup_interval_seconds: 907    # How often to purge expired rows.
   retention_seconds: 86400         # Retention window for all archived spot modes.
+
+bulletin_archive:
+  # Independent 24-hour WWV/WCY snapshot; parent directory must be writable.
+  path: "data/bulletins/history.json"

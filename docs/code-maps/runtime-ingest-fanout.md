@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e538ffea87cdedec`
+- Source fingerprint: `4d2042e0ffcf21c6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 11 | 20 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 148 |
+| `dxcluster/commands` | `commands` | 12 | 21 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 149 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 53 | 113 |
+| `dxcluster/telnet` | `telnet` | 54 | 114 |
 
 ## In-Scope Package Edges
 
@@ -43,6 +43,7 @@
 | `dxcluster/commands` | `dxcluster/strutil` |
 | `dxcluster/internal/cluster` | `dxcluster/archive` |
 | `dxcluster/internal/cluster` | `dxcluster/buffer` |
+| `dxcluster/internal/cluster` | `dxcluster/bulletinhistory` |
 | `dxcluster/internal/cluster` | `dxcluster/config` |
 | `dxcluster/internal/cluster` | `dxcluster/cty` |
 | `dxcluster/internal/cluster` | `dxcluster/dedup` |
@@ -81,6 +82,7 @@
 | `dxcluster/spot` | `dxcluster/pathreliability` |
 | `dxcluster/spot` | `dxcluster/strutil` |
 | `dxcluster/telnet` | `dxcluster/archive` |
+| `dxcluster/telnet` | `dxcluster/bulletinhistory` |
 | `dxcluster/telnet` | `dxcluster/cty` |
 | `dxcluster/telnet` | `dxcluster/filter` |
 | `dxcluster/telnet` | `dxcluster/filter/expr` |
@@ -100,6 +102,7 @@
 Source files:
 - `commands/boolean_rule_catalog.go`
 - `commands/boolean_rule_help.go`
+- `commands/bulletin_command.go`
 - `commands/cc_filter_help.go`
 - `commands/comment_help.go`
 - `commands/configuration_help.go`
@@ -112,6 +115,7 @@ Source files:
 
 Test files:
 - `commands/boolean_rule_help_test.go`
+- `commands/bulletin_command_test.go`
 - `commands/cc_filter_help_test.go`
 - `commands/command_arity_test.go`
 - `commands/comment_history_benchmark_test.go`
@@ -178,6 +182,7 @@ Test files:
 - `internal/cluster/activity_admission_wiring_test.go`
 - `internal/cluster/archive_fanout_delivery_test.go`
 - `internal/cluster/boolean_defaults_test.go`
+- `internal/cluster/bulletin_ingress_test.go`
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
 - `internal/cluster/confidence_attribution_delivery_test.go`
@@ -636,6 +641,7 @@ Source files:
 - `telnet/boolean_rule_commands.go`
 - `telnet/boolean_rule_readback.go`
 - `telnet/bulletin_dedupe.go`
+- `telnet/bulletin_history.go`
 - `telnet/comment_commands.go`
 - `telnet/comment_input.go`
 - `telnet/configuration_admission.go`
@@ -694,6 +700,7 @@ Test files:
 - `telnet/boolean_rule_commands_test.go`
 - `telnet/boolean_rule_readback_test.go`
 - `telnet/bulletin_dedupe_test.go`
+- `telnet/bulletin_history_test.go`
 - `telnet/canadian_login_test.go`
 - `telnet/cc_filter_help_contract_test.go`
 - `telnet/command_fixture_options_test.go`
@@ -804,6 +811,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0323 | Accepted | 2026-10-28 | bulletin history, login, commands, persistence | `area:commands` |
 | [ADR-0322](docs/decisions/ADR-0322-local-user-login-ssids.md) | Accepted | 2026-10-28 | telnet, login syntax, SSID, profile identity | `area:telnet, path:telnet` |
 | [ADR-0314](docs/decisions/ADR-0314-ordinary-fixture-paths-and-native-test-ownership.md) | Accepted | 2026-10-19 | test paths, native Windows ownership, runner identity | `path:internal/cluster` |
 | [ADR-0311](docs/decisions/ADR-0311-stabilizer-transition-matrix.md) | Accepted | 2026-10-16 | console, terminal-path accounting, bounded stats | `path:internal/cluster` |

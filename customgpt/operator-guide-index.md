@@ -44,6 +44,7 @@ existing operator-facing docs.
 | Look up DXCC/ADIF/zones | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md) |
 | Confirm baseline own-call identity | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md), [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md) |
 | Show recent spotter countries | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md) |
+| Show WWV/WCY at login or inspect five-report and FULL history, truncation and gaps | [WWV/WCY commands](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md#wwv-and-wcy-bulletins), [telnet bulletin history](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#wwv-and-wcy-bulletin-history) |
 | Opt into solar summaries | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md) |
 
 ## Filtering And Output

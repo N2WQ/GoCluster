@@ -79,3 +79,31 @@ func TestArchiveSplitRetentionKeysRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestBulletinArchivePathContract(t *testing.T) {
+	for _, tc := range []struct {
+		name, overlay string
+		wantErr       bool
+	}{
+		{"valid while spot archive disabled", "archive:\n  enabled: false\nbulletin_archive:\n  path: data/bulletins/test.json\n", false},
+		{"blank", "bulletin_archive:\n  path: '  '\n", true},
+		{"null", "bulletin_archive:\n  path: null\n", true},
+		{"inside spot database", "archive:\n  db_path: data/archive/pebble\nbulletin_archive:\n  path: data/archive/pebble/bulletins.json\n", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := testConfigDir(t)
+			writeRequiredFloodControlFile(t, dir)
+			writeTestConfigOverlay(t, dir, "archive.yaml", tc.overlay)
+			cfg, err := Load(dir)
+			if tc.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "bulletin_archive.path") {
+					t.Fatalf("expected bulletin path error, got %v", err)
+				}
+				return
+			}
+			if err != nil || cfg.BulletinArchive.Path != "data/bulletins/test.json" || cfg.Archive.Enabled {
+				t.Fatalf("unexpected path/spot archive result: cfg=%+v err=%v", cfg, err)
+			}
+		})
+	}
+}

@@ -810,11 +810,14 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		var preloginActive int64
 		var preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts uint64
 		var bulletinDedupe telnet.BulletinDedupeSnapshot
+		var bulletinHistorySummary string
 		var clientCount int
 		if telnetSrv != nil {
 			queueDrops, clientDrops, senderFailures = telnetSrv.BroadcastMetricSnapshot()
 			preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts, _, _ = telnetSrv.PreloginMetricSnapshot()
 			bulletinDedupe = telnetSrv.BulletinDedupeSnapshot()
+			history := telnetSrv.BulletinHistoryStats()
+			bulletinHistorySummary = fmt.Sprintf(" History: WWV %d / WCY %d; losses %d / %d; duplicate keys %d/%d, evicted %d; storage healthy %t.", history.WWVRecords, history.WCYRecords, history.WWVLosses, history.WCYLosses, history.DedupeEntries, history.DedupeLimit, history.DedupeEvictions, history.StorageHealthy)
 			clientCount = telnetSrv.GetClientCount()
 		}
 
@@ -897,7 +900,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 			temporalLine,
 			toxicityLine,
 			pipelineLine, // 7
-			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W). Bulletins: %d accepted / %d suppressed / %d evicted / %d tracked. Prelogin: %d active / rejects %d (G) %d (R) %d (C) / %d (T)", clientCount, queueDrops, clientDrops, senderFailures, bulletinDedupe.Accepted, bulletinDedupe.Suppressed, bulletinDedupe.Evicted, bulletinDedupe.Tracked, preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts), // 8
+			fmt.Sprintf("Telnet: %d clients. Drops: %d (Q) / %d (C) / %d (W). Bulletins: %d accepted / %d suppressed / %d evicted / %d tracked. Prelogin: %d active / rejects %d (G) %d (R) %d (C) / %d (T)%s", clientCount, queueDrops, clientDrops, senderFailures, bulletinDedupe.Accepted, bulletinDedupe.Suppressed, bulletinDedupe.Evicted, bulletinDedupe.Tracked, preloginActive, preloginRejectGlobal, preloginRejectRate, preloginRejectConcurrency, preloginTimeouts, bulletinHistorySummary), // 8
 		)
 
 		prevSourceCounts = sourceTotals

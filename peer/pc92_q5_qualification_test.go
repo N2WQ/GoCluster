@@ -57,7 +57,7 @@ func newQ5Rig(t *testing.T) *q5Rig {
 			r.healthyMessages.Add(1)
 		}
 	})
-	r.m.SetWWVBroadcast(func(_, line string) {
+	r.m.SetWWVBroadcast(func(_, line string, _ time.Time) {
 		r.bulletins.Add(1)
 		if strings.Contains(line, "Q5HEALTH") {
 			r.healthyBulletins.Add(1)

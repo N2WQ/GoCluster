@@ -123,6 +123,17 @@ These rules must be explicit, deterministic, and testable.
   window is enabled.
 - The bulletin dedupe state must have both a time window and a hard cardinality
   cap.
+- WWV and WCY history is independent of recipient eligibility and the optional
+  spot archive. Each type retains at most 48 records from the inclusive
+  24-hour receipt-time window. Archived text is capped at 256 Unicode code
+  points and marked when truncated; live text is unchanged. Deduplication uses
+  the original text before truncation. Login and explicit SHOW requests bypass
+  the live WWV/WCY switches; later live delivery still honors them. Both
+  dialects accept SHOW/SH with a space or slash before WWV/WCY, returning the
+  latest five by default and the whole retained window with a separate FULL.
+- Detected history loss is reported for the affected window. A storage failure
+  or a restart can make completeness unknown; history is not proof of messages
+  that never reached the cluster. See [ADR-0323](decisions/ADR-0323-wwv-wcy-bulletin-history.md).
 
 ### Prioritization
 

@@ -374,7 +374,7 @@ func TestConcurrentStopJoinsBeforeClosingSpotChannel(t *testing.T) {
 		attempts.Add(1)
 		return conn, nil
 	}
-	raw := make(chan string, 1)
+	raw := make(chan RawLine, 1)
 	c.SetRawPassthrough(raw)
 	if err := c.Connect(); err != nil {
 		t.Fatalf("Connect: %v", err)
@@ -411,9 +411,9 @@ func TestConcurrentStopJoinsBeforeClosingSpotChannel(t *testing.T) {
 		t.Fatalf("dial attempts = %d, want 1", got)
 	}
 	awaitChannelClosed(t, c.GetSpotChannel(), "spot channel after Stop")
-	raw <- "still caller-owned"
-	if got := <-raw; got != "still caller-owned" {
-		t.Fatalf("raw channel value = %q", got)
+	raw <- RawLine{Line: "still caller-owned"}
+	if got := <-raw; got.Line != "still caller-owned" {
+		t.Fatalf("raw channel value = %q", got.Line)
 	}
 	assertNoSignal(t, conn.writeObserved, 30*time.Millisecond, "write after Stop")
 }

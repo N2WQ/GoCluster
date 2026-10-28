@@ -83,6 +83,10 @@ func helpOverviewLines(dialect string) []string {
 		helpRow{show, "Show recent spots matching your filters."}, helpRow{"SHOW MYDX", "Same as " + show + "."},
 		helpRow{short, "Short form of " + show + "."}, helpRow{"DX", "Post a spot."},
 		helpRow{"SHOW DXCC", "Look up a callsign or country prefix."}, helpRow{"WHOSPOTSME", "Show recent spotter countries for your call."})
+	lines = helpSection(lines, "Space weather bulletins",
+		helpRow{"SHOW WWV", "Show the latest five WWV bulletins."}, helpRow{"SHOW WCY", "Show the latest five WCY bulletins."},
+		helpRow{"SHOW WWV FULL", "Show retained WWV bulletins from the last 24 hours."},
+		helpRow{"SHOW WCY FULL", "Show retained WCY bulletins from the last 24 hours."})
 	lines = helpSection(lines, "Examples",
 		helpRow{show + " 10", "Show the latest 10 matching spots."}, helpRow{show + " K1ABC 10", "Search for spots of K1ABC."},
 		helpRow{show + " 10 BAND 20", "Search for 10 matching spots on 20m."},

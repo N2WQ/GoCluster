@@ -392,6 +392,26 @@ path. Edit/clear the numbered slot instead. Live and archive matching use the
 same prepared rules with their existing self exceptions; changes invalidate
 history continuation and pending pages.
 
+## WWV and WCY Bulletin History
+
+At login, the latest available WWV and WCY bulletins are shown regardless of
+the live WWV/WCY filter settings. Later announcements follow those filters.
+Use `SHOW WWV` or `SHOW WCY` for the latest five retained bulletins and add
+`FULL` for that type's retained bulletins from the last 24 hours. Both dialects
+also accept `SH WWV`, `SHOW/WWV` and `SH/WWV`, with equivalent WCY forms;
+put `FULL` after a space. Numeric count suffixes are not supported. Explicit
+requests also bypass the live bulletin filters.
+
+The archive uses cluster receipt time and holds at most 48 bulletins per type.
+Its text is capped at 256 characters per bulletin, with longer text marked as
+truncated. Capacity loss and detected or possible storage gaps are reported;
+the first installation cannot recover bulletins from before it was running.
+History survives orderly restarts when its dedicated storage is available;
+an unclean shutdown can leave it incomplete. For 24 hours after every startup,
+output warns that history may be incomplete because a previous storage failure
+may have prevented recording a shutdown marker. Live bulletin text is not
+truncated by this archive limit. See [command details](../commands/README.md#wwv-and-wcy-bulletins).
+
 ## Archive History And Continuation
 
 `SHOW DX` and `SHOW MYDX` share archive history selection and paging. Counts

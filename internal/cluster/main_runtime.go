@@ -24,6 +24,7 @@ import (
 
 	"dxcluster/archive"
 	"dxcluster/buffer"
+	"dxcluster/bulletinhistory"
 	"dxcluster/commands"
 	"dxcluster/config"
 	"dxcluster/cty"
@@ -142,10 +143,11 @@ type clusterRuntime struct {
 	outputPipeline     *outputPipeline
 	outputRetirement   sync.Once
 
-	peerManager   *peer.Manager
-	archiveWriter *archive.Writer
-	processor     *commands.Processor
-	telnetServer  *telnet.Server
+	peerManager     *peer.Manager
+	archiveWriter   *archive.Writer
+	bulletinHistory *bulletinhistory.Store
+	processor       *commands.Processor
+	telnetServer    *telnet.Server
 
 	lastOutput          atomic.Int64
 	secondaryStageCount atomic.Uint64
@@ -158,7 +160,7 @@ type clusterRuntime struct {
 
 	humanTelnetFeeds   []humanTelnetFeed
 	humanTelnetCancel  context.CancelFunc
-	humanTelnetRaw     chan string
+	humanTelnetRaw     chan rbn.RawLine
 	humanTelnetSpotsWG sync.WaitGroup
 	humanTelnetRawWG   sync.WaitGroup
 	humanTelnetStop    sync.Once
@@ -985,6 +987,7 @@ func (r *clusterRuntime) initializeServices() bool {
 		return false
 	}
 	r.initializeArchiveWriter()
+	r.bulletinHistory = bulletinhistory.Open(r.cfg.BulletinArchive.Path, time.Duration(r.cfg.Telnet.BulletinDedupeWindowSeconds)*time.Second, r.cfg.Telnet.BulletinDedupeMaxEntries)
 	r.processor = commands.NewProcessor(
 		r.spotBuffer,
 		r.archiveWriter,
@@ -1121,7 +1124,7 @@ func (r *clusterRuntime) initializeTelnetServer() bool {
 	})
 	if r.peerManager != nil {
 		r.peerManager.SetRawBroadcast(r.telnetServer.BroadcastRaw)
-		r.peerManager.SetWWVBroadcast(r.telnetServer.BroadcastWWV)
+		r.peerManager.SetWWVBroadcast(r.telnetServer.BroadcastWWVAt)
 		r.peerManager.SetAnnouncementBroadcast(r.telnetServer.BroadcastAnnouncement)
 		r.peerManager.SetCurrentDirectMessage(r.telnetServer.SendCurrentDirectMessage)
 		r.peerManager.SetMembershipProvider(r.currentPeerMembership)
@@ -1188,6 +1191,7 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		AutoReadPauseDuration:     time.Duration(r.cfg.Telnet.AutoReadPauseSeconds) * time.Second,
 		BulletinDedupeWindow:      time.Duration(r.cfg.Telnet.BulletinDedupeWindowSeconds) * time.Second,
 		BulletinDedupeMaxEntries:  r.cfg.Telnet.BulletinDedupeMaxEntries,
+		BulletinHistory:           r.bulletinHistory,
 		BroadcastBatchInterval:    time.Duration(r.cfg.Telnet.BroadcastBatchIntervalMS) * time.Millisecond,
 		BroadcastBatchIntervalSet: true,
 		WriterBatchMaxBytes:       r.cfg.Telnet.WriterBatchMaxBytes,
@@ -1345,7 +1349,7 @@ func (r *clusterRuntime) connectHumanTelnetFeeds() {
 
 	feedCtx, cancel := newHumanTelnetContext(r.ctx)
 	r.humanTelnetCancel = cancel
-	r.humanTelnetRaw = make(chan string, 256)
+	r.humanTelnetRaw = make(chan rbn.RawLine, 256)
 	r.humanTelnetRawWG.Add(1)
 	go func() {
 		defer r.humanTelnetRawWG.Done()
@@ -1362,6 +1366,11 @@ func (r *clusterRuntime) connectHumanTelnetFeeds() {
 		client.SetTelnetTransport(feedCfg.TelnetTransport)
 		client.UseMinimalParser()
 		client.SetRawPassthrough(r.humanTelnetRaw)
+		client.SetRawPassthroughDropReporter(func(line string, receivedAt time.Time) {
+			if kind := wwvKindFromLine(line); kind != "" && r.bulletinHistory != nil {
+				r.bulletinHistory.ReportLoss(kind, receivedAt)
+			}
+		})
 		if feedCfg.KeepaliveSec > 0 {
 			client.EnableKeepalive(time.Duration(feedCfg.KeepaliveSec) * time.Second)
 		}
@@ -1401,13 +1410,14 @@ func newHumanTelnetContext(parent context.Context) (context.Context, context.Can
 	return context.WithCancel(parent)
 }
 
-func (r *clusterRuntime) forwardHumanPassthrough(rawPassthrough <-chan string) {
-	for line := range rawPassthrough {
+func (r *clusterRuntime) forwardHumanPassthrough(rawPassthrough <-chan rbn.RawLine) {
+	for raw := range rawPassthrough {
+		line := raw.Line
 		if r.telnetServer == nil {
 			continue
 		}
 		if kind := wwvKindFromLine(line); kind != "" {
-			r.telnetServer.BroadcastWWV(kind, line)
+			r.telnetServer.BroadcastWWVAt(kind, line, raw.ReceivedAt)
 			continue
 		}
 		if announcement := announcementFromLine(line); announcement != "" {
@@ -1654,11 +1664,17 @@ func (r *clusterRuntime) close() {
 	if r.peerManager != nil {
 		r.peerManager.Stop()
 	}
+	r.stopHumanTelnetFeeds()
 	if r.telnetServer != nil {
 		r.telnetServer.Stop()
 	}
 	if r.archiveWriter != nil {
 		r.archiveWriter.Stop()
+	}
+	if r.bulletinHistory != nil {
+		if err := r.bulletinHistory.Close(); err != nil {
+			log.Printf("Warning: bulletin history close failed: %v", err)
+		}
 	}
 	if r.stopGridWriter != nil {
 		r.stopGridWriter()

@@ -101,6 +101,8 @@ will hear the station or make a contact.
 | Get help for a command | `HELP SHOW DX` |
 | View recent spots | `SHOW DX 10` (`SHOW MYDX` is the same command) |
 | View recent spots for a station | `SHOW DX K1ABC 10` |
+| View recent space weather bulletins | `SHOW WWV` or `SHOW WCY` |
+| View retained space weather bulletins | `SHOW WWV FULL` or `SHOW WCY FULL` |
 | See all your filter categories | `SHOW FILTER` |
 | Inspect one category or all details | `SHOW FILTER BAND` or `SHOW FILTER FULL` |
 | See your grid, preferences, and session state | `SHOW SETTINGS` |
@@ -783,6 +785,12 @@ Reading and posting spots:
   DX                     Post a spot.
   SHOW DXCC              Look up a callsign or country prefix.
   WHOSPOTSME             Show recent spotter countries for your call.
+
+Space weather bulletins:
+  SHOW WWV               Show the latest five WWV bulletins.
+  SHOW WCY               Show the latest five WCY bulletins.
+  SHOW WWV FULL          Show retained WWV bulletins from the last 24 hours.
+  SHOW WCY FULL          Show retained WCY bulletins from the last 24 hours.
 
 Examples:
   SHOW DX 10             Show the latest 10 matching spots.
