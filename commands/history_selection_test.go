@@ -127,8 +127,8 @@ func TestHistoryBandModeMatchingBeforeCount(t *testing.T) {
 		}
 	}
 	command, _, _ := p.ParseHistoryCommand("SHOW DX K1ABC BAND 20 MODE CW COMMENT POTA", "go")
-	_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{
-		Filters: filter.V5FilterConfiguration{
+	_, f, err := filter.PrepareV6Configuration(filter.V6Configuration{
+		Filters: filter.V6FilterConfiguration{
 			Rules: []filter.RuleDefinition{{Slot: 9, Action: filter.RuleReject, Expr: "BAND=20M"}},
 		},
 	})

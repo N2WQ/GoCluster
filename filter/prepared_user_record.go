@@ -52,9 +52,9 @@ func (prepared *PreparedUserRecord) validate() error {
 // preparation. Configuration, baseline and exact final record bytes must fit
 // their independent bounds before a replacement payload can be returned.
 func PrepareUserRecord(callsign string, record *UserRecord) (*PreparedUserRecord, error) {
-	stored, err := V5UserRecordFromRuntime(record)
+	stored, err := V6UserRecordFromRuntime(record)
 	if err != nil {
 		return nil, err
 	}
-	return PrepareV5UserRecord(callsign, stored)
+	return PrepareV6UserRecord(callsign, stored)
 }

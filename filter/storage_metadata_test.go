@@ -62,11 +62,11 @@ func TestStorageMetadataMatchesUncachedSchema(t *testing.T) {
 		t.Fatalf("unexported fixture field must remain excluded from the YAML schema: %v", err)
 	}
 	types := []reflect.Type{
-		reflect.TypeFor[V5UserRecord](),
-		reflect.TypeFor[V5SavedPreset](),
-		reflect.TypeFor[V5PresetReference](),
-		reflect.TypeFor[V5Configuration](),
-		reflect.TypeFor[V5FilterConfiguration](),
+		reflect.TypeFor[V6UserRecord](),
+		reflect.TypeFor[V6SavedPreset](),
+		reflect.TypeFor[V6PresetReference](),
+		reflect.TypeFor[V6Configuration](),
+		reflect.TypeFor[V6FilterConfiguration](),
 		reflect.TypeFor[SettingsConfiguration](),
 		reflect.TypeFor[RuleDefinition](),
 		reflect.TypeFor[storageMetadataInlineFixture](),
@@ -114,7 +114,7 @@ func TestStorageMetadataOperationAndTypeOwnership(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	setType := reflect.TypeFor[V5SavedPreset]()
+	setType := reflect.TypeFor[V6SavedPreset]()
 	firstFields := first.storedFields(setType)
 	if len(second.fields) != 0 {
 		t.Fatal("a fresh operation inherited another operation's metadata")
@@ -122,10 +122,10 @@ func TestStorageMetadataOperationAndTypeOwnership(t *testing.T) {
 	// Deliberately damage only this test's private map to expose shared backing
 	// storage. Production treats cached schemas as read-only.
 	firstFields["configuration"] = storageDecodeField{typ: reflect.TypeFor[bool]()}
-	if got := second.storedFields(setType)["configuration"].typ; got != reflect.TypeFor[V5Configuration]() {
+	if got := second.storedFields(setType)["configuration"].typ; got != reflect.TypeFor[V6Configuration]() {
 		t.Fatalf("fresh operation shared mutable schema backing: %v", got)
 	}
-	recordFields := second.storedFields(reflect.TypeFor[V5UserRecord]())
+	recordFields := second.storedFields(reflect.TypeFor[V6UserRecord]())
 	if recordFields["recent_ips"].typ != reflect.TypeFor[[]string]() {
 		t.Fatal("record metadata lost its owner-specific field")
 	}
@@ -138,16 +138,16 @@ func TestStorageMetadataOperationAndTypeOwnership(t *testing.T) {
 }
 
 func TestStorageMetadataRevalidatesEachOwner(t *testing.T) {
-	raw := "- {configuration_version: 5, configuration: {filters: {rules: []}, settings: {grid: FN31}}}\n" +
-		"- {configuration_version: 5, configuration: {filters: {rules: []}, settings: {grid: null}}}\n" +
-		"- {configuration_version: 5, configuration: {filters: {rules: []}, settings: {grid: FN32}}}\n"
+	raw := "- {configuration_version: 6, configuration: {filters: {rules: []}, settings: {grid: FN31}}}\n" +
+		"- {configuration_version: 6, configuration: {filters: {rules: []}, settings: {grid: null}}}\n" +
+		"- {configuration_version: 6, configuration: {filters: {rules: []}, settings: {grid: FN32}}}\n"
 	document := storageMetadataDocument(t, raw)
 	state, err := newStorageDecodeState(document)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i, node := range document.Content[0].Content {
-		err := state.validateV5StoredFields(node, reflect.TypeFor[V5SavedPreset]())
+		err := state.validateV6StoredFields(node, reflect.TypeFor[V6SavedPreset]())
 		if i == 1 {
 			if err == nil || !strings.Contains(err.Error(), "invalid stored field grid") {
 				t.Fatal("cached schema bypassed later null validation", err)
@@ -158,9 +158,9 @@ func TestStorageMetadataRevalidatesEachOwner(t *testing.T) {
 			t.Fatal("valid owner refused after cached-schema reuse", err)
 		}
 		state.materialize = true
-		var value V5SavedPreset
+		var value V6SavedPreset
 		guard := newStorageDecodeGuard(false)
-		if _, _, err := state.decode(node, reflect.TypeFor[V5SavedPreset](), reflect.ValueOf(&value).Elem(), guard); err != nil {
+		if _, _, err := state.decode(node, reflect.TypeFor[V6SavedPreset](), reflect.ValueOf(&value).Elem(), guard); err != nil {
 			t.Fatal(err)
 		}
 		if len(guard.typeErrors) != 0 {
@@ -175,18 +175,18 @@ func TestStorageMetadataRevalidatesEachOwner(t *testing.T) {
 
 func TestStorageMetadataBoundIndependentOfOwnerCount(t *testing.T) {
 	for _, count := range []int{1, 1000} {
-		document := storageMetadataDocument(t, strings.Repeat("- {configuration_version: 5, configuration: {filters: {rules: []}, settings: {}}}\n", count))
+		document := storageMetadataDocument(t, strings.Repeat("- {configuration_version: 6, configuration: {filters: {rules: []}, settings: {}}}\n", count))
 		state, err := newStorageDecodeState(document)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, node := range document.Content[0].Content {
-			if err := state.validateV5StoredFields(node, reflect.TypeFor[V5SavedPreset]()); err != nil {
+			if err := state.validateV6StoredFields(node, reflect.TypeFor[V6SavedPreset]()); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if len(state.fields) != 4 {
-			t.Fatalf("%d owners retained %d schemas, want four fixed v5 DTO types", count, len(state.fields))
+			t.Fatalf("%d owners retained %d schemas, want four fixed v6 DTO types", count, len(state.fields))
 		}
 	}
 }

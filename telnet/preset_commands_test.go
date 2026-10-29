@@ -22,21 +22,21 @@ func presetTestServer(t *testing.T) *Server {
 	t.Cleanup(func() { filter.UserDataDir = previous })
 	cfg := pathreliability.DefaultConfig()
 	cfg.MinObservationCount = 19
-	return &Server{dedupeFastEnabled: true, dedupeMedEnabled: true, dedupeSlowEnabled: true, pathPredictor: pathreliability.NewPredictor(cfg, []string{"20m"}), noiseModel: cfg.NoiseModel(), nearbyLoginWarning: nearbyLoginWarningMsg}
+	return &Server{dedupeFastEnabled: true, dedupeMedEnabled: true, dedupeSlowEnabled: true, pathPredictor: pathreliability.NewPredictor(cfg, []string{"20m"}), noiseModel: cfg.NoiseModel()}
 }
 
-func testSavedPreset(t testing.TB, configuration filter.V5Configuration) *filter.SavedPreset {
+func testSavedPreset(t testing.TB, configuration filter.V6Configuration) *filter.SavedPreset {
 	t.Helper()
-	set, err := filter.RuntimeSavedPresetFromV5(&filter.V5SavedPreset{Configuration: configuration})
+	set, err := filter.RuntimeSavedPresetFromV6(&filter.V6SavedPreset{Configuration: configuration})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return set
 }
 
-func testPresetConfiguration(t testing.TB, preset *filter.SavedPreset) filter.V5Configuration {
+func testPresetConfiguration(t testing.TB, preset *filter.SavedPreset) filter.V6Configuration {
 	t.Helper()
-	value, err := filter.V5SavedPresetFromRuntime(preset)
+	value, err := filter.V6SavedPresetFromRuntime(preset)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,8 +147,8 @@ func TestPresetLoadFailure(t *testing.T) {
 	if err := client.saveFilter(); err != nil {
 		t.Fatal(err)
 	}
-	set := testSavedPreset(t, filter.V5Configuration{
-		Filters:  filter.V5FilterConfiguration{Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8"}}},
+	set := testSavedPreset(t, filter.V6Configuration{
+		Filters:  filter.V6FilterConfiguration{Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8"}}},
 		Settings: filter.SettingsConfiguration{Grid: "FN31", NoiseClass: "URBAN", Dialect: "cc", DedupePolicy: "SLOW", SolarSummaryMinutes: 30, PathMinObservationCount: 40},
 	})
 	if err := filter.SavePreset("N2WQ-1", "new", set); err != nil {
@@ -206,10 +206,7 @@ func TestPresetLoadRuntimeState(t *testing.T) {
 	origin.pathMinObservationCount = 40
 	origin.setDedupePolicy(dedupePolicySlow)
 	origin.setSolarSummaryMinutes(30, time.Now())
-	origin.filter = passRuleTestFilter(t, "DXCONT=EU")
-	if err := origin.filter.EnableNearby(origin.gridCell, origin.gridCoarseCell); err != nil {
-		t.Fatal(err)
-	}
+	origin.filter = passRuleTestFilter(t, "NEARBY AND DXCONT=EU")
 	if response, _ := s.handlePresetCommand(origin, "SAVE PRESET nearby"); !strings.Contains(response, "Saved preset") {
 		t.Fatal(response)
 	}
@@ -219,22 +216,21 @@ func TestPresetLoadRuntimeState(t *testing.T) {
 	if response, _ := s.handlePresetCommand(target, "LOAD PRESET NEARBY"); !strings.Contains(response, "dedupe SLOW unavailable; using FAST") {
 		t.Fatal(response)
 	}
-	if !target.filter.NearbyEnabled || target.filter.NearbyUserFine != pathreliability.EncodeCell("FN31") || target.gridCell != pathreliability.EncodeCell("FN31") || target.gridCoarseCell != pathreliability.EncodeCoarseCell("FN31") || target.getDedupePolicy() != dedupePolicyFast {
+	if !target.filter.MatchSnapshot().NearbyFilterActive() || target.gridCell != pathreliability.EncodeCell("FN31") || target.gridCoarseCell != pathreliability.EncodeCoarseCell("FN31") || target.getDedupePolicy() != dedupePolicyFast {
 		t.Fatal("derived runtime state was not rebuilt")
 	}
 	if tick := target.solarNextSummaryAt; tick.Before(start) || tick.Sub(start) > 30*time.Minute || tick.Minute()%30 != 0 || tick.Second() != 0 {
 		t.Fatalf("wrong solar schedule: %v", tick)
 	}
 	programs := target.filter.PreparedRules()
-	target.filter.DisableNearby()
-	if target.filter.PreparedRules() != programs || programs.Definitions()[0].Expr != "DXCONT=EU" {
+	if target.filter.PreparedRules() != programs || programs.Definitions()[0].Expr != "NEARBY AND DXCONT=EU" {
 		t.Fatal("NEARBY OFF lost saved location filters")
 	}
 	set, err := filter.LoadPreset("N2WQ", "NEARBY")
 	if err != nil {
 		t.Fatal(err)
 	}
-	set.NearbyEnabled, set.Grid, set.NoiseClass = false, "", ""
+	set.Grid, set.NoiseClass = "", ""
 	set.PathMinObservationCount, set.SolarSummaryMinutes = 10, 0
 	if err := filter.SavePreset("N2WQ", "DEFAULTS", set); err != nil {
 		t.Fatal(err)
@@ -243,18 +239,47 @@ func TestPresetLoadRuntimeState(t *testing.T) {
 	if response, _ := s.handlePresetCommand(target, "LOAD PRESET DEFAULTS"); !strings.Contains(response, "Loaded preset") {
 		t.Fatal(response)
 	}
-	if target.filter.NearbyEnabled || target.grid != "IO91" || !target.gridDerived || target.pathMinObservationCount != 0 || target.noiseClass != "QUIET" || target.getSolarSummaryMinutes() != 0 || !target.solarNextSummaryAt.IsZero() {
+	if target.grid != "IO91" || !target.gridDerived || target.pathMinObservationCount != 0 || target.noiseClass != "QUIET" || target.getSolarSummaryMinutes() != 0 || !target.solarNextSummaryAt.IsZero() {
 		t.Fatal("LOAD did not reset inactive/default settings")
 	}
-	set.NearbyEnabled, set.Grid = true, "INVALID"
+	set.Grid = "INVALID"
 	if err := filter.SavePreset("N2WQ", "UNLOCATED", set); err != nil {
 		t.Fatal(err)
 	}
 	response, _ := s.handlePresetCommand(target, "LOAD PRESET UNLOCATED")
-	if !strings.Contains(response, nearbyLoginInactiveMsg) || !target.filter.NearbyEnabled ||
-		target.filter.NearbyUserFine != pathreliability.InvalidCell || target.filter.NearbyUserCoarse != pathreliability.InvalidCell ||
-		target.filter.PreparedRules().Definitions()[0].Expr != "DXCONT=EU" {
+	if !strings.Contains(response, "Loaded preset") || !target.filter.MatchSnapshot().NearbyFilterActive() ||
+		target.gridCell != pathreliability.InvalidCell || target.gridCoarseCell != pathreliability.InvalidCell ||
+		target.filter.PreparedRules().Definitions()[0].Expr != "NEARBY AND DXCONT=EU" {
 		t.Fatalf("NEARBY without usable cells: %q", response)
+	}
+}
+
+func TestPresetRuleOnlyLoadPreservesDerivedLocation(t *testing.T) {
+	s := presetTestServer(t)
+	near, _, coarse, _ := requireDistinctPathCells(t)
+	c := configurationTestClient(s, "N2WQ-2")
+	c.filter = passRuleTestFilter(t, "MODE=CW")
+	c.grid, c.gridDerived, c.gridCell, c.gridCoarseCell = "FN31", true, near, coarse
+	c.configuredSettings = filter.SettingsConfiguration{Dialect: "go", DedupePolicy: "FAST"}
+	c.configurationInitialized = true
+	if err := c.saveFilter(); err != nil {
+		t.Fatal(err)
+	}
+	cfg := c.captureV6Configuration()
+	cfg.Filters.Rules[0].Expr = "NEARBY OR MODE=FT8"
+	if err := filter.SavePreset(c.callsign, "RULES", testSavedPreset(t, cfg)); err != nil {
+		t.Fatal(err)
+	}
+	lookups := 0
+	s.gridLookup = func(string) (string, bool, bool) {
+		lookups++
+		return "IO91", true, true
+	}
+	response, handled := s.handlePresetCommand(c, "LOAD PRESET RULES")
+	if !handled || !strings.Contains(response, "Loaded preset") || lookups != 0 ||
+		c.grid != "FN31" || !c.gridDerived || c.gridCell != near || c.gridCoarseCell != coarse ||
+		c.configuredSettings.Grid != "" || c.filter.PreparedRules().Definitions()[0].Expr != "NEARBY OR MODE=FT8" {
+		t.Fatalf("rule-only preset load replaced derived location or looked up again: %q lookups=%d", response, lookups)
 	}
 }
 
@@ -262,7 +287,7 @@ func TestPresetLoadConcurrentReaders(t *testing.T) {
 	s := presetTestServer(t)
 	client := newTestClient()
 	client.callsign = "N2WQ-2"
-	if err := filter.SavePreset("N2WQ-1", "ONE", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Grid: "FN31", DedupePolicy: "MED"}})); err != nil {
+	if err := filter.SavePreset("N2WQ-1", "ONE", testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Grid: "FN31", DedupePolicy: "MED"}})); err != nil {
 		t.Fatal(err)
 	}
 	stop := make(chan struct{})
@@ -325,7 +350,7 @@ func TestPresetSessionTranscriptAndReconnect(t *testing.T) {
 					if dialect == DialectCC {
 						show = "SHOW/FILTER"
 					}
-					commands = append(commands, struct{ line, want string }{show, "Type RESUME when ready. Missed spots are not replayed."}, struct{ line, want string }{"RESET FILTER", "NEARBY OFF"})
+					commands = append(commands, struct{ line, want string }{show, "Type RESUME when ready. Missed spots are not replayed."}, struct{ line, want string }{"RESET FILTER", "Personal rules cleared."})
 				}
 				for _, command := range commands {
 					if _, err := io.WriteString(conn, command.line+"\r\n"); err != nil {

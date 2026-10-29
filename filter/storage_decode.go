@@ -1,4 +1,4 @@
-// File role: Operation-owned bounded decoding of persisted v5 user/preset YAML.
+// File role: Operation-owned bounded decoding of persisted v6 user/preset YAML.
 // Physical/logical work and yaml.v3 alias guards precede bulk materialization.
 package filter
 
@@ -482,7 +482,7 @@ func (state *storageDecodeState) decodeMapEntries(node *yaml.Node, typ reflect.T
 }
 
 func storagePresetMapType(typ reflect.Type) bool {
-	return typ == reflect.TypeFor[map[string]*V5SavedPreset]()
+	return typ == reflect.TypeFor[map[string]*V6SavedPreset]()
 }
 
 func (state *storageDecodeState) decodeMerge(parent, merge *yaml.Node, typ reflect.Type, out reflect.Value, guard *storageDecodeGuard) error {

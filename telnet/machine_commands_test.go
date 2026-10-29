@@ -12,15 +12,15 @@ import (
 	"dxcluster/filter"
 )
 
-func decodeProposalTest(t *testing.T, c *Client, verb, resource, config string) (machineCommand, v5MachineRequest) {
+func decodeProposalTest(t *testing.T, c *Client, verb, resource, config string) (machineCommand, v6MachineRequest) {
 	t.Helper()
 	revision, err := c.configurationRevisionToken()
 	if err != nil {
 		t.Fatal(err)
 	}
 	command := machineCommand{Verb: verb, Resource: resource}
-	body := fmt.Sprintf("schema_version: 5\nrequest_id: edit-1\nif_revision: %s\nconfiguration:\n%s", revision, config)
-	request, err := decodeV5MachineRequest([]byte(body), command, nil)
+	body := fmt.Sprintf("schema_version: 6\nrequest_id: edit-1\nif_revision: %s\nconfiguration:\n%s", revision, config)
+	request, err := decodeV6MachineRequest([]byte(body), command, nil)
 	if err != nil {
 		t.Fatalf("decode literal proposal: %v", err)
 	}
@@ -29,7 +29,6 @@ func decodeProposalTest(t *testing.T, c *Client, verb, resource, config string) 
 
 func completeValidationConfigurationTest() string {
 	return "filters:\n" + indentMachineFixture(`rules: []
-nearby_enabled: false
 include_beacons: DEFAULT
 allow_wwv: DEFAULT
 allow_wcy: DEFAULT
@@ -60,8 +59,8 @@ func TestMachineYAMLPreparationBoundAndCancellation(t *testing.T) {
 	for _, release := range releases {
 		release()
 	}
-	for _, body := range []string{"[broken", "schema_version: 5\nrequest_id: edit-1\nif_revision: rev-1\nconfiguration: {noise_class: URBAN}\n"} {
-		_, _ = s.prepareV5MachineRequest(configurationTestClient(s, "W1ABC-1"), []byte(body), machineCommand{Verb: "PATCH", Resource: "SETTINGS"})
+	for _, body := range []string{"[broken", "schema_version: 6\nrequest_id: edit-1\nif_revision: rev-1\nconfiguration: {noise_class: URBAN}\n"} {
+		_, _ = s.prepareV6MachineRequest(configurationTestClient(s, "W1ABC-1"), []byte(body), machineCommand{Verb: "PATCH", Resource: "SETTINGS"})
 		if len(s.yamlPreparation) != 0 {
 			t.Fatal("decoder retained its preparation permit")
 		}
@@ -92,7 +91,7 @@ func TestMachineUnchangedPUTRepairsDurabilityWithoutRuntimeReset(t *testing.T) {
 	tick, pause, diag, programs := c.solarNextSummaryAt, c.readPauseUntilUnixNano.Load(), c.getDiagMode(), c.filter.PreparedRules()
 	revision, _ := c.configurationRevisionToken()
 	command, request := decodeProposalTest(t, c, "PUT", "SETTINGS", "  dialect: go\n  grid: \"\"\n  noise_class: URBAN\n  dedupe_policy: FAST\n  path_min_observation_count: 0\n  solar_summary_minutes: 15\n")
-	response = s.applyV5MachineRequest(c, command, request)
+	response = s.applyV6MachineRequest(c, command, request)
 	if !strings.Contains(response, "persisted: true") || strings.Contains(response, "error:") {
 		t.Fatal(response)
 	}
@@ -103,8 +102,8 @@ func TestMachineUnchangedPUTRepairsDurabilityWithoutRuntimeReset(t *testing.T) {
 	}
 	path := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 	data := presetDiskBytes(t, path)
-	if !bytes.Contains(data, []byte("noise_class: URBAN")) || !bytes.Contains(data, []byte("configuration_version: 5")) {
-		t.Fatal("unchanged PUT did not repair durable v5 preferences")
+	if !bytes.Contains(data, []byte("noise_class: URBAN")) || !bytes.Contains(data, []byte("configuration_version: 6")) {
+		t.Fatal("unchanged PUT did not repair durable v6 preferences")
 	}
 	next := configurationTestClient(s, c.callsign)
 	if _, err := s.restoreAndRegisterClient(next, time.Now().UTC(), time.Now().Add(time.Minute)); err != nil ||

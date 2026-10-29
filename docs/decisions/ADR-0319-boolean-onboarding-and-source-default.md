@@ -7,6 +7,8 @@ description: Consistent starting rules, explicit skimmer selection, and exact ru
 - Date: 2026-10-22
 - Decision Origin: Design
 
+> ADR-0329 replaces the generation-specific reset boundary below: recognized v0-v5 filters/presets reset to the configured new-user rule once; v6 empty rules remain empty. Unaffected onboarding contracts stand; ADR-0320 still governs SOURCE. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
+
 ## Context
 
 [ADR-0320](ADR-0320-explicit-source-filtering.md) supersedes the implicit
@@ -104,3 +106,5 @@ outside this change.
 - Regression: [source truth cases](../../filter/rule_source_policy_test.go)
   and [login/edit/reconnect journeys](../../telnet/boolean_onboarding_test.go).
 - Superseded in part by [ADR-0320](ADR-0320-explicit-source-filtering.md).
+
+- Also superseded in part by [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md) for the generation-specific reset boundary; unaffected contracts remain.

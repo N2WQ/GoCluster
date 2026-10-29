@@ -26,7 +26,7 @@ func TestSessionCeilingDepartingSameIdentity(t *testing.T) {
 			old := configurationTestClient(s, "K1ABC-1")
 			old.configuredSettings = filter.SettingsConfiguration{Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST"}
 			old.configurationInitialized = true
-			baseline := testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
+			baseline := testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
 			old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: baseline}
 			s.registerClient(old)
 			if err := old.saveFilter(); err != nil {
@@ -37,7 +37,7 @@ func TestSessionCeilingDepartingSameIdentity(t *testing.T) {
 			}
 			profile := filepath.Join(filter.UserDataDir, old.callsign+".yaml")
 			library := presetLibraryPathFor(old.callsign)
-			for _, path := range []string{profile + ".pre-v5.bak", library + ".pre-v5.bak"} {
+			for _, path := range []string{profile + ".pre-v6.bak", library + ".pre-v6.bak"} {
 				if err := os.WriteFile(path, []byte("existing backup for "+filepath.Base(path)), 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -103,7 +103,7 @@ func TestSessionCeilingDepartingSameIdentity(t *testing.T) {
 			waitConfigurationTest(t, removed)
 			ceilingOccupancy(t, s, 0, 0)
 
-			paths := []string{profile, library, profile + ".pre-v5.bak", library + ".pre-v5.bak"}
+			paths := []string{profile, library, profile + ".pre-v6.bak", library + ".pre-v6.bak"}
 			before := make(map[string][]byte, len(paths))
 			for _, path := range paths {
 				data, err := os.ReadFile(path)

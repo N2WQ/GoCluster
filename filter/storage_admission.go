@@ -80,12 +80,12 @@ func recordConfiguration(record *UserRecord) Configuration {
 }
 
 // encodeUserRecord is pure: both canonical loading and prospective preparation
-// use the same v5 encoding, without path resolution or changes to caller data.
+// use the same v6 encoding, without path resolution or changes to caller data.
 // Configuration and baseline use the independent standalone SavedPreset oracle.
 func encodeUserRecord(record *UserRecord) ([]byte, error) {
-	stored, err := V5UserRecordFromRuntime(record)
+	stored, err := V6UserRecordFromRuntime(record)
 	if err != nil {
 		return nil, err
 	}
-	return EncodeV5UserRecord(stored)
+	return EncodeV6UserRecord(stored)
 }

@@ -41,7 +41,7 @@ func TestCommentFilterPeerFrameBoundary(t *testing.T) {
 				t.Fatalf("ingestion changed the maximum comment or tail: bytes=%d want=%d", len(local.Comment), commentBytes)
 			}
 			for i, phrase := range []string{"TAIL:!MARK", "TAIL:!MISSING"} {
-				_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+				_, f, err := filter.PrepareV6Configuration(filter.V6Configuration{Filters: filter.V6FilterConfiguration{
 					Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: `COMMENT="` + phrase + `"`}},
 				}})
 				if err != nil {

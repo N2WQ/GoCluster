@@ -111,10 +111,10 @@ func TestTaxonomyUnderscoreRemainsForbiddenAtLogin(t *testing.T) {
 func TestTaxonomyUnderscoreRetainsTerminalMachineIntent(t *testing.T) {
 	for _, ziutek := range []bool{false, true} {
 		for _, tc := range []struct{ input, verb string }{
-			{"get yaml config schema 5 id test_mode\n", "GET"},
+			{"get yaml config schema 6 id test_mode\n", "GET"},
 			{"PUT_ YAML CONFIG\n", "PUT"}, {"patch_\n", "PATCH"}, {"validate_\n", "VALIDATE"},
 			{"putx\b_ YAML CONFIG\n", "PUT"}, {"put \x7f_ YAML CONFIG\n", "PUT"},
-			{"junk\x15get yaml config schema 5 id test_mode\n", "GET"},
+			{"junk\x15get yaml config schema 6 id test_mode\n", "GET"},
 		} {
 			c, _ := taxonomyInputReader(t, tc.input+"REJECT RULE 9 BAND=20M\n", ziutek)
 			line, err := c.readCommandLine(128)
@@ -127,12 +127,12 @@ func TestTaxonomyUnderscoreRetainsTerminalMachineIntent(t *testing.T) {
 		}
 	}
 	for _, id := range []string{"TEST_MODE", "_TEST", "TEST_"} {
-		command, handled, err := parseV5MachineHeader("GET YAML CONFIG SCHEMA 5 ID " + id)
+		command, handled, err := parseV6MachineHeader("GET YAML CONFIG SCHEMA 6 ID " + id)
 		if !handled || err == nil || command.Verb != "GET" {
 			t.Fatalf("direct header accepted restricted ID %q: %+v %v", id, command, err)
 		}
 	}
-	command, handled, err := parseV5MachineHeader("GET YAML CONFIG SCHEMA 5 ID test-Mode9")
+	command, handled, err := parseV6MachineHeader("GET YAML CONFIG SCHEMA 6 ID test-Mode9")
 	if err != nil || !handled || command.RequestID != "test-Mode9" {
 		t.Fatalf("valid machine ID changed: %+v %v", command, err)
 	}
@@ -188,14 +188,14 @@ func TestHumanTaxonomyReaderPublicationStorageAndMatcher(t *testing.T) {
 						strings.Contains(response, "No changes applied.") || strings.Contains(response, "warning") {
 						t.Fatalf("taxonomy command did not publish/save once: %q", response)
 					}
-					record, err := filter.LoadV5UserRecord(c.callsign)
-					if err != nil || !record.Configuration.Equal(c.captureV5Configuration()) ||
+					record, err := filter.LoadV6UserRecord(c.callsign)
+					if err != nil || !record.Configuration.Equal(c.captureV6Configuration()) ||
 						record.Preset == nil || len(record.Preset.Baseline.Configuration.Filters.Rules) != 0 {
 						t.Fatalf("saved rules or independent baseline changed: %+v %v", record, err)
 					}
-					reply := s.prepareV5MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", SchemaVersion: 5, RequestID: "taxonomy-15"})
+					reply := s.prepareV6MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", SchemaVersion: 6, RequestID: "taxonomy-15"})
 					var document struct {
-						Configuration filter.V5Configuration `yaml:"configuration"`
+						Configuration filter.V6Configuration `yaml:"configuration"`
 					}
 					if err := yaml.Unmarshal([]byte(reply), &document); err != nil || !document.Configuration.Equal(record.Configuration) {
 						t.Fatalf("actual readback lost loaded taxonomy: %v\n%s", err, reply)
@@ -212,7 +212,7 @@ func TestHumanTaxonomyReaderPublicationStorageAndMatcher(t *testing.T) {
 							t.Fatalf("loaded %s matching[%d]=%v want=%v", field, i, got, want)
 						}
 					}
-					before, revision := c.captureV5Configuration(), c.configurationRevision
+					before, revision := c.captureV6Configuration(), c.configurationRevision
 					path := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 					disk := presetDiskBytes(t, path)
 					line, err = c.readCommandLine(128)
@@ -221,7 +221,7 @@ func TestHumanTaxonomyReaderPublicationStorageAndMatcher(t *testing.T) {
 					}
 					response, handled = newFilterCommandEngine().Handle(c, line)
 					if !handled || !strings.Contains(response, "No changes applied.") || writes != 1 ||
-						!before.Equal(c.captureV5Configuration()) || c.configurationRevision != revision ||
+						!before.Equal(c.captureV6Configuration()) || c.configurationRevision != revision ||
 						!bytes.Equal(disk, presetDiskBytes(t, path)) || c.presetReference.Baseline != baseline {
 						t.Fatalf("unknown taxonomy selection had effects: %q", response)
 					}

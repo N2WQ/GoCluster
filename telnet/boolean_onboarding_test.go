@@ -197,10 +197,10 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			cfg := c.captureV5Configuration()
+			cfg := c.captureV6Configuration()
 			s.filterEngine.Handle(c, "RESET FILTER")
-			cmd, request := v5CoordinatorProposal(t, c, "PUT", "FILTER", cfg.Filters)
-			v5CoordinatorSuccess(t, s.applyV5MachineRequest(c, cmd, request), true)
+			cmd, request := v6CoordinatorProposal(t, c, "PUT", "FILTER", cfg.Filters)
+			v6CoordinatorSuccess(t, s.applyV6MachineRequest(c, cmd, request), true)
 			machine := c.captureMatchingSnapshot()
 			if response, handled := s.handlePresetCommand(c, "SAVE PRESET SOURCES"); !handled ||
 				!strings.Contains(response, "Saved preset SOURCES") {
@@ -208,7 +208,7 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 			}
 			s.filterEngine.Handle(c, "RESET FILTER")
 			if response, handled := s.handlePresetCommand(c, "LOAD PRESET SOURCES"); !handled ||
-				!strings.Contains(response, "Loaded preset SOURCES") || !c.captureV5Configuration().Equal(cfg) {
+				!strings.Contains(response, "Loaded preset SOURCES") || !c.captureV6Configuration().Equal(cfg) {
 				t.Fatalf("preset load changed saved expression: %s", response)
 			}
 			for _, human := range []bool{true, false} {
@@ -259,9 +259,9 @@ func TestBooleanOnboardingSaveFailureDoesNotClaimSaved(t *testing.T) {
 	if !c.filter.Matches(sp) {
 		t.Fatal("save failure incorrectly rolled back active edit")
 	}
-	previous := c.captureV5Configuration()
+	previous := c.captureV6Configuration()
 	response, _ = s.filterEngine.Handle(c, "PASS RULE 0 MODE=CW AND")
-	if !strings.Contains(response, "No changes applied.") || !previous.Equal(c.captureV5Configuration()) {
+	if !strings.Contains(response, "No changes applied.") || !previous.Equal(c.captureV6Configuration()) {
 		t.Fatal("invalid edit changed the active rule")
 	}
 }

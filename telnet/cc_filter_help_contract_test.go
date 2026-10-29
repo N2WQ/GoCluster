@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"dxcluster/filter"
-	"dxcluster/pathreliability"
 )
 
 func TestCCFilterHelpSurvivingSwitchAcceptance(t *testing.T) {
@@ -37,44 +36,17 @@ func TestCCFilterHelpSurvivingSwitchAcceptance(t *testing.T) {
 	}
 }
 
-func TestCCFilterHelpNearbyValueOwnsBothVerbs(t *testing.T) {
-	requireH3Mappings(t)
-	x := newHelpOwnerSession(t, DialectCC)
-	c := x.client
-	c.grid = "FN31"
-	c.gridCell, c.gridCoarseCell = pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")
-	c.configuredSettings.Grid = "FN31"
-	programs := c.filter.PreparedRules()
-	for _, line := range []string{"SET/FILTER NEARBY ON", "UNSET/FILTER NEARBY ON",
-		"SET/FILTER NEARBY OFF", "UNSET/FILTER NEARBY OFF"} {
-		response, handled := x.server.filterEngine.Handle(c, line)
-		enabled := strings.HasSuffix(line, " ON")
-		if !handled || c.filter.NearbyEnabled != enabled || c.filter.PreparedRules() != programs ||
-			strings.Contains(response, "warning") {
-			t.Fatalf("CC NEARBY verb overrode explicit value or changed saved rules: %q => %q", line, response)
-		}
-		wantFine, wantCoarse := pathreliability.InvalidCell, pathreliability.InvalidCell
-		if enabled {
-			wantFine, wantCoarse = c.gridCell, c.gridCoarseCell
-		}
-		if c.filter.NearbyUserFine != wantFine || c.filter.NearbyUserCoarse != wantCoarse {
-			t.Fatal("CC NEARBY did not publish the selected effective cells")
-		}
-		x.assertSaved(t)
-	}
-}
-
 func TestCCFilterHelpRetiredFormsHaveNoEffects(t *testing.T) {
 	x := newHelpOwnerSession(t, DialectCC)
 	c := x.client
-	for _, line := range []string{"SET/FILTER BAND 20", "UNSET/FILTER MODE CW", "SET/FILTER DXBM 20 CW",
+	for _, line := range []string{"SET/FILTER NEARBY ON", "UNSET/FILTER NEARBY OFF", "SET/FILTER BAND 20", "UNSET/FILTER MODE CW", "SET/FILTER DXBM 20 CW",
 		"SET/NOFILTER", "SET/FILTER NOFILTER", "PASS COMMENT CQ", "PASS MINSNR CW 10"} {
-		before, writes, revision := c.captureV5Configuration(), x.writes, c.configurationRevision
+		before, writes, revision := c.captureV6Configuration(), x.writes, c.configurationRevision
 		path := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 		disk := presetDiskBytes(t, path)
 		response, handled := x.server.filterEngine.Handle(c, line)
 		if !handled || !strings.Contains(response, "HELP RULE") || !strings.Contains(response, "No changes applied.") ||
-			!before.Equal(c.captureV5Configuration()) || x.writes != writes || c.configurationRevision != revision ||
+			!before.Equal(c.captureV6Configuration()) || x.writes != writes || c.configurationRevision != revision ||
 			!bytes.Equal(disk, presetDiskBytes(t, path)) {
 			t.Fatalf("retired CC form executed, saved or lost recovery guidance: %q => %q", line, response)
 		}

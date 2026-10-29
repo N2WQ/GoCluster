@@ -65,7 +65,7 @@ func TestMachineTerminalRejectionPreservesDivergentSavedPreferences(t *testing.T
 				if !bytes.Equal(before, presetDiskBytes(t, path)) {
 					t.Fatal("failed human save changed the durable record")
 				}
-				if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 5 ID diverged-1\r\n"); err != nil {
+				if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 6 ID diverged-1\r\n"); err != nil {
 					t.Fatal(err)
 				}
 				if response := readMachineTestFrame(t, reader); !strings.Contains(response, "noise_class: URBAN\r\n") || !strings.Contains(response, "modified: true\r\n") {
@@ -109,7 +109,7 @@ func TestMachineTerminalRejectionPreservesDivergentSavedPreferences(t *testing.T
 				}
 				conn, reader, nextDone := reconnectMachineTestSession(t, s)
 				defer closeHandshakeTranscriptSession(t, conn, nextDone)
-				if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 5 ID restored-1\r\n"); err != nil {
+				if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 6 ID restored-1\r\n"); err != nil {
 					t.Fatal(err)
 				}
 				response := readMachineTestFrame(t, reader)

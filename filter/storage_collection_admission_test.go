@@ -14,7 +14,7 @@ func storageEmptyPresets(count int) string {
 	var raw strings.Builder
 	raw.WriteString("presets:\n")
 	for i := range count {
-		fmt.Fprintf(&raw, "  P%06d: {configuration_version: 5, configuration: {filters: {rules: []}, settings: {}}}\n", i)
+		fmt.Fprintf(&raw, "  P%06d: {configuration_version: 6, configuration: {filters: {rules: []}, settings: {}}}\n", i)
 	}
 	return raw.String()
 }
@@ -53,7 +53,7 @@ func TestStorageCollectionVisibleCardinality(t *testing.T) {
 
 func TestStorageCollectionWorkActiveAcrossAllPresetAPIs(t *testing.T) {
 	usePresetTestDir(t)
-	raw := "presets:\n  P0: &set {configuration_version: 5, configuration: {filters: {rules: []}, settings: {grid: &text " +
+	raw := "presets:\n  P0: &set {configuration_version: 6, configuration: {filters: {rules: []}, settings: {grid: &text " +
 		strings.Repeat("A", 256<<10) + ", dialect: *text, noise_class: *text, dedupe_policy: *text}}}\n"
 	for i := 1; i < MaxPresets; i++ {
 		raw += fmt.Sprintf("  P%d: *set\n", i)
@@ -94,7 +94,7 @@ func BenchmarkStorageCollectionAdmissionScale(b *testing.B) {
 			raw := []byte(storageEmptyPresets(count))
 			b.ReportAllocs()
 			for b.Loop() {
-				_, err := DecodeV5PresetCollection(raw)
+				_, err := DecodeV6PresetCollection(raw)
 				if count == 20 && err != nil || count > 20 && !errors.Is(err, ErrStorageAdmission) {
 					b.Fatal(err)
 				}

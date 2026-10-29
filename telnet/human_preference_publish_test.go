@@ -11,74 +11,52 @@ import (
 func TestHumanPreferenceNearbyPublication(t *testing.T) {
 	requireH3Mappings(t)
 	for _, restored := range []bool{false, true} {
-		t.Run(map[bool]string{false: "direct", true: "restored"}[restored], func(t *testing.T) {
-			s := presetTestServer(t)
-			s.filterEngine = newFilterCommandEngine()
-			c := configurationTestClient(s, "W1ABC-1")
-			c.grid, c.gridCell, c.gridCoarseCell = "FN31", pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")
-			c.configuredSettings, c.configurationInitialized = filter.SettingsConfiguration{Dialect: "go", Grid: "FN31", DedupePolicy: "FAST"}, true
-			c.filter = passRuleTestFilter(t, "DXCONT=EU AND DEZONE=5 AND DXSTATE=NY")
-			original := c.filter.PreparedRules()
-			pointer := c.filter
-			staged := newHumanPreferenceCandidate(c)
-			outcome := s.filterEngine.stageOwned(staged, "PASS NEARBY ON")
-			if !outcome.publish || c.filter.NearbyEnabled || c.filter.PreparedRules() != original {
-				t.Fatal("NEARBY ON changed live state before publication")
+		s := presetTestServer(t)
+		s.filterEngine = newFilterCommandEngine()
+		c := configurationTestClient(s, "W1ABC-1")
+		c.grid, c.gridCell, c.gridCoarseCell = "FN31", pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")
+		c.configuredSettings, c.configurationInitialized = filter.SettingsConfiguration{Dialect: "go", Grid: "FN31", DedupePolicy: "FAST"}, true
+		c.filter = passRuleTestFilter(t, "MODE=CW")
+		previous, pointer := c.filter.PreparedRules(), c.filter
+		staged := newHumanPreferenceCandidate(c)
+		outcome := s.filterEngine.stageOwned(staged, "PASS RULE 0 NEARBY AND DXCONT=EU")
+		if !outcome.publish || c.filter.PreparedRules() != previous {
+			t.Fatal("staging changed live rules")
+		}
+		s.publishHumanPreference(c, staged, outcome.forceSolar)
+		original := c.filter.PreparedRules()
+		if c.filter != pointer || !c.filter.MatchSnapshot().NearbyFilterActive() || c.gridCell != pathreliability.EncodeCell("FN31") {
+			t.Fatal("publication lost location/rule ownership")
+		}
+		if restored {
+			_, value, err := filter.PrepareV6Configuration(c.captureV6Configuration())
+			if err != nil {
+				t.Fatal(err)
 			}
-			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.filter != pointer || !c.filter.NearbyActive() || c.filter.NearbyUserFine != c.gridCell || c.filter.NearbyUserCoarse != c.gridCoarseCell || c.filter.PreparedRules() != original {
-				t.Fatal("ON publication lost runtime/filter ownership")
-			}
-			if restored {
-				reloaded := c.captureV5Configuration()
-				_, value, err := filter.PrepareV5Configuration(reloaded)
-				if err != nil {
-					t.Fatal(err)
-				}
-				value.NearbyUserFine, value.NearbyUserCoarse = c.gridCell, c.gridCoarseCell
-				*c.filter = value
-				original = c.filter.PreparedRules()
-			}
-			staged = newHumanPreferenceCandidate(c)
-			outcome = s.stagePathSettingsCommand(staged, "SET NOISE URBAN")
-			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.filter.NearbyUserFine != c.gridCell || c.filter.NearbyUserCoarse != c.gridCoarseCell || c.filter.PreparedRules() != original {
-				t.Fatal("unrelated setting reconstructed NEARBY")
-			}
-			staged = newHumanPreferenceCandidate(c)
-			outcome = s.stagePathSettingsCommand(staged, "SET GRID IO91")
-			if !outcome.publish || c.grid != "FN31" || c.filter.PreparedRules() != original {
-				t.Fatal("GRID stage changed live state")
-			}
-			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.grid != "IO91" || c.filter.NearbyUserFine != pathreliability.EncodeCell("IO91") || c.filter.NearbyUserCoarse != pathreliability.EncodeCoarseCell("IO91") || c.filter.PreparedRules() != original {
-				t.Fatal("active GRID publication lost cells or immutable rules")
-			}
-			staged = newHumanPreferenceCandidate(c)
-			outcome = s.filterEngine.stageOwned(staged, "PASS NEARBY OFF")
-			if !outcome.publish || !c.filter.NearbyEnabled || c.filter.PreparedRules() != original {
-				t.Fatal("OFF stage changed live state")
-			}
-			s.publishHumanPreference(c, staged, outcome.forceSolar)
-			if c.filter != pointer || c.filter.NearbyEnabled || c.filter.NearbyUserFine != pathreliability.InvalidCell || c.filter.NearbyUserCoarse != pathreliability.InvalidCell || c.grid != "IO91" || c.filter.PreparedRules() != original {
-				t.Fatal("OFF changed immutable rules/filter ownership or failed to clear effective cells")
-			}
-			for _, command := range []string{"RESET FILTER"} {
-				if err := c.filter.EnableNearby(c.gridCell, c.gridCoarseCell); err != nil {
-					t.Fatal(err)
-				}
-				staged = newHumanPreferenceCandidate(c)
-				outcome = s.filterEngine.stageOwned(staged, command)
-				s.publishHumanPreference(c, staged, outcome.forceSolar)
-				if !outcome.publish || c.filter != pointer || c.filter.NearbyEnabled || c.grid != "IO91" {
-					t.Fatalf("%s publication retained NEARBY or changed GRID ownership", command)
-				}
-				if len(c.filter.PreparedRules().Definitions()) != 0 ||
-					original.Definitions()[0].Expr != "DXCONT=EU AND DEZONE=5 AND DXSTATE=NY" {
-					t.Fatal("RESET must clear active rules without mutating the old immutable program")
-				}
-			}
-		})
+			*c.filter = value
+			original = c.filter.PreparedRules()
+		}
+		staged = newHumanPreferenceCandidate(c)
+		outcome = s.stagePathSettingsCommand(staged, "SET NOISE URBAN")
+		s.publishHumanPreference(c, staged, outcome.forceSolar)
+		if c.gridCell != pathreliability.EncodeCell("FN31") || c.filter.PreparedRules() != original {
+			t.Fatal("unrelated edit erased geometry")
+		}
+		staged = newHumanPreferenceCandidate(c)
+		outcome = s.stagePathSettingsCommand(staged, "SET GRID IO91")
+		if !outcome.publish || c.grid != "FN31" {
+			t.Fatal("GRID stage changed live state")
+		}
+		s.publishHumanPreference(c, staged, outcome.forceSolar)
+		if c.grid != "IO91" || c.gridCell != pathreliability.EncodeCell("IO91") || c.gridCoarseCell != pathreliability.EncodeCoarseCell("IO91") || c.filter.PreparedRules() != original {
+			t.Fatal("GRID publication lost geometry/rules")
+		}
+		staged = newHumanPreferenceCandidate(c)
+		outcome = s.filterEngine.stageOwned(staged, "RESET FILTER")
+		s.publishHumanPreference(c, staged, outcome.forceSolar)
+		if !outcome.publish || c.filter != pointer || c.grid != "IO91" || c.gridCell != pathreliability.EncodeCell("IO91") || len(c.filter.PreparedRules().Definitions()) != 0 || original.Definitions()[0].Expr != "NEARBY AND DXCONT=EU" {
+			t.Fatal("reset altered location or retained immutable state")
+		}
 	}
 }
 

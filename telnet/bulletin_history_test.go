@@ -178,7 +178,7 @@ func TestBulletinResponseBudgetReleasedAfterWriterDisconnect(t *testing.T) {
 	}
 }
 
-func TestBulletinV5BothDialectsSelectFiveAndLoginOne(t *testing.T) {
+func TestBulletinV6BothDialectsSelectFiveAndLoginOne(t *testing.T) {
 	store := bulletinhistory.Open(filepath.Join(t.TempDir(), "history.json"), 0, 0)
 	t.Cleanup(func() { _ = store.Close() })
 	now := time.Now().UTC()

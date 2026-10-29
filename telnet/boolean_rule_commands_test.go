@@ -13,16 +13,16 @@ import (
 	"dxcluster/spot"
 )
 
-func booleanCommandFixture(t *testing.T, dialect DialectName, nearby bool) (*Client, *Client, filter.V5Configuration) {
+func booleanCommandFixture(t *testing.T, dialect DialectName) (*Client, *Client, filter.V6Configuration) {
 	t.Helper()
-	cfg := filter.V5Configuration{
-		Filters: filter.V5FilterConfiguration{
+	cfg := filter.V6Configuration{
+		Filters: filter.V6FilterConfiguration{
 			Rules: []filter.RuleDefinition{
 				{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,FT8 AND SOURCE=HUMAN"},
 				{Slot: 4, Action: filter.RuleReject, Expr: "DXCONT=EU AND COMMENT=\"No  DX!\""},
 			},
-			NearbyEnabled: nearby, IncludeBeacons: filter.DefaultBoolFalse,
-			AllowWWV: filter.DefaultBoolDefault, AllowWCY: filter.DefaultBoolTrue,
+			IncludeBeacons: filter.DefaultBoolFalse,
+			AllowWWV:       filter.DefaultBoolDefault, AllowWCY: filter.DefaultBoolTrue,
 			AllowAnnounce: filter.DefaultBoolFalse, AllowSelf: filter.DefaultBoolDefault,
 			AllowToxic: filter.DefaultBoolTrue,
 		},
@@ -31,12 +31,11 @@ func booleanCommandFixture(t *testing.T, dialect DialectName, nearby bool) (*Cli
 			PathMinObservationCount: 0, SolarSummaryMinutes: 0,
 		},
 	}
-	canonical, value, err := filter.PrepareV5Configuration(cfg)
+	canonical, value, err := filter.PrepareV6Configuration(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	value.NearbyUserFine, value.NearbyUserCoarse = 101, 202
-	source := &Client{filter: &value, configuredSettings: canonical.Settings, dialect: dialect, configurationInitialized: true}
+	source := &Client{grid: "FN31", gridDerived: true, gridCell: 101, gridCoarseCell: 202, filter: &value, configuredSettings: canonical.Settings, dialect: dialect, configurationInitialized: true}
 	candidate := newHumanPreferenceCandidate(source)
 	if candidate.filter == source.filter {
 		t.Fatal("fixture did not detach candidate")
@@ -45,7 +44,7 @@ func booleanCommandFixture(t *testing.T, dialect DialectName, nearby bool) (*Cli
 }
 
 type booleanCommandSnapshot struct {
-	cfg          filter.V5Configuration
+	cfg          filter.V6Configuration
 	fingerprint  [32]byte
 	pointer      *filter.Filter
 	programs     *filter.PreparedRuleSet
@@ -55,22 +54,22 @@ type booleanCommandSnapshot struct {
 }
 
 func snapshotBooleanCommand(c *Client) booleanCommandSnapshot {
-	cfg := filter.V5ConfigurationFromFilter(c.filter, c.configuredSettings)
+	cfg := filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)
 	set := c.filter.PreparedRules()
 	return booleanCommandSnapshot{
 		cfg: cfg.Clone(), fingerprint: cfg.Fingerprint(), pointer: c.filter, programs: set,
-		readback: set.Readback(true), counts: set.Counts(),
-		fine: c.filter.NearbyUserFine, coarse: c.filter.NearbyUserCoarse,
+		readback: set.Readback(), counts: set.Counts(),
+		fine: c.gridCell, coarse: c.gridCoarseCell,
 	}
 }
 
 func (s booleanCommandSnapshot) assertUnchanged(t *testing.T, c *Client) {
 	t.Helper()
-	current := filter.V5ConfigurationFromFilter(c.filter, c.configuredSettings)
+	current := filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)
 	if !s.cfg.Equal(current) || s.fingerprint != current.Fingerprint() || c.filter != s.pointer ||
-		c.filter.PreparedRules() != s.programs || !reflect.DeepEqual(s.readback, s.programs.Readback(true)) ||
-		s.programs.Counts() != s.counts || s.fine != c.filter.NearbyUserFine ||
-		s.coarse != c.filter.NearbyUserCoarse {
+		c.filter.PreparedRules() != s.programs || !reflect.DeepEqual(s.readback, s.programs.Readback()) ||
+		s.programs.Counts() != s.counts || s.fine != c.gridCell ||
+		s.coarse != c.gridCoarseCell {
 		t.Fatal("command changed candidate, original snapshot, controls, settings or effective cells")
 	}
 }
@@ -104,10 +103,10 @@ func TestBooleanRuleCommandLiteralRemainder(t *testing.T) {
 func TestBooleanRuleCommandsDialectAndCanonicalAcceptance(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
 		t.Run(string(dialect), func(t *testing.T) {
-			candidate, source, original := booleanCommandFixture(t, dialect, true)
+			candidate, source, original := booleanCommandFixture(t, dialect)
 			live := snapshotBooleanCommand(source)
 			oldSet := candidate.filter.PreparedRules()
-			oldConfig := filter.V5ConfigurationFromFilter(candidate.filter, candidate.configuredSettings).Clone()
+			oldConfig := filter.V6ConfigurationFromFilter(candidate.filter, candidate.configuredSettings).Clone()
 			line := `pAsS   rUlE  9   comment=" MiXeD  CQ;=[20](x)! ""DX"" \ " AND mode = cw   `
 			outcome := newFilterCommandEngine().stageBooleanFilterCommand(candidate, line)
 			assertBooleanAccepted(t, outcome)
@@ -119,12 +118,12 @@ func TestBooleanRuleCommandsDialectAndCanonicalAcceptance(t *testing.T) {
 			if booleanDisplayedExpression(t, outcome.response, "PASS RULE 9") != want {
 				t.Fatalf("accepted output did not echo canonical form: %q", outcome.response)
 			}
-			if candidate.configuredSettings != original.Settings || candidate.filter.NearbyUserFine != 101 ||
-				candidate.filter.NearbyUserCoarse != 202 || !candidate.filter.NearbyEnabled {
+			if candidate.configuredSettings != original.Settings || candidate.gridCell != 101 ||
+				candidate.gridCoarseCell != 202 {
 				t.Fatal("accepted edit lost exact settings or nearby state")
 			}
 			live.assertUnchanged(t, source)
-			if !oldConfig.Equal(filter.V5ConfigurationFromFilter(source.filter, source.configuredSettings)) ||
+			if !oldConfig.Equal(filter.V6ConfigurationFromFilter(source.filter, source.configuredSettings)) ||
 				!reflect.DeepEqual(oldSet.Definitions(), oldConfig.Filters.Rules) {
 				t.Fatal("edit changed immutable original/canonical references")
 			}
@@ -149,10 +148,10 @@ func TestBooleanRuleCommandsReplaceRemoveAndReset(t *testing.T) {
 			{"REJECT RULE 0 BAND=20", 2, true, "replaced"},
 			{"RESET FILTER RULE 4", 1, true, "removed"},
 			{"RESET FILTER RULE ALL", 0, true, "cleared"},
-			{"RESET FILTER", 0, false, "NEARBY OFF"},
+			{"RESET FILTER", 0, false, "cleared"},
 		} {
 			t.Run(string(dialect)+"/"+test.line, func(t *testing.T) {
-				candidate, source, cfg := booleanCommandFixture(t, dialect, true)
+				candidate, source, cfg := booleanCommandFixture(t, dialect)
 				live := snapshotBooleanCommand(source)
 				identity := candidate.filter
 				outcome := newFilterCommandEngine().stageBooleanFilterCommand(candidate, test.line)
@@ -160,20 +159,14 @@ func TestBooleanRuleCommandsReplaceRemoveAndReset(t *testing.T) {
 				if !strings.Contains(outcome.response, test.message) || candidate.filter != identity {
 					t.Fatalf("wrong acknowledgment or replaced filter identity: %+v", outcome)
 				}
-				actual := filter.V5ConfigurationFromFilter(candidate.filter, candidate.configuredSettings)
+				actual := filter.V6ConfigurationFromFilter(candidate.filter, candidate.configuredSettings)
 				want := cfg.Clone()
 				want.Filters.Rules = candidate.filter.PreparedRules().Definitions()
-				want.Filters.NearbyEnabled = test.nearby
 				if !want.Equal(actual) || len(actual.Filters.Rules) != test.count {
 					t.Fatal("reset/replacement changed unrelated preferences or retained removed rules")
 				}
-				if test.nearby {
-					if candidate.filter.NearbyUserFine != 101 || candidate.filter.NearbyUserCoarse != 202 {
-						t.Fatal("rule-only edit lost effective cells")
-					}
-				} else if candidate.filter.NearbyUserFine != pathreliability.InvalidCell ||
-					candidate.filter.NearbyUserCoarse != pathreliability.InvalidCell {
-					t.Fatal("full reset retained effective cells")
+				if candidate.gridCell != 101 || candidate.gridCoarseCell != 202 {
+					t.Fatal("rule edit/reset lost GRID-owned location")
 				}
 				if strings.HasPrefix(test.line, "REJECT") {
 					rule := actual.Filters.Rules[0]
@@ -188,7 +181,7 @@ func TestBooleanRuleCommandsReplaceRemoveAndReset(t *testing.T) {
 }
 
 func TestBooleanRuleCommandsRepeatedSetAndAbsentRemoval(t *testing.T) {
-	candidate, source, _ := booleanCommandFixture(t, DialectGo, false)
+	candidate, source, _ := booleanCommandFixture(t, DialectGo)
 	live := snapshotBooleanCommand(source)
 	engine := newFilterCommandEngine()
 	assertBooleanAccepted(t, engine.stageBooleanFilterCommand(candidate, "PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN"))
@@ -207,30 +200,28 @@ func TestBooleanRuleCommandsRepeatedSetAndAbsentRemoval(t *testing.T) {
 	}
 }
 
-func TestBooleanRuleCommandsNearbyProjectionAndUnavailableCells(t *testing.T) {
+func TestBooleanRuleCommandsNearbyAndUnavailableCells(t *testing.T) {
 	for _, usable := range []bool{true, false} {
-		candidate, source, cfg := booleanCommandFixture(t, DialectGo, true)
+		candidate, source, cfg := booleanCommandFixture(t, DialectGo)
 		if !usable {
-			candidate.filter.NearbyUserFine, candidate.filter.NearbyUserCoarse = pathreliability.InvalidCell, pathreliability.InvalidCell
+			candidate.grid, candidate.gridCell, candidate.gridCoarseCell = "", 0, 0
 		}
 		live := snapshotBooleanCommand(source)
-		outcome := newFilterCommandEngine().stageBooleanFilterCommand(candidate,
-			`PASS RULE 0 DXCONT=EU AND (MODE=CW OR COMMENT="Mixed  DX!")`)
+		expression := `DXCONT=EU AND (NEARBY OR MODE=CW)`
+		outcome := newFilterCommandEngine().stageBooleanFilterCommand(candidate, "PASS RULE 0 "+expression)
 		assertBooleanAccepted(t, outcome)
-		rows := candidate.filter.PreparedRules().Readback(true)
-		if rows[0].Expr != `DXCONT=EU AND (MODE=CW OR COMMENT="Mixed  DX!")` ||
-			rows[0].EffectiveExpr != `MODE=CW OR COMMENT="Mixed  DX!"` || rows[0].Suspended {
-			t.Fatalf("edit erased full geography or failed to project: %+v", rows[0])
-		}
-		if candidate.configuredSettings != cfg.Settings || !candidate.filter.NearbyEnabled ||
-			!usable && (candidate.filter.NearbyUserFine != pathreliability.InvalidCell ||
-				candidate.filter.NearbyUserCoarse != pathreliability.InvalidCell) {
-			t.Fatal("editing without grid reinterpreted settings or cells")
+		if candidate.filter.PreparedRules().Readback()[0].Expr != expression || candidate.configuredSettings != cfg.Settings {
+			t.Fatal("edit rewrote geography or unrelated settings")
 		}
 		probe := &spot.Spot{Mode: "CW", IsHuman: true}
-		if !candidate.filter.PreparedRules().Matches(probe, "", true) ||
-			candidate.filter.PreparedRules().Matches(probe, "", false) {
-			t.Fatal("full/effective rule meaning was not retained")
+		matched, _, _ := (&Server{}).matchSnapshot(candidate.captureMatchingSnapshot(), probe)
+		if matched {
+			t.Fatal("NEARBY bypassed mandatory geography")
+		}
+		probe.DXMetadata.Continent = "EU"
+		matched, _, _ = (&Server{}).matchSnapshot(candidate.captureMatchingSnapshot(), probe)
+		if !matched {
+			t.Fatal("unavailable proximity blocked a qualifying OR branch")
 		}
 		live.assertUnchanged(t, source)
 	}
@@ -253,7 +244,7 @@ func TestBooleanRuleCommandsRefusalsAreAtomic(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
 		for _, line := range lines {
 			t.Run(string(dialect)+"/"+line[:min(len(line), 90)], func(t *testing.T) {
-				candidate, source, _ := booleanCommandFixture(t, dialect, true)
+				candidate, source, _ := booleanCommandFixture(t, dialect)
 				before, live := snapshotBooleanCommand(candidate), snapshotBooleanCommand(source)
 				outcome := newFilterCommandEngine().stageBooleanFilterCommand(candidate, line)
 				if !outcome.handled || outcome.publish ||
@@ -279,7 +270,7 @@ func TestBooleanRuleCommandsRefusalsAreAtomic(t *testing.T) {
 }
 
 func TestBooleanRuleCommandsAggregateBudgetRefusal(t *testing.T) {
-	candidate, source, _ := booleanCommandFixture(t, DialectGo, true)
+	candidate, source, _ := booleanCommandFixture(t, DialectGo)
 	// Two existing rules use exactly all 512 values before the candidate edit.
 	list := strings.Repeat("1,", 31) + "1"
 	expression := strings.Repeat("SNR="+list+" OR ", 7) + "SNR=" + list
@@ -290,9 +281,9 @@ func TestBooleanRuleCommandsAggregateBudgetRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cfg := filter.V5ConfigurationFromFilter(candidate.filter, candidate.configuredSettings)
+	cfg := filter.V6ConfigurationFromFilter(candidate.filter, candidate.configuredSettings)
 	cfg.Filters = cfg.Filters.WithRuleSet(set)
-	_, value, err := filter.PrepareV5Configuration(cfg)
+	_, value, err := filter.PrepareV6Configuration(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -309,6 +300,7 @@ func TestBooleanRuleCommandsAggregateBudgetRefusal(t *testing.T) {
 
 func TestBooleanRuleCommandsLegacyAndUnownedHeads(t *testing.T) {
 	refused := []string{
+		"PASS NEARBY ON", "SET/FILTER NEARBY ON",
 		"PASS BAND 20", "REJECT MODE CW", "PASS MINSNR CW 5", "PASS SOURCE HUMAN",
 		"PASS EVENT POTA", "PASS COMMENT Keep  Mixed!", "REMOVE PASS COMMENT phrase",
 		"REMOVE REJECT COMMENT phrase", "REJECT DXCALL W1*", "PASS DECALL *ABC",
@@ -323,11 +315,11 @@ func TestBooleanRuleCommandsLegacyAndUnownedHeads(t *testing.T) {
 	unhandled := []string{
 		"SHOW FILTER", "SHOW FILTER RULE", "SHOW FILTER FULL", "HELP RULE", "HELP",
 		"SHOW/FILTER", "SH/FILTER", "SHOW DX", "SHOW SETTINGS", "SET GRID FN31",
-		"PASS NEARBY ON", "PASS SELF ON", "REJECT BEACON", "PASS TOXIC ON",
+		"PASS SELF ON", "REJECT BEACON", "PASS TOXIC ON",
 		"REJECT WWV", "PASS WCY", "PASS ANNOUNCE", "REJECT PC93",
 		"SET/ANN", "SET/NOANN", "SET/SELF", "SET/NOSELF", "SET/BEACON",
 		"SET/NOBEACON", "SET/WWV", "SET/NOWWV", "SET/WCY", "SET/NOWCY",
-		"SET/SELF EXTRA", "SET/FILTER SELF/OFF EXTRA", "SET/FILTER NEARBY ON",
+		"SET/SELF EXTRA", "SET/FILTER SELF/OFF EXTRA",
 		"UNSET/FILTER TOXIC", "PASS UNRELATED THING", "SET/UNRELATED",
 		"REMOVE PASS COMMENTARY phrase", "RESET SOMETHING", "DIALECT CC", "",
 		"SET DX FILTER MODE=CW",
@@ -341,7 +333,7 @@ func TestBooleanRuleCommandsLegacyAndUnownedHeads(t *testing.T) {
 			}
 			for _, line := range lines {
 				t.Run(fmt.Sprintf("%s/%t/%s", dialect, refuse, line), func(t *testing.T) {
-					candidate, source, _ := booleanCommandFixture(t, dialect, true)
+					candidate, source, _ := booleanCommandFixture(t, dialect)
 					before, live := snapshotBooleanCommand(candidate), snapshotBooleanCommand(source)
 					outcome := engine.stageBooleanFilterCommand(candidate, line)
 					if outcome.handled != refuse || outcome.publish {

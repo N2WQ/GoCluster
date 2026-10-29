@@ -172,91 +172,52 @@ func TestBroadcastRespectsDedupePolicyWindows(t *testing.T) {
 	assertNoExtraSpots(t, slowClient.spotChan)
 }
 
-func TestNearbyEffectiveDedupeUsesFastForBroadcast(t *testing.T) {
+func TestNearbyRuleUsesOrdinaryDedupeForBroadcast(t *testing.T) {
 	requireH3Mappings(t)
-	server := NewServer(ServerOptions{
-		DedupeFastEnabled: true,
-		DedupeMedEnabled:  true,
-		DedupeSlowEnabled: true,
-	}, nil)
-
-	client := &Client{
-		callsign: "SLOW1",
-		filter:   unrestrictedTestFilter(),
-		spotChan: make(chan *spotEnvelope, 1),
+	near, far := pathreliability.EncodeCell("FN31"), pathreliability.EncodeCell("IO91")
+	if near == 0 || far == 0 || near == far {
+		t.Fatal("dedupe witness needs distinct mapped cells")
 	}
-	client.setDedupePolicy(dedupePolicySlow)
-	userFine := pathreliability.EncodeCell("FN31")
-	userCoarse := pathreliability.EncodeCoarseCell("FN31")
-	if err := client.filter.EnableNearby(userFine, userCoarse); err != nil {
-		t.Fatalf("EnableNearby failed: %v", err)
-	}
-
-	sp := spot.NewSpot("DXAAA", "DEBBB", 14030.0, "CW")
-	sp.DXMetadata.Grid = "FN31"
-	sp.DEMetadata.Grid = "FN31"
-
-	server.deliverJob(broadcastJob{
-		spot:      sp,
-		allowFast: true,
-		allowMed:  false,
-		allowSlow: false,
-		clients:   []*Client{client},
-		enqueueAt: time.Now().UTC(),
-	})
-
-	if got := drainSpotCount(t, client.spotChan, 1); got != 1 {
-		t.Fatalf("expected nearby saved-SLOW client to receive FAST-only spot, got %d", got)
-	}
-	if got := client.getDedupePolicy(); got != dedupePolicySlow {
-		t.Fatalf("expected saved policy to remain SLOW, got %v", got)
+	for _, policy := range []dedupePolicy{dedupePolicyFast, dedupePolicyMed, dedupePolicySlow} {
+		for _, tc := range []struct {
+			expression string
+			cell       pathreliability.CellID
+			reject     bool
+		}{
+			{"NEARBY", near, false}, {"NOT NEARBY", far, false},
+			{"NEARBY OR MODE=CW", far, false}, {"NEARBY", far, true},
+		} {
+			s := NewServer(ServerOptions{DedupeFastEnabled: true, DedupeMedEnabled: true, DedupeSlowEnabled: true}, nil)
+			rule := filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: tc.expression}
+			if tc.reject {
+				rule.Action = filter.RuleReject
+			}
+			c := &Client{callsign: "SLOW1", filter: testRuleFilter(t, rule), gridCell: near, gridCoarseCell: pathreliability.EncodeCoarseCell("FN31"), spotChan: make(chan *spotEnvelope, 1)}
+			c.setDedupePolicy(policy)
+			sp := spot.NewSpot("DXAAA", "DEBBB", 14030, "CW")
+			sp.DXCellID, sp.DECellID = uint16(tc.cell), uint16(tc.cell)
+			s.deliverJob(broadcastJob{spot: sp, allowFast: true, allowMed: false, allowSlow: false, clients: []*Client{c}})
+			want := 0
+			if policy == dedupePolicyFast {
+				want = 1
+			}
+			if len(c.spotChan) != want || c.getDedupePolicy() != policy || s.effectiveDedupePolicyForClient(c) != policy {
+				t.Fatalf("%s/%s selected wrong dedupe lane", policy.label(), tc.expression)
+			}
+		}
 	}
 }
 
-func TestEffectiveDedupePolicyRequiresUsableNearbyState(t *testing.T) {
-	server := NewServer(ServerOptions{
-		DedupeFastEnabled: true,
-		DedupeMedEnabled:  true,
-		DedupeSlowEnabled: true,
-	}, nil)
-	client := &Client{
-		callsign: "SLOW1",
-		filter:   unrestrictedTestFilter(),
+func TestNearbyRuleDedupeKeepsOrdinaryDisabledPolicyFallback(t *testing.T) {
+	s := NewServer(ServerOptions{DedupeMedEnabled: true, DedupeSlowEnabled: true}, nil)
+	c := &Client{filter: passRuleTestFilter(t, "NEARBY")}
+	c.setDedupePolicy(dedupePolicySlow)
+	if s.effectiveDedupePolicyForClient(c) != dedupePolicySlow {
+		t.Fatal("NEARBY overrode enabled SLOW")
 	}
-	client.setDedupePolicy(dedupePolicySlow)
-	client.filter.NearbyEnabled = true
-
-	if got := server.effectiveDedupePolicyForClient(client); got != dedupePolicySlow {
-		t.Fatalf("expected inactive stored NEARBY to keep SLOW effective policy, got %v", got)
-	}
-	status := server.formatDedupeStatus(client)
-	if strings.Contains(status, "NEARBY effective") {
-		t.Fatalf("did not expect inactive stored NEARBY to change status, got %q", status)
-	}
-}
-
-func TestNearbyEffectiveDedupeFallsBackWhenFastDisabled(t *testing.T) {
-	requireH3Mappings(t)
-	server := NewServer(ServerOptions{
-		DedupeFastEnabled: false,
-		DedupeMedEnabled:  true,
-		DedupeSlowEnabled: true,
-	}, nil)
-	client := &Client{
-		callsign: "SLOW1",
-		filter:   unrestrictedTestFilter(),
-	}
-	client.setDedupePolicy(dedupePolicySlow)
-	if err := client.filter.EnableNearby(pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")); err != nil {
-		t.Fatalf("EnableNearby failed: %v", err)
-	}
-
-	if got := server.effectiveDedupePolicyForClient(client); got != dedupePolicyMed {
-		t.Fatalf("expected FAST-disabled NEARBY fallback to MED, got %v", got)
-	}
-	status := server.formatDedupeStatus(client)
-	if !strings.Contains(status, "NEARBY effective MED") {
-		t.Fatalf("expected status to report MED fallback, got %q", status)
+	prepared, _ := s.prepareConfiguration(c, filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{DedupePolicy: "FAST"}), time.Time{})
+	if s.effectiveDedupePolicyForClient(prepared) != dedupePolicyMed {
+		t.Fatal("disabled FAST did not resolve ordinary fallback")
 	}
 }
 

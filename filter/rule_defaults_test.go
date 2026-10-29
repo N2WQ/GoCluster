@@ -23,7 +23,7 @@ func TestRuleDefaultsCheckedInShape(t *testing.T) {
 	if got := set.Definitions(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("visible default got %#v, want %#v", got, want)
 	}
-	if got := set.Counts().Normal; got.Atoms != 2 || got.Values != 9 {
+	if got := set.Counts().Program; got.Atoms != 2 || got.Values != 9 {
 		t.Fatalf("eight-mode/HUMAN default counts: %+v", got)
 	}
 	for _, nearby := range []bool{false, true} {
@@ -35,7 +35,7 @@ func TestRuleDefaultsCheckedInShape(t *testing.T) {
 			{"CW", true, true}, {"PSK63", true, true}, {"MSK144", true, true},
 			{"FT8", true, false}, {"CW", false, false}, {"", true, true},
 		} {
-			if got := set.Matches(&spot.Spot{Mode: probe.mode, IsHuman: probe.human}, "", nearby); got != probe.want {
+			if got := set.Matches(&spot.Spot{Mode: probe.mode, IsHuman: probe.human}, EvaluationContext{PathClass: ""}); got != probe.want {
 				t.Fatalf("mode=%q human=%v nearby=%v got %v, want %v", probe.mode, probe.human, nearby, got, probe.want)
 			}
 		}
@@ -45,7 +45,7 @@ func TestRuleDefaultsCheckedInShape(t *testing.T) {
 		t.Fatal("factory retained caller slices or changed published defaults")
 	}
 	reset, err := PrepareRuleSet(nil)
-	if err != nil || reset != nil || !reset.Matches(&spot.Spot{Mode: "FT8"}, "", true) {
+	if err != nil || reset != nil || !reset.Matches(&spot.Spot{Mode: "FT8"}, EvaluationContext{PathClass: ""}) {
 		t.Fatalf("explicit empty reset restored defaults: %v", err)
 	}
 	assertPreparedRulePrograms(t, set)
@@ -84,7 +84,7 @@ func TestRuleDefaultsNormalization(t *testing.T) {
 				}
 				mode := strings.Split(strings.TrimPrefix(test.want, "MODE="), ",")[0]
 				mode = strings.Split(mode, " ")[0]
-				if got := set.Matches(&spot.Spot{Mode: mode, IsHuman: human}, "", false); got != want {
+				if got := set.Matches(&spot.Spot{Mode: mode, IsHuman: human}, EvaluationContext{PathClass: ""}); got != want {
 					t.Fatalf("source default human=%v got %v, want %v", human, got, want)
 				}
 			}
@@ -95,7 +95,7 @@ func TestRuleDefaultsNormalization(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "MODE=" + strings.Join(builtInDefaultModeSelection(), ",") + " AND SOURCE=HUMAN,SKIMMER"
-	if empty.Definitions()[0].Expr != want || empty.Counts().Normal.Values != len(builtInDefaultModeSelection())+2 {
+	if empty.Definitions()[0].Expr != want || empty.Counts().Program.Values != len(builtInDefaultModeSelection())+2 {
 		t.Fatal("empty mode list did not use built-in defaults")
 	}
 	modes := make([]string, 4096)
@@ -103,7 +103,7 @@ func TestRuleDefaultsNormalization(t *testing.T) {
 		modes[i] = "PSK31"
 	}
 	duplicates, err := PrepareDefaultRuleSet(modes, []string{"ALL"})
-	if err != nil || duplicates.Definitions()[0].Expr != "MODE=PSK AND SOURCE=HUMAN,SKIMMER" || duplicates.Counts().Normal.Values != 3 {
+	if err != nil || duplicates.Definitions()[0].Expr != "MODE=PSK AND SOURCE=HUMAN,SKIMMER" || duplicates.Counts().Program.Values != 3 {
 		t.Fatalf("raw duplicate count enlarged effective selection: %v", err)
 	}
 }
@@ -138,7 +138,7 @@ func TestRuleDefaultsConfiguredBounds(t *testing.T) {
 	configured := append(append(append([]string(nil), modes...), longModes...), exactName, overName)
 	configureRuleDefaultTestTaxonomy(t, configured)
 	exactCount, err := PrepareDefaultRuleSet(modes[:32], nil)
-	if err != nil || exactCount.Counts().Normal.Values != 34 {
+	if err != nil || exactCount.Counts().Program.Values != 34 {
 		t.Fatalf("exact effective value limit rejected: %v", err)
 	}
 	if got, err := PrepareDefaultRuleSet(modes, nil); err == nil || got != nil {

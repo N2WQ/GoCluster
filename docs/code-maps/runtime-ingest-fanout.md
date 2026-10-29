@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `b710fe5dd3728317`
+- Source fingerprint: `6acaffbaa1545c29`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -656,15 +656,15 @@ Source files:
 - `telnet/configuration_render.go`
 - `telnet/configuration_session.go`
 - `telnet/configuration_transaction.go`
-- `telnet/configuration_v5_admission.go`
-- `telnet/configuration_v5_transaction.go`
+- `telnet/configuration_v6_admission.go`
+- `telnet/configuration_v6_transaction.go`
 - `telnet/dedupe_readback.go`
 - `telnet/events.go`
 - `telnet/filter_commands.go`
 - `telnet/filter_usage.go`
 - `telnet/history.go`
 - `telnet/history_filter.go`
-- `telnet/history_v5.go`
+- `telnet/history_v6.go`
 - `telnet/human_input_recovery.go`
 - `telnet/human_preference_stage.go`
 - `telnet/input_wire.go`
@@ -675,13 +675,13 @@ Source files:
 - `telnet/machine_schema.go`
 - `telnet/machine_schema_fields.go`
 - `telnet/machine_upload.go`
-- `telnet/machine_v5_commands.go`
-- `telnet/machine_v5_input.go`
-- `telnet/machine_v5_readback.go`
-- `telnet/machine_v5_readback_capabilities.go`
-- `telnet/machine_v5_schema.go`
-- `telnet/machine_v5_schema_nodes.go`
-- `telnet/machine_v5_schema_rules.go`
+- `telnet/machine_v6_commands.go`
+- `telnet/machine_v6_input.go`
+- `telnet/machine_v6_readback.go`
+- `telnet/machine_v6_readback_capabilities.go`
+- `telnet/machine_v6_schema.go`
+- `telnet/machine_v6_schema_nodes.go`
+- `telnet/machine_v6_schema_rules.go`
 - `telnet/machine_validation.go`
 - `telnet/matching_snapshot.go`
 - `telnet/peer_membership.go`
@@ -749,7 +749,7 @@ Test files:
 - `telnet/history_fuzz_test.go`
 - `telnet/history_selection_test.go`
 - `telnet/history_test.go`
-- `telnet/history_v5_test.go`
+- `telnet/history_v6_test.go`
 - `telnet/human_input_recovery_test.go`
 - `telnet/human_preference_handoff_test.go`
 - `telnet/human_preference_publish_test.go`
@@ -771,14 +771,14 @@ Test files:
 - `telnet/machine_session_test.go`
 - `telnet/machine_transport_coverage_test.go`
 - `telnet/machine_upload_test.go`
-- `telnet/machine_v5_commands_concurrency_test.go`
-- `telnet/machine_v5_commands_failure_test.go`
-- `telnet/machine_v5_commands_test.go`
-- `telnet/machine_v5_commands_transport_test.go`
-- `telnet/machine_v5_input_test.go`
-- `telnet/machine_v5_readback_test.go`
-- `telnet/machine_v5_schema_fuzz_test.go`
-- `telnet/machine_v5_schema_test.go`
+- `telnet/machine_v6_commands_concurrency_test.go`
+- `telnet/machine_v6_commands_failure_test.go`
+- `telnet/machine_v6_commands_test.go`
+- `telnet/machine_v6_commands_transport_test.go`
+- `telnet/machine_v6_input_test.go`
+- `telnet/machine_v6_readback_test.go`
+- `telnet/machine_v6_schema_fuzz_test.go`
+- `telnet/machine_v6_schema_test.go`
 - `telnet/matching_snapshot_test.go`
 - `telnet/minsnr_history_test.go`
 - `telnet/nearby_endpoint_test.go`
@@ -904,7 +904,7 @@ Test files:
 | [ADR-0231](docs/decisions/ADR-0231-pc92-audit-corrections.md) | Accepted | 2026-10-01 | peer, protocol, lifecycle, persistence, qualification | `area:peer, path:peer` |
 | [ADR-0230](docs/decisions/ADR-0230-pc18-pc92-authority-and-bounds.md) | Accepted | 2026-10-01 | peer, telnet, protocol, lifecycle, retained state | `area:peer, area:telnet, path:peer, path:telnet` |
 | [ADR-0218](docs/decisions/ADR-0218-multi-human-upstream-telnet-registry.md) | Accepted | 2026-07-10 | config, rbn, ingest, dashboard, lifecycle, operations | `path:internal/cluster` |
-| [ADR-0207](docs/decisions/ADR-0207-nearby-effective-fast-dedupe.md) | Accepted | 2026-07-09 | telnet, dedupe, filters, diagnostics, supportability | `area:telnet, path:commands, path:telnet` |
+| [ADR-0207](docs/decisions/ADR-0207-nearby-effective-fast-dedupe.md) | Superseded | 2026-07-09 | telnet, dedupe, filters, diagnostics, supportability | `area:telnet, path:commands, path:telnet` |
 | [ADR-0201](docs/decisions/ADR-0201-native-160m-endpoint-daylight-gate.md) | Accepted | 2026-06-20 | pathreliability, telnet, config, operations, supportability, experiments | `area:telnet, path:telnet` |
 | [ADR-0200](docs/decisions/ADR-0200-voacap-unsupported-platform-startup-skip.md) | Accepted | 2026-06-19 | startup, voacap, pathreliability, operations, supportability | `path:internal/cluster` |
 | [ADR-0198](docs/decisions/ADR-0198-160m-merge-readiness-cleanup.md) | Accepted | 2026-06-19 | workflow, docs, tests, code maps, pathreliability, custom_scp | `path:internal/cluster` |

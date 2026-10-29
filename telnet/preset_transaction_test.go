@@ -40,7 +40,7 @@ func TestPresetSaveUsesOneExactCapture(t *testing.T) {
 	c.filter = passRuleTestFilter(t, "BAND=20M AND DXCALL=K1*,W1*")
 	c.filter.AllowWCY = nil
 	c.filter.SetWWVEnabled(false)
-	before := c.captureV5Configuration()
+	before := c.captureV6Configuration()
 	mutated := passRuleTestFilter(t, "DXCALL=MUTATED*")
 	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
 		// A persistence callback observes an already captured snapshot. Mutating
@@ -53,7 +53,7 @@ func TestPresetSaveUsesOneExactCapture(t *testing.T) {
 		t.Fatalf("SAVE: %q", response)
 	}
 	for _, set := range []*filter.SavedPreset{c.presetReference.Baseline, mustLoadPreset(t, "CONTEST")} {
-		if actual, err := filter.V5SavedPresetFromRuntime(set); err != nil || !actual.Configuration.Equal(before) {
+		if actual, err := filter.V6SavedPresetFromRuntime(set); err != nil || !actual.Configuration.Equal(before) {
 			t.Fatal("named snapshot and association did not retain the same exact capture")
 		}
 	}
@@ -61,11 +61,11 @@ func TestPresetSaveUsesOneExactCapture(t *testing.T) {
 	if err != nil || record.Preset == nil || record.Preset.Name != "CONTEST" || record.Grid != "" || record.NoiseClass != "" || record.DedupePolicy != "" || record.AllowWCY != nil {
 		t.Fatalf("SAVE association changed configured defaults: %v", err)
 	}
-	if !filter.V5ConfigurationFromFilter(&record.Filter, before.Settings).Equal(before) {
+	if !filter.V6ConfigurationFromFilter(&record.Filter, before.Settings).Equal(before) {
 		t.Fatal("exact prepared record changed captured rules or controls")
 	}
 	bs := presetDiskBytes(t, filepath.Join(filter.UserDataDir, "N2WQ-1.yaml"))
-	for _, literal := range []string{"configuration_version: 5", "configuration:", "name: CONTEST", "BAND=20M AND DXCALL=K1*,W1*", "allow_wwv: false", "allow_wcy: DEFAULT", "grid: \"\"", "noise_class: \"\"", "dedupe_policy: \"\""} {
+	for _, literal := range []string{"configuration_version: 6", "configuration:", "name: CONTEST", "BAND=20M AND DXCALL=K1*,W1*", "allow_wwv: false", "allow_wcy: DEFAULT", "grid: \"\"", "noise_class: \"\"", "dedupe_policy: \"\""} {
 		if !bytes.Contains(bs, []byte(literal)) {
 			t.Fatalf("saved record lacks literal %q", literal)
 		}
@@ -132,7 +132,7 @@ func TestPresetSavePartialSuccessRetainsDurableAssociation(t *testing.T) {
 func TestPresetProtectedSaveDoesNotWriteLibrary(t *testing.T) {
 	s := presetTestServer(t)
 	c := presetTransactionClient(s)
-	if err := filter.SavePreset(c.callsign, "EXISTING", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Grid: "FN31"}})); err != nil {
+	if err := filter.SavePreset(c.callsign, "EXISTING", testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Grid: "FN31"}})); err != nil {
 		t.Fatal(err)
 	}
 	path := presetLibraryPath()
@@ -152,7 +152,7 @@ func TestPresetLoadExceedsConfigReadbackBudget(t *testing.T) {
 	s := presetTestServer(t)
 	c := presetTransactionClient(s)
 	pattern := strings.Repeat("A", 70000)
-	if err := filter.SavePreset(c.callsign, "LARGE", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Grid: pattern, DedupePolicy: "MED"}})); err != nil {
+	if err := filter.SavePreset(c.callsign, "LARGE", testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Grid: pattern, DedupePolicy: "MED"}})); err != nil {
 		t.Fatal(err)
 	}
 	pointer := c.filter
@@ -176,8 +176,8 @@ func TestPresetFailedLoadRetainsAssociation(t *testing.T) {
 	if response, _ := s.handlePresetCommand(c, "SAVE PRESET OLD"); response != "Saved preset OLD for N2WQ.\n" {
 		t.Fatal(response)
 	}
-	if err := filter.SavePreset(c.callsign, "NEW", testSavedPreset(t, filter.V5Configuration{
-		Filters:  filter.V5FilterConfiguration{Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXCALL=W1*"}}},
+	if err := filter.SavePreset(c.callsign, "NEW", testSavedPreset(t, filter.V6Configuration{
+		Filters:  filter.V6FilterConfiguration{Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXCALL=W1*"}}},
 		Settings: filter.SettingsConfiguration{Grid: "FN31"},
 	})); err != nil {
 		t.Fatal(err)
@@ -199,7 +199,7 @@ func TestPresetLoadAppliedBaselineSurvivesLibraryChanges(t *testing.T) {
 	c := presetTransactionClient(s)
 	s.dedupeSlowEnabled = false
 	s.gridLookup = func(string) (string, bool, bool) { return "IO91", true, true }
-	if err := filter.SavePreset(c.callsign, "CONTEST", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{DedupePolicy: "SLOW"}})); err != nil {
+	if err := filter.SavePreset(c.callsign, "CONTEST", testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{DedupePolicy: "SLOW"}})); err != nil {
 		t.Fatal(err)
 	}
 	response, _ := s.handlePresetCommand(c, "LOAD PRESET CONTEST")
@@ -215,7 +215,7 @@ func TestPresetLoadAppliedBaselineSurvivesLibraryChanges(t *testing.T) {
 	if bytes.Count(bs, []byte("dedupe_policy: FAST")) != 2 || bytes.Count(bs, []byte("grid: \"\"")) != 2 || bytes.Contains(bs, []byte("grid: IO91")) {
 		t.Fatal("disk configuration/baseline lost applied dedupe or stored the lookup GRID")
 	}
-	if err := filter.SavePreset(c.callsign, "CONTEST", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Grid: "FN31"}})); err != nil {
+	if err := filter.SavePreset(c.callsign, "CONTEST", testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Grid: "FN31"}})); err != nil {
 		t.Fatal(err)
 	}
 	if response, _ = s.handlePresetCommand(c, "DELETE PRESET CONTEST"); response != "Deleted preset CONTEST.\n" {
@@ -231,7 +231,7 @@ func TestPresetLoadUnchangedCadenceResetsFromPublication(t *testing.T) {
 	c := presetTransactionClient(s)
 	stale := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
 	c.setSolarSummaryMinutes(30, stale)
-	if err := filter.SavePreset(c.callsign, "SOLAR", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{SolarSummaryMinutes: 30}})); err != nil {
+	if err := filter.SavePreset(c.callsign, "SOLAR", testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{SolarSummaryMinutes: 30}})); err != nil {
 		t.Fatal(err)
 	}
 	var commitFinished time.Time

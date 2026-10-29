@@ -9,14 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"dxcluster/pathreliability"
 	"gopkg.in/yaml.v3"
 )
 
 func TestConfigurationExactDetachedSnapshot(t *testing.T) {
 	f := nativeRuleFilter(t, RuleDefinition{0, RulePass, "MODE=CW"})
 	f.SetWWVEnabled(false)
-	f.NearbyEnabled, f.NearbyUserFine, f.NearbyUserCoarse = true, 10, 11
 	cfg := ConfigurationFromFilter(f, SettingsConfiguration{Dialect: "cc", Grid: "FN31"})
 	clone := cfg.Clone()
 	f.SetWWVEnabled(true)
@@ -25,12 +23,8 @@ func TestConfigurationExactDetachedSnapshot(t *testing.T) {
 	if err != nil || set.PreparedRules() != cfg.Filters.preparedRules || set.AllowWWV == nil || *set.AllowWWV {
 		t.Fatal("native snapshot lost immutable programs or detached controls", err)
 	}
-	if set.NearbyUserFine != pathreliability.InvalidCell ||
-		set.NearbyUserCoarse != pathreliability.InvalidCell {
-		t.Fatal("preset retained runtime caches")
-	}
-	if clone.V5().Fingerprint() != clone.Fingerprint() || !clone.Equal(ConfigurationFromPreset(set)) {
-		t.Fatal("native identity differs from exact v5 identity")
+	if clone.V6().Fingerprint() != clone.Fingerprint() || !clone.Equal(ConfigurationFromPreset(set)) {
+		t.Fatal("native identity differs from exact v6 identity")
 	}
 }
 
@@ -61,7 +55,6 @@ func TestConfigurationIdentityAndSerialization(t *testing.T) {
 	for _, mutate := range []func(*Configuration){
 		func(c *Configuration) { c.Filters.preparedRules = nil },
 		func(c *Configuration) { c.Filters.AllowWWV = DefaultBoolFalse },
-		func(c *Configuration) { c.Filters.NearbyEnabled = true },
 		func(c *Configuration) { c.Settings.SolarSummaryMinutes = 15 },
 	} {
 		changed := base.Clone()
@@ -103,7 +96,7 @@ func TestConfigurationMinimumSizePreflight(t *testing.T) {
 
 func TestUnsupportedUserRecordMarkersRemainUnchanged(t *testing.T) {
 	usePresetTestDir(t)
-	for _, marker := range []string{"", "0", "1", "2", "3", "4", "6", "-1", "null", "\"5\"", "[]", "true"} {
+	for _, marker := range []string{"", "0", "1", "2", "3", "4", "5", "7", "-1", "null", "\"6\"", "[]", "true"} {
 		raw := "configuration: {filters: {rules: []}, settings: {}}\n"
 		if marker != "" {
 			raw = "configuration_version: " + marker + "\n" + raw
@@ -118,11 +111,11 @@ func TestUnsupportedUserRecordMarkersRemainUnchanged(t *testing.T) {
 func TestMalformedUserRecordFramingAndNulls(t *testing.T) {
 	usePresetTestDir(t)
 	for _, raw := range []string{
-		"null\n", "[]\n", v5StorageMinimalRecord + "---\n{}\n",
-		v5StorageMinimalRecord + "configuration_version: 5\n",
-		strings.Replace(v5StorageMinimalRecord, "rules: []", "rules: null", 1),
-		strings.Replace(v5StorageMinimalRecord, "settings: {}", "settings: {grid: null}", 1),
-		"configuration_version: 5\nconfiguration: {filters: {rules: [], allow_wwv: null}, settings: {}}\n",
+		"null\n", "[]\n", v6StorageMinimalRecord + "---\n{}\n",
+		v6StorageMinimalRecord + "configuration_version: 6\n",
+		strings.Replace(v6StorageMinimalRecord, "rules: []", "rules: null", 1),
+		strings.Replace(v6StorageMinimalRecord, "settings: {}", "settings: {grid: null}", 1),
+		"configuration_version: 6\nconfiguration: {filters: {rules: [], allow_wwv: null}, settings: {}}\n",
 	} {
 		assertMinSNRStorageProtected(t, raw)
 	}
@@ -170,8 +163,8 @@ func TestSaveConfigurationPersistsExactBaselineAndMetadata(t *testing.T) {
 
 func TestAppliedBaselineValidation(t *testing.T) {
 	usePresetTestDir(t)
-	for _, baseline := range []string{"null", "{}", "{configuration_version: 4}", "{configuration_version: 6}",
-		"{configuration_version: 5, configuration: {filters: {rules: []}, settings: {grid: " + strings.Repeat("A", MaxPresetBytes+1) + "}}}"} {
-		assertMinSNRStorageProtected(t, v5StorageMinimalRecord+fmt.Sprintf("preset: {name: TEST, baseline: %s}\n", baseline))
+	for _, baseline := range []string{"null", "{}", "{configuration_version: 4}", "{configuration_version: 7}",
+		"{configuration_version: 6, configuration: {filters: {rules: []}, settings: {grid: " + strings.Repeat("A", MaxPresetBytes+1) + "}}}"} {
+		assertMinSNRStorageProtected(t, v6StorageMinimalRecord+fmt.Sprintf("preset: {name: TEST, baseline: %s}\n", baseline))
 	}
 }

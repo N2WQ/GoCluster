@@ -63,13 +63,13 @@ func TestYAMLReadbackLiteralSettingsAndNoPauseEffects(t *testing.T) {
 	c.readPauseDiscardBefore.Store(1700000000000000000)
 	c.readPauseSuppressed.Store(7)
 	before := machineEchoCoveragePause(c)
-	reply := s.prepareV5MachineReadback(c, machineCommand{Verb: "GET", Resource: "SETTINGS", RequestID: "noise-1", SchemaVersion: 5})
+	reply := s.prepareV6MachineReadback(c, machineCommand{Verb: "GET", Resource: "SETTINGS", RequestID: "noise-1", SchemaVersion: 6})
 	var document struct {
 		Version       int                          `yaml:"schema_version"`
 		RequestID     string                       `yaml:"request_id"`
 		Configuration filter.SettingsConfiguration `yaml:"configuration"`
 	}
-	if err := yaml.Unmarshal([]byte(reply), &document); err != nil || document.Version != 5 ||
+	if err := yaml.Unmarshal([]byte(reply), &document); err != nil || document.Version != 6 ||
 		document.RequestID != "noise-1" || document.Configuration != (filter.SettingsConfiguration{}) ||
 		machineEchoCoveragePause(c) != before || strings.Contains(reply, "Type RESUME") {
 		t.Fatalf("GET changed exact defaults/pause or returned wrong schema: %v\n%s", err, reply)
@@ -161,23 +161,23 @@ func TestHumanReadbackAliasValidationKeepsPause(t *testing.T) {
 	}
 }
 
-func TestReadbackAdmissionReservesActualV5MetadataGrowth(t *testing.T) {
+func TestReadbackAdmissionReservesActualV6MetadataGrowth(t *testing.T) {
 	s, c := readbackTestClient()
-	cfg := c.captureV5Configuration()
+	cfg := c.captureV6Configuration()
 	cfg.Settings.Grid = strings.Repeat("X", 29000)
 	prepared := newHumanPreferenceCandidate(c)
 	prepared.configuredSettings = cfg.Settings
-	if err := s.v5ConfigurationReadbackFits(c, cfg, prepared, nil); err != nil {
-		t.Fatalf("fitting v5 envelope refused: %v", err)
+	if err := s.v6ConfigurationReadbackFits(c, cfg, prepared, nil); err != nil {
+		t.Fatalf("fitting v6 envelope refused: %v", err)
 	}
 	prepared.grid = strings.Repeat("A", 10000)
-	if err := s.v5ConfigurationReadbackFits(c, cfg, prepared, nil); !errors.Is(err, errReadbackTooLarge) {
-		t.Fatal("v5 admission ignored actual effective GRID width")
+	if err := s.v6ConfigurationReadbackFits(c, cfg, prepared, nil); !errors.Is(err, errReadbackTooLarge) {
+		t.Fatal("v6 admission ignored actual effective GRID width")
 	}
 	c.configuredSettings = cfg.Settings
 	c.readPauseSuppressed.Store(math.MaxUint64)
-	reply := s.prepareV5MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", RequestID: strings.Repeat("1", 32), SchemaVersion: 5})
-	if len(reply) > 65536 || strings.Contains(reply, "error:") || !strings.Contains(reply, "schema_version: 5") {
-		t.Fatal("admitted v5 configuration failed with widest ordinary request/session metadata")
+	reply := s.prepareV6MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", RequestID: strings.Repeat("1", 32), SchemaVersion: 6})
+	if len(reply) > 65536 || strings.Contains(reply, "error:") || !strings.Contains(reply, "schema_version: 6") {
+		t.Fatal("admitted v6 configuration failed with widest ordinary request/session metadata")
 	}
 }

@@ -130,18 +130,18 @@ func TestIPSessionQuotaCrossIPRejectionPreservesOwnerAndFiles(t *testing.T) {
 	destination := ipQuotaLogin(t, s, "W1XYZ-1", "192.0.2.2:1002")
 	defer s.unregisterClient(owner)
 	defer s.unregisterClient(destination)
-	baseline := testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
+	baseline := testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
 	if err := filter.SavePreset(owner.callsign, "CONTEST", baseline); err != nil {
 		t.Fatal(err)
 	}
 	profile := filepath.Join(filter.UserDataDir, owner.callsign+".yaml")
 	library := presetLibraryPathFor(owner.callsign)
-	for _, path := range []string{profile + ".pre-v5.bak", library + ".pre-v5.bak"} {
+	for _, path := range []string{profile + ".pre-v6.bak", library + ".pre-v6.bak"} {
 		if err := os.WriteFile(path, []byte("existing backup "+filepath.Base(path)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	paths := []string{profile, library, profile + ".pre-v5.bak", library + ".pre-v5.bak"}
+	paths := []string{profile, library, profile + ".pre-v6.bak", library + ".pre-v6.bak"}
 	before := make(map[string][]byte, len(paths))
 	for _, path := range paths {
 		data, err := os.ReadFile(path)

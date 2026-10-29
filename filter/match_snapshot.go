@@ -3,7 +3,6 @@ package filter
 import (
 	"sync/atomic"
 
-	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
 
@@ -37,15 +36,13 @@ func newFilterDefaultRules() *PreparedRuleSet {
 }
 
 // MatchSnapshot is a detached delivery value. Programs are immutable; controls
-// and NEARBY cells are captured by value under the caller's publication lock.
+// are captured by value under the caller's publication lock.
 // Its zero value represents a nil Filter and fails closed.
 type MatchSnapshot struct {
 	rules         *PreparedRuleSet
 	valid         bool
 	beacons, self bool
 	toxic         bool
-	nearby        bool
-	fine, coarse  pathreliability.CellID
 }
 
 func (f *Filter) MatchSnapshot() MatchSnapshot {
@@ -55,23 +52,23 @@ func (f *Filter) MatchSnapshot() MatchSnapshot {
 	return MatchSnapshot{
 		rules: f.preparedRules, valid: true,
 		beacons: f.BeaconsEnabled(), self: f.SelfEnabled(), toxic: f.ToxicEnabled(),
-		nearby: f.NearbyEnabled, fine: f.NearbyUserFine, coarse: f.NearbyUserCoarse,
 	}
 }
 
+// MatchesWithPath is an explicitly location-unavailable convenience entry.
 func (s MatchSnapshot) MatchesWithPath(value *spot.Spot, pathClass string) bool {
+	return s.MatchesWithContext(value, EvaluationContext{PathClass: pathClass})
+}
+
+func (s MatchSnapshot) MatchesWithContext(value *spot.Spot, context EvaluationContext) bool {
 	if !s.valid || value == nil || (value.IsBeacon && !s.beacons) || !s.AllowsToxicity(value) {
 		return false
 	}
-	if !s.rules.Matches(value, pathClass, s.nearby) {
-		return false
-	}
-	return !s.nearby || matchesNearbyCells(value, s.fine, s.coarse, "")
+	return s.rules.Matches(value, context)
 }
 
-func (s MatchSnapshot) PathFilterActive() bool {
-	return s.valid && s.rules.NeedsPath(s.nearby)
-}
+func (s MatchSnapshot) PathFilterActive() bool   { return s.valid && s.rules.NeedsPath() }
+func (s MatchSnapshot) NearbyFilterActive() bool { return s.valid && s.rules.NeedsNearby() }
 
 func (s MatchSnapshot) SelfEnabled() bool { return s.valid && s.self }
 

@@ -32,7 +32,7 @@ func TestStorageRecordRawReadBound(t *testing.T) {
 		counted.read != MaxUserRecordBytes+1 || source.Len() != 72 {
 		t.Fatal("physical read did not stop at limit+1", err)
 	}
-	raw := v5StorageMinimalRecord + strings.Repeat(" ", MaxUserRecordBytes-len(v5StorageMinimalRecord))
+	raw := v6StorageMinimalRecord + strings.Repeat(" ", MaxUserRecordBytes-len(v6StorageMinimalRecord))
 	for _, extra := range []string{"", " "} {
 		path := userRecordPath("N2WQ")
 		if err := os.WriteFile(path, []byte(raw+extra), 0600); err != nil {
@@ -51,8 +51,8 @@ func TestStorageRecordRawReadBound(t *testing.T) {
 
 func TestStorageConfigurationStandaloneOracle(t *testing.T) {
 	usePresetTestDir(t)
-	dto := v5StorageExactPreset(t)
-	set, err := RuntimeSavedPresetFromV5(dto)
+	dto := v6StorageExactPreset(t)
+	set, err := RuntimeSavedPresetFromV6(dto)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestStorageConfigurationStandaloneOracle(t *testing.T) {
 
 func TestStorageCanonicalAndProspectiveRecordBounds(t *testing.T) {
 	usePresetTestDir(t)
-	raw := v5StorageMinimalRecord + "recent_ips: [&ip " + strings.Repeat("A", 220_000) + ", *ip, *ip, *ip, *ip]\n"
+	raw := v6StorageMinimalRecord + "recent_ips: [&ip " + strings.Repeat("A", 220_000) + ", *ip, *ip, *ip, *ip]\n"
 	if err := os.WriteFile(userRecordPath("N2WQ"), []byte(raw), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +159,7 @@ func TestStorageCurrentRecordFailureCausality(t *testing.T) {
 func TestStoragePureAdmissionAndExactBaseline(t *testing.T) {
 	usePresetTestDir(t)
 	UserDataDir = filepath.Join(UserDataDir, "not-created")
-	set, err := RuntimeSavedPresetFromV5(v5StorageExactPreset(t))
+	set, err := RuntimeSavedPresetFromV6(v6StorageExactPreset(t))
 	if err != nil {
 		t.Fatal(err)
 	}

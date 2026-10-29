@@ -7,7 +7,6 @@ import (
 	"encoding/binary"
 
 	"dxcluster/filter"
-	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
 
@@ -15,8 +14,9 @@ import (
 // Its minimal client is newly constructed, so no live mutex or atomic is copied.
 // Propagation observations belong to the server and remain current per candidate.
 type historyFilterSnapshot struct {
-	digest [32]byte
-	client *Client
+	digest   [32]byte
+	client   *Client
+	matching clientMatchingSnapshot
 }
 
 // captureHistoryFilter requires the configuration transaction stripe. Lock order
@@ -24,20 +24,20 @@ type historyFilterSnapshot struct {
 func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 	c.pathMu.RLock()
 	c.filterMu.RLock()
-	defer c.filterMu.RUnlock()
-	defer c.pathMu.RUnlock()
 	owned := &Client{
 		callsign: c.callsign, grid: c.grid, gridDerived: c.gridDerived,
-		gridCell: historyEffectiveGridCell(c), gridCoarseCell: c.gridCoarseCell,
+		gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
 		noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
 	}
 	if c.filter != nil {
 		value := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Clone().FilterValue()
-		value.NearbyUserFine = c.filter.NearbyUserFine
-		value.NearbyUserCoarse = c.filter.NearbyUserCoarse
 		owned.filter = &value
 	}
-	return historyFilterSnapshot{digest: c.historyFilterDigestLocked(), client: owned}
+	c.filterMu.RUnlock()
+	c.pathMu.RUnlock()
+	matching := owned.captureMatchingSnapshot()
+	owned.gridCell, owned.gridCoarseCell = matching.path.gridCell, matching.path.gridCoarseCell
+	return historyFilterSnapshot{digest: owned.historyFilterDigest(), client: owned, matching: matching}
 }
 
 // historyFilterDigest requires the configuration transaction stripe. It borrows
@@ -45,42 +45,37 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 func (c *Client) historyFilterDigest() [32]byte {
 	c.pathMu.RLock()
 	c.filterMu.RLock()
-	defer c.filterMu.RUnlock()
-	defer c.pathMu.RUnlock()
-	return c.historyFilterDigestLocked()
-}
-
-func (c *Client) historyFilterDigestLocked() [32]byte {
-	cfg := filter.V5ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{
+	cfg := filter.V6ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{
 		Grid: c.grid, NoiseClass: c.noiseClass, PathMinObservationCount: c.pathMinObservationCount,
 	})
-	// History's existing self-match exception bypasses the self toggle. Bulletin
-	// controls and presentation preferences likewise cannot change spot matches.
+	matching := c.filter.MatchSnapshot()
+	state := pathState{grid: c.grid, gridDerived: c.gridDerived, gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell}
+	valid := c.filter != nil
+	c.filterMu.RUnlock()
+	c.pathMu.RUnlock()
+	geometry := matching.NearbyFilterActive() || matching.PathFilterActive()
+	if geometry {
+		state = resolveMatchingLocation(state)
+	}
+	// Self and bulletin controls do not change history's personal spot matches.
 	cfg.Filters.AllowWWV, cfg.Filters.AllowWCY = filter.DefaultBoolDefault, filter.DefaultBoolDefault
 	cfg.Filters.AllowAnnounce, cfg.Filters.AllowSelf = filter.DefaultBoolDefault, filter.DefaultBoolDefault
 	configured := cfg.Fingerprint()
-	var payload [42]byte
+	var payload [38]byte
 	copy(payload[:32], configured[:])
-	if c.filter != nil {
+	if valid {
 		payload[32] = 1
-		binary.LittleEndian.PutUint16(payload[33:35], uint16(c.filter.NearbyUserFine))
-		binary.LittleEndian.PutUint16(payload[35:37], uint16(c.filter.NearbyUserCoarse))
 	}
-	binary.LittleEndian.PutUint16(payload[37:39], uint16(historyEffectiveGridCell(c)))
-	binary.LittleEndian.PutUint16(payload[39:41], uint16(c.gridCoarseCell))
-	if c.gridDerived {
-		payload[41] = 1
+	// Irrelevant lazy cache fills must not invalidate location-free searches.
+	// Geometry users hash the same snapshot-local effective cells they evaluate.
+	if geometry {
+		binary.LittleEndian.PutUint16(payload[33:35], uint16(state.gridCell))
+		binary.LittleEndian.PutUint16(payload[35:37], uint16(state.gridCoarseCell))
+	}
+	if state.gridDerived {
+		payload[37] = 1
 	}
 	return sha256.Sum256(payload[:])
-}
-
-// Resolving the lazy cache locally avoids invalidating a search merely because
-// another path read filled the cache without changing the effective location.
-func historyEffectiveGridCell(c *Client) pathreliability.CellID {
-	if c.gridCell != pathreliability.InvalidCell {
-		return c.gridCell
-	}
-	return pathreliability.EncodeCell(c.grid)
 }
 
 func (snapshot historyFilterSnapshot) matches(s *Server, sp *spot.Spot) bool {
@@ -94,7 +89,6 @@ func (snapshot historyFilterSnapshot) matches(s *Server, sp *spot.Spot) bool {
 	if f == nil {
 		return false
 	}
-	matching := snapshot.client.captureMatchingSnapshot()
-	matched, _, _ := s.matchSnapshot(matching, sp)
+	matched, _, _ := s.matchSnapshot(snapshot.matching, sp)
 	return matched
 }

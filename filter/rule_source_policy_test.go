@@ -36,19 +36,19 @@ func TestRuleSetWholeExpressionSourcePolicy(t *testing.T) {
 						want = test.human
 					}
 					value := &spot.Spot{Mode: "CW", IsHuman: human, Comment: "SOURCE=SKIMMER"}
-					if got := set.Matches(value, "", nearby); got != want {
+					if got := set.Matches(value, EvaluationContext{PathClass: ""}); got != want {
 						t.Fatalf("human=%v nearby=%v got %v, want %v", human, nearby, got, want)
 					}
 					allocs := testing.AllocsPerRun(100, func() {
-						ruleEvaluationSink = set.Matches(value, "", nearby)
+						ruleEvaluationSink = set.Matches(value, EvaluationContext{PathClass: ""})
 					})
 					if allocs != 0 || ruleEvaluationSink != want {
 						t.Fatalf("human=%v nearby=%v allocations=%g result=%v, want 0/%v",
 							human, nearby, allocs, ruleEvaluationSink, want)
 					}
 				}
-				row := set.Readback(nearby)[0]
-				if row.EffectiveExpr != row.Expr || row.Suspended {
+				row := set.Readback()[0]
+				if row.Expr != saved[0].Expr {
 					t.Fatalf("incorrect effective source disclosure: %+v", row)
 				}
 			}
@@ -63,21 +63,15 @@ func TestRuleSetSourcePolicyAbsentPassAndReject(t *testing.T) {
 	for _, definitions := range [][]RuleDefinition{
 		nil,
 		{{0, RuleReject, "MODE=USB"}},
-		{{0, RulePass, "DXCONT=EU"}, {1, RuleReject, "MODE=USB"}},
+		{{0, RulePass, "MODE=CW"}, {1, RuleReject, "MODE=USB"}},
 	} {
 		set := mustPrepareRuleSet(t, definitions...)
 		for _, human := range []bool{false, true} {
-			if !set.Matches(&spot.Spot{Mode: "CW", IsHuman: human}, "", true) {
+			if !set.Matches(&spot.Spot{Mode: "CW", IsHuman: human}, EvaluationContext{PathClass: ""}) {
 				t.Fatal("absent PASS acquired a source restriction")
 			}
-			if len(definitions) > 0 && set.Matches(&spot.Spot{Mode: "USB", IsHuman: human}, "", true) {
+			if len(definitions) > 0 && set.Matches(&spot.Spot{Mode: "USB", IsHuman: human}, EvaluationContext{PathClass: ""}) {
 				t.Fatal("source-less REJECT stopped vetoing a source")
-			}
-		}
-		if len(definitions) == 2 {
-			row := set.Readback(true)[0]
-			if !row.Suspended || row.EffectiveExpr != "" {
-				t.Fatalf("suspended PASS acquired effective source condition: %+v", row)
 			}
 		}
 	}
@@ -88,11 +82,11 @@ func TestRuleSetSourcePolicyAbsentPassAndReject(t *testing.T) {
 		for _, mode := range []string{"CW", "FT8"} {
 			want := mode == "CW" || !human && mode == "FT8"
 			value := &spot.Spot{Mode: mode, IsHuman: human}
-			if got := set.Matches(value, "", false); got != want {
+			if got := set.Matches(value, EvaluationContext{PathClass: ""}); got != want {
 				t.Fatalf("source selection changed PASS union: human=%v mode=%s", human, mode)
 			}
 			value.Comment = "blocked"
-			if set.Matches(value, "", false) {
+			if set.Matches(value, EvaluationContext{PathClass: ""}) {
 				t.Fatal("REJECT did not veto both sources")
 			}
 		}
@@ -105,17 +99,17 @@ func TestRuleSetSourcePolicyFullBudget(t *testing.T) {
 	before := set.Counts()
 	for _, nearby := range []bool{false, true} {
 		for _, human := range []bool{false, true} {
-			if got := set.Matches(&spot.Spot{IsHuman: human, HasReport: true, Report: 1}, "", nearby); !got {
+			if got := set.Matches(&spot.Spot{IsHuman: human, HasReport: true, Report: 1}, EvaluationContext{PathClass: ""}); !got {
 				t.Fatalf("full budget human=%v nearby=%v got %v", human, nearby, got)
 			}
 		}
-		for _, row := range set.Readback(nearby) {
-			if row.EffectiveExpr != row.Expr {
+		for _, row := range set.Readback() {
+			if row.Expr == "" {
 				t.Fatal("full-budget expression acquired a hidden condition")
 			}
 		}
 	}
-	if before.Normal != want || before.Nearby != want || before.Retained != want || set.Counts() != before {
+	if before.Program != want || set.Counts() != before {
 		t.Fatalf("source evaluation changed syntax budget: %+v", set.Counts())
 	}
 	assertPreparedRulePrograms(t, set)

@@ -48,7 +48,7 @@ func TestBooleanInputLiteralCaseAndEditing(t *testing.T) {
 			{"PASS RULE 1 COMMENT=\"PotaX\b\"\n", `PASS RULE 1 COMMENT="Pota"`},
 			{"PASS RULE 1 COMMENT=\"Pota\"\x15show own\n", "SHOW OWN"},
 			{"pass comment Mixed: literal!\n", "PASS COMMENT MIXED: LITERAL!"},
-			{"GET YAML FILTER SCHEMA 5 ID MiXeD-1\n", "GET YAML FILTER SCHEMA 5 ID MiXeD-1"},
+			{"GET YAML FILTER SCHEMA 6 ID MiXeD-1\n", "GET YAML FILTER SCHEMA 6 ID MiXeD-1"},
 			{"pass rule 1 COMMENT=\"Po" + string([]byte{IAC, SB, 31, '\n', IAC, SE}) + "Ta\"\n",
 				`PASS RULE 1 COMMENT="PoTa"`},
 			{"pass rule 1 MODE=" + string([]byte{IAC, WILL, 1}) + "cw\n", "PASS RULE 1 MODE=cw"},

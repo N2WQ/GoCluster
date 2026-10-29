@@ -128,7 +128,7 @@ func TestRecentFilteredAppliesEventFilter(t *testing.T) {
 		t.Fatalf("batch commit: %v", err)
 	}
 
-	_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+	_, f, err := filter.PrepareV6Configuration(filter.V6Configuration{Filters: filter.V6FilterConfiguration{
 		Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "EVENT=POTA AND SOURCE=HUMAN,SKIMMER"}},
 	}})
 	if err != nil {

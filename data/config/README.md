@@ -334,7 +334,7 @@ including its SSID, owns one record such as `N2WQ-1.yaml`. The `presets` subdire
 holds named snapshots shared by the base callsign's numeric SSIDs; back it up
 with user records.
 
-Native user records require `configuration_version: 5` and nested
+Native user records require `configuration_version: 6` and nested
 `configuration.filters` and `configuration.settings`. Rules are numbered Boolean
 definitions, not category maps. The six separate controls preserve `DEFAULT`
 versus explicit `false`/`true`; settings preserve empty default selections and
@@ -344,12 +344,11 @@ outside `configuration`, not preset preferences.
 This source-derived example is a native user record, not a machine upload:
 
 ```yaml
-configuration_version: 5
+configuration_version: 6
 configuration:
   filters:
     rules:
       - {slot: 0, action: pass, expr: 'MODE=CW AND SOURCE=HUMAN'}
-    nearby_enabled: false
     include_beacons: DEFAULT
     allow_wwv: DEFAULT
     allow_wcy: DEFAULT
@@ -369,7 +368,7 @@ last_login_utc: 2026-10-21T18:00:00Z
 ```
 
 An optional `preset` mapping contains `name` and `baseline`. The baseline is an
-independent snapshot with its own `configuration_version: 5` and nested
+independent snapshot with its own `configuration_version: 6` and nested
 `configuration.filters/settings`, not a lookup of the library's current entry.
 The named library is a `presets` mapping; each normalized name owns one versioned
 snapshot, for example:
@@ -377,12 +376,11 @@ snapshot, for example:
 ```yaml
 presets:
   CONTEST:
-    configuration_version: 5
+    configuration_version: 6
     configuration:
       filters:
         rules:
           - {slot: 0, action: pass, expr: 'DXSTATE=NY,ON'}
-        nearby_enabled: false
         include_beacons: DEFAULT
         allow_wwv: DEFAULT
         allow_wcy: DEFAULT
@@ -399,23 +397,26 @@ presets:
 ```
 
 There is no top-level library version or machine `schema_version`/request
-envelope on disk. Every current entry and applied baseline must be v5. Strict
-v5 decoding refuses missing, zero, old and future disk version markers. A zero version
+envelope on disk. Every current entry and applied baseline must be v6. Strict
+v6 decoding refuses missing, zero, old and future disk version markers. A zero version
 is only a newly constructed in-memory encoder DTO convention; it is never a
 supported disk version.
 
 Login has a separate reset-only upgrade path for recognized unversioned and
-version 1–4 records. It preserves settings, separate controls and metadata,
+version 1-5 records. It preserves settings, separate controls and metadata,
 discards old filters/NEARBY/applied association, and installs the same configured
 mode/source rule as new accounts in editable PASS slot 0. Old preset entries
-are cleared while existing v5 entries survive. Originals are backed up before
+are cleared while existing v6 entries survive. Originals are backed up before
 replacement; subsequent logins do not reinstall this rule or wipe new presets.
 This is not translation of old filters or acceptance of older machine schemas.
-The original-file backup suffix is `.pre-v5.bak`. Backups must match the original
-bytes on retry; a conflicting backup stops the reset. Restore or rollback
+The original-file backup suffix is `.pre-v6.bak`. Backups must match the original
+bytes on retry; a conflicting backup stops the reset. Existing .pre-v5.bak
+files stay untouched. Admit both replacements before mutation, write the library
+first, and retain precise partial-failure/retry outcomes. Only initial profile
+absence grants new-user creation; library or later not-found errors do not. Restore or rollback
 requires stopping writers and using compatible binary/data copies, not editing
 the version marker. Historical unversioned settings retain the old loader's
-normalization/default meaning; marked version 1–4 preferences retain exact
+normalization/default meaning; marked version 1-5 preferences retain exact
 empty/zero/false selections.
 
 Unreadable, malformed, over-budget or unrecognized-version records are
@@ -434,11 +435,10 @@ SOURCE=HUMAN,SKIMMER. The shipped default_sources lists HUMAN and SKIMMER.
 A PASS without SOURCE imposes no source restriction, just like REJECT.
 Explicit SOURCE=HUMAN rules remain human-only, including saved defaults.
 Changing the shipped configuration does not rewrite saved profiles or presets.
-Startup validates the configured rule after taxonomy loading. Existing/restored v5
+Startup validates the configured rule after taxonomy loading. Existing/restored v6
 records with `rules: []` stay empty. Adding another PASS broadens selection;
 edit or remove slot 0 to narrow it. `RESET FILTER RULE <0..9|ALL>` clears only
-selected slots and preserves NEARBY. `RESET FILTER` clears all rules and turns
-NEARBY OFF. Neither reinstalls slot 0 or resets separate controls/settings.
+selected slots. `RESET FILTER` clears all rules, including NEARBY terms. Neither reinstalls slot 0 or resets separate controls/settings.
 
 SNR is a Boolean rule field, separate from deployment YAML. For example,
 `REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10` explicitly limits the
@@ -449,9 +449,9 @@ exemption, saved `min_snr` map or old-schema preservation path. See `HELP RULE`
 and the [telnet filter contract](../../telnet/README.md#filters).
 
 User-record writes atomically commit preferences together with the applied preset
-name and one bounded baseline. LOAD rebuilds runtime geometry, retains stored
-NEARBY ON with a warning when geometry is unavailable, and commits the full-SSID
-record before live publication. It records the applied snapshot, including
+name and one bounded baseline. LOAD rebuilds GRID-owned runtime geometry and
+commits the full-SSID record before live publication. Missing geometry makes
+NEARBY false; it does not block unrelated OR branches. It records the applied snapshot, including
 reported server adjustments; SAVE associates the same capture written to the
 named library. If the named save succeeds but its association fails, the previous
 live and disk association/baseline remain recoverable. Ordinary saves preserve
@@ -477,7 +477,7 @@ Preset budgets remain 20 names per owner, 256 KiB per encoded snapshot and
 8 MiB (8,388,608 bytes) per collection. Trial rule guardrails are ten slots
 (0-9), 128 total atoms and 512 total values; each expression is limited to
 1,024 raw and canonical bytes, 32 atoms, 128 nodes and nesting depth 8.
-Each atom has at most 32 values; each COMMENT operand has 1-64 printable ASCII
+Each comparison atom has at most 32 values; NEARBY has none. each COMMENT operand has 1-64 printable ASCII
 bytes including a non-space byte. Nesting counts parentheses and NOT, not flat
 AND/OR height. These limits do not enlarge the configured human line limit
 (128 bytes by default) or the 65,536-byte machine upload/final-response limits.
@@ -485,7 +485,7 @@ Valid large presets can LOAD even when a FULL or YAML readback exceeds 64 KiB.
 PUT/PATCH/VALIDATE instead require the resulting
 complete CONFIG readback to fit, including reserved response metadata. An
 unchanged PUT still persists before success, repairing an earlier failed human
-save without resetting unrelated solar, GRID, NEARBY, diagnostic or pause state.
+save without resetting unrelated solar, GRID, diagnostic or pause state.
 
 The live experiment uses isolated storage. Recognized old profiles now have
 the explicit reset-only login upgrade above; ordinary strict reads do not
@@ -499,17 +499,17 @@ See [backup instructions](../../docs/ENVIRONMENT.md#user-configuration-backups-a
 [ADR-0244](../../docs/decisions/ADR-0244-exact-configuration-persistence.md)
 records earlier persistence history, not an active pre-v5 conversion contract.
 
-The current native boundary is owned by `filter/configuration_v5.go`,
-`filter/storage_v5.go`, `filter/storage_v5_decode.go`,
-`filter/storage_v5_io_adapter.go` and `filter/preset_v5.go` in the checkout.
+The current native boundary is owned by `filter/configuration_v6.go`,
+`filter/storage_v6.go`, `filter/storage_v6_decode.go`,
+`filter/storage_v6_io_adapter.go` and `filter/preset_v6.go` in the checkout.
 Human edits admit detached candidates before publication, then keep accepted
 edits live with a warning if a later save fails. Machine writes commit before
 publication and preserve both live and saved state on failure. All machine GETs,
-including SETTINGS and CAPABILITIES, require explicit `SCHEMA 5`; upload bodies
-require `schema_version: 5`, not the native disk envelope. See the
+including SETTINGS and CAPABILITIES, require explicit `SCHEMA 6`; upload bodies
+require `schema_version: 6`, not the native disk envelope. See the
 [client protocol](../../telnet/README.md#client-yaml-configuration) and
 [normative domain contract](../../docs/domain-contract.md#boolean-personal-rules)
-for rule semantics, structural NEARBY and the required unavailable-geometry
+for rule semantics, ordinary Boolean NEARBY and the required unavailable-geometry
 rule-only recovery behavior. The unchanged saved GRID may remain unmappable
 while exact syntax and every other settings check stay enforced.
 
@@ -590,15 +590,15 @@ the 60 FCC codes and 13 Canadian codes (`AB`, `BC`, `MB`, `NB`, `NL`, `NS`, `NT`
 `NU`, `ON`, `PE`, `QC`, `SK`, `YT`). Mixed selections such as
 `PASS RULE 0 DXSTATE=NY,ON` compare observed canonical State metadata. Missing,
 invalid or noncanonical State makes comparisons false, including `<>`; NOT
-negates that result. NEARBY structurally removes geographic atoms from effective
-rules without rewriting full saved expressions. History uses the state
+negates that result. NEARBY combines with geographic comparisons through ordinary
+Boolean logic and does not suppress them. History uses the state
 recorded when the spot was archived; existing rows are not backfilled from the
 current snapshot.
 
 Back up user profiles, preset libraries and the archive with writers stopped
 before changing binaries. Native user records, named entries and applied
-baselines use configuration version 5; machine configuration uses explicit
-schema 5 only. Archive version 6 is separate factual metadata history: it
+baselines use configuration version 6; machine configuration uses explicit
+schema 6 only. Archive version 6 is separate factual metadata history: it
 records observed DX/DE State, while archive versions 2-5 retain unknown State
 without consulting today's registry. Historically, earlier Canadian-data
 readers could reject codes or skip archive rows even when a version matched;

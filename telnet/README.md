@@ -88,7 +88,6 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
   same-identity login can displace an existing session.
 - The greeting can include dialect, grid, noise, and dedupe status from config.
 - Dialect choice and filter state are persisted per callsign.
-- If `NEARBY` is active, the login greeting warns the user.
 
 Restoration uses the full login call, including its SSID. Configuration,
 associated preset name and its reference snapshot stay consistent through
@@ -100,15 +99,19 @@ failures retain their existing persistence behavior.
 If a valid record is restored but updating the login timestamp/IP fails, login
 continues with those preferences and a warning.
 
-Login upgrades recognized unversioned and version 1–4 profiles once. Old
-personal filters, NEARBY and the applied-preset association are reset. The
-replacement is an ordinary editable PASS rule in slot 0 using configured
-default modes and sources, identical to a new user's starting rule. Saved settings, separate
-controls and login metadata are retained; the login reports the reset.
-Old shared preset entries are removed without deleting already-created v5
-presets. Original files are backed up before replacement. Existing v5 profiles,
-including empty rule sets, are never reset again. This does not revive old
-category commands or accept old machine YAML schemas.
+Login resets recognized unversioned and version 1-5 profiles once. Old personal
+rules, the global NEARBY setting and the applied-preset association are discarded.
+The replacement is one ordinary editable PASS rule in slot 0 using configured
+new-user modes and sources. Saved settings, six separate controls and full-SSID
+login metadata are retained; marked records preserve exact DEFAULT, false, empty
+and zero choices. Unversioned records retain their historical normalization,
+including MED for a blank dedupe selection. The login reports the reset.
+
+Old shared preset entries are removed under the base-call library lock without
+deleting generation-6 presets created by another SSID or an earlier retry.
+Current-generation profiles, including empty rule sets, are not reset again.
+This does not translate filters or accept old machine schemas. A newly created
+SSID also attempts retired-library cleanup after its profile has been saved.
 
 If the record itself is unreadable, unsafe or uses an unrecognized version,
 or its required upgrade cannot be committed, login uses protected temporary
@@ -118,9 +121,13 @@ library write, and LOAD PRESET and PUT/PATCH cannot commit configuration.
 LIST/DELETE retain their separate preset-library behavior. File replacements
 are atomic individually, not one cross-file transaction; upgrade failures must
 be reported and retried safely without overwriting the original backups.
-Original backups use `.pre-v5.bak` beside the user record or preset library.
+Original backups use `.pre-v6.bak` beside the user record or preset library.
+Earlier `.pre-v5.bak` files remain untouched. Both replacement payloads are
+admitted before writing; library replacement precedes profile replacement.
+A library-success/profile-failure result is reported precisely and retried safely.
+Only the initial authoritative missing-profile read permits new-user creation.
 A different existing backup is never overwritten. A library-only cleanup
-failure on an already-valid v5 profile warns without replacing that user's
+failure on an already-valid v6 profile warns without replacing that user's
 settings or blocking unrelated preference saves.
 
 Raw and normalized user records must each fit 1 MiB. The proposed saved record,
@@ -245,17 +252,17 @@ replaces both; it is not a delta or an addition to a category list.
 
 - Any matching REJECT vetoes delivery. Otherwise any active PASS can qualify.
 - With no active PASS, personal selection is unrestricted except for matching
-  REJECTs. With no rules there is no personal restriction; separate controls and
-  NEARBY still apply.
+  REJECTs. With no rules there is no personal restriction; separate controls
+  still apply.
 - Slot IDs are not priorities. Adding another PASS broadens selection. To narrow
   a selection, edit or remove its existing PASS, including default slot 0.
-- `RESET FILTER RULE` clears the selected slot or all slots, preserving NEARBY.
-  `RESET FILTER` clears all personal rules and turns NEARBY OFF. Neither resets
+- `RESET FILTER RULE` clears the selected slot or all slots.
+  `RESET FILTER` clears all personal rules. Neither resets
   separate controls or profile settings, and neither reinstalls defaults.
 - New accounts and recognized old-profile resets receive the same validated
   configured MODE/SOURCE selection as an ordinary editable PASS in slot 0.
   Both sources are written explicitly as SOURCE=HUMAN,SKIMMER.
-  Existing/restored Boolean empty rules remain empty.
+  Current-generation empty rules remain empty.
 - A PASS rule without SOURCE allows HUMAN and SKIMMER. SOURCE follows ordinary
   Boolean logic, including OR and NOT. Text inside COMMENT is literal text.
   Neither PASS nor REJECT adds an implicit source restriction.
@@ -276,7 +283,8 @@ Old category, MODE-delta, MINSNR, COMMENT-list, DXBM, NOFILTER and CC filter/mod
 shortcut mutations are refused without translation. There is no `RESET RULE`
 or `SET DX FILTER` alias. `HELP RULE` is the shared expression reference.
 
-Expressions support comparisons, parentheses, NOT, AND and OR, with precedence
+Expressions support comparisons, the operand-free NEARBY predicate, parentheses,
+NOT, AND and OR, with precedence
 `NOT > AND > OR`. Equality matches any value in a bare or bracketed comma list,
 for example `MODE=CW,FT8` or `MODE=[CW,FT8]`. `<>` means none of the listed values
 only when the field is known. Every comparison on a missing/unknown value is
@@ -299,6 +307,7 @@ ALL/ON/OFF wildcard operands.
 | `CONF` | `?`, `S`, `C`, `P`, `V`, `B`; unknown for confidence-exempt modes, with no expression bypass. Otherwise blank confidence becomes known `?`. `CONFIDENCE` is not a field alias. |
 | `PATH` | Exact `HIGH`, `MEDIUM`, `LOW`, `UNLIKELY`, `CLOSED`, `INSUFFICIENT`; absent/invalid prediction is `INSUFFICIENT`. |
 | `COMMENT` | ASCII case-insensitive literal substring of the stored cleaned comment; see below. |
+| `NEARBY` | Bare predicate with no operator or operands; either endpoint shares the user's band-selected H3 cell. |
 
 Only FREQ, SNR, DXZONE and DEZONE accept `<`, `<=`, `>` and `>=`; ordered
 comparisons require one value. `PATH=UNLIKELY` does not include CLOSED; use
@@ -316,14 +325,14 @@ are invalid. A lone star does not match an unknown empty call.
 Separate controls are not expression fields. In both dialects,
 `PASS/REJECT <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]` enable/disable the
 named control. PC93 aliases ANNOUNCE. These switches accept no value or one
-`ALL`; `PASS BEACON OFF` is refused. `PASS NEARBY ON|OFF` and
-`REJECT NEARBY ON|OFF` follow the explicit value, not the verb.
+`ALL`; `PASS BEACON OFF` is refused. Old NEARBY toggle commands are refused;
+use a numbered expression such as `PASS RULE 0 MODE=CW AND NEARBY`.
 CC `SET/FILTER` and `UNSET/FILTER` retain these controls only. Inline
 `SET/FILTER <switch>/ON|/OFF` takes no extra values; UNSET has no inline flags
-and NEARBY has none. Named CC control shortcuts such as `SET/BEACON` and
+and there are no NEARBY control aliases. Named CC control shortcuts such as `SET/BEACON` and
 `SET/SELF` take no arguments; old category shortcuts are not supported.
 
-Live self-spots require SELF enabled and bypass personal rules and NEARBY, but
+Live self-spots require SELF enabled and bypass personal rules, but
 still honor TOXIC. Command/history self matches retain their exception
 independently of SELF, also honoring TOXIC. Explicit history BAND/MODE/COMMENT
 clauses are mandatory even for self-spots.
@@ -341,15 +350,16 @@ Rule limits apply before publication:
 
 Nesting counts parentheses and NOT, not the height of a flat AND/OR tree.
 These are distinct from the configured human line limit, machine body/final
-response limits, stored-byte limits and decode-work budgets. Prepared full
-and NEARBY programs are retained immutably; edits prepare replacements without
+response limits, stored-byte limits and decode-work budgets. One prepared
+program per rule is retained immutably; edits prepare replacements without
 changing snapshots already in use. Live, command and history matching capture
 coherent controls, cells and path inputs with those rules, without another
 category gate. Rendering reads prepared programs; it does not compile them.
 
 Current checkout source routes: `filter/rule_set.go` owns preparation and
 combination, `rule_compile.go`/`rule_evaluate.go`/`rule_view.go` own field
-semantics, and `rule_set_projection.go` owns NEARBY projection.
+semantics. NEARBY is evaluated lazily in the same program and its result is
+reused for that spot/user evaluation.
 `telnet/boolean_input.go`, `boolean_rule_commands.go` and
 `boolean_rule_readback.go` own human admission/display;
 `matching_snapshot.go` and `history_filter.go` capture matching state.
@@ -395,7 +405,7 @@ semantics. Rules combine as described under [Filters](#filters).
 
 The human RULE reader preserves expression bytes, including literal case and
 spaces; compilation normalizes syntax and non-COMMENT operands. The configured
-whole-command ceiling still applies (128 bytes by default). Use schema 5 YAML
+whole-command ceiling still applies (128 bytes by default). Use schema 6 YAML
 for longer expressions. The [rule budgets](#filters) replace old per-list limits.
 There are no COMMENT move/remove/list-reset commands.
 
@@ -434,8 +444,8 @@ Changing saved comment rules invalidates continuation and pending publication.
 Retention, page counts, work budgets, errors and warnings remain as documented
 under [archive history](#archive-history-and-continuation).
 
-Rules survive reconnects and presets through the [schema 5](#client-yaml-configuration)
-and [native v5](#persistence-format-and-rollback) contracts. Older COMMENT-list
+Rules survive reconnects and presets through the [schema 6](#client-yaml-configuration)
+and [native v6](#persistence-format-and-rollback) contracts. Older COMMENT-list
 mechanics in [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
 are historical, not a supported compatibility engine.
 
@@ -456,7 +466,7 @@ only Sicily. The third matches literal callsign spelling, not a DXCC entity.
 Labels match canonical Prefix fields after trimming and uppercasing, not
 callsign lookup keys; W6 is not an alias merely because it looks up under K.
 Slash labels retain their canonical meaning. Unknown or conflicting labels
-refuse the entire edit, even with NEARBY ON.
+refuse the entire edit, including rules containing NEARBY.
 
 One lazy CTY snapshot covers all labels in one request, including every YAML
 slot. Numeric-only requests need no CTY or membership check. Accepted responses,
@@ -610,26 +620,20 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 
 | Command | Response |
 | --- | --- |
-| `SHOW FILTER` | Current settings, saved/effective rules and individual controls. |
+| `SHOW FILTER` | Current settings, canonical rules and individual controls. |
 | `SHOW FILTER RULE` | The same concise filter state. |
-| `SHOW FILTER FULL` | Adds geometry detail and preparation counts. |
+| `SHOW FILTER FULL` | Adds separate-control detail and one-program preparation counts. |
 | `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
 
 `SHOW/FILTER` and `SH/FILTER` accept the same RULE/FULL arguments in both
 dialects; their HELP topics do too. Category readbacks are unsupported.
 Every occupied slot appears in slot order with its action and full canonical
 saved expression. No synthetic source condition is added.
-While NEARBY is ON, each also shows its projected expression or that
-a geography-only rule is suspended. Full saved expressions remain editable.
-FULL counts distinguish occupied slots and full, nearby and retained
-nodes/atoms/values; shared operands count once in retained values.
-
-The view also reports NEARBY geometry (fine/coarse cells available, partly
-usable or unavailable) and BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC as
-separate ON/OFF/DEFAULT controls. There are no hidden category/base restrictions.
-The [NEARBY recovery contract](#grid-noise-and-nearby)
-apply when restored geometry is unavailable. Existing SELF/TOXIC and
-command/history exceptions remain distinct from ordinary rule matching.
+FULL reports occupied slots and one program's node/atom/value counts. There are
+no projected expressions, suspended rules or global NEARBY status fields.
+BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate controls.
+The [NEARBY recovery contract](#grid-noise-and-nearby) applies when location is
+unavailable. Existing self/TOXIC exceptions remain distinct from rule matching.
 
 The shipped login greeting includes a settings/filter block. New accounts see
 "Default settings and filters"; returning accounts see "Current settings and
@@ -660,18 +664,17 @@ the configured cadence visible. `SET SOLAR OFF` stops summaries.
 
 `SHOW DEDUPE` and `SHOW SETTINGS` keep your saved DEDUPE choice visible. If SLOW
 is saved but this server only enables FAST, both show SLOW with effective FAST
-and explain that SLOW is unavailable. Usable NEARBY can temporarily change the
-effective policy. If all secondary policies are disabled, the readback says
+and explain that SLOW is unavailable. NEARBY does not change the effective
+policy. If all secondary policies are disabled, the readback says
 duplicate suppression is disabled. Reading never replaces your saved choice.
 Unusual saved strings remain exact, with quotes and escapes when needed;
 when describing an effective lane, unrecognized values are identified separately
 from unavailable policies.
 
-Use `GET YAML FILTER SCHEMA 5` for machine-readable saved expressions and
+Use `GET YAML FILTER SCHEMA 6` for machine-readable saved expressions and
 controls; `DEFAULT` remains distinct from explicit `true` or `false`.
-Configured NEARBY and geometry usability are separate facts. `SHOW SETTINGS`
-preserves exact saved GRID bytes even when they require escaped display.
-No successful filter readback omits a saved rule, including a suspended rule.
+`SHOW SETTINGS` preserves exact saved GRID bytes even when they require escaped
+display. A successful filter readback includes every saved canonical rule.
 
 Every human readback line has at most 78 printable ASCII characters followed
 by CRLF, including headers, active values, explanations, errors and pause
@@ -692,7 +695,7 @@ Leading/trailing spaces inside display quotes belong to the value; escapes
 are never split or trimmed. This display encoding is not expression syntax,
 and a long displayed row is not a copyable command. Expression quotes
 use doubled quotes and literal backslashes, not Go escapes. Human commands
-still have the configured line limit (128 bytes by default); use schema 5
+still have the configured line limit (128 bytes by default); use schema 6
 YAML for longer rules.
 
 `SHOW SETTINGS` uses readable labels such as Dialect, Grid, Noise, Dedupe and
@@ -758,10 +761,10 @@ The following canonical commands work independently of the human dialect:
 
 | Command | Purpose |
 | --- | --- |
-| `GET YAML FILTER SCHEMA 5 [ID <id>]` | Read saved numbered rules, NEARBY and separate controls. |
-| `GET YAML SETTINGS SCHEMA 5 [ID <id>]` | Read all six writable settings. |
-| `GET YAML CONFIG SCHEMA 5 [ID <id>]` | Read filters and settings in one consistent snapshot. |
-| `GET YAML CAPABILITIES SCHEMA 5 [ID <id>]` | Discover schema, rule fields/operators/vocabularies and bounds. |
+| `GET YAML FILTER SCHEMA 6 [ID <id>]` | Read saved numbered rules, NEARBY and separate controls. |
+| `GET YAML SETTINGS SCHEMA 6 [ID <id>]` | Read all six writable settings. |
+| `GET YAML CONFIG SCHEMA 6 [ID <id>]` | Read filters and settings in one consistent snapshot. |
+| `GET YAML CAPABILITIES SCHEMA 6 [ID <id>]` | Discover schema, rule fields/operators/vocabularies and bounds. |
 | `PUT YAML FILTER`, `PUT YAML SETTINGS`, `PUT YAML CONFIG` | Replace the complete writable resource. |
 | `PATCH YAML FILTER`, `PATCH YAML SETTINGS`, `PATCH YAML CONFIG` | Change supplied fields, preserving omissions. |
 | `VALIDATE YAML CONFIG` | Check a complete proposal without applying or saving it. |
@@ -770,7 +773,7 @@ GET replies contain `schema_version`, `request_id`, `resource`, an opaque
 `revision`, `configuration` and read-only `status`. GET assigns an ID if it is
 omitted; a supplied ID preserves case and must contain 1-32 ASCII letters,
 digits or hyphens. Every GET, including SETTINGS and CAPABILITIES, requires
-explicit `SCHEMA 5` before its optional ID. Missing, older and unsupported
+explicit `SCHEMA 6` before its optional ID. Missing, older and unsupported
 schemas are refused, not translated.
 
 FILTER's writable `configuration` directly contains the filter fields;
@@ -780,32 +783,25 @@ do not send the GET envelope's resource, revision or status fields as writable
 data. Preset association, effective choices, server defaults, diagnostics and
 pause state cannot be set through a configuration upload. The preset reference
 snapshot itself is not exposed in GET.
-`status.effective.nearby_active` means NEARBY is enabled with both user cells
-available. It does not replace the saved `nearby_enabled` value or full rules.
-The [restored-geometry recovery contract](#grid-noise-and-nearby), its
-SELF/history exceptions apply.
-CAPABILITIES is a read-only discovery resource; its `configuration` section
-describes the protocol rather than writable preferences.
+NEARBY exists only in the canonical rules. Generation 6 has no
+`nearby_enabled`, `nearby_active`, projected-expression or suspended-rule fields.
+A schema-6 proposal containing even `nearby_enabled: false` is refused.
 
-PUT/PATCH/VALIDATE headers have exactly three words and no schema suffix.
-Their bodies require `schema_version: 5`. VALIDATE supports CONFIG only.
-Old body schemas and category fields are errors; there is no hidden-map
-preservation or older-schema success path.
-
-CAPABILITIES advertises `supported_schema_versions: [5]`, the eight filter and
+CAPABILITIES advertises `supported_schema_versions: [6]`, the seven filter and
 six settings field names, lowercase rule actions, DEFAULT/boolean choices,
-rule fields/operators/geographic flags, active vocabularies and rule limits.
+comparison fields/operators/geographic flags, operand-free `rule_predicates`,
+active vocabularies and rule limits. NEARBY has operand_count 0 and an empty
+operators list; it is distinct from comparison fields.
 It also reports upload/response bounds, complete-PUT, collection-replacement
 and revision requirements. It is not the former per-server settings-choice
 availability matrix: runtime settings admission remains authoritative.
-Read-only `status.rules` reports configured/effective/suspended counts,
-per-slot effective expressions/suspension and full/nearby/retained
-node/atom/value counts, not MINSNR or COMMENT-map status.
+Read-only `status.rules` contains `configured_count`, one `program` mapping
+with nodes/atoms/values, and canonical `{slot, action, expr}` entries.
 
 Current checkout routing is `telnet/machine_commands.go` to
-`handleV5MachineCommand`; `machine_v5_input.go` owns headers,
-`machine_v5_schema.go`/`machine_v5_schema_rules.go` own strict proposals,
-`machine_v5_commands.go` owns transactions and `machine_v5_readback.go` owns
+`handleV6MachineCommand`; `machine_v6_input.go` owns headers,
+`machine_v6_schema.go`/`machine_v6_schema_rules.go` own strict proposals,
+`machine_v6_commands.go` owns transactions and `machine_v6_readback.go` owns
 the bounded DTO response. Retained prepared rules are shared immutably when
 omitted from PATCH, not recompiled by rendering.
 
@@ -815,12 +811,11 @@ omitted from PATCH, not recompiled by rendering.
 | --- | --- |
 | `rules` | Sequence of mappings requiring `slot` (integer 0–9), lowercase `action: pass` or `action: reject`, and `expr` (complete expression string). Duplicate slots fail. |
 | `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
-| `nearby_enabled` | Boolean. |
 | `dialect`, `grid`, `noise_class`, `dedupe_policy` | Strings; an empty string preserves the explicit default/lookup selection. |
 | `path_min_observation_count` | Integer; zero uses the cluster minimum. |
 | `solar_summary_minutes` | Integer: 0, 15, 30 or 60; zero means OFF. |
 
-FILTER contains exactly `rules`, `nearby_enabled` and the six controls listed
+FILTER contains exactly `rules` and the six controls listed
 above. SETTINGS contains exactly `dialect`, `grid`, `noise_class`,
 `dedupe_policy`, `path_min_observation_count` and `solar_summary_minutes`.
 CONFIG nests those resources under `filters` and `settings`.
@@ -835,7 +830,7 @@ SLOW when disabled, fail unchanged rather than silently falling back.
 PUT requires every field in its resource. CONFIG PUT and VALIDATE require
 complete filters and settings together. PATCH preserves omitted fields, but a
 supplied `rules` list replaces every occupied slot, not just matching slot IDs.
-`rules: []` clears all slots while omitted NEARBY and controls remain unchanged.
+`rules: []` clears all slots while omitted separate controls remain unchanged.
 There is no per-slot PATCH merge.
 
 ### Upload And Revision Examples
@@ -844,7 +839,7 @@ These are source-derived, codec-shaped examples, not executed server or codec
 validation results. First read your own current configuration:
 
 ```text
-GET YAML CONFIG SCHEMA 5 ID Read-1
+GET YAML CONFIG SCHEMA 6 ID Read-1
 ```
 
 This separate request validates a complete CONFIG without applying/saving it:
@@ -852,7 +847,7 @@ This separate request validates a complete CONFIG without applying/saving it:
 ```text
 VALIDATE YAML CONFIG
 ---
-schema_version: 5
+schema_version: 6
 request_id: Validate-1
 configuration:
   filters:
@@ -863,7 +858,6 @@ configuration:
       - slot: 9
         action: reject
         expr: 'COMMENT="CQ ""DX"""'
-    nearby_enabled: false
     include_beacons: DEFAULT
     allow_wwv: true
     allow_wcy: false
@@ -888,7 +882,7 @@ A complete settings replacement is:
 ```text
 PUT YAML SETTINGS
 ---
-schema_version: 5
+schema_version: 6
 request_id: settings-Ab1
 if_revision: "replace-with-current-GET-revision"
 configuration:
@@ -901,31 +895,32 @@ configuration:
 ...
 ```
 
-CONFIG can change a dependent setting and filter together:
+CONFIG can change a rule and location together, subject to ordinary GRID admission:
 
 ```text
 PATCH YAML CONFIG
 ---
-schema_version: 5
+schema_version: 6
 request_id: nearby-Ab1
 if_revision: "replace-with-current-GET-revision"
 configuration:
   filters:
-    nearby_enabled: true
+    rules:
+      - {slot: 0, action: pass, expr: 'MODE=CW AND NEARBY'}
   settings:
     grid: FN42
 ...
 ```
 
-Enabling NEARBY or changing GRID while ON requires usable geometry. For an
-already-ON restored configuration, rule-only recovery has the contract and
-source limitation described under [NEARBY](#grid-noise-and-nearby).
-A PATCH can clear every personal rule while preserving NEARBY and controls:
+Rule-only recovery can waive mapping availability for an unchanged saved GRID;
+its syntax and every other settings check remain mandatory. See
+[NEARBY](#grid-noise-and-nearby).
+A PATCH can clear every personal rule while preserving separate controls:
 
 ```text
 PATCH YAML FILTER
 ---
-schema_version: 5
+schema_version: 6
 request_id: Clear-1
 if_revision: "replace-with-current-GET-revision"
 configuration:
@@ -941,7 +936,7 @@ edits. Slot order is canonical, not a priority. Rule identity uses the
 canonical action/expression in each slot.
 
 The strict writable envelope permits only `schema_version`, `request_id`,
-`if_revision` and `configuration`. Uploads require `schema_version: 5`,
+`if_revision` and `configuration`. Uploads require `schema_version: 6`,
 `request_id` and `configuration`.
 PUT/PATCH additionally require `if_revision`. VALIDATE CONFIG requires the
 complete configuration; `if_revision` is optional because it does not write.
@@ -953,7 +948,7 @@ Validation or persistence failure leaves both the live and durable
 configuration unchanged. Machine writes preserve the associated preset and
 reference; changing preferences can set or clear `(modified)`. Even an
 unchanged PUT persists before success, so an earlier failed human autosave can
-be repaired without resetting solar timing, NEARBY geometry, diagnostics
+be repaired without resetting solar timing, GRID-owned geometry, diagnostics
 or pause. A lost acknowledgement does not undo a committed write; GET again
 to discover the current revision and configuration.
 
@@ -961,7 +956,7 @@ A fully received unavailable-choice request gets a framed error, for example:
 
 ```yaml
 ---
-schema_version: 5
+schema_version: 6
 request_id: settings-Ab1
 resource: SETTINGS
 revision: 7faea7039a0b47a1bb8e462157b4c621-3
@@ -1040,16 +1035,15 @@ when its complete FULL/YAML readback exceeds the separate 65,536-byte response
 budget; LOAD checks its acknowledgement rather than requiring CONFIG readback
 to fit.
 
-The snapshot includes every persistent filter field and toggle, `NEARBY`,
-dialect, dedupe policy, grid, noise class, path sample minimum and solar summary
-cadence. It excludes login/IP history, diagnostic mode, temporary read pause,
-and derived caches. Native v5 snapshots preserve configured values and full
-rules, including geography omitted from NEARBY's effective projection. LOAD uses
-server restrictions: disabled dedupe policies use the enabled-policy fallback, and a
-path sample override only applies above the current cluster minimum. Grid/H3
-cells are rebuilt, not a location-filter restoration snapshot. Stored NEARBY
-remains enabled but unavailable with a warning when usable cells are absent;
-the [recovery contract](#grid-noise-and-nearby) retains the existing self exceptions.
+The snapshot includes canonical rules, the six separate controls, dialect,
+dedupe policy, grid, noise class, path sample minimum and solar cadence. It
+excludes login/IP history, diagnostics, read pause and derived location caches.
+Native v6 snapshots preserve exact configured choices. LOAD uses server
+restrictions: disabled dedupe policies use the ordinary fallback and a path
+sample override applies only above the server minimum. GRID owns both location
+resolutions; NEARBY has no independent toggle or user-cell snapshot. Missing
+geometry makes that predicate false while other OR branches remain usable.
+
 LOAD restarts the chosen SOLAR schedule at the next wall-clock-aligned tick;
 enabled nodes send summaries only when conditions are active.
 
@@ -1059,7 +1053,7 @@ Successful SAVE associates the exact captured preferences that were written.
 Both human views and YAML status show `(modified)`/`modified: true` when the
 current preferences differ from that reference. Reversing changes clears it;
 this does not imply that every difference was caused by the user. Pause,
-diagnostics and a temporary NEARBY dedupe override do not affect it.
+and diagnostics do not affect it.
 
 The association and reference survive reconnect for the full callsign/SSID.
 Deleting or overwriting the named library entry leaves the already applied
@@ -1101,26 +1095,25 @@ clean up their temporary files; a cleanup failure is logged for the operator.
 ### Persistence Format And Rollback
 
 User records, named preset entries and applied baselines require explicit
-`configuration_version: 5` and nested `configuration.filters/settings`.
+`configuration_version: 6` and nested `configuration.filters/settings`.
 Strict codecs refuse older formats; login separately performs the recognized
-unversioned/version 1–4 reset described above. Current library entries and
-baselines must satisfy v5. Explicit-zero, malformed, future or unsafe documents
+unversioned/version 1-5 reset described above. Current library entries and
+baselines must satisfy v6. Explicit-zero, malformed, future or unsafe documents
 remain protected. An encoder's zero version for a newly constructed in-memory
 DTO is not supported disk version 0. There is no category converter,
 marker-only upgrade or compatibility engine. Reset originals have adjacent
-`.pre-v5.bak` backups; existing v5 records and new presets are not reset again.
+`.pre-v6.bak` backups; existing v6 records and new presets are not reset again.
 
 Native records are not machine envelopes: they have no `schema_version`,
 `request_id` or `if_revision`. A codec-shaped record with an optional applied
 reference can look like this (illustrative, not executed validation):
 
 ```yaml
-configuration_version: 5
+configuration_version: 6
 configuration:
   filters:
     rules:
       - {slot: 0, action: pass, expr: 'MODE=CW AND SOURCE=HUMAN'}
-    nearby_enabled: false
     include_beacons: DEFAULT
     allow_wwv: DEFAULT
     allow_wcy: DEFAULT
@@ -1137,11 +1130,10 @@ configuration:
 preset:
   name: CONTEST
   baseline:
-    configuration_version: 5
+    configuration_version: 6
     configuration:
       filters:
         rules: []
-        nearby_enabled: false
         include_beacons: DEFAULT
         allow_wwv: DEFAULT
         allow_wcy: DEFAULT
@@ -1168,12 +1160,11 @@ top-level library version:
 ```yaml
 presets:
   CONTEST:
-    configuration_version: 5
+    configuration_version: 6
     configuration:
       filters:
         rules:
           - {slot: 0, action: pass, expr: 'DXSTATE=NY,ON'}
-        nearby_enabled: false
         include_beacons: DEFAULT
         allow_wwv: DEFAULT
         allow_wcy: DEFAULT
@@ -1189,9 +1180,9 @@ presets:
         solar_summary_minutes: 0
 ```
 
-The native runtime record/configuration/preset wrappers use the v5 codecs in
-`filter/storage_v5_io_adapter.go`, `storage_v5.go`, `storage_v5_decode.go` and
-`preset_v5.go`. Those are current checkout routes, not published-main claims.
+The native runtime record/configuration/preset wrappers use the v6 codecs in
+`filter/storage_v6_io_adapter.go`, `storage_v6.go`, `storage_v6_decode.go` and
+`preset_v6.go`. Those are current checkout routes, not published-main claims.
 Raw, normalized and prospective user records (including metadata/baseline)
 must each fit 1,048,576 bytes. Each standalone configuration/preset/baseline
 must fit 262,144 bytes in preset form; libraries allow 20 names and
@@ -1216,7 +1207,7 @@ The telnet server exposes per-user dedupe policy control through `SHOW DEDUPE` a
 
 - new users default to `dedup.default_policy` from the active config directory; the shipped default is `SLOW`
 - the selected policy is persisted per callsign
-- `SHOW DEDUPE` reports the saved policy, whether usable `NEARBY` changes the temporary effective policy, and whether `FAST`, `MED`, and `SLOW` are enabled server-side
+- `SHOW DEDUPE` reports the saved and ordinarily resolved policy, and whether `FAST`, `MED`, and `SLOW` are enabled server-side
 - if a user requests a disabled policy, the server falls back to an enabled one and reports that in the response
 
 Policy windows come from the active `dedup.secondary_*_window_seconds` values
@@ -1228,7 +1219,10 @@ in `data/config/dedupe.yaml`:
 
 This is why `SLOW` suppresses more repeats from one region than `FAST` or `MED`: CQ zone is broader than a 2-character grid square.
 
-When usable `PASS NEARBY ON` is active, telnet spot delivery temporarily uses the least-suppressive available policy, normally `FAST`. The saved `SET DEDUPE` policy is not rewritten, and it resumes when `NEARBY` is off or inactive. `SHOW DEDUPE` reports the temporary lane when it differs from the saved policy. `SET DIAG DEDUPE` uses the same temporary effective policy for its compact key and policy tag.
+NEARBY never changes dedupe. Delivery, SHOW DEDUPE, settings readback and
+SET DIAG DEDUPE use the ordinary resolved preference. Users retaining MED or SLOW
+may see fewer local repeats than under the retired automatic FAST override.
+Select SET DEDUPE FAST explicitly when that is desired and available.
 
 ## Bulletin Dedupe
 
@@ -1304,73 +1298,62 @@ still increase independently when otherwise eligible live spots arrive.
 ## Grid, Noise, And Nearby
 
 - `SET GRID` accepts exactly one valid 4 or 6 character Maidenhead locator,
-  normalizes it to uppercase, and stores it for path reliability. Trailing text
-  and extra arguments are refused. Valid syntax with unavailable mapping gets
-  an availability response and leaves the grid unchanged. If NEARBY is on, both
-  resulting user cells must be usable before a grid change is published.
-- `SET NOISE` stores the user's noise class; the checked-in path config applies one receive-side penalty per class
-- `SET PATHSAMPLES` stores a stricter per-user path sample floor; it cannot lower the cluster default
-- `SHOW PROP <call|prefix|grid> [band] [mode]` uses the saved grid and noise
-  class to show a point-to-point VOACAP outlook; omitted mode defaults to CW
-- `PASS NEARBY ON` requires a grid and keeps spots whose DX side or DE side falls in the user's nearby area
+  normalizes uppercase, and requires ordinary fine mapping before publishing.
+  Invalid syntax or unavailable mapping leaves the grid unchanged. NEARBY adds
+  no requirement that both fine and coarse mappings exist.
+- `SET NOISE` stores the receiving noise class.
+- `SET PATHSAMPLES` stores a stricter per-user path sample floor.
+- `SHOW PROP <call|prefix|grid> [band] [mode]` uses the saved grid and noise.
 
-`NEARBY` uses H3 cells:
+NEARBY is an operand-free Boolean predicate, not a global switch:
 
-- coarse resolution on `160m`, `80m`, and `60m`
-- finer resolution on the other supported bands
+```text
+PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)
+REJECT RULE 9 NEARBY AND COMMENT="test"
+```
 
-DX and DE are checked independently. A matching side still passes when the
-other side has no grid, an invalid grid, or no mapping. If neither side matches,
-the spot is rejected. An unavailable user cell or an unknown band also rejects.
-Other active filters still apply. See
-[NEARBY endpoint troubleshooting](../docs/troubleshooting/TSR-0054-nearby-opposite-endpoint-veto.md).
+The first selects CW with European DX or a nearby endpoint. The second vetoes
+nearby spots whose comment contains test. Other PASS rules can qualify other
+spots; slots are identifiers, not priorities. Geography, SOURCE, PATH and all
+other conditions retain ordinary meaning. NEARBY=TRUE and old toggle commands
+are invalid. COMMENT="NEARBY" is only literal text.
 
-While `NEARBY` is active:
+Either DX or DE can match the user's same H3 cell. An unavailable opposite
+endpoint cannot veto a match. 160m, 80m and 60m use coarse resolution; other
+supported bands use fine resolution. The current helper's fallback order and
+cached endpoint behavior are retained exactly. Only an empty or ??? band after
+fallback forces false; unsupported nonempty labels retain its existing fine-cell
+behavior. A missing required user cell or no matching endpoint also makes the
+predicate false. NOT NEARBY consequently includes unknown proximity; it does
+not establish that the station is distant. Other OR branches can still qualify.
 
-- effective expressions structurally omit only geographic leaves:
-  `DXGRID2`, `DEGRID2`, `DXCONT`, `DECONT`, `DXZONE`, `DEZONE`, `DXDXCC`,
-  `DEDXCC`, `DXSTATE` and `DESTATE`
-- removal is not substitution with true or false: an emptied subtree disappears,
-  a surviving single AND/OR child replaces its parent, and NOT disappears if
-  its child empties; an entirely emptied rule contributes neither PASS nor REJECT
-- BAND, MODE, calls, SOURCE, EVENT, COMMENT, FREQ, SNR, CONF and PATH survive
-- full saved expressions remain intact and editable, including geographic atoms
-- `SHOW FILTER`, RULE and FULL show saved/effective rules, suspension and geometry
-- spot delivery uses the least-suppressive available dedupe policy while usable grid-backed cells are present
+GRID, its explicit/derived provenance and two cached cells have one owner in
+the client configuration. Rules capture that location consistently and evaluate
+outside path/filter locks, independently of PATH or display enablement. Missing
+resolutions are resolved separately from the captured GRID when needed. A capture
+needing neither NEARBY nor PATH adds no mapping work. Prepared programs retain
+no user location or cached proximity truth. Repeated reached NEARBY terms reuse
+one evaluation-local result; unreached terms do no endpoint conversion.
 
-For example, `DXCONT=EU OR MODE=CW` projects to `MODE=CW`, not unrestricted
-true; a rule containing only `DXCONT=EU` is ignored while ON. OFF evaluates
-the latest full saved expressions, including edits made while ON, not a
-pre-ON restoration snapshot.
+Rules can be created or edited without a usable location. PUT, PATCH and VALIDATE
+share a narrow recovery rule: a rules list must be supplied, and every other
+saved setting and separate control must remain unchanged. Only mapping
+availability for the unchanged GRID is waived; exact locator syntax, disabled
+dedupe choices and all other settings checks remain enforced. Empty GRID retains
+its existing lookup meaning. Unrelated edits preserve usable captured location
+and do not rerun callsign lookup. The old independent NEARBY cell-pair contract
+in TSR-0109 is retired by [ADR-0329](../docs/decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 
-`RESET FILTER RULE <slot|ALL>` clears only those rules and preserves NEARBY.
-`RESET FILTER` clears all rules and turns NEARBY OFF, without changing GRID,
-other settings or separate controls. Neither restores new-user defaults.
-NOFILTER forms are refused, not translated.
+History uses one detached matching snapshot per page. Matching and fingerprinting
+use the same effective cells. True rule/location changes invalidate pending
+pages and continuation, including change then restoration; lazy cache filling
+that preserves effective geometry does not. Propagation observations remain
+current and outside the configuration fingerprint. SELF/TOXIC exceptions and
+explicit history clauses retain their documented behavior.
 
-If NEARBY is already ON with unavailable restored
-GRID/cells, human and YAML rule-only edits are allowed when every other saved
-selection is unchanged. Retain the saved GRID and NEARBY ON.
-With unchanged GRID, preserve each existing NEARBY cell exactly, including
-unavailable cells; do not substitute path-cache cells.
-When both cells
-are unavailable, ordinary spots are blocked until geometry is repaired or
-NEARBY is OFF. This does not override live
-SELF's enabled-only bypass or command/history's SELF-independent self-match
-exception; both still honor TOXIC, and explicit history clauses still apply.
-Enabling NEARBY or changing GRID while ON still requires usable geometry.
-
-The rule-only YAML recovery exception bypasses only mapping availability for
-the unchanged saved GRID, not malformed GRID syntax or other settings checks.
-Existing human control/settings admission is unchanged. Partly usable geometry
-retains band-specific behavior: bands whose required user cell is available may
-work; the other bands reject. `TestGridMappingAvailability` exercises actual
-PATCH, PUT and VALIDATE with an explicit saved GRID and no mappings in a fresh
-child process. Private-cluster acceptance remains pending.
-
-NEARBY state is persisted. On login the greeting warns when it is active;
-unusable restored geometry leaves it ON, with full rules retained and effective
-geographic projection still selected. The recovery behavior above applies.
+RESET FILTER and RESET FILTER RULE clear the selected rules, including their
+NEARBY terms, without changing settings or separate controls and without
+reinstalling defaults. NEARBY never chooses a duplicate-suppression lane.
 
 ## Path Display
 
@@ -1434,8 +1417,7 @@ observed metadata; missing, invalid or noncanonical metadata is unknown.
 `DXSTATE<>CA` is false for unknown State, but `NOT DXSTATE=CA` is true.
 A reject-only rule set can allow unknown State because no rejection matched,
 not because inequality evaluated true. Other PASS slots can broaden selection.
-NEARBY projects out State atoms while retaining editable full rules; OFF uses
-the latest full rules. SELF/history exceptions remain as described above.
+NEARBY and State comparisons combine with ordinary Boolean logic. SELF/history exceptions remain as described above.
 
 State enrichment remains active with either source's license enforcement
 disabled. Registered addresses can differ from operating location. The final
@@ -1461,5 +1443,5 @@ snapshot. Refresh duration depends on installation and source size; see
 
 Archive version 6 stores the observed State values. Versions 2–5 remain readable
 with unknown State; history never consults current registry addresses.
-Configuration is separately schema 5/native disk v5, with no older-format
+Configuration is separately schema 6/native disk v6, with no older-format
 conversion. Use matching backups for downgrade.

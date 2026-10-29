@@ -88,13 +88,13 @@ func TestIPSessionQuotaListenerTenAndRejectedFiles(t *testing.T) {
 	if err := os.WriteFile(library, libraryBytes, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{profile + ".pre-v5.bak", library + ".pre-v5.bak"} {
+	for _, path := range []string{profile + ".pre-v6.bak", library + ".pre-v6.bak"} {
 		if err := os.WriteFile(path, []byte("existing backup "+filepath.Base(path)), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	before := make(map[string][]byte)
-	for _, path := range []string{profile, library, profile + ".pre-v5.bak", library + ".pre-v5.bak"} {
+	for _, path := range []string{profile, library, profile + ".pre-v6.bak", library + ".pre-v6.bak"} {
 		data, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -224,7 +224,7 @@ func TestIPSessionQuotaInvalidPeerEnabledAndDisabled(t *testing.T) {
 				if err != nil || !bytes.Equal(after, before) {
 					t.Fatalf("invalid peer changed profile: %v", err)
 				}
-				if _, err := os.Stat(profile + ".pre-v5.bak"); !errors.Is(err, os.ErrNotExist) {
+				if _, err := os.Stat(profile + ".pre-v6.bak"); !errors.Is(err, os.ErrNotExist) {
 					t.Fatalf("invalid peer created profile backup: %v", err)
 				}
 				if s.GetClientCount() != 0 || s.PreloginAdmissionMetricSnapshot().Active != 0 {

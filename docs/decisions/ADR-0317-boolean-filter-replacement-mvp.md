@@ -7,6 +7,8 @@ description: Numbered Boolean rules, geography-only NEARBY projection, and isola
 - Date: 2026-10-21
 - Decision Origin: Design
 
+> ADR-0329 supersedes the NEARBY toggle/projection, independent-cell and active schema-5 clauses below. One Boolean predicate and explicit generation 6 replace them; unaffected engine, controls, limits and publication contracts remain. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
+
 ## Context
 
 [ADR-0321](ADR-0321-boolean-canonical-dxcc-input.md) restores canonical DXCC
@@ -175,4 +177,4 @@ version marker. Existing archive encodings and recorded metadata remain intact.
 - Related TSRs: [TSR-0104](../troubleshooting/TSR-0104-yaml-capability-operator-quoting.md)
   records the capability-serialization interoperability fix found during the
   private experiment, without changing expression semantics.
-- Superseded by: none.
+- Superseded in part by: [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md) for the affected NEARBY/schema/generation clauses.

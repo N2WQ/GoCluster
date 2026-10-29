@@ -26,7 +26,7 @@ func installBooleanRuleHelp(catalog *helpCatalog) {
 			"PASS rules are ORed; a matching REJECT vetoes them. Slot IDs are not priorities.",
 			"See HELP RULE for expressions, supported fields and values, defaults and limits.",
 			"Controls remain separate from expressions. PC93 aliases ANNOUNCE.",
-			"Controls accept no value or ALL; other values are refused. NEARBY takes ON or OFF.",
+			"Controls accept no value or ALL; other values are refused. NEARBY is a rule predicate.",
 			"Old category mutation syntax is refused, not translated; use HELP RULE.",
 		}
 		catalog.entries[verb] = helpEntry{
@@ -34,7 +34,6 @@ func installBooleanRuleHelp(catalog *helpCatalog) {
 			lines: helpEntryLines(verb+" - "+summary, []string{
 				verb + " RULE <0..9> <expression>",
 				verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]",
-				verb + " NEARBY ON|OFF",
 			}, nil, notes),
 		}
 		topic := verb + " RULE"
@@ -48,8 +47,8 @@ func installBooleanRuleHelp(catalog *helpCatalog) {
 		summary: "RESET FILTER - Reset filters without restoring defaults.",
 		lines: helpEntryLines("RESET FILTER - Reset filters without restoring defaults.",
 			[]string{"RESET FILTER", "RESET FILTER RULE <0..9|ALL>"}, nil, []string{
-				"RESET FILTER clears all personal rules and turns NEARBY OFF.",
-				"RESET FILTER RULE clears only the selected slots; NEARBY is unchanged.",
+				"RESET FILTER clears all personal rules.",
+				"RESET FILTER RULE clears only the selected slots.",
 				"Neither resets separate controls or profile settings; neither reinstalls default slot 0.",
 				"No rules means no personal restriction. See HELP RULE.",
 			}),
@@ -58,7 +57,7 @@ func installBooleanRuleHelp(catalog *helpCatalog) {
 		summary: "RESET FILTER RULE - Clear numbered personal rules.",
 		lines: helpEntryLines("RESET FILTER RULE - Clear numbered personal rules.",
 			[]string{"RESET FILTER RULE <0..9|ALL>"}, nil, []string{
-				"Clears one slot, or all slots with ALL. NEARBY, separate controls and profile settings are unchanged.",
+				"Clears one slot, or all slots with ALL. Separate controls and profile settings are unchanged.",
 				"Does not restore default slot 0. See HELP RULE.",
 			}),
 	}

@@ -5,6 +5,7 @@ package telnet
 
 import (
 	"dxcluster/filter"
+	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
 
@@ -32,7 +33,23 @@ func (c *Client) captureMatchingSnapshot() clientMatchingSnapshot {
 	if snapshot.filter.PathFilterActive() {
 		snapshot.path = c.resolvePathSnapshot(snapshot.path)
 	}
+	if snapshot.filter.NearbyFilterActive() || snapshot.filter.PathFilterActive() {
+		snapshot.path = resolveMatchingLocation(snapshot.path)
+	}
 	return snapshot
+}
+
+// Resolve only captured GRID values, after releasing publication locks. Each
+// resolution is independent; an unavailable coarse cell cannot erase fine
+// geometry. NEARBY never publishes caches or depends on the PATH predictor.
+func resolveMatchingLocation(state pathState) pathState {
+	if state.gridCell == pathreliability.InvalidCell {
+		state.gridCell = pathreliability.EncodeCell(state.grid)
+	}
+	if state.gridCoarseCell == pathreliability.InvalidCell {
+		state.gridCoarseCell = pathreliability.EncodeCoarseCell(state.grid)
+	}
+	return state
 }
 
 func (s *Server) matchSnapshot(snapshot clientMatchingSnapshot, sp *spot.Spot) (bool, pathPrediction, bool) {
@@ -45,5 +62,7 @@ func (s *Server) matchSnapshot(snapshot clientMatchingSnapshot, sp *spot.Spot) (
 			pathClass = pathClassFromPrediction(prediction)
 		}
 	}
-	return snapshot.filter.MatchesWithPath(sp, pathClass), prediction, predicted
+	return snapshot.filter.MatchesWithContext(sp, filter.EvaluationContext{
+		PathClass: pathClass, FineCell: snapshot.path.gridCell, CoarseCell: snapshot.path.gridCoarseCell,
+	}), prediction, predicted
 }

@@ -7,6 +7,8 @@ description: One-time default-modes-only upgrade that preserves settings without
 - Date: 2026-10-21
 - Decision Origin: Troubleshooting chat
 
+> ADR-0329 extends the protected reset to retired nested v5 profiles and presets using .pre-v6.bak, while preserving the existing settings/control/metadata and per-file safety contracts. Current generation is 6. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
+
 ## Context
 
 [ADR-0319](ADR-0319-boolean-onboarding-and-source-default.md) supersedes the
@@ -101,3 +103,5 @@ agent to alter production data or restart production services.
   [ADR-0317](ADR-0317-boolean-filter-replacement-mvp.md).
 - Superseded by: [ADR-0319](ADR-0319-boolean-onboarding-and-source-default.md)
   for the modes-only starting selection.
+
+- Also superseded in part by [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md) for the generation-specific reset boundary; unaffected contracts remain.

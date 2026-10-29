@@ -59,13 +59,13 @@ func (set *SavedPreset) Clone() (*SavedPreset, error) {
 	return ConfigurationFromPreset(set).Preset()
 }
 
-// UnmarshalYAML admits only explicit v5 snapshots without migration/defaults.
+// UnmarshalYAML admits only explicit v6 snapshots without migration/defaults.
 func (set *SavedPreset) UnmarshalYAML(node *yaml.Node) error {
-	var value V5SavedPreset
-	if err := decodeV5StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
+	var value V6SavedPreset
+	if err := decodeV6StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
 		return err
 	}
-	runtime, err := RuntimeSavedPresetFromV5(&value)
+	runtime, err := RuntimeSavedPresetFromV6(&value)
 	if err == nil {
 		*set = *runtime
 	}
@@ -210,7 +210,7 @@ func ListPresets(callsign string) ([]string, error) {
 	return names, nil
 }
 
-// LoadPreset returns detached exact v5 preferences, or ErrPresetNotFound.
+// LoadPreset returns detached exact v6 preferences, or ErrPresetNotFound.
 func LoadPreset(callsign, name string) (*SavedPreset, error) {
 	name, err := NormalizePresetName(name)
 	if err != nil {
@@ -283,13 +283,13 @@ func readPresetCollection(path string) (*presetCollection, error) {
 	if len(bs) > maxPresetCollectionBytes {
 		return nil, storageAdmissionf("preset collection exceeds 8 MiB")
 	}
-	stored, err := DecodeV5PresetCollection(bs)
+	stored, err := DecodeV6PresetCollection(bs)
 	if err != nil {
 		return nil, fmt.Errorf("invalid preset collection: %w", err)
 	}
 	collection := &presetCollection{Presets: make(map[string]*SavedPreset, len(stored.Presets))}
 	for name, set := range stored.Presets {
-		value, err := RuntimeSavedPresetFromV5(set)
+		value, err := RuntimeSavedPresetFromV6(set)
 		if err != nil {
 			return nil, err
 		}
@@ -314,9 +314,9 @@ func (store presetStore) persist(path string, collection *presetCollection) erro
 // existing preset stripe through preparation and replacement; this helper does
 // not expose an unlocked snapshot that another SSID could later overwrite.
 func preparePresetCollection(collection *presetCollection) ([]byte, error) {
-	stored, err := v5PresetCollectionFromRuntime(collection)
+	stored, err := v6PresetCollectionFromRuntime(collection)
 	if err != nil {
 		return nil, err
 	}
-	return EncodeV5PresetCollection(stored)
+	return EncodeV6PresetCollection(stored)
 }

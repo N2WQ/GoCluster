@@ -9,7 +9,7 @@ to your telnet client or logging program. You can choose which spots to see,
 hide repeated reports, and view optional hints about radio conditions.
 
 > [!IMPORTANT]
-> This checkout contains the Boolean-filter MVP, using schema 5 and a fresh
+> This checkout contains the Boolean-filter MVP, using schema 6 and a fresh
 > isolated user store. It is not a production rollout or a claim that published
 > release assets already contain this change. Recognized old profiles receive
 > a one-time filter reset at login while retaining settings; old machine schemas
@@ -143,8 +143,7 @@ then OR; parentheses let you override that order.
 New users receive an ordinary editable PASS rule in slot 0 containing the
 configured default modes and sources. Users leaving the old filter system
 receive the same starting rule while keeping their settings. Edit that rule when narrowing
-the default selection. `SHOW FILTER RULE` displays full saved expressions and
-their effective forms while NEARBY is ON. Readbacks temporarily pause live spots;
+the default selection. `SHOW FILTER RULE` displays the canonical expressions that are evaluated. Readbacks temporarily pause live spots;
 type `RESUME` when ready.
 
 A PASS rule without SOURCE allows both HUMAN and SKIMMER reports.
@@ -158,7 +157,7 @@ Saved expressions and presets are not rewritten. Source-less saved PASS rules
 now also admit matching skimmer reports. Feed connections are unchanged.
 
 Each recipe below is separate. Save a preset before using a recipe that begins
-with RESET FILTER: it clears your rules and turns NEARBY OFF. Old category
+with RESET FILTER: it clears your rules, including any NEARBY terms. Old category
 mutation commands are refused with guidance to `HELP RULE`.
 
 ### Show Only 20m And 40m
@@ -236,34 +235,35 @@ including `<>`; NOT flips that result. Use `HELP RULE` or the
 
 ### Focus On Nearby Reports
 
-Set your actual grid before enabling this feature:
+Set your actual grid, then replace rule 0 with the selection you want:
 
 ```text
 SET GRID FN31PR
-PASS NEARBY ON
+PASS RULE 0 MODE=CW AND NEARBY
 SHOW FILTER
 ```
 
-NEARBY keeps reports with either the DX station or the spotter in your nearby
-area. The area is broader on 160m, 80m, and 60m than on other supported bands;
-it is not a fixed distance radius.
+`NEARBY` is true when either the DX station or the spotter shares your H3 cell.
+The cell is broader on 160m, 80m and 60m than on other supported bands; it is
+not a fixed distance radius. Combine it with ordinary conditions:
 
-While enabled, NEARBY removes geographic conditions from effective expressions:
-DX/DE continent, zone, DXCC, grid and State. Other conditions remain.
-For example, `MODE=CW OR DXCONT=EU` becomes `MODE=CW`; geography-only rules
-are ignored. Full saved rules stay editable while ON. Turn it off with
-`PASS NEARBY OFF` to use the latest full expressions.
+```text
+PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)
+```
 
-NEARBY survives reconnecting. If it is enabled but your grid cannot be used,
-spots on affected bands are rejected. Check `SHOW FILTER`; set a usable grid
-or turn NEARBY off. See [NEARBY details](telnet/README.md#grid-noise-and-nearby).
+This selects CW from Europe or with a nearby endpoint. Geography and other
+conditions keep their meaning. Other PASS slots can broaden selection, and a
+matching REJECT still vetoes it. There is no global NEARBY switch.
+
+Missing proximity makes NEARBY false; NOT NEARBY consequently also accepts
+unknown proximity. It does not prove a station is distant. An unrelated OR
+branch can still qualify the spot. See [NEARBY details](telnet/README.md#grid-noise-and-nearby).
 
 ### Reset Your Filters
 
-`RESET FILTER` empties all personal rules and turns NEARBY OFF. It preserves
+`RESET FILTER` empties all personal rules, including their NEARBY terms. It preserves
 GRID, settings and separate controls and does not reinstall new-user defaults.
-Use `RESET FILTER RULE <slot>` or `RESET FILTER RULE ALL` to clear rules while
-leaving NEARBY unchanged. Save a preset first to retain the current setup.
+Use `RESET FILTER RULE <slot>` or `RESET FILTER RULE ALL` to clear selected rules. Save a preset first to retain the current setup.
 
 ## Named Presets
 
@@ -309,8 +309,8 @@ See [preset limits, persistence, and failure details](telnet/README.md#named-pre
 Use `SET DEDUPE FAST`, `SET DEDUPE MED`, or `SET DEDUPE SLOW`, and check
 `SHOW DEDUPE`. The shipped default is SLOW; the operator controls the available
 policies and timing. If your chosen policy is disabled, the server selects an
-enabled one and tells you. Usable NEARBY temporarily uses the least-suppressive
-available policy without changing your saved choice.
+enabled one and tells you. NEARBY does not change your dedupe policy. Use
+`SET DEDUPE FAST` explicitly if you want more local repeats.
 
 See [dedupe details](telnet/README.md#dedupe-policies).
 
@@ -365,7 +365,7 @@ See [path display](telnet/README.md#path-display) and the
 | --- | --- |
 | Live spots stopped after a command | Run `SHOW HOLD`, then `RESUME`. Readbacks intentionally pause live spots. |
 | No spots, or fewer than expected | Run `SHOW FILTER` and `SHOW SETTINGS`, then `RESUME`. Check band, mode, source, location, and path/confidence restrictions. |
-| NEARBY is on but unavailable | Set your correct grid or use `PASS NEARBY OFF`. |
+| A NEARBY condition never matches | Check your saved grid and the full rule. Missing proximity is false; other OR branches may still pass. |
 | Repeated reports are missing | Check `SHOW DEDUPE`; try `SET DEDUPE FAST` if you want more repeats. |
 | A spot has a blank path symbol | Check your grid. Evidence or forecast support may be unavailable; blank means insufficient evidence. |
 | Comments look like diagnostic codes | Use `SET DIAG OFF` to restore normal comments. |
@@ -452,73 +452,22 @@ Dedupe: SLOW (cqzone) (fast=on med=on slow=on)
 Dedupe policy set to FAST
 ```
 
-Check your filter selections at once. Finite selections show their passing
-names and useful exclusions, wrapping across lines. Long callsign, DXCC, grid
-and zone lists show counts. This example uses the CONTEST preset with changes
-and NEARBY enabled:
+Inspect your complete expressions with `SHOW FILTER RULE`. For example, its
+rule portion can show:
 
 ```text
-> SHOW FILTER
-User          N2WQ-1
-Preset        CONTEST (modified)
-
-Bands         Only 20m, 40m
-Modes         CW, FT8; unknown modes hidden
-Min SNR       None
-Sources       All (HUMAN, SKIMMER)
-Events        POTA; block WWFF; untagged included
-Confidence    All
-Path          All
-DX geography  Suspended by NEARBY; rules retained
-DE geography  Suspended by NEARBY; rules retained
-DX calls      Only 12 patterns; 3 blocked
-DE calls      All
-Nearby        On; grid FN31PR
-Include       Beacons: Off | WWV: On | WCY: On | Announce: On
-              Self: Off | Toxic: Off
-
-Detailed selections: SHOW FILTER FULL
-One category: SHOW FILTER <category>
-
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
+PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)
+REJECT RULE 9 COMMENT="QRT"
 ```
 
-With NEARBY off, the geography and callsign rows can look like this:
-
-```text
-DX geography  Continents: Only EU, NA | Zones: All | DXCC: All
-              Grids: All
-DE geography  Continents: All | Zones: Only 5, 8 | DXCC: All
-              Grids: All
-DX calls      All except 100 blocked patterns
-DE calls      Only W1*, K1*; block W1XYZ
-Nearby        Off
-```
-
-`SHOW FILTER FULL` displays complete effective PASS/REJECT selections. A
-category shows only that part. ALL means unrestricted before listed exclusions;
-NONE means no selections. Switches show ON/OFF. EVENT uses key presence, so a
-stored `false` entry still applies:
-
-```text
-> SHOW FILTER EVENT
-User          N2WQ-1
-Preset        CONTEST (modified)
-
-Events
-  PASS: POTA, SOTA
-  REJECT: WWFF
-  Untagged spots are always included.
-
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
-```
+Every saved rule retains its Boolean structure. `SHOW FILTER FULL` adds the
+single prepared program's counts and separate delivery controls. Category
+readbacks are unsupported. Human readbacks temporarily pause live spots;
+use `RESUME` when ready.
 
 `SHOW SETTINGS` separates your selections from the choices currently in use.
 The following example uses server path minimums of 21 for stations and 11 for
-beacons. NEARBY temporarily uses FAST dedupe while the saved choice remains
-SLOW:
+beacons. Dedupe remains SLOW even when a rule contains NEARBY:
 
 ```text
 > SHOW SETTINGS
@@ -528,7 +477,7 @@ Preset        CONTEST (modified)
 Dialect       GO
 Grid          FN31PR
 Noise         SUBURBAN
-Dedupe        SLOW; effective FAST while NEARBY is active
+Dedupe        SLOW
 Path samples  DEFAULT; stations 21, beacons 11
 Solar         Every 30 minutes
 
@@ -576,10 +525,10 @@ PASS RULE 1 MODE=FT8 AND BAND=40M AND SOURCE=SKIMMER
 
 Long values use exact quoted ASCII pieces joined by `+`. Decode and concatenate
 the pieces without adding spaces; display quotes and the `+` are not command
-syntax. Use schema 5 YAML for rules beyond the command-line limit.
-`SHOW FILTER FULL` adds preparation counts and geometry detail. Category
-readbacks are unsupported. `GET YAML FILTER SCHEMA 5` exposes exact saved rules,
-individual controls and effective expressions.
+syntax. Use schema 6 YAML for rules beyond the command-line limit.
+`SHOW FILTER FULL` adds preparation counts and separate-control detail. Category
+readbacks are unsupported. `GET YAML FILTER SCHEMA 6` exposes exact saved rules,
+individual controls and canonical expressions.
 
 See recent countries that have heard your baseline call:
 
@@ -642,8 +591,8 @@ telnet users can use the commands above.
 <details>
 <summary>Expand the YAML protocol and complete SETTINGS response example</summary>
 
-Clients use `GET YAML FILTER`, `GET YAML SETTINGS`, `GET YAML CONFIG` and
-`GET YAML CAPABILITIES`. The first two read one resource; CONFIG captures filters
+Clients use `GET YAML FILTER SCHEMA 6`, `GET YAML SETTINGS SCHEMA 6`,
+`GET YAML CONFIG SCHEMA 6` and `GET YAML CAPABILITIES SCHEMA 6`. The first two read one resource; CONFIG captures filters
 and settings together; CAPABILITIES describes the schema, choices and limits.
 CAPABILITIES is read-only.
 Optional `ID <id>` accepts 1-32 ASCII letters, digits or hyphens and preserves
@@ -653,7 +602,7 @@ This complete SETTINGS response is a separate example with no active pause:
 
 ```yaml
 ---
-schema_version: 1
+schema_version: 6
 request_id: noise-Ab1
 resource: SETTINGS
 revision: 7faea7039a0b47a1bb8e462157b4c621-3
@@ -680,7 +629,6 @@ status:
     dedupe_policy: SLOW
     path_min_observation_count: 20
     solar_summary_minutes: 30
-    nearby_active: false
   session:
     callsign: W1ABC-1
     diagnostic_comments: "OFF"
@@ -700,10 +648,14 @@ status:
     associated: true
     name: CONTEST
     modified: true
+  rules:
+    configured_count: 0
+    program: {nodes: 0, atoms: 0, values: 0}
+    entries: []
 ...
 ```
 
-Send `GET YAML SETTINGS ID noise-Ab1` to request that response shape. Only
+Send `GET YAML SETTINGS SCHEMA 6 ID noise-Ab1` to request that response shape. Only
 `configuration` is writable. Preserve explicit `false`, zero, empty strings,
 empty collections and `DEFAULT` selections when editing it; the `status`
 sections, resource name and GET envelope are read-only. Use the returned
@@ -717,7 +669,7 @@ collections. For example, change only the noise selection:
 ```text
 PATCH YAML SETTINGS
 ---
-schema_version: 1
+schema_version: 6
 request_id: noise-Ab2
 if_revision: 7faea7039a0b47a1bb8e462157b4c621-3
 configuration:
@@ -761,7 +713,6 @@ Use `HELP` on your connection for the commands supported by your active dialect.
 The section below mirrors the default `go` dialect `HELP` output from [`commands/processor.go`](commands/processor.go) using the shipped config in [`data/config`](data/config).
 
 <!-- BEGIN DEFAULT_GO_HELP -->
-
 ```text
 GoCluster help - GO dialect
 
@@ -805,9 +756,9 @@ Changing filters:
   REJECT RULE            Replace one slot with a vetoing expression.
   SHOW FILTER            See your current settings and rules.
   SHOW FILTER RULE       Same as SHOW FILTER.
-  SHOW FILTER FULL       Add geometry detail and rule counts.
-  RESET FILTER RULE      Clear one slot or ALL; preserve NEARBY.
-  RESET FILTER           Clear personal rules and turn NEARBY OFF.
+  SHOW FILTER FULL       Show rules, controls and program counts.
+  RESET FILTER RULE      Clear one slot or ALL; preserve settings.
+  RESET FILTER           Clear personal rules; preserve settings.
 
 What you can filter:
   Combine band, mode, source, geography, calls, comments and more.
@@ -823,7 +774,7 @@ A complete recipe: human-reported CW/FT8 on 20m/40m:
   PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN
   SHOW FILTER
 
-  This replaces all personal rules. NEARBY is unchanged.
+  This replaces all personal rules. Separate controls are unchanged.
   SELF ON can bypass personal rules; see HELP SHOW MYDX.
 
 Filter rules to remember:
@@ -835,7 +786,7 @@ Filter rules to remember:
   PASS without SOURCE allows humans and skimmers.
   Add AND SOURCE=HUMAN to select human reports only.
   To narrow it, replace/remove slot 0; adding another PASS broadens it.
-  RESET FILTER clears rules and NEARBY, not separate controls/preferences.
+  RESET FILTER clears rules, preserving separate controls/preferences.
   Reset does not reinstall default slot 0. See HELP RULE for full details.
 
 Comment rules:
@@ -861,13 +812,12 @@ Examples:
   REJECT TOXIC           Hide spots already classified as toxic.
 
 Nearby filtering:
-  SET GRID FN31          Set your location first.
-  PASS NEARBY ON         Enable nearby filtering.
-  PASS NEARBY OFF        Disable nearby filtering.
+  SET GRID FN31          Set your location.
+  PASS RULE 0 NEARBY     Replace rule 0 with nearby selection.
 
-  NEARBY omits only geography leaves; non-geography conditions survive.
-  Emptied rules are ignored; saved full rules remain intact.
-  Type HELP PASS NEARBY for details.
+  NEARBY combines with other conditions using NOT, AND and OR.
+  It does not change geography conditions or duplicate suppression.
+  Type HELP NEARBY or HELP RULE for details.
 
 Preferences and propagation:
   SHOW SETTINGS          Show preferences and session settings.
@@ -929,7 +879,6 @@ Syntax used in detailed help:
   <value> means required; [value] means optional.
   A|B means choose one. Do not type the brackets.
 ```
-
 <!-- END DEFAULT_GO_HELP -->
 
 </details>

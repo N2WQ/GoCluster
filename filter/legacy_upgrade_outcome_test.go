@@ -30,7 +30,7 @@ func TestLoginUpgradeResetUsesExactConfiguredDefaults(t *testing.T) {
 					t.Fatalf("reset outcome %+v: %v", outcome, err)
 				}
 				fresh := NewFilter()
-				if record.PreparedRules() != fresh.PreparedRules() || record.NearbyEnabled ||
+				if record.PreparedRules() != fresh.PreparedRules() ||
 					!reflect.DeepEqual(record.PreparedRules().Definitions(), fresh.PreparedRules().Definitions()) {
 					t.Fatal("retired profile reset diverged from new-user defaults")
 				}
@@ -59,10 +59,10 @@ func TestLoginUpgradeOutcomeSeparatesProfileAndLibrary(t *testing.T) {
 	}{
 		{"profile-only", true, false, nil, LoginUpgradeOutcome{ProfileReset: true}},
 		{"profile-and-library", true, true, nil, LoginUpgradeOutcome{ProfileReset: true, PresetLibraryCleaned: true}},
-		{"v5-empty", false, false, nil, LoginUpgradeOutcome{}},
-		{"v5-empty-library", false, true, nil, LoginUpgradeOutcome{PresetLibraryCleaned: true}},
-		{"v5-custom-library", false, true, []RuleDefinition{{3, RulePass, "MODE=CW"}}, LoginUpgradeOutcome{PresetLibraryCleaned: true}},
-		{"v5-explicit-human", false, false, []RuleDefinition{{0, RulePass, "MODE=CW AND SOURCE=HUMAN"}}, LoginUpgradeOutcome{}},
+		{"v6-empty", false, false, nil, LoginUpgradeOutcome{}},
+		{"v6-empty-library", false, true, nil, LoginUpgradeOutcome{PresetLibraryCleaned: true}},
+		{"v6-custom-library", false, true, []RuleDefinition{{3, RulePass, "MODE=CW"}}, LoginUpgradeOutcome{PresetLibraryCleaned: true}},
+		{"v6-explicit-human", false, false, []RuleDefinition{{0, RulePass, "MODE=CW AND SOURCE=HUMAN"}}, LoginUpgradeOutcome{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			usePresetTestDir(t)
@@ -86,11 +86,11 @@ func TestLoginUpgradeOutcomeSeparatesProfileAndLibrary(t *testing.T) {
 			if !test.legacy {
 				assertUpgradeBytes(t, path, before)
 				if !reflect.DeepEqual(record.PreparedRules().Definitions(), test.rules) {
-					t.Fatal("current v5 empty/custom saved rules were reset")
+					t.Fatal("current v6 empty/custom saved rules were reset")
 				}
 				if len(test.rules) > 0 {
 					if !record.Matches(&spot.Spot{Mode: "CW", IsHuman: true}) ||
-						record.Matches(&spot.Spot{Mode: "CW"}) != (test.name != "v5-explicit-human") {
+						record.Matches(&spot.Spot{Mode: "CW"}) != (test.name != "v6-explicit-human") {
 						t.Fatal("restored rule did not retain its explicit source selection")
 					}
 				}

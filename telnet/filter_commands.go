@@ -1,6 +1,6 @@
 // File role: Owns the user-facing telnet filter command engine.
 // Crawler notes: Start here for numbered-rule and separate-control dispatch,
-// dialect alias mapping, NEARBY control behavior, and
+// dialect alias mapping, Boolean predicates, and
 // per-client filter persistence side effects.
 // Related docs: telnet/README.md, commands/README.md, data/config/README.md.
 // Related tests: telnet/*filter*_test.go, telnet/path_settings_test.go.
@@ -8,13 +8,11 @@ package telnet
 
 import (
 	"fmt"
-	"log"
 	"sort"
 	"strings"
 	"time"
 
 	"dxcluster/filter"
-	"dxcluster/pathreliability"
 	"dxcluster/spot"
 	"dxcluster/strutil"
 )
@@ -63,10 +61,6 @@ type filterCommandEngine struct {
 	defaultDialect DialectName
 }
 
-const nearbyUsageMsg = "Usage: PASS NEARBY ON|OFF\nType HELP for usage.\n"
-const nearbyMissingGridMsg = "Grid not set. Use SET GRID <4 or 6 character Maidenhead locator>.\n"
-const nearbyUnavailableMsg = "Unable to enable NEARBY: invalid grid or H3 tables unavailable.\n"
-
 func newFilterCommandEngine() *filterCommandEngine {
 	engine := &filterCommandEngine{
 		dialects:       make(map[DialectName]*dialectSpec),
@@ -100,7 +94,6 @@ func (e *filterCommandEngine) registerDialects() {
 
 func (e *filterCommandEngine) registerDomains() {
 	handlers := []*domainHandler{
-		newNearbyHandler(),
 		newFeatureToggleHandler("BEACON", func(f *filter.Filter, enabled bool) { f.SetBeaconEnabled(enabled) }),
 		newFeatureToggleHandler("WWV", func(f *filter.Filter, enabled bool) { f.SetWWVEnabled(enabled) }),
 		newFeatureToggleHandler("WCY", func(f *filter.Filter, enabled bool) { f.SetWCYEnabled(enabled) }),
@@ -393,56 +386,6 @@ func parseCCShortcut(upper []string, command parsedFilterCommand) (parsedFilterC
 		return parsedFilterCommand{}, true, fmt.Sprintf("Usage: %s\nNo changes applied.\n", upper[0])
 	}
 	return command, true, ""
-}
-
-func newNearbyHandler() *domainHandler {
-	return &domainHandler{
-		name: "NEARBY",
-		apply: func(c *Client, action filterAction, args []string) (string, bool) {
-			if c == nil || c.filter == nil {
-				return "Filter unavailable.\n", false
-			}
-			if len(args) != 1 {
-				return nearbyUsageMsg, false
-			}
-			mode := strutil.NormalizeUpper(args[0])
-			switch mode {
-			case "ON":
-				state := c.pathSnapshot()
-				grid := strings.TrimSpace(state.grid)
-				if grid == "" {
-					return nearbyMissingGridMsg, false
-				}
-				userFine := state.gridCell
-				if userFine == pathreliability.InvalidCell {
-					userFine = pathreliability.EncodeCell(grid)
-				}
-				userCoarse := state.gridCoarseCell
-				if userCoarse == pathreliability.InvalidCell {
-					userCoarse = pathreliability.EncodeCoarseCell(grid)
-				}
-				if userFine == pathreliability.InvalidCell || userCoarse == pathreliability.InvalidCell {
-					return nearbyUnavailableMsg, false
-				}
-				var enableErr error
-				c.updateFilter(func(f *filter.Filter) {
-					enableErr = f.EnableNearby(userFine, userCoarse)
-				})
-				if enableErr != nil {
-					log.Printf("Warning: failed to enable nearby filter for %s: %v", c.callsign, enableErr)
-					return nearbyUnavailableMsg, false
-				}
-				return "Nearby filter enabled.\n", true
-			case "OFF":
-				c.updateFilter(func(f *filter.Filter) {
-					f.DisableNearby()
-				})
-				return "Nearby filter disabled.\n", true
-			default:
-				return nearbyUsageMsg, false
-			}
-		},
-	}
 }
 
 func newFeatureToggleHandler(name string, setter func(*filter.Filter, bool), aliases ...string) *domainHandler {

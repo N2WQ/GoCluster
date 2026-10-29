@@ -155,6 +155,14 @@ func (p *parser) parseAtom() (int, error) {
 		return -1, syntaxError(column, "expression exceeds atom limit")
 	}
 	p.pos += len(field)
+	if strings.EqualFold(field, "NEARBY") {
+		index, err := p.add(Node{Kind: PredicateKind, Left: -1, Right: -1,
+			Atom: Atom{Field: "NEARBY", Column: column}}, column)
+		if err == nil {
+			p.expression.Atoms++
+		}
+		return index, err
+	}
 	op, err := p.operator()
 	if err != nil {
 		return -1, err

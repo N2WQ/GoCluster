@@ -43,15 +43,11 @@ func TestGridHumanExactSyntaxAndMachineRoundTrip(t *testing.T) {
 			} {
 				assertGridRefusalUnchanged(t, s, c, command, "")
 			}
-			c.filter = passRuleTestFilter(t, "DXCONT=EU")
-			if err := c.filter.EnableNearby(c.gridCell, c.gridCoarseCell); err != nil {
-				t.Fatal(err)
-			}
+			c.filter = passRuleTestFilter(t, "NEARBY AND DXCONT=EU")
 			programs := c.filter.PreparedRules()
 			response, _ := s.handlePathSettingsCommand(c, "SET GRID IO91")
 			if response != "Grid set to IO91\n" || c.gridCell != pathreliability.EncodeCell("IO91") ||
 				c.gridCoarseCell != pathreliability.EncodeCoarseCell("IO91") ||
-				c.filter.NearbyUserFine != c.gridCell || c.filter.NearbyUserCoarse != c.gridCoarseCell ||
 				c.filter.PreparedRules() != programs {
 				t.Fatal("valid active GRID did not update both cells while retaining immutable rules")
 			}
@@ -61,9 +57,9 @@ func TestGridHumanExactSyntaxAndMachineRoundTrip(t *testing.T) {
 
 func assertGridRefusalUnchanged(t *testing.T, s *Server, c *Client, command, message string) {
 	t.Helper()
-	before := c.captureV5Configuration()
+	before := c.captureV6Configuration()
 	pathBefore, revision := c.pathSnapshot(), c.configurationRevision
-	nearFine, nearCoarse, programs := c.filter.NearbyUserFine, c.filter.NearbyUserCoarse, c.filter.PreparedRules()
+	nearFine, nearCoarse, programs := c.gridCell, c.gridCoarseCell, c.filter.PreparedRules()
 	file := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 	saved, err := os.ReadFile(file)
 	if err != nil {
@@ -77,9 +73,9 @@ func assertGridRefusalUnchanged(t *testing.T, s *Server, c *Client, command, mes
 	if !handled || response == "" || (message != "" && !strings.Contains(response, message)) || attempts != 0 {
 		t.Fatalf("GRID refusal was not effect-free: %q, saves=%d", response, attempts)
 	}
-	if !before.Equal(c.captureV5Configuration()) || c.pathSnapshot() != pathBefore ||
-		c.configurationRevision != revision || c.filter.NearbyUserFine != nearFine ||
-		c.filter.NearbyUserCoarse != nearCoarse || c.filter.PreparedRules() != programs {
+	if !before.Equal(c.captureV6Configuration()) || c.pathSnapshot() != pathBefore ||
+		c.configurationRevision != revision || c.gridCell != nearFine ||
+		c.gridCoarseCell != nearCoarse || c.filter.PreparedRules() != programs {
 		t.Fatalf("GRID refusal changed live configuration/runtime: %s", command)
 	}
 	after, err := os.ReadFile(file)
@@ -118,9 +114,7 @@ func TestGridMappingAvailability(t *testing.T) {
 				c.gridCell, c.gridCoarseCell = pathreliability.EncodeCell("IO91"), pathreliability.EncodeCoarseCell("IO91")
 			}
 			if nearby {
-				if err := c.filter.EnableNearby(c.gridCell, c.gridCoarseCell); err != nil {
-					t.Fatal(err)
-				}
+				c.filter = passRuleTestFilter(t, "NEARBY")
 			}
 			if response, _ := s.handlePathSettingsCommand(c, "SET NOISE QUIET"); response != "Noise class set to QUIET\n" {
 				t.Fatalf("prior record setup failed: %q", response)
@@ -131,12 +125,10 @@ func TestGridMappingAvailability(t *testing.T) {
 				if err := s.validateMachineSettings(filter.SettingsConfiguration{Grid: "FN31"}); err == nil || !strings.Contains(err.Error(), "mapping is unavailable") {
 					t.Fatalf("machine valid syntax received no availability refusal: %v", err)
 				}
-			} else if nearby {
-				assertGridRefusalUnchanged(t, s, c, "SET GRID FN31", "NEARBY requires usable fine and coarse")
 			} else {
 				response, _ := s.handlePathSettingsCommand(c, "SET GRID FN31")
 				if response != "Grid set to FN31\n" || c.gridCell == pathreliability.InvalidCell || c.gridCoarseCell != pathreliability.InvalidCell {
-					t.Fatal("inactive NEARBY lost its existing fine-only grid admission")
+					t.Fatal("NEARBY changed ordinary fine-only GRID admission")
 				}
 			}
 			if err := s.validateMachineSettings(filter.SettingsConfiguration{Grid: "FN31PRJUNK"}); err == nil || strings.Contains(err.Error(), "unavailable") {
@@ -148,7 +140,7 @@ func TestGridMappingAvailability(t *testing.T) {
 		}
 		if profile == "NONE" {
 			t.Run("rule-recovery-explicit-unmapped-grid", func(t *testing.T) {
-				assertV5NearbyUnavailableRuleRecovery(t, "FN31")
+				assertV6UnavailableRuleRecovery(t, "FN31")
 			})
 			t.Run("recovery-preserves-other-setting-validation", func(t *testing.T) {
 				s := presetTestServer(t)
@@ -218,7 +210,7 @@ func FuzzHumanGridAdmission(f *testing.F) {
 			return
 		}
 		c := &Client{filter: testRuleFilter(t), grid: "IO91", configuredSettings: filter.SettingsConfiguration{Grid: "IO91"}}
-		before := filter.V5ConfigurationFromFilter(c.filter, c.configuredSettings)
+		before := filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)
 		fields := strings.Fields("SET GRID " + value)
 		grid := ""
 		if len(fields) == 3 {
@@ -240,7 +232,7 @@ func FuzzHumanGridAdmission(f *testing.F) {
 				t.Fatalf("human publication is machine-invalid: %v", err)
 			}
 		} else {
-			if !before.Equal(filter.V5ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.grid != "IO91" || c.gridCell != 0 || c.gridCoarseCell != 0 {
+			if !before.Equal(filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.grid != "IO91" || c.gridCell != 0 || c.gridCoarseCell != 0 {
 				t.Fatal("refusal mutated candidate GRID state")
 			}
 			if valid && pathreliability.EncodeCell(grid) != pathreliability.InvalidCell {

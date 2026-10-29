@@ -19,6 +19,9 @@ const (
 	NotKind
 	AndKind
 	OrKind
+	// PredicateKind is the finite operand-free NEARBY predicate. Atom carries
+	// its canonical name, but no comparison operator or values.
+	PredicateKind
 )
 
 type Operator string

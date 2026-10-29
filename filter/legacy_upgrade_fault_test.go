@@ -92,9 +92,9 @@ func TestLoginUpgradeBackupAndAtomicFailureStages(t *testing.T) {
 			}
 			t.Run(target+"/"+stage, func(t *testing.T) {
 				usePresetTestDir(t)
-				original := []byte("configuration_version: 4\nallow_self: false\n")
+				original := []byte(retiredV5LiteralRecord)
 				profile := writeUpgradeFixture(t, "LZ3NY-11", original)
-				libraryOriginal := []byte("presets:\n  OLD: {configuration_version: 4, modes: {FT8: true}}\n")
+				libraryOriginal := []byte("presets:\n  OLD: {configuration_version: 5, configuration: " + retiredV5LiteralConfiguration + "}\n")
 				library := writeUpgradeLibrary(t, libraryOriginal)
 				failure := errors.New("injected " + stage)
 				store := loginUpgradeStore{
@@ -155,9 +155,9 @@ func TestLoginUpgradeNeverOverwritesDifferentBackup(t *testing.T) {
 	}
 }
 
-func TestLoginUpgradeBadLibraryPreservesValidV5Login(t *testing.T) {
+func TestLoginUpgradeBadLibraryPreservesValidV6Login(t *testing.T) {
 	for _, raw := range []string{
-		"presets: null\n", "presets:\n  OLD: {configuration_version: 6}\n",
+		"presets: null\n", "presets:\n  OLD: {configuration_version: 7}\n",
 		"presets:\n  OLD: {configuration_version: 4, dialect: null}\n",
 		"presets: {BAD: null}\n", "presets: [\n", strings.Repeat("#", maxPresetCollectionBytes+1),
 	} {
@@ -171,10 +171,10 @@ func TestLoginUpgradeBadLibraryPreservesValidV5Login(t *testing.T) {
 			loaded, changed, err := UpgradeUserRecordForLogin("LZ3NY-11", nil)
 			if !errors.Is(err, ErrLoginUpgradeLibrary) || loaded == nil || changed ||
 				loaded.Grid != "FN31" || loaded.Dialect != "cc" || loaded.PreparedRules().Definitions()[0].Slot != 2 {
-				t.Fatal("bad library replaced valid v5 login preferences", err)
+				t.Fatal("bad library replaced valid v6 login preferences", err)
 			}
 			if err := SaveUserRecord("LZ3NY-11", loaded); err != nil {
-				t.Fatal("valid v5 profile became protected", err)
+				t.Fatal("valid v6 profile became protected", err)
 			}
 			assertUpgradeBytes(t, library, []byte(raw))
 			if _, err := os.Stat(library + legacyBackupSuffix); !errors.Is(err, os.ErrNotExist) {

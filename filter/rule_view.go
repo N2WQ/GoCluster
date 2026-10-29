@@ -5,22 +5,41 @@ import (
 	"math"
 	"strings"
 
+	"dxcluster/pathreliability"
 	"dxcluster/spot"
 	"dxcluster/strutil"
 )
 
-// One view belongs to one spot evaluation (or its two prepared variants), never
+// One view belongs to one spot/user evaluation across all PASS and REJECT rules, never
 // to a program or global cache. Empty normalized text means unknown. The loaded
 // bits also cache that absence, so repeated unknown fields do not rescan input.
 type ruleView struct {
-	spot      *spot.Spot
-	pathClass string
-	loaded    uint32
-	text      [ruleFieldCount]string
+	spot                 *spot.Spot
+	pathClass            string
+	fine, coarse         pathreliability.CellID
+	nearbyLoaded, nearby bool
+	loaded               uint32
+	text                 [ruleFieldCount]string
 }
 
 func newRuleView(s *spot.Spot, pathClass string) ruleView {
 	return ruleView{spot: s, pathClass: pathClass}
+}
+
+// EvaluationContext is captured by the caller for one user. Its zero value
+// explicitly supplies unavailable location and path prediction. It is never
+// retained by a prepared rule or used to read mutable client state.
+type EvaluationContext struct {
+	PathClass            string
+	FineCell, CoarseCell pathreliability.CellID
+}
+
+func (v *ruleView) nearbyValue() bool {
+	if !v.nearbyLoaded {
+		v.nearbyLoaded = true
+		v.nearby = matchesNearbyCells(v.spot, v.fine, v.coarse, "")
+	}
+	return v.nearby
 }
 
 func (v *ruleView) textValue(field ruleField) string {

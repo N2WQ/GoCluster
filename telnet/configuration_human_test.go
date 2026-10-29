@@ -167,15 +167,14 @@ func TestHumanSettingsAvailabilityAndPauseDescriptions(t *testing.T) {
 	s.dedupeMedEnabled, s.dedupeSlowEnabled = true, true
 	c.setDedupePolicy(dedupePolicySlow)
 	c.configuredSettings.DedupePolicy = "SLOW"
-	c.filter.NearbyEnabled = true
-	c.filter.NearbyUserFine, c.filter.NearbyUserCoarse = 1, 2
+	c.gridCell, c.gridCoarseCell = 1, 2
 	if !s.handleHumanReadback(c, "SHOW SETTINGS") {
 		t.Fatal("unhandled")
 	}
 	got := string((<-c.controlChan).raw)
 	assertHumanWire(t, got)
-	if !strings.Contains(got, "Dedupe        SLOW; effective MED while NEARBY is active\r\n              FAST is unavailable on this server\r\n") {
-		t.Fatal("fallback dedupe misdescribed")
+	if !strings.Contains(got, "Dedupe        SLOW\r\n") {
+		t.Fatal("ordinary dedupe policy misdescribed")
 	}
 	s.dedupeMedEnabled, s.dedupeSlowEnabled = false, false
 	c.recordProtected = true

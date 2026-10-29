@@ -18,15 +18,15 @@ import (
 
 // Multiline metadata makes the exact canonical byte boundary test independent
 // of decoding work. It is fixture data, not a claim that these are real IPs.
-func metadataRecordAt(t *testing.T, size int) *filter.V5UserRecord {
+func metadataRecordAt(t *testing.T, size int) *filter.V6UserRecord {
 	t.Helper()
-	cfg, _, err := filter.PrepareV5Configuration(filter.V5Configuration{
+	cfg, _, err := filter.PrepareV6Configuration(filter.V6Configuration{
 		Settings: filter.SettingsConfiguration{Dialect: "go", DedupePolicy: "MED"},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	record := &filter.V5UserRecord{ConfigurationVersion: 5, Configuration: cfg}
+	record := &filter.V6UserRecord{ConfigurationVersion: 6, Configuration: cfg}
 	encoded := func(n, tail int) []byte {
 		record.RecentIPs = []string{strings.Repeat("A\n", n) + strings.Repeat("Z", tail+1)}
 		bs, err := yaml.Marshal(record)
@@ -48,7 +48,7 @@ func metadataRecordAt(t *testing.T, size int) *filter.V5UserRecord {
 	return record
 }
 
-func writeAdmissionRecord(t *testing.T, call string, record *filter.V5UserRecord) []byte {
+func writeAdmissionRecord(t *testing.T, call string, record *filter.V6UserRecord) []byte {
 	t.Helper()
 	bs, err := yaml.Marshal(record)
 	if err != nil {
@@ -143,27 +143,27 @@ func TestAdmissionHumanCandidateRejectedWithoutPublication(t *testing.T) {
 			c.filter = passRuleTestFilter(t, "BAND=20M")
 			c.configurationInitialized = true
 			c.configuredSettings.Grid = "A"
-			snapshot := &filter.V5SavedPreset{ConfigurationVersion: 5, Configuration: c.captureV5Configuration()}
+			snapshot := &filter.V6SavedPreset{ConfigurationVersion: 6, Configuration: c.captureV6Configuration()}
 			encoded, err := yaml.Marshal(snapshot)
 			if err != nil {
 				t.Fatal(err)
 			}
 			c.configuredSettings.Grid = strings.Repeat("A", filter.MaxPresetBytes-len(encoded)+1)
-			snapshot.Configuration = c.captureV5Configuration()
+			snapshot.Configuration = c.captureV6Configuration()
 			encoded, err = yaml.Marshal(snapshot)
 			if err != nil || len(encoded) != filter.MaxPresetBytes {
-				t.Fatalf("v5 preset control must be byte-exact: %d, %v", len(encoded), err)
+				t.Fatalf("v6 preset control must be byte-exact: %d, %v", len(encoded), err)
 			}
 			if _, err := c.presetSnapshot(); err != nil {
-				t.Fatalf("fitting v5 preset control refused: %v", err)
+				t.Fatalf("fitting v6 preset control refused: %v", err)
 			}
 			c.recordProtected = protected
-			before := c.captureV5Configuration()
+			before := c.captureV6Configuration()
 			revision, _ := c.configurationRevisionToken()
 			commits := 0
 			s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { commits++; return nil }
 			response, _ := s.handlePathSettingsCommand(c, "SET NOISE URBAN")
-			after := c.captureV5Configuration()
+			after := c.captureV6Configuration()
 			afterRevision, _ := c.configurationRevisionToken()
 			if !strings.HasPrefix(response, "Configuration command failed:") || !before.Equal(after) || revision != afterRevision || commits != 0 {
 				t.Fatalf("oversized temporary candidate was published: %q, commits=%d", response, commits)
@@ -182,10 +182,10 @@ func TestAdmissionProspectiveHumanRecordRejected(t *testing.T) {
 	}
 	commits := 0
 	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { commits++; return nil }
-	cfg := c.captureV5Configuration()
+	cfg := c.captureV6Configuration()
 	revision, _ := c.configurationRevisionToken()
 	response, _ := s.handlePathSettingsCommand(c, "SET NOISE URBAN")
-	after := c.captureV5Configuration()
+	after := c.captureV6Configuration()
 	afterRevision, _ := c.configurationRevisionToken()
 	if !strings.HasPrefix(response, "Configuration command failed:") || !cfg.Equal(after) || revision != afterRevision || commits != 0 || !bytes.Equal(before, presetDiskBytes(t, path)) {
 		t.Fatalf("prospective quota failure had effects: %q, commits=%d", response, commits)
@@ -208,8 +208,7 @@ func TestAdmissionTemporaryBaselineAndMetadataRefuseRuntimeEffects(t *testing.T)
 			c.setSolarSummaryMinutes(30, time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC))
 			c.configuredSettings.SolarSummaryMinutes = 30
 			*c.filter = *passRuleTestFilter(t, "MODE=CW")
-			c.filter.NearbyEnabled = true
-			c.filter.NearbyUserFine, c.filter.NearbyUserCoarse = 1, 2
+			c.gridCell, c.gridCoarseCell = 1, 2
 			c.presetReference = &filter.PresetReference{Name: "OLD", Baseline: &filter.SavedPreset{Filter: *unrestrictedTestFilter()}}
 			switch bad {
 			case "baseline-size":
@@ -219,7 +218,7 @@ func TestAdmissionTemporaryBaselineAndMetadataRefuseRuntimeEffects(t *testing.T)
 			case "temporary-record":
 				c.recentIPs = []string{strings.Repeat("A", filter.MaxUserRecordBytes+1)}
 			}
-			cfg := c.captureV5Configuration()
+			cfg := c.captureV6Configuration()
 			revision, _ := c.configurationRevisionToken()
 			cursor := &historySearch{token: "older"}
 			c.historySearch = cursor
@@ -231,12 +230,12 @@ func TestAdmissionTemporaryBaselineAndMetadataRefuseRuntimeEffects(t *testing.T)
 			// An accepted same-cadence SET would deliberately reschedule; refusal
 			// must occur before that runtime effect or history invalidation.
 			response, _ := s.handleSolarCommand(c, "SET SOLAR 30")
-			after := c.captureV5Configuration()
+			after := c.captureV6Configuration()
 			afterRevision, _ := c.configurationRevisionToken()
 			if !strings.HasPrefix(response, "Configuration command failed:") || !cfg.Equal(after) || revision != afterRevision || commits != 0 || !bytes.Equal(refused, presetDiskBytes(t, path)) {
 				t.Fatalf("temporary refusal had configuration/durable effects: %s => %q", bad, response)
 			}
-			if c.solarNextSummaryAt != clock || c.filter != pointer || c.filter.PreparedRules() != programs || c.filter.NearbyUserFine != 1 || c.filter.NearbyUserCoarse != 2 || c.getDedupePolicy() != policy || c.readPauseUntilUnixNano.Load() != pause || c.historySearch != cursor || c.historyGeneration != generation {
+			if c.solarNextSummaryAt != clock || c.filter != pointer || c.filter.PreparedRules() != programs || c.gridCell != 1 || c.gridCoarseCell != 2 || c.getDedupePolicy() != policy || c.readPauseUntilUnixNano.Load() != pause || c.historySearch != cursor || c.historyGeneration != generation {
 				t.Fatalf("temporary refusal changed scheduling/location/history: %s", bad)
 			}
 		})
@@ -296,7 +295,7 @@ func TestAdmissionSaveAndLoadRejectBeforeLibraryOrPublication(t *testing.T) {
 	if response, _ := s.handlePresetCommand(c, "SAVE PRESET OLD"); response != "Saved preset OLD for N2WQ.\n" {
 		t.Fatal(response)
 	}
-	if err := filter.SavePreset(c.callsign, "LOADABLE", testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{NoiseClass: "URBAN"}})); err != nil {
+	if err := filter.SavePreset(c.callsign, "LOADABLE", testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{NoiseClass: "URBAN"}})); err != nil {
 		t.Fatal(err)
 	}
 	old := c.presetReference
@@ -306,9 +305,9 @@ func TestAdmissionSaveAndLoadRejectBeforeLibraryOrPublication(t *testing.T) {
 	commits := 0
 	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { commits++; return nil }
 	for _, command := range []string{"SAVE PRESET OLD", "SAVE PRESET NEW", "LOAD PRESET LOADABLE"} {
-		cfg := c.captureV5Configuration()
+		cfg := c.captureV6Configuration()
 		response, _ := s.handlePresetCommand(c, command)
-		after := c.captureV5Configuration()
+		after := c.captureV6Configuration()
 		if !strings.Contains(response, "PRESET failed:") || !cfg.Equal(after) || c.presetReference != old || commits != 0 || !bytes.Equal(before, presetDiskBytes(t, path)) || !bytes.Equal(library, presetDiskBytes(t, presetLibraryPath())) {
 			t.Fatalf("admission failure had effects: %s => %q, commits=%d", command, response, commits)
 		}
@@ -324,20 +323,20 @@ func TestAdmissionMachineQuotaFailureAndValidateAreNonmutating(t *testing.T) {
 	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { commits++; return nil }
 	for _, verb := range []string{"VALIDATE", "PATCH"} {
 		var command machineCommand
-		var request v5MachineRequest
+		var request v6MachineRequest
 		if verb == "VALIDATE" {
 			command = machineCommand{Verb: verb, Resource: "CONFIG"}
 			var err error
-			request, err = decodeV5MachineRequest(machineRequestFixture(completeValidationConfigurationTest(), false), command, nil)
+			request, err = decodeV6MachineRequest(machineRequestFixture(completeValidationConfigurationTest(), false), command, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 		} else {
 			command, request = decodeProposalTest(t, c, verb, "SETTINGS", "  noise_class: URBAN\n")
 		}
-		cfg := c.captureV5Configuration()
-		response := s.applyV5MachineRequest(c, command, request)
-		after := c.captureV5Configuration()
+		cfg := c.captureV6Configuration()
+		response := s.applyV6MachineRequest(c, command, request)
+		after := c.captureV6Configuration()
 		if verb == "PATCH" && !strings.Contains(response, "code: invalid_configuration") || verb == "VALIDATE" && strings.Contains(response, "error:") || !cfg.Equal(after) || commits != 0 || !bytes.Equal(before, presetDiskBytes(t, path)) {
 			t.Fatalf("machine admission/validation effects: %s => %q", verb, response)
 		}

@@ -1,8 +1,8 @@
-// Package filter implements bounded, prepared Boolean spot rules and v5
+// Package filter implements bounded, prepared Boolean spot rules and v6
 // preferences. A matching REJECT vetoes; otherwise any PASS can admit a spot.
 // Omitted fields impose no restriction; absence of active PASS rules is
-// unrestricted. Separate delivery controls and exact NEARBY geometry
-// remain mandatory gates.
+// unrestricted. Separate delivery controls remain mandatory gates; NEARBY is
+// an ordinary predicate evaluated with the caller's captured user location.
 package filter
 
 import (
@@ -213,12 +213,6 @@ type Filter struct {
 	AllowAnnounce  *bool `yaml:"allow_announce,omitempty"`
 	AllowSelf      *bool `yaml:"allow_self,omitempty"`
 	AllowToxic     *bool `yaml:"allow_toxic,omitempty"`
-
-	// NEARBY stores only its toggle and the user's fine/coarse cells. Personal
-	// rules remain immutable; their prepared projection bypasses geography.
-	NearbyEnabled    bool                   `yaml:"nearby_enabled,omitempty"`
-	NearbyUserFine   pathreliability.CellID `yaml:"-"`
-	NearbyUserCoarse pathreliability.CellID `yaml:"-"`
 }
 
 // NewFilter installs the configured ordinary editable PASS rule in slot zero.
@@ -228,7 +222,6 @@ func NewFilter() *Filter {
 		preparedRules:  newFilterDefaultRules(),
 		IncludeBeacons: boolPtr(true), AllowWWV: boolPtr(true), AllowWCY: boolPtr(true),
 		AllowAnnounce: boolPtr(true), AllowSelf: boolPtr(true), AllowToxic: boolPtr(true),
-		NearbyUserFine: pathreliability.InvalidCell, NearbyUserCoarse: pathreliability.InvalidCell,
 	}
 }
 
@@ -352,67 +345,29 @@ func (f *Filter) AllowsBulletin(kind string) bool {
 	}
 }
 
-// Reset empties personal rules and NEARBY while retaining separate controls.
+// Reset empties personal rules while retaining separate controls.
 func (f *Filter) Reset() {
 	if f == nil {
 		return
 	}
 	f.preparedRules = nil
-	f.DisableNearby()
 }
 
 // ResetToDefaults is the retained reset alias. Only NewFilter installs defaults.
 func (f *Filter) ResetToDefaults() { f.Reset() }
 
-// EnableNearby requires valid fine/coarse cells and never rewrites personal rules.
-func (f *Filter) EnableNearby(userFine, userCoarse pathreliability.CellID) error {
-	if f == nil {
-		return errors.New("nil filter")
-	}
-	if userFine == pathreliability.InvalidCell || userCoarse == pathreliability.InvalidCell {
-		return errors.New("invalid user cell")
-	}
-	f.NearbyEnabled = true
-	f.NearbyUserFine = userFine
-	f.NearbyUserCoarse = userCoarse
-	return nil
-}
-
-// DisableNearby clears only the toggle and runtime cells.
-func (f *Filter) DisableNearby() {
-	if f == nil {
-		return
-	}
-	f.NearbyEnabled = false
-	f.NearbyUserFine = pathreliability.InvalidCell
-	f.NearbyUserCoarse = pathreliability.InvalidCell
-}
-
-// UpdateNearbyUserCells updates cached cells after a user's grid changes.
-func (f *Filter) UpdateNearbyUserCells(userFine, userCoarse pathreliability.CellID) {
-	if f == nil {
-		return
-	}
-	f.NearbyUserFine = userFine
-	f.NearbyUserCoarse = userCoarse
-}
-
-// NearbyActive reports whether nearby filtering is active.
-func (f *Filter) NearbyActive() bool {
-	if f == nil {
-		return false
-	}
-	return f.NearbyEnabled
-}
-
-// Matches evaluates active Boolean rules with unavailable path prediction.
+// Matches evaluates rules with explicitly unavailable location and prediction.
 func (f *Filter) Matches(s *spot.Spot) bool {
 	return f.MatchSnapshot().MatchesWithPath(s, PathClassInsufficient)
 }
 
-// MatchesWithPath consumes a precomputed path class, or INSUFFICIENT if absent.
+// MatchesWithPath consumes a precomputed path class with unavailable location.
 func (f *Filter) MatchesWithPath(s *spot.Spot, pathClass string) bool {
 	return f.MatchSnapshot().MatchesWithPath(s, pathClass)
+}
+
+func (f *Filter) MatchesWithContext(s *spot.Spot, context EvaluationContext) bool {
+	return f.MatchSnapshot().MatchesWithContext(s, context)
 }
 
 func matchesNearbyCells(s *spot.Spot, fine, coarse pathreliability.CellID, bandNorm string) bool {

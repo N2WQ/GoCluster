@@ -288,7 +288,6 @@ type Server struct {
 	dedupeFastEnabled                   bool                                     // Fast secondary dedupe policy enabled
 	dedupeMedEnabled                    bool                                     // Med secondary dedupe policy enabled
 	dedupeSlowEnabled                   bool                                     // Slow secondary dedupe policy enabled
-	nearbyLoginWarning                  string                                   // Warning appended when NEARBY is active
 	loginAttemptReporter                func(LoginAttemptEvent)                  // Optional file-only login-attempt reporter
 	connectionReporter                  func(ConnectionEvent)                    // Optional file-only connection lifecycle reporter
 	queueDropLog                        ratelimit.Counter                        // Rate-limited log counter for broadcast queue drops
@@ -522,19 +521,6 @@ func (c *Client) getDedupePolicy() dedupePolicy {
 		return dedupePolicyFast
 	}
 	return dedupePolicy(c.dedupePolicy.Load())
-}
-
-func (c *Client) nearbyFilterInEffect() bool {
-	if c == nil {
-		return false
-	}
-	c.filterMu.RLock()
-	defer c.filterMu.RUnlock()
-	f := c.filter
-	if f == nil || !f.NearbyEnabled {
-		return false
-	}
-	return f.NearbyUserFine != pathreliability.InvalidCell && f.NearbyUserCoarse != pathreliability.InvalidCell
 }
 
 func (c *Client) setDiagMode(mode diagMode) {
@@ -1602,12 +1588,6 @@ func (s *Server) stagePathSettingsCommand(client *Client, line string) humanComm
 			return humanHandled("Grid mapping is unavailable for this locator on this server; grid unchanged.\n")
 		}
 		coarseCell := pathreliability.EncodeCoarseCell(grid)
-		client.filterMu.RLock()
-		nearby := client.filter != nil && client.filter.NearbyActive()
-		client.filterMu.RUnlock()
-		if nearby && coarseCell == pathreliability.InvalidCell {
-			return humanHandled("NEARBY requires usable fine and coarse grid mappings; grid unchanged.\n")
-		}
 		client.configuredSettings.Grid = grid
 		client.pathMu.Lock()
 		client.grid = grid
@@ -1615,11 +1595,6 @@ func (s *Server) stagePathSettingsCommand(client *Client, line string) humanComm
 		client.gridCell = cell
 		client.gridCoarseCell = coarseCell
 		client.pathMu.Unlock()
-		client.updateFilter(func(f *filter.Filter) {
-			if f.NearbyActive() {
-				f.UpdateNearbyUserCells(cell, coarseCell)
-			}
-		})
 		return humanMutation(fmt.Sprintf("Grid set to %s\n", grid), "Grid set to %s (warning: failed to persist: %v)\n", grid)
 	case "NOISE":
 		if len(upper) != 3 {
@@ -1748,18 +1723,13 @@ func (s *Server) effectiveDefaultDedupePolicy() dedupePolicy {
 	return s.resolveDedupePolicy(s.defaultDedupePolicyValue())
 }
 
-// effectiveDedupePolicyForClient keeps the persisted SET DEDUPE choice intact
-// while temporarily using the least-suppressive lane for grid-backed NEARBY
-// filtering. Stored NEARBY state without usable cells does not change policy.
+// Delivery uses the user's already-resolved ordinary preference.
+// Rule presence and proximity truth never choose a duplicate-suppression lane.
 func (s *Server) effectiveDedupePolicyForClient(client *Client) dedupePolicy {
 	if client == nil {
 		return dedupePolicyFast
 	}
-	policy := client.getDedupePolicy()
-	if client.nearbyFilterInEffect() {
-		return s.resolveDedupePolicy(dedupePolicyFast)
-	}
-	return policy
+	return client.getDedupePolicy()
 }
 
 func (s *Server) handleDiagCommand(client *Client, line string) (string, bool) {
@@ -1978,8 +1948,6 @@ const (
 
 const (
 	invalidFilterCommandMsg = "Invalid filter command. Type HELP for usage.\n"
-	nearbyLoginWarningMsg   = "NEARBY is ON: geography is omitted from rules; other conditions still apply. HELP RULE explains the effective rules."
-	nearbyLoginInactiveMsg  = "NEARBY is ON but its location is unavailable. Spots remain blocked until SET GRID succeeds or NEARBY is OFF.\n"
 )
 
 func passFilterUsageMsg() string {
@@ -2069,7 +2037,6 @@ type ServerOptions struct {
 	DedupeFastEnabled         bool
 	DedupeMedEnabled          bool
 	DedupeSlowEnabled         bool
-	NearbyLoginWarning        string
 	LoginAttemptReporter      func(LoginAttemptEvent)
 	ConnectionReporter        func(ConnectionEvent)
 }
@@ -2168,7 +2135,6 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		dedupeFastEnabled:      config.DedupeFastEnabled,
 		dedupeMedEnabled:       config.DedupeMedEnabled,
 		dedupeSlowEnabled:      config.DedupeSlowEnabled,
-		nearbyLoginWarning:     normalizeWarningLine(config.NearbyLoginWarning),
 		loginAttemptReporter:   config.LoginAttemptReporter,
 		connectionReporter:     config.ConnectionReporter,
 		dropExtremeRate:        config.DropExtremeRate,
@@ -2343,9 +2309,6 @@ func normalizeServerOptions(opts ServerOptions) ServerOptions {
 	}
 	if config.USLicenseCheck == nil {
 		config.USLicenseCheck = uls.IsLicensedUS
-	}
-	if strings.TrimSpace(config.NearbyLoginWarning) == "" {
-		config.NearbyLoginWarning = nearbyLoginWarningMsg
 	}
 	config.DefaultDedupePolicy = filter.NormalizeDedupePolicyOrDefault(config.DefaultDedupePolicy, filter.DedupePolicySlow)
 	return config
@@ -3947,7 +3910,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		s.reputationGate.RecordLogin(client.callsign, spotterIP(client.address), time.Now().UTC())
 	}
 	created, prevLogin, prevIP := restored.created, restored.previousLogin, restored.previousIP
-	nearbyWarning := restored.warning
+	startupWarning := restored.warning
 
 	// Send login confirmation
 	dialectSource := s.dialectSourceLabel(client.dialect, created, restored.loadError, s.filterEngine.defaultDialect)
@@ -3959,9 +3922,9 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			log.Printf("Login settings display failed for %s: %v", client.callsign, err)
 			greetingData.settingsFilters = "Settings display failed. Use SHOW FILTER.\n"
 		}
-		if strings.TrimSpace(nearbyWarning) != "" {
-			greetingData.settingsFilters = nearbyWarning + "\n" + greetingData.settingsFilters
-			nearbyWarning = ""
+		if strings.TrimSpace(startupWarning) != "" {
+			greetingData.settingsFilters = startupWarning + "\n" + greetingData.settingsFilters
+			startupWarning = ""
 		}
 	}
 	// Format only the operator's template, never bulletin content. Unmarked
@@ -3984,7 +3947,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		}
 		startup = append(startup, msg)
 	}
-	addStartup(nearbyWarning)
+	addStartup(startupWarning)
 	dialectMsg := formatDialectWelcome(s.dialectWelcomeMsg, dialectTemplateData{
 		dialect:        strings.ToUpper(string(client.dialect)),
 		source:         dialectSource,
@@ -5755,57 +5718,6 @@ func (s *Server) postLoginTemplateData(now time.Time, client *Client, prevLogin 
 		grid:           grid,
 		noiseClass:     noise,
 	}
-}
-
-func applyNearbyLoginState(client *Client, warning string) (warningLine string, changed bool) {
-	if client == nil || client.filter == nil {
-		return "", false
-	}
-	if !client.filter.NearbyActive() {
-		return "", false
-	}
-	state := client.pathSnapshot()
-	grid := strings.TrimSpace(state.grid)
-	if grid == "" {
-		return nearbyLoginInactiveMsg, false
-	}
-	userFine := state.gridCell
-	if userFine == pathreliability.InvalidCell {
-		userFine = pathreliability.EncodeCell(grid)
-	}
-	userCoarse := state.gridCoarseCell
-	if userCoarse == pathreliability.InvalidCell {
-		userCoarse = pathreliability.EncodeCoarseCell(grid)
-	}
-	if userFine == pathreliability.InvalidCell || userCoarse == pathreliability.InvalidCell {
-		return nearbyLoginInactiveMsg, false
-	}
-	var enableErr error
-	nearbyChanged := false
-	client.updateFilter(func(f *filter.Filter) {
-		beforeEnabled := f.NearbyEnabled
-		beforeFine := f.NearbyUserFine
-		beforeCoarse := f.NearbyUserCoarse
-		enableErr = f.EnableNearby(userFine, userCoarse)
-		if enableErr == nil {
-			nearbyChanged = !beforeEnabled || beforeFine != userFine || beforeCoarse != userCoarse
-		}
-	})
-	if enableErr != nil {
-		return nearbyLoginInactiveMsg, false
-	}
-	return normalizeWarningLine(warning), nearbyChanged
-}
-
-func normalizeWarningLine(line string) string {
-	trimmed := strings.TrimSpace(line)
-	if trimmed == "" {
-		return ""
-	}
-	if strings.HasSuffix(trimmed, "\n") {
-		return trimmed
-	}
-	return trimmed + "\n"
 }
 
 func renderedOutputRows(message string) int {

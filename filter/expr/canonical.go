@@ -39,7 +39,7 @@ type printer struct {
 
 func precedence(kind Kind) int {
 	switch kind {
-	case AtomKind:
+	case AtomKind, PredicateKind:
 		return 4
 	case NotKind:
 		return 3
@@ -97,13 +97,19 @@ func (p *printer) node(index, parentPrecedence, depth int) error {
 
 func (p *printer) body(n *Node, prec, depth int) error {
 	switch n.Kind {
-	case AtomKind:
+	case AtomKind, PredicateKind:
 		if n.Left != -1 || n.Right != -1 {
 			return syntaxError(n.Atom.Column, "atom must not have children")
 		}
 		p.atoms++
 		if p.atoms > MaxAtoms {
 			return syntaxError(n.Atom.Column, "expression exceeds atom limit")
+		}
+		if n.Kind == PredicateKind {
+			if !strings.EqualFold(n.Atom.Field, "NEARBY") || n.Atom.Operator != "" || len(n.Atom.Values) != 0 {
+				return syntaxError(n.Atom.Column, "invalid operand-free predicate")
+			}
+			return p.write("NEARBY", n.Atom.Column)
 		}
 		return p.atom(&n.Atom)
 	case NotKind:
@@ -152,6 +158,9 @@ func (p *printer) atom(atom *Atom) error {
 		return err
 	}
 	field := strings.ToUpper(atom.Field)
+	if field == "NEARBY" {
+		return syntaxError(atom.Column, "NEARBY must be an operand-free predicate")
+	}
 	if field == "NOT" || field == "AND" || field == "OR" {
 		return syntaxError(atom.Column, "Boolean keyword cannot be a field")
 	}

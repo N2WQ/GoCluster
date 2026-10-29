@@ -50,9 +50,9 @@ func TestBooleanActivationLiveAndHistoryUsePreparedRules(t *testing.T) {
 }
 
 func TestBooleanActivationHumanSavePresetAndReload(t *testing.T) {
-	s, c, cfg := v5CoordinatorFixture(t)
+	s, c, cfg := v6CoordinatorFixture(t)
 	s.filterEngine = newFilterCommandEngine()
-	v5CoordinatorSeed(t, c, cfg)
+	v6CoordinatorSeed(t, c, cfg)
 	response, handled := s.filterEngine.Handle(c, `PASS RULE 3 COMMENT="CQ test"`)
 	if !handled || !strings.Contains(response, "Rule 3 set.") || strings.Contains(response, "warning:") {
 		t.Fatalf("active human rule dispatch failed: %s", response)
@@ -62,28 +62,28 @@ func TestBooleanActivationHumanSavePresetAndReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	native := filter.ConfigurationFromFilter(&record.Filter, c.configuredSettings)
-	if record.ConfigurationVersion != 5 || !native.V5().Equal(c.captureV5Configuration()) {
+	if record.ConfigurationVersion != 6 || !native.V6().Equal(c.captureV6Configuration()) {
 		t.Fatal("native record route lost the active rule/settings state")
 	}
 	if response, handled := s.handlePresetCommand(c, "SAVE PRESET EXPERIMENT"); !handled ||
 		!strings.Contains(response, "Saved preset EXPERIMENT for") {
 		t.Fatalf("native preset SAVE failed: %s", response)
 	}
-	saved := c.captureV5Configuration()
+	saved := c.captureV6Configuration()
 	settings := saved.Settings
 	if response, _ := s.filterEngine.Handle(c, "RESET FILTER"); !strings.Contains(response, "Personal rules cleared") {
 		t.Fatalf("active reset failed: %s", response)
 	}
-	if len(c.captureV5Configuration().Filters.Rules) != 0 || c.captureV5Configuration().Settings != settings {
+	if len(c.captureV6Configuration().Filters.Rules) != 0 || c.captureV6Configuration().Settings != settings {
 		t.Fatal("reset reinstalled defaults or changed unrelated settings")
 	}
 	if response, handled := s.handlePresetCommand(c, "LOAD PRESET EXPERIMENT"); !handled ||
-		!strings.Contains(response, "Loaded preset EXPERIMENT;") || !c.captureV5Configuration().Equal(saved) {
+		!strings.Contains(response, "Loaded preset EXPERIMENT;") || !c.captureV6Configuration().Equal(saved) {
 		t.Fatalf("native preset LOAD did not restore full Boolean state: %s", response)
 	}
 	replacement := configurationTestClient(s, c.callsign)
 	result := s.restoreClientRecordOwned(replacement, time.Now().UTC())
-	if result.loadError != nil || !replacement.captureV5Configuration().Equal(saved) {
+	if result.loadError != nil || !replacement.captureV6Configuration().Equal(saved) {
 		t.Fatalf("login restore lost persisted rules/settings: %v", result.loadError)
 	}
 }
@@ -101,11 +101,11 @@ func TestBooleanActivationNewUserVersusRestoredEmpty(t *testing.T) {
 	if response, _ := s.filterEngine.Handle(c, "RESET FILTER"); !strings.Contains(response, "Personal rules cleared") {
 		t.Fatalf("reset failed: %s", response)
 	}
-	settings := c.captureV5Configuration().Settings
+	settings := c.captureV6Configuration().Settings
 	replacement := configurationTestClient(s, c.callsign)
 	restored := s.restoreClientRecordOwned(replacement, time.Now().UTC())
 	if restored.loadError != nil || restored.created || len(replacement.filter.PreparedRules().Definitions()) != 0 ||
-		replacement.captureV5Configuration().Settings != settings {
+		replacement.captureV6Configuration().Settings != settings {
 		t.Fatalf("restored empty user received new-user defaults: %+v %v",
 			replacement.filter.PreparedRules().Definitions(), restored.loadError)
 	}

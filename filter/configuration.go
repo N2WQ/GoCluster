@@ -1,15 +1,14 @@
-// File role: Compact native capture of immutable v5 rules and exact controls.
+// File role: Compact native capture of immutable v6 rules and exact controls.
 package filter
 
 import (
 	"errors"
 
-	"dxcluster/pathreliability"
 	"gopkg.in/yaml.v3"
 )
 
 // CurrentConfigurationVersion identifies disk records that preserve exact values.
-const CurrentConfigurationVersion = 5
+const CurrentConfigurationVersion = 6
 
 // DefaultBool keeps the inherited selection distinct from explicit true/false.
 // YAML represents inheritance with DEFAULT rather than a null value.
@@ -95,7 +94,6 @@ type FilterConfiguration struct { //nolint:revive // Names the filter portion al
 	AllowAnnounce  DefaultBool `yaml:"allow_announce"`
 	AllowSelf      DefaultBool `yaml:"allow_self"`
 	AllowToxic     DefaultBool `yaml:"allow_toxic"`
-	NearbyEnabled  bool        `yaml:"nearby_enabled"`
 }
 
 // Configuration captures settings and filter rules as one writable snapshot.
@@ -115,11 +113,10 @@ func ConfigurationFromFilter(f *Filter, settings SettingsConfiguration) Configur
 		IncludeBeacons: DefaultBoolFromPointer(f.IncludeBeacons), AllowWWV: DefaultBoolFromPointer(f.AllowWWV),
 		AllowWCY: DefaultBoolFromPointer(f.AllowWCY), AllowAnnounce: DefaultBoolFromPointer(f.AllowAnnounce),
 		AllowSelf: DefaultBoolFromPointer(f.AllowSelf), AllowToxic: DefaultBoolFromPointer(f.AllowToxic),
-		NearbyEnabled: f.NearbyEnabled,
 	}}
 }
 
-// ConfigurationFromPreset captures preferences without runtime NEARBY cells.
+// ConfigurationFromPreset captures exact preferences and immutable programs.
 func ConfigurationFromPreset(set *SavedPreset) Configuration {
 	if set == nil {
 		return Configuration{}
@@ -131,14 +128,13 @@ func ConfigurationFromPreset(set *SavedPreset) Configuration {
 }
 
 // FilterValue detaches controls, shares immutable programs, and excludes runtime
-// caches. Publication rebuilds effective NEARBY cells from the user's grid.
+// state. User location belongs to the publishing client, not the filter.
 func (c Configuration) FilterValue() Filter {
 	f := c.Filters
 	return Filter{
 		preparedRules:  f.preparedRules,
 		IncludeBeacons: f.IncludeBeacons.Pointer(), AllowWWV: f.AllowWWV.Pointer(), AllowWCY: f.AllowWCY.Pointer(),
 		AllowAnnounce: f.AllowAnnounce.Pointer(), AllowSelf: f.AllowSelf.Pointer(), AllowToxic: f.AllowToxic.Pointer(),
-		NearbyEnabled: f.NearbyEnabled, NearbyUserFine: pathreliability.InvalidCell, NearbyUserCoarse: pathreliability.InvalidCell,
 	}
 }
 
@@ -147,22 +143,21 @@ func (c Configuration) Clone() Configuration {
 	return c
 }
 
-// V5 captures the private immutable programs and exact current controls/settings.
-func (c Configuration) V5() V5Configuration {
+// V6 captures the private immutable programs and exact current controls/settings.
+func (c Configuration) V6() V6Configuration {
 	f := c.Filters
-	return V5Configuration{Settings: c.Settings, Filters: V5FilterConfiguration{
-		preparedRules: f.preparedRules, Rules: f.preparedRules.Definitions(),
-		NearbyEnabled: f.NearbyEnabled, IncludeBeacons: f.IncludeBeacons,
+	return V6Configuration{Settings: c.Settings, Filters: V6FilterConfiguration{
+		preparedRules: f.preparedRules, Rules: f.preparedRules.Definitions(), IncludeBeacons: f.IncludeBeacons,
 		AllowWWV: f.AllowWWV, AllowWCY: f.AllowWCY, AllowAnnounce: f.AllowAnnounce,
 		AllowSelf: f.AllowSelf, AllowToxic: f.AllowToxic,
 	}}
 }
 
-// Preset uses the authoritative standalone v5 configuration budget before
+// Preset uses the authoritative standalone v6 configuration budget before
 // cloning/encoding. Transport/readback limits remain independent.
 func (c Configuration) Preset() (*SavedPreset, error) {
-	return RuntimeSavedPresetFromV5(&V5SavedPreset{
-		ConfigurationVersion: CurrentConfigurationVersion, Configuration: c.V5(),
+	return RuntimeSavedPresetFromV6(&V6SavedPreset{
+		ConfigurationVersion: CurrentConfigurationVersion, Configuration: c.V6(),
 	})
 }
 
@@ -173,6 +168,6 @@ func (f FilterConfiguration) toggles() [6]DefaultBool {
 // MinimumSizeFits is a linear lower bound with constant scratch space. It must
 // precede cloning or encoding, and never replaces the final encoded-byte check.
 func (c Configuration) MinimumSizeFits(limit int) bool {
-	_, fits := v5ConfigurationMinimumRemaining(c.V5(), limit)
+	_, fits := v6ConfigurationMinimumRemaining(c.V6(), limit)
 	return fits
 }

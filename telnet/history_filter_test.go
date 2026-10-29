@@ -58,34 +58,28 @@ func TestHistoryFilterSnapshotOwnsControlsAndImmutableRules(t *testing.T) {
 	}
 }
 
-func TestHistoryFilterSnapshotNearbyRuntimeCells(t *testing.T) {
+func TestHistoryFilterSnapshotGridOwnedRuntimeCells(t *testing.T) {
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
-	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "MODE=CW"), grid: "FN31", gridCell: userCell}
-	if err := c.filter.EnableNearby(userCell, userCoarse); err != nil {
-		t.Fatal(err)
-	}
+	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "NEARBY AND MODE=CW"), grid: "FN31", gridCell: userCell, gridCoarseCell: userCoarse}
 	sp := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
-	sp.DXMetadata.Grid, sp.DEMetadata.Grid = "FN31", "IO91"
-	sp.DXCellID = uint16(userCell)
+	sp.DXMetadata.Grid, sp.DEMetadata.Grid = "FN31", "FN31"
+	sp.DXCellID, sp.DECellID = uint16(userCell), uint16(userCell)
 	snapshot := c.captureHistoryFilter()
 	if !snapshot.matches(nil, sp) {
-		t.Fatal("captured NEARBY must retain effective user cell")
+		t.Fatal("captured NEARBY lacks GRID-owned location")
 	}
-	c.filterMu.Lock()
-	c.filter.UpdateNearbyUserCells(dxCell, dxCoarse)
-	c.filterMu.Unlock()
-	// Both ends must differ from the new user's cell to make rejection decisive.
-	sp.DEMetadata.Grid = "FN31"
-	sp.DECellID = uint16(userCell)
+	c.pathMu.Lock()
+	c.grid = "IO91"
+	c.gridCell, c.gridCoarseCell = dxCell, dxCoarse
+	c.pathMu.Unlock()
 	if !snapshot.matches(nil, sp) || c.captureHistoryFilter().matches(nil, sp) {
-		t.Fatal("NEARBY snapshot did not isolate runtime cells")
+		t.Fatal("history failed to isolate captured GRID context")
 	}
 	if snapshot.digest == c.historyFilterDigest() {
-		t.Fatal("runtime NEARBY changes must affect digest")
+		t.Fatal("effective geometry change excluded from digest")
 	}
-	if snapshot.client.filter.PreparedRules() != c.filter.PreparedRules() ||
-		snapshot.client.filter.NearbyUserFine != userCell || snapshot.client.filter.NearbyUserCoarse != userCoarse {
-		t.Fatal("page lost immutable rules or captured effective cells")
+	if snapshot.client.filter.PreparedRules() != c.filter.PreparedRules() || snapshot.matching.path.gridCell != userCell || snapshot.matching.path.gridCoarseCell != userCoarse {
+		t.Fatal("page lost immutable rules or captured cell pair")
 	}
 }
 
@@ -121,32 +115,42 @@ func TestHistoryFilterDigestRelevantProjection(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name   string
-		mutate func()
+		mutate func(*Client)
 	}{
-		{"matching rule", func() { *c.filter = *passRuleTestFilter(t, "BAND=40M") }},
-		{"toxicity", func() { c.filter.AllowToxic = &no }},
-		{"grid", func() { c.grid = "IO91" }},
-		{"noise", func() { c.noiseClass = "URBAN" }},
-		{"path floor", func() { c.pathMinObservationCount = 30 }},
-		{"nearby fine cell", func() { c.filter.NearbyUserFine = 1 }},
-		{"nearby coarse cell", func() { c.filter.NearbyUserCoarse = 1 }},
+		{"matching rule", func(c *Client) { *c.filter = *passRuleTestFilter(t, "BAND=40M") }},
+		{"toxicity", func(c *Client) { c.filter.AllowToxic = &no }},
+		{"grid", func(c *Client) { c.grid = "IO91" }},
+		{"noise", func(c *Client) { c.noiseClass = "URBAN" }},
+		{"path floor", func(c *Client) { c.pathMinObservationCount = 30 }},
+		{"fine cell", func(c *Client) { c.gridCell = 101 }},
+		{"coarse cell", func(c *Client) { c.gridCoarseCell = 202 }},
 	} {
-		before := c.historyFilterDigest()
-		tc.mutate()
-		if c.historyFilterDigest() == before {
-			t.Errorf("%s did not affect history digest", tc.name)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Client{filter: passRuleTestFilter(t, "NEARBY"), grid: "FN31", gridCell: 10, gridCoarseCell: 11, noiseClass: "QUIET"}
+			before := c.historyFilterDigest()
+			tc.mutate(c)
+			if c.historyFilterDigest() == before {
+				t.Fatal("matching input excluded from history digest")
+			}
+		})
 	}
 }
 
 func TestHistoryFilterDigestLazyCellCacheStable(t *testing.T) {
 	requireH3Mappings(t)
-	c := &Client{filter: unrestrictedTestFilter(), grid: "FN31"}
-	before := c.historyFilterDigest()
-	snapshot := c.captureHistoryFilter()
-	c.gridCell = pathreliability.EncodeCell(c.grid)
-	if c.historyFilterDigest() != before || snapshot.digest != before || snapshot.client.gridCell != c.gridCell {
-		t.Fatal("lazy cache fill changed effective history settings")
+	for _, rule := range []string{"MODE=CW", "NEARBY", "PATH=HIGH"} {
+		t.Run(rule, func(t *testing.T) {
+			c := &Client{filter: passRuleTestFilter(t, rule), grid: "FN31"}
+			before := c.historyFilterDigest()
+			snapshot := c.captureHistoryFilter()
+			c.gridCell, c.gridCoarseCell = pathreliability.EncodeCell(c.grid), pathreliability.EncodeCoarseCell(c.grid)
+			if c.historyFilterDigest() != before || snapshot.digest != before {
+				t.Fatal("lazy cache fill invalidated effective history settings")
+			}
+			if rule != "MODE=CW" && (snapshot.matching.path.gridCell != c.gridCell || snapshot.matching.path.gridCoarseCell != c.gridCoarseCell) {
+				t.Fatal("matching snapshot and digest resolved different cell pairs")
+			}
+		})
 	}
 }
 

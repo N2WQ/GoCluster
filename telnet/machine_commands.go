@@ -24,7 +24,7 @@ func (s *Server) queueMachineReply(c *Client, response string, terminal bool) bo
 }
 
 func (s *Server) handleMachineCommand(c *Client, line string) machineDispatch {
-	return s.handleV5MachineCommand(c, line)
+	return s.handleV6MachineCommand(c, line)
 }
 
 func (s *Server) acquireYAMLPreparation(c *Client) (func(), error) {

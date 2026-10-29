@@ -12,15 +12,15 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		filterAliases = []string{"SHOW FILTER", "SH/FILTER"}
 	}
 	filterNotes := []string{
-		"Shows numbered saved rules, effective NEARBY expressions and separate controls.",
-		"RULE and FULL request the same complete bounded filter state.",
+		"Shows canonical numbered rules and separate controls.",
+		"RULE matches SHOW FILTER; FULL shows canonical rules, controls and program counts.",
 		"PASS rules are ORed; REJECT vetoes them. Slot IDs are not priorities.",
 		"No rules means no personal restriction. Default slot 0 is editable.",
-		"NEARBY omits geography leaves only; emptied rules are ignored and full saved rules stay intact.",
+		"NEARBY is an ordinary predicate; geography and other conditions retain their meaning.",
 		"Human lines use at most 78 ASCII characters; exact values use escapes.",
 		"Display quotes/escapes are not expression syntax; joined + pieces concatenate exactly.",
 		"Separate controls show ON/OFF or DEFAULT; RESET FILTER does not reset them.",
-		"Use GET YAML FILTER SCHEMA 5 for machine-readable rule expressions.",
+		"Use GET YAML FILTER SCHEMA 6 for machine-readable rule expressions.",
 		"Preset (modified) means preferences differ from the applied snapshot.",
 		"These readbacks always pause live spots, even if automatic pause is disabled.",
 		"The reading interval starts after server delivery; RESUME ends it now.",
@@ -63,29 +63,29 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 			"Returns one framed YAML document; machine commands never change pause state.",
 			"Optional ID uses 1-32 ASCII letters, digits or hyphens and preserves case.",
 			"Responses include schema version, request ID and an opaque revision.",
-			"Explicit SCHEMA 5 is required; omitted and older schemas are refused.",
-			"Schema 5 carries numbered rules and separate controls, not category maps.",
+			"Explicit SCHEMA 6 is required; omitted and older schemas are refused.",
+			"Schema 6 carries numbered rules and separate controls, not category maps.",
 			"No old machine-schema migration or command translation is provided.",
 			"The final CRLF response is limited to 65,536 bytes, including framing.",
 		}
 		if resource != "CAPABILITIES" {
 			notes = append(notes, "Edit the writable configuration section; status is read-only.")
 		}
-		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " SCHEMA 5 [ID <id>]"}, notes)
+		add(topic, "Read "+strings.ToLower(resource)+" for clients.", []string{topic + " SCHEMA 6 [ID <id>]"}, notes)
 	}
 	for _, verb := range []string{"PUT", "PATCH"} {
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG"} {
 			topic := verb + " YAML " + resource
 			notes := []string{
 				"Send standalone --- and ... marker lines around one plain YAML document.",
-				"Include schema_version: 5, request_id, if_revision and configuration.",
+				"Include schema_version: 6, request_id, if_revision and configuration.",
 				"GET again after reconnect or a revision conflict before retrying a write.",
 				"Validation or persistence failure leaves live and saved configuration unchanged.",
 				"Unavailable choices are rejected; named preset baselines are preserved.",
 				"Body limit: 65,536 bytes; total upload deadline: 30 seconds.",
 				"Oversized, expired or unreliable framing closes the connection.",
 				"A complete invalid document gets a YAML error and keeps the connection open.",
-				"Schema 5 uses numbered rules; legacy category fields and older schemas are refused.",
+				"Schema 6 uses numbered rules; legacy category fields and older schemas are refused.",
 				"Supplied rules replace the complete rule list; [] clears it.",
 				"PATCH omission preserves rules. No old machine-schema migration is provided.",
 				"No aliases, anchors, merge keys, custom tags, nulls or extra documents.",

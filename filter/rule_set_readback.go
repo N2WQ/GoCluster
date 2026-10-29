@@ -1,42 +1,23 @@
 package filter
 
-// RuleProgramCounts describes logical program size; duplicate list values count.
-type RuleProgramCounts struct {
-	Nodes  int
-	Atoms  int
-	Values int
-}
+// RuleProgramCounts describes logical program size; duplicate values count.
+type RuleProgramCounts struct{ Nodes, Atoms, Values int }
 
 type RuleSetCounts struct {
-	Rules    int
-	Normal   RuleProgramCounts
-	Nearby   RuleProgramCounts
-	Retained RuleProgramCounts
+	Rules   int
+	Program RuleProgramCounts
 }
 
-// RuleReadback preserves the full canonical definition in RuleDefinition.Expr.
-// EffectiveExpr is empty and Suspended is true only for an absent NEARBY rule.
-type RuleReadback struct {
-	RuleDefinition
-	EffectiveExpr string
-	Suspended     bool
-}
+// RuleReadback is the single canonical, detached saved rule.
+type RuleReadback struct{ RuleDefinition }
 
-// Readback returns at most ten detached records; toggling NEARBY never changes
-// the saved definition used by later edits, persistence, or ordinary evaluation.
-func (s *PreparedRuleSet) Readback(nearby bool) []RuleReadback {
+func (s *PreparedRuleSet) Readback() []RuleReadback {
 	if s == nil {
 		return nil
 	}
 	result := make([]RuleReadback, len(s.rules))
 	for i := range s.rules {
-		rule := &s.rules[i]
-		result[i].RuleDefinition = rule.definition
-		program := rule.program(nearby)
-		result[i].Suspended = program == nil
-		if program != nil {
-			result[i].EffectiveExpr = program.canonical
-		}
+		result[i].RuleDefinition = s.rules[i].definition
 	}
 	return result
 }
@@ -54,24 +35,14 @@ func (c *RuleProgramCounts) add(other RuleProgramCounts) {
 	c.Values += other.Values
 }
 
-// Counts exposes bounds without walking syntax or allocating. Retained counts
-// each distinct node vector once (and its atom entries); projected operand data
-// is shared, so Retained.Values counts full-program values only, not references
-// to those same immutable operands from a second vector.
+// Counts exposes bounded retained program cardinality without walking syntax.
+// Dropping the last rule-set/snapshot reference releases each owned program.
 func (s *PreparedRuleSet) Counts() RuleSetCounts {
 	var counts RuleSetCounts
 	if s != nil {
 		counts.Rules = len(s.rules)
 		for i := range s.rules {
-			rule := &s.rules[i]
-			normal, nearby := programRuleCounts(rule.normal), programRuleCounts(rule.nearby)
-			counts.Normal.add(normal)
-			counts.Nearby.add(nearby)
-			counts.Retained.add(normal)
-			if rule.nearby != rule.normal {
-				counts.Retained.Nodes += nearby.Nodes
-				counts.Retained.Atoms += nearby.Atoms
-			}
+			counts.Program.add(programRuleCounts(s.rules[i].program))
 		}
 	}
 	return counts

@@ -301,13 +301,13 @@ func TestIPSessionQuotaDepartingOwnerReplacement(t *testing.T) {
 		t.Run(fmt.Sprintf("competitor_wins_%t", competitorWins), func(t *testing.T) {
 			s := newIPQuotaServer(t, 0, 0, 1)
 			owner := ipQuotaLogin(t, s, "K1ABC-1", "192.0.2.1:1001")
-			baseline := testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
+			baseline := testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
 			if err := filter.SavePreset(owner.callsign, "CONTEST", baseline); err != nil {
 				t.Fatal(err)
 			}
 			profile := filepath.Join(filter.UserDataDir, owner.callsign+".yaml")
 			library := presetLibraryPathFor(owner.callsign)
-			for _, path := range []string{profile + ".pre-v5.bak", library + ".pre-v5.bak"} {
+			for _, path := range []string{profile + ".pre-v6.bak", library + ".pre-v6.bak"} {
 				if err := os.WriteFile(path, []byte("existing backup "+filepath.Base(path)), 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -357,7 +357,7 @@ func TestIPSessionQuotaDepartingOwnerReplacement(t *testing.T) {
 			waitConfigurationTest(t, removed)
 			// Snapshot after the old owner's legitimate final save, so only
 			// writes caused by a subsequently rejected replacement fail this test.
-			paths := []string{profile, library, profile + ".pre-v5.bak", library + ".pre-v5.bak"}
+			paths := []string{profile, library, profile + ".pre-v6.bak", library + ".pre-v6.bak"}
 			before := make(map[string][]byte, len(paths))
 			for _, path := range paths {
 				data, err := os.ReadFile(path)

@@ -54,7 +54,7 @@ func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 					c.filter = testRuleFilter(t,
 						filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=40M"},
 						filter.RuleDefinition{Slot: 1, Action: filter.RulePass, Expr: "COMMENT=OLD"})
-					before := c.captureV5Configuration()
+					before := c.captureV6Configuration()
 					oldBytes := presetDiskBytes(t, path)
 					attempts := 0
 					if fault == "save" {
@@ -82,7 +82,7 @@ func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 						t.Fatalf("command not handled: %s", line)
 					}
 					assertPersistenceWarning(t, response)
-					after := c.captureV5Configuration()
+					after := c.captureV6Configuration()
 					if before.Equal(after) {
 						t.Fatal("live command not applied")
 					}

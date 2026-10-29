@@ -166,13 +166,12 @@ func TestLoginBulletinTemplateTextIsLiteral(t *testing.T) {
 	}
 }
 
-func TestNearbyStartupWarningPrecedesPrompt(t *testing.T) {
+func TestNearbyRuleStartupHasNoGlobalWarning(t *testing.T) {
 	for _, greeting := range []string{shippedBooleanGreeting(t), "Welcome\n<STARTUP_INFO>Prompt\n"} {
 		s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
 			opts.EchoMode, opts.LoginGreeting = "off", greeting
 		})
-		f := unrestrictedTestFilter()
-		f.NearbyEnabled = true
+		f := passRuleTestFilter(t, "NEARBY")
 		if err := filter.SaveUserRecord("K1BUL", &filter.UserRecord{Filter: *f, Dialect: "go"}); err != nil {
 			t.Fatal(err)
 		}
@@ -182,8 +181,8 @@ func TestNearbyStartupWarningPrecedesPrompt(t *testing.T) {
 		}
 		_, got := openStartupSession(t, s, marker)
 		warning, prompt := strings.Index(got, "NEARBY is ON"), strings.LastIndex(got, marker)
-		if warning < 0 || warning >= prompt {
-			t.Fatalf("nearby warning must precede prompt: %q", got)
+		if warning >= 0 || prompt < 0 {
+			t.Fatalf("retired global warning or missing prompt: %q", got)
 		}
 	}
 }

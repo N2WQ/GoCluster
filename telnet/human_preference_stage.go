@@ -90,7 +90,6 @@ func newHumanPreferenceCandidate(c *Client) *Client {
 	staged.setDedupePolicy(c.getDedupePolicy())
 	if c.filter != nil {
 		value := filter.ConfigurationFromFilter(c.filter, settings).Clone().FilterValue()
-		value.NearbyUserFine, value.NearbyUserCoarse = c.filter.NearbyUserFine, c.filter.NearbyUserCoarse
 		staged.filter = &value
 	}
 	return staged

@@ -26,7 +26,7 @@ func TestConfigurationHandoffDeadlineBehindOldOwnershipCheck(t *testing.T) {
 	}
 	old.configurationInitialized = true
 	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: testSavedPreset(t,
-		filter.V5ConfigurationFromFilter(old.filter, filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}))}
+		filter.V6ConfigurationFromFilter(old.filter, filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}))}
 	s.registerClient(old)
 	// The registry write lock blocks the old save at its ownership check, after
 	// it obtains the fixed stripe. Reconnect must wait on that stripe first.
@@ -109,7 +109,7 @@ waitReconnect:
 	}
 	ref := next.presetReference
 	if ref == nil || ref.Name != "CONTEST" || ref.Baseline == nil || ref.Baseline.NoiseClass != "QUIET" || ref.Baseline.Dialect != "go" || ref.Baseline.DedupePolicy != "FAST" ||
-		!filter.V5ConfigurationFromFilter(next.filter, filter.SettingsConfiguration{}).Equal(filter.V5ConfigurationFromFilter(&ref.Baseline.Filter, filter.SettingsConfiguration{})) {
+		!filter.V6ConfigurationFromFilter(next.filter, filter.SettingsConfiguration{}).Equal(filter.V6ConfigurationFromFilter(&ref.Baseline.Filter, filter.SettingsConfiguration{})) {
 		t.Fatal("reconnect did not restore the same independent preset reference")
 	}
 	assertHandoffDiskLiteral(t, path)
@@ -150,7 +150,7 @@ func assertHandoffDiskLiteral(t *testing.T, path string) {
 		path       []string
 		tag, value string
 	}{
-		{[]string{"configuration_version"}, "!!int", "5"},
+		{[]string{"configuration_version"}, "!!int", "6"},
 		{[]string{"configuration", "settings", "noise_class"}, "!!str", "URBAN"},
 		{[]string{"configuration", "settings", "dedupe_policy"}, "!!str", "FAST"},
 		{[]string{"configuration", "settings", "path_min_observation_count"}, "!!int", "25"},
@@ -158,7 +158,7 @@ func assertHandoffDiskLiteral(t *testing.T, path string) {
 		{[]string{"configuration", "filters", "rules", "0", "expr"}, "!!str", "BAND=20M"},
 		{[]string{"configuration", "filters", "rules", "1", "expr"}, "!!str", "BAND=40M"},
 		{[]string{"preset", "name"}, "!!str", "CONTEST"},
-		{[]string{"preset", "baseline", "configuration_version"}, "!!int", "5"},
+		{[]string{"preset", "baseline", "configuration_version"}, "!!int", "6"},
 		{[]string{"preset", "baseline", "configuration", "settings", "noise_class"}, "!!str", "QUIET"},
 		{[]string{"preset", "baseline", "configuration", "filters", "rules", "1", "expr"}, "!!str", "BAND=40M"},
 	} {

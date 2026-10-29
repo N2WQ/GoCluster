@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"dxcluster/filter"
-	"dxcluster/pathreliability"
 )
 
 func writeBooleanSettingsAndRules(h *humanResponse, c *Client, cfg filter.Configuration, status configurationReadbackStatus, runtime humanRuntimeStatus, first bool) error {
@@ -51,20 +50,6 @@ func writeBooleanSettingsAndRules(h *humanResponse, c *Client, cfg filter.Config
 	if err := writeBooleanRuleRows(h, c.filter); err != nil {
 		return err
 	}
-	nearby := "OFF"
-	if c.filter != nil && c.filter.NearbyEnabled {
-		nearby = "ON"
-		if c.filter.NearbyUserFine == pathreliability.InvalidCell &&
-			c.filter.NearbyUserCoarse == pathreliability.InvalidCell {
-			nearby += "; location unavailable"
-		} else if c.filter.NearbyUserFine == pathreliability.InvalidCell ||
-			c.filter.NearbyUserCoarse == pathreliability.InvalidCell {
-			nearby += "; location partly available"
-		}
-	}
-	if err := h.row("Nearby:", nearby); err != nil {
-		return err
-	}
 	for _, row := range []struct {
 		label string
 		on    bool
@@ -82,7 +67,7 @@ func writeBooleanSettingsAndRules(h *humanResponse, c *Client, cfg filter.Config
 		}
 	}
 	if c.filter.SelfEnabled() {
-		return h.prose("", "", "SELF ON: spots of your call bypass rules and NEARBY; TOXIC still applies.")
+		return h.prose("", "", "SELF ON: spots of your call bypass personal rules; TOXIC still applies.")
 	}
 	return nil
 }
@@ -124,7 +109,7 @@ func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, 
 			if first || reset {
 				// Only generated starting rules have this exact shape. Do not
 				// infer source eligibility by flattening arbitrary saved rules.
-				rules := cfg.V5().Filters.Rules
+				rules := cfg.V6().Filters.Rules
 				if len(rules) == 1 && rules[0].Action == filter.RulePass &&
 					strings.HasPrefix(rules[0].Expr, "MODE=") &&
 					strings.HasSuffix(rules[0].Expr, " AND SOURCE=HUMAN") {

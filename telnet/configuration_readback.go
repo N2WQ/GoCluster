@@ -25,7 +25,6 @@ type readbackEffectiveStatus struct {
 	DedupePolicy            string `yaml:"dedupe_policy"`
 	PathMinObservationCount int    `yaml:"path_min_observation_count"`
 	SolarSummaryMinutes     int    `yaml:"solar_summary_minutes"`
-	NearbyActive            bool   `yaml:"nearby_active"`
 }
 
 type readbackSessionStatus struct {
@@ -74,7 +73,7 @@ func readbackDiagnosticName(mode diagMode) string {
 
 // Prepared runtime status belongs to the candidate; session controls always
 // belong to the real client. This prevents admission from describing old GRID,
-// NEARBY, or dedupe state alongside a proposed configuration.
+// or dedupe state alongside a proposed configuration.
 func (s *Server) captureReadbackStatus(c, prepared *Client) configurationReadbackStatus {
 	if prepared == nil {
 		prepared = c
@@ -98,7 +97,7 @@ func (s *Server) captureReadbackStatus(c, prepared *Client) configurationReadbac
 			Dialect: string(prepared.dialect), Grid: state.grid, GridDerived: state.gridDerived,
 			NoiseClass: state.noiseClass, DedupePolicy: s.effectiveDedupePolicyForClient(prepared).label(),
 			PathMinObservationCount: max(state.pathMinObservationCount, s.pathPredictorMinObservationCount()),
-			SolarSummaryMinutes:     solarMinutes, NearbyActive: prepared.nearbyFilterInEffect(),
+			SolarSummaryMinutes:     solarMinutes,
 		},
 		Session: readbackSessionStatus{
 			Callsign: c.callsign, DiagnosticComments: readbackDiagnosticName(c.getDiagMode()),
@@ -146,7 +145,7 @@ func readbackMetadataFits(status configurationReadbackStatus, requestID, revisio
 }
 
 func renderYAMLCommandError(resource, requestID, revision, code, message string) string {
-	return renderV5YAMLCommandError(resource, requestID, revision, code, message)
+	return renderV6YAMLCommandError(resource, requestID, revision, code, message)
 }
 
 // Human readbacks establish suppression before waiting for transaction ownership.

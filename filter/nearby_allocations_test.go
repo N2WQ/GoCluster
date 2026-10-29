@@ -30,6 +30,7 @@ func nearbyRequiredConversionAllocations(grids []string, coarse bool) float64 {
 func TestNearbyMatchingAllocations(t *testing.T) {
 	requireH3Mappings(t)
 	f := nearbyEndpointFilter(t)
+	context := nearbyEndpointContext()
 	near, far := pathreliability.EncodeCell("FN31"), pathreliability.EncodeCell("EM10")
 	if near == pathreliability.InvalidCell || far == pathreliability.InvalidCell || near == far ||
 		pathreliability.EncodeCoarseCell("FN31") == pathreliability.EncodeCoarseCell("EM10") {
@@ -71,7 +72,7 @@ func TestNearbyMatchingAllocations(t *testing.T) {
 				s := spot.NewSpotNormalized("W6ABC", "N0XYZ", band.frequency, "CW")
 				s.DXMetadata.Grid, s.DEMetadata.Grid = tc.dx, tc.de
 				s.DXCellID, s.DECellID = uint16(tc.dxCache), uint16(tc.deCache)
-				if got := f.Matches(s); got != tc.want {
+				if got := f.MatchesWithContext(s, context); got != tc.want {
 					t.Fatalf("allocation control Matches=%v, want %v", got, tc.want)
 				}
 				baseline := nearbyRequiredConversionAllocations(tc.conversions, band.coarse)
@@ -79,7 +80,7 @@ func TestNearbyMatchingAllocations(t *testing.T) {
 					t.Fatal("fully cached fine allowance must be zero")
 				}
 				var matched bool
-				allocs := testing.AllocsPerRun(100, func() { matched = f.Matches(s) })
+				allocs := testing.AllocsPerRun(100, func() { matched = f.MatchesWithContext(s, context) })
 				if matched != tc.want || allocs > baseline {
 					t.Fatalf("Matches=%v allocations=%g; want %v with at most %g conversion allocations", matched, allocs, tc.want, baseline)
 				}
@@ -87,7 +88,7 @@ func TestNearbyMatchingAllocations(t *testing.T) {
 				// without retaining one object per measurement iteration.
 				var allocationSink *byte
 				extra := testing.AllocsPerRun(100, func() {
-					matched = f.Matches(s)
+					matched = f.MatchesWithContext(s, context)
 					allocationSink = new(byte)
 					*allocationSink = 1
 				})

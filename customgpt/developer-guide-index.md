@@ -36,7 +36,7 @@ workflow rules.
 | Live runtime | `internal/cluster/`, [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | Telnet sessions, filters, and queues | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), `telnet/` |
 | Boolean personal-rule engine and immutable matching | [Boolean contracts and local owners](#boolean-personal-rules), [telnet filters](../telnet/README.md#filters), [normative domain contract](../docs/domain-contract.md#boolean-personal-rules) |
-| Presets, native-v5 preferences and SSID ownership | [telnet presets](../telnet/README.md#named-presets), [operator storage](../data/config/README.md#user-configuration-storage); local checkout: `filter/configuration_v5.go`, `filter/storage_v5.go`, `filter/storage_v5_decode.go`, `filter/storage_v5_io_adapter.go`, `filter/preset_v5.go`; coordination remains in `telnet/preset_commands.go`, `filter/presets.go`, `filter/user_preferences.go` |
+| Presets, native-v6 preferences and SSID ownership | [telnet presets](../telnet/README.md#named-presets), [operator storage](../data/config/README.md#user-configuration-storage); local checkout: `filter/configuration_v6.go`, `filter/storage_v6.go`, `filter/storage_v6_decode.go`, `filter/storage_v6_io_adapter.go`, `filter/preset_v6.go`; coordination remains in `telnet/preset_commands.go`, `filter/presets.go`, `filter/user_preferences.go` |
 | Command HELP and command dispatch | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md), `commands/` |
 | WWV/WCY history, login and five-report SHOW/slash commands | [bulletin history](../telnet/README.md#wwv-and-wcy-bulletin-history), [ADR-0323](../docs/decisions/ADR-0323-wwv-wcy-bulletin-history.md), `commands/bulletin_command.go` |
 | Spot record, formatting, confidence, correction | [spot/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/spot/README.md), `spot/` |
@@ -148,8 +148,8 @@ They describe one prepared Boolean engine, not an additional category gate.
 New records receive mode/source defaults in editable PASS slot 0. A one-time
 recognized old-profile login upgrade installs the same configured mode/source defaults,
 preserving settings and discarding old filters/presets without translating
-their logic. Reset/existing v5 empty records never reinstall defaults.
-Pure v5 codecs and machine schemas remain strict; see
+their logic. Reset/existing v6 empty records never reinstall defaults.
+Pure v6 codecs and machine schemas remain strict; see
 [ADR-0318](../docs/decisions/ADR-0318-old-profile-reset-upgrade.md) and
 [ADR-0319](../docs/decisions/ADR-0319-boolean-onboarding-and-source-default.md).
 A PASS without SOURCE allows HUMAN and SKIMMER. SOURCE comparisons use normal
@@ -165,27 +165,30 @@ claims. Private-cluster acceptance remains pending.
 | --- | --- |
 | Syntax, preparation, field compilation/evaluation and per-spot normalization | `filter/expr/parse.go`, `filter/rule_set.go`, `filter/rule_compile.go`, `filter/rule_evaluate.go`, `filter/rule_view.go` |
 | New-user default construction and startup publication | `filter/rule_defaults.go`, `filter/match_snapshot.go` (`ConfigureDefaultRules`) |
-| Structural geography projection and saved/effective counts | `filter/rule_set_projection.go`, `filter/rule_set_readback.go` |
-| Immutable matching programs and coherent controls/cells/path captures | `filter/match_snapshot.go`, `telnet/matching_snapshot.go`; `telnet/history_filter.go` and `telnet/history_v5.go` for history snapshots/invalidation |
+| Ordinary NEARBY predicate, evaluation-local cache and single-program counts | `filter/rule_view.go`, `filter/rule_set_readback.go`, [filter package](../filter/README.md) |
+| Immutable matching programs and coherent controls/cells/path captures | `filter/match_snapshot.go`, `telnet/matching_snapshot.go`; `telnet/history_filter.go` and `telnet/history_v6.go` for history snapshots/invalidation |
 | Human ingress, detached admission and bounded display | `telnet/boolean_input.go`, `telnet/boolean_rule_commands.go`, `telnet/boolean_rule_readback.go`, `telnet/configuration_render.go`, `telnet/human_preference_stage.go` |
 | Canonical DXCC input only, one lazy CTY snapshot per human/YAML request, numeric readback/storage | `telnet/boolean_rule_commands.go` (`newRuleDXCCResolver`), `filter/rule_set.go` (`WithRuleDXCCResolver`), `filter/rule_compile.go`, `cty/dxcc.go`; [ADR-0321](../docs/decisions/ADR-0321-boolean-canonical-dxcc-input.md) |
 | Registered GO/CC expression HELP | `commands/boolean_rule_help.go` (`BooleanRuleHelpLines`), `commands/boolean_rule_catalog.go` (`installBooleanRuleHelp`), installed in `commands/processor.go`; configuration topics remain in `commands/configuration_help.go` |
-| Machine headers, strict proposals/rules, transactions and readback | `telnet/machine_v5_input.go`, `telnet/machine_v5_schema.go`, `telnet/machine_v5_schema_rules.go`, `telnet/machine_v5_commands.go`, `telnet/machine_v5_readback.go`, `telnet/machine_v5_readback_capabilities.go` |
-| Native configuration, record preparation/decoding, runtime adapters and presets | `filter/configuration_v5.go`, `filter/storage_v5.go`, `filter/storage_v5_decode.go`, `filter/storage_v5_io_adapter.go`, `filter/preset_v5.go` |
+| Machine headers, strict proposals/rules, transactions and readback | `telnet/machine_v6_input.go`, `telnet/machine_v6_schema.go`, `telnet/machine_v6_schema_rules.go`, `telnet/machine_v6_commands.go`, `telnet/machine_v6_readback.go`, `telnet/machine_v6_readback_capabilities.go` |
+| Native configuration, record preparation/decoding, runtime adapters and presets | `filter/configuration_v6.go`, `filter/storage_v6.go`, `filter/storage_v6_decode.go`, `filter/storage_v6_io_adapter.go`, `filter/preset_v6.go` |
 
-Review [machine schema 5](../telnet/README.md#client-yaml-configuration) for
-explicit SCHEMA 5 on every GET, body schema_version 5, complete PUT/VALIDATE,
+Review [machine schema 6](../telnet/README.md#client-yaml-configuration) for
+explicit SCHEMA 6 on every GET, body schema_version 6, complete PUT/VALIDATE,
 whole-list PATCH, runtime settings admission, revisions and publication fences.
 Review [native storage](../data/config/README.md#user-configuration-storage)
 for explicit versions on records/entries/baselines, protection, byte/work bounds
 and atomicity, not frozen old-schema preservation checklists.
-For NEARBY use the [recovery contract](../docs/domain-contract.md#nearby-projection-and-recovery):
-already-ON unusable restored geometry permits rule-only human/YAML edits with
-all other selections unchanged and retains GRID/ON. Both cells unavailable blocks
-ordinary spots until repaired/OFF, preserving SELF/history exceptions and TOXIC.
-Partial geometry remains band-specific. The exception waives only unchanged GRID
-mapping availability; exact syntax and other settings checks remain. The joined
-fresh-child GRID fixture covers PATCH, PUT and VALIDATE against no mappings.
+For NEARBY use the [recovery contract](../docs/domain-contract.md#nearby-predicate-and-recovery):
+rule-only human/YAML edits need no usable location. YAML waives only mapping
+availability for an unchanged GRID when a rules list is supplied and every other
+setting/control is unchanged. Exact syntax and other settings checks remain.
+NEARBY is false for unavailable proximity; NOT NEARBY includes unknown proximity,
+and other OR branches can qualify. It does not suppress geography or choose a
+dedupe lane. The client owns GRID/cells; shared programs contain no user state.
+The joined fresh-child GRID fixture covers PATCH, PUT and VALIDATE against no
+mappings. [ADR-0329](../docs/decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md)
+replaces the affected toggle/schema/location clauses of ADR-0317 through ADR-0320.
 
 ## Per-Mode Minimum SNR
 
@@ -219,10 +222,10 @@ Route saved COMMENT expressions to
 [Boolean owners](#boolean-personal-rules), not phrase-list handlers.
 Check preserved literal bytes, doubled expression quotes/literal backslashes
 versus Go-quoted display chunks, unknown/NOT semantics and rule budgets.
-Machine/native v5 carry expressions in rules, not saved COMMENT maps/lists.
+Machine/native v6 carry expressions in rules, not saved COMMENT maps/lists.
 `commands/history.go` and `commands/history_selection.go` retain independent
 query grammar; `telnet/history.go` owns continuation/publication,
-`telnet/history_filter.go` and `telnet/history_v5.go` own captured Boolean
+`telnet/history_filter.go` and `telnet/history_v6.go` own captured Boolean
 matching/invalidation. Explicit query clauses apply before saved self exceptions
 and counting. [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
 is historical for pre-v5 saved lists; its separate archive phrase grammar remains.

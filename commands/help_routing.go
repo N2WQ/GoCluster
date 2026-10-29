@@ -14,7 +14,7 @@ import (
 func installHelpRoutingAliases(catalog *helpCatalog, dialect string) {
 	for alias, topic := range map[string]string{
 		"H": "HELP", "SH": "SHOW", "SH BUILD": "SHOW BUILD", "SH OWN": "SHOW OWN",
-		"SH DXCC": "SHOW DXCC", "SH MYDX": "SHOW MYDX", "REJECT NEARBY": "PASS NEARBY",
+		"SH DXCC": "SHOW DXCC", "SH MYDX": "SHOW MYDX", "REJECT NEARBY": "NEARBY", "PASS NEARBY": "NEARBY",
 		"SHOW/FILTER COMMENT": "SHOW FILTER COMMENT", "SH/FILTER COMMENT": "SHOW FILTER COMMENT",
 	} {
 		catalog.aliases[alias] = topic
@@ -36,9 +36,6 @@ func helpHeadMatches(topic, head string) bool {
 
 func (catalog helpCatalog) normalizeTopic(dialect, topic string) string {
 	upper := strings.Join(strings.Fields(strutil.NormalizeUpper(topic)), " ")
-	if upper == "NEARBY" {
-		return "PASS NEARBY" // Retain the existing educational convenience topic.
-	}
 	matched := ""
 	consider := func(head string) {
 		// SHOW's subcommands have their own verified heads. A broad parent

@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"dxcluster/pathreliability"
 	"gopkg.in/yaml.v3"
 )
 
@@ -132,8 +131,6 @@ func TestPresetsOwnershipAndCRUD(t *testing.T) {
 func TestPresetPreferencesRoundTrip(t *testing.T) {
 	usePresetTestDir(t)
 	set := testSavedPreset()
-	set.NearbyEnabled = true
-	set.NearbyUserFine, set.NearbyUserCoarse = 10, 11
 	want, err := yaml.Marshal(set)
 	if err != nil {
 		t.Fatal(err)
@@ -151,9 +148,6 @@ func TestPresetPreferencesRoundTrip(t *testing.T) {
 	if err != nil || !bytes.Equal(got, want) {
 		t.Fatalf("round trip changed preferences: err=%v\nwant=%s\ngot=%s", err, want, got)
 	}
-	if loaded.NearbyUserFine != pathreliability.InvalidCell || loaded.NearbyUserCoarse != pathreliability.InvalidCell {
-		t.Fatal("runtime NEARBY caches survived serialization")
-	}
 	loaded.preparedRules = nil
 	*loaded.AllowToxic = true
 	again, err := LoadPreset("N2WQ-2", "all")
@@ -169,7 +163,7 @@ func TestPresetPreferencesRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"recent_ips", "last_login_utc", "nearby_snapshot", "nearby_user", "diag_mode", "read_pause"} {
+	for _, forbidden := range []string{"recent_ips", "last_login_utc", "nearby_enabled", "nearby_snapshot", "nearby_user", "diag_mode", "read_pause"} {
 		if bytes.Contains(data, []byte(forbidden)) {
 			t.Fatalf("snapshot includes %s", forbidden)
 		}
@@ -232,18 +226,18 @@ func TestPresetCountAndSizeBounds(t *testing.T) {
 
 func TestPresetCorruptCollections(t *testing.T) {
 	usePresetTestDir(t)
-	tooMany := V5PresetCollection{Presets: make(map[string]*V5SavedPreset)}
+	tooMany := V6PresetCollection{Presets: make(map[string]*V6SavedPreset)}
 	for i := range 21 {
-		tooMany.Presets[fmt.Sprintf("S%d", i)] = &V5SavedPreset{ConfigurationVersion: 5}
+		tooMany.Presets[fmt.Sprintf("S%d", i)] = &V6SavedPreset{ConfigurationVersion: 6}
 	}
 	tooManyBytes, err := yaml.Marshal(tooMany)
 	if err != nil {
 		t.Fatal(err)
 	}
-	oversized := &V5SavedPreset{ConfigurationVersion: 5, Configuration: V5Configuration{
+	oversized := &V6SavedPreset{ConfigurationVersion: 6, Configuration: V6Configuration{
 		Settings: SettingsConfiguration{Grid: strings.Repeat("A", 256<<10)},
 	}}
-	oversizedBytes, err := yaml.Marshal(V5PresetCollection{Presets: map[string]*V5SavedPreset{"LARGE": oversized}})
+	oversizedBytes, err := yaml.Marshal(V6PresetCollection{Presets: map[string]*V6SavedPreset{"LARGE": oversized}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,10 +289,10 @@ func TestPresetCollectionReadBoundary(t *testing.T) {
 
 func TestPresetNormalizedSizeBound(t *testing.T) {
 	usePresetTestDir(t)
-	set := &V5SavedPreset{ConfigurationVersion: 5, Configuration: V5Configuration{
+	set := &V6SavedPreset{ConfigurationVersion: 6, Configuration: V6Configuration{
 		Settings: SettingsConfiguration{Grid: strings.Repeat("\x01", 90_000)},
 	}}
-	data, err := yaml.Marshal(V5PresetCollection{Presets: map[string]*V5SavedPreset{"GROW": set}})
+	data, err := yaml.Marshal(V6PresetCollection{Presets: map[string]*V6SavedPreset{"GROW": set}})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -188,7 +188,7 @@ func TestStationDiagnosticSampledRejectionReleasesTicketWhileRegistryLocked(t *t
 	if err != nil || !bytes.Equal(profileBefore, profileAfter) {
 		t.Fatalf("rejected login changed saved profile: %v", err)
 	}
-	if _, err := os.Stat(profile + ".pre-v5.bak"); !errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(profile + ".pre-v6.bak"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("rejected login created a profile backup: %v", err)
 	}
 }

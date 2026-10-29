@@ -19,8 +19,8 @@ func requireH3Mappings(t *testing.T) {
 
 func nativeRuleFilter(t testing.TB, definitions ...RuleDefinition) *Filter {
 	t.Helper()
-	_, value, err := PrepareV5Configuration(V5Configuration{
-		Filters: V5FilterConfiguration{Rules: definitions},
+	_, value, err := PrepareV6Configuration(V6Configuration{
+		Filters: V6FilterConfiguration{Rules: definitions},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -132,7 +132,6 @@ func TestMatchSnapshotDetachedAndNilClosed(t *testing.T) {
 	f.IncludeBeacons, f.AllowSelf, f.AllowToxic = &allow, &allow, &allow
 	snapshot := f.MatchSnapshot()
 	f.preparedRules = nil
-	f.NearbyEnabled, f.NearbyUserFine, f.NearbyUserCoarse = true, 10, 11
 	allow = false
 	value := &spot.Spot{Mode: "CW", IsBeacon: true, ToxicityStatus: spot.ToxicityToxic, IsHuman: true}
 	if !snapshot.MatchesWithPath(value, PathClassHigh) || !snapshot.PathFilterActive() ||
@@ -187,23 +186,22 @@ func TestConfigureDefaultRulesConcurrentPublication(t *testing.T) {
 	}
 }
 
-func TestNearbyNativeProjectionAndSnapshotCells(t *testing.T) {
+func TestNearbyNativeContextAndDetachedRules(t *testing.T) {
 	requireH3Mappings(t)
-	f := nativeRuleFilter(t, RuleDefinition{0, RulePass, "DXCONT=EU AND MODE=CW"})
-	fine, coarse := pathreliability.EncodeCell("FN31"), pathreliability.EncodeCoarseCell("FN31")
-	if err := f.EnableNearby(fine, coarse); err != nil {
-		t.Fatal(err)
-	}
+	f := nativeRuleFilter(t, RuleDefinition{0, RulePass, "NEARBY AND MODE=CW"})
+	context := EvaluationContext{FineCell: pathreliability.EncodeCell("FN31"), CoarseCell: pathreliability.EncodeCoarseCell("FN31")}
 	snapshot := f.MatchSnapshot()
-	f.UpdateNearbyUserCells(pathreliability.EncodeCell("EM10"), pathreliability.EncodeCoarseCell("EM10"))
+	f.preparedRules = mustPrepareRuleSet(t, RuleDefinition{0, RulePass, "MODE=FT8"})
 	s := spot.NewSpotNormalized("K1ABC", "N2ABC", 14025, "CW")
-	s.IsHuman = true
 	s.DXMetadata = spot.CallMetadata{Grid: "FN31", Continent: "NA"}
-	if !snapshot.MatchesWithPath(s, "") || f.Matches(s) {
-		t.Fatal("NEARBY geometry or detached cells changed")
+	if !snapshot.MatchesWithContext(s, context) || f.MatchesWithContext(s, context) {
+		t.Fatal("detached rule generation changed")
+	}
+	if snapshot.MatchesWithPath(s, "") || !snapshot.NearbyFilterActive() {
+		t.Fatal("location-free entry bypassed NEARBY")
 	}
 	s.Mode, s.ModeNorm = "FT8", "FT8"
-	if snapshot.MatchesWithPath(s, "") {
-		t.Fatal("NEARBY bypassed nongeographic rules")
+	if snapshot.MatchesWithContext(s, context) {
+		t.Fatal("NEARBY bypassed MODE")
 	}
 }

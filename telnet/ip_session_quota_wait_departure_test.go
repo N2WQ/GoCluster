@@ -21,13 +21,13 @@ func TestIPSessionQuotaWaitingReplacementOwnerDeparts(t *testing.T) {
 			s := newIPQuotaServer(t, 3, 1, 1)
 			owner := ipQuotaLogin(t, s, "K1ABC-1", "192.0.2.1:1001")
 			owner.configuredSettings.NoiseClass = "URBAN"
-			baseline := testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
+			baseline := testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
 			if err := filter.SavePreset(owner.callsign, "CONTEST", baseline); err != nil {
 				t.Fatal(err)
 			}
 			profile := filepath.Join(filter.UserDataDir, owner.callsign+".yaml")
 			library := presetLibraryPathFor(owner.callsign)
-			for _, path := range []string{profile + ".pre-v5.bak", library + ".pre-v5.bak"} {
+			for _, path := range []string{profile + ".pre-v6.bak", library + ".pre-v6.bak"} {
 				if err := os.WriteFile(path, []byte("existing backup "+filepath.Base(path)), 0o600); err != nil {
 					t.Fatal(err)
 				}
@@ -95,7 +95,7 @@ func TestIPSessionQuotaWaitingReplacementOwnerDeparts(t *testing.T) {
 			}
 			// Record all files after the owner's legitimate final save and any
 			// competitor login, before the blocked replacement can recheck.
-			paths := []string{profile, library, profile + ".pre-v5.bak", library + ".pre-v5.bak"}
+			paths := []string{profile, library, profile + ".pre-v6.bak", library + ".pre-v6.bak"}
 			before := make(map[string][]byte, len(paths))
 			for _, path := range paths {
 				data, err := os.ReadFile(path)

@@ -125,17 +125,11 @@ func (e *filterCommandEngine) stageBooleanFilterCommand(c *Client, line string) 
 	if err != nil {
 		return booleanRuleRefusal("Invalid rule: " + err.Error() + "\n" + booleanRuleSetUsage)
 	}
-	cfg := filter.V5ConfigurationFromFilter(c.filter, c.configuredSettings)
+	cfg := filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)
 	cfg.Filters = cfg.Filters.WithRuleSet(next)
-	if command.edit == booleanFilterClear {
-		cfg.Filters.NearbyEnabled = false
-	}
-	_, prepared, err := filter.PrepareV5Configuration(cfg)
+	_, prepared, err := filter.PrepareV6Configuration(cfg)
 	if err != nil {
 		return booleanRuleRefusal("Cannot prepare personal filter: " + err.Error())
-	}
-	if prepared.NearbyEnabled {
-		prepared.NearbyUserFine, prepared.NearbyUserCoarse = c.filter.NearbyUserFine, c.filter.NearbyUserCoarse
 	}
 	response, err := command.acceptedResponse(previous, next)
 	if err != nil {
@@ -211,9 +205,9 @@ func (command booleanRuleCommand) acceptedResponse(previous, next *filter.Prepar
 			}
 			return h.line(fmt.Sprintf("Rule %d removed.", command.slot))
 		case booleanRuleClear:
-			return h.line("All personal rule slots cleared. NEARBY and other switches kept.")
+			return h.line("All personal rule slots cleared. Settings and separate controls kept.")
 		default:
-			return h.line("Personal rules cleared; NEARBY OFF. Settings and other switches kept.")
+			return h.line("Personal rules cleared. Settings and separate controls kept.")
 		}
 	})
 }
@@ -288,7 +282,7 @@ func (e *filterCommandEngine) booleanLegacyMutation(line string, dialect Dialect
 
 func booleanSeparateDomain(domain string) bool {
 	switch domain {
-	case "NEARBY", "SELF", "BEACON", "TOXIC", "WWV", "WCY", "ANNOUNCE", "PC93":
+	case "SELF", "BEACON", "TOXIC", "WWV", "WCY", "ANNOUNCE", "PC93":
 		return true
 	default:
 		return false
@@ -299,7 +293,7 @@ func booleanLegacyDomain(domain string) bool {
 	switch domain {
 	case "BAND", "MODE", "MINSNR", "SOURCE", "EVENT", "COMMENT", "DXCALL", "DECALL",
 		"DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC", "DEDXCC", "DXSTATE", "DESTATE",
-		"DXGRID2", "DEGRID2", "CONFIDENCE", "CONF", "PATH", "DXBM", "NOFILTER":
+		"DXGRID2", "DEGRID2", "CONFIDENCE", "CONF", "PATH", "DXBM", "NOFILTER", "NEARBY":
 		return true
 	default:
 		return false

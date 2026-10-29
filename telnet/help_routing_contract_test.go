@@ -120,13 +120,13 @@ func (x *helpOwnerSession) assertSaved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := filter.V5ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
+	saved := filter.V6ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
 		Dialect: record.Dialect, Grid: record.Grid, NoiseClass: record.NoiseClass, DedupePolicy: record.DedupePolicy,
 		PathMinObservationCount: record.PathMinObservationCount, SolarSummaryMinutes: record.SolarSummaryMinutes,
 	})
-	if !saved.Equal(c.captureV5Configuration()) || record.Preset == nil || c.presetReference == nil ||
+	if !saved.Equal(c.captureV6Configuration()) || record.Preset == nil || c.presetReference == nil ||
 		record.Preset.Name != c.presetReference.Name ||
-		!filter.V5ConfigurationFromFilter(&record.Preset.Baseline.Filter, filter.SettingsConfiguration{}).Equal(filter.V5ConfigurationFromFilter(&c.presetReference.Baseline.Filter, filter.SettingsConfiguration{})) {
+		!filter.V6ConfigurationFromFilter(&record.Preset.Baseline.Filter, filter.SettingsConfiguration{}).Equal(filter.V6ConfigurationFromFilter(&c.presetReference.Baseline.Filter, filter.SettingsConfiguration{})) {
 		t.Fatal("owner acknowledgement did not match immediately saved configuration/association")
 	}
 }
@@ -190,15 +190,15 @@ func TestHelpRoutingRealReadbackSettingPresetAndHistoryOwners(t *testing.T) {
 				if !strings.Contains(runHistory(t, s, c, helpOwnerInput(t, "SH MYDX 1", ziutek)), "K1ABC") || x.reads != 1 || c.historySearch == nil {
 					t.Fatal("SH MYDX did not reach archive/cursor owner")
 				}
-				if dispatch := s.handleMachineCommand(c, "GET YAML CONFIG SCHEMA 5 ID owner-18"); !dispatch.handled || dispatch.terminal {
+				if dispatch := s.handleMachineCommand(c, "GET YAML CONFIG SCHEMA 6 ID owner-18"); !dispatch.handled || dispatch.terminal {
 					t.Fatal("GET argument header did not reach machine owner")
 				}
 				var document struct {
 					SchemaVersion int                    `yaml:"schema_version"`
 					RequestID     string                 `yaml:"request_id"`
-					Configuration filter.V5Configuration `yaml:"configuration"`
+					Configuration filter.V6Configuration `yaml:"configuration"`
 				}
-				if err := yaml.Unmarshal([]byte(helpOwnerControl(t, c)), &document); err != nil || document.SchemaVersion != 5 || document.RequestID != "owner-18" || document.Configuration.Settings.SolarSummaryMinutes != 30 {
+				if err := yaml.Unmarshal([]byte(helpOwnerControl(t, c)), &document); err != nil || document.SchemaVersion != 6 || document.RequestID != "owner-18" || document.Configuration.Settings.SolarSummaryMinutes != 30 {
 					t.Fatalf("actual machine readback did not preserve correlated setting: %+v / %v", document, err)
 				}
 				x.assertHelpHasNoEffects(t, ziutek)
@@ -228,7 +228,7 @@ func (x *helpOwnerSession) assertHelpHasNoEffects(t *testing.T, ziutek bool) {
 		{"RULE", "RULE", "PASS RULE"},
 		{"SET SOLAR 60", "SET SOLAR", "SET SOLAR <15|30|60|OFF>"},
 		{"SAVE PRESET WOULD-WRITE", "SAVE PRESET", "SAVE PRESET <name>"},
-		{"GET YAML CONFIG SCHEMA 5 ID help-18", "GET YAML CONFIG", "GET YAML CONFIG SCHEMA 5 [ID <id>]"},
+		{"GET YAML CONFIG SCHEMA 6 ID help-18", "GET YAML CONFIG", "GET YAML CONFIG SCHEMA 6 [ID <id>]"},
 	} {
 		line := helpOwnerInput(t, "HELP "+tc.topic, ziutek)
 		assertHelpOwnerInterceptorsDecline(t, s, c, line)
@@ -301,13 +301,13 @@ func TestHelpRoutingLoadedShortcutAliasesReachTheirRealOwners(t *testing.T) {
 		t.Fatal("fixed ANN owner lost to loaded mode alias")
 	}
 	for _, command := range []string{"SET/MODE_ALIAS", "SET/NOTEST_MODE", "SET/NOFILTER", "SET/DISABLED_MODE", "SET/NODISABLED_MODE", "SET/UNKNOWN_MODE", "SET/TEST_MODE EXTRA"} {
-		before, files, writes := c.captureV5Configuration(), helpOwnerFiles(t), x.writes
+		before, files, writes := c.captureV6Configuration(), helpOwnerFiles(t), x.writes
 		owners := captureHistoryCommentAliasState(t, c)
 		response, handled := engine.Handle(c, command)
 		if handled && !strings.Contains(response, "No changes applied.") {
 			t.Fatalf("retired shortcut was not explicitly refused: %q -> %q", command, response)
 		}
-		if !before.Equal(c.captureV5Configuration()) || writes != x.writes || !reflect.DeepEqual(files, helpOwnerFiles(t)) {
+		if !before.Equal(c.captureV6Configuration()) || writes != x.writes || !reflect.DeepEqual(files, helpOwnerFiles(t)) {
 			t.Fatalf("ineligible shortcut had effects: %q -> %q", command, response)
 		}
 		owners.assertOwners(t, c, x.writes-writes)

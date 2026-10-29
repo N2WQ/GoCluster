@@ -37,8 +37,8 @@ func TestNativeSNRStorageRules(t *testing.T) {
 	for _, raw := range []string{
 		"configuration_version: 4\nmin_snr: {CW: 0}\n",
 		"min_snr: {CW: 0}\n",
-		"configuration_version: 5\nconfiguration: {filters: {rules: [], min_snr: {CW: 0}}, settings: {}}\n",
-		"configuration_version: 5\nconfiguration: {filters: {rules: [{slot: 0, action: pass, expr: 'SNR=bad'}]}, settings: {}}\n",
+		"configuration_version: 6\nconfiguration: {filters: {rules: [], min_snr: {CW: 0}}, settings: {}}\n",
+		"configuration_version: 6\nconfiguration: {filters: {rules: [{slot: 0, action: pass, expr: 'SNR=bad'}]}, settings: {}}\n",
 	} {
 		assertMinSNRStorageProtected(t, raw)
 	}

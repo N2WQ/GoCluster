@@ -32,6 +32,7 @@ const (
 	ruleFieldConf
 	ruleFieldPath
 	ruleFieldComment
+	ruleFieldNearby
 	ruleFieldCount
 )
 
@@ -39,7 +40,7 @@ var ruleFieldNames = [ruleFieldCount]string{
 	"BAND", "MODE", "SOURCE", "EVENT", "DXCALL", "DECALL",
 	"DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC", "DEDXCC",
 	"DXSTATE", "DESTATE", "DXGRID2", "DEGRID2", "FREQ", "SNR",
-	"CONF", "PATH", "COMMENT",
+	"CONF", "PATH", "COMMENT", "NEARBY",
 }
 
 func ruleFieldForName(name string) (ruleField, bool) {
@@ -51,8 +52,8 @@ func ruleFieldForName(name string) (ruleField, bool) {
 	return 0, false
 }
 
-// Geographic projection excludes PATH and calls: only these metadata families
-// are removable when the later rule planner constructs its NEARBY variant.
+// Geographic classification is descriptive capability metadata only. NEARBY
+// never removes these comparisons from a rule.
 func isGeographicField(field ruleField) bool {
 	switch field {
 	case ruleFieldDXCont, ruleFieldDECont, ruleFieldDXZone, ruleFieldDEZone,

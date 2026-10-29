@@ -125,19 +125,19 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 	}
 }
 
-func TestHelpWordingMachineSchema5Only(t *testing.T) {
+func TestHelpWordingMachineSchema6Only(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
 			topic := "GET YAML " + resource
 			response := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect)
 			flat := strings.Join(strings.Fields(response), " ")
-			for _, want := range []string{topic + " SCHEMA 5 [ID <id>]", "Explicit SCHEMA 5 is required", "older schemas are refused", "No old machine-schema migration"} {
+			for _, want := range []string{topic + " SCHEMA 6 [ID <id>]", "Explicit SCHEMA 6 is required", "older schemas are refused", "No old machine-schema migration"} {
 				if !strings.Contains(flat, want) {
 					t.Fatalf("%s %s omitted %q", dialect, topic, want)
 				}
 			}
-			if strings.Contains(flat, "SCHEMA 2|3|4") || strings.Contains(flat, "Default schema 1") {
+			if strings.Contains(flat, "SCHEMA 2|3|4") || strings.Contains(flat, "SCHEMA 5") || strings.Contains(flat, "Default schema 1") {
 				t.Fatalf("%s %s advertises an obsolete machine schema", dialect, topic)
 			}
 		}

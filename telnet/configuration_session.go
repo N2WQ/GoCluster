@@ -413,8 +413,15 @@ func (s *Server) configurationDefaultDialect() DialectName {
 
 // prepareConfiguration builds runtime state without altering the caller. Stored
 // empty GRID/noise/default choices stay in configuration; effective fallbacks
-// and NEARBY cells belong solely to the prepared runtime client.
+// and location cells belong solely to the prepared runtime client.
 func (s *Server) prepareConfiguration(c *Client, cfg filter.Configuration, now time.Time) (*Client, string) {
+	return s.prepareConfigurationRuntime(c, cfg, now, false)
+}
+
+// Login rebuilds location. Preset LOAD may preserve an established runtime
+// location when its exact saved GRID selection is unchanged; this avoids a
+// second callsign lookup on an unrelated preference/rule replacement.
+func (s *Server) prepareConfigurationRuntime(c *Client, cfg filter.Configuration, now time.Time, preserveGrid bool) (*Client, string) {
 	f := cfg.FilterValue()
 	prepared := &Client{filter: &f, dialect: normalizeDialectName(cfg.Settings.Dialect)}
 	if cfg.Settings.Dialect == "" {
@@ -427,13 +434,20 @@ func (s *Server) prepareConfiguration(c *Client, cfg filter.Configuration, now t
 	policy := s.resolveDedupePolicy(requested)
 	prepared.setDedupePolicy(policy)
 	prepared.grid = cfg.Settings.Grid
-	if prepared.grid == "" && s.gridLookup != nil {
+	preserveGrid = preserveGrid && c.configurationInitialized && c.configuredSettings.Grid == cfg.Settings.Grid
+	if preserveGrid {
+		state := c.pathSnapshot()
+		prepared.grid, prepared.gridDerived = state.grid, state.gridDerived
+		prepared.gridCell, prepared.gridCoarseCell = state.gridCell, state.gridCoarseCell
+	} else if prepared.grid == "" && s.gridLookup != nil {
 		if grid, derived, ok := s.gridLookup(c.callsign); ok {
 			prepared.grid, prepared.gridDerived = strings.ToUpper(strings.TrimSpace(grid)), derived
 		}
 	}
-	prepared.gridCell = pathreliability.EncodeCell(prepared.grid)
-	prepared.gridCoarseCell = pathreliability.EncodeCoarseCell(prepared.grid)
+	if !preserveGrid {
+		prepared.gridCell = pathreliability.EncodeCell(prepared.grid)
+		prepared.gridCoarseCell = pathreliability.EncodeCoarseCell(prepared.grid)
+	}
 	prepared.noiseClass = cfg.Settings.NoiseClass
 	if prepared.noiseClass == "" {
 		prepared.noiseClass = "QUIET"
@@ -442,7 +456,7 @@ func (s *Server) prepareConfiguration(c *Client, cfg filter.Configuration, now t
 		prepared.pathMinObservationCount = cfg.Settings.PathMinObservationCount
 	}
 	prepared.setSolarSummaryMinutes(cfg.Settings.SolarSummaryMinutes, now)
-	warning, _ := applyNearbyLoginState(prepared, s.nearbyLoginWarning)
+	warning := ""
 	if policy != requested {
 		warning += fmt.Sprintf("Note: dedupe %s unavailable; effective dedupe is %s.\n", requested.label(), policy.label())
 	}

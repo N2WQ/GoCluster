@@ -24,7 +24,6 @@ func (s *Server) formatDedupeStatus(client *Client) string {
 		return "Readback failed: response exceeds 65,536 bytes.\r\n"
 	}
 	effective := s.effectiveDedupePolicyForClient(client)
-	nearby := client.nearbyFilterInEffect()
 	enabled := s.dedupeFastEnabled || s.dedupeMedEnabled || s.dedupeSlowEnabled
 	onOff := func(value bool) string {
 		if value {
@@ -35,7 +34,7 @@ func (s *Server) formatDedupeStatus(client *Client) string {
 	availability := fmt.Sprintf("(fast=%s med=%s slow=%s)", onOff(s.dedupeFastEnabled), onOff(s.dedupeMedEnabled), onOff(s.dedupeSlowEnabled))
 	for _, countOnly := range []bool{true, false} {
 		h := humanResponse{countOnly: countOnly}
-		if err := writeDedupeStatus(&h, configured, effective, nearby, enabled, s.dedupeFastEnabled, availability); err != nil {
+		if err := writeDedupeStatus(&h, configured, effective, enabled, availability); err != nil {
 			return "Readback failed: response exceeds 65,536 bytes.\r\n"
 		}
 		if !countOnly {
@@ -49,7 +48,7 @@ func (s *Server) formatDedupeStatus(client *Client) string {
 	return ""
 }
 
-func writeDedupeStatus(h *humanResponse, configured string, effective dedupePolicy, nearby, enabled, fastEnabled bool, availability string) error {
+func writeDedupeStatus(h *humanResponse, configured string, effective dedupePolicy, enabled bool, availability string) error {
 	choice := configured
 	if choice == "" {
 		choice = "DEFAULT"
@@ -61,9 +60,6 @@ func writeDedupeStatus(h *humanResponse, configured string, effective dedupePoli
 		suffix = fmt.Sprintf(" (%s) %s", dedupeKeyLabel(effective), availability)
 	} else if enabled {
 		prefix := "; effective "
-		if nearby {
-			prefix = "; NEARBY effective "
-		}
 		suffix = fmt.Sprintf("%s%s (%s)", prefix, effective.label(), dedupeKeyLabel(effective))
 	}
 	if simpleHumanValue(choice) && len(choice)+len(suffix)+8 <= humanReadbackWidth {
@@ -83,11 +79,8 @@ func writeDedupeStatus(h *humanResponse, configured string, effective dedupePoli
 		if err := h.line("        Configured choice is unrecognized"); err != nil {
 			return err
 		}
-	} else if configured != "" && !nearby {
+	} else if configured != "" {
 		return h.line("        Configured choice is unavailable on this server")
-	}
-	if nearby && !fastEnabled {
-		return h.line("        FAST is unavailable on this server")
 	}
 	return nil
 }

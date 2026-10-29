@@ -31,9 +31,9 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 			{"padded", " SLOW ", "SLOW", "", true, true, true, false, false},
 			{"whitespace", " \t ", "MED", "Configured choice is unrecognized", true, true, true, false, false},
 			{"unknown", "OTHER", "MED", "Configured choice is unrecognized", true, true, true, false, false},
-			{"nearby", "SLOW", "FAST", "", true, true, true, true, true},
+			{"nearby", "SLOW", "SLOW", "", true, true, true, true, true},
 			{"inactive-nearby", "SLOW", "SLOW", "", true, true, true, true, false},
-			{"nearby-fallback", "SLOW", "MED", "FAST is unavailable on this server", false, true, true, true, true},
+			{"nearby-fallback", "SLOW", "SLOW", "", false, true, true, true, true},
 			{"disabled", "SLOW", "FAST", "secondary duplicate suppression disabled", false, false, false, false, false},
 		} {
 			t.Run(string(dialect)+"/"+tc.name, func(t *testing.T) {
@@ -53,9 +53,11 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 				if c.recordProtected || !c.configurationInitialized || c.configuredSettings.DedupePolicy != tc.raw {
 					t.Fatal("marked record did not restore exact configuration")
 				}
-				c.filter.NearbyEnabled = tc.nearby
+				if tc.nearby {
+					c.filter = passRuleTestFilter(t, "NEARBY")
+				}
 				if tc.usable {
-					c.filter.NearbyUserFine, c.filter.NearbyUserCoarse = 1, 2
+					c.gridCell, c.gridCoarseCell = 1, 2
 				}
 				baseline, err := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Preset()
 				if err != nil {
@@ -85,6 +87,9 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 						t.Fatalf("read failed: %q, %v", show, err)
 					}
 					for _, output := range []string{show, settings} {
+						if strings.Contains(output, "NEARBY effective") || strings.Contains(output, "while NEARBY is active") {
+							t.Fatal("retired dedupe override remains")
+						}
 						assertHumanWire(t, output)
 						choice := tc.raw
 						if choice == "" {
@@ -107,10 +112,6 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 					if tc.name == "disabled" {
 						if strings.Contains(show, "effective FAST") || strings.Contains(show, "(grid2)") {
 							t.Fatal("disabled suppression displayed an active FAST sentinel")
-						}
-					} else if tc.usable {
-						if !strings.Contains(show, "NEARBY effective "+tc.effective) || !strings.Contains(settings, "effective "+tc.effective+" while NEARBY is active") {
-							t.Fatal("NEARBY runtime override absent")
 						}
 					} else if tc.raw == "" || tc.raw == "OTHER" || tc.raw == " \t " || tc.name == "unavailable" {
 						if !strings.Contains(show, "effective "+tc.effective) || !strings.Contains(settings, "effective "+tc.effective) {

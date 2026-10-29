@@ -19,11 +19,8 @@ func TestHumanPreferenceCandidateRawIsolation(t *testing.T) {
 	c := configurationTestClient(s, "W1ABC-1")
 	c.grid, c.gridDerived, c.noiseClass, c.pathMinObservationCount = "FN31", true, "URBAN", 40
 	c.gridCell, c.gridCoarseCell = 1, 2
-	c.filter = passRuleTestFilter(t, "BAND=20M AND DXCALL=K1* AND COMMENT=POTA")
+	c.filter = passRuleTestFilter(t, "NEARBY AND BAND=20M AND DXCALL=K1* AND COMMENT=POTA")
 	c.filter.AllowWWV = filter.DefaultBoolFalse.Pointer()
-	if err := c.filter.EnableNearby(1, 2); err != nil {
-		t.Fatal(err)
-	}
 	c.recordProtected, c.configurationRevision, c.historyGeneration = true, 7, 9
 	c.configurationDigest, c.historyDigest = [32]byte{1}, [32]byte{2}
 	processor := commands.NewProcessor(nil, nil, nil, nil, nil, nil)
@@ -45,20 +42,19 @@ func TestHumanPreferenceCandidateRawIsolation(t *testing.T) {
 	digest, digestSet, epoch, revision := c.configurationDigest, c.configurationDigestSet, c.configurationEpoch, c.configurationRevision
 	history, historyDigest, historySet, generation := c.historySearch, c.historyDigest, c.historyDigestSet, c.historyGeneration
 	state, tick, pointer := c.pathSnapshot(), c.solarNextSummaryAt, c.filter
-	before := filter.V5ConfigurationFromFilter(c.filter, settings).Clone()
+	before := filter.V6ConfigurationFromFilter(c.filter, settings).Clone()
 	programs := c.filter.PreparedRules()
 	staged := newHumanPreferenceCandidate(c)
 	if staged.filter == c.filter || staged.done != nil || staged.conn != nil || staged.reader != nil || staged.writer != nil || staged.controlChan != nil || staged.spotChan != nil || staged.historySearch != nil || staged.recentIPs != nil || staged.presetReference != nil {
 		t.Fatal("candidate copied writable preferences or connection/lifecycle ownership")
 	}
-	if staged.configuredSettings.Grid != "" || staged.grid != "FN31" || !staged.gridDerived || staged.getDedupePolicy() != dedupePolicySlow || staged.filter.PreparedRules() != programs || staged.filter.NearbyUserFine != 1 || staged.filter.NearbyUserCoarse != 2 {
+	if staged.configuredSettings.Grid != "" || staged.grid != "FN31" || !staged.gridDerived || staged.getDedupePolicy() != dedupePolicySlow || staged.filter.PreparedRules() != programs || staged.gridCell != 1 || staged.gridCoarseCell != 2 {
 		t.Fatal("candidate lost configured/effective or NEARBY runtime distinction")
 	}
 	*staged.filter.AllowWWV = true
 	*staged.filter = *passRuleTestFilter(t, "MODE=FT8")
 	staged.grid, staged.configuredSettings.Grid = "CHANGED", "CHANGED"
-	staged.filter.DisableNearby()
-	if !before.Equal(filter.V5ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.filter != pointer || c.filter.PreparedRules() != programs || !c.filter.NearbyActive() || c.pathSnapshot() != state || c.solarNextSummaryAt != tick {
+	if !before.Equal(filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)) || c.filter != pointer || c.filter.PreparedRules() != programs || !c.filter.MatchSnapshot().NearbyFilterActive() || c.pathSnapshot() != state || c.solarNextSummaryAt != tick {
 		t.Fatal("discarded candidate changed live preferences/runtime")
 	}
 	if c.configuredSettings != settings || c.configurationInitialized != initialized || c.configurationDigest != digest || c.configurationDigestSet != digestSet || c.configurationEpoch != epoch || c.configurationRevision != revision || c.historySearch != history || c.historyDigest != historyDigest || c.historyDigestSet != historySet || c.historyGeneration != generation || c.readPauseEpoch != 8 || !c.readPausePending.Load() || c.getDiagMode() != diagModeSource || !c.recordProtected {
@@ -83,7 +79,7 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 			if err := c.saveFilter(); err != nil {
 				t.Fatal(err)
 			}
-			before := c.captureV5Configuration()
+			before := c.captureV6Configuration()
 			path := filepath.Join(filter.UserDataDir, "W1ABC-1.yaml")
 			disk, err := os.ReadFile(path)
 			if err != nil {
@@ -110,7 +106,7 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 			}); !handled || attempts != 0 {
 				t.Fatal("faulty refusing handler saved its partial mutation")
 			}
-			if !before.Equal(c.captureV5Configuration()) {
+			if !before.Equal(c.captureV6Configuration()) {
 				t.Fatal("refused stage changed live selections")
 			}
 			after, err := os.ReadFile(path)

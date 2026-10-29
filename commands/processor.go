@@ -539,7 +539,6 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		[]string{
 			"Use exactly 4 or 6 characters, for example FN31 or FN31PR.",
 			"Unavailable grid mapping is reported separately from invalid syntax.",
-			"When NEARBY is on, both fine and coarse grid mappings must be usable.",
 		},
 	)
 	add("SET GRID", "SET GRID - Set your grid (4 or 6 characters).", setGridLines)
@@ -568,21 +567,21 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("SET PATHSAMPLES", "SET PATHSAMPLES - Set path sample floor.", setPathSamplesLines)
 
-	passNearbyLines := helpEntryLines(
-		"PASS NEARBY - Toggle nearby filtering.",
-		[]string{"PASS NEARBY ON|OFF"},
-		[]string{"REJECT NEARBY"},
+	nearbyLines := helpEntryLines(
+		"NEARBY - Boolean proximity predicate.",
+		[]string{"PASS RULE 0 NEARBY", "PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)"},
+		[]string{"PASS NEARBY", "REJECT NEARBY"},
 		[]string{
-			"Requires SET GRID. Uses H3 L1 on 160/80/60m and L2 on all other bands.",
-			"While usable NEARBY is active, spot delivery uses the least-suppressive available dedupe lane.",
-			"SHOW DEDUPE reports when NEARBY changes the effective dedupe lane.",
-			"NEARBY omits only geography leaves from effective Boolean expressions.",
-			"Emptied rules are ignored; non-geography conditions survive and full rules stay saved.",
-			"Rule edits need no usable GRID; geometry may remain unavailable.",
-			"NEARBY state persists across sessions and shows a login warning when active.",
+			"See HELP RULE for the complete Boolean language.",
+			"Either DX or DE may match your same H3 cell: coarse on 160/80/60m, fine otherwise.",
+			"No operator or value follows NEARBY. NOT NEARBY is also valid.",
+			"Unavailable required location makes NEARBY false; NOT then makes it true.",
+			"NEARBY does not remove geography conditions or change SET DEDUPE.",
+			"Rule edits need no usable GRID. Other OR branches can still match.",
+			"The old PASS/REJECT NEARBY ON/OFF commands are refused; use numbered rules.",
 		},
 	)
-	add("PASS NEARBY", "PASS NEARBY - Toggle nearby filtering.", passNearbyLines)
+	add("NEARBY", "NEARBY - Boolean proximity predicate.", nearbyLines)
 
 	setSolarLines := helpEntryLines(
 		"SET SOLAR - Opt into solar summaries.",
@@ -760,7 +759,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SET GRID",
 			"SET NOISE",
 			"SET PATHSAMPLES",
-			"PASS NEARBY",
+			"NEARBY",
 			"SHOW/FILTER",
 			"SH/FILTER",
 			"RESET FILTER",
@@ -868,7 +867,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SET GRID",
 			"SET NOISE",
 			"SET PATHSAMPLES",
-			"PASS NEARBY",
+			"NEARBY",
 			"SHOW FILTER",
 			"PASS",
 			"REJECT",
@@ -1052,8 +1051,8 @@ func dedupeHelpNotes(cfg DedupeHelpConfig, includeFallbackNote bool) []string {
 		notes := []string{
 			"FAST = short window; MED = medium window; SLOW = long window.",
 			"FAST/MED use 2-character grid squares; SLOW uses CQ zones.",
-			"Usable NEARBY temporarily uses the least-suppressive available lane without changing SET DEDUPE.",
-			"SHOW DEDUPE reports the temporary lane when it differs from the saved policy.",
+			"NEARBY rules never change your saved or effective duplicate-suppression policy.",
+			"SHOW DEDUPE reports the ordinary resolved policy and any unavailable choice.",
 		}
 		if includeFallbackNote {
 			notes = append(notes, "If a policy is disabled, the nearest available is chosen.")
@@ -1067,8 +1066,8 @@ func dedupeHelpNotes(cfg DedupeHelpConfig, includeFallbackNote bool) []string {
 		formatDedupePolicyNote("FAST", cfg.FastWindowSeconds, "DE grid2"),
 		formatDedupePolicyNote("MED", cfg.MedWindowSeconds, "DE grid2"),
 		formatDedupePolicyNote("SLOW", cfg.SlowWindowSeconds, "DE CQ zone"),
-		"Usable NEARBY temporarily uses the least-suppressive available lane without changing SET DEDUPE.",
-		"SHOW DEDUPE reports the temporary lane when it differs from the saved policy.",
+		"NEARBY rules never change your saved or effective duplicate-suppression policy.",
+		"SHOW DEDUPE reports the ordinary resolved policy and any unavailable choice.",
 	}
 	if includeFallbackNote {
 		notes = append(notes, "If a policy is disabled, the nearest available is chosen.")

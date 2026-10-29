@@ -20,32 +20,28 @@ func TestResetFilterRetainsUserGridAndRetiresNearbyBothDialects(t *testing.T) {
 		c.dialect, c.grid, c.gridCell, c.gridCoarseCell = dialect, "FN31", fine, coarse
 		c.configuredSettings = filter.SettingsConfiguration{Dialect: string(dialect), Grid: "FN31", DedupePolicy: "FAST"}
 		c.configurationInitialized = true
-		c.filter = passRuleTestFilter(t, "DXCONT=EU")
+		c.filter = passRuleTestFilter(t, "NEARBY AND DXCONT=EU")
 		candidate := spot.NewSpot("K1ABC", "VE3XYZ", 14030, "CW")
 		candidate.DXMetadata.Continent, candidate.DEMetadata.Continent = "NA", "NA"
 		candidate.DXMetadata.Grid, candidate.DEMetadata.Grid = "EM10", "EM10"
 		if c.filter.Matches(candidate) {
 			t.Fatal("restrictive before-control did not hide candidate")
 		}
-		if err := c.filter.EnableNearby(fine, coarse); err != nil {
-			t.Fatal(err)
-		}
 		pointer := c.filter
 		programs := c.filter.PreparedRules()
 		command := "RESET FILTER"
 		response, handled := newFilterCommandEngine().Handle(c, command)
-		if !handled || !strings.Contains(response, "NEARBY OFF") || !c.filter.Matches(candidate) ||
+		if !handled || !strings.Contains(response, "cleared") || !c.filter.Matches(candidate) ||
 			len(c.filter.PreparedRules().Definitions()) != 0 {
 			t.Fatalf("%s failed effective reset: %q", command, response)
 		}
 		if c.filter != pointer || c.grid != "FN31" || c.gridCell != fine || c.gridCoarseCell != coarse ||
-			c.filter.NearbyActive() || c.filter.NearbyUserFine != pathreliability.InvalidCell || c.filter.NearbyUserCoarse != pathreliability.InvalidCell ||
-			programs.Definitions()[0].Expr != "DXCONT=EU" {
+			programs.Definitions()[0].Expr != "NEARBY AND DXCONT=EU" {
 			t.Fatal("RESET changed ownership/user cells/frozen rules or retained NEARBY runtime state")
 		}
 		// Inspect command persistence before any disconnect or autosave.
 		record, err := filter.LoadUserRecord(c.callsign)
-		if err != nil || record.Grid != "FN31" || record.NearbyEnabled || !record.Matches(candidate) {
+		if err != nil || record.Grid != "FN31" || !record.Matches(candidate) {
 			t.Fatalf("command reset not immediately durable: record=%+v err=%v", record, err)
 		}
 	}

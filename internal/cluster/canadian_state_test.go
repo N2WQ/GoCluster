@@ -230,7 +230,7 @@ func TestCanadianResolverDeliveryRetainsRecordedHistory(t *testing.T) {
 					t.Fatalf("replacement DE province was not active: %+v", current)
 				}
 				canadianClusterAwaitArchive(t, writer)
-				_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+				_, f, err := filter.PrepareV6Configuration(filter.V6Configuration{Filters: filter.V6FilterConfiguration{
 					Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXSTATE=BC AND DESTATE=QC"}},
 				}})
 				if err != nil {
@@ -240,7 +240,7 @@ func TestCanadianResolverDeliveryRetainsRecordedHistory(t *testing.T) {
 				if err != nil || len(page.Spots) != 1 || page.Spots[0].DXMetadata.State != "BC" || page.Spots[0].DEMetadata.State != "QC" {
 					t.Fatalf("history replaced recorded provinces: %v %+v", err, page.Spots)
 				}
-				_, f, err = filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+				_, f, err = filter.PrepareV6Configuration(filter.V6Configuration{Filters: filter.V6FilterConfiguration{
 					Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXSTATE=SK AND DESTATE=QC"}},
 				}})
 				if err != nil {

@@ -39,12 +39,12 @@ func TestMachineEchoFullSessionNativeAndZiutek(t *testing.T) {
 				t.Fatal("fixture did not establish an active finite pause")
 			}
 			response := machineEchoCoverageRoundTrip(t, conn, reader,
-				"get yaml settings schema 5 id Noise-Ab1\r\n", "GET yaml settings schema 5 id Noise-Ab1\r\n")
+				"get yaml settings schema 6 id Noise-Ab1\r\n", "GET yaml settings schema 6 id Noise-Ab1\r\n")
 			if !strings.Contains(response, "request_id: Noise-Ab1\r\n") || machineEchoCoveragePause(client) != pause {
 				t.Fatalf("GET lost case-preserved correlation or changed pause: %q", response)
 			}
 			revision := machineTestRevision(t, response)
-			body := fmt.Sprintf("patch yaml settings\r\n---\r\nschema_version: 5\r\nrequest_id: Echo-Edit1\r\nif_revision: %s\r\nconfiguration:\r\n  noise_class: URBAN\r\n...\r\n", revision)
+			body := fmt.Sprintf("patch yaml settings\r\n---\r\nschema_version: 6\r\nrequest_id: Echo-Edit1\r\nif_revision: %s\r\nconfiguration:\r\n  noise_class: URBAN\r\n...\r\n", revision)
 			response = machineEchoCoverageRoundTrip(t, conn, reader, body, "PATCH yaml settings\r\n")
 			// An echoed request is itself a framed document. These literal reply
 			// fields distinguish the acknowledgement from that false-green frame.
@@ -55,13 +55,13 @@ func TestMachineEchoFullSessionNativeAndZiutek(t *testing.T) {
 			if newRevision == revision || machineEchoCoveragePause(client) != pause {
 				t.Fatal("successful YAML edit failed its revision or pause contract")
 			}
-			invalid := fmt.Sprintf("patch yaml settings\r\n---\r\nschema_version: 5\r\nrequest_id: Echo-Bad1\r\nif_revision: %s\r\nconfiguration: {noise_class: true}\r\n...\r\n", newRevision)
+			invalid := fmt.Sprintf("patch yaml settings\r\n---\r\nschema_version: 6\r\nrequest_id: Echo-Bad1\r\nif_revision: %s\r\nconfiguration: {noise_class: true}\r\n...\r\n", newRevision)
 			response = machineEchoCoverageRoundTrip(t, conn, reader, invalid, "PATCH yaml settings\r\n")
 			if !strings.Contains(response, "request_id: Echo-Bad1\r\n") || !strings.Contains(response, "code: invalid_document\r\n") || strings.Contains(response, "noise_class: true") || machineEchoCoveragePause(client) != pause {
 				t.Fatalf("received invalid body was echoed or changed pause: %q", response)
 			}
 			response = machineEchoCoverageRoundTrip(t, conn, reader,
-				"get yaml settings schema 5 id Echo-After1\r\n", "GET yaml settings schema 5 id Echo-After1\r\n")
+				"get yaml settings schema 6 id Echo-After1\r\n", "GET yaml settings schema 6 id Echo-After1\r\n")
 			if !strings.Contains(response, "request_id: Echo-After1\r\n") || !strings.Contains(response, "noise_class: URBAN\r\n") || machineTestRevision(t, response) != newRevision || machineEchoCoveragePause(client) != pause {
 				t.Fatalf("echo-enabled session did not recover unchanged after invalid YAML: %q", response)
 			}

@@ -28,8 +28,8 @@ type RuleDefinition struct {
 }
 
 type preparedRule struct {
-	definition     RuleDefinition
-	normal, nearby *compiledRule
+	definition RuleDefinition
+	program    *compiledRule
 }
 
 // PreparedRuleSet owns at most ten sorted slots. Programs and their operands
@@ -63,8 +63,8 @@ func PrepareRuleSet(definitions []RuleDefinition) (*PreparedRuleSet, error) {
 		if err != nil {
 			return nil, err
 		}
-		atoms += rule.normal.atomCount
-		values += rule.normal.valueCount
+		atoms += rule.program.atomCount
+		values += rule.program.valueCount
 		if err := validateRuleTotals(atoms, values); err != nil {
 			return nil, err
 		}
@@ -109,7 +109,7 @@ func publishRuleSet(rules []preparedRule) *PreparedRuleSet {
 }
 
 // Definitions returns a detached, slot-sorted slice of full canonical rules,
-// including geography even when the caller is currently using NEARBY.
+// without a separate projection or user-specific representation.
 func (s *PreparedRuleSet) Definitions() []RuleDefinition {
 	if s == nil {
 		return nil
@@ -151,13 +151,13 @@ func (s *PreparedRuleSet) WithRuleDXCCResolver(definition RuleDefinition, resolv
 	if count > MaxRuleSlots {
 		return nil, fmt.Errorf("rules exceed slot limit %d", MaxRuleSlots)
 	}
-	atoms, values := rule.normal.atomCount, rule.normal.valueCount
+	atoms, values := rule.program.atomCount, rule.program.valueCount
 	for i := range previous {
 		if replace && i == index {
 			continue
 		}
-		atoms += previous[i].normal.atomCount
-		values += previous[i].normal.valueCount
+		atoms += previous[i].program.atomCount
+		values += previous[i].program.valueCount
 	}
 	if err := validateRuleTotals(atoms, values); err != nil {
 		return nil, err
@@ -193,55 +193,73 @@ func (s *PreparedRuleSet) WithoutRule(slot int) (*PreparedRuleSet, error) {
 	return publishRuleSet(rules), nil
 }
 
-func (r *preparedRule) program(nearby bool) *compiledRule {
-	if nearby {
-		return r.nearby
-	}
-	return r.normal
-}
-
-// Matches evaluates personal rules only. The caller still owns NEARBY geometry
-// and non-rule controls. Absent projected rules do not contribute a PASS or veto.
-func (s *PreparedRuleSet) Matches(sp *spot.Spot, pathClass string, nearby bool) bool {
+// Matches evaluates personal rules only. One lazy view caches proximity and
+// normalized fields for this spot/user across every PASS and REJECT rule.
+func (s *PreparedRuleSet) Matches(sp *spot.Spot, context EvaluationContext) bool {
 	if sp == nil {
 		return false
 	}
 	if s == nil {
 		return true
 	}
-	view := newRuleView(sp, pathClass)
+	view := newRuleView(sp, context.PathClass)
+	view.fine, view.coarse = context.FineCell, context.CoarseCell
 	for i := range s.rules {
 		rule := &s.rules[i]
-		if rule.definition.Action == RuleReject {
-			if program := rule.program(nearby); program != nil && program.evaluate(&view, program.root) {
-				return false
-			}
+		if rule.definition.Action == RuleReject && rule.program.evaluate(&view, rule.program.root) {
+			return false
 		}
 	}
 	hasPass := false
 	for i := range s.rules {
 		rule := &s.rules[i]
 		if rule.definition.Action == RulePass {
-			if program := rule.program(nearby); program != nil {
-				hasPass = true
-				if program.evaluate(&view, program.root) {
-					return true
-				}
+			hasPass = true
+			if rule.program.evaluate(&view, rule.program.root) {
+				return true
 			}
 		}
 	}
 	return !hasPass
 }
 
-func (s *PreparedRuleSet) NeedsPath(nearby bool) bool {
+func (s *PreparedRuleSet) NeedsPath() bool {
 	if s != nil {
 		for i := range s.rules {
-			if program := s.rules[i].program(nearby); program != nil && program.needsPath {
+			if s.rules[i].program.needsPath {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func (s *PreparedRuleSet) NeedsNearby() bool {
+	if s != nil {
+		for i := range s.rules {
+			if s.rules[i].program.needsNearby {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func prepareRule(definition RuleDefinition, resolve func(string) (int, error)) (preparedRule, error) {
+	program, err := compileRuleWithDXCCResolver(definition.Expr, resolve)
+	if err != nil {
+		return preparedRule{}, fmt.Errorf("rule slot %d: %w", definition.Slot, err)
+	}
+	definition.Expr = program.canonical
+	if definition.Action == RulePass {
+		definition.Action = RulePass
+	} else {
+		definition.Action = RuleReject
+	}
+	// Only admission needs syntax; published programs own a single bounded node
+	// vector and detached operands, never uploaded trees or per-user state.
+	program.syntax = nil
+	return preparedRule{definition: definition, program: program}, nil
 }
 
 func (s *PreparedRuleSet) Equal(other *PreparedRuleSet) bool {

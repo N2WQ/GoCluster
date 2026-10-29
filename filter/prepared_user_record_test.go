@@ -222,7 +222,7 @@ func TestPreparedRecordValidationBoundaries(t *testing.T) {
 		t.Fatal("preference preparation added input preset-version validation")
 	}
 	path := userRecordPath("N2WQ-1")
-	for _, raw := range []string{"configuration_version: 5\n", "[malformed"} {
+	for _, raw := range []string{"configuration_version: 6\n", "[malformed"} {
 		if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
 			t.Fatal(err)
 		}

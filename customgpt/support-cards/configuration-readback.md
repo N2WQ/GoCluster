@@ -1,6 +1,6 @@
 ---
 title: "Support Card: Configuration Readbacks And Client YAML"
-description: Support boundaries for human configuration readbacks and schema-5 requests.
+description: Support boundaries for human configuration readbacks and schema-6 requests.
 ---
 
 ## Match
@@ -44,8 +44,8 @@ command/error artifact that distinguishes the next step.
   The shipped starting selection now includes both sources. Existing profiles
   and presets are not rewritten; source-less saved PASS rules now admit matching
   skimmer reports too. Neither PASS nor REJECT adds an implicit source condition.
-  `RESET FILTER RULE <0..9|ALL>` clears selected slots, preserving NEARBY;
-  `RESET FILTER` clears all rules and turns NEARBY OFF. Neither reinstalls
+  `RESET FILTER RULE <0..9|ALL>` clears selected slots;
+  `RESET FILTER` clears all rules, including their NEARBY terms. Neither reinstalls
   defaults nor resets separate controls/settings. Old category, MODE-delta,
   MINSNR, COMMENT-list, DXBM and NOFILTER mutations are refused, not translated.
   There are no AR-style rule aliases or translators.
@@ -58,7 +58,7 @@ command/error artifact that distinguishes the next step.
 
 - BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate controls,
   not expression fields. Shared PASS/REJECT switches take no value or ALL;
-  NEARBY follows explicit ON/OFF with either verb. CC SET/FILTER and
+  NEARBY is a bare expression predicate; retired toggle forms are refused. CC SET/FILTER and
   UNSET/FILTER retain controls only. Retrieve current
   [commands HELP ownership](../../commands/README.md#help-source-of-truth)
   for exact control/alias grammar. The category mechanics in
@@ -84,7 +84,7 @@ command/error artifact that distinguishes the next step.
   and exact canonical CTY labels, not callsign lookups. `DXDXCC<>K` normalizes
   to `DXDXCC<>291`; `DXDXCC=IT9` selects entity 248 while `DXCALL=IT9*` is a
   literal callsign-prefix pattern. Labels need CTY; unknown/conflicting labels
-  refuse the whole edit even with NEARBY ON. One snapshot covers the request.
+  refuse the whole edit, including rules with NEARBY. One snapshot covers the request.
   Readbacks and saved rules are numeric; native loaders remain numeric-only.
   Numeric-only requests and saved-rule reload need no CTY. SHOW DX/MYDX retain CTY-label precedence and numeric
   count arguments; SHOW DXCC lookup is unchanged. Route to
@@ -101,7 +101,7 @@ command/error artifact that distinguishes the next step.
   for boundary and checker details; do not infer production archive/model quality.
 
 - `SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact
-  saved/effective numbered rules and individual controls. `SHOW FILTER FULL`
+  canonical numbered rules and individual controls. `SHOW FILTER FULL`
   adds geometry detail and preparation counts. SHOW/FILTER and SH/FILTER retain RULE/FULL readback aliases;
   category views are unsupported. SHOW SETTINGS separates configured selections,
   effective choices and session status; both views show the preset.
@@ -125,35 +125,29 @@ command/error artifact that distinguishes the next step.
   Expressions instead double literal quotes and keep backslashes literal.
   Every complete response must fit 65,536 bytes or return an explicit size
   error. Human input keeps the configured limit, 128 bytes by default;
-  use schema 5 YAML for longer expressions.
+  use schema 6 YAML for longer expressions.
 - Effective path minimums come from restored runtime state and loaded server
   configuration. With station/beacon floors 21/11, reconnect leaves a saved
   personal minimum of 15 inactive, so effective values remain 21/11. An active
   personal minimum of 30 gives 30/30. Explain disabled/unavailable prediction.
-- NEARBY distinguishes enabled from usable. ON structurally removes only
-  geographic leaves, collapses surviving branches and ignores entirely emptied
-  rules; it does not substitute truth values. Full saved expressions remain
-  editable. OFF uses the latest full expressions, not a restoration snapshot.
-  Either endpoint can satisfy H3 geometry; 160m/80m/60m use the coarse cell,
-  other supported bands the fine cell. Enabling or changing GRID while ON
-  requires usable geometry. See [NEARBY](../../telnet/README.md#grid-noise-and-nearby).
-  SHOW SETTINGS preserves exact saved GRID bytes, using quoted ASCII pieces
-  when needed rather than trimming or repairing the retained value.
-  Escaping an unusual saved grid is not itself a response-size failure;
-  the complete rendered response still has to fit its byte budget.
-- Approved recovery requires human and YAML rule-only edits while already ON
-  with unusable restored GRID/cells, provided every other saved selection is
-  unchanged. Retain GRID/ON; both cells unavailable blocks ordinary spots until
-  repaired or OFF. Partly usable geometry keeps its existing band-specific behavior.
-  Preserve live SELF's enabled-only bypass and command/history's independent
-  self exception; both honor TOXIC, and explicit history clauses remain mandatory.
-  The YAML exception waives only mapping availability for the unchanged saved
-  GRID. Malformed GRID syntax and other invalid settings still fail. Existing
-  human control/settings admission is unchanged. The joined fresh-child
-  `TestGridMappingAvailability` fixture covers explicit GRID recovery through
-  PATCH, PUT and VALIDATE.
-  Route to the [recovery contract](../../docs/domain-contract.md#nearby-projection-and-recovery);
-  do not weaken selections as a workaround.
+- NEARBY is a zero-operand predicate with ordinary NOT/AND/OR logic. It does not
+  suppress geography, change SOURCE or choose dedupe. Either endpoint may share
+  the user's H3 cell; 160m/80m/60m use coarse resolution and other supported bands
+  fine resolution. The helper is preserved exactly: empty/??? after fallback
+  makes the band unavailable; unsupported nonempty labels retain fine behavior.
+  Missing required location or no matching endpoint makes NEARBY false.
+  NOT NEARBY includes unknown proximity, not proof of distance. Other OR branches
+  remain usable. See [NEARBY](../../telnet/README.md#grid-noise-and-nearby).
+- GRID/provenance/cells have one client-configuration owner. Unrelated edits
+  preserve location without repeating callsign lookup. PATH/display enablement
+  does not control NEARBY. No NEARBY/PATH demand means no new capture mapping.
+  A supplied rules list can be edited through PUT/PATCH/VALIDATE with all other
+  settings/controls unchanged even if GRID is unmappable. Only mapping is waived;
+  syntax and every other setting check remain. Human rule edits need no location.
+  Preserve SELF/history exceptions, TOXIC and mandatory explicit history clauses.
+  Route to [recovery](../../docs/domain-contract.md#nearby-predicate-and-recovery)
+  rather than weakening rules. TSR-0109's old independent cell-pair contract is
+  retired by [ADR-0329](../../docs/decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 - Human readbacks, including size errors, suppress spots before preparation,
   through queueing/delivery and for the full interval after successful write
   and flush. They ignore zero row thresholds and use 30 seconds for a zero
@@ -165,14 +159,14 @@ command/error artifact that distinguishes the next step.
   Its status and usage replies bypass automatic pause. SH HOLD and slash forms
   remain unsupported, and TAB remains invalid human wire input. Suppression
   counts describe eligible live traffic, not a command effect or cluster total.
-- Every machine GET requires explicit `SCHEMA 5`, including SETTINGS and
-  CAPABILITIES: `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 5 [ID <id>]`.
+- Every machine GET requires explicit `SCHEMA 6`, including SETTINGS and
+  CAPABILITIES: `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 6 [ID <id>]`.
   Machine success/errors have no pause-state effects or human footer. Existing
   suppressed counts may still increase from live traffic during a prior pause.
 - GET separates exact writable configuration from read-only status. Preserve
   explicit false, zero, empty values/collections and DEFAULT selections. GET IDs
   are 1-32 ASCII letters/digits/hyphens and preserve case; CAPABILITIES is read-only.
-- PUT/PATCH headers have no schema suffix; bodies require `schema_version: 5`.
+- PUT/PATCH headers have no schema suffix; bodies require `schema_version: 6`.
   PUT requires a complete FILTER, SETTINGS or CONFIG resource. PATCH retains
   omissions; a supplied `rules` list replaces all slots, and `[]` clears it.
   It is not a per-slot merge. VALIDATE YAML CONFIG checks a complete proposal
@@ -183,16 +177,19 @@ command/error artifact that distinguishes the next step.
   for the strict writable envelope, field sets and examples. Duplicate
   keys/slots, unknown/read-only fields, nulls, anchors, aliases, merges,
   custom tags and extra documents fail unchanged.
-- `GET YAML CAPABILITIES SCHEMA 5` advertises `supported_schema_versions: [5]`,
+- `GET YAML CAPABILITIES SCHEMA 6` advertises `supported_schema_versions: [6]`,
   rule vocabulary/operators and bounds, not the old settings-availability
   matrix. Runtime settings validation and effective node config remain
-  authoritative. Rule status includes configured/effective/suspended entries
-  and full/nearby/retained counts.
+  authoritative. NEARBY is advertised in rule_predicates with operand_count 0
+  and operators []; comparison fields remain separate. Rule status contains
+  configured_count, one program count mapping, and canonical slot/action/expr
+  entries. Retired nearby_enabled/nearby_active/projected/suspended fields are absent.
+  Even a false nearby_enabled proposal is refused.
 - PUT/PATCH use GET's matching revision as if_revision. GET again after reconnect,
   restart or conflict. Validation/persistence failure leaves live and saved
   configuration unchanged; unavailable choices are rejected. Even an unchanged
   PUT persists before success, repairing failed human autosave without resetting
-  solar scheduling, GRID/NEARBY state, diagnostics or pause.
+  solar scheduling, GRID-owned state, diagnostics or pause.
 - Every new readback's 65,536-byte final budget includes CRLF, markers and human
   footers. Complete output or an explicit error replaces silent truncation.
   Machine proposals must fit a complete CONFIG readback with reserved metadata;
@@ -210,7 +207,7 @@ command/error artifact that distinguishes the next step.
   successful restoration instead continues with the restored preferences.
 - Preset modified compares current preferences with the retained applied/saved
   reference for the full callsign/SSID. Reversing changes clears it; PAUSE,
-  diagnostics and temporary NEARBY dedupe do not affect it. Library overwrite or
+  and diagnostics do not affect it. Library overwrite or
   deletion does not change the reference. Partial SAVE retains the previous
   association/reference live and on disk, including subsequent ordinary saves.
 
@@ -242,8 +239,8 @@ command/error artifact that distinguishes the next step.
 DXSTATE/DESTATE compare observed canonical metadata against 60 FCC mailing codes
 and 13 Canadian province/territory codes. Missing/invalid State is unknown:
 `DXSTATE<>CA` is false, while `NOT DXSTATE=CA` is true. A reject-only set may
-admit unknown State because no rejection matched. NEARBY projects State atoms
-structurally; full rules remain editable. Registered address does not establish
+admit unknown State because no rejection matched. NEARBY combines with State
+through ordinary Boolean logic; it does not suppress geography. Registered address does not establish
 operating location; do not infer it from a portable prefix, grid or call district.
 Enrichment remains active when `fcc_uls.enabled` is false: that flag disables
 license rejection only. Missing/unavailable state stays empty.
@@ -253,15 +250,18 @@ exemption; archived empty State stays empty after refresh. See the
 [State filter documentation](../../telnet/README.md#us-state-and-canadian-province-filters)
 for the refresh interruption and its measured local duration.
 
-Machine schema 5 is explicit on every GET. Native records require explicit
-`configuration_version: 5` and nested `configuration.filters/settings`.
-Named library entries and applied baselines each require version 5; a library
+Machine schema 6 is explicit on every GET. Native records require explicit
+`configuration_version: 6` and nested `configuration.filters/settings`.
+Named library entries and applied baselines each require version 6; a library
 has a `presets` mapping, not a top-level version or machine envelope.
-Pure v5 decoding refuses older formats. Login separately upgrades recognized
-unversioned/version 1–4 profiles once, preserving settings, separate controls
+Pure v6 decoding refuses older formats. Login separately upgrades recognized
+unversioned/version 1-5 profiles once, preserving settings, separate controls
 and metadata while installing the same configured mode/source rule as a new account.
-Old preset entries/associations are cleared; existing v5 presets survive.
-Original backups precede replacement. Explicit disk zero, future, malformed
+Old preset entries/associations are cleared; existing v6 presets survive.
+Original .pre-v6.bak backups precede replacement; prior .pre-v5.bak files are
+untouched. Only initial authoritative profile absence permits new-user creation.
+Library replacement precedes profile replacement with truthful partial outcomes
+and safe retry, preserving newly created v6 presets. Explicit disk zero, future, malformed
 and unsafe inputs remain protected. No version-marker edit or old-rule
 translation is supported. See [ADR-0318](../../docs/decisions/ADR-0318-old-profile-reset-upgrade.md).
 Stop writers before backup/repair/restore; one writer process owns the data
@@ -283,7 +283,7 @@ FCC database. Route storage details to
 - [data/config/README.md effective node YAML](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md)
 - [Boolean personal-rule contract](../../docs/domain-contract.md#boolean-personal-rules)
 
-The Boolean/v5 routes describe the current local MVP, not production deployment
+The Boolean/v6 routes describe the current local MVP, not production deployment
 or completed private local-cluster acceptance. That acceptance remains pending. New source
 owners named here are local checkout paths, not claims of publication on main.
 
@@ -293,7 +293,7 @@ The same DXSTATE/DESTATE fields accept all 13 province/territory codes alongside
 the 60 FCC codes. Base-call CTY selects source, including foreign portable calls.
 Events use inclusive UTC dates; a prefix match means callsign plausibility,
 without proving eligibility. History uses stored State. Archive version 6 is
-separate from native configuration v5 and machine schema 5. For source/failure
+separate from native configuration v6 and machine schema 6. For source/failure
 details, see [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md)
 and [configuration](../../data/config/README.md#fcc-and-ised-reference-data-and-enforcement);
 any pre-v5 category/schema mechanics in the ADR are historical.
@@ -318,14 +318,15 @@ for saved atoms such as `COMMENT="CQ ""DX"""`. Each operand is 1–64 printable
 ASCII bytes with a non-space byte; matching is an ASCII case-insensitive literal
 substring, not regex/glob/word matching. Preserve case, punctuation and spaces;
 expression quotes double literal quotes, and backslash is literal.
-Use SHOW FILTER RULE or `GET YAML FILTER SCHEMA 5`. Edit/clear the whole slot,
+Use SHOW FILTER RULE or `GET YAML FILTER SCHEMA 6`. Edit/clear the whole slot,
 not a COMMENT list. Saved/effective readbacks consume retained immutable
 programs; no phrase-list compatibility is supported.
 
 Rule budgets are ten slots, 1,024 raw and canonical bytes per expression,
-32 atoms/128 nodes/depth 8 per rule, 32 values per atom and 128 atoms/512 values
+32 atoms/128 nodes/depth 8 per rule, 32 values per comparison atom and 128 atoms/512 values
 total. Depth counts parentheses/NOT, not flat AND/OR height. These do not
-replace human-line, machine, stored-byte or decode-work bounds; retrieve
+replace human-line, machine, stored-byte or decode-work bounds. NEARBY consumes
+one atom/node and zero values; retrieve
 [the primary limits](../../telnet/README.md#filters) before diagnosing refusal.
 
 SHOW DX/MYDX accepts COMMENT after selector/count options. Its phrase is mandatory

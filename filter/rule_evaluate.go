@@ -4,11 +4,11 @@ import "dxcluster/filter/expr"
 
 // evaluate consumes only prepared nodes/operands. Boolean operators retain Go's
 // left-to-right short circuit, including around unknown comparisons and COMMENT.
-// root is explicit so the later planner can retain syntax-indexed projections.
+// root is explicit; every prepared node belongs to the single canonical rule.
 func (p *compiledRule) evaluate(view *ruleView, root int) bool {
 	node := &p.nodes[root]
 	switch node.kind {
-	case expr.AtomKind:
+	case expr.AtomKind, expr.PredicateKind:
 		return node.predicate.matches(view)
 	case expr.NotKind:
 		return !p.evaluate(view, node.left)
@@ -23,6 +23,8 @@ func (p *compiledRule) evaluate(view *ruleView, root int) bool {
 
 func (p *rulePredicate) matches(view *ruleView) bool {
 	switch p.field {
+	case ruleFieldNearby:
+		return view.nearbyValue()
 	case ruleFieldSNR, ruleFieldDXZone, ruleFieldDEZone, ruleFieldDXDXCC, ruleFieldDEDXCC:
 		number, known := view.integerValue(p.field)
 		if !known {

@@ -136,7 +136,7 @@ func TestSessionCeilingListenerReplacementAndRejectedProfile(t *testing.T) {
 		if err != nil || !bytes.Equal(got, want) {
 			t.Fatalf("capacity rejection changed %s: %v", path, err)
 		}
-		if _, err := os.Stat(path + ".pre-v5.bak"); !errors.Is(err, os.ErrNotExist) {
+		if _, err := os.Stat(path + ".pre-v6.bak"); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("capacity rejection created backup for %s: %v", path, err)
 		}
 	}

@@ -54,7 +54,6 @@ telnet:
     Callsign cannot be empty. Please try again.
   login_invalid_message: |
     Invalid call. Please try again.
-  nearby_login_warning: "NEARBY is ON. Geographic rule conditions are suspended." # Post-login warning when saved NEARBY is active.
   input_too_long_message: |
     <CONTEXT> input is too long (maximum <MAX_LEN> characters).
   input_invalid_char_message: |

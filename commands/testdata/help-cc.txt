@@ -40,9 +40,9 @@ Changing filters:
   REJECT RULE            Replace one slot with a vetoing expression.
   SHOW/FILTER            See your current settings and rules.
   SHOW/FILTER RULE       Same as SHOW/FILTER.
-  SHOW/FILTER FULL       Add geometry detail and rule counts.
-  RESET FILTER RULE      Clear one slot or ALL; preserve NEARBY.
-  RESET FILTER           Clear personal rules and turn NEARBY OFF.
+  SHOW/FILTER FULL       Show rules, controls and program counts.
+  RESET FILTER RULE      Clear one slot or ALL; preserve settings.
+  RESET FILTER           Clear personal rules; preserve settings.
 
 What you can filter:
   Combine band, mode, source, geography, calls, comments and more.
@@ -58,7 +58,7 @@ A complete recipe: human-reported CW/FT8 on 20m/40m:
   PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN
   SHOW/FILTER
 
-  This replaces all personal rules. NEARBY is unchanged.
+  This replaces all personal rules. Separate controls are unchanged.
   SELF ON can bypass personal rules; see HELP SHOW MYDX.
 
 Filter rules to remember:
@@ -70,7 +70,7 @@ Filter rules to remember:
   PASS without SOURCE allows humans and skimmers.
   Add AND SOURCE=HUMAN to select human reports only.
   To narrow it, replace/remove slot 0; adding another PASS broadens it.
-  RESET FILTER clears rules and NEARBY, not separate controls/preferences.
+  RESET FILTER clears rules, preserving separate controls/preferences.
   Reset does not reinstall default slot 0. See HELP RULE for full details.
 
 Comment rules:
@@ -88,19 +88,18 @@ CC shortcuts:
   SET/WWV | SET/NOWWV       Allow or block WWV bulletins.
   SET/WCY | SET/NOWCY       Allow or block WCY bulletins.
   SET/SELF | SET/NOSELF     Allow or block your own spots.
-  SET/FILTER                Separate switches and NEARBY only; see HELP.
-  UNSET/FILTER              Separate switches and NEARBY only; see HELP.
+  SET/FILTER                Separate switches only; see HELP.
+  UNSET/FILTER              Separate switches only; see HELP.
   REJECT TOXIC              Hide human spots already classified as toxic.
   PASS TOXIC                Allow human spots already classified as toxic.
 
 Nearby filtering:
-  SET GRID FN31          Set your location first.
-  PASS NEARBY ON         Enable nearby filtering.
-  PASS NEARBY OFF        Disable nearby filtering.
+  SET GRID FN31          Set your location.
+  PASS RULE 0 NEARBY     Replace rule 0 with nearby selection.
 
-  NEARBY omits only geography leaves; non-geography conditions survive.
-  Emptied rules are ignored; saved full rules remain intact.
-  Type HELP PASS NEARBY for details.
+  NEARBY combines with other conditions using NOT, AND and OR.
+  It does not change geography conditions or duplicate suppression.
+  Type HELP NEARBY or HELP RULE for details.
 
 Preferences and propagation:
   SHOW SETTINGS          Show preferences and session settings.

@@ -110,6 +110,7 @@ func TestRuleCompileCanonical(t *testing.T) {
 	}{
 		{`(mode=psk31 AND band=[20,6m]) OR comment="POTA * ?"`,
 			`MODE=PSK AND BAND=20M,6M OR COMMENT="POTA * ?"`, 3, 4, false},
+		{`nearby AND NOT nearby`, `NEARBY AND NOT NEARBY`, 2, 0, false},
 		{`NOT (source="human" OR path=closed)`, `NOT (SOURCE=HUMAN OR PATH=CLOSED)`, 2, 2, true},
 		{`comment="  Mixed ""quoted"" * ?  "`, `COMMENT="  Mixed ""quoted"" * ?  "`, 1, 1, false},
 		{`comment=POTA`, `COMMENT="POTA"`, 1, 1, false},

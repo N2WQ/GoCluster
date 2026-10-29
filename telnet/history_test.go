@@ -87,50 +87,73 @@ func TestHistoryContinuationFailuresAndFreshReplacement(t *testing.T) {
 }
 
 func TestHistoryResponseDiscardedAfterSettingsChange(t *testing.T) {
-	for _, restore := range []bool{false, true} {
-		t.Run(map[bool]string{false: "changed", true: "changed and restored"}[restore], func(t *testing.T) {
-			entered, releaseScan := make(chan struct{}), make(chan struct{})
-			sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
-			s, c := historyTestSession(func(req archive.HistoryRequest) (archive.HistoryPage, error) {
-				if !req.Match(sp) {
-					t.Error("initial snapshot rejects fixture")
+	for _, change := range []string{"rule", "GRID"} {
+		for _, restore := range []bool{false, true} {
+			t.Run(change+"/"+map[bool]string{false: "changed", true: "changed and restored"}[restore], func(t *testing.T) {
+				entered, releaseScan := make(chan struct{}), make(chan struct{})
+				sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
+				s, c := historyTestSession(func(req archive.HistoryRequest) (archive.HistoryPage, error) {
+					if !req.Match(sp) {
+						t.Error("initial snapshot rejects fixture")
+					}
+					close(entered)
+					<-releaseScan
+					if !req.Match(sp) {
+						t.Error("scan borrowed mutable settings")
+					}
+					return archive.HistoryPage{Spots: []*spot.Spot{sp}, Before: []byte("position"), End: archive.HistoryCountReached}, nil
+				})
+				if change == "GRID" {
+					near, _, coarse, _ := requireDistinctPathCells(t)
+					c.filter = passRuleTestFilter(t, "NEARBY")
+					c.grid, c.gridCell, c.gridCoarseCell = "FN31", near, coarse
+					c.configuredSettings.Grid = "FN31"
+					sp.DXCellID, sp.DECellID = uint16(near), uint16(near)
 				}
-				close(entered)
-				<-releaseScan
-				if !req.Match(sp) {
-					t.Error("scan borrowed mutable settings")
-				}
-				return archive.HistoryPage{Spots: []*spot.Spot{sp}, Before: []byte("position"), End: archive.HistoryCountReached}, nil
-			})
-			done := make(chan bool, 1)
-			go func() { _, ok := s.handleHistoryCommand(c, "SHOW DX K1ABC 1"); done <- ok }()
-			<-entered
-			_, handled := s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
-				c.filterMu.Lock()
-				*c.filter = *testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})
-				c.filterMu.Unlock()
-				return "", true
-			})
-			if !handled {
-				t.Fatal("mutation not executed")
-			}
-			if restore {
-				s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
+				done := make(chan bool, 1)
+				go func() { _, ok := s.handleHistoryCommand(c, "SHOW DX K1ABC 1"); done <- ok }()
+				<-entered
+				_, handled := s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
+					if change == "GRID" {
+						c.pathMu.Lock()
+						c.grid, c.gridCell, c.gridCoarseCell = "IO91", 0, 0
+						c.configuredSettings.Grid = "IO91"
+						c.pathMu.Unlock()
+						return "", true
+					}
 					c.filterMu.Lock()
-					*c.filter = *unrestrictedTestFilter()
+					*c.filter = *testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})
 					c.filterMu.Unlock()
 					return "", true
 				})
-			}
-			close(releaseScan)
-			if !<-done {
-				t.Fatal("restart response failed")
-			}
-			response := <-c.controlChan
-			if response.line != historyRestart || c.historySearch != nil || len(c.controlChan) != 0 {
-				t.Fatalf("invalidated page published: %q %+v", response.line, c.historySearch)
-			}
-		})
+				if !handled {
+					t.Fatal("mutation not executed")
+				}
+				if restore {
+					s.runPreferenceCommand(c, "fixture", func(c *Client, _ string) (string, bool) {
+						if change == "GRID" {
+							c.pathMu.Lock()
+							c.grid, c.gridCell, c.gridCoarseCell = "FN31", 0, 0
+							c.configuredSettings.Grid = "FN31"
+							c.pathMu.Unlock()
+							return "", true
+						}
+						c.filterMu.Lock()
+						*c.filter = *unrestrictedTestFilter()
+						c.filterMu.Unlock()
+						return "", true
+					})
+				}
+				close(releaseScan)
+				if !<-done {
+					t.Fatal("restart response failed")
+				}
+				response := <-c.controlChan
+				if response.line != historyRestart || c.historySearch != nil || len(c.controlChan) != 0 {
+					t.Fatalf("invalidated page published: %q %+v", response.line, c.historySearch)
+				}
+			})
+		}
 	}
 }
 

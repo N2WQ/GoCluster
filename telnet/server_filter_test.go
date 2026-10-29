@@ -17,7 +17,7 @@ func newTestClient() *Client {
 
 // Transport/settings fixtures must not accidentally depend on new-user rule 0.
 func unrestrictedTestFilter() *filter.Filter {
-	_, value, err := filter.PrepareV5Configuration(filter.V5Configuration{})
+	_, value, err := filter.PrepareV6Configuration(filter.V6Configuration{})
 	if err != nil {
 		panic(err)
 	}
@@ -26,8 +26,8 @@ func unrestrictedTestFilter() *filter.Filter {
 
 func testRuleFilter(t testing.TB, definitions ...filter.RuleDefinition) *filter.Filter {
 	t.Helper()
-	_, value, err := filter.PrepareV5Configuration(filter.V5Configuration{
-		Filters: filter.V5FilterConfiguration{Rules: definitions},
+	_, value, err := filter.PrepareV6Configuration(filter.V6Configuration{
+		Filters: filter.V6FilterConfiguration{Rules: definitions},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -130,53 +130,31 @@ func TestDialectWelcomeLine(t *testing.T) {
 	}
 }
 
-func TestPassNearbyOnOff(t *testing.T) {
-	requireH3Mappings(t)
-	client := newTestClient()
-	client.grid = "FN31"
-	client.gridCell, client.gridCoarseCell = pathreliability.EncodeCell(client.grid), pathreliability.EncodeCoarseCell(client.grid)
-	client.setDedupePolicy(dedupePolicySlow)
-	engine := newFilterCommandEngine()
-	for _, enabled := range []bool{true, false} {
-		line, want := "PASS NEARBY ON", "Nearby filter enabled.\n"
-		if !enabled {
-			line, want = "PASS NEARBY OFF", "Nearby filter disabled.\n"
+func TestRetiredNearbyToggleCommandsAreAtomic(t *testing.T) {
+	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+		client := newTestClient()
+		client.dialect = dialect
+		client.filter = passRuleTestFilter(t, "MODE=CW")
+		client.setDedupePolicy(dedupePolicySlow)
+		client.configuredSettings, client.configurationInitialized = filter.SettingsConfiguration{Dialect: string(dialect), DedupePolicy: "SLOW"}, true
+		before := snapshotBooleanCommand(client)
+		for _, line := range []string{"PASS NEARBY ON", "PASS NEARBY OFF", "REJECT NEARBY ON", "REJECT NEARBY OFF", "SET/FILTER NEARBY ON", "UNSET/FILTER NEARBY OFF"} {
+			response, handled := newFilterCommandEngine().Handle(client, line)
+			if !handled || !strings.Contains(response, "No changes applied.") || client.getDedupePolicy() != dedupePolicySlow {
+				t.Fatalf("retired toggle mutated preferences: %s => %q", line, response)
+			}
+			before.assertUnchanged(t, client)
 		}
-		response, handled := engine.Handle(client, line)
-		if !handled || response != want || client.filter.NearbyActive() != enabled || client.getDedupePolicy() != dedupePolicySlow {
-			t.Fatalf("NEARBY changed saved dedupe policy or state: %q", response)
+	}
+}
+
+func TestNearbyRuleEditingNeedsNoGrid(t *testing.T) {
+	client := newTestClient()
+	for _, expression := range []string{"NEARBY", "NOT NEARBY", "NEARBY OR MODE=CW"} {
+		response, handled := newFilterCommandEngine().Handle(client, "PASS RULE 0 "+expression)
+		if !handled || strings.Contains(response, "No changes applied.") || client.filter.PreparedRules().Definitions()[0].Expr != expression {
+			t.Fatalf("location-free rule edit failed: %q", response)
 		}
-	}
-}
-
-func TestPassNearbyOnRequiresGrid(t *testing.T) {
-	client := newTestClient()
-	response, handled := newFilterCommandEngine().Handle(client, "PASS NEARBY ON")
-	if !handled || response != nearbyMissingGridMsg || client.filter.NearbyActive() {
-		t.Fatalf("NEARBY missing grid: %q", response)
-	}
-}
-
-func TestApplyNearbyLoginStateWarnsWhenActive(t *testing.T) {
-	requireH3Mappings(t)
-	client := newTestClient()
-	client.grid = "FN31"
-	client.gridCell, client.gridCoarseCell = pathreliability.EncodeCell(client.grid), pathreliability.EncodeCoarseCell(client.grid)
-	if err := client.filter.EnableNearby(client.gridCell, client.gridCoarseCell); err != nil {
-		t.Fatal(err)
-	}
-	warning, changed := applyNearbyLoginState(client, nearbyLoginWarningMsg)
-	if warning != normalizeWarningLine(nearbyLoginWarningMsg) || changed || !client.filter.NearbyActive() {
-		t.Fatalf("login NEARBY: %q changed=%v", warning, changed)
-	}
-}
-
-func TestApplyNearbyLoginStateInactiveWhenGridMissing(t *testing.T) {
-	client := newTestClient()
-	client.filter.NearbyEnabled = true
-	warning, changed := applyNearbyLoginState(client, nearbyLoginWarningMsg)
-	if warning != nearbyLoginInactiveMsg || changed || !client.filter.NearbyActive() {
-		t.Fatalf("missing grid: %q changed=%v", warning, changed)
 	}
 }
 

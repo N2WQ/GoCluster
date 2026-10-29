@@ -28,110 +28,93 @@ func typicalRuleDefinitions() []RuleDefinition {
 }
 
 func TestRuleSetMatchesAllocs(t *testing.T) {
-	for _, test := range []struct {
-		name         string
-		definitions  []RuleDefinition
-		normal, near bool
+	for _, tc := range []struct {
+		name        string
+		definitions []RuleDefinition
+		want        bool
 	}{
-		{"empty", nil, true, true},
-		{"mixed-three-rules", typicalRuleDefinitions(), true, true},
-		{"mixed-geo-removal", []RuleDefinition{{0, RulePass, "MODE=CW OR DXCONT=NA"}}, true, false},
-		{"comment-literal", []RuleDefinition{{0, RulePass, `COMMENT="POTA * ?"`}}, true, true},
-		{"comment-miss", []RuleDefinition{{0, RulePass, `COMMENT="POTA.*"`}}, false, false},
-		{"full-scan", fullBudgetRuleDefinitions(), false, false},
+		{"empty", nil, true}, {"mixed-three-rules", typicalRuleDefinitions(), true},
+		{"mixed-geography", []RuleDefinition{{0, RulePass, "MODE=CW OR DXCONT=NA"}}, true},
+		{"comment-literal", []RuleDefinition{{0, RulePass, `COMMENT="POTA * ?"`}}, true},
+		{"comment-miss", []RuleDefinition{{0, RulePass, `COMMENT="POTA.*"`}}, false},
+		{"full-scan", fullBudgetRuleDefinitions(), false},
+		{"nearby-cached", []RuleDefinition{{0, RulePass, "NEARBY OR NEARBY"}}, true},
+		{"nearby-short-circuit", []RuleDefinition{{0, RulePass, "MODE=FT8 OR NEARBY"}}, true},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			set := mustPrepareRuleSet(t, test.definitions...)
+		t.Run(tc.name, func(t *testing.T) {
+			set := mustPrepareRuleSet(t, tc.definitions...)
 			sp := normalizedRuleTestSpot()
 			sp.IsHuman = true
-			for _, nearby := range []bool{false, true} {
-				want := test.normal
-				if nearby {
-					want = test.near
-				}
-				if got := set.Matches(sp, PathClassHigh, nearby); got != want {
-					t.Fatalf("allocation fixture nearby=%v got %v, want %v", nearby, got, want)
-				}
-				allocations := testing.AllocsPerRun(1000, func() {
-					// Matches must create a fresh lazy view on every invocation.
-					ruleEvaluationSink = set.Matches(sp, PathClassHigh, nearby)
-				})
-				if allocations != 0 || ruleEvaluationSink != want {
-					t.Fatalf("nearby=%v allocations=%g result=%v, want 0/%v", nearby, allocations, ruleEvaluationSink, want)
-				}
+			sp.DXCellID = 10
+			sp.DECellID = 11
+			context := EvaluationContext{PathClass: PathClassHigh, FineCell: 10, CoarseCell: 12}
+			if set.Matches(sp, context) != tc.want {
+				t.Fatal("allocation control truth wrong")
+			}
+			allocs := testing.AllocsPerRun(1000, func() { ruleEvaluationSink = set.Matches(sp, context) })
+			if allocs != 0 || ruleEvaluationSink != tc.want {
+				t.Fatalf("allocations=%g result=%v", allocs, ruleEvaluationSink)
 			}
 		})
 	}
 }
 
 func BenchmarkRuleSetMatches(b *testing.B) {
-	for _, test := range []struct {
+	for _, tc := range []struct {
 		name        string
 		definitions []RuleDefinition
 		report      int
 		want        bool
 	}{
-		{"typical-three", typicalRuleDefinitions(), 0, true},
-		{"full-budget-full-scan", fullBudgetRuleDefinitions(), 0, false},
-		{"full-budget-common-pass", fullBudgetRuleDefinitions(), 1, true},
+		{"typical-three/normal", typicalRuleDefinitions(), 0, true},
+		{"full-budget-full-scan/normal", fullBudgetRuleDefinitions(), 0, false},
+		{"full-budget-common-pass/normal", fullBudgetRuleDefinitions(), 1, true},
+		{"nearby-cached-single", []RuleDefinition{{0, RulePass, "NEARBY"}}, 0, true},
+		{"nearby-cached-repeated", []RuleDefinition{{0, RulePass, "NEARBY AND NEARBY OR NEARBY"}}, 0, true},
+		{"nearby-short-circuit", []RuleDefinition{{0, RulePass, "MODE=FT8 OR NEARBY"}}, 0, true},
 	} {
-		for _, nearby := range []bool{false, true} {
-			suffix := "/normal"
-			if nearby {
-				suffix = "/nearby"
+		b.Run(tc.name, func(b *testing.B) {
+			set := mustPrepareRuleSet(b, tc.definitions...)
+			if strings.HasPrefix(tc.name, "full-budget") {
+				want := RuleProgramCounts{Nodes: 246, Atoms: 128, Values: 512}
+				if got := set.Counts(); got.Rules != 10 || got.Program != want {
+					b.Fatalf("not full budget: %+v", got)
+				}
+				for i := range set.rules {
+					rule := &set.rules[i]
+					wantAtoms := 13
+					if i >= 8 {
+						wantAtoms = 12
+					}
+					if rule.definition.Action != RulePass || rule.program.atomCount != wantAtoms {
+						b.Fatal("invalid scan fixture")
+					}
+					for _, node := range rule.program.nodes {
+						if node.kind == expr.AtomKind && (len(node.predicate.integers) != 4 || node.predicate.field != ruleFieldSNR) {
+							b.Fatal("full-budget atom must test four integer values")
+						}
+					}
+				}
 			}
-			b.Run(test.name+suffix, func(b *testing.B) {
-				set := mustPrepareRuleSet(b, test.definitions...)
-				if strings.HasPrefix(test.name, "full-budget") {
-					want := RuleProgramCounts{Nodes: 246, Atoms: 128, Values: 512}
-					counts := set.Counts()
-					if counts.Rules != 10 || counts.Normal != want || counts.Nearby != want || counts.Retained != want {
-						b.Fatalf("benchmark is not the real full budget: %+v", counts)
-					}
-					for i := range set.rules {
-						rule := &set.rules[i]
-						wantAtoms := 13
-						if i >= 8 {
-							wantAtoms = 12
-						}
-						if rule.definition.Action != RulePass || rule.normal.atomCount != wantAtoms {
-							b.Fatal("full-scan fixture cannot use a reject shortcut or uneven budget")
-						}
-						for j := range rule.normal.nodes {
-							node := &rule.normal.nodes[j]
-							if node.kind == expr.AtomKind && (len(node.predicate.integers) != 4 || node.predicate.field != ruleFieldSNR) {
-								b.Fatal("full-budget atom must test all four integer values")
-							}
-						}
-					}
-				} else {
-					want := RuleSetCounts{
-						Rules:    3,
-						Normal:   RuleProgramCounts{Nodes: 11, Atoms: 7, Values: 7},
-						Nearby:   RuleProgramCounts{Nodes: 9, Atoms: 6, Values: 6},
-						Retained: RuleProgramCounts{Nodes: 14, Atoms: 9, Values: 7},
-					}
-					if got := set.Counts(); got != want {
-						b.Fatalf("typical fixture counts got %+v, want %+v", got, want)
-					}
-				}
-				sp := normalizedRuleTestSpot()
-				sp.IsHuman = true
-				sp.Report = test.report
-				if got := set.Matches(sp, PathClassHigh, nearby); got != test.want {
-					b.Fatalf("fixture got %v, want %v", got, test.want)
-				}
-				b.ReportAllocs()
-				b.ResetTimer()
-				var got bool
-				for b.Loop() {
-					got = set.Matches(sp, PathClassHigh, nearby)
-				}
-				ruleEvaluationSink = got
-				if got != test.want {
-					b.Fatalf("timed fixture got %v, want %v", got, test.want)
-				}
-			})
-		}
+			sp := normalizedRuleTestSpot()
+			sp.IsHuman = true
+			sp.Report = tc.report
+			sp.DXCellID = 10
+			sp.DECellID = 11
+			context := EvaluationContext{PathClass: PathClassHigh, FineCell: 10, CoarseCell: 12}
+			if set.Matches(sp, context) != tc.want {
+				b.Fatal("benchmark fixture truth wrong")
+			}
+			b.ReportAllocs()
+			b.ResetTimer()
+			var got bool
+			for b.Loop() {
+				got = set.Matches(sp, context)
+			}
+			ruleEvaluationSink = got
+			if got != tc.want {
+				b.Fatal("timed truth changed")
+			}
+		})
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dxcluster/filter"
+	"dxcluster/internal/testsupport"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
@@ -121,5 +122,121 @@ func TestMatchingSnapshotMissingFilterFailsClosed(t *testing.T) {
 	}
 	if matched, _, _ := s.matchSnapshot(clientMatchingSnapshot{path: pathState{gridCell: pathreliability.InvalidCell}}, nil); matched {
 		t.Fatal("missing spot matched")
+	}
+}
+
+func TestMatchingSnapshotNearbyPreservesBooleanDelivery(t *testing.T) {
+	near, far, nearCoarse, _ := requireDistinctPathCells(t)
+	for _, tc := range []struct {
+		expression, continent string
+		endpoint              pathreliability.CellID
+		want                  bool
+	}{
+		{"NEARBY AND DXCONT=EU", "NA", near, false},
+		{"NEARBY OR DXCONT=EU", "EU", far, true},
+		{"NEARBY", "NA", near, true},
+		{"NOT NEARBY", "NA", far, true},
+		{"NEARBY AND MODE=FT8", "EU", near, false},
+	} {
+		t.Run(tc.expression, func(t *testing.T) {
+			s := &Server{dedupeFastEnabled: true}
+			c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, tc.expression),
+				gridCell: near, gridCoarseCell: nearCoarse, spotChan: make(chan *spotEnvelope, 1)}
+			c.setDedupePolicy(dedupePolicyFast)
+			sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
+			sp.DXCellID, sp.DECellID = uint16(tc.endpoint), uint16(tc.endpoint)
+			sp.DXMetadata.Continent = tc.continent
+			s.deliverJob(broadcastJob{spot: sp, clients: []*Client{c}, allowFast: true})
+			if (len(c.spotChan) == 1) != tc.want || c.captureHistoryFilter().matches(s, sp) != tc.want {
+				t.Fatal("live/history wiring changed the ordinary Boolean result")
+			}
+		})
+	}
+}
+
+func TestMatchingSnapshotLocationDemandAndIsolation(t *testing.T) {
+	near, far, nearCoarse, farCoarse := requireDistinctPathCells(t)
+	for _, expression := range []string{"MODE=CW", `COMMENT="NEARBY"`} {
+		c := &Client{filter: passRuleTestFilter(t, expression), grid: "FN31"}
+		captured := c.captureMatchingSnapshot()
+		if captured.path.gridCell != 0 || captured.path.gridCoarseCell != 0 {
+			t.Fatal("location-free capture introduced mapping work")
+		}
+	}
+	for _, expression := range []string{"NEARBY", "NEARBY AND (PATH=INSUFFICIENT OR MODE=CW)"} {
+		c := &Client{filter: passRuleTestFilter(t, expression), grid: "FN31"}
+		s := &Server{}
+		captured := c.captureMatchingSnapshot()
+		if captured.path.gridCell != near || captured.path.gridCoarseCell != nearCoarse {
+			t.Fatal("capture did not resolve both effective cells from its GRID")
+		}
+		if expression == "NEARBY" && (c.gridCell != 0 || c.gridCoarseCell != 0) {
+			t.Fatal("NEARBY published snapshot-local geometry")
+		}
+		next := &Client{filter: c.filter, grid: "IO91", gridCell: far, gridCoarseCell: farCoarse}
+		s.publishConfigurationState(c, filter.SettingsConfiguration{Grid: "IO91"}, next, nil, time.Time{}, false)
+		sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
+		sp.DXCellID, sp.DECellID = uint16(near), uint16(near)
+		oldMatch, _, _ := s.matchSnapshot(captured, sp)
+		newMatch, _, _ := s.matchSnapshot(c.captureMatchingSnapshot(), sp)
+		if !oldMatch || newMatch {
+			t.Fatal("an evaluation mixed captured and newly published location")
+		}
+	}
+	// PATH's existing lazy publication must not fill a newer GRID's cache.
+	c := &Client{grid: "FN31"}
+	old := c.pathSnapshot()
+	c.grid = "IO91"
+	resolved := c.resolvePathSnapshot(old)
+	if resolved.gridCell != near || c.gridCell != 0 || c.grid != "IO91" {
+		t.Fatal("stale PATH resolution published onto a newer GRID")
+	}
+}
+
+func BenchmarkMatchingSnapshotLocationContext(b *testing.B) {
+	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(b)); err != nil {
+		b.Fatal(err)
+	}
+	near := pathreliability.EncodeCell("FN31")
+	coarse := pathreliability.EncodeCoarseCell("FN31")
+	if near == 0 || coarse == 0 {
+		b.Fatal("benchmark needs mapped user cells")
+	}
+	for _, tc := range []struct {
+		name, expression string
+		cached, coarse   bool
+		want             bool
+	}{
+		{"no-nearby-missing-user-cache", "MODE=CW", false, false, true},
+		{"single-cached", "NEARBY", true, false, true},
+		{"repeated-cached", "NEARBY AND NEARBY", true, false, true},
+		{"short-circuit", "MODE=FT8 AND NEARBY", true, false, false},
+		{"missing-user-cache", "NEARBY", false, false, true},
+		{"coarse", "NEARBY", true, true, true},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			c := &Client{filter: passRuleTestFilter(b, tc.expression), grid: "FN31"}
+			if tc.cached {
+				c.gridCell, c.gridCoarseCell = near, coarse
+			}
+			sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
+			sp.DXCellID, sp.DECellID = uint16(near), uint16(near)
+			sp.DXMetadata.Grid, sp.DEMetadata.Grid = "FN31", "FN31"
+			if tc.coarse {
+				sp.BandNorm, sp.Band, sp.Frequency = "80m", "80m", 3520
+			}
+			s := &Server{}
+			b.ReportAllocs()
+			for b.Loop() {
+				captured := c.captureMatchingSnapshot()
+				matched, _, _ := s.matchSnapshot(captured, sp)
+				if matched != tc.want {
+					b.Fatal("benchmark did not reach its intended outcome")
+				}
+				if tc.name == "no-nearby-missing-user-cache" && (captured.path.gridCell != 0 || captured.path.gridCoarseCell != 0) {
+					b.Fatal("location-free capture performed mapping")
+				}
+			}
+		})
 	}
 }

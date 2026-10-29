@@ -11,8 +11,8 @@ import (
 	"dxcluster/spot"
 )
 
-// Syntax stays available for the planner's two projections. Nodes preserve its
-// indexes; syntax may be released only after both variants have been prepared.
+// Syntax stays available during preparation. Nodes preserve its indexes and
+// syntax is released before publishing the single immutable program.
 // All strings detach from the upload buffer and all data freezes after compile.
 type compiledRule struct {
 	syntax                *expr.Expression
@@ -21,6 +21,7 @@ type compiledRule struct {
 	canonical             string
 	atomCount, valueCount int
 	needsPath             bool
+	needsNearby           bool
 }
 
 type compiledRuleNode struct {
@@ -46,7 +47,7 @@ func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error
 		node := &syntax.Nodes[i]
 		compiled := &program.nodes[i]
 		compiled.kind, compiled.left, compiled.right = node.Kind, node.Left, node.Right
-		if node.Kind != expr.AtomKind {
+		if node.Kind != expr.AtomKind && node.Kind != expr.PredicateKind {
 			continue
 		}
 		// Even already-uppercase parser tokens and one-byte operators can be
@@ -71,6 +72,7 @@ func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error
 		compiled.predicate = predicate
 		program.valueCount += len(node.Atom.Values)
 		program.needsPath = program.needsPath || predicate.field == ruleFieldPath
+		program.needsNearby = program.needsNearby || predicate.field == ruleFieldNearby
 	}
 	program.canonical, err = syntax.Canonical()
 	if err != nil {
@@ -89,6 +91,12 @@ func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error)) (r
 		return rulePredicate{}, ruleCompileError(atom.Column, "unsupported field %q", atom.Field)
 	}
 	predicate := rulePredicate{field: field, operator: atom.Operator}
+	if field == ruleFieldNearby {
+		if atom.Operator != "" || len(atom.Values) != 0 {
+			return rulePredicate{}, ruleCompileError(atom.Column, "NEARBY takes no operator or values")
+		}
+		return predicate, nil
+	}
 	ordered := atom.Operator != expr.Equal && atom.Operator != expr.NotEqual
 	if ordered {
 		switch field {

@@ -106,7 +106,7 @@ func assertFilterArgumentRefusal(t *testing.T, s *Server, c *Client, e *filterCo
 
 func assertFilterArgumentRefusalFeedback(t *testing.T, s *Server, c *Client, e *filterCommandEngine, command, exactFeedback string) {
 	t.Helper()
-	before := c.captureV5Configuration()
+	before := c.captureV6Configuration()
 	revision := c.configurationRevision
 	file := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 	saved, err := os.ReadFile(file)
@@ -124,7 +124,7 @@ func assertFilterArgumentRefusalFeedback(t *testing.T, s *Server, c *Client, e *
 		feedbackMatches = response == exactFeedback
 	}
 	if !handled || !feedbackMatches || attempts != 0 || err != nil || !bytes.Equal(saved, after) ||
-		!before.Equal(c.captureV5Configuration()) || c.configurationRevision != revision {
+		!before.Equal(c.captureV6Configuration()) || c.configurationRevision != revision {
 		t.Fatalf("original argument lost or refused command had effects: %q -> %q, commits=%d, err=%v", command, response, attempts, err)
 	}
 }

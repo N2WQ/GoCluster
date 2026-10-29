@@ -56,7 +56,6 @@ func TestTouchUserRecordLogin(t *testing.T) {
 func TestUserRecordRoundTripAndFullSSIDOwnership(t *testing.T) {
 	usePresetTestDir(t)
 	f := nativeRuleFilter(t, RuleDefinition{0, RulePass, "MODE=CW AND EVENT=POTA"})
-	f.NearbyEnabled = true
 	record := &UserRecord{Filter: *f, RecentIPs: []string{"203.0.113.10", "198.51.100.42"},
 		DedupePolicy: DedupePolicySlow, Grid: "FN31", NoiseClass: "URBAN", PathMinObservationCount: 42}
 	if err := SaveUserRecord("K3TO-1", record); err != nil {

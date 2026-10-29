@@ -20,7 +20,7 @@ import (
 const maxRecentIPs = 5
 
 // UserRecord stores per-callsign metadata that should survive across sessions.
-// Native fields are transport-only; YAML is explicitly bound to the v5 DTO.
+// Native fields are transport-only; YAML is explicitly bound to the v6 DTO.
 type UserRecord struct {
 	ConfigurationVersion int `yaml:"configuration_version,omitempty"`
 	Filter               `yaml:",inline"`
@@ -39,29 +39,29 @@ type UserRecord struct {
 }
 
 // LoadUserRecord loads a persisted user record by callsign.
-// Key aspects: Exact v5 values only. Missing files return os.ErrNotExist;
+// Key aspects: Exact v6 values only. Missing files return os.ErrNotExist;
 // unversioned, legacy, malformed and future files fail without rewriting.
 // Upstream: LoadUserFilter, TouchUserRecordIP, telnet login flows.
-// Downstream: strict v5 loading and runtime preparation.
+// Downstream: strict v6 loading and runtime preparation.
 func LoadUserRecord(callsign string) (*UserRecord, error) {
-	record, err := LoadV5UserRecord(callsign)
+	record, err := LoadV6UserRecord(callsign)
 	if err != nil {
 		return nil, err
 	}
-	return RuntimeUserRecordFromV5(record)
+	return RuntimeUserRecordFromV6(record)
 }
 
-// UnmarshalYAML admits only the strict v5 DTO, without migration or defaults.
+// UnmarshalYAML admits only the strict v6 DTO, without migration or defaults.
 func (record *UserRecord) UnmarshalYAML(node *yaml.Node) error {
-	var value V5UserRecord
-	if err := decodeV5StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
+	var value V6UserRecord
+	if err := decodeV6StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
 		return err
 	}
-	prepared, _, err := prepareV5UserRecord(&value)
+	prepared, _, err := prepareV6UserRecord(&value)
 	if err != nil {
 		return err
 	}
-	runtime, err := RuntimeUserRecordFromV5(prepared)
+	runtime, err := RuntimeUserRecordFromV6(prepared)
 	if err == nil {
 		*record = *runtime
 	}

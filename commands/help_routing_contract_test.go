@@ -74,8 +74,9 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"RESET FILTER COMMENT PASS", "RESET FILTER COMMENT", "Usage: HELP RULE"},
 		{"PASS MINSNR CW 10", "PASS MINSNR", "Usage: HELP RULE"},
 		{"REJECT MINSNR CW NONE", "REJECT MINSNR", "Usage: HELP RULE"},
-		{"PASS NEARBY ON", "PASS NEARBY", "PASS NEARBY ON|OFF"},
-		{"REJECT NEARBY OFF", "PASS NEARBY", "PASS NEARBY ON|OFF"},
+		{"NEARBY", "NEARBY", "PASS RULE 0 NEARBY"},
+		{"PASS NEARBY ON", "NEARBY", "PASS RULE 0 NEARBY"},
+		{"REJECT NEARBY OFF", "NEARBY", "NOT NEARBY"},
 		{"RESET FILTER", "RESET FILTER", "RESET FILTER"},
 		{"RESET FILTER RULE ALL", "RESET FILTER RULE", "RESET FILTER RULE <0..9|ALL>"},
 		{"SET GRID FN31", "SET GRID", "SET GRID <locator>"},
@@ -121,8 +122,8 @@ func TestHelpRoutingDispatchDerivedFamilies(t *testing.T) {
 		}
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
 			topic := "GET YAML " + resource
-			assertHelpRouting(t, p, dialect, helpRoutingCase{topic, topic, "Usage: " + topic + " SCHEMA 5 [ID <id>]"})
-			assertHelpRouting(t, p, dialect, helpRoutingCase{topic + " SCHEMA 5 ID Read-1", topic, topic + " SCHEMA 5 [ID <id>]"})
+			assertHelpRouting(t, p, dialect, helpRoutingCase{topic, topic, "Usage: " + topic + " SCHEMA 6 [ID <id>]"})
+			assertHelpRouting(t, p, dialect, helpRoutingCase{topic + " SCHEMA 6 ID Read-1", topic, topic + " SCHEMA 6 [ID <id>]"})
 		}
 		for _, verb := range []string{"PUT", "PATCH"} {
 			for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG"} {
@@ -152,7 +153,7 @@ func TestHelpRoutingUnknownHeadsAndDialectRestrictions(t *testing.T) {
 			"SH FILTER", "SH SETTINGS", "SH DEDUPE", "SH HOLD", "SHOW/MYDX", "SH/MYDX",
 			"SHOW BUILDX", "SH BUILDX", "SHOW DXCCX DL", "SHOW MYDXX", "SHOW FILTERX", "SHOW SETTINGSX",
 			"SHOW WWVX", "SH WWVX", "SHOW WCYX", "SH WCYX", "SHOW/WWVX", "SH/WCYX", "SH/WWV/10",
-			"WHOSPOTSMEX", "RESUMED", "DIALECTX", "SET SOLARX 30", "SET GRIDX FN31", "SET PATHSAMPLESX DEFAULT",
+			"WHOSPOTSMEX", "NEARBYX", "RESUMED", "DIALECTX", "SET SOLARX 30", "SET GRIDX FN31", "SET PATHSAMPLESX DEFAULT",
 			"SAVE PRESETX CON", "GET YAML CONFIGX", "SET/NOFILTERX", "SHOW/PROPX FN31", "SH/PROPX FN31",
 		} {
 			want := "Unknown help topic: " + topic + "\nType HELP for available commands.\n"
@@ -172,7 +173,7 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 	// The literal executable-head allowlist must not grow when catalog aliases
 	// grow. New metadata therefore requires evidence from a dispatch owner.
 	common := map[string]string{
-		"H": "HELP", "SH": "SHOW", "QUIT": "BYE", "EXIT": "BYE", "REJECT NEARBY": "PASS NEARBY",
+		"H": "HELP", "SH": "SHOW", "QUIT": "BYE", "EXIT": "BYE", "REJECT NEARBY": "NEARBY", "PASS NEARBY": "NEARBY",
 		"SH BUILD": "SHOW BUILD", "SH OWN": "SHOW OWN", "SH DXCC": "SHOW DXCC", "SH MYDX": "SHOW MYDX",
 		"SH WWV": "SHOW WWV", "SH WCY": "SHOW WCY", // ParseBulletinCommand owns both executable heads.
 		"SHOW/WWV": "SHOW WWV", "SH/WWV": "SHOW WWV", "SHOW/WCY": "SHOW WCY", "SH/WCY": "SHOW WCY",
@@ -185,7 +186,6 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 		for alias, target := range common {
 			allowed[alias] = target
 		}
-		allowed["NEARBY"] = "PASS NEARBY" // Existing educational topic, not an executable head.
 		if dialect == "cc" {
 			allowed["SHOW DX"], allowed["SH DX"], allowed["SH/DX"] = "SHOW/DX", "SHOW/DX", "SHOW/DX"
 			allowed["SHOW FILTER"], allowed["SH/FILTER"] = "SHOW/FILTER", "SHOW/FILTER"
@@ -220,7 +220,7 @@ func TestHelpRoutingVisibleAliases(t *testing.T) {
 			{"HELP", "H"}, {"SHOW", "SH"}, {"SHOW BUILD", "SH BUILD"},
 			{"SHOW OWN", "SH OWN"}, {"SHOW DXCC", "SH DXCC"}, {"SHOW MYDX", "SH MYDX"},
 			{"SHOW WWV", "SH WWV, SHOW/WWV, SH/WWV"}, {"SHOW WCY", "SH WCY, SHOW/WCY, SH/WCY"},
-			{"PASS NEARBY", "REJECT NEARBY"}, {readback, filterAliases}, {history, historyAliases},
+			{"NEARBY", "PASS NEARBY, REJECT NEARBY"}, {readback, filterAliases}, {history, historyAliases},
 		} {
 			response := p.ProcessCommandForClient("HELP "+tc.topic, "W1ABC", "", nil, dialect)
 			if !strings.Contains(response, "\nAliases: "+tc.aliases+"\n") {
@@ -282,7 +282,7 @@ func FuzzHelpRoutingWholeTokenBoundaries(f *testing.F) {
 		{"SHOW BUILD", "SHOW BUILD", "SHOW BUILD"}, {"SH DXCC", "SHOW DXCC", "SHOW DXCC <prefix|callsign>"},
 		{"SET SOLAR", "SET SOLAR", "SET SOLAR <15|30|60|OFF>"}, {"WHOSPOTSME", "WHOSPOTSME", "WHOSPOTSME [band]"},
 		{"DIALECT", "DIALECT", "DIALECT <go|cc>"}, {"RESUME", "RESUME", "RESUME"},
-		{"GET YAML CONFIG", "GET YAML CONFIG", "GET YAML CONFIG SCHEMA 5 [ID <id>]"},
+		{"GET YAML CONFIG", "GET YAML CONFIG", "GET YAML CONFIG SCHEMA 6 [ID <id>]"},
 	}
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	f.Fuzz(func(t *testing.T, index uint8, separated bool, value uint8, cc bool) {

@@ -41,6 +41,18 @@ func TestRuleCapabilitiesAgreeWithCompiler(t *testing.T) {
 			t.Fatal("operator metadata exposes mutable shared state")
 		}
 	}
+	predicates := SupportedRulePredicates()
+	if len(predicates) != 1 || predicates[0] != "NEARBY" || RuleFieldOperators("NEARBY") != nil {
+		t.Fatal("predicate confused with comparison field")
+	}
+	if _, err := compileRule(predicates[0]); err != nil {
+		t.Fatal(err)
+	}
+	predicates[0] = "mutated"
+	if SupportedRulePredicates()[0] != "NEARBY" {
+		t.Fatal("predicate inventory shares mutable storage")
+	}
+
 	fields[0] = "mutated"
 	if SupportedRuleFields()[0] != "BAND" ||
 		RuleFieldOperators("unknown") != nil || IsGeographicRuleField("unknown") {

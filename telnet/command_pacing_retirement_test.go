@@ -226,7 +226,7 @@ func TestCommandPacingRetirementPreservesDuplicateWriter(t *testing.T) {
 						}
 					}
 					retirementSignal(t, oldDone, "old handler retirement")
-					if _, err := io.WriteString(replacement, "GET YAML SETTINGS SCHEMA 5 ID replacement\r\n"); err != nil {
+					if _, err := io.WriteString(replacement, "GET YAML SETTINGS SCHEMA 6 ID replacement\r\n"); err != nil {
 						t.Fatal(err)
 					}
 					if frame := readMachineTestFrame(t, replacementReader); !strings.Contains(frame, "request_id: replacement\r\n") {

@@ -14,10 +14,10 @@ func TestRuleSetBudgets(t *testing.T) {
 	full := fullBudgetRuleDefinitions()
 	set := mustPrepareRuleSet(t, full...)
 	want := RuleProgramCounts{Nodes: 246, Atoms: 128, Values: 512}
-	if counts := set.Counts(); counts.Rules != 10 || counts.Normal != want || counts.Nearby != want || counts.Retained != want {
+	if counts := set.Counts(); counts.Rules != 10 || counts.Program != want {
 		t.Fatalf("full-budget counts got %+v, want ten programs %+v", counts, want)
 	}
-	if set.Matches(&spot.Spot{IsHuman: true, HasReport: true, Report: 0}, "", false) {
+	if set.Matches(&spot.Spot{IsHuman: true, HasReport: true, Report: 0}, EvaluationContext{PathClass: ""}) {
 		t.Fatal("full-scan budget fixture unexpectedly passed")
 	}
 	before := set.Definitions()
@@ -33,25 +33,24 @@ func TestRuleSetBudgets(t *testing.T) {
 		if got, err := set.WithRule(definition); err == nil || got != nil {
 			t.Fatal("over-budget edit admitted")
 		}
-		if !reflect.DeepEqual(before, set.Definitions()) || set.Counts().Normal != want {
+		if !reflect.DeepEqual(before, set.Definitions()) || set.Counts().Program != want {
 			t.Fatal("refused budget edit changed original")
 		}
 	}
 	shorter, err := set.WithRule(RuleDefinition{9, RuleReject, "MODE=CW"})
-	if err != nil || shorter.Counts().Normal.Atoms != 117 || shorter.Counts().Normal.Values != 465 {
+	if err != nil || shorter.Counts().Program.Atoms != 117 || shorter.Counts().Program.Values != 465 {
 		t.Fatalf("replacement did not subtract old slot budget: %+v, %v", shorter.Counts(), err)
 	}
 	restored, err := shorter.WithRule(full[9])
-	if err != nil || !restored.Equal(set) || restored.Counts().Normal != want {
+	if err != nil || !restored.Equal(set) || restored.Counts().Program != want {
 		t.Fatalf("budget was not reclaimed on replacement: %v", err)
 	}
 
-	// Repeated operands consume budget even though the evaluator can share
-	// projected operand storage. Two rules have 16 * 32 = 512 values.
+	// Repeated operands consume budget. Two rules have 16 * 32 = 512 values.
 	list := strings.Repeat("1,", 31) + "1"
 	source := strings.Repeat("SNR="+list+" OR ", 7) + "SNR=" + list
 	duplicates := mustPrepareRuleSet(t, RuleDefinition{0, RulePass, source}, RuleDefinition{9, RulePass, source})
-	if got := duplicates.Counts().Normal; got.Atoms != 16 || got.Values != 512 {
+	if got := duplicates.Counts().Program; got.Atoms != 16 || got.Values != 512 {
 		t.Fatalf("duplicate values were deduplicated: %+v", got)
 	}
 	if got, err := duplicates.WithRule(RuleDefinition{4, RulePass, "SNR=1"}); err == nil || got != nil {
@@ -84,7 +83,7 @@ func TestRuleSetPerRuleLimits(t *testing.T) {
 	// 32 atoms + 31 ORs + 65 NOTs reaches exactly 128 nodes.
 	nodes := strings.Repeat("NOT NOT SNR=1 OR ", 31) + "NOT NOT NOT SNR=1"
 	set := mustPrepareRuleSet(t, RuleDefinition{9, RulePass, nodes})
-	if set.Counts().Normal.Nodes != 128 {
+	if set.Counts().Program.Nodes != 128 {
 		t.Fatal("node-bound fixture is not at the limit")
 	}
 	if _, err := set.WithRule(RuleDefinition{9, RulePass, "NOT " + nodes}); err == nil {
@@ -92,52 +91,23 @@ func TestRuleSetPerRuleLimits(t *testing.T) {
 	}
 }
 
-func TestRuleSetProjectionCountsAndOperandSharing(t *testing.T) {
+func TestRuleSetSingleProgramOwnership(t *testing.T) {
 	set := mustPrepareRuleSet(t,
-		RuleDefinition{0, RulePass, "MODE=CW,FT8 AND SNR=1,1 OR DXCONT=EU"},
-		RuleDefinition{4, RuleReject, "DXZONE=5,5"},
-		RuleDefinition{9, RulePass, "PATH=HIGH"})
-	want := RuleSetCounts{
-		Rules:    3,
-		Normal:   RuleProgramCounts{Nodes: 7, Atoms: 5, Values: 8},
-		Nearby:   RuleProgramCounts{Nodes: 4, Atoms: 3, Values: 5},
-		Retained: RuleProgramCounts{Nodes: 10, Atoms: 7, Values: 8},
-	}
+		RuleDefinition{0, RulePass, "MODE=CW,FT8 AND NEARBY OR DXCONT=EU"},
+		RuleDefinition{4, RuleReject, "DXZONE=5,5"}, RuleDefinition{9, RulePass, "PATH=HIGH"})
+	want := RuleSetCounts{Rules: 3, Program: RuleProgramCounts{Nodes: 7, Atoms: 5, Values: 6}}
 	if got := set.Counts(); got != want {
-		t.Fatalf("projection/shared-vector counts got %+v, want %+v", got, want)
-	}
-	if set.rules[2].normal != set.rules[2].nearby {
-		t.Fatal("non-geographic rule did not reuse the program")
-	}
-	full, pruned := set.rules[0].normal, set.rules[0].nearby
-	if full == pruned || pruned == nil || set.rules[1].nearby != nil {
-		t.Fatal("mixed/suspended projections were not independently represented")
-	}
-	for i := range pruned.nodes {
-		predicate := &pruned.nodes[i].predicate
-		switch pruned.nodes[i].kind {
-		case expr.AtomKind:
-			shared := false
-			for j := range full.nodes {
-				original := &full.nodes[j].predicate
-				if full.nodes[j].kind != expr.AtomKind || original.field != predicate.field {
-					continue
-				}
-				if len(predicate.text) > 0 {
-					shared = &predicate.text[0] == &original.text[0]
-				} else if len(predicate.integers) > 0 {
-					shared = &predicate.integers[0] == &original.integers[0]
-				}
-			}
-			if !shared {
-				t.Fatal("projection recompiled/copied immutable operands")
-			}
-		}
+		t.Fatalf("counts=%+v want %+v", got, want)
 	}
 	assertPreparedRulePrograms(t, set)
-	compiled, err := compileRule("NOT MODE=CW OR SNR=1")
+	original := set.rules[0].program
+	changed, err := set.WithRule(RuleDefinition{4, RuleReject, "MODE=USB"})
+	if err != nil || changed.rules[0].program != original {
+		t.Fatal("unchanged immutable program not shared")
+	}
+	compiled, err := compileRule("NOT MODE=CW OR NEARBY")
 	if err != nil || compiled.root != compiled.syntax.Root {
-		t.Fatalf("compiler root did not survive independently: %v", err)
+		t.Fatalf("compiler root lost: %v", err)
 	}
 }
 
@@ -163,25 +133,24 @@ func TestRuleSetChurnBoundedSnapshots(t *testing.T) {
 			t.Fatal(err)
 		}
 		if i%30 == 0 {
-			snapshots = append(snapshots, snapshot{set, set.Definitions(), set.Readback(true), set.Counts(),
-				set.Matches(sp, "", false), set.Matches(sp, "", true)})
+			snapshots = append(snapshots, snapshot{set, set.Definitions(), set.Readback(), set.Counts(),
+				set.Matches(sp, EvaluationContext{PathClass: ""}), set.Matches(sp, EvaluationContext{PathClass: ""})})
 		}
 		set, err = set.WithoutRule((i + 3) % 10)
 		if err != nil {
 			t.Fatal(err)
 		}
 		counts := set.Counts()
-		if counts.Rules > 10 || counts.Normal.Nodes > counts.Rules*5 ||
-			counts.Nearby.Nodes > counts.Rules*3 || counts.Retained.Nodes > counts.Rules*8 ||
-			counts.Retained.Atoms > counts.Rules*5 || counts.Retained.Values > counts.Rules*3 {
+		if counts.Rules > 10 || counts.Program.Nodes > counts.Rules*5 ||
+			counts.Program.Atoms > counts.Rules*3 || counts.Program.Values > counts.Rules*3 {
 			t.Fatalf("historical expressions accumulated at iteration %d: %+v", i, counts)
 		}
 		assertPreparedRulePrograms(t, set)
 	}
 	for _, saved := range snapshots {
 		if !reflect.DeepEqual(saved.set.Definitions(), saved.definitions) ||
-			!reflect.DeepEqual(saved.set.Readback(true), saved.readback) || saved.set.Counts() != saved.counts ||
-			saved.set.Matches(sp, "", false) != saved.normal || saved.set.Matches(sp, "", true) != saved.near {
+			!reflect.DeepEqual(saved.set.Readback(), saved.readback) || saved.set.Counts() != saved.counts ||
+			saved.set.Matches(sp, EvaluationContext{PathClass: ""}) != saved.normal || saved.set.Matches(sp, EvaluationContext{PathClass: ""}) != saved.near {
 			t.Fatal("churn changed a prior immutable snapshot")
 		}
 	}
@@ -194,5 +163,24 @@ func TestRuleSetChurnBoundedSnapshots(t *testing.T) {
 	}
 	if set != nil || set.Counts() != (RuleSetCounts{}) {
 		t.Fatal("deletion did not release all owned state")
+	}
+}
+
+func TestRuleSetNearbyAggregateAtomBudget(t *testing.T) {
+	source := strings.Repeat("NEARBY OR ", expr.MaxAtoms-1) + "NEARBY"
+	definitions := make([]RuleDefinition, 4)
+	for i := range definitions {
+		definitions[i] = RuleDefinition{i, RulePass, source}
+	}
+	set := mustPrepareRuleSet(t, definitions...)
+	if got := set.Counts().Program; got.Atoms != MaxTotalRuleAtoms || got.Values != 0 {
+		t.Fatalf("zero-value predicate counts wrong: %+v", got)
+	}
+	before := set.Definitions()
+	if changed, err := set.WithRule(RuleDefinition{4, RulePass, "NEARBY"}); err == nil || changed != nil {
+		t.Fatal("129th predicate atom admitted")
+	}
+	if !reflect.DeepEqual(set.Definitions(), before) {
+		t.Fatal("rejected predicate edit changed original")
 	}
 }

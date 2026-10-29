@@ -54,10 +54,9 @@ entity selection (`DXDXCC=IT9`, ADIF 248) from literal calls (`DXCALL=IT9*`).
 
 Separate controls retain their own grammar. Shared PASS/REJECT control forms
 work in both dialects; CC SET/FILTER and UNSET/FILTER support BEACON, WWV, WCY,
-ANNOUNCE/PC93, SELF, TOXIC and NEARBY only. Switches take no value or ALL.
-NEARBY follows its explicit ON/OFF value with either verb. Only SET/FILTER
-accepts `<switch>/ON|/OFF`, without extra values; UNSET and NEARBY have no
-inline flags. Named CC control shortcuts retain their no-argument grammar.
+ANNOUNCE/PC93, SELF and TOXIC only. Switches take no value or ALL.
+Only SET/FILTER accepts `<switch>/ON|/OFF`, without extra values; UNSET has no
+inline flags. NEARBY is a bare expression predicate; old toggle forms are refused. Named CC control shortcuts retain their no-argument grammar.
 Old category lists, MODE shortcuts, MINSNR, COMMENT-list, DXBM and NOFILTER
 mutations are refused, not translated. Historical CC category mechanics in
 [TSR-0064](../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md)
@@ -71,7 +70,7 @@ YAML client commands are omitted only from the overview. They remain executable
 and retain command-specific help, such as `HELP GET YAML CONFIG`.
 
 HELP accepts a working command spelling with arguments, for example
-`HELP SH DX 5`, `HELP SET SOLAR 30` or `HELP GET YAML CONFIG SCHEMA 5 ID read-1`.
+`HELP SH DX 5`, `HELP SET SOLAR 30` or `HELP GET YAML CONFIG SCHEMA 6 ID read-1`.
 It selects the longest complete command head without executing the command.
 SH BUILD/OWN/DXCC/MYDX/PROP and history aliases resolve to their own topics;
 shared PASS/REJECT topics also resolve in CC. Fixed CC shortcuts take priority
@@ -181,7 +180,7 @@ The operator-facing commands handled here are:
 - `DELETE PRESET <name>`
 - `DIALECT`
 - `BYE`
-- `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 5 [ID <id>]`
+- `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 6 [ID <id>]`
 - `PUT YAML FILTER|SETTINGS|CONFIG`
 - `PATCH YAML FILTER|SETTINGS|CONFIG`
 - `VALIDATE YAML CONFIG`
@@ -200,16 +199,16 @@ A PASS rule without SOURCE allows HUMAN and SKIMMER.
 SOURCE follows ordinary Boolean semantics, including OR and NOT.
 Explicit SOURCE=HUMAN stays human-only, including saved default rules.
 No saved expressions are rewritten. Shipped defaults now select both sources.
-RESET FILTER RULE clears selected slots while preserving NEARBY; RESET FILTER
-clears all slots and turns NEARBY OFF. Neither reinstalls defaults nor changes
+RESET FILTER RULE clears selected slots; RESET FILTER clears all slots,
+including any NEARBY terms. Neither reinstalls defaults nor changes
 separate controls/settings. See [the full rule contract](../telnet/README.md#filters).
 
 `SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact numbered
-rules, effective expressions or suspension, and individual controls.
-`SHOW FILTER FULL` adds geometry detail and preparation counts.
+canonical rules and individual controls.
+`SHOW FILTER FULL` adds one-program preparation counts and control detail.
 No view flattens Boolean alternatives into independent field lists.
 `SHOW/FILTER` and `SH/FILTER` accept the same RULE/FULL arguments in both
-dialects; category views are unsupported. `GET YAML FILTER SCHEMA 5` exposes
+dialects; category views are unsupported. `GET YAML FILTER SCHEMA 6` exposes
 machine-readable expressions and exact DEFAULT/boolean controls.
 `SHOW SETTINGS`
 separates configured preferences and effective behavior from session status.
@@ -222,7 +221,7 @@ Exact strings use Go-style quoted ASCII escapes; complete quoted pieces joined
 by `+` preserve long values without trimming spaces or splitting escapes.
 This is display encoding, not expression quoting or necessarily a copyable
 command. Slots display in numeric order, not priority order. Human input
-retains the configured limit (128 bytes by default); use schema 5 YAML for
+retains the configured limit (128 bytes by default); use schema 6 YAML for
 longer expressions. Rendering reads retained immutable prepared rules, not
 render-time compilation or an additional category gate.
 
@@ -236,15 +235,16 @@ completion effects. Human size errors follow the same pause policy.
 Client YAML commands work in both dialects and never change pause state,
 including on success or error. Each reply is one complete framed control
 message with no human footer. GET exposes exact writable configuration
-separately from read-only status. Every GET requires SCHEMA 5, including
+separately from read-only status. Every GET requires SCHEMA 6, including
 SETTINGS and CAPABILITIES. CAPABILITIES advertises
-`supported_schema_versions: [5]`, rule fields/operators/vocabularies and bounds,
+`supported_schema_versions: [6]`, rule fields/operators/vocabularies and bounds,
 not the old settings-availability matrix; runtime settings admission is
-authoritative. Rule status includes configured/effective/suspended entries and
-full/nearby/retained counts. Optional GET IDs preserve case and accept 1-32 ASCII
+authoritative. Rule status includes canonical entries, configured_count and
+one program count domain. NEARBY appears as a zero-operand predicate with no
+comparison operators, separately from comparison fields. Optional GET IDs preserve case and accept 1-32 ASCII
 letters, digits or hyphens.
 
-FILTER has exactly eight fields: `rules`, `nearby_enabled`, `include_beacons`,
+FILTER has exactly seven fields: `rules`, `include_beacons`,
 `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic`.
 SETTINGS retains its six fields: `dialect`, `grid`, `noise_class`,
 `dedupe_policy`, `path_min_observation_count`, `solar_summary_minutes`.
@@ -259,7 +259,7 @@ strings and zero sentinels, subject to admission.
 
 Upload headers have no schema suffix. The strict envelope permits
 `schema_version`, `request_id`, `if_revision` and `configuration`; bodies require
-`schema_version: 5`, request_id and configuration. PUT/PATCH also
+`schema_version: 6`, request_id and configuration. PUT/PATCH also
 require the revision from GET as if_revision; VALIDATE permits it optionally.
 GET again after reconnect or a conflict. Validation or persistence failure
 leaves live and saved configuration
@@ -285,7 +285,7 @@ invalid document gets a YAML error and keeps the connection open. Ordinary
 command headers keep their configured limit (128 bytes in the shipped config).
 
 See the [human display contract](../telnet/README.md#human-configuration-readbacks)
-and [complete schema-5 examples and framing](../telnet/README.md#client-yaml-configuration).
+and [complete schema-6 examples and framing](../telnet/README.md#client-yaml-configuration).
 
 `PAUSE` defaults to 30 seconds and accepts whole seconds from 1 to 300 in both
 dialects. It remains available when automatic read pause is disabled. A new
@@ -472,21 +472,22 @@ comparison false, including `<>`; NOT negates that result. See
 [State provenance and archive metadata](../telnet/README.md#us-state-and-canadian-province-filters)
 and `HELP RULE` for exact field rules.
 
-NEARBY structurally removes only geographic leaves, collapses surviving
-branches and ignores entirely emptied rules. Full saved rules stay editable;
-OFF uses the latest full expressions, not an old snapshot. The
+NEARBY combines with ordinary NOT, AND and OR; it never removes geographic
+conditions or changes dedupe. For example, `MODE=CW AND (DXCONT=EU OR NEARBY)`
+selects CW from Europe or with a nearby endpoint. Missing proximity is false;
+NOT NEARBY includes unknown proximity. The
 [rule-only recovery contract](../telnet/README.md#grid-noise-and-nearby)
-cover already-ON restored unusable geometry. Enabling/grid changes still
-require usable geometry; SELF/history exceptions and TOXIC remain distinct.
+waives only mapping availability for an unchanged saved GRID with every other
+setting/control unchanged. SELF/history exceptions and TOXIC remain distinct.
 
-Only explicit machine schema 5 and native disk version 5 are supported here.
+Only explicit machine schema 6 and native disk version 6 are supported here.
 Records, library entries and applied baselines use versioned nested
 configuration. Old machine schemas remain refused. A separate login-owned
 reset-only upgrade for recognized old profiles preserves settings and installs
 the same configured mode/source defaults as new accounts; it does not translate
 old filter rules. See [login upgrades](../telnet/README.md#login-and-session-behavior).
-Old/unversioned/future records are refused/protected. No reset or preset wipe
-was executed here. See [native v5 storage](../telnet/README.md#persistence-format-and-rollback).
+Ordinary codecs refuse old/unversioned/future records. Login recognizes
+unversioned/version 1-5 records for one safe reset to configured rule 0. Implementation does not authorize a production reset or preset wipe. See [native v6 storage](../telnet/README.md#persistence-format-and-rollback).
 
 ## MINSNR Commands
 
@@ -523,6 +524,6 @@ There are no saved phrase-list moves/removals or hidden-list preservation.
 Replace the whole slot or use RESET FILTER RULE; rule changes participate in
 preset/revision/history invalidation. See
 [saved expressions versus explicit archive phrases](../telnet/README.md#comment-filters-and-searches)
-and [schema 5](../telnet/README.md#client-yaml-configuration).
+and [schema 6](../telnet/README.md#client-yaml-configuration).
 Explicit archive COMMENT/NEXT grammar above remains unchanged and mandatory
 even for self-spots; it is not expression quoting.

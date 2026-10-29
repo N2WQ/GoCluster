@@ -82,7 +82,7 @@ func historyCommentAliasSession(t *testing.T, input string, ziutek bool, dialect
 
 type historyCommentAliasState struct {
 	filter                             *filter.Filter
-	configuration, baseline            filter.V5Configuration
+	configuration, baseline            filter.V6Configuration
 	presetName, epoch                  string
 	revision                           uint64
 	configurationDigest, historyDigest [32]byte
@@ -102,7 +102,7 @@ func captureHistoryCommentAliasState(t *testing.T, c *Client) historyCommentAlia
 		t.Fatal(err)
 	}
 	state := historyCommentAliasState{
-		filter: c.filter, configuration: c.captureV5Configuration(),
+		filter: c.filter, configuration: c.captureV6Configuration(),
 		baseline: testPresetConfiguration(t, c.presetReference.Baseline), presetName: c.presetReference.Name,
 		epoch: c.configurationEpoch, revision: c.configurationRevision, configurationDigest: c.configurationDigest,
 		configurationSet: c.configurationDigestSet, historyDigest: c.historyDigest, historySet: c.historyDigestSet,
@@ -132,7 +132,7 @@ func (before historyCommentAliasState) assertOwners(t *testing.T, c *Client, com
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved := filter.V5ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
+	saved := filter.V6ConfigurationFromFilter(&record.Filter, filter.SettingsConfiguration{
 		Dialect: record.Dialect, Grid: record.Grid, NoiseClass: record.NoiseClass, DedupePolicy: record.DedupePolicy,
 		PathMinObservationCount: record.PathMinObservationCount, SolarSummaryMinutes: record.SolarSummaryMinutes,
 	})

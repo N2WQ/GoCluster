@@ -212,7 +212,7 @@ func assertSolarOutcomeReadOwners(t *testing.T, s *Server, c *Client, available 
 		}
 		assertHumanWire(t, settings)
 		{
-			response := s.prepareV5MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", SchemaVersion: 5, RequestID: "solar-14"})
+			response := s.prepareV6MachineReadback(c, machineCommand{Verb: "GET", Resource: "CONFIG", SchemaVersion: 6, RequestID: "solar-14"})
 			var document struct {
 				SchemaVersion int `yaml:"schema_version"`
 				Configuration struct {
@@ -228,9 +228,9 @@ func assertSolarOutcomeReadOwners(t *testing.T, s *Server, c *Client, available 
 			if err := yaml.Unmarshal([]byte(response), &document); err != nil {
 				t.Fatal(err)
 			}
-			if document.SchemaVersion != 5 || document.Configuration.Settings.SolarSummaryMinutes != 15 ||
+			if document.SchemaVersion != 6 || document.Configuration.Settings.SolarSummaryMinutes != 15 ||
 				document.Status.Configured.SolarSummaryMinutes != 15 || document.Status.Effective.SolarSummaryMinutes != effective {
-				t.Fatalf("schema 5 lost configured/effective solar choice: %q", response)
+				t.Fatalf("schema 6 lost configured/effective solar choice: %q", response)
 			}
 		}
 	}

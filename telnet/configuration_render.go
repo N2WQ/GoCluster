@@ -173,7 +173,7 @@ type humanRuntimeStatus struct {
 	stationFloor, beaconFloor                  int
 	stationMinimum, beaconMinimum, userMinimum int
 	prediction                                 string
-	dedupeEnabled, fastEnabled, solarEnabled   bool
+	dedupeEnabled, solarEnabled                bool
 }
 
 func (s *Server) captureHumanRuntime(c *Client) humanRuntimeStatus {
@@ -183,7 +183,6 @@ func (s *Server) captureHumanRuntime(c *Client) humanRuntimeStatus {
 		return runtime
 	}
 	runtime.dedupeEnabled = s.dedupeFastEnabled || s.dedupeMedEnabled || s.dedupeSlowEnabled
-	runtime.fastEnabled = s.dedupeFastEnabled
 	runtime.solarEnabled = s.solarWeather.Enabled()
 	if s.pathPredictor != nil {
 		cfg := s.pathPredictor.Config()
@@ -264,9 +263,6 @@ func writeHumanDedupe(h *humanResponse, configured string, status configurationR
 	suffix := ""
 	if configured == "" || !known || requested.label() != status.Effective.DedupePolicy {
 		suffix = "; effective " + status.Effective.DedupePolicy
-		if status.Effective.NearbyActive {
-			suffix += " while NEARBY is active"
-		}
 	}
 	if err := h.valueRow("Dedupe", choice, suffix); err != nil {
 		return err
@@ -276,10 +272,7 @@ func writeHumanDedupe(h *humanResponse, configured string, status configurationR
 			return err
 		}
 	}
-	if status.Effective.NearbyActive && !runtime.fastEnabled {
-		return h.row("", "FAST is unavailable on this server")
-	}
-	if known && !status.Effective.NearbyActive && requested.label() != status.Effective.DedupePolicy {
+	if known && requested.label() != status.Effective.DedupePolicy {
 		return h.row("", "Configured choice is unavailable on this server")
 	}
 	return nil

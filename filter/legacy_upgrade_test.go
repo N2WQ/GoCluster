@@ -15,7 +15,7 @@ import (
 	"dxcluster/spot"
 )
 
-// These are literal yaml.v3 flat keys from HEAD's Filter/UserRecord, not v5
+// These are literal yaml.v3 flat keys from HEAD's Filter/UserRecord, not v6
 // spellings or a re-created legacy Go filter implementation.
 const oldLoginFixture = `bands: {20m: true}
 blockbands: {40m: true}
@@ -111,7 +111,7 @@ func TestLoginUpgradeActualFlatVersions(t *testing.T) {
 			}
 			if record.Dialect != "cc" || record.Grid != "FN31" || record.NoiseClass != "URBAN" ||
 				record.DedupePolicy != "MED" || record.PathMinObservationCount != 42 || record.SolarSummaryMinutes != 15 ||
-				record.Preset != nil || record.NearbyEnabled || len(record.RecentIPs) != 2 ||
+				record.Preset != nil || len(record.RecentIPs) != 2 ||
 				!record.LastLoginUTC.Equal(time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)) {
 				t.Fatalf("settings/history/reset mismatch: %+v", record)
 			}
@@ -128,9 +128,9 @@ func TestLoginUpgradeActualFlatVersions(t *testing.T) {
 				t.Fatal("reset did not install configured new-user defaults", record.PreparedRules().Definitions())
 			}
 			assertUpgradeBytes(t, path+legacyBackupSuffix, []byte(raw))
-			stored, err := LoadV5UserRecord("LZ3NY-11")
+			stored, err := LoadV6UserRecord("LZ3NY-11")
 			if err != nil || !reflect.DeepEqual(stored.Configuration.Filters.Rules, want) {
-				t.Fatal("upgrade did not create writable strict v5", err)
+				t.Fatal("upgrade did not create writable strict v6", err)
 			}
 			record.preparedRules = mustPrepareRuleSet(t, RuleDefinition{2, RulePass, "MODE=FT8"})
 			if err := SaveUserRecord("LZ3NY-11", record); err != nil {
@@ -141,11 +141,11 @@ func TestLoginUpgradeActualFlatVersions(t *testing.T) {
 				t.Fatal(err)
 			}
 			again, changed, err := UpgradeUserRecordForLogin("LZ3NY-11", func(*PreparedUserRecord) error {
-				t.Fatal("v5 profile reached upgrade writer")
+				t.Fatal("v6 profile reached upgrade writer")
 				return nil
 			})
 			if err != nil || changed || again.PreparedRules().Definitions()[0].Slot != 2 {
-				t.Fatalf("v5 reset on second login: %v %v", changed, err)
+				t.Fatalf("v6 reset on second login: %v %v", changed, err)
 			}
 			assertUpgradeBytes(t, path, before)
 			assertUpgradeBytes(t, path+legacyBackupSuffix, []byte(raw))
@@ -197,7 +197,7 @@ func TestLoginUpgradeKeepsSixControlsSeparate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			stored := V5ConfigurationFromFilter(&record.Filter, SettingsConfiguration{})
+			stored := V6ConfigurationFromFilter(&record.Filter, SettingsConfiguration{})
 			for index, value := range stored.Filters.toggles() {
 				want := DefaultBoolDefault
 				if index == selected {
@@ -214,12 +214,12 @@ func TestLoginUpgradeKeepsSixControlsSeparate(t *testing.T) {
 func TestLoginUpgradeRefusesUnknownUnsafeOrMalformed(t *testing.T) {
 	for _, raw := range []string{
 		"null\n", "[]\n", "configuration_version: null\n", "configuration_version: '4'\n",
-		"configuration_version: 0\n", "configuration_version: 6\n", "configuration_version: -1\n",
+		"configuration_version: 0\n", "configuration_version: 7\n", "configuration_version: -1\n",
 		"configuration_version: 4\nconfiguration_version: 4\n", "configuration_version: 4\nrules: []\n",
 		"configuration_version: 4\nallow_self: null\n", "configuration_version: 4\nallow_self: 'false'\n",
 		"configuration_version: 4\ndialect: null\n", "configuration_version: 1\ndxstates: {MA: true}\n",
 		"configuration_version: 2\nmin_snr: {CW: 0}\n", "configuration_version: 3\ncomments: [abc]\n",
-		"configuration_version: 4\nmodes: [CW]\n", "configuration_version: 4\npreset: {name: OLD, baseline: {configuration_version: 6}}\n",
+		"configuration_version: 4\nmodes: [CW]\n", "configuration_version: 4\npreset: {name: OLD, baseline: {configuration_version: 7}}\n",
 		"configuration_version: 4\n---\n{}\n", "configuration_version: [\n",
 		strings.Repeat("#", MaxUserRecordBytes+1),
 		"callsigns: [&x " + strings.Repeat("a", 50000) + "]\nblock_callsigns: [" + strings.Repeat("*x,", 50) + "]\n",
@@ -243,14 +243,14 @@ func TestLoginUpgradeRefusesUnknownUnsafeOrMalformed(t *testing.T) {
 	}
 }
 
-func TestLoginUpgradeMixedLibraryPreservesV5(t *testing.T) {
+func TestLoginUpgradeMixedLibraryPreservesV6(t *testing.T) {
 	usePresetTestDir(t)
 	writeUpgradeFixture(t, "LZ3NY-11", []byte("configuration_version: 4\nallmodes: false\n"))
-	fresh, err := V5SavedPresetFromRuntime(testSavedPreset())
+	fresh, err := V6SavedPresetFromRuntime(testSavedPreset())
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := EncodeV5PresetCollection(&V5PresetCollection{Presets: map[string]*V5SavedPreset{"FRESH": fresh}})
+	data, err := EncodeV6PresetCollection(&V6PresetCollection{Presets: map[string]*V6SavedPreset{"FRESH": fresh}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestLoginUpgradeMixedLibraryPreservesV5(t *testing.T) {
 	assertUpgradeBytes(t, path+legacyBackupSuffix, data)
 	loaded, err := LoadPreset("LZ3NY-12", "FRESH")
 	if err != nil || !ConfigurationFromPreset(loaded).Equal(ConfigurationFromPreset(testSavedPreset())) {
-		t.Fatal("v5 preset changed during old-entry removal", err)
+		t.Fatal("v6 preset changed during old-entry removal", err)
 	}
 	if names, err := ListPresets("LZ3NY"); err != nil || !reflect.DeepEqual(names, []string{"FRESH"}) {
 		t.Fatal("old preset not removed", names, err)
@@ -295,7 +295,7 @@ func TestLoginUpgradeSharedLibraryRetryAndFreshPreset(t *testing.T) {
 	library := writeUpgradeLibrary(t, libraryRaw)
 	failure := errors.New("record callback failure")
 	_, upgraded, err := UpgradeUserRecordForLogin("LZ3NY-11", func(prepared *PreparedUserRecord) error {
-		if _, err := DecodeV5UserRecord(prepared.data); err != nil {
+		if _, err := DecodeV6UserRecord(prepared.data); err != nil {
 			t.Fatal("callback received unadmitted bytes", err)
 		}
 		return failure
@@ -326,7 +326,7 @@ func TestLoginUpgradeSharedLibraryRetryAndFreshPreset(t *testing.T) {
 	assertUpgradeBytes(t, library+legacyBackupSuffix, libraryRaw)
 }
 
-func TestLoginUpgradeV5OnlyLibraryCleanupAndMissingIsolation(t *testing.T) {
+func TestLoginUpgradeV6OnlyLibraryCleanupAndMissingIsolation(t *testing.T) {
 	usePresetTestDir(t)
 	if err := SaveUserRecord("LZ3NY-11", &UserRecord{Filter: *nativeRuleFilter(t, RuleDefinition{3, RuleReject, "MODE=FT8"}), Grid: "FN31"}); err != nil {
 		t.Fatal(err)
@@ -344,11 +344,11 @@ func TestLoginUpgradeV5OnlyLibraryCleanupAndMissingIsolation(t *testing.T) {
 		t.Fatal("new login touched library")
 	}
 	record, changed, err := UpgradeUserRecordForLogin("LZ3NY-11", func(*PreparedUserRecord) error {
-		t.Fatal("v5 record rewritten")
+		t.Fatal("v6 record rewritten")
 		return nil
 	})
 	if err != nil || !changed || record.Grid != "FN31" || record.PreparedRules().Definitions()[0].Slot != 3 {
-		t.Fatal("library cleanup changed v5 record", err)
+		t.Fatal("library cleanup changed v6 record", err)
 	}
 	assertUpgradeBytes(t, path, before)
 	if _, changed, err := UpgradeUserRecordForLogin("LZ3NY-11", nil); err != nil || changed {
@@ -390,6 +390,6 @@ func TestLoginUpgradeConcurrentSSIDPreservesFreshLibrary(t *testing.T) {
 		}
 	}
 	if names, err := ListPresets("LZ3NY"); err != nil || !reflect.DeepEqual(names, []string{"FRESH"}) {
-		t.Fatal("concurrent SSID wiped new v5 preset", names, err)
+		t.Fatal("concurrent SSID wiped new v6 preset", names, err)
 	}
 }

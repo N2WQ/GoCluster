@@ -164,7 +164,7 @@ func TestStateArchiveMixedVersionHistory(t *testing.T) {
 			if test.pass {
 				action = filter.RulePass
 			}
-			_, f, err := filter.PrepareV5Configuration(filter.V5Configuration{Filters: filter.V5FilterConfiguration{
+			_, f, err := filter.PrepareV6Configuration(filter.V6Configuration{Filters: filter.V6FilterConfiguration{
 				Rules: []filter.RuleDefinition{{Slot: 0, Action: action, Expr: "DXSTATE=CA,ON"}},
 			}})
 			if err != nil {

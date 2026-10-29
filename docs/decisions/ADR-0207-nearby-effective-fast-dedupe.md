@@ -1,8 +1,10 @@
 # ADR-0207: NEARBY Effective Fast Dedupe
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-07-09
 - Decision Origin: Design
+
+> The automatic NEARBY dedupe override is superseded by ADR-0329; ordinary resolved user policy now governs delivery and diagnostics. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 
 ## Context
 `SET DEDUPE` is a saved per-callsign telnet preference. The shipped default is
@@ -84,4 +86,4 @@ This is an effective runtime policy only:
 - Related docs: `README.md`, `telnet/README.md`,
   `customgpt/troubleshooting-index.md`, `commands/processor.go`
 - Related TSRs: none
-- Supersedes / superseded by: none
+- Superseded by: [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md) removes the automatic NEARBY policy override.

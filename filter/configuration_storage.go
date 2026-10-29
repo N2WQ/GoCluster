@@ -1,4 +1,4 @@
-// File role: Applied-preset references and strict v5 stored-value validation.
+// File role: Applied-preset references and strict v6 stored-value validation.
 package filter
 
 import (
@@ -36,13 +36,13 @@ func (ref *PresetReference) Clone() (*PresetReference, error) {
 	return &PresetReference{Name: name, Baseline: baseline}, nil
 }
 
-// UnmarshalYAML validates the applied name and v5 baseline before admission.
+// UnmarshalYAML validates the applied name and v6 baseline before admission.
 func (ref *PresetReference) UnmarshalYAML(node *yaml.Node) error {
-	var value V5PresetReference
-	if err := decodeV5StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
+	var value V6PresetReference
+	if err := decodeV6StorageNode(node, storageDecodeLimits{work: maxUserRecordWork}, &value); err != nil {
 		return err
 	}
-	runtime, err := RuntimePresetReferenceFromV5(&value)
+	runtime, err := RuntimePresetReferenceFromV6(&value)
 	if err == nil {
 		*ref = *runtime
 	}

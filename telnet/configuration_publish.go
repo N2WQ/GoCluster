@@ -48,7 +48,7 @@ func (s *Server) prepareConfigurationUpdate(c *Client, before, next filter.Confi
 		}
 	}
 	prepared.setSolarSummaryMinutes(next.Settings.SolarSummaryMinutes, now)
-	return prepared, prepareUpdatedNearby(c, prepared, before, next)
+	return prepared, ""
 }
 
 func (s *Server) prepareUpdatedGrid(c, prepared *Client, configured string) {
@@ -60,29 +60,6 @@ func (s *Server) prepareUpdatedGrid(c, prepared *Client, configured string) {
 	}
 	prepared.gridCell = pathreliability.EncodeCell(prepared.grid)
 	prepared.gridCoarseCell = pathreliability.EncodeCoarseCell(prepared.grid)
-}
-
-func prepareUpdatedNearby(c, prepared *Client, before, next filter.Configuration) string {
-	gridEqual := before.Settings.Grid == next.Settings.Grid
-	c.filterMu.RLock()
-	priorFine, priorCoarse := c.filter.NearbyUserFine, c.filter.NearbyUserCoarse
-	c.filterMu.RUnlock()
-	if !next.Filters.NearbyEnabled {
-		return ""
-	}
-	fine, coarse := prepared.gridCell, prepared.gridCoarseCell
-	if before.Filters.NearbyEnabled && gridEqual {
-		fine, coarse = priorFine, priorCoarse
-		// Preserve existing partial geometry without relaxing new-location admission.
-		prepared.filter.UpdateNearbyUserCells(fine, coarse)
-	}
-	if fine == pathreliability.InvalidCell || coarse == pathreliability.InvalidCell {
-		return nearbyLoginInactiveMsg
-	}
-	if err := prepared.filter.EnableNearby(fine, coarse); err != nil {
-		return nearbyLoginInactiveMsg
-	}
-	return ""
 }
 
 // publishConfiguration has no fallible work. Stable Filter identity and the
@@ -125,7 +102,7 @@ func (s *Server) publishConfigurationState(c *Client, settings filter.SettingsCo
 }
 
 // Human commands publish their staged runtime Filter directly, preserving
-// ordinary NEARBY restoration rather than reconstructing machine runtime state.
+// the GRID-owned location rather than reconstructing unrelated runtime state.
 // The SSID lease covers publication/save. Fan-out sees stable Filter identity
 // under path→filter locks; unrelated edits never replace a broadcaster's tick.
 // Publication transfers the staged collections to the live client. The command

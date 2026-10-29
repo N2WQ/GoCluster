@@ -129,7 +129,7 @@ func (c *Client) presetSnapshot() (*filter.SavedPreset, error) {
 }
 
 func (s *Server) preparePreset(client *Client, set *filter.SavedPreset, now time.Time) (*Client, string) {
-	prepared, warning := s.prepareConfiguration(client, filter.ConfigurationFromPreset(set), now)
+	prepared, warning := s.prepareConfigurationRuntime(client, filter.ConfigurationFromPreset(set), now, true)
 	warning = strings.ReplaceAll(warning, "; effective dedupe is ", "; using ")
 	return prepared, warning
 }

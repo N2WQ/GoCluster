@@ -22,6 +22,30 @@ import (
 
 // Literal flat keys follow the previous binary's yaml tags, not the new DTO.
 func oldLoginRecord(version int) []byte {
+	if version == 5 {
+		return []byte(`configuration_version: 5
+configuration:
+  filters:
+    rules: [{slot: 4, action: reject, expr: "MODE=CW"}]
+    nearby_enabled: true
+    include_beacons: false
+    allow_wwv: false
+    allow_wcy: true
+    allow_announce: false
+    allow_self: false
+    allow_toxic: false
+  settings:
+    dialect: cc
+    grid: FN31
+    noise_class: URBAN
+    dedupe_policy: MED
+    path_min_observation_count: 42
+    solar_summary_minutes: 15
+recent_ips: [192.0.2.7, 192.0.2.8]
+last_login_utc: 2026-10-01T12:00:00Z
+`)
+	}
+
 	marker := ""
 	if version != 0 {
 		marker = fmt.Sprintf("configuration_version: %d\n", version)
@@ -96,12 +120,12 @@ func connectUpgradeSession(t *testing.T, s *Server, call string) (net.Conn, *buf
 	return conn, reader, done, greeting.String()
 }
 
-func upgradeWireGet(t *testing.T, conn net.Conn, reader *bufio.Reader, prefix string) (filter.V5Configuration, string) {
+func upgradeWireGet(t *testing.T, conn net.Conn, reader *bufio.Reader, prefix string) (filter.V6Configuration, string) {
 	t.Helper()
 	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := io.WriteString(conn, prefix+"GET YAML CONFIG SCHEMA 5 ID Upgrade-1\r\n"); err != nil {
+	if _, err := io.WriteString(conn, prefix+"GET YAML CONFIG SCHEMA 6 ID Upgrade-1\r\n"); err != nil {
 		t.Fatal(err)
 	}
 	var response strings.Builder
@@ -114,7 +138,7 @@ func upgradeWireGet(t *testing.T, conn net.Conn, reader *bufio.Reader, prefix st
 		if line == "---\r\n" {
 			frame := readMachineTestFrame(t, bufio.NewReader(io.MultiReader(strings.NewReader("---\r\n"), reader)))
 			var envelope struct {
-				Configuration filter.V5Configuration `yaml:"configuration"`
+				Configuration filter.V6Configuration `yaml:"configuration"`
 			}
 			if err := yaml.Unmarshal([]byte(frame), &envelope); err != nil {
 				t.Fatal(err)
@@ -123,7 +147,7 @@ func upgradeWireGet(t *testing.T, conn net.Conn, reader *bufio.Reader, prefix st
 		}
 	}
 	t.Fatal("missing bounded correlated upgrade readback")
-	return filter.V5Configuration{}, ""
+	return filter.V6Configuration{}, ""
 }
 
 func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
@@ -137,7 +161,7 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 		}
 	})
 	for _, transport := range []string{"native", "ziutek"} {
-		for _, version := range []int{0, 1, 2, 3, 4} {
+		for _, version := range []int{0, 1, 2, 3, 4, 5} {
 			t.Run(fmt.Sprintf("%s/version-%d", transport, version), func(t *testing.T) {
 				s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
 					opts.Transport, opts.EchoMode, opts.LoginGreeting = transport, "off", "READY\n"
@@ -170,7 +194,7 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 					Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "MED",
 					PathMinObservationCount: 42, SolarSummaryMinutes: 15,
 				}
-				if cfg.Settings != wantSettings || cfg.Filters.NearbyEnabled ||
+				if cfg.Settings != wantSettings ||
 					!reflect.DeepEqual(cfg.Filters.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,RTTY AND SOURCE=HUMAN"}}) {
 					t.Fatalf("old preferences/default-mode reset lost: %+v", cfg)
 				}
@@ -179,7 +203,7 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 					cfg.Filters.AllowAnnounce != filter.DefaultBoolFalse || cfg.Filters.AllowToxic != filter.DefaultBoolFalse {
 					t.Fatal("separate controls were reset")
 				}
-				_, value, err := filter.PrepareV5Configuration(cfg)
+				_, value, err := filter.PrepareV6Configuration(cfg)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -193,7 +217,7 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 					t.Fatal("upgrade did not allow matching human reports")
 				}
 				loaded, err := filter.LoadUserRecord(call)
-				if err != nil || loaded.ConfigurationVersion != 5 || loaded.Preset != nil ||
+				if err != nil || loaded.ConfigurationVersion != 6 || loaded.Preset != nil ||
 					!slices.Contains(loaded.RecentIPs, "192.0.2.7") {
 					t.Fatalf("upgraded durable metadata: %v %+v", err, loaded)
 				}
@@ -297,7 +321,7 @@ func TestNewSSIDWithOldSharedPresetsCanSaveImmediately(t *testing.T) {
 	if names, err := filter.ListPresets(call); err != nil || len(names) != 0 {
 		t.Fatalf("old shared library blocks a new SSID: %v %v", names, err)
 	}
-	if backup, err := os.ReadFile(library + ".pre-v5.bak"); err != nil || !bytes.Equal(backup, original) {
+	if backup, err := os.ReadFile(library + ".pre-v6.bak"); err != nil || !bytes.Equal(backup, original) {
 		t.Fatal("new-SSID cleanup failed to preserve the original library backup")
 	}
 	_, reply := upgradeWireGet(t, conn, reader, "SAVE PRESET NEWSSID\r\n")
@@ -353,7 +377,7 @@ func TestNewSSIDPresetCleanupFailureAndInitialCommitBoundary(t *testing.T) {
 			if err != nil || !bytes.Equal(after, original) {
 				t.Fatal("failed new-SSID cleanup changed library bytes")
 			}
-			if _, err := os.Stat(library + ".pre-v5.bak"); !errors.Is(err, os.ErrNotExist) {
+			if _, err := os.Stat(library + ".pre-v6.bak"); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("unadmitted cleanup created an original backup")
 			}
 		})

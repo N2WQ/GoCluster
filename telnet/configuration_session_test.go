@@ -49,7 +49,7 @@ func TestMachineGETOverflowReleasesOwnershipBeforeBlockedReporter(t *testing.T) 
 	getDone := make(chan struct{})
 	var queued bool
 	go func() {
-		dispatch := s.handleMachineCommand(c, "GET YAML SETTINGS SCHEMA 5 ID read-1")
+		dispatch := s.handleMachineCommand(c, "GET YAML SETTINGS SCHEMA 6 ID read-1")
 		queued = dispatch.handled && !dispatch.terminal
 		close(getDone)
 	}()
@@ -80,7 +80,7 @@ func TestConfigurationSaveAndReconnectHandoff(t *testing.T) {
 	old := configurationTestClient(s, "W1ABC-1")
 	old.configuredSettings = filter.SettingsConfiguration{Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST"}
 	old.configurationInitialized = true
-	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: testSavedPreset(t, filter.V5Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})}
+	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})}
 	s.registerClient(old)
 	entered, finish := make(chan struct{}), make(chan struct{})
 	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {

@@ -65,14 +65,27 @@ in a file named with the hex-encoded owner callsign. Back up the entire user-dat
 directory so current preferences, the applied preset name and baseline, login
 metadata and the shared preset library remain together.
 
-Current user records and preset snapshots contain `configuration_version: 4`.
-An absent marker selects legacy migration on read; current versions preserve
-explicit false, empty and default preferences. Malformed or unsupported records
-are preserved. A user can connect with temporary defaults and a warning, but
-LOAD, SAVE PRESET and YAML writes cannot overwrite the protected configuration;
-ordinary session changes are temporary. Failure to save login timestamp/IP after
-a successful record read instead restores that configuration and continues with
-a warning.
+Current user records, named preset entries and applied baselines require
+explicit configuration_version: 6 and nested configuration.filters/settings.
+Ordinary codecs do not migrate old data. A separate login-owned coordinator
+recognizes safe unversioned/version 1-5 records, validates their historical
+shape and rules, preserves settings/controls/metadata, and resets filters and
+retired shared presets once to the configured new-user PASS rule 0. Current v6
+empty rules remain empty. Frozen v5 recognition does not accept new predicates
+or activate discarded filters.
+
+Originals are preserved in .pre-v6.bak files before per-file atomic replacement;
+existing .pre-v5.bak backups remain untouched. A conflicting backup protects the
+original. Library replacement precedes profile replacement with precise partial
+outcomes and safe retries that retain new v6 entries. Only authoritative initial
+profile absence permits new-user creation. A library-only cleanup failure on a
+valid v6 profile does not block unrelated preference saves.
+
+Malformed, unsafe, future or unsupported records remain protected. A user can
+connect with temporary defaults and a warning, but LOAD, SAVE PRESET and YAML
+writes cannot overwrite that configuration. Login timestamp/IP save failure
+after a successful read instead continues with the restored preferences and a
+warning. Deployment and production-data changes require separate authorization.
 
 User records have separate 1 MiB physical-read, normalized-encoding and final
 replacement limits. Preferences and applied baselines must each fit the 256 KiB
@@ -91,7 +104,8 @@ writers again and restore the matching earlier binary and data backup. Keep the
 current backup intact; do not try an older writer against its only copy. The
 directory has one writer process; transaction locks do not coordinate separate
 server processes or external edits. See
-[ADR-0244](decisions/ADR-0244-exact-configuration-persistence.md).
+[ADR-0244](decisions/ADR-0244-exact-configuration-persistence.md) and
+[ADR-0329](decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 
 ## PSKReporter MQTT Debug Logging
 

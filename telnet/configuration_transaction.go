@@ -184,7 +184,7 @@ func (c *Client) captureConfiguration(limit int) (filter.Configuration, error) {
 }
 
 func (c *Client) refreshConfigurationRevision() {
-	c.refreshV5ConfigurationRevision()
+	c.refreshV6ConfigurationRevision()
 }
 
 func (c *Client) observeConfigurationDigest(digest [32]byte) {
@@ -206,7 +206,7 @@ func (c *Client) ensureConfigurationEpoch() error {
 }
 
 func (c *Client) configurationRevisionToken() (string, error) {
-	return c.v5ConfigurationRevisionToken()
+	return c.v6ConfigurationRevisionToken()
 }
 
 func (s *Server) persistConfiguration(c *Client, cfg filter.Configuration, ref *filter.PresetReference) error {

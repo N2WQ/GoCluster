@@ -11,20 +11,19 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func booleanBoundaryConfiguration(t *testing.T, expression string) (filter.V5Configuration, filter.Filter) {
+func booleanBoundaryConfiguration(t *testing.T, expression string) (filter.V6Configuration, filter.Filter) {
 	t.Helper()
-	cfg := filter.V5Configuration{
-		Filters: filter.V5FilterConfiguration{
-			Rules:         []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: expression}},
-			NearbyEnabled: true,
-			AllowToxic:    filter.DefaultBoolFalse,
+	cfg := filter.V6Configuration{
+		Filters: filter.V6FilterConfiguration{
+			Rules:      []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: expression}},
+			AllowToxic: filter.DefaultBoolFalse,
 		},
 		Settings: filter.SettingsConfiguration{
 			Dialect: "go", Grid: "FN31", NoiseClass: "QUIET",
 			DedupePolicy: "MED", PathMinObservationCount: 25,
 		},
 	}
-	canonical, runtimeFilter, err := filter.PrepareV5Configuration(cfg)
+	canonical, runtimeFilter, err := filter.PrepareV6Configuration(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -36,7 +35,6 @@ func TestBooleanPreparedStateCopyBoundaries(t *testing.T) {
 	cfg, runtimeFilter := booleanBoundaryConfiguration(t, "MODE=CW OR DXCONT=EU")
 	client := configurationTestClient(server, "W6TEST-1")
 	*client.filter = runtimeFilter
-	client.filter.NearbyUserFine, client.filter.NearbyUserCoarse = 101, 202
 	client.configuredSettings, client.configurationInitialized = cfg.Settings, true
 	client.grid, client.gridCell, client.gridCoarseCell = cfg.Settings.Grid, 101, 202
 	client.noiseClass, client.pathMinObservationCount = cfg.Settings.NoiseClass, cfg.Settings.PathMinObservationCount
@@ -61,8 +59,8 @@ func TestBooleanPreparedStateCopyBoundaries(t *testing.T) {
 			t.Fatalf("%s discarded or recompiled immutable rules", name)
 		}
 	}
-	if staged.filter.NearbyUserFine != 101 || staged.filter.NearbyUserCoarse != 202 ||
-		captured.client.filter.NearbyUserFine != 101 || captured.client.filter.NearbyUserCoarse != 202 {
+	if staged.gridCell != 101 || staged.gridCoarseCell != 202 ||
+		captured.client.gridCell != 101 || captured.client.gridCoarseCell != 202 {
 		t.Fatal("detached boundary lost effective NEARBY cells")
 	}
 	staged.filter.SetToxicEnabled(true)
@@ -77,39 +75,36 @@ func TestBooleanPreparedStateCopyBoundaries(t *testing.T) {
 	changedConfig := cfg.Clone()
 	changedConfig.Filters = changedConfig.Filters.WithRuleSet(changedRules)
 	changedConfig.Filters.AllowToxic = filter.DefaultBoolTrue
-	_, next, err := filter.PrepareV5Configuration(changedConfig)
+	_, next, err := filter.PrepareV6Configuration(changedConfig)
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Pure configuration preparation excludes runtime cells; the session owns
-	// restoring them before publication, just as its existing coordinator does.
-	next.NearbyUserFine, next.NearbyUserCoarse = staged.filter.NearbyUserFine, staged.filter.NearbyUserCoarse
 	*staged.filter = next
 	server.publishHumanPreference(client, staged, false)
 	if client.filter != identity || client.filter.PreparedRules() != changedRules {
 		t.Fatal("publication replaced filter identity or lost prepared rules")
 	}
 	probe := &spot.Spot{Mode: "CW", IsHuman: true}
-	if !captured.client.filter.PreparedRules().Matches(probe, filter.PathClassInsufficient, true) ||
-		client.filter.PreparedRules().Matches(probe, filter.PathClassInsufficient, true) {
+	if !captured.client.filter.PreparedRules().Matches(probe, filter.EvaluationContext{PathClass: filter.PathClassInsufficient}) ||
+		client.filter.PreparedRules().Matches(probe, filter.EvaluationContext{PathClass: filter.PathClassInsufficient}) {
 		t.Fatal("publication changed an old snapshot or failed to activate new prepared state")
 	}
 	if !client.filter.ToxicEnabled() || captured.client.filter.ToxicEnabled() ||
 		client.configuredSettings != cfg.Settings {
 		t.Fatal("publication corrupted unrelated configured preferences")
 	}
-	if client.filter.NearbyUserFine != pathreliability.CellID(101) ||
-		client.filter.NearbyUserCoarse != pathreliability.CellID(202) {
+	if client.gridCell != pathreliability.CellID(101) ||
+		client.gridCoarseCell != pathreliability.CellID(202) {
 		t.Fatal("publication discarded NEARBY runtime state")
 	}
 }
 
-func TestBooleanPreparedStateActiveV5SerializationBoundary(t *testing.T) {
-	if filter.CurrentConfigurationVersion != 5 {
-		t.Fatal("Boolean activation requires disk version 5")
+func TestBooleanPreparedStateActiveV6SerializationBoundary(t *testing.T) {
+	if filter.CurrentConfigurationVersion != 6 {
+		t.Fatal("Boolean activation requires disk version 6")
 	}
 	cfg, runtimeFilter := booleanBoundaryConfiguration(t, "MODE=CW")
-	original := filter.V5ConfigurationFromFilter(&runtimeFilter, cfg.Settings)
+	original := filter.V6ConfigurationFromFilter(&runtimeFilter, cfg.Settings)
 	withRules, err := yaml.Marshal(original)
 	if err != nil {
 		t.Fatal(err)
@@ -117,21 +112,21 @@ func TestBooleanPreparedStateActiveV5SerializationBoundary(t *testing.T) {
 	originalFingerprint := original.Fingerprint()
 	empty := cfg.Clone()
 	empty.Filters = empty.Filters.WithRuleSet(nil)
-	_, emptyRuntime, err := filter.PrepareV5Configuration(empty)
+	_, emptyRuntime, err := filter.PrepareV6Configuration(empty)
 	if err != nil {
 		t.Fatal(err)
 	}
-	withoutRules := filter.V5ConfigurationFromFilter(&emptyRuntime, cfg.Settings)
+	withoutRules := filter.V6ConfigurationFromFilter(&emptyRuntime, cfg.Settings)
 	withoutBytes, err := yaml.Marshal(withoutRules)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bytes.Equal(withRules, withoutBytes) || originalFingerprint == withoutRules.Fingerprint() {
-		t.Fatal("active v5 wire shape and digest must include public rule definitions")
+		t.Fatal("active v6 wire shape and digest must include public rule definitions")
 	}
 	if bytes.Contains(withRules, []byte("preparedRules")) || !bytes.Contains(withRules, []byte("MODE=CW")) ||
 		bytes.Contains(withRules, []byte("all_bands")) {
-		t.Fatal("v5 readback lost public rules or leaked compiled/retired category state")
+		t.Fatal("v6 readback lost public rules or leaked compiled/retired category state")
 	}
 }
 
@@ -141,7 +136,7 @@ func TestBooleanPreparedStateConcurrentPublication(t *testing.T) {
 	nextConfig := cfg.Clone()
 	nextConfig.Filters.Rules[0].Expr = "MODE=FT8"
 	nextConfig.Filters.AllowToxic = filter.DefaultBoolTrue
-	_, second, err := filter.PrepareV5Configuration(nextConfig)
+	_, second, err := filter.PrepareV6Configuration(nextConfig)
 	if err != nil {
 		t.Fatal(err)
 	}

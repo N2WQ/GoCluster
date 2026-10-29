@@ -121,7 +121,7 @@ func TestCommandPacingRecoveredLineAndBlankTransport(t *testing.T) {
 		t.Run(transport, func(t *testing.T) {
 			s, _, conn, reader, _, gate := startPacingTransportSession(t, transport)
 			// IAC GA is transport control, and CRLF is one blank keepalive, not two lines.
-			input := string([]byte{IAC, 249}) + "\r\nBAD!RESUME\r\nGET YAML SETTINGS SCHEMA 5 ID after-invalid\r\n"
+			input := string([]byte{IAC, 249}) + "\r\nBAD!RESUME\r\nGET YAML SETTINGS SCHEMA 6 ID after-invalid\r\n"
 			sent := pacingTransportWrite(t, conn, input)
 			first := gate.next(t)
 			if got := s.CommandPacingWaits(); got != 1 {
@@ -162,7 +162,7 @@ func TestCommandPacingMachineBodyIsNotDispatched(t *testing.T) {
 			}
 			// RESUME is body data. If the upload header is skipped and the body
 			// leaks into dispatch, the pause state changes.
-			pipeline := "PATCH YAML SETTINGS\r\n---\r\nRESUME\r\n...\r\nGET YAML SETTINGS SCHEMA 5 ID after-body\r\n"
+			pipeline := "PATCH YAML SETTINGS\r\n---\r\nRESUME\r\n...\r\nGET YAML SETTINGS SCHEMA 6 ID after-body\r\n"
 			sent := pacingTransportWrite(t, conn, pipeline)
 			first := gate.next(t)
 			if got := s.CommandPacingWaits(); got != 1 || client.readPauseUntilUnixNano.Load() != pause {
@@ -191,11 +191,11 @@ func TestCommandPacingValidMachineUploadAndFollowingRequest(t *testing.T) {
 	for _, transport := range []string{"native", "ziutek"} {
 		t.Run(transport, func(t *testing.T) {
 			s, _, conn, reader, _, gate := startPacingTransportSession(t, transport)
-			if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 5 ID before\r\n"); err != nil {
+			if _, err := io.WriteString(conn, "GET YAML SETTINGS SCHEMA 6 ID before\r\n"); err != nil {
 				t.Fatal(err)
 			}
 			revision := machineTestRevision(t, readMachineTestFrame(t, reader))
-			pipeline := fmt.Sprintf("PATCH YAML SETTINGS\r\n---\r\nschema_version: 5\r\nrequest_id: patch-1\r\nif_revision: %s\r\nconfiguration:\r\n  noise_class: URBAN\r\n...\r\nGET YAML SETTINGS SCHEMA 5 ID after-patch\r\n", revision)
+			pipeline := fmt.Sprintf("PATCH YAML SETTINGS\r\n---\r\nschema_version: 6\r\nrequest_id: patch-1\r\nif_revision: %s\r\nconfiguration:\r\n  noise_class: URBAN\r\n...\r\nGET YAML SETTINGS SCHEMA 6 ID after-patch\r\n", revision)
 			sent := pacingTransportWrite(t, conn, pipeline)
 			first := gate.next(t)
 			gate.advanceAndRelease(first)
@@ -264,7 +264,7 @@ func TestCommandPacingReplacementCancelsWaitAndStartsFull(t *testing.T) {
 				t.Fatal("replaced session dispatched its waiting command")
 			}
 			<-sent
-			if _, err := io.WriteString(replacement, "GET YAML SETTINGS SCHEMA 5 ID replacement\r\n"); err != nil {
+			if _, err := io.WriteString(replacement, "GET YAML SETTINGS SCHEMA 6 ID replacement\r\n"); err != nil {
 				t.Fatal(err)
 			}
 			if frame := readMachineTestFrame(t, replacementReader); !strings.Contains(frame, "request_id: replacement\r\n") {
@@ -338,7 +338,7 @@ func TestCommandPacingDisabledAllowsBurst(t *testing.T) {
 			s, _, conn, reader, _, _ := startPacingTransportSessionAtRate(t, transport, 0)
 			var pipeline strings.Builder
 			for i := range 35 {
-				fmt.Fprintf(&pipeline, "GET YAML SETTINGS SCHEMA 5 ID off-%d\r\n", i)
+				fmt.Fprintf(&pipeline, "GET YAML SETTINGS SCHEMA 6 ID off-%d\r\n", i)
 			}
 			sent := pacingTransportWrite(t, conn, pipeline.String())
 			for i := range 35 {
@@ -364,7 +364,7 @@ func TestCommandPacingSeparateSessionsHaveIndependentAllowances(t *testing.T) {
 			if _, err := io.WriteString(first, "\r\n"); err != nil {
 				t.Fatal(err)
 			}
-			firstSent := pacingTransportWrite(t, first, "GET YAML SETTINGS SCHEMA 5 ID first\r\n")
+			firstSent := pacingTransportWrite(t, first, "GET YAML SETTINGS SCHEMA 6 ID first\r\n")
 			release := gate.next(t)
 
 			_, second, secondDone := startHandshakeTranscriptSession(t, s)
@@ -378,7 +378,7 @@ func TestCommandPacingSeparateSessionsHaveIndependentAllowances(t *testing.T) {
 				t.Fatal(err)
 			}
 			readMachineEchoCoverageLiteral(t, secondReader, "ready\r\n")
-			if _, err := io.WriteString(second, "GET YAML SETTINGS SCHEMA 5 ID second\r\n"); err != nil {
+			if _, err := io.WriteString(second, "GET YAML SETTINGS SCHEMA 6 ID second\r\n"); err != nil {
 				t.Fatal(err)
 			}
 			if frame := readMachineTestFrame(t, secondReader); !strings.Contains(frame, "request_id: second\r\n") {

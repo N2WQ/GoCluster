@@ -64,7 +64,7 @@ func upgradeStoredVersion(node *yaml.Node) (int, error) {
 			continue
 		}
 		aliased := value.Kind == yaml.AliasNode
-		value = v5StoredNode(value)
+		value = v6StoredNode(value)
 		if seen || key.Kind != yaml.ScalarNode || key.Tag != "!!str" ||
 			value.Kind != yaml.ScalarNode || value.Tag != "!!int" {
 			return 0, fmt.Errorf("%w: explicit integer marker required", ErrUnsupportedConfigurationVersion)
@@ -73,7 +73,7 @@ func upgradeStoredVersion(node *yaml.Node) (int, error) {
 		if err := value.Decode(&version); err != nil || version < 1 || version > CurrentConfigurationVersion {
 			return 0, ErrUnsupportedConfigurationVersion
 		}
-		if aliased && version != CurrentConfigurationVersion {
+		if aliased && version != CurrentConfigurationVersion && version != retiredV5Version {
 			return 0, ErrUnsupportedConfigurationVersion
 		}
 	}
@@ -218,7 +218,7 @@ func validateLegacyAssociation(node *yaml.Node, state *storageDecodeState) error
 	if err := state.rawDuplicates(node); err != nil {
 		return err
 	}
-	name, baseline := v5StoredField(node, "name"), v5StoredField(node, "baseline")
+	name, baseline := v6StoredField(node, "name"), v6StoredField(node, "baseline")
 	if name == nil || name.Kind != yaml.ScalarNode || name.Tag != "!!str" || baseline == nil {
 		return errors.New("invalid old applied preset fields")
 	}
@@ -227,7 +227,7 @@ func validateLegacyAssociation(node *yaml.Node, state *storageDecodeState) error
 		return errors.New("invalid old applied preset name")
 	}
 	version, err := upgradeStoredVersion(baseline)
-	if err != nil || version == CurrentConfigurationVersion {
+	if err != nil || version > 4 {
 		return errors.New("invalid old applied preset baseline version")
 	}
 	if err := validateLegacyOwner(baseline, version, state, true); err != nil {
@@ -297,4 +297,11 @@ func decodeLegacyLogin(node *yaml.Node, version int, state *storageDecodeState, 
 		SolarSummaryMinutes: value.SolarSummaryMinutes,
 		RecentIPs:           trimRecentIPs(value.RecentIPs), LastLoginUTC: value.LastLoginUTC,
 	}, nil
+}
+
+func decodeRetiredLogin(node *yaml.Node, version int, state *storageDecodeState, defaults *PreparedRuleSet) (*UserRecord, error) {
+	if version == retiredV5Version {
+		return decodeRetiredV5Login(node, state, defaults)
+	}
+	return decodeLegacyLogin(node, version, state, defaults)
 }

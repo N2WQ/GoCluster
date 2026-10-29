@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"dxcluster/filter"
-	"dxcluster/pathreliability"
 )
 
 // Both passes use only already-prepared immutable rules. The first pass admits
@@ -58,9 +57,6 @@ func writeBooleanFilterSnapshot(h *humanResponse, f *filter.Filter) error {
 	if err := writeBooleanRuleRows(h, f); err != nil {
 		return err
 	}
-	if err := writeBooleanNearby(h, f); err != nil {
-		return err
-	}
 	if err := writeBooleanControls(h, f); err != nil {
 		return err
 	}
@@ -68,55 +64,16 @@ func writeBooleanFilterSnapshot(h *humanResponse, f *filter.Filter) error {
 }
 
 func writeBooleanRuleRows(h *humanResponse, f *filter.Filter) error {
-	nearby := f != nil && f.NearbyEnabled
-	rows := f.PreparedRules().Readback(nearby)
+	rows := f.PreparedRules().Definitions()
 	if len(rows) == 0 {
 		return h.row("Rules", "None; all sources, modes and bands allowed.")
 	}
 	for _, rule := range rows {
-		if err := writeBooleanSavedRule(h, rule.RuleDefinition); err != nil {
+		if err := writeBooleanSavedRule(h, rule); err != nil {
 			return err
-		}
-		if nearby {
-			if rule.Suspended {
-				if err := h.row("Effective", "Suspended: geography-only rule while NEARBY ON."); err != nil {
-					return err
-				}
-			} else if err := h.quoted(humanPrefix("Effective"), rule.EffectiveExpr, ""); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
-}
-
-func writeBooleanNearby(h *humanResponse, f *filter.Filter) error {
-	if f == nil || !f.NearbyEnabled {
-		return h.row("NEARBY", "OFF; saved full expressions apply.")
-	}
-	fine := f.NearbyUserFine != pathreliability.InvalidCell
-	coarse := f.NearbyUserCoarse != pathreliability.InvalidCell
-	state := "unavailable"
-	if fine && coarse {
-		state = "usable"
-	} else if fine || coarse {
-		state = "partly usable"
-	}
-	if err := h.row("NEARBY", fmt.Sprintf("ON; geometry %s (fine cell %s, coarse cell %s).",
-		state, booleanCellStatus(fine), booleanCellStatus(coarse))); err != nil {
-		return err
-	}
-	if err := h.row("", "160m, 80m and 60m use the coarse cell; other bands use the fine cell."); err != nil {
-		return err
-	}
-	return h.row("", "Only geography is omitted from effective rules; saved geography is retained. Unavailable geometry does not prevent rule edits.")
-}
-
-func booleanCellStatus(usable bool) string {
-	if usable {
-		return "available"
-	}
-	return "unavailable"
 }
 
 func writeBooleanControls(h *humanResponse, f *filter.Filter) error {
@@ -142,25 +99,15 @@ func writeBooleanControls(h *humanResponse, f *filter.Filter) error {
 			return err
 		}
 	}
-	return h.row("", "SELF ON can bypass ordinary personal rules and NEARBY; TOXIC still applies. Bulletin delivery uses its separate controls.")
+	return h.row("", "SELF ON can bypass ordinary personal rules; TOXIC still applies. Bulletin delivery uses its separate controls.")
 }
 
 func writeBooleanRuleCounts(h *humanResponse, counts filter.RuleSetCounts) error {
-	if err := h.row("Counts", fmt.Sprintf("%d/%d occupied slots; full atoms %d/%d; full values %d/%d.",
-		counts.Rules, filter.MaxRuleSlots, counts.Normal.Atoms, filter.MaxTotalRuleAtoms,
-		counts.Normal.Values, filter.MaxTotalRuleValues)); err != nil {
+	if err := h.row("Counts", fmt.Sprintf("%d/%d occupied slots; atoms %d/%d; values %d/%d.",
+		counts.Rules, filter.MaxRuleSlots, counts.Program.Atoms, filter.MaxTotalRuleAtoms,
+		counts.Program.Values, filter.MaxTotalRuleValues)); err != nil {
 		return err
 	}
-	for _, program := range []struct {
-		name   string
-		counts filter.RuleProgramCounts
-	}{
-		{"Full", counts.Normal}, {"Nearby", counts.Nearby}, {"Retained", counts.Retained},
-	} {
-		if err := h.row(program.name, fmt.Sprintf("nodes %d; atoms %d; values %d.",
-			program.counts.Nodes, program.counts.Atoms, program.counts.Values)); err != nil {
-			return err
-		}
-	}
-	return h.row("", "Retained values count shared operands once, not projection references.")
+	return h.row("Program", fmt.Sprintf("nodes %d; atoms %d; values %d.",
+		counts.Program.Nodes, counts.Program.Atoms, counts.Program.Values))
 }

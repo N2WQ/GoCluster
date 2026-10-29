@@ -1240,7 +1240,6 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		DedupeMedEnabled:          r.secondaryMed != nil,
 		DedupeSlowEnabled:         r.secondarySlow != nil,
 		DefaultDedupePolicy:       r.cfg.Dedup.DefaultPolicy,
-		NearbyLoginWarning:        r.cfg.Telnet.NearbyLoginWarning,
 		LoginAttemptReporter:      r.logLoginAttemptEvent,
 		ConnectionReporter:        r.logTelnetConnectionEvent,
 		SolarWeather:              r.solarMgr,

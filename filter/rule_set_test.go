@@ -45,11 +45,11 @@ func TestRuleSetTruth(t *testing.T) {
 					want bool
 				}{{"CW", test.cw}, {"FT8", test.ft8}} {
 					sp := &spot.Spot{Mode: probe.mode, IsHuman: true}
-					if got := set.Matches(sp, "", nearby); got != probe.want {
+					if got := set.Matches(sp, EvaluationContext{PathClass: ""}); got != probe.want {
 						t.Fatalf("mode=%s nearby=%v got %v, want %v", probe.mode, nearby, got, probe.want)
 					}
 				}
-				if set.Matches(nil, PathClassHigh, nearby) {
+				if set.Matches(nil, EvaluationContext{PathClass: PathClassHigh}) {
 					t.Fatal("nil spot accepted")
 				}
 			}
@@ -71,8 +71,8 @@ func TestRuleSetReadbackOwnershipAndEquality(t *testing.T) {
 	input[0] = RuleDefinition{2, RulePass, "MODE=FT8"}
 	detached := set.Definitions()
 	detached[0].Expr, detached[0].Action = "MODE=USB", RuleReject
-	readback := set.Readback(false)
-	readback[0].Slot, readback[0].Expr, readback[0].EffectiveExpr = 5, "", ""
+	readback := set.Readback()
+	readback[0].Slot, readback[0].Expr = 5, ""
 	if got := set.Definitions(); !reflect.DeepEqual(got, want) {
 		t.Fatal("caller slice mutation changed prepared state")
 	}
@@ -92,7 +92,7 @@ func TestRuleSetReadbackOwnershipAndEquality(t *testing.T) {
 	if !empty.Equal(nil) || !empty.Equal(&PreparedRuleSet{}) || set.Equal(nil) || empty.Equal(set) {
 		t.Fatal("empty equality is inconsistent")
 	}
-	if empty.Definitions() != nil || empty.Readback(true) != nil || empty.NeedsPath(false) || empty.Counts() != (RuleSetCounts{}) {
+	if empty.Definitions() != nil || empty.Readback() != nil || empty.NeedsPath() || empty.Counts() != (RuleSetCounts{}) {
 		t.Fatal("empty metadata is not empty")
 	}
 }
@@ -104,18 +104,18 @@ func TestRuleSetEditsPreserveSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if changed.rules[0].normal != original.rules[0].normal || changed.rules[0].nearby != original.rules[0].nearby {
+	if changed.rules[0].program != original.rules[0].program {
 		t.Fatal("unchanged slot was recompiled")
 	}
-	if changed.rules[1].normal == original.rules[1].normal {
+	if changed.rules[1].program == original.rules[1].program {
 		t.Fatal("changed expression was not replaced")
 	}
-	if changed.Matches(&spot.Spot{Mode: "FT8"}, "", false) || !changed.Matches(&spot.Spot{Mode: "USB"}, "", false) {
+	if changed.Matches(&spot.Spot{Mode: "FT8"}, EvaluationContext{PathClass: ""}) || !changed.Matches(&spot.Spot{Mode: "USB"}, EvaluationContext{PathClass: ""}) {
 		t.Fatal("replacement failed to change action and expression")
 	}
 	actionOnly, err := original.WithRule(RuleDefinition{9, RuleReject, "MODE=CW"})
-	if err != nil || actionOnly.Matches(&spot.Spot{Mode: "CW"}, "", false) ||
-		!actionOnly.Matches(&spot.Spot{Mode: "USB"}, "", false) {
+	if err != nil || actionOnly.Matches(&spot.Spot{Mode: "CW"}, EvaluationContext{PathClass: ""}) ||
+		!actionOnly.Matches(&spot.Spot{Mode: "USB"}, EvaluationContext{PathClass: ""}) {
 		t.Fatalf("action-only replacement failed: %v", err)
 	}
 	inserted, err := changed.WithRule(RuleDefinition{4, RulePass, "MODE=USB"})
@@ -139,14 +139,14 @@ func TestRuleSetEditsPreserveSnapshots(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if removed != nil || !removed.Matches(&spot.Spot{Mode: "FT8"}, "", true) {
+	if removed != nil || !removed.Matches(&spot.Spot{Mode: "FT8"}, EvaluationContext{PathClass: ""}) {
 		t.Fatal("last removal did not reset to empty")
 	}
 	fromEmpty, err := removed.WithRule(RuleDefinition{0, RulePass, "MODE=CW"})
 	if err != nil || len(fromEmpty.Definitions()) != 1 {
 		t.Fatalf("insertion into nil set failed: %v", err)
 	}
-	if !reflect.DeepEqual(original.Definitions(), before) || !original.Matches(&spot.Spot{Mode: "CW", IsHuman: true}, "", false) {
+	if !reflect.DeepEqual(original.Definitions(), before) || !original.Matches(&spot.Spot{Mode: "CW", IsHuman: true}, EvaluationContext{PathClass: ""}) {
 		t.Fatal("edit changed prior snapshot")
 	}
 }
@@ -208,7 +208,7 @@ func TestRuleSetConcurrentReaders(t *testing.T) {
 			defer readers.Done()
 			<-start
 			for range 100 {
-				if !original.Matches(sp, PathClassHigh, false) || !original.Matches(sp, PathClassHigh, true) ||
+				if !original.Matches(sp, EvaluationContext{PathClass: PathClassHigh}) || !original.Matches(sp, EvaluationContext{PathClass: PathClassHigh, FineCell: 101, CoarseCell: 202}) ||
 					original.Definitions()[0].Expr != `DXCONT=EU OR COMMENT="POTA * ?"` {
 					failures <- "editing another snapshot changed an immutable reader"
 					return

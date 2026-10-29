@@ -43,8 +43,8 @@ func TestNativeCommentLegacyFieldsProtected(t *testing.T) {
 	for _, raw := range []string{
 		"comments: [POTA]\n",
 		"configuration_version: 4\ncomments: [POTA]\n",
-		"configuration_version: 5\nconfiguration: {filters: {rules: [], comments: [POTA]}, settings: {}}\n",
-		"configuration_version: 5\nconfiguration: {filters: {rules: [{slot: 0, action: pass, expr: 'COMMENT=\"\"'}]}, settings: {}}\n",
+		"configuration_version: 6\nconfiguration: {filters: {rules: [], comments: [POTA]}, settings: {}}\n",
+		"configuration_version: 6\nconfiguration: {filters: {rules: [{slot: 0, action: pass, expr: 'COMMENT=\"\"'}]}, settings: {}}\n",
 	} {
 		assertMinSNRStorageProtected(t, raw)
 	}

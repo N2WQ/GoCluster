@@ -17,7 +17,7 @@ func TestDXCCCanonicalRuleOperands(t *testing.T) {
 		for _, field := range []string{"DXDXCC", "DEDXCC"} {
 			for _, operator := range []string{"=", "<>"} {
 				t.Run(string(dialect)+"/"+field+operator, func(t *testing.T) {
-					candidate, _, _ := booleanCommandFixture(t, dialect, false)
+					candidate, _, _ := booleanCommandFixture(t, dialect)
 					calls := 0
 					candidate.server = &Server{ctyLookup: func() *cty.CTYDatabase {
 						calls++
@@ -41,7 +41,7 @@ func TestDXCCCanonicalRuleOperands(t *testing.T) {
 						if adif == 0 {
 							wantMatch = false
 						}
-						if got := candidate.filter.PreparedRules().Matches(probe, "", false); got != wantMatch {
+						if got := candidate.filter.PreparedRules().Matches(probe, filter.EvaluationContext{}); got != wantMatch {
 							t.Fatalf("ADIF %d matched %v, want %v", adif, got, wantMatch)
 						}
 					}
@@ -52,7 +52,7 @@ func TestDXCCCanonicalRuleOperands(t *testing.T) {
 }
 
 func TestDXCCCanonicalHumanPersistenceAndRefusal(t *testing.T) {
-	s, c, _ := v5CoordinatorFixture(t)
+	s, c, _ := v6CoordinatorFixture(t)
 	db, calls := canonicalTestCTY(), 0
 	s.ctyLookup = func() *cty.CTYDatabase { calls++; return db }
 	engine := newFilterCommandEngine()
@@ -61,7 +61,7 @@ func TestDXCCCanonicalHumanPersistenceAndRefusal(t *testing.T) {
 	if !handled || calls != 1 || !strings.Contains(response, want) || !strings.Contains(response, "Saved and active.") {
 		t.Fatalf("canonical human write: %q, CTY calls %d", response, calls)
 	}
-	disk := v5CoordinatorDisk(t, c)
+	disk := v6CoordinatorDisk(t, c)
 	record, err := filter.LoadUserRecord(c.callsign)
 	if err != nil || record.PreparedRules().Definitions()[0].Expr != want {
 		t.Fatalf("numeric reload failed: %v", err)
@@ -71,15 +71,17 @@ func TestDXCCCanonicalHumanPersistenceAndRefusal(t *testing.T) {
 		t.Fatalf("SHOW lost numeric expression: %q", shown)
 	}
 	for _, nearby := range []bool{false, true} {
-		c.filter.NearbyEnabled = nearby
+		if nearby {
+			c.filter = passRuleTestFilter(t, want+" AND NEARBY")
+		}
 		for _, operand := range []string{"K,ZZ", "W6", "K1ABC", "K,0", "K,ALL", "K*"} {
-			before, revision := snapshotBooleanCommand(c), v5CoordinatorRevision(t, c)
+			before, revision := snapshotBooleanCommand(c), v6CoordinatorRevision(t, c)
 			response, _ := engine.Handle(c, "PASS RULE 0 DXDXCC="+operand)
 			if !strings.Contains(response, "No changes applied.") {
 				t.Fatalf("nearby=%v invalid %s accepted: %q", nearby, operand, response)
 			}
 			before.assertUnchanged(t, c)
-			if !bytes.Equal(disk, v5CoordinatorDisk(t, c)) || v5CoordinatorRevision(t, c) != revision {
+			if !bytes.Equal(disk, v6CoordinatorDisk(t, c)) || v6CoordinatorRevision(t, c) != revision {
 				t.Fatal("invalid human edit changed disk or revision")
 			}
 		}
@@ -91,7 +93,7 @@ func TestDXCCCanonicalHumanPersistenceAndRefusal(t *testing.T) {
 		t.Fatalf("conflicting label accepted: %q", response)
 	}
 	before.assertUnchanged(t, c)
-	if !bytes.Equal(disk, v5CoordinatorDisk(t, c)) {
+	if !bytes.Equal(disk, v6CoordinatorDisk(t, c)) {
 		t.Fatal("conflicting label changed disk")
 	}
 	s.ctyLookup = nil
@@ -99,25 +101,25 @@ func TestDXCCCanonicalHumanPersistenceAndRefusal(t *testing.T) {
 	if err != nil || record.PreparedRules().Definitions()[0].Expr != want {
 		t.Fatalf("reload acquired CTY dependency: %v", err)
 	}
-	preset, err := filter.V5SavedPresetFromRuntime(c.presetReference.Baseline)
+	preset, err := filter.V6SavedPresetFromRuntime(c.presetReference.Baseline)
 	if err != nil {
 		t.Fatal(err)
 	}
-	preset.Configuration = filter.V5ConfigurationFromFilter(&record.Filter, c.configuredSettings)
-	encoded, err := filter.EncodeV5PresetCollection(&filter.V5PresetCollection{
-		Presets: map[string]*filter.V5SavedPreset{"DXCC": preset},
+	preset.Configuration = filter.V6ConfigurationFromFilter(&record.Filter, c.configuredSettings)
+	encoded, err := filter.EncodeV6PresetCollection(&filter.V6PresetCollection{
+		Presets: map[string]*filter.V6SavedPreset{"DXCC": preset},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := filter.DecodeV5PresetCollection(encoded)
+	decoded, err := filter.DecodeV6PresetCollection(encoded)
 	if err != nil || decoded.Presets["DXCC"].Configuration.Filters.Rules[0].Expr != want {
 		t.Fatalf("numeric preset reload failed: %v", err)
 	}
 }
 
 func TestDXCCNumericRuleCommandsNeedNoCTY(t *testing.T) {
-	candidate, _, _ := booleanCommandFixture(t, DialectGo, false)
+	candidate, _, _ := booleanCommandFixture(t, DialectGo)
 	calls := 0
 	candidate.server = &Server{ctyLookup: func() *cty.CTYDatabase { calls++; return nil }}
 	engine := newFilterCommandEngine()
@@ -146,7 +148,7 @@ func TestDXCCNumericRuleCommandsNeedNoCTY(t *testing.T) {
 }
 
 func TestDXCCMachineSnapshotAndNumericReadback(t *testing.T) {
-	s, c, _ := v5CoordinatorFixture(t)
+	s, c, _ := v6CoordinatorFixture(t)
 	first, second := canonicalTestCTY(), canonicalTestCTY()
 	second.Data["K"] = cty.PrefixInfo{Prefix: "K", ADIF: 999}
 	second.Data["W6"] = cty.PrefixInfo{Prefix: "K", ADIF: 999}
@@ -162,7 +164,7 @@ func TestDXCCMachineSnapshotAndNumericReadback(t *testing.T) {
 		{Slot: 0, Action: filter.RulePass, Expr: "DXDXCC=K AND DEDXCC<>K"},
 		{Slot: 9, Action: filter.RuleReject, Expr: "DEDXCC=K"},
 	}}
-	cmd, request := v5CoordinatorProposal(t, c, "PATCH", "FILTER", rules)
+	cmd, request := v6CoordinatorProposal(t, c, "PATCH", "FILTER", rules)
 	want := []filter.RuleDefinition{
 		{Slot: 0, Action: filter.RulePass, Expr: "DXDXCC=291 AND DEDXCC<>291"},
 		{Slot: 9, Action: filter.RuleReject, Expr: "DEDXCC=291"},
@@ -170,20 +172,20 @@ func TestDXCCMachineSnapshotAndNumericReadback(t *testing.T) {
 	if calls != 1 || !reflect.DeepEqual(request.Configuration.Filters.Rules, want) {
 		t.Fatalf("mixed-snapshot proposal: calls=%d rules=%v", calls, request.Configuration.Filters.Rules)
 	}
-	v5CoordinatorSuccess(t, s.applyV5MachineRequest(c, cmd, request), true)
+	v6CoordinatorSuccess(t, s.applyV6MachineRequest(c, cmd, request), true)
 	record, err := filter.LoadUserRecord(c.callsign)
 	if err != nil || !reflect.DeepEqual(record.PreparedRules().Definitions(), want) {
 		t.Fatalf("YAML write did not persist numeric rules: %v", err)
 	}
-	response := s.prepareV5MachineReadback(c, machineCommand{Verb: "GET", Resource: "FILTER", RequestID: "dxcc"})
+	response := s.prepareV6MachineReadback(c, machineCommand{Verb: "GET", Resource: "FILTER", RequestID: "dxcc"})
 	if !strings.Contains(response, "DXDXCC=291 AND DEDXCC<>291") || calls != 1 {
 		t.Fatalf("GET lost numeric truth or captured CTY: %q, calls=%d", response, calls)
 	}
-	_, next := v5CoordinatorProposal(t, c, "PATCH", "FILTER", rules)
+	_, next := v6CoordinatorProposal(t, c, "PATCH", "FILTER", rules)
 	if calls != 2 || next.Configuration.Filters.Rules[1].Expr != "DEDXCC=999" {
 		t.Fatal("next request failed to observe replacement CTY")
 	}
-	_, numeric := v5CoordinatorProposal(t, c, "PATCH", "FILTER", map[string]any{
+	_, numeric := v6CoordinatorProposal(t, c, "PATCH", "FILTER", map[string]any{
 		"rules": []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXDXCC=291"}},
 	})
 	if calls != 2 || numeric.Configuration.Filters.Rules[0].Expr != "DXDXCC=291" {
@@ -192,40 +194,40 @@ func TestDXCCMachineSnapshotAndNumericReadback(t *testing.T) {
 }
 
 func TestDXCCMachineAtomicRefusalAndValidation(t *testing.T) {
-	s, c, before := v5CoordinatorFixture(t)
-	disk := v5CoordinatorSeed(t, c, before)
+	s, c, before := v6CoordinatorFixture(t)
+	disk := v6CoordinatorSeed(t, c, before)
 	db := canonicalTestCTY()
 	s.ctyLookup = func() *cty.CTYDatabase { return db }
 	for _, operand := range []string{"ZZ", "W6", "K1ABC", "K", strings.Repeat("9", 50)} {
 		if operand == "K" {
 			db.Data["CONFLICT"] = cty.PrefixInfo{Prefix: "K", ADIF: 999}
 		}
-		revision, snapshot := v5CoordinatorRevision(t, c), snapshotBooleanCommand(c)
-		body := fmt.Sprintf("schema_version: 5\nrequest_id: dxcc\nif_revision: %s\nconfiguration:\n  rules:\n"+
+		revision, snapshot := v6CoordinatorRevision(t, c), snapshotBooleanCommand(c)
+		body := fmt.Sprintf("schema_version: 6\nrequest_id: dxcc\nif_revision: %s\nconfiguration:\n  rules:\n"+
 			"    - {slot: 0, action: pass, expr: 'DXDXCC=VE'}\n"+
 			"    - {slot: 9, action: reject, expr: 'DEDXCC=%s'}\n", revision, operand)
-		_, err := s.prepareV5MachineRequest(c, []byte(body), machineCommand{Verb: "PATCH", Resource: "FILTER"})
+		_, err := s.prepareV6MachineRequest(c, []byte(body), machineCommand{Verb: "PATCH", Resource: "FILTER"})
 		if err == nil || !strings.Contains(err.Error(), "configuration.rules[1].expr") || !strings.Contains(err.Error(), "col 8:") {
 			t.Fatalf("missing original schema/operand error: %v", err)
 		}
 		snapshot.assertUnchanged(t, c)
-		if !bytes.Equal(disk, v5CoordinatorDisk(t, c)) || v5CoordinatorRevision(t, c) != revision {
+		if !bytes.Equal(disk, v6CoordinatorDisk(t, c)) || v6CoordinatorRevision(t, c) != revision {
 			t.Fatal("invalid YAML changed disk or revision")
 		}
 	}
 	delete(db.Data, "CONFLICT")
 	proposal := before.Clone()
 	proposal.Filters.Rules = []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "DXDXCC=K AND DEDXCC<>3D2/R"}}
-	cmd, request := v5CoordinatorProposal(t, c, "VALIDATE", "CONFIG", proposal)
+	cmd, request := v6CoordinatorProposal(t, c, "VALIDATE", "CONFIG", proposal)
 	snapshot := snapshotBooleanCommand(c)
-	revision := v5CoordinatorRevision(t, c)
-	v5CoordinatorSuccess(t, s.applyV5MachineRequest(c, cmd, request), false)
+	revision := v6CoordinatorRevision(t, c)
+	v6CoordinatorSuccess(t, s.applyV6MachineRequest(c, cmd, request), false)
 	snapshot.assertUnchanged(t, c)
-	if !bytes.Equal(disk, v5CoordinatorDisk(t, c)) || v5CoordinatorRevision(t, c) != revision {
+	if !bytes.Equal(disk, v6CoordinatorDisk(t, c)) || v6CoordinatorRevision(t, c) != revision {
 		t.Fatal("VALIDATE published or persisted")
 	}
-	cmd, request = v5CoordinatorProposal(t, c, "PUT", "FILTER", proposal.Filters)
-	v5CoordinatorSuccess(t, s.applyV5MachineRequest(c, cmd, request), true)
+	cmd, request = v6CoordinatorProposal(t, c, "PUT", "FILTER", proposal.Filters)
+	v6CoordinatorSuccess(t, s.applyV6MachineRequest(c, cmd, request), true)
 	if got := c.filter.PreparedRules().Definitions()[0].Expr; got != "DXDXCC=291 AND DEDXCC<>460" {
 		t.Fatalf("PUT failed to resolve both fields: %q", got)
 	}

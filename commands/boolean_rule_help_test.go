@@ -12,12 +12,17 @@ func TestBooleanRuleHelpSharedReference(t *testing.T) {
 	text := strings.Join(BooleanRuleHelpLines(), "\n")
 	for _, required := range []string{
 		"NOT then AND then OR", "UNLIKELY does not include CLOSED",
-		"including human spots", "SOURCE=SKIMMER", "YAML schema 5",
+		"including human spots", "SOURCE=SKIMMER", "YAML schema 6",
 		"To narrow defaults, edit or remove slot 0.",
 		"Editing a slot replaces both", "Slot IDs are not priorities",
 		"No rules means no personal restriction", "RESET FILTER does not reinstall that rule",
-		"Emptied rules are ignored.", "Other conditions still apply.",
-		"Saved rules stay unchanged.", "Phrases match anywhere in a comment.",
+		"NEARBY is a bare predicate, with no operator or value.",
+		"Missing required location makes NEARBY false.",
+		"NOT NEARBY then becomes true; it does not prove a distant station.",
+		"NEARBY does not omit geography or change your dedupe policy.",
+		"Neither reset changes other controls or profile settings.",
+		"Current-generation rules stay unchanged on subsequent logins.",
+		"Phrases match anywhere in a comment.",
 		"Matching ignores ASCII letter case.",
 		"exact CTY canonical labels",
 		"DXDXCC<>K becomes DXDXCC<>291",
@@ -63,6 +68,7 @@ func TestBooleanRuleHelpReadableLayout(t *testing.T) {
 				`REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"`,
 				"PASS RULE 2 NOT (DXCONT=EU OR BAND=20M)",
 				"PASS RULE 0 MODE=CW AND DXDXCC<>K",
+				"PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)",
 			} {
 				if !strings.Contains(text, "\n  "+example+"\n") {
 					t.Fatalf("literal example was changed or wrapped: %q", example)

@@ -5,8 +5,8 @@ import "dxcluster/filter/expr"
 // SupportedRuleFields returns a detached canonical vocabulary. Compilation,
 // HELP and machine capabilities share the same finite field-name owner.
 func SupportedRuleFields() []string {
-	result := make([]string, len(ruleFieldNames))
-	copy(result, ruleFieldNames[:])
+	result := make([]string, int(ruleFieldNearby))
+	copy(result, ruleFieldNames[:ruleFieldNearby])
 	return result
 }
 
@@ -14,7 +14,7 @@ func SupportedRuleFields() []string {
 // Unknown names have no operators; this is a lookup, not input admission.
 func RuleFieldOperators(name string) []string {
 	field, known := ruleFieldForName(name)
-	if !known {
+	if !known || field == ruleFieldNearby {
 		return nil
 	}
 	operators := []string{string(expr.Equal), string(expr.NotEqual)}
@@ -24,6 +24,9 @@ func RuleFieldOperators(name string) []string {
 	}
 	return operators
 }
+
+// SupportedRulePredicates separates operand-free syntax from comparisons.
+func SupportedRulePredicates() []string { return []string{"NEARBY"} }
 
 func IsGeographicRuleField(name string) bool {
 	field, known := ruleFieldForName(name)

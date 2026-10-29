@@ -36,8 +36,8 @@ func TestCCFilterHelpGrammar(t *testing.T) {
 		}
 		flat := strings.Join(strings.Fields(text), " ")
 		for _, want := range []string{
-			"Usage: " + verb + " <switch> [ALL]", verb + " NEARBY ON|OFF",
-			"NEARBY follows its explicit ON/OFF value with either verb",
+			"Usage: " + verb + " <switch> [ALL]",
+			"NEARBY belongs in numbered Boolean rules; old toggle commands are refused.",
 			"Category lists, MINSNR, DXBM and NOFILTER are refused, not translated.",
 			"Use PASS RULE or REJECT RULE in either dialect; see HELP RULE.",
 			"UNSET/FILTER does not accept inline /ON or /OFF.", "PC93 aliases ANNOUNCE",
@@ -46,13 +46,13 @@ func TestCCFilterHelpGrammar(t *testing.T) {
 				t.Fatalf("%s loses qualified grammar %q", verb, want)
 			}
 		}
-		for _, forbidden := range []string{"CC list types:", verb + " <list-type>", verb + " MINSNR ", verb + " DXBM ", "SET/FILTER NOFILTER/ON"} {
+		for _, forbidden := range []string{"CC list types:", verb + " <list-type>", verb + " MINSNR ", verb + " DXBM ", "SET/FILTER NOFILTER/ON", verb + " NEARBY ON|OFF", "ON needs usable GRID cells"} {
 			if strings.Contains(flat, forbidden) {
 				t.Fatalf("%s retains misleading blanket grammar %q", verb, forbidden)
 			}
 		}
 		if verb == "SET/FILTER" {
-			for _, want := range []string{"SET/FILTER <switch>/ON or /OFF", "No inline flags for NEARBY.", "Example: SET/FILTER BEACON/OFF"} {
+			for _, want := range []string{"SET/FILTER <switch>/ON or /OFF", "NEARBY is a rule predicate.", "Example: SET/FILTER BEACON/OFF"} {
 				if !strings.Contains(flat, want) {
 					t.Fatalf("SET reference loses supported or excluded form %q", want)
 				}

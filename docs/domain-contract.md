@@ -500,11 +500,11 @@ lenient modes must be explicit, documented, and test-covered.
   not proof of operating location. `DXSTATE`/`DESTATE` Boolean atoms compare
   canonical observed codes; missing, invalid or noncanonical State is unknown.
   Every comparison, including `<>`, is false for unknown State; NOT negates
-  that result. NEARBY projects these atoms out of effective rules, retaining
-  the latest full saved expressions.
+  that result. NEARBY combines with these comparisons through ordinary Boolean
+  logic and does not suppress geography.
 - Archive version 6 records both observed States. Versions 2-5 remain unknown;
   history never consults today's registry to hydrate old records.
-- Native configuration version 5 and explicit machine schema 5 carry numbered
+- Native configuration version 6 and explicit machine schema 6 carry numbered
   rules, not State maps or hidden old-schema selections. Recognized old profiles
   have the reset-only login upgrade below; future or malformed documents remain
   protected. Downgrade uses matching
@@ -526,7 +526,8 @@ per-run cleanup. See [ADR-0302](decisions/ADR-0302-correction-evidence-admission
 ## Boolean Personal Rules
 
 This is the approved normative Boolean MVP contract; see
-[accepted test-only ADR-0317](decisions/ADR-0317-boolean-filter-replacement-mvp.md).
+[ADR-0329](decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md),
+which replaces the affected NEARBY/schema clauses of ADR-0317.
 It does not authorize production deployment or establish private-cluster
 acceptance or representative performance qualification. There is one prepared
 Boolean personal-rule engine; the old category model has been removed.
@@ -550,25 +551,25 @@ Boolean personal-rule engine; the old category model has been removed.
 - Omitted SOURCE imposes no source restriction on PASS or REJECT.
   Explicit SOURCE comparisons follow ordinary Boolean evaluation, including OR
   and NOT. COMMENT text is not a field occurrence. Readbacks add no synthetic
-  source guard. A geography-only suspended PASS stays absent.
+  source guard. NEARBY adds no implicit source or geography policy.
   Apply this meaning to restored profiles and presets without rewriting them.
   Explicit SOURCE=HUMAN stays human-only, including old generated defaults.
   Shipped default_sources includes HUMAN and SKIMMER; operator selections remain
   authoritative. New accounts and old-profile upgrades use those configured
-  defaults. Existing Boolean records and resets do not receive new defaults.
-- `RESET FILTER RULE <0..9|ALL>` clears only the selected slots, preserving
-  NEARBY. `RESET FILTER` clears all personal rules and turns NEARBY OFF.
+  defaults. Current-generation records and user-issued resets do not receive new defaults.
+- `RESET FILTER RULE <0..9|ALL>` clears only the selected slots.
+  `RESET FILTER` clears all personal rules, including their NEARBY terms.
   Neither reinstalls slot 0 nor resets separate controls or profile settings.
 - Retired category, MODE-delta, MINSNR, COMMENT-list, DXBM and NOFILTER mutations
   and old category aliases are refused, not translated. There is no `RESET RULE`
   or `SET DX FILTER` alias. Existing separate-control commands and shortcuts
   keep their own grammar.
 
-NEARBY and BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate
-controls, not expression fields. The six stored control choices preserve
+BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate
+controls. NEARBY is an ordinary operand-free expression predicate. The six stored control choices preserve
 DEFAULT versus explicit false/true. Bulletin delivery remains independently
 controlled. Live qualifying self-spots require SELF enabled and must pass TOXIC;
-they bypass personal rules and NEARBY. Command/history saved self exceptions
+they bypass personal rules. Command/history saved self exceptions
 remain independent of SELF and still honor TOXIC. Explicit history selector,
 BAND, MODE and COMMENT selections remain mandatory even for self-spots and
 apply before counting.
@@ -603,7 +604,7 @@ take one value.
   CQ zones 1-40. Human and machine DXDXCC/DEDXCC operands accept positive ADIF
   integers or exact canonical CTY Prefix labels. One request-owned lazy index
   resolves all labels, across fields and slots, before full-rule preparation
-  completes or NEARBY projection removes geography. Unknown/conflicting labels
+  completes; NEARBY does not remove geography. Unknown/conflicting labels
   refuse the whole proposal. Numeric inputs require no CTY; integer overflow
   cannot fall through to label resolution. All prepared definitions, readbacks
   and stored expressions are numeric; native loaders and matching remain
@@ -649,41 +650,56 @@ REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10
 
 Trial guardrails are ten slots, 128 total atoms and 512 total values. Each
 expression has independent 1,024-byte raw and canonical limits, 32 atoms,
-128 nodes and nesting depth 8; an atom has at most 32 values. Depth counts
+128 nodes and nesting depth 8; a comparison atom has at most 32 values. Depth counts
 parentheses and NOT, not flat AND/OR tree height. These do not enlarge human,
 machine or stored-document limits. Any parse, domain, slot or budget refusal
 leaves the previous complete rule set intact.
 
-### NEARBY Projection And Recovery
+### NEARBY Predicate And Recovery
 
-NEARBY ON selects a prepared effective expression by structurally removing only
-DX/DE continent, zone, DXCC, State and grid leaves, not substituting true/false.
-A NOT whose subtree disappears also disappears; an AND/OR with one surviving
-child collapses to that child. An entirely emptied rule is ignored, contributing
-neither PASS nor REJECT. Calls, BAND, MODE, SOURCE, EVENT, COMMENT, FREQ, SNR,
-CONF and PATH remain. Full saved expressions stay intact and editable.
-OFF evaluates the latest full rules, never a pre-ON map or restoration snapshot.
+Support exactly the case-insensitive bare predicate NEARBY, including NOT and
+ordinary AND/OR/parentheses. It has zero operand values and consumes one atom
+and tree node. Comparisons such as NEARBY=TRUE, ON/OFF operands, radius parameters
+and unknown bare fields are invalid. COMMENT="NEARBY" is literal text. Preserve
+short-circuit evaluation and cache true or false once per reached spot/user
+evaluation across all PASS and REJECT rules. No user-specific result is retained
+in a shared program. Nil spots and invalid ordinary matching owners fail before
+negation; valid empty rule sets retain unrestricted personal selection. Preserve
+the existing caller-specific self exceptions.
 
-Either the DX or DE endpoint may satisfy H3 geometry; an unavailable opposite
-endpoint cannot veto a match. 160m, 80m and 60m use the coarse cell; other
-supported bands use the fine cell. Enabling NEARBY or changing GRID while ON
-requires usable geometry. The saved GRID and dedupe choice remain saved;
-temporary NEARBY effective dedupe does not rewrite the user's selection.
+Preserve the actual geometry helper exactly. Either endpoint can match the
+user's H3 cell; a missing opposite endpoint cannot veto it. 160m, 80m and 60m
+use coarse resolution; other supported bands use fine resolution. Preserve
+normalized-band/raw-band/frequency fallback and fine endpoint-cache precedence;
+coarse matching converts grids rather than reusing fine cells. Only empty or
+??? after fallback forces false for the band; unsupported nonempty labels retain
+current fine-cell behavior. A missing required user cell or no matching endpoint
+makes NEARBY false. NOT negates that result and is not positive evidence of
+distance. Other OR branches can qualify without usable proximity.
 
-Already-ON restored NEARBY with unavailable
-GRID/cells must permit rule-only edits through human commands and YAML when
-every other saved selection is unchanged. Retain GRID and ON; geometry must
-admit no ordinary spots when both user cells are unavailable. Preserve the live SELF/TOXIC and
-command/history self exceptions above. Do not require clearing geography,
-changing unrelated selections or restoring an old map to edit the full rules.
+GRID, provenance and its fine/coarse caches have one client-configuration owner.
+Capture them with rules and controls under path-before-filter locks; release
+locks before mapping, evaluation or prediction. Resolve missing cells independently
+from that captured GRID, preserve each valid captured cell, and never reread
+mutable client state or publish caches from the pure resolver. NEARBY does not
+depend on PATH or prediction/display enablement. Captures needing neither NEARBY
+nor PATH add no mapping work. Existing conditional PATH publication must still
+reject stale GRID ownership. Unrelated edits preserve location and do not repeat
+callsign-derived GRID lookup. This replaces TSR-0109's independent-pair contract.
 
-Rule-only YAML recovery waives only mapping availability for the unchanged saved
-GRID. Exact locator syntax and every other settings check remain mandatory.
-Existing human control/settings admission is unchanged. If only one user cell
-is available, the bands using that cell may work; the other bands reject.
-Readback reports this as partly usable geometry. The joined fresh-child
-`TestGridMappingAvailability` fixture covers actual PATCH, PUT and VALIDATE with
-an explicit saved GRID and genuinely unavailable mappings.
+Rule creation/editing needs no usable GRID. One predicate governs YAML PUT,
+PATCH and VALIDATE recovery: a rules list is supplied and every other saved
+setting and separate control is unchanged. Only unchanged GRID mapping
+availability is waived. Locator syntax, disabled dedupe choices and all other
+settings checks remain mandatory; empty GRID retains lookup meaning. Keep ordinary
+human GRID admission, removing only the extra both-resolutions toggle requirement.
+No mapping-table reload or new location service is introduced.
+
+NEARBY never changes saved or effective dedupe. Broadcast admission, diagnostics,
+readback and greeting substitutions use the ordinary resolved policy, including
+normal DEFAULT/disabled-policy fallback. An explicit settings or preset dedupe
+change is still permitted. MED/SLOW users may see fewer local repeats than with
+the retired automatic FAST override.
 
 ### Prepared Matching And Readback
 
@@ -694,18 +710,22 @@ history matching use this engine without an extra category gate; rendering
 reads retained programs rather than recompiling expressions. History captures
 per-page matching state under its configuration transaction; propagation
 observations remain current per candidate. Rule identity and runtime matching
-geometry participate in existing continuation/generation fences.
+geometry participate in existing continuation/generation fences. Matching and
+fingerprinting use the same snapshot-local effective pair. Lazy equivalent
+cache filling is stable; true changes, including change then restoration,
+invalidate pending pages and continuation. Propagation observations stay outside
+that fingerprint.
 
-`SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact saved/effective
-numbered rules and individual controls. `SHOW FILTER FULL` adds geometry detail
-and preparation counts. All views preserve actions, canonical expressions and
-NEARBY projection/suspension without flattening Boolean relationships.
+`SHOW FILTER` and `SHOW FILTER RULE` show current settings, canonical numbered
+rules and individual controls. `SHOW FILTER FULL` adds one-program preparation
+counts. All views preserve actions and complete Boolean structure; there are no
+projected expressions, suspended rules or global NEARBY fields.
 `SHOW/FILTER` and `SH/FILTER` remain readback aliases; category views do not.
 Human output uses at most 78 printable ASCII columns plus CRLF. Short rules
 use directly reusable command syntax. Long exact values use Go-style
 quoted/escaped complete `+` chunks concatenate losslessly; that display encoding
 is not expression quoting or necessarily copyable command syntax. Human input
-still has its configured limit, 128 bytes by default; use schema 5 YAML for
+still has its configured limit, 128 bytes by default; use schema 6 YAML for
 longer expressions. Preserve the unconditional human reading hold through
 preparation, delivery and successful write/flush plus its reading interval,
 RESUME supersession, bounded queues and 65,536-byte complete-response limit.
@@ -713,7 +733,7 @@ Machine operations remain pause-neutral.
 
 Source owners in the checkout are `filter/rule_set.go`, `filter/expr/`,
 `filter/rule_compile.go`, `filter/rule_evaluate.go`, `filter/rule_view.go`,
-`filter/rule_set_projection.go`, `filter/match_snapshot.go`,
+`filter/match_snapshot.go`,
 `telnet/matching_snapshot.go` and `telnet/history_filter.go`.
 `commands.BooleanRuleHelpLines` in `commands/boolean_rule_help.go` owns
 `HELP RULE`; see the [telnet contract](../telnet/README.md#filters).
@@ -744,8 +764,8 @@ on restart or state eviction. See
 
 ## Stored Configuration Admission
 
-Native user records require explicit `configuration_version: 5` and nested
-`configuration.filters/settings`. FILTER owns `rules`, `nearby_enabled` and
+Native user records require explicit `configuration_version: 6` and nested
+`configuration.filters/settings`. FILTER owns `rules` and
 the six controls `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`,
 `allow_self` and `allow_toxic`. SETTINGS retains `dialect`, `grid`,
 `noise_class`, `dedupe_policy`, `path_min_observation_count` and
@@ -756,23 +776,26 @@ numeric zero selections, subject to runtime settings admission.
 
 User metadata `recent_ips` and `last_login_utc` stays outside configuration.
 An optional `preset` contains `name` and an independent `baseline` with its
-own `configuration_version: 5` and `configuration`. A named library contains
-only a `presets` mapping of normalized names to individual versioned v5
+own `configuration_version: 6` and `configuration`. A named library contains
+only a `presets` mapping of normalized names to individual versioned v6
 configurations: no invented top-level library version or machine envelope.
-All current entries and baselines require v5. Strict v5 codecs do not interpret
+All current entries and baselines require v6. Strict v6 codecs do not interpret
 older schemas or accept explicit disk zero. Encoder DTO version zero is only
-an in-memory new-object convention, stamped to 5.
+an in-memory new-object convention, stamped to 6.
 
 An explicit login-owned upgrade handles recognized unversioned and version
-1–4 profiles. It discards category filters, NEARBY and the applied association,
+1-5 profiles. It discards personal filters, the retired NEARBY toggle and applied association,
 preserves six settings, separate controls and login metadata, and installs
 the same configured mode/source defaults as a new account in editable PASS
 slot 0. This is a one-time reset, not translation of old rules.
-Existing v5 profiles and new Boolean presets must not be reset again.
+Existing v6 profiles and new generation-6 presets must not be reset again.
 Shared-library cleanup removes old entries under the existing base-call stripe
-and retains valid v5 entries. Back up originals before replacement; each file
+and retains valid v6 entries. Back up originals before replacement; each file
 commits atomically, with explicit partial-failure/retry behavior rather than a
-cross-file atomicity claim. Future, malformed and unsafe/over-budget inputs
+cross-file atomicity claim. Use .pre-v6.bak backups without altering prior
+.pre-v5.bak files. Library replacement is first; retry after profile failure
+preserves new v6 entries. Only initial authoritative profile absence permits
+new-user creation. Future, malformed and unsafe/over-budget inputs
 remain protected. No production data reset is authorized merely by implementing
 or documenting this upgrade.
 
@@ -781,8 +804,8 @@ share the base-call named library, not login metadata or live settings.
 Ordinary saves retain the applied reference. Library overwrite/deletion does
 not change that independent baseline; differences show `(modified)`, and
 reversing them clears it. LOAD rebuilds geometry and records the applied
-snapshot, including reported server adjustments; unavailable geometry retains
-stored ON with a warning rather than rewriting rules. SAVE associates the same
+snapshot, including reported server adjustments. Missing geometry makes NEARBY
+false without rewriting rules or blocking unrelated OR branches. SAVE associates the same
 capture committed to the library.
 
 User-record physical reads, normalized encoding and exact prepared writes each
@@ -821,23 +844,23 @@ before backup, repair or restore and use one writer process per data directory;
 downgrade requires a matching binary/data backup. Refusal never grants authority
 to replace a protected destination.
 
-Source owners are `filter/configuration_v5.go`, `filter/storage_v5.go`,
-`filter/storage_v5_decode.go`, `filter/storage_v5_io_adapter.go`,
-`filter/preset_v5.go` and the existing user-record/preset coordinators.
+Source owners are `filter/configuration_v6.go`, `filter/storage_v6.go`,
+`filter/storage_v6_decode.go`, `filter/storage_v6_io_adapter.go`,
+`filter/preset_v6.go` and the existing user-record/preset coordinators.
 See [operator storage](../data/config/README.md#user-configuration-storage) for
 native examples and [ADR-0270](decisions/ADR-0270-complete-storage-admission.md)
 for admission history, not pre-v5 migration authority.
 
-### Machine Schema 5
+### Machine Schema 6
 
-Every `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 5 [ID <id>]` requires
-explicit schema 5, including SETTINGS/CAPABILITIES. PUT/PATCH YAML
+Every `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 6 [ID <id>]` requires
+explicit schema 6, including SETTINGS/CAPABILITIES. PUT/PATCH YAML
 FILTER/SETTINGS/CONFIG have no schema header suffix; their bodies require
-`schema_version: 5`. `VALIDATE YAML CONFIG` alone validates a complete CONFIG
+`schema_version: 6`. `VALIDATE YAML CONFIG` alone validates a complete CONFIG
 without applying or saving. Missing/old schemas and category fields are refused
 without translation or hidden-field preservation.
 
-FILTER's `configuration` directly contains its eight fields; SETTINGS directly
+FILTER's `configuration` directly contains its seven fields; SETTINGS directly
 contains its six fields; CONFIG nests `filters` and `settings`. PUT/VALIDATE
 require complete resources. PATCH preserves omitted fields, but a supplied
 `rules` list replaces all slots; `rules: []` clears it. It is not a per-slot
@@ -855,16 +878,19 @@ CONFIG readback including reserved metadata before writing; a valid large
 preset can LOAD even when that readback would exceed the response limit.
 No partial publication or truncation is a success.
 
-CAPABILITIES advertises `supported_schema_versions: [5]`, actual rule
+CAPABILITIES advertises `supported_schema_versions: [6]`, actual rule
 fields/operators/vocabularies, bounds and collection replacement, not the old
 per-server settings-choice matrix. Runtime settings admission remains
-authoritative. Status reports configured/effective/suspended rules, effective
-expressions and full/nearby/retained program counts, not retired maps.
+authoritative. NEARBY appears in rule_predicates with zero operands and an
+empty operator list, distinct from comparison fields. Status contains canonical
+{slot,action,expr} entries, configured_count and one program count domain.
+Retired nearby_enabled, nearby_active, projected and suspended fields are absent;
+any retired field in a schema-6 proposal is refused, even false.
 All machine operations, including errors, leave pause state alone.
 See the [client protocol](../telnet/README.md#client-yaml-configuration) and
-checkout owners `telnet/machine_v5_input.go`, `telnet/machine_v5_schema.go`,
-`telnet/machine_v5_schema_rules.go`, `telnet/machine_v5_commands.go` and
-`telnet/machine_v5_readback.go`.
+checkout owners `telnet/machine_v6_input.go`, `telnet/machine_v6_schema.go`,
+`telnet/machine_v6_schema_rules.go`, `telnet/machine_v6_commands.go` and
+`telnet/machine_v6_readback.go`.
 
 ## Human Preference Publication
 
@@ -875,9 +901,8 @@ and persist nothing. Read-only commands retain their live readback paths.
 Accepted commands publish before attempting persistence; a save failure keeps
 the edit live and reports the existing warning. Repeated numbered-rule sets
 retain save intent; removing an absent slot is an accepted no-op. Unchanged
-DIALECT remains unchanged without a save. Effective NEARBY projections and
-cells remain runtime state, not a saved restoration map. Full saved rules remain
-authoritative.
+DIALECT remains unchanged without a save. GRID-owned cells remain runtime state;
+canonical rules remain authoritative.
 
 Human SET SOLAR deliberately reapplies scheduling at publication, including an
 unchanged cadence. Other human edits preserve broadcaster progress. Unchanged
@@ -923,10 +948,11 @@ start clauses. A keyword unsupported in the current category starts a clause,
 including after empty comma fields. Finish a list without a comma before starting
 another clause to avoid interpreting a configured keyword alias as a value.
 
-Explicit machine schema 5 and native configuration version 5 carry COMMENT
+Explicit machine schema 6 and native configuration version 6 carry COMMENT
 expressions in `rules`, not `comments`/`block_comments` maps or lists. PATCH
 replaces a supplied complete rule list; omission preserves it. Old schema/disk
-documents are refused, not given hidden rules or migrated defaults. Malformed
+ordinary codec documents are refused; login separately recognizes safe retired
+profiles for the bounded reset without translating rules. Malformed
 or oversized stored rules fail without truncation or protected-record rewrite.
 [ADR-0261](decisions/ADR-0261-literal-comment-filter-and-history.md) records
 historical pre-v5 saved-list behavior; the explicit archive phrase grammar and

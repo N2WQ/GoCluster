@@ -687,20 +687,25 @@ func TestHelpDedupeNotesUseConfiguredWindows(t *testing.T) {
 			"FAST - 121s window. Key: band + DE DXCC (ADIF) + DE grid2 + DX call.",
 			"MED - 305s window. Key: band + DE DXCC (ADIF) + DE grid2 + DX call.",
 			"SLOW - 489s window. Key: band + DE DXCC (ADIF) + DE CQ zone + DX call.",
-			"Usable NEARBY temporarily uses the least-suppressive available lane",
-			"changing SET DEDUPE.",
-			"SHOW DEDUPE reports the temporary lane",
-			"when it differs from the saved",
 		} {
 			if !strings.Contains(resp, want) {
 				t.Fatalf("help %q missing %q in %q", topic, want, resp)
 			}
+		}
+		flat := strings.Join(strings.Fields(resp), " ")
+		if !strings.Contains(flat, "NEARBY rules never change your saved or effective duplicate-suppression policy.") {
+			t.Fatalf("help %q omitted NEARBY-independent dedupe policy", topic)
 		}
 		if strings.Contains(strings.ToLower(resp), "source class") {
 			t.Fatalf("help %q unexpectedly mentions source class: %q", topic, resp)
 		}
 		if strings.Contains(strings.ToLower(resp), "normalized dx call") {
 			t.Fatalf("help %q unexpectedly mentions normalized DX call: %q", topic, resp)
+		}
+		for _, retired := range []string{"temporary lane", "least-suppressive", "without changing SET DEDUPE"} {
+			if strings.Contains(resp, retired) {
+				t.Fatalf("help %q retains retired NEARBY dedupe behavior %q", topic, retired)
+			}
 		}
 	}
 }
@@ -933,13 +938,13 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SHOW HOLD", []string{"SHOW HOLD - Show read-pause status", "Usage: SHOW HOLD"}},
 		{"PAUSE", []string{"PAUSE - Pause live spots temporarily", "Usage: PAUSE [seconds 1-300]", "Defaults to 30 seconds", "automatic pauses can only extend it", "other control traffic continue"}},
 		{"RESUME", []string{"RESUME - End the read pause", "Usage: RESUME"}},
-		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
-		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
+		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
+		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},
 		{"SET GRID", []string{"SET GRID - Set your grid", "Usage: SET GRID <locator>", "exactly 4 or 6 characters"}},
 		{"SET NOISE", []string{"SET NOISE - Set your noise class for glyphs", "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>"}},
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
-		{"PASS NEARBY", []string{"PASS NEARBY - Toggle nearby filtering", "Usage: PASS NEARBY ON|OFF", "least-suppressive", "available dedupe lane"}},
+		{"NEARBY", []string{"NEARBY - Boolean proximity predicate", "Usage: PASS RULE 0 NEARBY", "No operator or value follows NEARBY.", "NOT NEARBY", "geography conditions", "SET DEDUPE"}},
 		{"SHOW FILTER", []string{"SHOW FILTER - Display current filter state.", "Usage: SHOW FILTER"}},
 		{"PASS", []string{"PASS - Allow matching spots", "Usage: PASS RULE <0..9> <expression>", "HELP RULE"}},
 		{"REJECT", []string{"REJECT - Veto matching spots", "Usage: REJECT RULE <0..9> <expression>", "HELP RULE"}},
@@ -972,13 +977,13 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SHOW HOLD", []string{"SHOW HOLD - Show read-pause status", "Usage: SHOW HOLD"}},
 		{"PAUSE", []string{"PAUSE - Pause live spots temporarily", "Usage: PAUSE [seconds 1-300]", "Defaults to 30 seconds", "automatic pauses can only extend it", "other control traffic continue"}},
 		{"RESUME", []string{"RESUME - End the read pause", "Usage: RESUME"}},
-		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
-		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "Usable NEARBY temporarily uses the least-suppressive available lane"}},
+		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
+		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},
 		{"SET GRID", []string{"SET GRID - Set your grid", "Usage: SET GRID <locator>", "exactly 4 or 6 characters"}},
 		{"SET NOISE", []string{"SET NOISE - Set your noise class for glyphs", "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>"}},
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
-		{"PASS NEARBY", []string{"PASS NEARBY - Toggle nearby filtering", "Usage: PASS NEARBY ON|OFF", "least-suppressive", "available dedupe lane"}},
+		{"NEARBY", []string{"NEARBY - Boolean proximity predicate", "Usage: PASS RULE 0 NEARBY", "No operator or value follows NEARBY.", "NOT NEARBY", "geography conditions", "SET DEDUPE"}},
 		{"SHOW/FILTER", []string{"SHOW/FILTER - Display current filter state.", "Usage: SHOW/FILTER"}},
 		{"SET/FILTER", []string{"SET/FILTER - Enable separate controls", "Example: SET/FILTER BEACON/OFF", "HELP RULE"}},
 		{"UNSET/FILTER", []string{"UNSET/FILTER - Disable separate controls", "Usage: UNSET/FILTER <switch> [ALL]", "HELP RULE"}},

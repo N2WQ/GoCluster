@@ -231,8 +231,6 @@ type TelnetConfig struct {
 	DialectSourcePersistedLabel string `yaml:"dialect_source_persisted_label"`
 	// PathStatusMessage is sent after login when path reliability display is enabled; supports <GRID> and <NOISE>.
 	PathStatusMessage string `yaml:"path_status_message"`
-	// NearbyLoginWarning is appended to the login greeting when NEARBY is active.
-	NearbyLoginWarning string `yaml:"nearby_login_warning"`
 	// Transport selects the telnet parser/negotiation backend ("native" or "ziutek").
 	Transport string `yaml:"transport"`
 	// EchoMode controls whether the server echoes input or requests local echo.
@@ -2865,9 +2863,6 @@ func normalizeTelnetConfig(cfg *Config, presence loadRawPresence) error {
 	}
 	if cfg.Telnet.DropExtremeMinAttempts <= 0 {
 		cfg.Telnet.DropExtremeMinAttempts = 100
-	}
-	if strings.TrimSpace(cfg.Telnet.NearbyLoginWarning) == "" {
-		cfg.Telnet.NearbyLoginWarning = "NEARBY filter is ON. Disable NEARBY if you want to use regular location filters"
 	}
 	if cfg.Telnet.OutputLineLength < 65 {
 		return fmt.Errorf("invalid telnet.output_line_length %d (minimum 65)", cfg.Telnet.OutputLineLength)

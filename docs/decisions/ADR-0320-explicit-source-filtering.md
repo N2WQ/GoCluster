@@ -7,6 +7,8 @@ description: Omitted SOURCE imposes no restriction; shipped starting rules selec
 - Date: 2026-10-22
 - Decision Origin: Design
 
+> ADR-0329 supersedes only the generation-specific no-reset and NEARBY-toggle clauses below. The ordinary SOURCE policy and configured mode/source starting rule remain unchanged; retired v0-v5 filters reset once into generation 6. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
+
 ## Context
 
 An implicit HUMAN restriction made source-less PASS expressions differ from
@@ -84,4 +86,4 @@ No deployment or feed change is authorized by this decision.
 - [Telnet guide](../../telnet/README.md#filters)
 - [Source truth cases](../../filter/rule_source_policy_test.go)
 - [Consumer journeys](../../telnet/boolean_onboarding_test.go)
-- Superseded by: none.
+- Superseded in part by: [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md) for the affected NEARBY/schema/generation clauses.

@@ -91,7 +91,7 @@ func interpret(t *testing.T, e *Expression, index int, values map[string]bool) b
 	t.Helper()
 	node := e.Nodes[index]
 	switch node.Kind {
-	case AtomKind:
+	case AtomKind, PredicateKind:
 		value, ok := values[node.Atom.Field]
 		if !ok {
 			t.Fatalf("unassigned test field %q", node.Atom.Field)

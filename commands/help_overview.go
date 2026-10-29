@@ -45,7 +45,7 @@ func filterRecipeLines(dialect string) []string {
 		"  RESET FILTER RULE ALL",
 		"  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
 		"  " + show,
-		"", "  This replaces all personal rules. NEARBY is unchanged.",
+		"", "  This replaces all personal rules. Separate controls are unchanged.",
 		"  SELF ON can bypass personal rules; see HELP SHOW MYDX.",
 	}
 }
@@ -61,7 +61,7 @@ func filterBasicsLines() []string {
 		"  PASS without SOURCE allows humans and skimmers.",
 		"  Add AND SOURCE=HUMAN to select human reports only.",
 		"  To narrow it, replace/remove slot 0; adding another PASS broadens it.",
-		"  RESET FILTER clears rules and NEARBY, not separate controls/preferences.",
+		"  RESET FILTER clears rules, preserving separate controls/preferences.",
 		"  Reset does not reinstall default slot 0. See HELP RULE for full details.",
 	}
 }
@@ -98,9 +98,9 @@ func helpOverviewLines(dialect string) []string {
 		helpRow{"REJECT RULE", "Replace one slot with a vetoing expression."},
 		helpRow{readback, "See your current settings and rules."},
 		helpRow{readback + " RULE", "Same as " + readback + "."},
-		helpRow{readback + " FULL", "Add geometry detail and rule counts."},
-		helpRow{"RESET FILTER RULE", "Clear one slot or ALL; preserve NEARBY."},
-		helpRow{"RESET FILTER", "Clear personal rules and turn NEARBY OFF."})
+		helpRow{readback + " FULL", "Show rules, controls and program counts."},
+		helpRow{"RESET FILTER RULE", "Clear one slot or ALL; preserve settings."},
+		helpRow{"RESET FILTER", "Clear personal rules; preserve settings."})
 	lines = append(lines, "", "What you can filter:",
 		"  Combine band, mode, source, geography, calls, comments and more.",
 		"  DX means the station being spotted; DE means the spotter.",
@@ -113,10 +113,11 @@ func helpOverviewLines(dialect string) []string {
 	lines = append(lines, commentOverviewLines()...)
 	lines = append(lines, featureOverviewLines(dialect)...)
 	lines = helpSection(lines, "Nearby filtering",
-		helpRow{"SET GRID FN31", "Set your location first."}, helpRow{"PASS NEARBY ON", "Enable nearby filtering."}, helpRow{"PASS NEARBY OFF", "Disable nearby filtering."})
-	lines = append(lines, "", "  NEARBY omits only geography leaves; non-geography conditions survive.",
-		"  Emptied rules are ignored; saved full rules remain intact.",
-		"  Type HELP PASS NEARBY for details.")
+		helpRow{"SET GRID FN31", "Set your location."},
+		helpRow{"PASS RULE 0 NEARBY", "Replace rule 0 with nearby selection."})
+	lines = append(lines, "", "  NEARBY combines with other conditions using NOT, AND and OR.",
+		"  It does not change geography conditions or duplicate suppression.",
+		"  Type HELP NEARBY or HELP RULE for details.")
 	lines = append(lines, preferencesOverviewLines()...)
 	lines = helpSection(lines, "Saving and loading presets",
 		helpRow{"SAVE PRESET <name>", "Save your filters and preferences under a name."}, helpRow{"LIST PRESET", "List your saved presets."},
@@ -153,8 +154,8 @@ func featureOverviewLines(dialect string) []string {
 			helpRow{"SH/FILTER", "Short form of SHOW/FILTER."}, helpRow{"SET/ANN | SET/NOANN", "Allow or block announcements."},
 			helpRow{"SET/BEACON | SET/NOBEACON", "Allow or block beacon spots."}, helpRow{"SET/WWV | SET/NOWWV", "Allow or block WWV bulletins."},
 			helpRow{"SET/WCY | SET/NOWCY", "Allow or block WCY bulletins."}, helpRow{"SET/SELF | SET/NOSELF", "Allow or block your own spots."},
-			helpRow{"SET/FILTER", "Separate switches and NEARBY only; see HELP."},
-			helpRow{"UNSET/FILTER", "Separate switches and NEARBY only; see HELP."},
+			helpRow{"SET/FILTER", "Separate switches only; see HELP."},
+			helpRow{"UNSET/FILTER", "Separate switches only; see HELP."},
 			helpRow{"REJECT TOXIC", "Hide human spots already classified as toxic."},
 			helpRow{"PASS TOXIC", "Allow human spots already classified as toxic."})
 	}

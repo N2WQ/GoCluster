@@ -35,6 +35,7 @@ func BenchmarkMatchesWithPath(b *testing.B) {
 	} {
 		b.Run(test.name, func(b *testing.B) {
 			f := NewFilter()
+			context := EvaluationContext{PathClass: PathClassHigh, FineCell: fine, CoarseCell: coarse}
 			if test.name != "constructor-default" {
 				f.Reset()
 			}
@@ -42,10 +43,7 @@ func BenchmarkMatchesWithPath(b *testing.B) {
 			case "narrow-pass", "narrow-mode-reject":
 				f.preparedRules = mustPrepareRuleSet(b, RuleDefinition{0, RulePass, "BAND=20m AND MODE=CW AND SOURCE=HUMAN"})
 			case "nearby-fine", "nearby-coarse":
-				f.preparedRules = mustPrepareRuleSet(b, RuleDefinition{0, RulePass, "DXCONT=EU"})
-				if err := f.EnableNearby(fine, coarse); err != nil {
-					b.Fatal(err)
-				}
+				f.preparedRules = mustPrepareRuleSet(b, RuleDefinition{0, RulePass, "NEARBY"})
 			case "literal-comment":
 				f.preparedRules = mustPrepareRuleSet(b,
 					RuleDefinition{0, RulePass, `COMMENT="CQ POTA"`},
@@ -59,13 +57,13 @@ func BenchmarkMatchesWithPath(b *testing.B) {
 			s.DXMetadata.Continent = "NA"
 			s.DEMetadata.Continent = "NA"
 			s.EnsureNormalized()
-			if got := f.MatchesWithPath(s, PathClassHigh); got != test.want {
+			if got := f.MatchesWithContext(s, context); got != test.want {
 				b.Fatalf("fixture got %v, want %v", got, test.want)
 			}
 			b.ReportAllocs()
 			b.ResetTimer()
 			for b.Loop() {
-				if f.MatchesWithPath(s, PathClassHigh) != test.want {
+				if f.MatchesWithContext(s, context) != test.want {
 					b.Fatal("matching outcome changed")
 				}
 			}

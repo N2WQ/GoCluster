@@ -13,15 +13,15 @@ func TestFilterDiscoveryBooleanOwnerFeedbackHasNoEffects(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
 		x := newHelpOwnerSession(t, dialect)
 		c := x.client
-		for _, line := range []string{"PASS", "REJECT", "PASS RULE", "REJECT RULE 10 MODE=CW", "PASS MODE CW", "REJECT BAND ALL"} {
-			before, writes := c.captureV5Configuration(), x.writes
+		for _, line := range []string{"PASS", "REJECT", "PASS RULE", "REJECT RULE 10 MODE=CW", "PASS MODE CW", "REJECT BAND ALL", "PASS NEARBY ON", "REJECT NEARBY OFF", "PASS NEARBY", "REJECT NEARBY", "SET/FILTER NEARBY ON", "UNSET/FILTER NEARBY OFF", "SET/FILTER NEARBY/ON", "SET/FILTER NEARBY/OFF"} {
+			before, writes := c.captureV6Configuration(), x.writes
 			revision, _ := c.configurationRevisionToken()
 			path := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 			disk := presetDiskBytes(t, path)
 			response, handled := x.server.filterEngine.Handle(c, line)
 			afterRevision, _ := c.configurationRevisionToken()
 			if !handled || !strings.Contains(response, "HELP RULE") || !strings.Contains(response, "No changes applied.") ||
-				len(response) > 1024 || x.writes != writes || before.Fingerprint() != c.captureV5Configuration().Fingerprint() ||
+				len(response) > 1024 || x.writes != writes || before.Fingerprint() != c.captureV6Configuration().Fingerprint() ||
 				afterRevision != revision || !bytes.Equal(disk, presetDiskBytes(t, path)) {
 				t.Fatalf("discovery input had effects or lost bounded rule guidance: %q => %q", line, response)
 			}
