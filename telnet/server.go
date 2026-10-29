@@ -186,6 +186,7 @@ type Server struct {
 	testCommandPacingNow                func() time.Time                           // Optional monotonic-compatible pacing clock for tests
 	testCommandPacingWait               func(*Client)                              // Optional deterministic wait observer
 	testCommandPacingTimerStarted       func(*Client)                              // Optional observer after the wait timer starts
+	testCommandPacingRetired            func(*Client)                              // Optional observer before waiting for retired writer closure
 	configurationTxnOnce                sync.Once                                  // Initializes fixed full-callsign transaction stripes
 	configurationTxnStripes             [64]chan struct{}                          // No historical callsign state is retained
 	yamlPreparationOnce                 sync.Once                                  // Initializes four bounded YAML preparation permits
@@ -410,6 +411,7 @@ type Client struct {
 	spotChan                chan *spotEnvelope     // Buffered channel for spot delivery (configurable capacity)
 	controlChan             chan controlMessage    // Buffered channel for control/bulletin delivery
 	done                    chan struct{}          // Closed to stop writer and prevent new enqueues
+	retired                 chan struct{}          // Closed under clientsMutex when a paced session loses ownership
 	closeOnce               sync.Once              // Ensures close logic runs once
 	bulletinResponseMu      sync.Mutex             // Orders history response enqueue against client close.
 	closeReportStarted      atomic.Bool            // A second close never waits for an already-running reporter
@@ -3754,6 +3756,9 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 		// Echo policy is configured explicitly so we can support local echo even
 		// when clients toggle their own modes.
 		echoInput: s.echoMode == telnetEchoServer,
+	}
+	if s.commandRatePerSecond > 0 {
+		client.retired = make(chan struct{})
 	}
 	client.dropWindow = newDropWindow(s.dropExtremeWindow)
 

@@ -78,25 +78,25 @@ func (s *Server) awaitCommandAllowance(c *Client, p *commandPacer) bool {
 	if p == nil {
 		return true
 	}
-	if commandSessionClosed(c, s) {
+	if s.commandSessionClosed(c) {
 		return false
 	}
 	delay := p.take(s.commandPacingNow())
 	if delay == 0 {
-		return !commandSessionClosed(c, s)
+		return !s.commandSessionClosed(c)
 	}
 	s.metrics.commandPacingWaits.Add(1)
 	if s.testCommandPacingWait != nil {
 		s.testCommandPacingWait(c)
 	}
-	if commandSessionClosed(c, s) {
+	if s.commandSessionClosed(c) {
 		return false
 	}
 	// The observer is test-only, but rechecking also avoids counting time
 	// between the first calculation and timer creation as additional delay.
 	delay = p.take(s.commandPacingNow())
 	if delay == 0 {
-		return !commandSessionClosed(c, s)
+		return !s.commandSessionClosed(c)
 	}
 	timer := time.NewTimer(delay)
 	defer timer.Stop()
@@ -109,24 +109,42 @@ func (s *Server) awaitCommandAllowance(c *Client, p *commandPacer) bool {
 			return false
 		case <-s.shutdown:
 			return false
+		case <-c.retired:
+			s.waitForRetiredWriter(c)
+			return false
 		case <-timer.C:
 		}
-		if commandSessionClosed(c, s) {
+		if s.commandSessionClosed(c) {
 			return false
 		}
 		delay = p.take(s.commandPacingNow())
 		if delay == 0 {
-			return !commandSessionClosed(c, s)
+			return !s.commandSessionClosed(c)
 		}
 		timer.Reset(delay)
 	}
 }
 
-func commandSessionClosed(c *Client, s *Server) bool {
+// Retiring a reader must not run its socket-closing defer until the existing
+// writer has sent the duplicate notice, unless the server is shutting down.
+func (s *Server) waitForRetiredWriter(c *Client) {
+	if s.testCommandPacingRetired != nil {
+		s.testCommandPacingRetired(c)
+	}
+	select {
+	case <-c.done:
+	case <-s.shutdown:
+	}
+}
+
+func (s *Server) commandSessionClosed(c *Client) bool {
 	select {
 	case <-c.done:
 		return true
 	case <-s.shutdown:
+		return true
+	case <-c.retired:
+		s.waitForRetiredWriter(c)
 		return true
 	default:
 		return false

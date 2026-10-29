@@ -152,7 +152,11 @@ error handling. Existing machine framing and whole-line recovery remain in force
 The server reads at most one command attempt ahead of pacing, in addition to
 existing bounded input buffers. Input echo, validation and recovery occur while
 reading, before pacing; this is not a byte-rate limit. Shutdown or replacement
-cancels a wait. A remote disconnect may be noticed only on the next read or a
+cancels a wait. After replacement, the old reader leaves its pending attempt
+unprocessed and allows the existing writer to send the duplicate-login notice
+and close the connection; shutdown can interrupt that notice. An attempt already
+past its final check can still race with replacement. A remote
+disconnect may be noticed only on the next read or a
 writer failure. Each connection has its own allowance, so reconnecting starts a
 new burst and several sessions do not share a rate.
 

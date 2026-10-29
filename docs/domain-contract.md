@@ -64,7 +64,10 @@ pressure.
 - At most one attempt is read ahead, in addition to existing bounded transport
   buffers. Reader echo, validation, recovery and their existing logs precede
   pacing; pacing is not byte-flood protection. Shutdown and session replacement
-  cancel waits. A peer EOF may not be observed until the next read or writer
+  cancel waits. A retired reader leaves its pending attempt unprocessed and
+  waits for the existing duplicate-notice writer to close or for shutdown.
+  Replacement is not atomic with a command already past its final check. A peer
+  EOF may not be observed until the next read or writer
   failure. A fresh connection starts a fresh burst; sessions do not share rates.
 - `Command pacing waits` is the cumulative count of attempts that enter a
   pacing wait, including waits later cancelled, reset on server restart. It is

@@ -30,7 +30,10 @@ Once the burst is spent, wait for the next allowance before processing the
 attempt, instead of rejecting it or disconnecting for its rate. Preserve the
 order of all attempts. Read no more than one attempt ahead of pacing, beyond
 existing bounded input buffers. A wait is cancelled by shutdown or session
-replacement. A peer disconnect can remain unnoticed until the next read or a
+replacement. On replacement the reader leaves its pending attempt unprocessed
+and waits for the existing duplicate-notice writer to close, or for shutdown.
+A command already past its final check can still race with replacement. A peer
+disconnect can remain unnoticed until the next read or a
 writer failure. At the lowest enabled rate of one per second, the ideal wait for
 one next allowance is at most one second, subject to scheduling and other work.
 

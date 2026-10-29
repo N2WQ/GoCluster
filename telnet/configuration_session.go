@@ -484,6 +484,15 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 	c.peerSessionID = s.peerSessionID
 	c.ipSessionKey = ip
 	s.clients[c.callsign] = c
+	if evicted != nil && evicted != c && evicted.retired != nil {
+		// Retirement and registry ownership change share this lock. The writer
+		// still owns notice delivery and socket closure after replacement.
+		select {
+		case <-evicted.retired:
+		default:
+			close(evicted.retired)
+		}
+	}
 	if reserved.identity {
 		s.sessionReservations--
 	}
