@@ -89,6 +89,13 @@ pressure.
   reservations and tickets remain held until safe cleanup. The timeout counter
   counts an expired pre-login attempt once, including expiry before input or
   during handoff; shutdown and unrelated disconnects are not timeouts.
+- The final registration ownership change is ordered with the shutdown signal.
+  If shutdown is signaled first, a waiting reconnect cannot replace its owner.
+  If replacement wins first, both the current and displaced session can be
+  interrupted on shutdown even when a replacement notification callback is
+  blocked. A writer already in socket I/O can first reach its existing write
+  deadline; scheduling and synchronous work can delay cleanup. Duplicate notice
+  delivery remains best effort and is not guaranteed during shutdown.
 - A positive `telnet.max_connections` is a strict ceiling on registered telnet
   sessions, including concurrent logins. A same-identity replacement does not
   add a session: identity is the full normalized callsign and SSID. Different

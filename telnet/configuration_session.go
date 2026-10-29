@@ -460,8 +460,8 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 		}
 	}
 	s.clientsMutex.Lock()
-	// Stop closes shutdown before taking this lock. Checking under the same
-	// lock ensures Stop either sees this registration or prevents it entirely.
+	// This early check avoids work after shutdown. The final decision is ordered
+	// with Stop after any wait for the old owner's readback lock.
 	select {
 	case <-c.done:
 		s.clientsMutex.Unlock()
@@ -491,8 +491,38 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 	if replacing {
 		evicted.readPauseMu.Lock()
 	}
+	// Stop releases this gate before taking clientsMutex. Acquire it only after
+	// the old owner's potentially blocked readback lock and release it before
+	// callbacks or socket operations. Publication and shutdown are ordered here.
+	s.shutdownRegistrationMu.Lock()
+	select {
+	case <-c.done:
+		s.shutdownRegistrationMu.Unlock()
+		if replacing {
+			evicted.readPauseMu.Unlock()
+		}
+		s.clientsMutex.Unlock()
+		return nil, 0, errClientClosed
+	case <-s.shutdown:
+		s.shutdownRegistrationMu.Unlock()
+		if replacing {
+			evicted.readPauseMu.Unlock()
+		}
+		s.clientsMutex.Unlock()
+		return nil, 0, errClientClosed
+	default:
+	}
+	if !deadline.IsZero() && !time.Now().Before(deadline) {
+		s.shutdownRegistrationMu.Unlock()
+		if replacing {
+			evicted.readPauseMu.Unlock()
+		}
+		s.clientsMutex.Unlock()
+		return nil, 0, errLoginDeadline
+	}
 	if c.preloginBudget != nil {
 		if err := c.preloginBudget.finish(); err != nil {
+			s.shutdownRegistrationMu.Unlock()
 			if replacing {
 				evicted.readPauseMu.Unlock()
 			}
@@ -550,6 +580,7 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 	s.peerMembershipRevision++
 	total := len(s.clients)
 	s.shardsDirty.Store(true)
+	s.shutdownRegistrationMu.Unlock()
 	s.clientsMutex.Unlock()
 	return evicted, total, nil
 }

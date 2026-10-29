@@ -23,6 +23,13 @@ zero spelling, is a different session and needs capacity of its own. Preserve
 the existing duplicate notice and configuration handoff, including the fence
 against a retired session overwriting its successor.
 
+Order shutdown signaling with the final ownership change. A shutdown signal
+that wins this ordering prevents registration and replacement. If a replacement
+is already published, the session writer also observes shutdown so a displaced
+idle connection need not wait for replacement notifications to return. A write
+already in progress remains subject to its existing deadline and synchronous
+work can delay cleanup. Duplicate notice delivery is not guaranteed on shutdown.
+
 Continue to apply the separate pre-login gates to all attempts, including
 replacements. A new identity rejected for capacity must not write its profile,
 upgrade backups or shared preset library. The server attempts a full-server
@@ -94,5 +101,6 @@ separate pre-login settings and diagnostics to investigate earlier refusals.
 - Related decisions: [ADR-0041](ADR-0041-telnet-tier-a-prelogin-admission-gate.md),
   [ADR-0244](ADR-0244-exact-configuration-persistence.md),
   [ADR-0322](ADR-0322-local-user-login-ssids.md).
-- Related TSRs: [TSR-0112](../troubleshooting/TSR-0112-full-session-stripe-wait.md).
+- Related TSRs: [TSR-0112](../troubleshooting/TSR-0112-full-session-stripe-wait.md),
+  [TSR-0114](../troubleshooting/TSR-0114-telnet-replacement-during-shutdown.md).
 - Supersedes / superseded by: none.

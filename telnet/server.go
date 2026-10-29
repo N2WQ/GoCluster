@@ -197,6 +197,7 @@ type Server struct {
 	peerSessionID                       uint64                                     // Guarded by clientsMutex; identifies replacement owners
 	peerMembershipListener              atomic.Value                               // Optional nonblocking func(), separate from dashboard updates
 	shutdown                            chan struct{}                              // Shutdown coordination channel
+	shutdownRegistrationMu              sync.Mutex                                 // Orders shutdown signal with registration publication
 	stopOnce                            sync.Once                                  // Ensures Stop is idempotent
 	broadcast                           chan *broadcastPayload                     // Broadcast channel for spots (buffered, configurable)
 	broadcastWorkers                    int                                        // Number of goroutines delivering spots
@@ -5933,6 +5934,10 @@ func (c *Client) writerLoop() {
 	}
 	controlCh := c.controlChan
 	spotCh := c.spotChan
+	var shutdown <-chan struct{}
+	if c.server != nil {
+		shutdown = c.server.shutdown
+	}
 	maxBytes, wait := c.writerBatchConfig()
 	batch := make([]byte, 0, maxBytes)
 	spotEnqueueTimes := make([]time.Time, 0, 64)
@@ -6000,6 +6005,9 @@ func (c *Client) writerLoop() {
 		// Always pull control first when available.
 		for {
 			select {
+			case <-shutdown:
+				c.interrupt()
+				return
 			case <-c.done:
 				return
 			case msg := <-controlCh:
@@ -6008,6 +6016,9 @@ func (c *Client) writerLoop() {
 			default:
 			}
 			select {
+			case <-shutdown:
+				c.interrupt()
+				return
 			case <-c.done:
 				return
 			case msg := <-controlCh:
@@ -6033,6 +6044,9 @@ func (c *Client) writerLoop() {
 		drainControl:
 			for len(batch) < maxBytes && !closeAfter {
 				select {
+				case <-shutdown:
+					c.interrupt()
+					return
 				case <-c.done:
 					return
 				case msg := <-controlCh:
@@ -6047,6 +6061,9 @@ func (c *Client) writerLoop() {
 
 			// Admit an immediate spot only when control is empty.
 			select {
+			case <-shutdown:
+				c.interrupt()
+				return
 			case <-c.done:
 				return
 			case msg := <-controlCh:
@@ -6067,6 +6084,10 @@ func (c *Client) writerLoop() {
 			}
 			resetTimer(timer, remaining)
 			select {
+			case <-shutdown:
+				stopAndDrainTimer(timer)
+				c.interrupt()
+				return
 			case <-c.done:
 				stopAndDrainTimer(timer)
 				return
@@ -6083,6 +6104,14 @@ func (c *Client) writerLoop() {
 			}
 		}
 		stopAndDrainTimer(timer)
+		// A retired client is no longer in Stop's registry. Its existing writer
+		// must interrupt the socket even while replacement callbacks are blocked.
+		select {
+		case <-shutdown:
+			c.interrupt()
+			return
+		default:
+		}
 
 		start := time.Now().UTC()
 		if err := c.flushWriterBatch(batch); err != nil {
@@ -6468,7 +6497,10 @@ func (s *Server) Stop() {
 		s.preloginMu.Lock()
 		s.flushAdmissionWindowLocked(now)
 		s.preloginMu.Unlock()
+		// Never hold this gate while acquiring clientsMutex or calling out.
+		s.shutdownRegistrationMu.Lock()
 		close(s.shutdown)
+		s.shutdownRegistrationMu.Unlock()
 		if s.listener != nil {
 			_ = s.listener.Close()
 		}

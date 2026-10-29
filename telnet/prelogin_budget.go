@@ -63,6 +63,15 @@ func newPreloginBudget(conn net.Conn, deadline time.Time, shutdown <-chan struct
 func (b *preloginBudget) finish() error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	select {
+	case <-b.shutdown:
+		if b.state == preloginActive {
+			b.state = preloginShutdown
+			close(b.stopCh)
+		}
+		return errClientClosed
+	default:
+	}
 	if b.state == preloginExpired {
 		return errLoginDeadline
 	}

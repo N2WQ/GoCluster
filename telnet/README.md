@@ -78,6 +78,12 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
   to reconnects. A pre-login rejection can therefore prevent a replacement.
   Blocked storage or registry access can still delay the login beyond that
   deadline.
+- Shutdown is ordered with the final registration decision. If shutdown is
+  signaled first, a waiting reconnect cannot replace its current session. If a
+  replacement has already registered, both connections can be interrupted even
+  if a replacement notification is blocked. A blocked write can first reach its
+  existing deadline; scheduling and other synchronous work can delay cleanup.
+  A duplicate-login notice is not guaranteed during shutdown.
 - Callsign validation does not authenticate the person connecting. An accepted
   same-identity login can displace an existing session.
 - The greeting can include dialect, grid, noise, and dedupe status from config.
