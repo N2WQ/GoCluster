@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `b711fb2cb3f46ced`
+- Source fingerprint: `7b525ee3e756fa12`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 32 | 153 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 55 | 133 |
+| `dxcluster/telnet` | `telnet` | 56 | 134 |
 
 ## In-Scope Package Edges
 
@@ -685,6 +685,7 @@ Source files:
 - `telnet/machine_validation.go`
 - `telnet/matching_snapshot.go`
 - `telnet/peer_membership.go`
+- `telnet/prelogin_budget.go`
 - `telnet/preset_commands.go`
 - `telnet/qualification_observer.go`
 - `telnet/qualification_observer_disabled.go`
@@ -791,6 +792,7 @@ Test files:
 - `telnet/path_timestamp_provenance_test.go`
 - `telnet/peer_membership_test.go`
 - `telnet/persistence_warning_test.go`
+- `telnet/prelogin_budget_test.go`
 - `telnet/prelogin_gate_test.go`
 - `telnet/preset_commands_test.go`
 - `telnet/preset_transaction_test.go`

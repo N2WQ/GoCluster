@@ -278,8 +278,8 @@ type TelnetConfig struct {
 	// LoginTimeoutSeconds is the legacy pre-login timeout knob kept for
 	// compatibility. Tier-A admission uses prelogin_timeout_seconds.
 	LoginTimeoutSeconds int `yaml:"login_timeout_seconds"`
-	// PreloginTimeoutSeconds caps total time from accept to successful callsign entry.
-	// This hard-bounds unauthenticated socket lifetime.
+	// PreloginTimeoutSeconds is the accept-to-registration budget. Synchronous
+	// work already underway can delay cleanup beyond this deadline.
 	PreloginTimeoutSeconds int `yaml:"prelogin_timeout_seconds"`
 	// AcceptRatePerIP limits accepted pre-login connections per source IP per second.
 	AcceptRatePerIP float64 `yaml:"accept_rate_per_ip"`

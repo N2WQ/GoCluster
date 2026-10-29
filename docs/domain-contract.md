@@ -76,6 +76,19 @@ pressure.
 
 ## Telnet session capacity
 
+- An admitted connection has one pre-login time budget from listener accept
+  through its registration decision. After admission, timeout or shutdown
+  interrupts socket I/O, subject to scheduling and prior admission delay;
+  the timeout worker is retired before registration and cannot close the new
+  owner later. Each worker and timer is bounded by a pre-login ticket and joins
+  before its ticket is released. Admission rejection notices keep their separate
+  bounded send period.
+- Synchronous admission, lock and profile operations cannot be forcibly canceled.
+  An operation already underway may complete after expiry, including profile
+  writes. An expired login cannot register or replace the previous owner;
+  reservations and tickets remain held until safe cleanup. The timeout counter
+  counts an expired pre-login attempt once, including expiry before input or
+  during handoff; shutdown and unrelated disconnects are not timeouts.
 - A positive `telnet.max_connections` is a strict ceiling on registered telnet
   sessions, including concurrent logins. A same-identity replacement does not
   add a session: identity is the full normalized callsign and SSID. Different

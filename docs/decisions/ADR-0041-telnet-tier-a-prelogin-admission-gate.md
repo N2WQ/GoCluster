@@ -24,7 +24,11 @@ Tags: telnet, dos, admission-control, bounded-resources
   - global prelogin cap,
   - per-IP concurrency cap,
   - per-IP token-bucket rate cap.
-- Apply a short prelogin timeout budget from accept to successful callsign login.
+- Apply a short prelogin timeout budget from accept through registration.
+  Socket activity is interrupted on timeout or shutdown; synchronous work already
+  underway may finish and persist profile changes before an expired login is
+  refused. Cleanup and ticket release can therefore occur after the deadline.
+  Capacity-rejection notices retain their separate bounded send period.
 - Keep resources bounded by capping tracked per-IP admission state and evicting oldest idle entries when necessary.
 - Add Tier-A observability counters/gauge in telnet server snapshots and network summary output.
 

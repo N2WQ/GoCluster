@@ -35,7 +35,7 @@ the independent 256 KiB preset budget, while its FULL/YAML readback may fail.
 These knobs govern how long the server waits for input before taking action:
 
 - `telnet.max_prelogin_sessions` &mdash; defaults to `256`. Hard cap on unauthenticated sessions to bound socket usage during floods.
-- `telnet.prelogin_timeout_seconds` &mdash; defaults to `15`. Total accept-to-callsign budget for unauthenticated sessions.
+- `telnet.prelogin_timeout_seconds` &mdash; defaults to `15`; the shipped runtime value is `30`. One budget from acceptance through registration, including negotiation and profile handoff. After admission, socket activity is interrupted on expiry, subject to scheduling and admission delay. Synchronous storage or lock work already underway can delay cleanup and may have written profile data. Capacity-rejection notices have a separate bounded send period.
 - `telnet.accept_rate_per_ip` / `telnet.accept_burst_per_ip` &mdash; defaults to `3` and `6`. Per-IP pre-login admission limiter (Go `x/time/rate` token bucket).
 - `telnet.accept_rate_per_subnet` / `telnet.accept_burst_per_subnet` &mdash; defaults to `24` and `48`. Per-subnet pre-login limiter (`/24` IPv4, `/48` IPv6).
 - `telnet.accept_rate_global` / `telnet.accept_burst_global` &mdash; defaults to `300` and `600`. Cluster-wide pre-login limiter.

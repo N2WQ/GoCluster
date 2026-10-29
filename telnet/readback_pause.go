@@ -1,7 +1,7 @@
 // File role: Owns the shared pause authority for manual controls, generic
 // automatic pauses, and human readbacks that finish on the writer goroutine.
 // Only fixed state lives on Client. Spot admission remains an atomic read path;
-// pause mutation never holds a client, registry, or writer lock or performs I/O.
+// replacement invalidation is ordered with registry ownership and performs no I/O.
 package telnet
 
 import "time"
@@ -65,6 +65,12 @@ func (c *Client) invalidateHumanReadback() {
 	}
 	c.readPauseMu.Lock()
 	defer c.readPauseMu.Unlock()
+	c.invalidateHumanReadbackLocked()
+}
+
+// Caller holds readPauseMu; registration takes this lock before deciding
+// whether the replacement still has time to become the owner.
+func (c *Client) invalidateHumanReadbackLocked() {
 	if c.readPauseClosed {
 		return
 	}

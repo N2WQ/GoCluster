@@ -24,7 +24,7 @@ telnet:
   command_rate_per_second: 5 # Command attempts per session per second; 0 disables pacing.
   command_burst: 30          # Initial and maximum command attempts before pacing.
   max_prelogin_sessions: 100      # Hard cap on unauthenticated sessions (Tier-A DoS guardrail)
-  prelogin_timeout_seconds: 30    # Accept->callsign timeout for unauthenticated sessions
+  prelogin_timeout_seconds: 30    # Accept-to-registration budget; blocked synchronous work can delay cleanup
   accept_rate_per_ip: 3           # Per-IP prelogin admit rate (tokens/sec)
   accept_burst_per_ip: 6          # Per-IP prelogin burst capacity
   accept_rate_per_subnet: 24      # Per-/24 (IPv4) or /48 (IPv6) prelogin admit rate (tokens/sec)

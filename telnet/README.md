@@ -8,6 +8,14 @@ This directory owns the telnet session layer: login flow, prompt handling, filte
 ## Login And Session Behavior
 
 - Clients log in with a callsign before commands are accepted.
+- `telnet.prelogin_timeout_seconds` gives an admitted connection one budget
+  from acceptance through registration, including negotiation and profile
+  handoff. The shipped value is 30 seconds. After admission, timeout or
+  shutdown interrupts socket activity; an expired login cannot replace an
+  existing session. Admission and scheduling can delay that interruption.
+  Synchronous storage or lock work already underway cannot be interrupted:
+  it finishes before cleanup, and any profile changes already made remain.
+  Admission-rejection notices use their separate bounded send period.
 - Login rejects command-like and mode-like tokens such as numeric-only port
   strings, all-letter words, `FT8`, `NOFT8`, or `SET/NOFT8` before any
   per-user state is loaded.

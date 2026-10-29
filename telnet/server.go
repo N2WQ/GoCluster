@@ -395,6 +395,7 @@ type Server struct {
 // The client remains active until they type BYE or their connection drops.
 type Client struct {
 	conn                    net.Conn               // TCP connection to client
+	preloginBudget          *preloginBudget        // Admission worker retired before registration publishes
 	reader                  *bufio.Reader          // Buffered reader for client input
 	inputWire               *inputWireConn         // Raw recovery accounting, owned by reader goroutine
 	inputExposure           *singleByteInput       // Ziutek human/header byte exposure, same read owner
@@ -3660,6 +3661,7 @@ func (s *Server) acceptConnections() {
 				continue
 			}
 		}
+		acceptedAt := time.Now()
 
 		ticket, rejectReason := s.tryAcquirePrelogin(conn.RemoteAddr())
 		if ticket == nil {
@@ -3672,34 +3674,57 @@ func (s *Server) acceptConnections() {
 			continue
 		}
 
-		if isTCP, enableErr, periodErr := netutil.EnableTCPKeepAlive(conn, 2*time.Minute); isTCP {
-			if enableErr != nil {
-				log.Printf("Failed to enable TCP keepalive for %s: %v", conn.RemoteAddr(), enableErr)
-			}
-			if periodErr != nil {
-				log.Printf("Failed to set TCP keepalive period for %s: %v", conn.RemoteAddr(), periodErr)
-			}
-		}
-
 		// Handle this client in a new goroutine
-		go s.handleClient(conn, ticket)
+		go s.handleAcceptedClient(conn, ticket, acceptedAt)
 	}
 }
 
 // handleClient manages a single client connection
 func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
+	s.handleAcceptedClient(conn, ticket, time.Now())
+}
+
+func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acceptedAt time.Time) {
+	loginTimeout := s.preloginTimeout
+	if loginTimeout <= 0 {
+		loginTimeout = s.loginTimeout
+	}
+	if loginTimeout <= 0 {
+		loginTimeout = defaultPreloginTimeout
+	}
+	loginDeadline := acceptedAt.Add(loginTimeout)
+	budget := newPreloginBudget(conn, loginDeadline, s.shutdown)
 	address := peerAddressString(conn.RemoteAddr())
-	log.Printf("New connection from %s", address)
-	s.reportConnection("connect", "accepted", "", address)
 	preloginTicket := ticket
 	defer func() {
+		expired := budget.stop()
 		if preloginTicket != nil {
 			preloginTicket.Release()
 		}
+		if expired {
+			s.recordPreloginTimeout()
+			s.reportLoginAttempt("timeout", "login_timeout", "", address, "")
+			log.Printf("Login timeout for %s", address)
+		}
 	}()
+	log.Printf("New connection from %s", address)
+	s.reportConnection("connect", "accepted", "", address)
+	if !budget.canContinue() {
+		_ = conn.Close()
+		return
+	}
+	if isTCP, enableErr, periodErr := netutil.EnableTCPKeepAlive(conn, 2*time.Minute); isTCP {
+		if enableErr != nil {
+			log.Printf("Failed to enable TCP keepalive for %s: %v", conn.RemoteAddr(), enableErr)
+		}
+		if periodErr != nil {
+			log.Printf("Failed to set TCP keepalive period for %s: %v", conn.RemoteAddr(), periodErr)
+		}
+	}
 	// startWithListener is also used by internal fixtures. Invalid direct
 	// options must not silently disable pacing on that path.
 	if err := validateCommandPacingOptions(s.commandRatePerSecond, s.commandBurst); err != nil {
+		budget.stop()
 		log.Printf("Invalid telnet command pacing configuration: %v", err)
 		_ = conn.Close()
 		return
@@ -3726,6 +3751,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	inputWire := &inputWireConn{Conn: conn}
 	readerConn, writerConn, err := wrapConn(inputWire)
 	if err != nil {
+		budget.stop()
 		log.Printf("telnet: failed to wrap connection from %s: %v", address, err)
 		_ = conn.Close()
 		return
@@ -3738,6 +3764,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	}
 	client := &Client{
 		conn:           conn,
+		preloginBudget: budget,
 		inputWire:      inputWire,
 		inputExposure:  inputExposure,
 		reader:         bufio.NewReader(inputReader),
@@ -3765,6 +3792,7 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	closeOnExit := true
 	registered := false
 	defer func() {
+		budget.stop()
 		if closeOnExit {
 			client.interrupt()
 		}
@@ -3781,6 +3809,9 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	}()
 
 	s.negotiateTelnet(client)
+	if !budget.canContinue() {
+		return
+	}
 	go client.writerLoop()
 
 	// Send welcome message with template tokens (uptime, user count, etc.).
@@ -3788,19 +3819,12 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	s.sendPreLoginMessage(client, s.welcomeMessage, loginTime)
 	s.sendPreLoginMessage(client, s.loginPrompt, loginTime)
 
-	loginTimeout := s.preloginTimeout
-	if loginTimeout <= 0 {
-		loginTimeout = s.loginTimeout
-	}
-	if loginTimeout <= 0 {
-		loginTimeout = defaultPreloginTimeout
-	}
-	loginDeadline := time.Now().UTC().Add(loginTimeout)
-
 	var callsign string
 	for {
 		if err := client.setReadDeadline(loginDeadline); err != nil {
-			log.Printf("Failed to set login deadline for %s: %v", address, err)
+			if !budget.stop() {
+				log.Printf("Failed to set login deadline for %s: %v", address, err)
+			}
 			return
 		}
 		// Read callsign with tight guard rails so a single telnet client cannot
@@ -3809,15 +3833,20 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 		// callsign, including suffixes such as /QRP or /MM.
 		line, err := client.ReadLine(s.loginLineLimit, "login", false, false, false, false)
 		if err != nil {
+			if isTimeoutErr(err) {
+				budget.markDeadline()
+			}
+			if budget.expired() {
+				return
+			}
 			var humanErr *humanInputError
 			if errors.As(err, &humanErr) {
-				log.Printf("Unsafe login input from %s: %v", address, err)
+				if !budget.stop() {
+					log.Printf("Unsafe login input from %s: %v", address, err)
+				}
 				return
 			}
 			if isTimeoutErr(err) {
-				s.recordPreloginTimeout()
-				s.reportLoginAttempt("timeout", "login_timeout", "", address, "")
-				log.Printf("Login timeout for %s", address)
 				return
 			}
 			var inputErr *InputValidationError
@@ -3831,7 +3860,9 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 				s.sendPreLoginMessage(client, s.loginPrompt, loginTime)
 				continue
 			}
-			log.Printf("Error reading callsign from %s: %v", address, err)
+			if !budget.stop() {
+				log.Printf("Error reading callsign from %s: %v", address, err)
+			}
 			return
 		}
 
@@ -3858,9 +3889,18 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 	}
 
 	client.callsign = callsign
+	if !budget.canContinue() {
+		return
+	}
 	restored, err := s.restoreAndRegisterClient(client, loginTime, loginDeadline)
 	if err != nil {
+		if errors.Is(err, errLoginDeadline) {
+			budget.markDeadline()
+		}
 		if errors.Is(err, errSessionFull) || errors.Is(err, errBaseSessionFull) || errors.Is(err, errIPSessionFull) || errors.Is(err, errInvalidSessionIP) {
+			if budget.stop() {
+				return
+			}
 			reason, message := preloginRejectReason("max_connections"), "Server full. Try again later.\n"
 			if errors.Is(err, errBaseSessionFull) {
 				reason, message = "max_sessions_per_base_call", "Station session limit reached. Try again later.\n"
@@ -3889,11 +3929,14 @@ func (s *Server) handleClient(conn net.Conn, ticket *preloginTicket) {
 			}
 			return
 		}
-		log.Printf("Configuration handoff failed for %s: %v", client.callsign, err)
+		if !budget.stop() {
+			log.Printf("Configuration handoff failed for %s: %v", client.callsign, err)
+		}
 		return
 	}
 	registered = true
 	if preloginTicket != nil {
+		budget.stop()
 		preloginTicket.Release()
 		preloginTicket = nil
 	}

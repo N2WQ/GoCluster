@@ -91,10 +91,10 @@ func (s *Server) acquireConfigurationWithRecheck(c *Client, final, handoff bool,
 			case <-shutdown:
 				return nil, errClientClosed
 			case <-expired:
-				return nil, fmt.Errorf("configuration handoff exceeded login deadline")
+				return nil, errLoginDeadline
 			case <-retry:
 				if !deadline.IsZero() && !time.Now().Before(deadline) {
-					return nil, fmt.Errorf("configuration handoff exceeded login deadline")
+					return nil, errLoginDeadline
 				}
 				select {
 				case <-done:
@@ -123,7 +123,7 @@ func (s *Server) acquireConfigurationWithRecheck(c *Client, final, handoff bool,
 	}
 	if !deadline.IsZero() && !time.Now().Before(deadline) {
 		release()
-		return nil, fmt.Errorf("configuration handoff exceeded login deadline")
+		return nil, errLoginDeadline
 	}
 	if !handoff {
 		s.clientsMutex.RLock()

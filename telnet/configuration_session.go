@@ -237,7 +237,7 @@ func (s *Server) waitLoginCapacity(c *Client, changed <-chan struct{}, deadline 
 	case <-s.shutdown:
 		return errClientClosed
 	case <-expired:
-		return fmt.Errorf("configuration handoff exceeded login deadline")
+		return errLoginDeadline
 	}
 }
 
@@ -281,6 +281,16 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 			s.releaseSessionReservation(c, reserved)
 		}
 	}()
+	select {
+	case <-c.done:
+		return restoredLogin{}, errClientClosed
+	case <-s.shutdown:
+		return restoredLogin{}, errClientClosed
+	default:
+	}
+	if !deadline.IsZero() && !time.Now().Before(deadline) {
+		return restoredLogin{}, errLoginDeadline
+	}
 	result := s.restoreClientRecordOwned(c, loginTime)
 	select {
 	case <-c.done:
@@ -290,7 +300,7 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 	default:
 	}
 	if !time.Now().Before(deadline) {
-		return result, fmt.Errorf("configuration handoff exceeded login deadline")
+		return result, errLoginDeadline
 	}
 	evicted, total, err := s.registerClientOwned(c, reserved, deadline)
 	if err != nil {
@@ -463,7 +473,7 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 	}
 	if !deadline.IsZero() && !time.Now().Before(deadline) {
 		s.clientsMutex.Unlock()
-		return nil, 0, fmt.Errorf("configuration handoff exceeded login deadline")
+		return nil, 0, errLoginDeadline
 	}
 	if s.clients == nil {
 		s.clients = make(map[string]*Client)
@@ -477,8 +487,23 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 			return nil, 0, errInvalidSessionIP
 		}
 	}
-	if evicted != nil && evicted != c {
-		evicted.invalidateHumanReadback()
+	replacing := evicted != nil && evicted != c
+	if replacing {
+		evicted.readPauseMu.Lock()
+	}
+	if c.preloginBudget != nil {
+		if err := c.preloginBudget.finish(); err != nil {
+			if replacing {
+				evicted.readPauseMu.Unlock()
+			}
+			s.clientsMutex.Unlock()
+			return nil, 0, err
+		}
+		c.preloginBudget = nil
+	}
+	if replacing {
+		evicted.invalidateHumanReadbackLocked()
+		evicted.readPauseMu.Unlock()
 	}
 	s.peerSessionID++
 	c.peerSessionID = s.peerSessionID
