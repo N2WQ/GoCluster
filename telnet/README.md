@@ -624,14 +624,19 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 
 | Command | Response |
 | --- | --- |
-| `SHOW FILTER` | Current settings, canonical rules and individual controls. |
-| `SHOW FILTER RULE` | The same concise filter state. |
-| `SHOW FILTER FULL` | Adds separate-control detail and one-program preparation counts. |
-| `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
+| GO: `SHOW FILTER`, `SHOW FILTER RULE` | Current settings, canonical rules and individual GO controls. |
+| GO: `SHOW FILTER FULL` | Adds separate-control detail and one-program preparation counts. |
+| CC: `SHOW/FILTER`, `SH/FILTER`, `SHOW/FILTER FULL` | Complete native mode/source, geography, band overrides, DXBM and CC controls. |
+| CC: `SH/FILTER DOC` (or another supported category) | Inspect that native category. |
+| Both: `SHOW SETTINGS` | Configured preferences and effective behavior, followed by session status. |
 
-`SHOW/FILTER` and `SH/FILTER` accept the same RULE/FULL arguments in both
-dialects; their HELP topics do too. Category readbacks are unsupported.
-Every occupied slot appears in slot order with its action and full canonical
+`SHOW/FILTER` and `SH/FILTER` are aliases in GO, with RULE/FULL arguments.
+CC accepts DOC, DOS, DXCTY, DXSTATE, DXBM, MODE, SOURCE, BEACON, WWV, WCY,
+ANNOUNCE, SELF, TOXIC and FULL. CC has no Boolean RULE view and refuses Boolean
+rule mutations. `SHOW FILTER` also works as a CC alias. SETTINGS aliases are
+`SHOW/SETTINGS` and `SH/SETTINGS` in both dialects.
+
+In GO, every occupied slot appears in slot order with its action and full canonical
 saved expression. No synthetic source condition is added.
 FULL reports occupied slots and one program's node/atom/value counts. There are
 no projected expressions, suspended rules or global NEARBY status fields.
@@ -644,7 +649,8 @@ The shipped login greeting includes a settings/filter block. New accounts see
 filters". Values come from actual restored/prepared state, including a looked-up
 grid and effective dedupe. Recognized old profiles get the reset notice and
 first-time guidance; old-library cleanup alone must not claim a profile reset.
-No display flattens OR/NOT expressions into independent mode/band/source lists.
+The GO view does not flatten OR/NOT expressions into independent lists. The CC
+view displays its independently saved native categories.
 Custom greeting templates can place the block with `<SETTINGS_FILTERS>`.
 
 `SHOW DXCC` (also `SH DXCC`) requires one prefix or callsign. Extra values
@@ -675,14 +681,16 @@ Unusual saved strings remain exact, with quotes and escapes when needed;
 when describing an effective lane, unrecognized values are identified separately
 from unavailable policies.
 
-Use `GET YAML FILTER SCHEMA 6` for machine-readable saved expressions and
-controls; `DEFAULT` remains distinct from explicit `true` or `false`.
+Use `GET YAML FILTER SCHEMA 7` for the tagged active bank and its controls,
+or `GET YAML CONFIG SCHEMA 7` for a complete both-bank backup. The legacy
+`GET YAML FILTER SCHEMA 6` exposes rules/controls only while GO is active.
+`DEFAULT` remains distinct from explicit `true` or `false`.
 `SHOW SETTINGS` preserves exact saved GRID bytes even when they require escaped
-display. A successful filter readback includes every saved canonical rule.
+display. A successful filter readback includes the complete selected view.
 
 Every human readback line has at most 78 printable ASCII characters followed
 by CRLF, including headers, active values, explanations, errors and pause
-footers. Short numbered rules use directly reusable expression syntax, without
+footers. GO's short numbered rules use directly reusable expression syntax, without
 outer display quotes. Long values use Go-style double-quoted ASCII escapes for whitespace,
 quotes, backslashes, control characters and non-ASCII values. Long individual
 values use complete quoted pieces joined by `+`. For illustration, a displayed
@@ -699,8 +707,8 @@ Leading/trailing spaces inside display quotes belong to the value; escapes
 are never split or trimmed. This display encoding is not expression syntax,
 and a long displayed row is not a copyable command. Expression quotes
 use doubled quotes and literal backslashes, not Go escapes. Human commands
-still have the configured line limit (128 bytes by default); use schema 6
-YAML for longer rules.
+still have the configured line limit (128 bytes by default); use schema-seven
+GO FILTER YAML, or the retained schema-six GO interface, for longer rules.
 
 `SHOW SETTINGS` uses readable labels such as Dialect, Grid, Noise, Dedupe and
 Path samples. An empty configured preference is `DEFAULT`, with the effective
@@ -753,8 +761,9 @@ Live spots paused during delivery and for at least 30s afterward.
 Type RESUME when ready. Missed spots are not replayed.
 ```
 
-Each complete response is limited to 65,536 bytes after CRLF conversion,
-including its header and human footer. Generation either completes within
+GO filter output and shared SETTINGS responses are limited to 65,536 bytes;
+native CC filter output allows 262,144 bytes. Both count CRLF conversion,
+headers and human footers. Generation either completes within
 the limit or returns an explicit error. ASCII-escape expansion is budgeted
 before unrestricted quoting. Exact-value scratch space is bounded by the line
 width, and the complete rule body is admitted before output allocation.
@@ -767,7 +776,10 @@ The schema-six examples below describe the retained legacy GO/settings interface
 FILTER/CONFIG require effective GO, SETTINGS/CAPABILITIES also work in CC with
 warnings and no fabricated Boolean state. Schema six is not a full backup.
 
-The following canonical commands work independently of the human dialect:
+The following table describes schema six. FILTER/CONFIG operations require
+active GO, and CONFIG proposals must leave GO selected. SETTINGS/CAPABILITIES
+work in either dialect; SETTINGS can switch the selected bank. For native CC
+filter edits and complete backups, use schema seven.
 
 | Command | Purpose |
 | --- | --- |
@@ -797,7 +809,7 @@ NEARBY exists only in the canonical rules. Generation 6 has no
 `nearby_enabled`, `nearby_active`, projected-expression or suspended-rule fields.
 A schema-6 proposal containing even `nearby_enabled: false` is refused.
 
-CAPABILITIES advertises `supported_schema_versions: [6]`, the seven filter and
+Schema-six CAPABILITIES advertises `supported_schema_versions: [6]`, the seven filter and
 six settings field names, lowercase rule actions, DEFAULT/boolean choices,
 comparison fields/operators/geographic flags, operand-free `rule_predicates`,
 active vocabularies and rule limits. NEARBY has operand_count 0 and an empty
@@ -808,11 +820,10 @@ availability matrix: runtime settings admission remains authoritative.
 Read-only `status.rules` contains `configured_count`, one `program` mapping
 with nodes/atoms/values, and canonical `{slot, action, expr}` entries.
 
-Current checkout routing is `telnet/machine_commands.go` to
-`handleV6MachineCommand`; `machine_v6_input.go` owns headers,
-`machine_v6_schema.go`/`machine_v6_schema_rules.go` own strict proposals,
-`machine_v6_commands.go` owns transactions and `machine_v6_readback.go` owns
-the bounded DTO response. Retained prepared rules are shared immutably when
+Current dispatch starts in `telnet/machine_commands.go` and
+`handleV7MachineCommand`. Schema-six requests delegate to the retained parser
+and the `machine_v6_banked_commands.go`/`machine_v6_banked_readback.go` adapters;
+`machine_v7_*.go` owns the complete both-bank interface. Retained prepared rules are shared immutably when
 omitted from PATCH, not recompiled by rendering.
 
 ### Writable Values
@@ -845,8 +856,9 @@ There is no per-slot PATCH merge.
 
 ### Upload And Revision Examples
 
-These are source-derived, codec-shaped examples, not executed server or codec
-validation results. First read your own current configuration:
+These are source-derived, codec-shaped schema-six examples, not executed server
+or codec validation results. Select GO before the FILTER/CONFIG examples.
+First read your own current configuration:
 
 ```text
 GET YAML CONFIG SCHEMA 6 ID Read-1
@@ -875,7 +887,7 @@ configuration:
     allow_self: DEFAULT
     allow_toxic: DEFAULT
   settings:
-    dialect: ""
+    dialect: go
     grid: ""
     noise_class: ""
     dedupe_policy: ""
@@ -1027,6 +1039,13 @@ A preset stores the active GO or native CC bank, its six controls and shared
 preferences with an explicit dialect tag. LOAD restores that bank, announces a
 dialect switch, leaves the other bank intact and restarts the solar schedule.
 Login/IP metadata, diagnostics, pauses and derived caches are not preset choices.
+
+If the node cannot apply a saved dedupe choice or PATHSAMPLES override, LOAD
+announces its adjustment and records the applied choice in the profile and that
+bank's baseline. For example, disabled SLOW may become FAST; reconnect retains
+FAST even if SLOW is later enabled. The shared named preset still contains SLOW.
+Configured empty GRID and inherited defaults retain their meanings. Ordinary
+login/readback preserves saved choices and reports effective fallback separately.
 
 Each bank keeps an independent association and immutable baseline across
 reconnect. Shared preference changes can mark either baseline modified. Deleting
@@ -1276,20 +1295,35 @@ not replace the existing deterministic tests with overlapping goroutines.
 
 ## US State And Canadian Province Filters
 
-Use the shared numbered-rule grammar in either dialect:
+In GO, use numbered Boolean rules:
 
 ```text
 PASS RULE 0 DXSTATE=CA,TX,ON,QC
 REJECT RULE 9 DESTATE=AA,AE,AP
 ```
 
+In CC, use native categories and inspect them directly:
+
+```text
+SET/FILTER DXSTATE/PASS CA,TX,ON,QC
+SET/FILTER DOS/REJECT AA,AE,AP
+SH/FILTER DXSTATE
+SH/FILTER DOS
+```
+
+Each CC command replaces only its named category. Values within a list use OR;
+enabled categories use AND. Unknown State fails PASS and survives REJECT.
+CC per-band geography uses schema-seven YAML; its terminal syntax is unverified.
+Boolean rule commands require GO.
+
 Operands normalize to canonical case and accept 60 FCC codes plus AB, BC, MB,
 NB, NL, NS, NT, NU, ON, PE, QC, SK, YT. They compare the spot's canonical
 observed metadata; missing, invalid or noncanonical metadata is unknown.
-`DXSTATE<>CA` is false for unknown State, but `NOT DXSTATE=CA` is true.
+In GO, `DXSTATE<>CA` is false for unknown State, but `NOT DXSTATE=CA` is true.
 A reject-only rule set can allow unknown State because no rejection matched,
-not because inequality evaluated true. Other PASS slots can broaden selection.
-NEARBY and State comparisons combine with ordinary Boolean logic. SELF/history exceptions remain as described above.
+not because inequality evaluated true. Other GO PASS slots can broaden selection.
+GO's NEARBY and State comparisons combine with ordinary Boolean logic.
+SELF/history exceptions remain as described above.
 
 State enrichment remains active with either source's license enforcement
 disabled. Registered addresses can differ from operating location. The final

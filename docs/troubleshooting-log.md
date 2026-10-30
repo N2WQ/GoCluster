@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0115 | Version-Seven Preset LOAD Adjustments | Resolved | 2026-10-29 | telnet presets, applied settings, dual baselines, CC guide | none | `docs/troubleshooting/TSR-0115-version-seven-preset-load-adjustments.md` |
 | TSR-0114 | Telnet Replacement During Shutdown | Monitoring | 2026-10-28 | telnet registration, reconnect, shutdown cleanup | ADR-0325 | `docs/troubleshooting/TSR-0114-telnet-replacement-during-shutdown.md` |
 | TSR-0113 | Telnet Station Diagnostics Contention | Monitoring | 2026-10-28 | telnet diagnostics, shutdown, rejection cleanup | ADR-0326 | `docs/troubleshooting/TSR-0113-telnet-station-diagnostics-contention.md` |
 | TSR-0112 | Full Telnet Server Stripe Wait | Monitoring | 2026-10-28 | telnet admission, session ceiling, configuration handoff | ADR-0325 | `docs/troubleshooting/TSR-0112-full-session-stripe-wait.md` |

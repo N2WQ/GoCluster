@@ -74,42 +74,71 @@ func (s *Server) handleV7PresetOwned(c *Client, command presetCommand) string {
 		c.v7PresetReferences, c.configurationUnsaved = refs, false
 		return fmt.Sprintf("Saved preset %s (%s) for %s.\n", command.name, strings.ToUpper(set.Dialect), spot.NormalizeOwnCallsign(c.callsign))
 	}
-	set, err := filter.LoadV7Preset(c.callsign, command.name)
+	return s.loadV7PresetOwned(c, command.name, before, refs)
+}
+
+// LOAD retains the prior applied-setting contract: announce server adjustments
+// and persist them in the profile/baseline, leaving the named snapshot intact.
+// The caller holds the SSID lease and preparation owner through publication.
+func (s *Server) loadV7PresetOwned(c *Client, name string, before filter.V7Configuration, refs filter.V7PresetReferences) string {
+	set, err := filter.LoadV7Preset(c.callsign, name)
 	if err != nil {
-		return presetError(command.verb, command.name, err)
+		return presetError("LOAD", name, err)
 	}
 	next, err := filter.ApplyV7Preset(before, set)
 	if err != nil {
-		return presetError(command.verb, command.name, err)
+		return presetError("LOAD", name, err)
 	}
-	ref := &filter.V7PresetReference{Name: command.name, Baseline: set}
+	now := s.now()
+	prepared, err := s.prepareV7ConfigurationUpdate(c, before, next, now)
+	if err != nil {
+		return presetError("LOAD", name, err)
+	}
+	warning := ""
+	if next.Settings.DedupePolicy != "" && next.Settings.DedupePolicy != prepared.getDedupePolicy().label() {
+		requested := parseDedupePolicy(next.Settings.DedupePolicy)
+		if requested != prepared.getDedupePolicy() {
+			warning += fmt.Sprintf("Note: dedupe %s unavailable; using %s.\n", requested.label(), prepared.getDedupePolicy().label())
+		} else {
+			warning += fmt.Sprintf("Note: stored dedupe choice unavailable; using %s.\n", prepared.getDedupePolicy().label())
+		}
+		next.Settings.DedupePolicy = prepared.getDedupePolicy().label()
+	}
+	if next.Settings.PathMinObservationCount != prepared.pathMinObservationCount {
+		warning += fmt.Sprintf("Note: PATHSAMPLES %d unavailable; using the cluster default.\n", next.Settings.PathMinObservationCount)
+		next.Settings.PathMinObservationCount = prepared.pathMinObservationCount
+	}
+	prepared.configuredSettings = next.Settings
+	baseline, err := filter.V7PresetFromConfiguration(next, set.Dialect)
+	if err != nil {
+		return presetError("LOAD", name, err)
+	}
+	ref := &filter.V7PresetReference{Name: name, Baseline: baseline}
 	if set.Dialect == "cc" {
 		refs.CC = ref
 	} else {
 		refs.GO = ref
 	}
-	now := s.now()
-	prepared, err := s.prepareV7ConfigurationUpdate(c, before, next, now)
-	if err != nil {
-		return presetError(command.verb, command.name, err)
+	message := fmt.Sprintf("Loaded preset %s (%s); defaults saved for %s.\n", name, strings.ToUpper(set.Dialect), c.callsign)
+	if prepared.dialect != s.effectiveV7Dialect(before.Settings) {
+		message += fmt.Sprintf("Dialect switched to %s; its saved filter is active.\n", strings.ToUpper(set.Dialect))
+	}
+	if !presetAcknowledgementFits(message, warning) {
+		return presetError("LOAD", name, errReadbackTooLarge)
 	}
 	if err := s.v7ConfigurationReadbackFits(c, next, prepared, refs); err != nil {
-		return presetError(command.verb, command.name, err)
+		return presetError("LOAD", name, err)
 	}
 	record, err := s.prepareV7ConfigurationRecord(c, next, refs)
 	if err == nil {
 		err = s.commitConfigurationRecord(record)
 	}
 	if err != nil {
-		return presetError(command.verb, command.name, err)
+		return presetError("LOAD", name, err)
 	}
 	prepared.v7PresetReferences = refs
 	s.publishConfigurationState(c, next.Settings, prepared, nil, now, true)
 	c.refreshV7ConfigurationRevision()
 	c.configurationUnsaved = false
-	message := fmt.Sprintf("Loaded preset %s (%s); defaults saved for %s.\n", command.name, strings.ToUpper(set.Dialect), c.callsign)
-	if string(c.dialect) != string(s.effectiveV7Dialect(before.Settings)) {
-		message += fmt.Sprintf("Dialect switched to %s; its saved filter is active.\n", strings.ToUpper(set.Dialect))
-	}
-	return message
+	return message + warning
 }

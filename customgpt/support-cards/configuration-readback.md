@@ -98,6 +98,14 @@ after conflict or reconnect; login/notice metadata does not advance it or histor
 
 ## Persistence, Presets And Upgrade Notices
 
+Preset LOAD reports server adjustments and stores the applied settings in the
+profile and selected bank's baseline. If disabled SLOW falls back to FAST,
+reconnect keeps FAST even after SLOW is re-enabled; the shared named snapshot
+still contains SLOW. Unavailable PATHSAMPLES similarly uses the cluster default.
+Empty GRID stays configured empty, with lookup-derived location only in runtime.
+This explicit LOAD behavior differs from ordinary login/readback, which preserves
+saved preferences and reports their effective fallback separately.
+
 Generation seven stores both banks in one profile. First recognized pre-seven
 login discards old filters, resets all six controls in both banks to defaults
 and clears associations/baselines. It preserves configured dialect, unrelated

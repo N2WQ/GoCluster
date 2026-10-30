@@ -120,6 +120,11 @@ tag. All numeric SSIDs share 20 names. LOAD restores that tagged bank and shared
 preferences, announces any dialect switch, and leaves the other bank intact.
 Each bank keeps its own association and immutable applied baseline. Deleting or
 overwriting a library name does not change an already applied baseline.
+LOAD reports unavailable dedupe/PATHSAMPLES adjustments and saves the applied
+choice in the profile and that bank's baseline. A SLOW preset applied as FAST
+therefore stays FAST on reconnect, even if SLOW is later enabled. The named
+library snapshot remains unchanged. Configured empty GRID and inherited choices
+keep their existing meanings; ordinary login/readback does not normalize them.
 
 Machine writes and LOAD commit before changing live state. Human edits remain
 active after a late save failure and carry an unsaved warning; both banks survive

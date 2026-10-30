@@ -777,10 +777,17 @@ banks. The complete ownership, reset, preset, resource and recovery contract is
 
 Each bank owns six exact DEFAULT/false/true controls and its own immutable applied
 preset baseline. Configured shared preferences preserve empty/zero/default
-selections; runtime fallback does not rewrite them on restore. Login/IP and fixed
+selections; runtime fallback does not rewrite them on ordinary login restore. Login/IP and fixed
 notice metadata are separate from writable preferences. Full schema-seven CONFIG
 restores both banks and shared settings; ordinary edits cannot write inactive
 state. Named presets carry exactly one tagged bank plus shared preferences.
+
+Explicit preset LOAD retains ADR-0244's applied-setting contract: report an
+unavailable dedupe/PATHSAMPLES adjustment, persist its applied value and establish
+that value as the selected bank's baseline. Keep the shared named snapshot and
+the other bank/reference unchanged. Empty GRID remains configured empty;
+lookup-derived location is runtime state. Machine writes still reject unavailable
+choices, and ordinary login/readback preserves exact configured selections.
 
 Pre-seven upgrade wipes all old filters, switches and applied references; both
 banks start from current operator mode/source defaults. Selected dialect and
