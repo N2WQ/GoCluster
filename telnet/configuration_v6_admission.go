@@ -24,7 +24,7 @@ func (s *Server) prepareV6ConfigurationRecord(c *Client, cfg filter.V6Configurat
 		}
 		record = &filter.V6UserRecord{LastLoginUTC: c.lastLoginUTC}
 	}
-	record.ConfigurationVersion = filter.CurrentConfigurationVersion
+	record.ConfigurationVersion = filter.V6ConfigurationVersion
 	record.Configuration, record.Preset = cfg, ref
 	record.RecentIPs = filter.MergeRecentIPs(c.recentIPs, record.RecentIPs)
 	return filter.PrepareV6UserRecord(c.callsign, record)
@@ -46,7 +46,11 @@ func attachV6ReadbackConfiguration(status configurationReadbackStatus, cfg filte
 func (s *Server) v6ConfigurationReadbackFits(c *Client, cfg filter.V6Configuration, prepared *Client, ref *filter.V6PresetReference) error {
 	status := attachV6ReadbackConfiguration(s.captureReadbackStatus(c, prepared), cfg, ref)
 	set := prepared.filter.PreparedRules()
-	if _, err := renderV6YAMLReadback(cfg, set, status, "CONFIG", "", ""); err != nil {
+	warning := ""
+	if c.filterBanks != nil {
+		warning = legacyV6BankWarning
+	}
+	if _, err := renderV6YAMLReadback(cfg, set, status, "CONFIG", "", "", warning); err != nil {
 		return err
 	}
 	grid := status.Effective.Grid
@@ -60,12 +64,13 @@ func (s *Server) v6ConfigurationReadbackFits(c *Client, cfg filter.V6Configurati
 	status.Session = readbackSessionStatus{
 		Callsign: strings.Repeat("1", 32), DiagnosticComments: "DEDUPE",
 		PauseRemaining: math.MaxInt, SuppressedSpots: math.MaxUint64,
+		UnsavedChanges: true,
 	}
 	status.Server = readbackServerStatus{
 		DefaultDialect: "go", DefaultDedupePolicy: "SLOW", DefaultNoiseClass: "INDUSTRIAL",
 		PathMinObservationCount: math.MaxInt, AutoReadPauseMinRows: math.MaxInt, AutoReadPauseSeconds: math.MaxInt,
 	}
 	status.Preset = readbackPresetStatus{Name: strings.Repeat("1", 32)}
-	_, err := renderV6YAMLReadback(cfg, set, status, "CONFIG", strings.Repeat("1", 32), strings.Repeat("\"", 128))
+	_, err := renderV6YAMLReadback(cfg, set, status, "CONFIG", strings.Repeat("1", 32), strings.Repeat("\"", 128), warning)
 	return err
 }

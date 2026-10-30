@@ -62,10 +62,10 @@ func decodeV6MachineRequest(body []byte, command machineCommand, resolve func(st
 	if version == nil {
 		return request, schemaError("schema_version", "required field is missing")
 	}
-	if request.SchemaVersion, err = machineInteger(version, "schema_version", false); err != nil {
+	if request.SchemaVersion, err = machineInteger(version, "schema_version"); err != nil {
 		return request, err
 	}
-	if request.SchemaVersion != filter.CurrentConfigurationVersion {
+	if request.SchemaVersion != filter.V6ConfigurationVersion {
 		return request, schemaError("schema_version", "expected explicit schema version 6")
 	}
 	if request.RequestID, err = requiredMachineString(envelope, "request_id", "request_id"); err != nil {
@@ -175,7 +175,7 @@ func (r *v6MachineRequest) decodeSettings(node *yaml.Node, path string, complete
 		if i < 4 {
 			*stringsTargets[i], err = machineString(field, fieldPath)
 		} else {
-			*integerTargets[i-4], err = machineInteger(field, fieldPath, false)
+			*integerTargets[i-4], err = machineInteger(field, fieldPath)
 		}
 		if err != nil {
 			return err

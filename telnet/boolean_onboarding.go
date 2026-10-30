@@ -90,6 +90,9 @@ func writeBooleanEditGuidance(h *humanResponse) error {
 // Rendering owns the same configuration lease as command readback. It does not
 // start a reading pause or publish defaults while describing restored state.
 func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, error) {
+	if c != nil && c.filterBanks != nil && c.dialect == DialectCC {
+		return s.renderV7CCLoginBlock(c, first)
+	}
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
 		return "", err

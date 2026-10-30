@@ -126,7 +126,7 @@ func TestBooleanFilterSnapshotEmptyDoesNotCreateDefaults(t *testing.T) {
 			}
 		}
 	}
-	if filter.CurrentConfigurationVersion != 6 {
+	if filter.V6ConfigurationVersion != 6 {
 		t.Fatal("Boolean activation requires v6 serializers")
 	}
 }

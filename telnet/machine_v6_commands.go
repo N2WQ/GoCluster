@@ -14,6 +14,15 @@ import (
 )
 
 func (s *Server) handleV6MachineCommand(c *Client, line string) machineDispatch {
+	banked := false
+	if c != nil {
+		c.filterMu.RLock()
+		banked = c.filterBanks != nil
+		c.filterMu.RUnlock()
+	}
+	if banked {
+		return s.handleBankedV6MachineCommand(c, line)
+	}
 	cmd, handled, err := parseV6MachineHeader(line)
 	if !handled {
 		return machineDispatch{}

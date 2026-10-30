@@ -37,7 +37,7 @@ func (h *humanResponse) line(value string) error {
 			return fmt.Errorf("non-ASCII human readback line")
 		}
 	}
-	if len(value)+2 > maxYAMLBytes-h.size {
+	if len(value)+2 > h.effectiveLimit()-h.size {
 		h.err = errReadbackTooLarge
 		return h.err
 	}
@@ -51,7 +51,7 @@ func (h *humanResponse) line(value string) error {
 
 // prose wraps only generated explanatory text. Stored strings use quoted.
 func (h *humanResponse) prose(prefix, continuation, text string) error {
-	if len(text) > maxYAMLBytes {
+	if len(text) > h.effectiveLimit() {
 		return errReadbackTooLarge
 	}
 	for {

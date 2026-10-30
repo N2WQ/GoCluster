@@ -74,7 +74,7 @@ func TestHelpWordingRegisteredMailingVocabulary(t *testing.T) {
 		t.Fatalf("shared state owner differs from the literal 73 registered-mailing codes: %v", spot.StateCodes())
 	}
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
-	for _, dialect := range []string{"go", "cc"} {
+	for _, dialect := range []string{"go"} {
 		for _, topic := range []string{"RULE"} {
 			response := p.ProcessCommandForClient("HELP "+topic, "W1ABC-18", "", nil, dialect)
 			assertHelpWidth(t, response)
@@ -92,7 +92,7 @@ func TestHelpWordingRegisteredMailingVocabulary(t *testing.T) {
 
 func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
-	for _, dialect := range []string{"go", "cc"} {
+	for _, dialect := range []string{"go"} {
 		for _, topic := range []string{"", "FILTERS"} {
 			response := p.ProcessCommandForClient(strings.TrimSpace("HELP "+topic), "W1ABC-18", "", nil, dialect)
 			assertHelpWidth(t, response)
@@ -125,14 +125,14 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 	}
 }
 
-func TestHelpWordingMachineSchema6Only(t *testing.T) {
+func TestHelpWordingMachineSchema6LegacyAnd7Complete(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
 		for _, resource := range []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"} {
 			topic := "GET YAML " + resource
 			response := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect)
 			flat := strings.Join(strings.Fields(response), " ")
-			for _, want := range []string{topic + " SCHEMA 6 [ID <id>]", "Explicit SCHEMA 6 is required", "older schemas are refused", "No old machine-schema migration"} {
+			for _, want := range []string{topic + " SCHEMA 6 [ID <id>]", topic + " SCHEMA 7 [ID <id>]", "Schema 6 is a legacy view", "complete both-bank backup", "65,536 bytes", "262,144 bytes"} {
 				if !strings.Contains(flat, want) {
 					t.Fatalf("%s %s omitted %q", dialect, topic, want)
 				}

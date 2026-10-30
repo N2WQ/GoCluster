@@ -18,6 +18,10 @@ func (c *Client) captureV6Configuration() filter.V6Configuration {
 }
 
 func (c *Client) refreshV6ConfigurationRevision() {
+	if c.filterBanks != nil {
+		c.refreshV7ConfigurationRevision()
+		return
+	}
 	c.observeConfigurationDigest(c.captureV6Configuration().Fingerprint())
 	c.observeHistoryDigest(c.v6HistoryFilterDigest())
 }

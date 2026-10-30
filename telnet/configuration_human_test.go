@@ -98,7 +98,9 @@ func TestHumanSettingsRestoredPathMinimum(t *testing.T) {
 			if !s.handleHumanReadback(c, "SHOW SETTINGS") {
 				t.Fatal("settings not handled")
 			}
-			got := string((<-c.controlChan).raw)
+			message := <-c.controlChan
+			t.Cleanup(message.configurationReservation.Release)
+			got := string(message.raw)
 			assertHumanWire(t, got)
 			want := "Path samples  DEFAULT; stations 21, beacons 11\r\n"
 			if minimum > 0 && minimum <= 21 {

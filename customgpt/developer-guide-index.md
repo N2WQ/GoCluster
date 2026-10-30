@@ -35,8 +35,8 @@ workflow rules.
 | --- | --- |
 | Live runtime | `internal/cluster/`, [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | Telnet sessions, filters, and queues | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), `telnet/` |
-| Boolean personal-rule engine and immutable matching | [Boolean contracts and local owners](#boolean-personal-rules), [telnet filters](../telnet/README.md#filters), [normative domain contract](../docs/domain-contract.md#boolean-personal-rules) |
-| Presets, native-v6 preferences and SSID ownership | [telnet presets](../telnet/README.md#named-presets), [operator storage](../data/config/README.md#user-configuration-storage); local checkout: `filter/configuration_v6.go`, `filter/storage_v6.go`, `filter/storage_v6_decode.go`, `filter/storage_v6_io_adapter.go`, `filter/preset_v6.go`; coordination remains in `telnet/preset_commands.go`, `filter/presets.go`, `filter/user_preferences.go` |
+| GO Boolean rules, native CC banks and immutable matching | [current contracts and owners](#boolean-personal-rules), [CC manual](../docs/cc-dialect.md), [normative domain contract](../docs/domain-contract.md#boolean-personal-rules) |
+| Generation-seven profiles, tagged presets and SSID ownership | [current local owners](#boolean-personal-rules), [presets](../telnet/README.md#named-presets), [operator storage](../data/config/README.md#user-configuration-storage), [ADR-0330](../docs/decisions/ADR-0330-native-cc-banks-and-generation-seven.md) |
 | Command HELP and command dispatch | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md), `commands/` |
 | WWV/WCY history, login and five-report SHOW/slash commands | [bulletin history](../telnet/README.md#wwv-and-wcy-bulletin-history), [ADR-0323](../docs/decisions/ADR-0323-wwv-wcy-bulletin-history.md), `commands/bulletin_command.go` |
 | Spot record, formatting, confidence, correction | [spot/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/spot/README.md), `spot/` |
@@ -140,59 +140,62 @@ For custom GPT responses:
 
 ## Boolean Personal Rules
 
-Start with the [telnet rule contract](../telnet/README.md#filters),
-[HELP ownership](../commands/README.md#help-source-of-truth),
-[normative domain contract](../docs/domain-contract.md#boolean-personal-rules) and
-[accepted test-only ADR-0317](../docs/decisions/ADR-0317-boolean-filter-replacement-mvp.md).
-They describe one prepared Boolean engine, not an additional category gate.
-New records receive mode/source defaults in editable PASS slot 0. A one-time
-recognized old-profile login upgrade installs the same configured mode/source defaults,
-preserving settings and discarding old filters/presets without translating
-their logic. Reset/existing v6 empty records never reinstall defaults.
-Pure v6 codecs and machine schemas remain strict; see
-[ADR-0318](../docs/decisions/ADR-0318-old-profile-reset-upgrade.md) and
-[ADR-0319](../docs/decisions/ADR-0319-boolean-onboarding-and-source-default.md).
-A PASS without SOURCE allows HUMAN and SKIMMER. SOURCE comparisons use normal
-Boolean semantics. Explicit SOURCE=HUMAN stays human-only, including saved
-defaults. Shipped defaults now select both sources; saved expressions and
-presets are not rewritten. Login/readbacks preserve exact expressions,
-never independent field summaries that lose Boolean relationships.
+GO owns the [Boolean rule contract](../telnet/README.md#filters) and
+[normative field semantics](../docs/domain-contract.md#boolean-personal-rules).
+CC owns a separate native bank; start with [Using CC](../docs/cc-dialect.md) and
+[ADR-0330](../docs/decisions/ADR-0330-native-cc-banks-and-generation-seven.md).
+Each bank has six independent controls. Selection activates the saved bank;
+GRID, noise, dedupe, PATHSAMPLES and SOLAR remain shared.
 
-These are verified **local checkout** owners, not new raw-main publication
-claims. Private-cluster acceptance remains pending.
+Both banks start from effective operator mode/source defaults. Recognized
+pre-seven login resets old filters, six switches and associations; old shared
+presets, including v6, are cleared once. New v7 presets survive later SSID
+upgrades and notice retries. Existing current-generation empty GO rules remain empty.
+GO source-less PASS admits matching HUMAN and SKIMMER; explicit SOURCE guards
+retain ordinary Boolean logic. Preserve exact GO expressions in readback rather
+than flattening AND/OR/NOT into field summaries. CC readback shows native state.
+
+These are current **local checkout** owners, not publication, deployment or
+completed-validation claims.
 
 | Concern | Local source owners |
 | --- | --- |
-| Syntax, preparation, field compilation/evaluation and per-spot normalization | `filter/expr/parse.go`, `filter/rule_set.go`, `filter/rule_compile.go`, `filter/rule_evaluate.go`, `filter/rule_view.go` |
-| New-user default construction and startup publication | `filter/rule_defaults.go`, `filter/match_snapshot.go` (`ConfigureDefaultRules`) |
-| Ordinary NEARBY predicate, evaluation-local cache and single-program counts | `filter/rule_view.go`, `filter/rule_set_readback.go`, [filter package](../filter/README.md) |
-| Immutable matching programs and coherent controls/cells/path captures | `filter/match_snapshot.go`, `telnet/matching_snapshot.go`; `telnet/history_filter.go` and `telnet/history_v6.go` for history snapshots/invalidation |
-| Human ingress, detached admission and bounded display | `telnet/boolean_input.go`, `telnet/boolean_rule_commands.go`, `telnet/boolean_rule_readback.go`, `telnet/configuration_render.go`, `telnet/human_preference_stage.go` |
-| Canonical DXCC input only, one lazy CTY snapshot per human/YAML request, numeric readback/storage | `telnet/boolean_rule_commands.go` (`newRuleDXCCResolver`), `filter/rule_set.go` (`WithRuleDXCCResolver`), `filter/rule_compile.go`, `cty/dxcc.go`; [ADR-0321](../docs/decisions/ADR-0321-boolean-canonical-dxcc-input.md) |
-| Registered GO/CC expression HELP | `commands/boolean_rule_help.go` (`BooleanRuleHelpLines`), `commands/boolean_rule_catalog.go` (`installBooleanRuleHelp`), installed in `commands/processor.go`; configuration topics remain in `commands/configuration_help.go` |
-| Machine headers, strict proposals/rules, transactions and readback | `telnet/machine_v6_input.go`, `telnet/machine_v6_schema.go`, `telnet/machine_v6_schema_rules.go`, `telnet/machine_v6_commands.go`, `telnet/machine_v6_readback.go`, `telnet/machine_v6_readback_capabilities.go` |
-| Native configuration, record preparation/decoding, runtime adapters and presets | `filter/configuration_v6.go`, `filter/storage_v6.go`, `filter/storage_v6_decode.go`, `filter/storage_v6_io_adapter.go`, `filter/preset_v6.go` |
+| GO syntax, preparation, field compilation/evaluation and normalization | `filter/expr/parse.go`, `filter/rule_set.go`, `filter/rule_compile.go`, `filter/rule_evaluate.go`, `filter/rule_view.go` |
+| Native CC canonical state, edits, frequency table and immutable matching | `filter/cc_configuration.go`, `filter/cc_prepare.go`, `filter/cc_edit.go`, `filter/cc_bands.go`, `filter/cc_match.go`, `filter/native_cc_runtime.go` |
+| Both-bank defaults, capture and preparation | `filter/rule_defaults.go`, `filter/profile_v7.go`, `filter/runtime_v7.go`; activation admission in `telnet/configuration_v7_startup.go` |
+| Coherent live/history program, controls and location snapshots | `filter/match_snapshot.go`, `telnet/matching_snapshot.go`, `telnet/history_filter.go`, `telnet/history_v6.go` |
+| Human staging, native commands and bounded readback | `telnet/human_preference_stage.go`, `telnet/configuration_v7_human.go`, `telnet/boolean_rule_commands.go`, `telnet/native_cc_commands.go`, `telnet/native_cc_commands_parse.go`, `telnet/native_cc_readback.go`, `telnet/human_reserved_readback.go` |
+| GO canonical DXCC input and one request-owned CTY snapshot | `telnet/boolean_rule_commands.go` (`newRuleDXCCResolver`), `filter/rule_compile.go`, `cty/dxcc.go`; [ADR-0321](../docs/decisions/ADR-0321-boolean-canonical-dxcc-input.md) |
+| GO rule HELP and native CC HELP | `commands/boolean_rule_help.go`, `commands/boolean_rule_catalog.go`, `commands/cc_filter_help.go`, `commands/configuration_help.go`, `commands/processor.go` |
+| Schema-seven headers, proposals, transactions and exports | `telnet/machine_v7_input.go`, `telnet/machine_v7_schema*.go`, `telnet/machine_v7_commands.go`, `telnet/machine_v7_readback.go`, `telnet/configuration_v7.go`, `telnet/configuration_v7_admission.go` |
+| Limited schema-six compatibility over authoritative banks | `telnet/machine_v6_banked_commands.go`, `telnet/machine_v6_banked_readback.go`; frozen vocabulary/codecs in `telnet/machine_v6_*.go` and `filter/storage_v6*.go` |
+| Generation-seven profiles, shared tagged presets and independent references | `filter/storage_v7.go`, `filter/storage_v7_decode.go`, `filter/preset_v7.go`, `filter/preset_v7_io.go`, `telnet/preset_commands_v7.go` |
+| Reset backups, partial results, strict metadata-only notice acknowledgement | `filter/upgrade_v7.go`, `filter/upgrade_v7_decode.go`, `telnet/configuration_session_v7.go`, `telnet/reset_notice_v7.go` |
+| Process reservations, queue ownership and writer cleanup | `telnet/configuration_transfer.go`, `telnet/bulletin_history.go`, `telnet/server.go` |
 
-Review [machine schema 6](../telnet/README.md#client-yaml-configuration) for
-explicit SCHEMA 6 on every GET, body schema_version 6, complete PUT/VALIDATE,
-whole-list PATCH, runtime settings admission, revisions and publication fences.
-Review [native storage](../data/config/README.md#user-configuration-storage)
-for explicit versions on records/entries/baselines, protection, byte/work bounds
-and atomicity, not frozen old-schema preservation checklists.
-For NEARBY use the [recovery contract](../docs/domain-contract.md#nearby-predicate-and-recovery):
-rule-only human/YAML edits need no usable location. YAML waives only mapping
-availability for an unchanged GRID when a rules list is supplied and every other
-setting/control is unchanged. Exact syntax and other settings checks remain.
-NEARBY is false for unavailable proximity; NOT NEARBY includes unknown proximity,
-and other OR branches can qualify. It does not suppress geography or choose a
-dedupe lane. The client owns GRID/cells; shared programs contain no user state.
-The joined fresh-child GRID fixture covers PATCH, PUT and VALIDATE against no
-mappings. [ADR-0329](../docs/decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md)
-replaces the affected toggle/schema/location clauses of ADR-0317 through ADR-0320.
+Review [schema ownership](../docs/cc-dialect.md#yaml-and-backups) before changing
+protocols. Full schema-seven CONFIG restores both banks; ordinary edits own only
+the active bank and cannot also select a dialect. Schema six is limited GO and
+shared-settings compatibility, not a complete backup. One preference revision
+covers both banks and shared selections; notice/login metadata does not advance
+it or history.
+
+Review [storage/recovery](../data/config/README.md#user-configuration-storage)
+for strict generation-seven records, both baselines, original protection,
+independent reset completion, byte/work bounds and atomicity. The one-bank
+`UserRecord`/`SavedPreset` facades remain frozen at v6; current banked production
+paths use explicit v7 DTOs. Do not project current CC through a Boolean carrier.
+
+GO NEARBY uses the [recovery contract](../docs/domain-contract.md#nearby-predicate-and-recovery):
+rule-only human/YAML edits waive only unchanged GRID mapping availability with
+every other setting/control unchanged. Syntax and other checks remain. Missing
+proximity is false; NOT includes unknown proximity, and other OR branches can
+qualify. NEARBY does not suppress geography or choose dedupe. GRID/cells belong
+to the client, not shared programs. CC has no NEARBY category.
 
 ## Per-Mode Minimum SNR
 
-This retained heading routes former MINSNR questions to
+This retained heading routes former MINSNR questions to GO
 [Boolean SNR expressions](../telnet/README.md#minimum-snr) and the
 [current engine owners](#boolean-personal-rules). `HasReport` makes SNR known,
 including human and zero reports; a SOURCE guard is explicit policy, not an
@@ -217,15 +220,17 @@ precedence and repeated-clause rejection. See
 [TSR-0047](../docs/troubleshooting/TSR-0047-history-mode-alias-clause-collision.md)
 and `commands/history_selection_taxonomy_test.go` for the collision regression.
 
-Route saved COMMENT expressions to
+Route GO saved COMMENT expressions to
 [telnet comments](../telnet/README.md#comment-filters-and-searches) and the
 [Boolean owners](#boolean-personal-rules), not phrase-list handlers.
 Check preserved literal bytes, doubled expression quotes/literal backslashes
 versus Go-quoted display chunks, unknown/NOT semantics and rule budgets.
-Machine/native v6 carry expressions in rules, not saved COMMENT maps/lists.
+GO expressions remain rules in both schema interfaces and the generation-seven
+GO bank, not saved COMMENT maps/lists. Native CC has no saved COMMENT expression
+category.
 `commands/history.go` and `commands/history_selection.go` retain independent
 query grammar; `telnet/history.go` owns continuation/publication,
-`telnet/history_filter.go` and `telnet/history_v6.go` own captured Boolean
+`telnet/history_filter.go` and `telnet/history_v6.go` own captured active-bank
 matching/invalidation. Explicit query clauses apply before saved self exceptions
 and counting. [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
 is historical for pre-v5 saved lists; its separate archive phrase grammar remains.

@@ -614,6 +614,17 @@ func TestHelpPerDialect(t *testing.T) {
 			}
 		}
 		reference := p.ProcessCommandForClient("HELP FILTERS", "N2WQ", "", nil, dialect)
+		if dialect == "cc" {
+			for _, want := range []string{"HELP SET/FILTER", "DOC|DOS|DXCTY|DXSTATE", "DXBM/PASS", "schema-seven YAML"} {
+				if !strings.Contains(reference, want) {
+					t.Fatalf("CC native reference missing %q", want)
+				}
+			}
+			if strings.Contains(text, "PASS RULE 0") || !strings.Contains(text, "SET/NOFILTER") || !strings.Contains(text, "SET/ANN") {
+				t.Fatal("native CC overview lost supported commands or advertises Boolean edits")
+			}
+			continue
+		}
 		for _, want := range []string{"HELP RULE", "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8", "separate controls"} {
 			if !strings.Contains(reference, want) {
 				t.Fatalf("%s reference missing %q", dialect, want)
@@ -901,9 +912,8 @@ func TestHelpTopicCCDialect(t *testing.T) {
 
 	for _, mode := range []string{"FT8", "FT2"} {
 		resp := p.ProcessCommandForClient("HELP SET/"+mode, "N2WQ", "", nil, "cc")
-		if !strings.Contains(resp, "Usage: HELP RULE") || !strings.Contains(resp, "refused, not translated") ||
-			strings.Contains(resp, "Modes:") || strings.Contains(resp, "Alias of PASS MODE") {
-			t.Fatalf("expected numbered-rule guidance for old %s shortcut, got %q", mode, resp)
+		if !strings.Contains(resp, "Usage: SET/<MODE>") || !strings.Contains(resp, "cc_shortcut") || strings.Contains(resp, "HELP RULE") {
+			t.Fatalf("expected configured native mode guidance for %s, got %q", mode, resp)
 		}
 	}
 
@@ -983,11 +993,11 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SET GRID", []string{"SET GRID - Set your grid", "Usage: SET GRID <locator>", "exactly 4 or 6 characters"}},
 		{"SET NOISE", []string{"SET NOISE - Set your noise class for glyphs", "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>"}},
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
-		{"NEARBY", []string{"NEARBY - Boolean proximity predicate", "Usage: PASS RULE 0 NEARBY", "No operator or value follows NEARBY.", "NOT NEARBY", "geography conditions", "SET DEDUPE"}},
-		{"SHOW/FILTER", []string{"SHOW/FILTER - Display current filter state.", "Usage: SHOW/FILTER"}},
-		{"SET/FILTER", []string{"SET/FILTER - Enable separate controls", "Example: SET/FILTER BEACON/OFF", "HELP RULE"}},
-		{"UNSET/FILTER", []string{"UNSET/FILTER - Disable separate controls", "Usage: UNSET/FILTER <switch> [ALL]", "HELP RULE"}},
-		{"SET/NOFILTER", []string{"SET/NOFILTER - Replaced by numbered Boolean rules", "Usage: HELP RULE"}},
+		{"NEARBY", []string{"NEARBY - GO dialect only.", "DIALECT GO", "HELP SET/FILTER"}},
+		{"SHOW/FILTER", []string{"SHOW/FILTER - Inspect native CC state.", "Usage: SHOW/FILTER"}},
+		{"SET/FILTER", []string{"SET/FILTER - Change native CC selections", "SET/FILTER BEACON/OFF", "DXBM/PASS"}},
+		{"UNSET/FILTER", []string{"UNSET/FILTER - Change native CC selections or switches", "Usage: UNSET/FILTER <switch> [ALL]", "UNSET/FILTER does not accept"}},
+		{"SET/NOFILTER", []string{"SET/NOFILTER - Change a native CC selection", "Usage: SET/NOFILTER"}},
 		{"SET/ANN", []string{"SET/ANN - Enable announcements", "Alias of PASS ANNOUNCE"}},
 		{"SET/NOANN", []string{"SET/NOANN - Disable announcements", "Alias of REJECT ANNOUNCE"}},
 		{"SET/BEACON", []string{"SET/BEACON - Enable beacon spots", "Alias of PASS BEACON"}},
@@ -996,12 +1006,12 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SET/NOWWV", []string{"SET/NOWWV - Disable WWV bulletins", "Alias of REJECT WWV"}},
 		{"SET/WCY", []string{"SET/WCY - Enable WCY bulletins", "Alias of PASS WCY"}},
 		{"SET/NOWCY", []string{"SET/NOWCY - Disable WCY bulletins", "Alias of REJECT WCY"}},
-		{"SET/SELF", []string{"SET/SELF - Enable self spots", "Alias of PASS SELF"}},
-		{"SET/NOSELF", []string{"SET/NOSELF - Disable self spots", "Alias of REJECT SELF"}},
-		{"SET/SKIMMER", []string{"SET/SKIMMER - Replaced by numbered Boolean rules", "HELP RULE"}},
-		{"SET/NOSKIMMER", []string{"SET/NOSKIMMER - Replaced by numbered Boolean rules", "HELP RULE"}},
-		{"SET/FT2", []string{"SET/<MODE> - Replaced by numbered Boolean rules", "HELP RULE"}},
-		{"SET/NOFT2", []string{"SET/NO<MODE> - Replaced by numbered Boolean rules", "HELP RULE"}},
+		{"SET/SELF", []string{"SET/SELF - Enable spots of your own call", "Alias of PASS SELF"}},
+		{"SET/NOSELF", []string{"SET/NOSELF - Disable spots of your own call", "Alias of REJECT SELF"}},
+		{"SET/SKIMMER", []string{"SET/SKIMMER - Change a native CC selection", "SKIMMER source selection"}},
+		{"SET/NOSKIMMER", []string{"SET/NOSKIMMER - Change a native CC selection", "SKIMMER source selection"}},
+		{"SET/FT2", []string{"SET/<MODE> - Change a native CC selection", "cc_shortcut"}},
+		{"SET/NOFT2", []string{"SET/NO<MODE> - Change a native CC selection", "cc_shortcut"}},
 		{"DIALECT", []string{"DIALECT - Show or switch filter command dialect", "DIALECT LIST"}},
 		{"BYE", []string{"BYE - Disconnect", "Usage: BYE"}},
 	}

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `6acaffbaa1545c29`
+- Source fingerprint: `a21cb62ad25cb9a3`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 32 | 153 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
 | `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 56 | 135 |
+| `dxcluster/telnet` | `telnet` | 79 | 160 |
 
 ## In-Scope Package Edges
 
@@ -655,9 +655,15 @@ Source files:
 - `telnet/configuration_readback.go`
 - `telnet/configuration_render.go`
 - `telnet/configuration_session.go`
+- `telnet/configuration_session_v7.go`
 - `telnet/configuration_transaction.go`
+- `telnet/configuration_transfer.go`
 - `telnet/configuration_v6_admission.go`
 - `telnet/configuration_v6_transaction.go`
+- `telnet/configuration_v7.go`
+- `telnet/configuration_v7_admission.go`
+- `telnet/configuration_v7_human.go`
+- `telnet/configuration_v7_startup.go`
 - `telnet/dedupe_readback.go`
 - `telnet/events.go`
 - `telnet/filter_commands.go`
@@ -667,6 +673,7 @@ Source files:
 - `telnet/history_v6.go`
 - `telnet/human_input_recovery.go`
 - `telnet/human_preference_stage.go`
+- `telnet/human_reserved_readback.go`
 - `telnet/input_wire.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
@@ -675,6 +682,8 @@ Source files:
 - `telnet/machine_schema.go`
 - `telnet/machine_schema_fields.go`
 - `telnet/machine_upload.go`
+- `telnet/machine_v6_banked_commands.go`
+- `telnet/machine_v6_banked_readback.go`
 - `telnet/machine_v6_commands.go`
 - `telnet/machine_v6_input.go`
 - `telnet/machine_v6_readback.go`
@@ -682,15 +691,29 @@ Source files:
 - `telnet/machine_v6_schema.go`
 - `telnet/machine_v6_schema_nodes.go`
 - `telnet/machine_v6_schema_rules.go`
+- `telnet/machine_v7_commands.go`
+- `telnet/machine_v7_input.go`
+- `telnet/machine_v7_readback.go`
+- `telnet/machine_v7_readback_capabilities.go`
+- `telnet/machine_v7_schema.go`
+- `telnet/machine_v7_schema_apply.go`
+- `telnet/machine_v7_schema_cc.go`
+- `telnet/machine_v7_schema_geography.go`
 - `telnet/machine_validation.go`
 - `telnet/matching_snapshot.go`
+- `telnet/native_cc_commands.go`
+- `telnet/native_cc_commands_parse.go`
+- `telnet/native_cc_readback.go`
 - `telnet/peer_membership.go`
 - `telnet/prelogin_budget.go`
 - `telnet/preset_commands.go`
+- `telnet/preset_commands_v7.go`
 - `telnet/qualification_observer.go`
 - `telnet/qualification_observer_disabled.go`
 - `telnet/qualification_stage.go`
 - `telnet/readback_pause.go`
+- `telnet/reset_notice_v7.go`
+- `telnet/reset_notice_v7_onboarding.go`
 - `telnet/reuseaddr_other.go`
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
@@ -727,7 +750,12 @@ Test files:
 - `telnet/configuration_publish_test.go`
 - `telnet/configuration_readback_test.go`
 - `telnet/configuration_session_test.go`
+- `telnet/configuration_session_v7_test.go`
+- `telnet/configuration_transfer_preparation_test.go`
+- `telnet/configuration_transfer_test.go`
+- `telnet/configuration_transfer_writer_test.go`
 - `telnet/configuration_upgrade_test.go`
+- `telnet/configuration_v7_integration_test.go`
 - `telnet/dedupe_collision_test.go`
 - `telnet/dedupe_policy_test.go`
 - `telnet/dedupe_readback_test.go`
@@ -747,6 +775,7 @@ Test files:
 - `telnet/history_comment_test.go`
 - `telnet/history_filter_test.go`
 - `telnet/history_fuzz_test.go`
+- `telnet/history_native_cc_test.go`
 - `telnet/history_selection_test.go`
 - `telnet/history_test.go`
 - `telnet/history_v6_test.go`
@@ -754,6 +783,7 @@ Test files:
 - `telnet/human_preference_handoff_test.go`
 - `telnet/human_preference_publish_test.go`
 - `telnet/human_preference_stage_test.go`
+- `telnet/human_reserved_readback_test.go`
 - `telnet/ip_session_quota_lifecycle_test.go`
 - `telnet/ip_session_quota_real_peer_test.go`
 - `telnet/ip_session_quota_replacements_test.go`
@@ -770,7 +800,9 @@ Test files:
 - `telnet/machine_schema_test.go`
 - `telnet/machine_session_test.go`
 - `telnet/machine_transport_coverage_test.go`
+- `telnet/machine_upload_limit_test.go`
 - `telnet/machine_upload_test.go`
+- `telnet/machine_v6_banked_test.go`
 - `telnet/machine_v6_commands_concurrency_test.go`
 - `telnet/machine_v6_commands_failure_test.go`
 - `telnet/machine_v6_commands_test.go`
@@ -779,8 +811,23 @@ Test files:
 - `telnet/machine_v6_readback_test.go`
 - `telnet/machine_v6_schema_fuzz_test.go`
 - `telnet/machine_v6_schema_test.go`
+- `telnet/machine_v7_capacity_test.go`
+- `telnet/machine_v7_commands_test.go`
+- `telnet/machine_v7_encoder_test.go`
+- `telnet/machine_v7_input_test.go`
+- `telnet/machine_v7_readback_test.go`
+- `telnet/machine_v7_schema_fuzz_test.go`
+- `telnet/machine_v7_schema_test.go`
+- `telnet/machine_v7_switches_test.go`
+- `telnet/machine_v7_tcp_test.go`
 - `telnet/matching_snapshot_test.go`
 - `telnet/minsnr_history_test.go`
+- `telnet/native_cc_commands_fuzz_test.go`
+- `telnet/native_cc_commands_test.go`
+- `telnet/native_cc_oracle_test.go`
+- `telnet/native_cc_persistence_test.go`
+- `telnet/native_cc_readback_test.go`
+- `telnet/native_cc_tcp_test.go`
 - `telnet/nearby_endpoint_test.go`
 - `telnet/nofilter_nearby_test.go`
 - `telnet/path_first_wave_comparison_test.go`
@@ -804,6 +851,7 @@ Test files:
 - `telnet/readback_pause_test.go`
 - `telnet/readback_writer_test.go`
 - `telnet/readline_test.go`
+- `telnet/reset_notice_v7_test.go`
 - `telnet/server_broadcast_worker_test.go`
 - `telnet/server_filter_test.go`
 - `telnet/server_options_test.go`

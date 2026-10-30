@@ -412,9 +412,11 @@ type Client struct {
 	spotChan                chan *spotEnvelope     // Buffered channel for spot delivery (configurable capacity)
 	controlChan             chan controlMessage    // Buffered channel for control/bulletin delivery
 	done                    chan struct{}          // Closed to stop writer and prevent new enqueues
+	writerStopped           chan struct{}          // Closed after writer discard/drain; final owner waits before preparation.
 	retired                 chan struct{}          // Closed under clientsMutex when a paced session loses ownership
 	closeOnce               sync.Once              // Ensures close logic runs once
 	bulletinResponseMu      sync.Mutex             // Orders history response enqueue against client close.
+	configurationOutputHeld bool                   // Protected by bulletinResponseMu; held through flush/discard.
 	closeReportStarted      atomic.Bool            // A second close never waits for an already-running reporter
 	preserveRecordOnExit    atomic.Bool            // Rejection retains prior disk state after a failed human save
 	readPauseMu             sync.Mutex             // Serializes every pause-state mutation and writer completion
@@ -454,6 +456,11 @@ type Client struct {
 	configuredSettings       filter.SettingsConfiguration
 	configurationInitialized bool
 	presetReference          *filter.PresetReference
+	filterBanks              *filter.V7FilterBanks // Immutable published definitions; active edits merge by program kind.
+	v7PresetReferences       filter.V7PresetReferences
+	v7Notice                 filter.V7NoticeState
+	v7LibraryResetGeneration int
+	configurationUnsaved     bool // Transaction-owned; only a complete successful save clears it.
 	recordProtected          bool
 	lastLoginUTC             time.Time
 	configurationEpoch       string
@@ -660,11 +667,13 @@ type spotEnvelope struct {
 }
 
 type controlMessage struct {
-	line                string
-	raw                 []byte
-	closeAfter          bool
-	readback            readbackCompletion // Fixed metadata; applied only after the whole writer batch flushes
-	bulletinReservation int64              // Released only after flush or discard.
+	line                     string
+	raw                      []byte
+	closeAfter               bool
+	readback                 readbackCompletion              // Fixed metadata; applied only after the whole writer batch flushes
+	bulletinReservation      int64                           // Released only after flush or discard.
+	configurationReservation *configurationOutputReservation // One owner through flush/discard.
+	resetNotice              *v7ResetNoticeReceipt           // Successful flush, independent of read-pause epochs.
 }
 
 type rejectJob struct {
@@ -1500,6 +1509,20 @@ func (s *Server) stageDialectCommand(client *Client, line string) humanCommandOu
 	if client.dialect == selected {
 		return humanHandled(fmt.Sprintf("Dialect already set to %s\n", strings.ToUpper(string(selected))))
 	}
+	if client.filterBanks != nil {
+		before, err := client.captureV7Configuration()
+		if err != nil {
+			return humanHandled(fmt.Sprintf("Dialect switch failed: %v\n", err))
+		}
+		next := before
+		next.Settings.Dialect = string(selected)
+		prepared, err := s.prepareV7ConfigurationUpdate(client, before, next, s.now())
+		if err != nil {
+			return humanHandled(fmt.Sprintf("Dialect switch failed: %v\n", err))
+		}
+		*client.filter = *prepared.filter
+		client.filterBanks = prepared.filterBanks
+	}
 	client.dialect = selected
 	client.configuredSettings.Dialect = string(selected)
 	response := fmt.Sprintf("Dialect set to %s\n", strings.ToUpper(string(selected)))
@@ -2329,6 +2352,11 @@ func normalizeHandshakeMode(value string) string {
 func (s *Server) Start() error {
 	if err := validateCommandPacingOptions(s.commandRatePerSecond, s.commandBurst); err != nil {
 		return fmt.Errorf("invalid telnet command pacing configuration: %w", err)
+	}
+	if filter.CurrentConfigurationVersion >= filter.V7ConfigurationVersion {
+		if err := s.validateV7StartingConfiguration(); err != nil {
+			return fmt.Errorf("invalid native dialect starting configuration: %w", err)
+		}
 	}
 	addr := fmt.Sprintf(":%d", s.port)
 	listener, err := listenWithReuse(addr)
@@ -3739,6 +3767,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		spotChan:       make(chan *spotEnvelope, spotQueueSize),
 		controlChan:    make(chan controlMessage, controlQueueSize),
 		done:           make(chan struct{}),
+		writerStopped:  make(chan struct{}),
 		filter:         filter.NewFilter(), // Start with no filters (accept all)
 		dialect:        s.filterEngine.defaultDialect,
 		gridCell:       pathreliability.InvalidCell,
@@ -3974,6 +4003,9 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		}
 	}
 	if !s.sendClientMessage(client, after, "greeting") {
+		return
+	}
+	if client.filterBanks != nil && !s.sendV7ResetNotice(client) {
 		return
 	}
 
@@ -5858,13 +5890,37 @@ func (c *Client) writerLoop() {
 	defer timer.Stop()
 	var completion readbackCompletion
 	var bulletinReserved int64
+	var configurationReserved *configurationOutputReservation
+	var resetNotice *v7ResetNoticeReceipt
+	var closeReason string
+	var writerFailure error
 	defer func() {
+		// Discard the enlarged batch before returning its process-wide charge.
+		batch = nil
+		configurationReserved.Release()
 		c.releaseBulletinReservations(bulletinReserved)
 		c.drainBulletinReservations()
+		if c.writerStopped != nil {
+			close(c.writerStopped)
+		}
+		// Optional reporting cannot retain reservations or block a final owner's
+		// wait for mandatory writer cleanup.
+		if writerFailure != nil {
+			c.logWriterFailure("batch", writerFailure)
+		}
+		if closeReason != "" {
+			c.close(closeReason)
+		}
 	}()
 
 	appendControl := func(msg controlMessage, closeAfter *bool) {
 		bulletinReserved += msg.bulletinReservation
+		if msg.configurationReservation != nil {
+			configurationReserved = msg.configurationReservation
+		}
+		if msg.resetNotice != nil {
+			resetNotice = msg.resetNotice
+		}
 		if msg.readback.epoch > completion.epoch {
 			completion = msg.readback
 		}
@@ -5912,6 +5968,7 @@ func (c *Client) writerLoop() {
 		batch = batch[:0]
 		spotEnqueueTimes = spotEnqueueTimes[:0]
 		completion = readbackCompletion{}
+		resetNotice = nil
 		closeAfter := false
 
 		// Always pull control first when available.
@@ -6027,16 +6084,22 @@ func (c *Client) writerLoop() {
 
 		start := time.Now().UTC()
 		if err := c.flushWriterBatch(batch); err != nil {
-			c.logWriterFailure("batch", err)
-			c.close("writer failure")
+			c.interrupt()
+			writerFailure = err
+			closeReason = "writer failure"
 			return
 		}
 		// Drop an enlarged history batch before releasing its reservation.
-		if bulletinReserved > 0 && cap(batch) > maxBytes {
+		if (bulletinReserved > 0 || configurationReserved != nil) && cap(batch) > maxBytes {
 			batch = make([]byte, 0, maxBytes)
 		}
+		configurationReserved.Release()
+		configurationReserved = nil
 		c.releaseBulletinReservations(bulletinReserved)
 		bulletinReserved = 0
+		if resetNotice != nil {
+			resetNotice.signal()
+		}
 		completedAt := time.Now().UTC()
 		if c.server != nil {
 			completedAt = c.server.now()
@@ -6050,7 +6113,8 @@ func (c *Client) writerLoop() {
 			}
 		}
 		if closeAfter {
-			c.close("control close")
+			c.interrupt()
+			closeReason = "control close"
 			return
 		}
 	}

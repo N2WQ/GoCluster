@@ -17,7 +17,7 @@ import (
 func TestConfigurationHandoffDeadlineBehindOldOwnershipCheck(t *testing.T) {
 	s := presetTestServer(t)
 	s.maxConnections = 1
-	old := configurationTestClient(s, "W1ABC-1")
+	old := v7CurrentTestClient(t, s, "W1ABC-1")
 	old.filter = testRuleFilter(t,
 		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=20M"},
 		filter.RuleDefinition{Slot: 4, Action: filter.RuleReject, Expr: "BAND=40M"})
@@ -25,8 +25,16 @@ func TestConfigurationHandoffDeadlineBehindOldOwnershipCheck(t *testing.T) {
 		Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST", PathMinObservationCount: 25, SolarSummaryMinutes: 15,
 	}
 	old.configurationInitialized = true
-	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: testSavedPreset(t,
-		filter.V6ConfigurationFromFilter(old.filter, filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}))}
+	baseline, err := old.captureV7Configuration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline.Settings = filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}
+	set, err := filter.V7PresetFromConfiguration(baseline, "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.v7PresetReferences.GO = &filter.V7PresetReference{Name: "CONTEST", Baseline: set}
 	s.registerClient(old)
 	// The registry write lock blocks the old save at its ownership check, after
 	// it obtains the fixed stripe. Reconnect must wait on that stripe first.
@@ -107,9 +115,9 @@ waitReconnect:
 		rules[1] != (filter.RuleDefinition{Slot: 4, Action: filter.RuleReject, Expr: "BAND=40M"}) {
 		t.Fatal("reconnect lost literal Boolean definitions")
 	}
-	ref := next.presetReference
-	if ref == nil || ref.Name != "CONTEST" || ref.Baseline == nil || ref.Baseline.NoiseClass != "QUIET" || ref.Baseline.Dialect != "go" || ref.Baseline.DedupePolicy != "FAST" ||
-		!filter.V6ConfigurationFromFilter(next.filter, filter.SettingsConfiguration{}).Equal(filter.V6ConfigurationFromFilter(&ref.Baseline.Filter, filter.SettingsConfiguration{})) {
+	ref := next.v7PresetReferences.GO
+	if ref == nil || ref.Name != "CONTEST" || ref.Baseline == nil || ref.Baseline.Settings.NoiseClass != "QUIET" || ref.Baseline.Dialect != "go" || ref.Baseline.Settings.DedupePolicy != "FAST" ||
+		!(filter.V6Configuration{Filters: *ref.Baseline.GO}).Equal(filter.V6Configuration{Filters: filter.V6ConfigurationFromFilter(next.filter, filter.SettingsConfiguration{}).Filters}) {
 		t.Fatal("reconnect did not restore the same independent preset reference")
 	}
 	assertHandoffDiskLiteral(t, path)
@@ -150,17 +158,17 @@ func assertHandoffDiskLiteral(t *testing.T, path string) {
 		path       []string
 		tag, value string
 	}{
-		{[]string{"configuration_version"}, "!!int", "6"},
+		{[]string{"configuration_version"}, "!!int", "7"},
 		{[]string{"configuration", "settings", "noise_class"}, "!!str", "URBAN"},
 		{[]string{"configuration", "settings", "dedupe_policy"}, "!!str", "FAST"},
 		{[]string{"configuration", "settings", "path_min_observation_count"}, "!!int", "25"},
 		{[]string{"configuration", "settings", "solar_summary_minutes"}, "!!int", "15"},
-		{[]string{"configuration", "filters", "rules", "0", "expr"}, "!!str", "BAND=20M"},
-		{[]string{"configuration", "filters", "rules", "1", "expr"}, "!!str", "BAND=40M"},
-		{[]string{"preset", "name"}, "!!str", "CONTEST"},
-		{[]string{"preset", "baseline", "configuration_version"}, "!!int", "6"},
-		{[]string{"preset", "baseline", "configuration", "settings", "noise_class"}, "!!str", "QUIET"},
-		{[]string{"preset", "baseline", "configuration", "filters", "rules", "1", "expr"}, "!!str", "BAND=40M"},
+		{[]string{"configuration", "filters", "go", "rules", "0", "expr"}, "!!str", "BAND=20M"},
+		{[]string{"configuration", "filters", "go", "rules", "1", "expr"}, "!!str", "BAND=40M"},
+		{[]string{"presets", "go", "name"}, "!!str", "CONTEST"},
+		{[]string{"presets", "go", "baseline", "configuration_version"}, "!!int", "7"},
+		{[]string{"presets", "go", "baseline", "settings", "noise_class"}, "!!str", "QUIET"},
+		{[]string{"presets", "go", "baseline", "go", "rules", "1", "expr"}, "!!str", "BAND=40M"},
 	} {
 		node := doc.Content[0]
 		for _, field := range want.path {

@@ -374,9 +374,9 @@ func testTelnetFamilyPartialLane(t *testing.T, source, protected string, self bo
 		familyAdmissionLogin(t, port, "DL4ABC", "CONF", protected),
 		familyAdmissionLogin(t, port, "N2WQ", "OFF", protected),
 	}
-	selfCommand, selfAck := "REJECT SELF", "Self spots disabled"
+	selfCommand, selfAck := "REJECT SELF", "Own-call spots disabled"
 	if self {
-		selfCommand, selfAck = "PASS SELF", "Self spots enabled"
+		selfCommand, selfAck = "PASS SELF", "Own-call spots enabled"
 	}
 	familyAdmissionCommand(t, clients[4], selfCommand, selfAck)
 	manager, recipient := correctionEvidencePeer(t)

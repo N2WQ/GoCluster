@@ -15,8 +15,16 @@ import (
 )
 
 type boundedResponse struct {
-	data []byte
-	err  error
+	data  []byte
+	err   error
+	limit int // Zero retains the historical schema-six bound.
+}
+
+func (b *boundedResponse) effectiveLimit() int {
+	if b.limit > 0 {
+		return b.limit
+	}
+	return maxYAMLBytes
 }
 
 // Write measures converted bytes before appending. Explicit capacity growth
@@ -33,12 +41,13 @@ func (b *boundedResponse) Write(p []byte) (int, error) {
 		}
 		previousCR = value == '\r'
 	}
-	if size > maxYAMLBytes-len(b.data) {
+	limit := b.effectiveLimit()
+	if size > limit-len(b.data) {
 		b.err = errReadbackTooLarge
 		return 0, b.err
 	}
 	if needed := len(b.data) + size; needed > cap(b.data) {
-		capacity := min(maxYAMLBytes, max(needed, max(1024, cap(b.data)*2)))
+		capacity := min(limit, max(needed, max(1024, cap(b.data)*2)))
 		grown := make([]byte, len(b.data), capacity)
 		copy(grown, b.data)
 		b.data = grown
@@ -53,7 +62,13 @@ func (b *boundedResponse) Write(p []byte) (int, error) {
 }
 
 func encodeBoundedYAML(document any) (string, error) {
-	var response boundedResponse
+	return encodeBoundedYAMLLimit(document, maxYAMLBytes)
+}
+
+// The selected protocol owns its hard final-frame limit; a v7 renderer cannot
+// silently enlarge historical schema-six responses through a shared constant.
+func encodeBoundedYAMLLimit(document any, limit int) (string, error) {
+	response := boundedResponse{limit: limit}
 	if _, err := response.Write([]byte("---\n")); err != nil {
 		return "", err
 	}
@@ -114,6 +129,13 @@ func writeHumanFooter(h *humanResponse, duration time.Duration) error {
 // Machine status/envelopes and writer/pause ownership are deliberately unchanged.
 func (s *Server) renderHumanReadback(c *Client, resource, category string, duration time.Duration) (string, error) {
 	status := s.captureReadbackStatus(c, nil)
+	if c.filterBanks != nil {
+		cfg, err := c.captureV7Configuration()
+		if err != nil {
+			return "", err
+		}
+		status.Preset = c.v7PresetStatuses(cfg)[string(c.dialect)]
+	}
 	runtime := s.captureHumanRuntime(c)
 	var response string
 	err := c.withBorrowedConfiguration(func(cfg filter.Configuration) error {

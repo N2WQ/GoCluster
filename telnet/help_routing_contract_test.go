@@ -132,7 +132,7 @@ func (x *helpOwnerSession) assertSaved(t *testing.T) {
 }
 
 func TestHelpRoutingRealReadbackSettingPresetAndHistoryOwners(t *testing.T) {
-	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+	for _, dialect := range []DialectName{DialectGo} {
 		for _, ziutek := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/ziutek=%t", dialect, ziutek), func(t *testing.T) {
 				x := newHelpOwnerSession(t, dialect)
@@ -282,34 +282,73 @@ func TestHelpRoutingLoadedShortcutAliasesReachTheirRealOwners(t *testing.T) {
 	}
 	previous := spot.CurrentTaxonomy()
 	spot.ConfigureTaxonomy(taxonomy)
-	t.Cleanup(func() { spot.ConfigureTaxonomy(previous) })
-	x := newHelpOwnerSession(t, DialectCC)
-	c, engine := x.client, x.server.filterEngine
+	t.Cleanup(func() {
+		spot.ConfigureTaxonomy(previous)
+		if err := filter.ConfigureDefaultRules(nil, nil); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := filter.ConfigureDefaultRules([]string{"CW"}, []string{"HUMAN", "SKIMMER"}); err != nil {
+		t.Fatal(err)
+	}
+	s := presetTestServer(t)
+	s.filterEngine = newFilterCommandEngine()
+	c := configurationTestClient(s, "W1ABC-18")
+	configuration, _, runtime, err := filter.PrepareV7Configuration(filter.V7Configuration{
+		Filters: filter.V7FilterBanks{
+			GO: filter.V6FilterConfiguration{Rules: []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW"}}},
+			CC: filter.CCConfiguration{Modes: []string{"CW"}, Sources: []string{"HUMAN", "SKIMMER"}},
+		}, Settings: filter.SettingsConfiguration{Dialect: "cc", NoiseClass: "QUIET", DedupePolicy: "FAST"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.dialect, c.filter, c.filterBanks = DialectCC, &runtime, &configuration.Filters
+	c.configuredSettings, c.configurationInitialized, c.noiseClass = configuration.Settings, true, "QUIET"
+	c.setDedupePolicy(dedupePolicyFast)
+	engine := s.filterEngine
 	run := func(command string) {
 		t.Helper()
-		writes := x.writes
 		response, handled := engine.Handle(c, command)
-		if !handled || x.writes != writes+1 || response == "" || strings.Contains(response, "Usage:") || strings.Contains(response, "Unknown") || strings.Contains(response, "Invalid") {
+		if !handled || response == "" || strings.Contains(response, "No changes applied.") || strings.Contains(response, "warning") {
 			t.Fatalf("loaded shortcut did not reach/persist owner: %q -> %q", command, response)
 		}
-		x.assertSaved(t)
+		live, err := c.captureV7Configuration()
+		if err != nil {
+			t.Fatal(err)
+		}
+		record, err := filter.LoadV7UserRecord(c.callsign)
+		if err != nil || !record.Configuration.Equal(live) {
+			t.Fatalf("loaded shortcut did not persist its native snapshot: %v", err)
+		}
 	}
-	rules := c.filter.PreparedRules()
 	run("SET/NOANN")
 	run("SET/ANN")
-	if !c.filter.AnnounceEnabled() || c.filter.PreparedRules() != rules {
+	if !c.filter.AnnounceEnabled() || slices.Contains(nativeCCConfiguration(t, c).Modes, "TEST_MODE") {
 		t.Fatal("fixed ANN owner lost to loaded mode alias")
 	}
-	for _, command := range []string{"SET/MODE_ALIAS", "SET/NOTEST_MODE", "SET/NOFILTER", "SET/DISABLED_MODE", "SET/NODISABLED_MODE", "SET/UNKNOWN_MODE", "SET/TEST_MODE EXTRA"} {
-		before, files, writes := c.captureV6Configuration(), helpOwnerFiles(t), x.writes
-		owners := captureHistoryCommentAliasState(t, c)
-		response, handled := engine.Handle(c, command)
-		if handled && !strings.Contains(response, "No changes applied.") {
-			t.Fatalf("retired shortcut was not explicitly refused: %q -> %q", command, response)
+	for _, command := range []string{"SET/MODE_ALIAS", "UNSET/MODE_ALIAS", "SET/TEST_MODE", "SET/NOTEST_MODE", "SET/NOFILTER"} {
+		run(command)
+	}
+	if !slices.Equal(nativeCCConfiguration(t, c).Modes, []string{"CW"}) {
+		t.Fatal("fixed NOFILTER owner lost to the configured mode alias")
+	}
+	for _, command := range []string{"SET/DISABLED_MODE", "SET/NODISABLED_MODE", "SET/UNKNOWN_MODE", "SET/TEST_MODE EXTRA", "UNSET/MODE_ALIAS EXTRA"} {
+		before, err := c.captureV7Configuration()
+		if err != nil {
+			t.Fatal(err)
 		}
-		if !before.Equal(c.captureV6Configuration()) || writes != x.writes || !reflect.DeepEqual(files, helpOwnerFiles(t)) {
+		files := helpOwnerFiles(t)
+		response, handled := engine.Handle(c, command)
+		if !handled || !strings.Contains(response, "No changes applied.") {
+			t.Fatalf("ineligible shortcut was not explicitly refused: %q -> %q", command, response)
+		}
+		after, err := c.captureV7Configuration()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !before.Equal(after) || !reflect.DeepEqual(files, helpOwnerFiles(t)) {
 			t.Fatalf("ineligible shortcut had effects: %q -> %q", command, response)
 		}
-		owners.assertOwners(t, c, x.writes-writes)
 	}
 }

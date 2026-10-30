@@ -5,9 +5,8 @@ description: Command ownership and compiled HELP contracts for GoCluster.
 
 This directory is the source of truth for telnet command help. The public `HELP` output is built in [`processor.go`](processor.go), not copied from a separate static document.
 
-The filter guidance here describes the Boolean MVP in the current local
-checkout, not a production deployment or published-main source claim.
-Private local-cluster acceptance remains pending.
+This guidance describes the current checkout's independent GO Boolean and
+native CC filter banks. It does not establish a production deployment.
 
 ## What Lives Here
 
@@ -33,13 +32,11 @@ HELP rendering and its detailed references are owned by:
 - `installCommentHelp(...)` in [`comment_help.go`](comment_help.go)
 - catalog head/alias routing in [`help_routing.go`](help_routing.go)
 
-The overview groups everyday commands by task and introduces numbered rules,
-separate controls and a complete BAND/MODE recipe. `HELP RULE` is the canonical
-Boolean expression, field, vocabulary, default/reset and bounds reference in
-both GO and CC. `HELP PASS`, `HELP REJECT` and their RULE topics describe whole
-slot replacement; PASS rules are ORed and matching REJECT vetoes them.
-`HELP FILTERS` routes through `filterReferenceHelpLines`, which adds basics,
-the recipe and separate controls rather than a second category manual.
+The overview groups everyday commands by task. In GO, `HELP RULE` owns the
+Boolean expression, field, vocabulary, default/reset and bounds reference.
+PASS rules are ORed and matching REJECT vetoes them. In CC, `HELP SET/FILTER`
+owns native geography, frequency-slot and switch guidance; `HELP FILTERS`
+explains their composition. CC refuses Boolean mutations with native guidance.
 
 `buildHelpCatalog(...)` in `processor.go` installs configuration HELP, COMMENT
 HELP and then Boolean rule HELP before routing aliases. The registered
@@ -47,18 +44,22 @@ HELP and then Boolean rule HELP before routing aliases. The registered
 telnet `formatBooleanRuleHelp` helper. `configuration_help.go` owns human
 readback and machine command topics; execution remains under telnet.
 
-DXDXCC/DEDXCC rule operands accept exact canonical CTY labels and positive ADIF
-numbers in human commands and YAML requests. Labels resolve once per request;
-accepted expressions and saved rules use numeric codes. HELP distinguishes
-entity selection (`DXDXCC=IT9`, ADIF 248) from literal calls (`DXCALL=IT9*`).
+GO DXDXCC/DEDXCC operands and CC DOC/DXCTY lists accept exact canonical CTY
+labels and positive ADIF numbers in human commands and YAML requests. Labels
+resolve once per request; accepted configurations use numeric codes. HELP
+distinguishes entity selection (`DXDXCC=IT9`, ADIF 248) from literal GO calls
+(`DXCALL=IT9*`).
 
 Separate controls retain their own grammar. Shared PASS/REJECT control forms
 work in both dialects; CC SET/FILTER and UNSET/FILTER support BEACON, WWV, WCY,
-ANNOUNCE/PC93, SELF and TOXIC only. Switches take no value or ALL.
+ANNOUNCE/PC93, SELF and TOXIC as separate switches. Switches take no value or ALL.
 Only SET/FILTER accepts `<switch>/ON|/OFF`, without extra values; UNSET has no
-inline flags. NEARBY is a bare expression predicate; old toggle forms are refused. Named CC control shortcuts retain their no-argument grammar.
-Old category lists, MODE shortcuts, MINSNR, COMMENT-list, DXBM and NOFILTER
-mutations are refused, not translated. Historical CC category mechanics in
+inline flags. SELF selects spots of the user's own call. Named CC control
+shortcuts retain their no-argument grammar. Native CC also supports global
+DOC/DOS/DXCTY/DXSTATE lists, operator-enabled mode shortcuts, SKIMMER selection,
+DXBM and SET/NOFILTER. Per-band geography is available through schema-seven
+YAML; its terminal grammar and CC User integration remain unverified. MINSNR,
+COMMENT-list and Boolean mutations require GO expressions. Historical mechanics in
 [TSR-0064](../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md)
 are not a compatibility contract.
 
@@ -66,8 +67,9 @@ are not a compatibility contract.
 its configured display is available. Configured glyphs and reporting windows
 still come from startup snapshots; help does not read external text files.
 
-YAML client commands are omitted only from the overview. They remain executable
-and retain command-specific help, such as `HELP GET YAML CONFIG`.
+YAML client commands retain command-specific help, such as
+`HELP GET YAML CONFIG`. Native CC guidance points to YAML for long replacing
+lists and per-band geography.
 
 HELP accepts a working command spelling with arguments, for example
 `HELP SH DX 5`, `HELP SET SOLAR 30` or `HELP GET YAML CONFIG SCHEMA 6 ID read-1`.
@@ -81,7 +83,7 @@ HELP does not add executable aliases. See
 The main landing page [`../README.md`](../README.md) contains a generated HELP
 block for the default `go` dialect, with a processor-output comparison test.
 Regenerating that block is outside this documentation slice; it is not the
-authority for this checkout's new Boolean contract.
+authority for the active bank's filter contract.
 
 Reviewed GO and CC overview fixtures live under [`testdata`](testdata).
 Tests also check command discoverability, reference navigation and line widths.
@@ -90,7 +92,7 @@ it deliberately removes every personal slot before installing its combined
 BAND/MODE rule. `telnet/help_recipe_test.go` instead exercises a combined
 slot-0 replacement retaining an independent REJECT. That different sequence
 does not prove the emitted reset recipe preserves unrelated rules. These
-tests were inspected, not run here. The pre-v5 category mechanics in
+tests cover different operator sequences. The pre-v5 category mechanics in
 [ADR-0264](../docs/decisions/ADR-0264-task-oriented-compiled-help.md) are historical.
 
 ## Dialects
@@ -98,15 +100,15 @@ tests were inspected, not run here. The pre-v5 category mechanics in
 The runtime supports two command dialects:
 
 - `go`: the default dialect shown in the main README
-- `cc`: a DXSpider-style alias set with `SHOW/DX`, control-only `SET/FILTER`
-  and `UNSET/FILTER`, and `SET/ANN`-style control shortcuts
+- `cc`: native CC mode/source, geography and frequency-slot selections, plus
+  `SHOW/DX`, `SET/FILTER`, `UNSET/FILTER` and `SET/ANN`-style control shortcuts
 
 Dialect selection is user-visible and persisted per callsign. HELP is rendered for the active dialect, so the command list and examples change with the selected dialect.
 
-Bare PASS/REJECT and refused category mutations give bounded guidance toward
-numbered rules and `HELP RULE`. The expression grammar is identical in GO/CC;
-there is no category compatibility engine. PC93 remains an ANNOUNCE control
-alias. Historical category discovery wording in
+Each dialect selects its own retained filter bank and six switches. Switching
+dialects preserves the other bank; grid, noise, dedupe, path and solar settings
+are shared. Bare PASS/REJECT in CC points to native help; numbered rules require
+GO. PC93 remains an ANNOUNCE control alias. Historical discovery wording in
 [TSR-0066](../docs/troubleshooting/TSR-0066-command-discovery-wording.md)
 does not define the current mutation surface.
 
@@ -156,11 +158,12 @@ The operator-facing commands handled here are:
   commit and build timestamp remain separate metadata in
   `--version` and PC18, rather than appearing in the version string.
 - `SHOW OWN`
-- `SHOW FILTER [RULE|FULL]`
-- `HELP RULE`
-- `PASS RULE <0..9> <expression>`
-- `REJECT RULE <0..9> <expression>`
-- `RESET FILTER RULE <0..9|ALL>`
+- GO: `SHOW FILTER [RULE|FULL]`, `HELP RULE`, `PASS RULE <0..9> <expression>`,
+  `REJECT RULE <0..9> <expression>`, `RESET FILTER RULE <0..9|ALL>`
+- CC: `SHOW/FILTER [DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL]`,
+  `SET/FILTER <category>/<PASS|REJECT> <list>`, `SET/FILTER <category>/OFF`,
+  `SET/NOFILTER`, configured `SET/<mode>`, `SET/NO<mode>`, `UNSET/<mode>`,
+  `SET/SKIMMER`, `SET/NOSKIMMER`, `UNSET/SKIMMER`
 - `SHOW SETTINGS`
 - `WHOSPOTSME [band]`
 - `PAUSE [seconds]`
@@ -173,17 +176,17 @@ The operator-facing commands handled here are:
 - `SET NOISE`
 - `SET PATHSAMPLES`
 - `SET SOLAR`
-- `RESET FILTER`
+- GO: `RESET FILTER`
 - `SAVE PRESET <name>`
 - `LIST PRESET`
 - `LOAD PRESET <name>`
 - `DELETE PRESET <name>`
 - `DIALECT`
 - `BYE`
-- `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 6 [ID <id>]`
-- `PUT YAML FILTER|SETTINGS|CONFIG`
-- `PATCH YAML FILTER|SETTINGS|CONFIG`
-- `VALIDATE YAML CONFIG`
+- `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 6|7 [ID <id>]`
+- `PUT YAML FILTER|SETTINGS|CONFIG [SCHEMA 7]`
+- `PATCH YAML FILTER|SETTINGS|CONFIG [SCHEMA 7]`
+- `VALIDATE YAML CONFIG [SCHEMA 7]`
 
 Filter mutation, named presets, configuration readbacks/uploads, `SHOW PROP`
 execution, and read-pause state are handled in the telnet layer.
@@ -191,27 +194,30 @@ This package documents those commands in HELP, but the parsers for `PASS`,
 `REJECT`, `SHOW FILTER`, `SHOW SETTINGS`, GET/PUT/PATCH/VALIDATE YAML, `SHOW PROP`,
 `PAUSE`, `SHOW HOLD`, `RESUME`, and the `cc` aliases live under [`../telnet`](../telnet).
 
-Setting a slot replaces its action and entire expression. Slots are not
+In GO, setting a slot replaces its action and entire expression. Slots are not
 priorities; another PASS broadens selection. No active PASS means unrestricted
 personal selection except matching REJECTs. New accounts and old-profile resets
 receive the same editable default PASS slot 0; restored Boolean empty rules stay empty.
 A PASS rule without SOURCE allows HUMAN and SKIMMER.
 SOURCE follows ordinary Boolean semantics, including OR and NOT.
 Explicit SOURCE=HUMAN stays human-only, including saved default rules.
-No saved expressions are rewritten. Shipped defaults now select both sources.
+Shipped defaults select both sources.
 RESET FILTER RULE clears selected slots; RESET FILTER clears all slots,
 including any NEARBY terms. Neither reinstalls defaults nor changes
 separate controls/settings. See [the full rule contract](../telnet/README.md#filters).
 
-`SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact numbered
+GO `SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact numbered
 canonical rules and individual controls.
 `SHOW FILTER FULL` adds one-program preparation counts and control detail.
 No view flattens Boolean alternatives into independent field lists.
-`SHOW/FILTER` and `SH/FILTER` accept the same RULE/FULL arguments in both
-dialects; category views are unsupported. `GET YAML FILTER SCHEMA 6` exposes
-machine-readable expressions and exact DEFAULT/boolean controls.
+`SHOW/FILTER` and `SH/FILTER` are aliases. In CC they show native criteria and
+support category-specific views instead of RULE. The native readback distinguishes
+band INHERIT from explicit OFF and DXBM OFF from active allow-all.
+`GET YAML FILTER SCHEMA 6` exposes GO expressions and exact DEFAULT/boolean
+controls when GO is active. Schema 7 FILTER describes the tagged active bank.
 `SHOW SETTINGS`
 separates configured preferences and effective behavior from session status.
+`SHOW/SETTINGS` and `SH/SETTINGS` are equivalent readback aliases.
 Path minimums reflect active runtime state for both stations and beacons.
 Both views report the associated preset and whether preferences differ from
 its retained reference snapshot.
@@ -221,9 +227,30 @@ Exact strings use Go-style quoted ASCII escapes; complete quoted pieces joined
 by `+` preserve long values without trimming spaces or splitting escapes.
 This is display encoding, not expression quoting or necessarily a copyable
 command. Slots display in numeric order, not priority order. Human input
-retains the configured limit (128 bytes by default); use schema 6 YAML for
-longer expressions. Rendering reads retained immutable prepared rules, not
-render-time compilation or an additional category gate.
+retains the configured limit (128 bytes by default); use YAML for longer
+expressions or native lists. Rendering reads retained immutable prepared plans.
+
+CC mode and source selections both apply; an empty list admits no spots.
+DOC/DOS select the spotter country/state and DXCTY/DXSTATE select the DX.
+Categories use AND and values within a list use OR. Missing or invalid metadata
+fails PASS and survives REJECT. Global edits replace the action/list and clear
+that category's per-band exceptions, including an otherwise equal replacement.
+OFF removes only its category's restriction. Schema-seven band entries replace
+the global category on that band; an absent entry inherits global and explicit
+OFF is unrestricted. State codes use the existing registered-address metadata,
+without an additional country check.
+
+DXBM selects fixed frequency slots independently of the decoded mode. Its 15
+bands contain 37 slots, including 4-MTR and MW-MW. The first PASS after OFF
+starts a whitelist; the first REJECT starts a blacklist. Later edits change
+only the named slots, and whole-band selections expand to their slots. The
+higher slot owns a shared endpoint, with the final upper endpoint included.
+OFF is different from an active allow-all selection. Native terminal mode
+shortcuts require the operator taxonomy's cc_shortcut flag; mode edits apply to
+both sources and source edits leave modes unchanged. SET/NOFILTER restores the
+current operator mode/source defaults and clears geography/DXBM while keeping
+six switches, the inactive GO bank and shared settings. OWN, BOB, DX/NODX,
+TALK, WX and announcement/weather geography are unavailable.
 
 These human readbacks always suppress live spots during preparation, queueing
 and delivery, followed by a full reading interval after the server write and
@@ -232,60 +259,78 @@ zero, ignoring the row threshold even when disabled. Longer existing pauses
 are preserved; later valid PAUSE/RESUME controls supersede earlier pending
 completion effects. Human size errors follow the same pause policy.
 
-Client YAML commands work in both dialects and never change pause state,
+Client YAML commands never change pause state,
 including on success or error. Each reply is one complete framed control
 message with no human footer. GET exposes exact writable configuration
-separately from read-only status. Every GET requires SCHEMA 6, including
-SETTINGS and CAPABILITIES. CAPABILITIES advertises
-`supported_schema_versions: [6]`, rule fields/operators/vocabularies and bounds,
-not the old settings-availability matrix; runtime settings admission is
-authoritative. Rule status includes canonical entries, configured_count and
-one program count domain. NEARBY appears as a zero-operand predicate with no
-comparison operators, separately from comparison fields. Optional GET IDs preserve case and accept 1-32 ASCII
-letters, digits or hyphens.
+separately from read-only status. Every GET requires explicit SCHEMA 6 or
+SCHEMA 7. Schema 6 FILTER/CONFIG is available only while GO is active; schema
+6 SETTINGS and CAPABILITIES work in both dialects. A schema 6 CONFIG write
+must remain GO. SETTINGS may switch the selected bank. Schema 7 CONFIG is the
+complete backup of both banks, both sets of switches and shared settings;
+schema 6 is a legacy view, not a complete backup. CAPABILITIES advertises
+supported schemas, fields, vocabulary and bounds. Optional GET IDs preserve
+case and accept 1-32 ASCII letters, digits or hyphens.
 
-FILTER has exactly seven fields: `rules`, `include_beacons`,
+The legacy schema 6 FILTER has seven fields: `rules`, `include_beacons`,
 `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic`.
 SETTINGS retains its six fields: `dialect`, `grid`, `noise_class`,
 `dedupe_policy`, `path_min_observation_count`, `solar_summary_minutes`.
-CONFIG nests `filters` and `settings`. Each rule requires integer slot 0–9,
+Schema 6 CONFIG nests `filters` and `settings`. Each rule requires integer slot 0–9,
 lowercase action pass/reject and a complete `expr`.
 
-PUT requires the complete resource. VALIDATE accepts CONFIG only and requires
-complete filters/settings without applying or saving. PATCH retains omitted
-fields; a supplied rules list replaces all slots, not just those supplied,
-and `[]` clears it. Preserve DEFAULT, explicit false/true, empty default
-strings and zero sentinels, subject to admission.
+PUT requires the complete resource. Schema 7 PUT CONFIG explicitly restores
+both banks and shared settings. VALIDATE accepts complete CONFIG only, without
+applying or saving. Schema 7 FILTER is tagged for the active dialect. Ordinary
+PATCH edits the active bank/shared settings and refuses an inactive-bank edit
+or a filter edit combined with a dialect switch. Omitted fields remain; a
+supplied GO rules list replaces all slots. A supplied CC global geography row
+replaces its list and clears that category's band exceptions. A bands-only
+PATCH changes named rows; action INHERIT removes one override. Global and band
+edits cannot be combined for one category in a PATCH. A supplied DXBM object
+replaces its complete active/base/slot state. Preserve DEFAULT, explicit booleans,
+empty selections and zero sentinels, subject to admission.
 
-Upload headers have no schema suffix. The strict envelope permits
+Legacy three-token write headers select schema 6 and its 65,536-byte body
+limit. Schema 7 writes require an explicit SCHEMA 7 header and matching body,
+for example `PUT YAML CONFIG SCHEMA 7`; their body limit is 262,144 bytes.
+The strict envelope permits
 `schema_version`, `request_id`, `if_revision` and `configuration`; bodies require
-`schema_version: 6`, request_id and configuration. PUT/PATCH also
+the selected `schema_version`, request_id and configuration. PUT/PATCH also
 require the revision from GET as if_revision; VALIDATE permits it optionally.
 GET again after reconnect or a conflict. Validation or persistence failure
 leaves live and saved configuration
 unchanged; unavailable choices are rejected. Even an unchanged PUT persists
 before success without resetting unrelated runtime state. Writes preserve the
-preset reference and can set or clear modified. Omitted/old schemas, category
-fields, unknown/read-only fields, duplicate keys/slots, aliases, anchors,
+preset reference and can set or clear modified. Unknown/read-only fields,
+duplicate keys/slots, aliases, anchors,
 merges, custom tags, nulls and extra documents are refused without translation.
 
-Bounds are 10 slots, 1,024 raw and canonical expression bytes, 32 atoms/128
+GO bounds are 10 slots, 1,024 raw and canonical expression bytes, 32 atoms/128
 nodes/depth 8 per rule, 32 values per atom and 128 atoms/512 values total.
 COMMENT operands are 1–64 printable ASCII bytes with a non-space byte.
 Parentheses/NOT count toward nesting, not flat AND/OR height. Machine,
-human-line, storage and decode-work bounds are separate.
+human-line, storage and decode-work bounds are separate. CC permits 128 modes,
+two sources, 512 country values or 73 state values per applicable category
+row, four global geography rows and at most 15 band rows per category. Canonical
+CC is limited to 128 KiB, complete schema-seven CONFIG/tagged-preset content to
+192 KiB and framed machine responses to 256 KiB. Acceptance also checks the
+complete profile, both retained preset baselines, preset/library storage and
+decode-work bounds, so an accepted configuration can be exported and restored.
 
-Every new readback has a 65,536-byte final response limit, including CRLF,
-framing and human footers, with complete output or an explicit error. Upload
-bodies use a separate 65,536-byte limit, excluding markers but counting actual
-LF/CRLF bytes, and a 30-second deadline from valid-header acceptance.
+Legacy responses retain their 65,536-byte limit. Native CC human readbacks and
+schema-seven machine frames have a 262,144-byte limit, including CRLF, framing
+and any human footer, with complete output or an explicit error. Upload body
+limits exclude markers and count actual LF/CRLF bytes. Uploads retain the
+30-second deadline from valid-header acceptance. Large schema-seven transfers
+have separate process-wide 8 MiB inbound and outbound reservations; one client
+may own one large output at a time. Busy admission fails without waiting.
 Malformed upload headers, oversize, expiry and unreliable/incomplete framing
 close the connection without dispatching payload remnants. A fully received
 invalid document gets a YAML error and keeps the connection open. Ordinary
 command headers keep their configured limit (128 bytes in the shipped config).
 
 See the [human display contract](../telnet/README.md#human-configuration-readbacks)
-and [complete schema-6 examples and framing](../telnet/README.md#client-yaml-configuration).
+and [client YAML configuration](../telnet/README.md#client-yaml-configuration).
 
 `PAUSE` defaults to 30 seconds and accepts whole seconds from 1 to 300 in both
 dialects. It remains available when automatic read pause is disabled. A new
@@ -318,8 +363,8 @@ establish the applied/saved reference; failed association persistence after
 SAVE retains the previous reference both live and on disk. Protected
 temporary-defaults sessions cannot SAVE, LOAD or commit machine writes.
 The 20-name, 256 KiB-per-preset and 8 MiB collection limits remain separate
-from the readback budget, so a valid large preset may LOAD even when FULL/YAML
-readback returns a size error.
+from canonical, wire and decode-work bounds. Prospective admission checks the
+complete retained profile and export sizes before accepting changes.
 
 ### WWV and WCY bulletins
 
@@ -459,7 +504,7 @@ and archive selector precedence are separate, unchanged paths. See
 
 ## US And Canadian State Commands And YAML Versions
 
-DXSTATE and DESTATE are expression fields in both dialects:
+DXSTATE and DESTATE are GO expression fields:
 
 ```text
 PASS RULE 0 DXSTATE=CA,TX,ON,QC
@@ -472,7 +517,11 @@ comparison false, including `<>`; NOT negates that result. See
 [State provenance and archive metadata](../telnet/README.md#us-state-and-canadian-province-filters)
 and `HELP RULE` for exact field rules.
 
-NEARBY combines with ordinary NOT, AND and OR; it never removes geographic
+In CC, DOS and DXSTATE select these same state/province codes through native
+lists. Missing or invalid state fails PASS and survives REJECT. There is no
+extra country gate. Native per-band geography uses schema-seven YAML.
+
+In GO, NEARBY combines with ordinary NOT, AND and OR; it never removes geographic
 conditions or changes dedupe. For example, `MODE=CW AND (DXCONT=EU OR NEARBY)`
 selects CW from Europe or with a nearby endpoint. Missing proximity is false;
 NOT NEARBY includes unknown proximity. The
@@ -480,19 +529,26 @@ NOT NEARBY includes unknown proximity. The
 waives only mapping availability for an unchanged saved GRID with every other
 setting/control unchanged. SELF/history exceptions and TOXIC remain distinct.
 
-Only explicit machine schema 6 and native disk version 6 are supported here.
-Records, library entries and applied baselines use versioned nested
-configuration. Old machine schemas remain refused. A separate login-owned
-reset-only upgrade for recognized old profiles preserves settings and installs
-the same configured mode/source defaults as new accounts; it does not translate
-old filter rules. See [login upgrades](../telnet/README.md#login-and-session-behavior).
-Ordinary codecs refuse old/unversioned/future records. Login recognizes
-unversioned/version 1-5 records for one safe reset to configured rule 0. Implementation does not authorize a production reset or preset wipe. See [native v6 storage](../telnet/README.md#persistence-format-and-rollback).
+Machine schemas 6 and 7 have the separate compatibility boundaries described
+above. Native disk version 7 retains both banks, independent controls and applied
+baselines. The login-owned upgrade resets recognized older profiles' filter
+banks to current operator starting defaults and all six switches in each bank
+to DEFAULT. It preserves unrelated shared preferences and clears old applied
+references. It never compiles old expressions merely to discard them.
+
+Old named presets are cleared once per base-call library; new version-seven
+presets survive retries and later numeric-SSID upgrades. Malformed or future
+data is protected rather than overwritten. A failed library reset can leave
+preset operations unavailable while an independent profile upgrade proceeds.
+Durable reset notices retry at a later login opportunity after delivery failure;
+the notice retry never repeats an already committed filter reset. See
+[login upgrades](../telnet/README.md#login-and-session-behavior) and
+[persistence and rollback](../telnet/README.md#persistence-format-and-rollback).
 
 ## MINSNR Commands
 
-MINSNR category commands and maps are refused, not translated. Use a numbered
-SNR expression:
+MINSNR category commands and maps are refused, not translated. In GO, use a
+numbered SNR expression:
 
 ```text
 REJECT RULE 1 SOURCE=SKIMMER AND MODE=CW AND SNR<8

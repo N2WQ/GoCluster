@@ -704,15 +704,11 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		)
 		add("SH/FILTER", "SH/FILTER - Alias of SHOW/FILTER.", shFilterLines)
 
-		add("SET/FILTER", "SET/FILTER - Enable separate controls.", ccFilterHelpLines("SET/FILTER"))
+		add("SET/FILTER", "SET/FILTER - Change native CC selections.", ccFilterHelpLines("SET/FILTER"))
 		add("UNSET/FILTER", "UNSET/FILTER - Disable separate controls.", ccFilterHelpLines("UNSET/FILTER"))
 
-		for _, topic := range []string{"SET/NOFILTER", "SET/SKIMMER", "SET/NOSKIMMER", "SET/<MODE>", "SET/NO<MODE>"} {
-			summary := topic + " - Replaced by numbered Boolean rules."
-			add(topic, summary, helpEntryLines(summary, []string{"HELP RULE"}, nil, []string{
-				"This CC filter/mode shortcut is refused, not translated.",
-				"Use PASS RULE, REJECT RULE or RESET FILTER; see HELP RULE.",
-			}))
+		for _, topic := range []string{"SET/NOFILTER", "SET/SKIMMER", "SET/NOSKIMMER", "SET/<MODE>", "SET/NO<MODE>", "UNSET/<MODE>", "UNSET/SKIMMER"} {
+			add(topic, topic+" - Change native CC selection.", nativeCCShortcutHelpLines(topic))
 		}
 
 		addCCToggle := func(cmd, summary, alias string) {
@@ -734,8 +730,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		addCCToggle("SET/NOWWV", "Disable WWV bulletins.", "REJECT WWV")
 		addCCToggle("SET/WCY", "Enable WCY bulletins.", "PASS WCY")
 		addCCToggle("SET/NOWCY", "Disable WCY bulletins.", "REJECT WCY")
-		addCCToggle("SET/SELF", "Enable self spots.", "PASS SELF")
-		addCCToggle("SET/NOSELF", "Disable self spots.", "REJECT SELF")
+		addCCToggle("SET/SELF", "Enable spots of your own call.", "PASS SELF")
+		addCCToggle("SET/NOSELF", "Disable spots of your own call.", "REJECT SELF")
 		catalog.order = []string{
 			"HELP",
 			"DX",
@@ -759,13 +755,12 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SET GRID",
 			"SET NOISE",
 			"SET PATHSAMPLES",
-			"NEARBY",
 			"SHOW/FILTER",
 			"SH/FILTER",
-			"RESET FILTER",
 			"PASS",
 			"REJECT",
 			"SET/FILTER",
+			"SET/NOFILTER", "SET/SKIMMER", "SET/NOSKIMMER", "SET/<MODE>", "SET/NO<MODE>", "UNSET/<MODE>", "UNSET/SKIMMER",
 			"SAVE PRESET",
 			"LIST PRESET",
 			"LOAD PRESET",
@@ -883,7 +878,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 
 	installConfigurationHelp(&catalog, dialect)
 	installCommentHelp(&catalog)
-	installBooleanRuleHelp(&catalog)
+	installBooleanRuleHelp(&catalog, dialect)
 	installHelpRoutingAliases(&catalog, dialect)
 	return catalog
 }

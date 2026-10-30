@@ -312,6 +312,9 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 }
 
 func (s *Server) restoreClientRecordOwned(c *Client, loginTime time.Time) restoredLogin {
+	if filter.CurrentConfigurationVersion >= filter.V7ConfigurationVersion {
+		return s.restoreV7ClientRecordOwned(c, loginTime)
+	}
 	result := restoredLogin{}
 	record, upgrade, err := filter.UpgradeUserRecordForLoginWithOutcome(c.callsign, s.commitLoginRecord)
 	result.profileReset = upgrade.ProfileReset

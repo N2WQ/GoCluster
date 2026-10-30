@@ -25,7 +25,7 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 	c.pathMu.RLock()
 	c.filterMu.RLock()
 	owned := &Client{
-		callsign: c.callsign, grid: c.grid, gridDerived: c.gridDerived,
+		callsign: c.callsign, dialect: c.dialect, grid: c.grid, gridDerived: c.gridDerived,
 		gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
 		noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
 	}
@@ -45,12 +45,15 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 func (c *Client) historyFilterDigest() [32]byte {
 	c.pathMu.RLock()
 	c.filterMu.RLock()
-	cfg := filter.V6ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{
-		Grid: c.grid, NoiseClass: c.noiseClass, PathMinObservationCount: c.pathMinObservationCount,
-	})
+	cfg := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{})
+	native := c.filter.IsCC()
+	if !native {
+		cfg.Settings = filter.SettingsConfiguration{Grid: c.grid, NoiseClass: c.noiseClass, PathMinObservationCount: c.pathMinObservationCount}
+	}
 	matching := c.filter.MatchSnapshot()
 	state := pathState{grid: c.grid, gridDerived: c.gridDerived, gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell}
 	valid := c.filter != nil
+	dialect := normalizeDialectName(string(c.dialect))
 	c.filterMu.RUnlock()
 	c.pathMu.RUnlock()
 	geometry := matching.NearbyFilterActive() || matching.PathFilterActive()
@@ -61,7 +64,7 @@ func (c *Client) historyFilterDigest() [32]byte {
 	cfg.Filters.AllowWWV, cfg.Filters.AllowWCY = filter.DefaultBoolDefault, filter.DefaultBoolDefault
 	cfg.Filters.AllowAnnounce, cfg.Filters.AllowSelf = filter.DefaultBoolDefault, filter.DefaultBoolDefault
 	configured := cfg.Fingerprint()
-	var payload [38]byte
+	var payload [39]byte
 	copy(payload[:32], configured[:])
 	if valid {
 		payload[32] = 1
@@ -72,8 +75,14 @@ func (c *Client) historyFilterDigest() [32]byte {
 		binary.LittleEndian.PutUint16(payload[33:35], uint16(state.gridCell))
 		binary.LittleEndian.PutUint16(payload[35:37], uint16(state.gridCoarseCell))
 	}
-	if state.gridDerived {
+	if !native && state.gridDerived {
 		payload[37] = 1
+	}
+	// Selection is part of history authority even when both plans happen to
+	// match the same spots. Every bank activation is observed at publication,
+	// so GO -> CC -> GO cannot revive an earlier continuation.
+	if dialect == DialectCC {
+		payload[38] = 1
 	}
 	return sha256.Sum256(payload[:])
 }

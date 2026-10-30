@@ -101,7 +101,7 @@ func TestBooleanRuleCommandLiteralRemainder(t *testing.T) {
 }
 
 func TestBooleanRuleCommandsDialectAndCanonicalAcceptance(t *testing.T) {
-	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+	for _, dialect := range []DialectName{DialectGo} {
 		t.Run(string(dialect), func(t *testing.T) {
 			candidate, source, original := booleanCommandFixture(t, dialect)
 			live := snapshotBooleanCommand(source)
@@ -138,7 +138,7 @@ func TestBooleanRuleCommandsDialectAndCanonicalAcceptance(t *testing.T) {
 }
 
 func TestBooleanRuleCommandsReplaceRemoveAndReset(t *testing.T) {
-	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+	for _, dialect := range []DialectName{DialectGo} {
 		for _, test := range []struct {
 			line    string
 			count   int
@@ -241,7 +241,7 @@ func TestBooleanRuleCommandsRefusalsAreAtomic(t *testing.T) {
 		"PASS RULE 0 MODE=CW\t", "PASS RULE 0 COMMENT=\"é\"",
 		"PASS RULE 0 MODE=CW" + strings.Repeat(" ", expr.MaxBytes),
 	}
-	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+	for _, dialect := range []DialectName{DialectGo} {
 		for _, line := range lines {
 			t.Run(string(dialect)+"/"+line[:min(len(line), 90)], func(t *testing.T) {
 				candidate, source, _ := booleanCommandFixture(t, dialect)
@@ -325,7 +325,7 @@ func TestBooleanRuleCommandsLegacyAndUnownedHeads(t *testing.T) {
 		"SET DX FILTER MODE=CW",
 	}
 	engine := newFilterCommandEngine()
-	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+	for _, dialect := range []DialectName{DialectGo} {
 		for _, refuse := range []bool{true, false} {
 			lines := unhandled
 			if refuse {

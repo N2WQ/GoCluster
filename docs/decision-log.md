@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0330 | Native CC Banks and Generation Seven | Accepted | 2026-10-29 | CC compatibility, dialect ownership, schema 7, reset recovery | affected shared-bank and generation/reset clauses of ADR-0317-0320 and ADR-0329; refines ADR-0238/0244 | none | [ADR-0330](decisions/ADR-0330-native-cc-banks-and-generation-seven.md) |
 | ADR-0329 | NEARBY Boolean Predicate and Generation Six | Accepted | 2026-10-29 | rules, GRID ownership, schema 6, protected reset | affected NEARBY/schema/reset clauses of ADR-0207 and ADR-0317-0320 | none | [ADR-0329](decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md) |
 | ADR-0328 | Per-Session Telnet Command Pacing | Accepted | 2026-10-28 | telnet commands, input pacing, operator settings | none; complements ADR-0325, ADR-0326 and ADR-0327 | none | [ADR-0328](decisions/ADR-0328-per-session-telnet-command-pacing.md) |
 | ADR-0327 | Per-IP Telnet Session Ceiling | Accepted | 2026-10-28 | telnet admission, IP capacity, reconnect, persistence | none; complements ADR-0325 and ADR-0326 | none | [ADR-0327](decisions/ADR-0327-per-ip-telnet-session-ceiling.md) |

@@ -1,6 +1,8 @@
-# Boolean Personal Filters
+# Personal Filter Banks
 
-The filter package owns bounded immutable rule preparation and matching. The
+The filter package owns bounded immutable GO rule and native CC preparation and
+matching. Current profiles keep independent banks and six controls per bank.
+See [native CC and generation seven](../docs/cc-dialect.md). The GO
 expr child package owns syntax and canonical formatting; it does not evaluate
 spots or resolve user location. Telnet owns configuration publication, GRID,
 client delivery policy and history continuation.
@@ -24,17 +26,19 @@ bound ownership. A NEARBY term consumes an atom/node and no values. Replacements
 share only unchanged immutable programs; snapshots release them normally.
 No global program cache or historical user registry is introduced.
 
-Active configuration and machine boundaries are explicit generation 6. Ordinary
-codecs remain strict. Only the login-owned coordinator recognizes safe retired
-unversioned/version 1-5 definitions to discard after historical validation;
-it never activates or translates their rules. Settings, six separate controls,
-metadata, backup conflicts and per-file atomicity retain their owners.
+Current configuration uses generation seven. Frozen v6 DTOs remain the legacy
+GO machine/carrier boundary and cannot represent native CC. The login coordinator
+recognizes safe pre-seven structure without compiling discarded rules, clears
+old filters, six switches and old named presets, and initializes both banks from
+current operator mode/source defaults. It preserves selected dialect, unrelated
+settings and metadata. Backups, independent reset markers and strict notice
+acknowledgement keep per-file ownership and retry semantics explicit.
 
 Start with [domain contracts](../docs/domain-contract.md#boolean-personal-rules),
 [telnet rules](../telnet/README.md#filters),
 [native storage](../data/config/README.md#user-configuration-storage) and
-[ADR-0329](../docs/decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md).
+[ADR-0330](../docs/decisions/ADR-0330-native-cc-banks-and-generation-seven.md).
 Relevant source owners are rule_set.go, rule_compile.go, rule_evaluate.go,
-rule_view.go, match_snapshot.go, configuration_v6.go, storage_v6.go and
-legacy_upgrade.go. Tests must distinguish direct semantics from transport,
+rule_view.go, match_snapshot.go, cc_prepare.go, cc_match.go, profile_v7.go,
+storage_v7.go, preset_v7.go and upgrade_v7.go. Tests distinguish direct semantics from transport,
 publication, history, persistence and actual delivery wiring.

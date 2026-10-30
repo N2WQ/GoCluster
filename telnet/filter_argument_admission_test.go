@@ -39,11 +39,9 @@ func TestFilterSwitchOriginalArguments(t *testing.T) {
 }
 
 func TestCCShortcutOriginalArguments(t *testing.T) {
-	s := presetTestServer(t)
-	c := configurationTestClient(s, "W1ABC-1")
-	c.dialect = DialectCC
-	e := newFilterCommandEngine()
-	requireFilterArgumentControl(t, e, c, "RESET FILTER")
+	s, c := nativeCCTestCommittedSession(t)
+	e := s.filterEngine
+	requireFilterArgumentControl(t, e, c, "SET/NOFILTER")
 	commands := []string{"SET/ANN", "SET/NOANN", "SET/BEACON", "SET/NOBEACON",
 		"SET/WWV", "SET/NOWWV", "SET/WCY", "SET/NOWCY", "SET/SELF", "SET/NOSELF",
 	}
@@ -66,11 +64,9 @@ func TestCCShortcutOriginalArguments(t *testing.T) {
 }
 
 func TestCCInlineFlagOriginalArguments(t *testing.T) {
-	s := presetTestServer(t)
-	c := configurationTestClient(s, "W1ABC-1")
-	c.dialect = DialectCC
-	e := newFilterCommandEngine()
-	requireFilterArgumentControl(t, e, c, "RESET FILTER")
+	s, c := nativeCCTestCommittedSession(t)
+	e := s.filterEngine
+	requireFilterArgumentControl(t, e, c, "SET/NOFILTER")
 	for _, domain := range []string{"BEACON", "WWV", "WCY", "ANNOUNCE", "PC93", "SELF", "TOXIC"} {
 		for _, flag := range []string{"ON", "OFF"} {
 			command := "SET/FILTER " + domain + "/" + flag
@@ -107,6 +103,7 @@ func assertFilterArgumentRefusal(t *testing.T, s *Server, c *Client, e *filterCo
 func assertFilterArgumentRefusalFeedback(t *testing.T, s *Server, c *Client, e *filterCommandEngine, command, exactFeedback string) {
 	t.Helper()
 	before := c.captureV6Configuration()
+	nativeBefore, native := c.filter.NativeCCConfiguration()
 	revision := c.configurationRevision
 	file := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 	saved, err := os.ReadFile(file)
@@ -118,13 +115,14 @@ func assertFilterArgumentRefusalFeedback(t *testing.T, s *Server, c *Client, e *
 	s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { attempts++; return nil }
 	defer func() { s.commitConfigurationFn = prior }()
 	response, handled := e.Handle(c, command)
+	nativeAfter, _ := c.filter.NativeCCConfiguration()
 	after, err := os.ReadFile(file)
 	feedbackMatches := strings.Contains(response, "No changes applied.")
 	if exactFeedback != "" {
 		feedbackMatches = response == exactFeedback
 	}
 	if !handled || !feedbackMatches || attempts != 0 || err != nil || !bytes.Equal(saved, after) ||
-		!before.Equal(c.captureV6Configuration()) || c.configurationRevision != revision {
+		!before.Equal(c.captureV6Configuration()) || c.configurationRevision != revision || native && !nativeBefore.Equal(nativeAfter) {
 		t.Fatalf("original argument lost or refused command had effects: %q -> %q, commits=%d, err=%v", command, response, attempts, err)
 	}
 }

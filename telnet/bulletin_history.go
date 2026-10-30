@@ -1,3 +1,5 @@
+// File role: Bounded bulletin history rendering and composed control-queue
+// reservation cleanup shared with native configuration output.
 package telnet
 
 import (
@@ -86,13 +88,16 @@ func (c *Client) releaseBulletinReservations(amount int64) {
 	}
 }
 
-// drainBulletinReservations runs after the writer stops and releases budget
-// for any response still queued on a closed client.
+// drainBulletinReservations is the single final control-queue drain. It releases
+// both bulletin and configuration owners after the writer stops, so neither
+// consumer can discard the other owner's reservation.
 func (c *Client) drainBulletinReservations() {
 	for {
 		select {
 		case msg := <-c.controlChan:
+			msg.raw, msg.line = nil, ""
 			c.releaseBulletinReservations(msg.bulletinReservation)
+			msg.configurationReservation.Release()
 		default:
 			return
 		}

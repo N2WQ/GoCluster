@@ -34,7 +34,7 @@ func TestV6MachineCoordinatorHistoryEditRestoreAndExclusions(t *testing.T) {
 		}
 	}
 	for _, patch := range []map[string]any{
-		{"dialect": "cc"}, {"dedupe_policy": "MED"}, {"solar_summary_minutes": 30},
+		{"dedupe_policy": "MED"}, {"solar_summary_minutes": 30},
 	} {
 		cursor := &historySearch{token: "keep"}
 		c.historySearch = cursor
@@ -61,6 +61,16 @@ func TestV6MachineCoordinatorHistoryEditRestoreAndExclusions(t *testing.T) {
 	v6CoordinatorSuccess(t, s.applyV6MachineRequest(c, cmd, request), true)
 	if c.historyGeneration != generation+1 {
 		t.Fatal("effective noise setting failed to invalidate history")
+	}
+	generation++
+	for _, dialect := range []string{"cc", "go"} {
+		c.historySearch = &historySearch{token: "bank-activation-must-expire"}
+		cmd, request := v6CoordinatorProposal(t, c, "PATCH", "SETTINGS", map[string]any{"dialect": dialect})
+		v6CoordinatorSuccess(t, s.applyV6MachineRequest(c, cmd, request), true)
+		generation++
+		if c.historySearch != nil || c.historyGeneration != generation {
+			t.Fatal("bank activation/restoration revived an earlier history continuation")
+		}
 	}
 }
 

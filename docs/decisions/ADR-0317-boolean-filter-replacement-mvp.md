@@ -9,6 +9,8 @@ description: Numbered Boolean rules, geography-only NEARBY projection, and isola
 
 > ADR-0329 supersedes the NEARBY toggle/projection, independent-cell and active schema-5 clauses below. One Boolean predicate and explicit generation 6 replace them; unaffected engine, controls, limits and publication contracts remain. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 
+> [ADR-0330](ADR-0330-native-cc-banks-and-generation-seven.md) replaces affected shared GO/CC ownership and generation/reset clauses with independent native CC banks and generation seven. This record retains its historical decision; compatible GO predicate/source and transaction contracts continue.
+
 ## Context
 
 [ADR-0321](ADR-0321-boolean-canonical-dxcc-input.md) restores canonical DXCC

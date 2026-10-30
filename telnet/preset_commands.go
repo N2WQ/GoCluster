@@ -68,6 +68,9 @@ func (s *Server) handlePresetCommand(client *Client, line string) (string, bool)
 		return presetError(command.verb, command.name, err), true
 	}
 	defer release()
+	if client.filterBanks != nil {
+		return s.handleV7PresetOwned(client, command), true
+	}
 	switch command.verb {
 	case "SAVE":
 		if client.recordProtected {

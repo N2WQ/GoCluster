@@ -1,3 +1,4 @@
+// File role: Frozen schema-six GO capability vocabulary and legacy limits.
 package telnet
 
 import (
@@ -81,7 +82,7 @@ func v6MachineCapabilities() any {
 		PatchReplace            bool                        `yaml:"patch_collections_replace"`
 		WriteRevisionRequired   bool                        `yaml:"write_revision_required"`
 	}{
-		SupportedSchemaVersions: []int{filter.CurrentConfigurationVersion},
+		SupportedSchemaVersions: []int{filter.V6ConfigurationVersion},
 		Resources:               []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"},
 		FilterFields:            slices.Clone(machineV6FilterFields[:]),
 		SettingsFields:          slices.Clone(machineSettingFields[:]),

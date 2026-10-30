@@ -17,7 +17,7 @@ func TestV6StorageRuntimeAdaptersPreserveOnlyPreparedRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if runtime.Baseline.ConfigurationVersion != CurrentConfigurationVersion ||
+	if runtime.Baseline.ConfigurationVersion != V6ConfigurationVersion ||
 		!V6ConfigurationFromPreset(runtime.Baseline).Equal(cfg) {
 		t.Fatal("runtime transport lost rules/settings/controls")
 	}

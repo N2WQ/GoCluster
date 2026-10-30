@@ -26,6 +26,12 @@ func TestFamilyDeliveryRunningPipelineImmediateAndHeld(t *testing.T) {
 	resolver.Start()
 	t.Cleanup(resolver.Stop)
 	f := newFamilyDeliveryFixtureWithResolver(t, source, false, false, 2, 8, stabilizerTimeoutRelease, true, resolver)
+	// The seeded tie and reporter refresh deliberately keep the same probable
+	// 50% winner. This scheduling witness holds that tie, then requires the
+	// separately corroborated 3/4 result below. The default low-P threshold
+	// (25%) intentionally permits a 50% P through.
+	f.pipeline.correctionCfg.StabilizerPDelayConfidencePercent = 51
+	f.pipeline.correctionCfg.StabilizerPDelayMaxChecks = 1
 	at := time.Now().UTC().Truncate(time.Second).Add(-3 * time.Second)
 	immediate := familyDeliveryInput{"K1NOW", "K1NOW", "wired now", "V", at}
 	held := familyDeliveryInput{"K1HOLD", "N0AAA", "wired hold", "V", at.Add(time.Second)}
@@ -39,10 +45,12 @@ func TestFamilyDeliveryRunningPipelineImmediateAndHeld(t *testing.T) {
 		}
 	}
 	publish(held.call, "N0AAA")
-	publish("K1HOLC", "N0DDD")
+	publish("K1HOLE", "N0DDD")
 	runtimeRetirementWaitFor(t, "live contested publication", func() bool {
 		snapshot, ok := resolver.Lookup(key)
-		return ok && resolver.MetricsSnapshot().Processed == 2 && snapshot.TotalReporters == 2 && snapshot.State == spot.ResolverStateUncertain
+		return ok && resolver.MetricsSnapshot().Processed == 2 && snapshot.TotalReporters == 2 &&
+			snapshot.State == spot.ResolverStateProbable && snapshot.Winner == held.call && snapshot.RunnerUp == "K1HOLE" &&
+			snapshot.WinnerSupport == 1 && snapshot.RunnerSupport == 1
 	})
 	f.deduplicator.Start()
 	go f.pipeline.run()

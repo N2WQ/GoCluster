@@ -9,6 +9,8 @@ description: One-time default-modes-only upgrade that preserves settings without
 
 > ADR-0329 extends the protected reset to retired nested v5 profiles and presets using .pre-v6.bak, while preserving the existing settings/control/metadata and per-file safety contracts. Current generation is 6. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 
+> [ADR-0330](ADR-0330-native-cc-banks-and-generation-seven.md) replaces affected shared GO/CC ownership and generation/reset clauses with independent native CC banks and generation seven. This record retains its historical decision; compatible GO predicate/source and transaction contracts continue.
+
 ## Context
 
 [ADR-0319](ADR-0319-boolean-onboarding-and-source-default.md) supersedes the

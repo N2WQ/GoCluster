@@ -76,14 +76,11 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 					if journey == "empty" {
 						definitions = nil
 					}
-					record := &filter.UserRecord{
-						Filter: *testRuleFilter(t, definitions...), Dialect: "cc", Grid: "KN23",
-						NoiseClass: "URBAN", DedupePolicy: "MED",
-						LastLoginUTC: time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC),
-					}
-					if err := filter.SaveUserRecord(call, record); err != nil {
-						t.Fatal(err)
-					}
+					configuration := currentV7GOTestConfiguration(t, definitions, filter.SettingsConfiguration{
+						Dialect: "go", Grid: "KN23", NoiseClass: "URBAN", DedupePolicy: "MED",
+					})
+					saveCurrentV7TestRecord(t, call, &filter.V7UserRecord{Configuration: configuration,
+						LastLoginUTC: time.Date(2026, 10, 21, 12, 0, 0, 0, time.UTC)})
 					if journey == "library-only" {
 						path := presetLibraryPathFor(call)
 						if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
@@ -95,30 +92,37 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 					}
 				}
 				conn, reader, _, transcript := connectUpgradeSession(t, s, call)
-				cfg, _ := upgradeWireGet(t, conn, reader, "")
+				cfg, tail := upgradeWireGet(t, s, call, conn, reader, "")
 				assertHumanWire(t, transcript)
 				title := "Current settings and filters:"
-				if journey == "new" {
+				switch journey {
+				case "new":
 					title = "Default settings and filters:"
+				case "legacy":
+					title = "Current settings and native CC filters:"
 				}
 				if strings.Count(transcript, title) != 1 || strings.Contains(transcript, "<SETTINGS_FILTERS>") {
 					t.Fatalf("wrong or repeated login block:\n%s", transcript)
 				}
-				reset := strings.Contains(transcript, "Your old filters were reset. Your settings were kept.")
+				reset := strings.Contains(transcript+tail, "earlier upgrade reset your GO and CC filter banks")
 				if reset != (journey == "legacy") {
 					t.Fatalf("profile reset confused with new-user/library-only login:\n%s", transcript)
 				}
-				first := journey == "new" || journey == "legacy"
+				first := journey == "new"
 				if strings.Contains(transcript, "To receive CW and FT8 from humans and skimmers:") != first {
 					t.Fatalf("first Boolean guidance has the wrong audience:\n%s", transcript)
 				}
-				if first {
+				if first || journey == "legacy" {
 					want := []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,FT8 AND SOURCE=HUMAN,SKIMMER"}}
-					if !slices.Equal(cfg.Filters.Rules, want) || strings.Contains(transcript, "Report sources: HUMAN only") {
-						t.Fatalf("new and upgraded starting rules differ: %+v\n%s", cfg.Filters.Rules, transcript)
+					if !slices.Equal(cfg.Filters.GO.Rules, want) || !slices.Equal(cfg.Filters.CC.Modes, []string{"CW", "FT8"}) ||
+						!slices.Equal(cfg.Filters.CC.Sources, []string{"HUMAN", "SKIMMER"}) || strings.Contains(transcript, "Report sources: HUMAN only") {
+						t.Fatalf("new and upgraded starting banks differ: %+v\n%s", cfg.Filters, transcript)
+					}
+					if journey == "legacy" && strings.Contains(transcript, "PASS RULE") {
+						t.Fatal("CC onboarding exposed Boolean rule editing")
 					}
 				} else if journey == "empty" {
-					if len(cfg.Filters.Rules) != 0 || strings.Contains(transcript, "PASS RULE 0") {
+					if len(cfg.Filters.GO.Rules) != 0 || strings.Contains(transcript, "PASS RULE 0") {
 						t.Fatal("returning empty rules were defaulted")
 					}
 				} else {
@@ -129,7 +133,7 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 						}
 					}
 				}
-				if strings.Contains(transcript, "Modes:") || strings.Contains(transcript, "Bands:") {
+				if journey != "legacy" && (strings.Contains(transcript, "Modes:") || strings.Contains(transcript, "Bands:")) {
 					t.Fatal("login flattened Boolean expressions")
 				}
 				if journey == "new" {
@@ -139,7 +143,11 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 						}
 					}
 				} else {
-					for _, want := range []string{"CC", "KN23", "URBAN", "MED"} {
+					dialect := "GO"
+					if journey == "legacy" {
+						dialect = "CC"
+					}
+					for _, want := range []string{dialect, "KN23", "URBAN", "MED"} {
 						if !strings.Contains(transcript, want) {
 							t.Fatalf("retained setting %q missing:\n%s", want, transcript)
 						}
@@ -193,14 +201,22 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 			if !handled || !strings.Contains(response, "Saved and active.") {
 				t.Fatalf("edit did not save: %s", response)
 			}
-			record, err := filter.LoadUserRecord(c.callsign)
+			record, err := filter.LoadV7UserRecord(c.callsign)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, savedGO, _, err := filter.PrepareV7Configuration(record.Configuration)
 			if err != nil {
 				t.Fatal(err)
 			}
 			cfg := c.captureV6Configuration()
 			s.filterEngine.Handle(c, "RESET FILTER")
-			cmd, request := v6CoordinatorProposal(t, c, "PUT", "FILTER", cfg.Filters)
-			v6CoordinatorSuccess(t, s.applyV6MachineRequest(c, cmd, request), true)
+			body, err := yaml.Marshal(cfg.Filters)
+			if err != nil {
+				t.Fatal(err)
+			}
+			cmd, request := bankedV6Proposal(t, c, "PUT", "FILTER", string(body))
+			v6CoordinatorSuccess(t, s.applyBankedV6MachineRequest(c, cmd, request), true)
 			machine := c.captureMatchingSnapshot()
 			if response, handled := s.handlePresetCommand(c, "SAVE PRESET SOURCES"); !handled ||
 				!strings.Contains(response, "Saved preset SOURCES") {
@@ -219,7 +235,7 @@ func TestBooleanOnboardingSourceConsumers(t *testing.T) {
 				sp := spot.NewSpot("LZ1ABC", "LZ2ABC", 14025, "CW")
 				sp.IsHuman = human
 				machineMatch, _, _ := s.matchSnapshot(machine, sp)
-				if record.Matches(sp) != want || machineMatch != want || c.filter.Matches(sp) != want ||
+				if savedGO.Matches(sp) != want || machineMatch != want || c.filter.Matches(sp) != want ||
 					c.captureHistoryFilter().matches(s, sp) != want {
 					t.Fatalf("saved/YAML/history mismatch human=%v want=%v", human, want)
 				}
@@ -286,7 +302,9 @@ func TestBooleanOnboardingFirstEditAndReconnectTCP(t *testing.T) {
 				!strings.Contains(greeting, "Report sources: HUMAN only") {
 				t.Fatal("new login did not explain starting state")
 			}
-			first, response := upgradeWireGet(t, conn, reader, "PASS RULE 0 BAND=20M AND MODE=CW\r\nSHOW FILTER\r\nRESUME\r\n")
+			first, response := upgradeWireGet(t, s, call, conn, reader, "PASS RULE 0 BAND=20M AND MODE=CW\r\n")
+			response += upgradeHumanCommand(t, s, call, conn, reader, "SHOW FILTER")
+			response += upgradeHumanCommand(t, s, call, conn, reader, "RESUME")
 			if !strings.Contains(response, "Saved and active.") || !strings.Contains(response, "Current settings and filters:") ||
 				booleanDisplayedExpression(t, response, "PASS RULE 0") != "BAND=20M AND MODE=CW" {
 				t.Fatalf("first edit/readback failed:\n%s", response)
@@ -297,28 +315,32 @@ func TestBooleanOnboardingFirstEditAndReconnectTCP(t *testing.T) {
 			if client == nil || client.readPausePending.Load() || client.readPauseUntilUnixNano.Load() != 0 {
 				t.Fatal("RESUME did not clear the readback pause")
 			}
-			unchanged, refusal := upgradeWireGet(t, conn, reader, "PASS RULE 0 BAND=20M AND\r\n")
+			unchanged, refusal := upgradeWireGet(t, s, call, conn, reader, "PASS RULE 0 BAND=20M AND\r\n")
 			if !strings.Contains(refusal, "No changes applied.") || !unchanged.Equal(first) {
 				t.Fatal("invalid first edit changed the rules")
 			}
-			final, response := upgradeWireGet(t, conn, reader, "PASS RULE 0 BAND=20M AND MODE=CW,FT8 AND SOURCE=HUMAN,SKIMMER\r\n")
+			final, response := upgradeWireGet(t, s, call, conn, reader, "PASS RULE 0 BAND=20M AND MODE=CW,FT8 AND SOURCE=HUMAN,SKIMMER\r\n")
 			if !strings.Contains(response, "Saved and active.") {
 				t.Fatal("explicit skimmer edit was not saved")
 			}
-			record, err := filter.LoadUserRecord(call)
+			record, err := filter.LoadV7UserRecord(call)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, savedGO, _, err := filter.PrepareV7Configuration(record.Configuration)
 			if err != nil {
 				t.Fatal(err)
 			}
 			for _, human := range []bool{true, false} {
 				sp := spot.NewSpot("LZ1ABC", "LZ2ABC", 14074, "FT8")
 				sp.IsHuman = human
-				if !record.Matches(sp) {
+				if !savedGO.Matches(sp) {
 					t.Fatalf("saved explicit-source rule excludes human=%v", human)
 				}
 			}
 			closeHandshakeTranscriptSession(t, conn, done)
 			conn2, reader2, _, returning := connectUpgradeSession(t, s, call)
-			reloaded, _ := upgradeWireGet(t, conn2, reader2, "")
+			reloaded, _ := upgradeWireGet(t, s, call, conn2, reader2, "")
 			if !reloaded.Equal(final) || !strings.Contains(returning, "Current settings and filters:") ||
 				strings.Contains(returning, "Default settings and filters:") ||
 				strings.Contains(returning, "To receive CW and FT8 from humans and skimmers:") {
@@ -356,7 +378,7 @@ func TestBooleanOnboardingPartialUpgradeNotice(t *testing.T) {
 	c := configurationTestClient(s, call)
 	result := s.restoreClientRecordOwned(c, time.Now().UTC())
 	if result.profileReset || !c.recordProtected || result.loadError == nil ||
-		!strings.Contains(result.warning, "profile could not be upgraded") ||
+		!strings.Contains(result.warning, "could not be read, admitted or reset") ||
 		strings.Contains(result.warning, "Boolean rules were kept") ||
 		strings.Contains(result.warning, "Your old filters were reset.") ||
 		!bytes.Equal(original, presetDiskBytes(t, path)) {

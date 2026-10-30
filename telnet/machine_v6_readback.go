@@ -41,7 +41,7 @@ func v6RuleReadback(set *filter.PreparedRuleSet) v6ReadbackRuleStatus {
 // The coordinator supplies coherent definitions/programs and captured metadata.
 // Rendering only reads the immutable set; it never prepares, compiles, or derives
 // preset association from mutable session state.
-func renderV6YAMLReadback(cfg filter.V6Configuration, set *filter.PreparedRuleSet, status configurationReadbackStatus, resource, requestID, revision string) (string, error) {
+func renderV6YAMLReadback(cfg filter.V6Configuration, set *filter.PreparedRuleSet, status configurationReadbackStatus, resource, requestID, revision string, warnings ...string) (string, error) {
 	resource = strings.ToUpper(resource)
 	var configuration any
 	switch resource {
@@ -57,20 +57,25 @@ func renderV6YAMLReadback(cfg filter.V6Configuration, set *filter.PreparedRuleSe
 		return "", fmt.Errorf("unknown YAML resource %q", resource)
 	}
 	status.Configured = cfg.Settings
+	warning := ""
+	if len(warnings) != 0 {
+		warning = warnings[0]
+	}
 	if len(resource) > maxYAMLBytes || !readbackMetadataFits(status, requestID, revision) ||
 		len(cfg.Filters.Rules) > filter.MaxRuleSlots || set.Counts().Rules > filter.MaxRuleSlots {
 		return "", errReadbackTooLarge
 	}
 	return encodeBoundedYAML(struct {
-		SchemaVersion int              `yaml:"schema_version"`
-		RequestID     string           `yaml:"request_id"`
-		Resource      string           `yaml:"resource"`
-		Revision      string           `yaml:"revision"`
-		Configuration any              `yaml:"configuration"`
-		Status        v6ReadbackStatus `yaml:"status"`
+		SchemaVersion        int              `yaml:"schema_version"`
+		RequestID            string           `yaml:"request_id"`
+		Resource             string           `yaml:"resource"`
+		Revision             string           `yaml:"revision"`
+		Configuration        any              `yaml:"configuration"`
+		Status               v6ReadbackStatus `yaml:"status"`
+		CompatibilityWarning string           `yaml:"compatibility_warning,omitempty"`
 	}{
-		filter.CurrentConfigurationVersion, requestID, resource, revision, configuration,
-		v6ReadbackStatus{status, v6RuleReadback(set)},
+		filter.V6ConfigurationVersion, requestID, resource, revision, configuration,
+		v6ReadbackStatus{status, v6RuleReadback(set)}, warning,
 	})
 }
 
@@ -86,7 +91,7 @@ func renderV6YAMLCommandError(resource, requestID, revision, code, message strin
 			Resource      string        `yaml:"resource"`
 			Revision      string        `yaml:"revision,omitempty"`
 			Error         documentError `yaml:"error"`
-		}{filter.CurrentConfigurationVersion, requestID, resource, revision, documentError{code, message}})
+		}{filter.V6ConfigurationVersion, requestID, resource, revision, documentError{code, message}})
 		if err == nil {
 			return response
 		}
@@ -113,5 +118,5 @@ func renderV6YAMLCommandSuccess(resource, requestID, revision, verb string, appl
 		Resource      string        `yaml:"resource"`
 		Revision      string        `yaml:"revision"`
 		Result        commandResult `yaml:"result"`
-	}{filter.CurrentConfigurationVersion, requestID, resource, revision, commandResult{verb, true, applied, persisted}})
+	}{filter.V6ConfigurationVersion, requestID, resource, revision, commandResult{verb, true, applied, persisted}})
 }

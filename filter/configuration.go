@@ -8,7 +8,11 @@ import (
 )
 
 // CurrentConfigurationVersion identifies disk records that preserve exact values.
-const CurrentConfigurationVersion = 6
+const CurrentConfigurationVersion = 7
+
+// V6ConfigurationVersion freezes the historical GO protocol/codec independently
+// of the generation selected by current profile storage.
+const V6ConfigurationVersion = 6
 
 // DefaultBool keeps the inherited selection distinct from explicit true/false.
 // YAML represents inheritance with DEFAULT rather than a null value.
@@ -86,7 +90,8 @@ type SettingsConfiguration struct {
 
 // FilterConfiguration captures immutable rules and controls, not runtime cells.
 type FilterConfiguration struct { //nolint:revive // Names the filter portion alongside SettingsConfiguration.
-	preparedRules *PreparedRuleSet `yaml:"-"`
+	preparedRules *PreparedRuleSet  `yaml:"-"`
+	preparedCC    *PreparedCCFilter `yaml:"-"`
 
 	IncludeBeacons DefaultBool `yaml:"include_beacons"`
 	AllowWWV       DefaultBool `yaml:"allow_wwv"`
@@ -110,6 +115,7 @@ func ConfigurationFromFilter(f *Filter, settings SettingsConfiguration) Configur
 	}
 	return Configuration{Settings: settings, Filters: FilterConfiguration{
 		preparedRules:  f.preparedRules,
+		preparedCC:     f.preparedCC,
 		IncludeBeacons: DefaultBoolFromPointer(f.IncludeBeacons), AllowWWV: DefaultBoolFromPointer(f.AllowWWV),
 		AllowWCY: DefaultBoolFromPointer(f.AllowWCY), AllowAnnounce: DefaultBoolFromPointer(f.AllowAnnounce),
 		AllowSelf: DefaultBoolFromPointer(f.AllowSelf), AllowToxic: DefaultBoolFromPointer(f.AllowToxic),
@@ -133,6 +139,7 @@ func (c Configuration) FilterValue() Filter {
 	f := c.Filters
 	return Filter{
 		preparedRules:  f.preparedRules,
+		preparedCC:     f.preparedCC,
 		IncludeBeacons: f.IncludeBeacons.Pointer(), AllowWWV: f.AllowWWV.Pointer(), AllowWCY: f.AllowWCY.Pointer(),
 		AllowAnnounce: f.AllowAnnounce.Pointer(), AllowSelf: f.AllowSelf.Pointer(), AllowToxic: f.AllowToxic.Pointer(),
 	}
@@ -157,7 +164,7 @@ func (c Configuration) V6() V6Configuration {
 // cloning/encoding. Transport/readback limits remain independent.
 func (c Configuration) Preset() (*SavedPreset, error) {
 	return RuntimeSavedPresetFromV6(&V6SavedPreset{
-		ConfigurationVersion: CurrentConfigurationVersion, Configuration: c.V6(),
+		ConfigurationVersion: V6ConfigurationVersion, Configuration: c.V6(),
 	})
 }
 

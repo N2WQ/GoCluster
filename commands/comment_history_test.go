@@ -122,6 +122,12 @@ func TestCommentCommandHelp(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		for _, topic := range []string{"PASS COMMENT", "REJECT COMMENT", "REMOVE PASS COMMENT", "REMOVE REJECT COMMENT", "RESET FILTER COMMENT", "SHOW FILTER COMMENT"} {
 			text := p.ProcessCommandForClient("HELP "+topic, "W1AAA", "", nil, dialect)
+			if dialect == "cc" {
+				if !strings.Contains(text, "GO dialect only") || !strings.Contains(text, "HELP SET/FILTER") || strings.Contains(text, "PASS RULE 0") {
+					t.Fatalf("CC comment mutation boundary: %q", text)
+				}
+				continue
+			}
 			if !strings.Contains(text, "Usage: HELP RULE") || !strings.Contains(text, "refused, not translated") || strings.Contains(text, "Usage: "+topic) {
 				t.Fatalf("%s %s: %q", dialect, topic, text)
 			}

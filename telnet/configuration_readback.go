@@ -35,6 +35,7 @@ type readbackSessionStatus struct {
 	PauseRemaining       int    `yaml:"pause_remaining_seconds"`
 	SuppressedSpots      uint64 `yaml:"suppressed_spots"`
 	TemporaryDefaults    bool   `yaml:"temporary_defaults"`
+	UnsavedChanges       bool   `yaml:"unsaved_changes,omitempty"`
 }
 
 type readbackServerStatus struct {
@@ -103,7 +104,7 @@ func (s *Server) captureReadbackStatus(c, prepared *Client) configurationReadbac
 			Callsign: c.callsign, DiagnosticComments: readbackDiagnosticName(c.getDiagMode()),
 			PauseActive: active, PausePendingDelivery: pending,
 			PauseRemaining: durationCeilSeconds(remaining), SuppressedSpots: suppressed,
-			TemporaryDefaults: c.recordProtected,
+			TemporaryDefaults: c.recordProtected, UnsavedChanges: c.configurationUnsaved,
 		},
 		Server: readbackServerStatus{
 			DefaultDialect: string(s.configurationDefaultDialect()), DefaultDedupePolicy: s.effectiveDefaultDedupePolicy().label(),
@@ -163,16 +164,28 @@ func (s *Server) handleHumanReadback(c *Client, line string) bool {
 		duration = s.autoReadPauseDuration
 	}
 	completion := c.beginHumanReadback(s.now(), duration)
-	release, err := s.acquireConfiguration(c, false, false, time.Time{})
+	var reservation *configurationOutputReservation
+	var err error
+	banked, selectedDialect := c.configurationBankSelection()
+	if banked || selectedDialect == DialectCC {
+		// Reserve before the transaction can capture/clone a native bank. The
+		// queued response transfers this owner to the existing writer flush.
+		reservation, err = c.reserveConfigurationOutput()
+	}
+	var release func()
+	if err == nil {
+		release, err = s.acquireConfiguration(c, false, false, time.Time{})
+	}
 	var response string
 	if err == nil {
-		response, err = s.renderHumanReadback(c, resource, category, duration)
+		_, selectedDialect = c.configurationBankSelection()
+		response, err = s.renderOwnedHumanReadback(c, resource, category, duration)
 		release()
 	}
 	if err != nil {
-		response = humanReadbackError(err, duration)
+		response = humanOwnedReadbackError(selectedDialect, resource, err, duration)
 	}
-	if err := c.enqueueControl(controlMessage{raw: []byte(response), readback: completion}); err != nil && !isExpectedClientSendErr(err) {
+	if err := c.enqueueHumanReadback(reservation, []byte(response), completion); err != nil && !isExpectedClientSendErr(err) {
 		log.Printf("Readback delivery failed for %s: %v", c.identity(), err)
 	}
 	return true
@@ -187,6 +200,8 @@ func parseHumanReadback(line string) (resource, category string, recognized bool
 	switch fields[0] {
 	case "SHOW/FILTER", "SH/FILTER":
 		resource, start = "FILTER", 1
+	case "SHOW/SETTINGS", "SH/SETTINGS":
+		resource, start = "SETTINGS", 1
 	case "SHOW":
 		if len(fields) < 2 || (fields[1] != "FILTER" && fields[1] != "SETTINGS") {
 			return "", "", false

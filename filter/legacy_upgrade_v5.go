@@ -278,7 +278,7 @@ func decodeRetiredV5Login(node *yaml.Node, state *storageDecodeState, defaults *
 	}
 	f, s := value.Configuration.Filters, value.Configuration.Settings
 	return &UserRecord{
-		ConfigurationVersion: CurrentConfigurationVersion,
+		ConfigurationVersion: V6ConfigurationVersion,
 		Filter: Filter{preparedRules: defaults, IncludeBeacons: f.IncludeBeacons.Pointer(),
 			AllowWWV: f.AllowWWV.Pointer(), AllowWCY: f.AllowWCY.Pointer(), AllowAnnounce: f.AllowAnnounce.Pointer(),
 			AllowSelf: f.AllowSelf.Pointer(), AllowToxic: f.AllowToxic.Pointer()},

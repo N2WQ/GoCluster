@@ -159,6 +159,7 @@ modes:
   - name: PSK
     display: PSK
     filter_visible: true
+    cc_shortcut: true
     comment_tokens: [PSK]
     variants: [PSK31, PSK63, PSK125]
     pskreporter_route: normal

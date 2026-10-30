@@ -66,7 +66,7 @@ func testSavedPreset() *SavedPreset {
 	f.SetAnnounceEnabled(false)
 	f.SetSelfEnabled(false)
 	f.SetToxicEnabled(false)
-	return &SavedPreset{ConfigurationVersion: CurrentConfigurationVersion, Filter: *f, Dialect: "cc", DedupePolicy: "SLOW", Grid: "FN31", NoiseClass: "URBAN", PathMinObservationCount: 40, SolarSummaryMinutes: 30}
+	return &SavedPreset{ConfigurationVersion: V6ConfigurationVersion, Filter: *f, Dialect: "cc", DedupePolicy: "SLOW", Grid: "FN31", NoiseClass: "URBAN", PathMinObservationCount: 40, SolarSummaryMinutes: 30}
 }
 
 func TestPresetsOwnershipAndCRUD(t *testing.T) {

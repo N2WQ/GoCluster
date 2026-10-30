@@ -16,6 +16,7 @@ func installHelpRoutingAliases(catalog *helpCatalog, dialect string) {
 		"H": "HELP", "SH": "SHOW", "SH BUILD": "SHOW BUILD", "SH OWN": "SHOW OWN",
 		"SH DXCC": "SHOW DXCC", "SH MYDX": "SHOW MYDX", "REJECT NEARBY": "NEARBY", "PASS NEARBY": "NEARBY",
 		"SHOW/FILTER COMMENT": "SHOW FILTER COMMENT", "SH/FILTER COMMENT": "SHOW FILTER COMMENT",
+		"SHOW/SETTINGS": "SHOW SETTINGS", "SH/SETTINGS": "SHOW SETTINGS",
 	} {
 		catalog.aliases[alias] = topic
 	}
@@ -65,6 +66,9 @@ func (catalog helpCatalog) normalizeTopic(dialect, topic string) string {
 		}
 		if strings.HasPrefix(command, "SET/") && !strings.Contains(command, "/NO") && spot.IsCCShortcutMode(strings.TrimPrefix(command, "SET/")) {
 			return "SET/<MODE>"
+		}
+		if strings.HasPrefix(command, "UNSET/") && spot.IsCCShortcutMode(strings.TrimPrefix(command, "UNSET/")) {
+			return "UNSET/<MODE>"
 		}
 	}
 	return upper

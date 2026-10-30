@@ -504,8 +504,9 @@ lenient modes must be explicit, documented, and test-covered.
   logic and does not suppress geography.
 - Archive version 6 records both observed States. Versions 2-5 remain unknown;
   history never consults today's registry to hydrate old records.
-- Native configuration version 6 and explicit machine schema 6 carry numbered
-  rules, not State maps or hidden old-schema selections. Recognized old profiles
+- Native configuration version seven carries separate GO numbered rules and
+  native CC geography. The retained schema-six GO interface carries numbered
+  rules, not hidden old-schema selections. Recognized old profiles
   have the reset-only login upgrade below; future or malformed documents remain
   protected. Downgrade uses matching
   binary/data backups.
@@ -525,6 +526,10 @@ per-run cleanup. See [ADR-0302](decisions/ADR-0302-correction-evidence-admission
 
 ## Boolean Personal Rules
 
+This section governs the GO bank. The current independent native CC, version-seven
+storage and schema-seven contract is [CC dialect](cc-dialect.md), approved in
+[ADR-0330](decisions/ADR-0330-native-cc-banks-and-generation-seven.md).
+
 This is the approved normative Boolean MVP contract; see
 [ADR-0329](decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md),
 which replaces the affected NEARBY/schema clauses of ADR-0317.
@@ -536,7 +541,7 @@ Boolean personal-rule engine; the old category model has been removed.
 
 - Slots 0-9 each hold one PASS or REJECT action and one complete expression.
   `PASS RULE <0..9> <expression>` and `REJECT RULE <0..9> <expression>` use the
-  same grammar in GO and CC. Setting a slot replaces its action and expression.
+  GO grammar. CC refuses Boolean rule mutations. Setting a slot replaces its action and expression.
 - Any matching active REJECT vetoes delivery. Otherwise active PASS rules are
   ORed. With no active PASS, personal selection is unrestricted except for
   REJECTs; with no rules there is no personal restriction. Slots are not
@@ -764,94 +769,63 @@ on restart or state eviction. See
 
 ## Stored Configuration Admission
 
-Native user records require explicit `configuration_version: 6` and nested
-`configuration.filters/settings`. FILTER owns `rules` and
-the six controls `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`,
-`allow_self` and `allow_toxic`. SETTINGS retains `dialect`, `grid`,
-`noise_class`, `dedupe_policy`, `path_min_observation_count` and
-`solar_summary_minutes`. Rules contain `slot`, lowercase `action: pass|reject`
-and `expr`; expressions canonicalize without changing COMMENT literal bytes.
-Retain DEFAULT versus explicit control false/true, empty default strings and
-numeric zero selections, subject to runtime settings admission.
+Current native profiles and libraries use version seven and independent GO/CC
+banks. The complete ownership, reset, preset, resource and recovery contract is
+[CC dialect](cc-dialect.md), with exact approved limits in
+[Scope Ledger v4](cc-dialect-v4-scope-ledger.md) and durable rationale in
+[ADR-0330](decisions/ADR-0330-native-cc-banks-and-generation-seven.md).
 
-User metadata `recent_ips` and `last_login_utc` stays outside configuration.
-An optional `preset` contains `name` and an independent `baseline` with its
-own `configuration_version: 6` and `configuration`. A named library contains
-only a `presets` mapping of normalized names to individual versioned v6
-configurations: no invented top-level library version or machine envelope.
-All current entries and baselines require v6. Strict v6 codecs do not interpret
-older schemas or accept explicit disk zero. Encoder DTO version zero is only
-an in-memory new-object convention, stamped to 6.
+Each bank owns six exact DEFAULT/false/true controls and its own immutable applied
+preset baseline. Configured shared preferences preserve empty/zero/default
+selections; runtime fallback does not rewrite them on restore. Login/IP and fixed
+notice metadata are separate from writable preferences. Full schema-seven CONFIG
+restores both banks and shared settings; ordinary edits cannot write inactive
+state. Named presets carry exactly one tagged bank plus shared preferences.
 
-An explicit login-owned upgrade handles recognized unversioned and version
-1-5 profiles. It discards personal filters, the retired NEARBY toggle and applied association,
-preserves six settings, separate controls and login metadata, and installs
-the same configured mode/source defaults as a new account in editable PASS
-slot 0. This is a one-time reset, not translation of old rules.
-Existing v6 profiles and new generation-6 presets must not be reset again.
-Shared-library cleanup removes old entries under the existing base-call stripe
-and retains valid v6 entries. Back up originals before replacement; each file
-commits atomically, with explicit partial-failure/retry behavior rather than a
-cross-file atomicity claim. Use .pre-v6.bak backups without altering prior
-.pre-v5.bak files. Library replacement is first; retry after profile failure
-preserves new v6 entries. Only initial authoritative profile absence permits
-new-user creation. Future, malformed and unsafe/over-budget inputs
-remain protected. No production data reset is authorized merely by implementing
-or documenting this upgrade.
+Pre-seven upgrade wipes all old filters, switches and applied references; both
+banks start from current operator mode/source defaults. Selected dialect and
+unrelated settings remain. Old named presets are cleared once per shared library.
+Reset generation and library replacement commit together, so later SSID/profile/
+notice retries preserve newly created presets. A completed reset is never inferred
+from successful notice delivery, and failed notice acknowledgement never repeats it.
 
-Full callsign/SSID owns its user record and applied baseline; numeric SSIDs
-share the base-call named library, not login metadata or live settings.
-Ordinary saves retain the applied reference. Library overwrite/deletion does
-not change that independent baseline; differences show `(modified)`, and
-reversing them clears it. LOAD rebuilds geometry and records the applied
-snapshot, including reported server adjustments. Missing geometry makes NEARBY
-false without rewriting rules or blocking unrelated OR branches. SAVE associates the same
-capture committed to the library.
+Each eligible upgrade replacement is admitted and its original backup verified
+before replacing that file. When both files are eligible both backups precede
+library then profile writes. Separate commits retain independent failure outcomes;
+an independently safe profile reset may finish while preset reset remains pending.
+Only initial authoritative profile absence permits new-user creation. Malformed,
+unsafe, future and over-budget originals remain protected, including at logout.
 
-User-record physical reads, normalized encoding and exact prepared writes each
-have a 1,048,576-byte limit. Configuration and applied baseline use separate
-262,144-byte standalone SavedPreset encoding limits, also applying to each
-named preset. One document-wide physical-plus-logical decoding-work budget
-includes repeated alias expansion:
-2,097,152 units for a record and 16,777,216 for a collection. Work units are not
-heap or file bytes; nested baselines share the operation budget. Existing
-20-name/8,388,608-byte (8 MiB) collection limits remain.
+The full-SSID lease spans capture, admission, persistence and publication. The
+base-call library stripe is acquired after it. Publication uses path then filter
+locks and stable Filter identity. Machine and LOAD commit before publishing;
+human late-save failures keep both admitted banks in memory with an unsaved
+warning. SAVE's library-success/profile-failure outcome keeps both prior references.
+Metadata-only notice acknowledgement reloads strict current storage and rechecks
+ownership without publishing, resetting, saving unsaved preferences or advancing
+configuration/history revisions.
 
-Admit human candidates and temporary records before publication. A refused
-destination permits fitting warned temporary changes; a prospective oversized
-replacement rejects without effects. Initial login protection is sticky, while
-warm failures retry authoritative metadata on later saves and ordinary logout.
-An unreadable/malformed/unsupported record stays untouched, including login/IP,
-ordinary preference and teardown saves. Protected login uses warned temporary
-defaults, not successful restoration. LOAD, machine writes and SAVE are refused
-for that session; SAVE fails before library replacement. A failed login metadata
-save after a successful read retains the restored preferences/reference with a
-warning.
+Physical profile 1 MiB, preset 256 KiB, library 8 MiB/20 names and shared decode-work
+2 MiB/16 MiB bounds remain. CC canonical state is capped at 128 KiB, complete
+CONFIG/tagged preset at 192 KiB and final schema-seven frame at 256 KiB. Full encoding,
+metadata, both baselines and promised human/wire inspection must all fit. Payload
+and work charges are not exact heap bounds. Process-wide input/output reservations
+remain held through decoder ownership and writer flush/discard respectively.
 
-SAVE admits library and association before either write; only later I/O failure
-can leave library-only success, retaining the previous live/disk association and
-baseline. Machine and LOAD publish only after committing the complete record.
-An unchanged machine write still persists, repairing a prior late human save
-failure without resetting unrelated state.
-
-The full-SSID configuration lease spans capture, admission, persistence and
-publication, fencing session replacement. SAVE takes the base-call library
-stripe after that lease and admits both immutable payloads before library-then-
-record commits; callbacks must not reenter preset APIs. Publication preserves
-path-before-filter lock order and stable Filter identity. Atomic replacement
-requires writing, syncing and closing the temporary file first. Stop writers
-before backup, repair or restore and use one writer process per data directory;
-downgrade requires a matching binary/data backup. Refusal never grants authority
-to replace a protected destination.
-
-Source owners are `filter/configuration_v6.go`, `filter/storage_v6.go`,
-`filter/storage_v6_decode.go`, `filter/storage_v6_io_adapter.go`,
-`filter/preset_v6.go` and the existing user-record/preset coordinators.
-See [operator storage](../data/config/README.md#user-configuration-storage) for
-native examples and [ADR-0270](decisions/ADR-0270-complete-storage-admission.md)
-for admission history, not pre-v5 migration authority.
+Stop writers before backup/repair/restore; use one writer process per user directory.
+Rollback needs matching executable, profiles and library and loses later changes;
+preserve current data first. Deployment/live data operations remain separately
+authorized. Historical version-six DTO codecs remain frozen for legacy GO protocol
+handling and cannot represent a native CC bank.
 
 ### Machine Schema 6
+
+This is the retained legacy interface, not the current complete backup schema.
+FILTER/CONFIG require effective GO; CONFIG proposals must remain in GO.
+SETTINGS/CAPABILITIES work in CC without exposing empty/inactive GO rules and
+include compatibility guidance. SETTINGS can switch the active bank. All
+changes preserve the other bank and use the whole-preference revision. Complete
+both-bank restore and native CC editing use [schema seven](cc-dialect.md#yaml-and-backups).
 
 Every `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 6 [ID <id>]` requires
 explicit schema 6, including SETTINGS/CAPABILITIES. PUT/PATCH YAML
@@ -948,7 +922,7 @@ start clauses. A keyword unsupported in the current category starts a clause,
 including after empty comma fields. Finish a list without a comma before starting
 another clause to avoid interpreting a configured keyword alias as a value.
 
-Explicit machine schema 6 and native configuration version 6 carry COMMENT
+The GO bank in native version seven and retained machine schema six carry COMMENT
 expressions in `rules`, not `comments`/`block_comments` maps or lists. PATCH
 replaces a supplied complete rule list; omission preserves it. Old schema/disk
 ordinary codec documents are refused; login separately recognizes safe retired

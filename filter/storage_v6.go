@@ -62,7 +62,7 @@ func prepareV6UserRecord(record *V6UserRecord) (*V6UserRecord, []byte, error) {
 		return nil, nil, err
 	}
 	snapshot := &V6UserRecord{
-		ConfigurationVersion: CurrentConfigurationVersion, Configuration: cfg, Preset: ref,
+		ConfigurationVersion: V6ConfigurationVersion, Configuration: cfg, Preset: ref,
 		RecentIPs: slices.Clone(trimRecentIPs(record.RecentIPs)), LastLoginUTC: record.LastLoginUTC,
 	}
 	data, err := yaml.Marshal(snapshot)

@@ -71,6 +71,10 @@ func TestHumanPreferenceCandidateRawIsolation(t *testing.T) {
 func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
 		t.Run(string(dialect), func(t *testing.T) {
+			if dialect == DialectCC {
+				testNativeCCHumanRefusalAndSaveIntent(t)
+				return
+			}
 			s := presetTestServer(t)
 			s.filterEngine = newFilterCommandEngine()
 			c := configurationTestClient(s, "W1ABC-1")

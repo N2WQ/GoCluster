@@ -65,47 +65,43 @@ in a file named with the hex-encoded owner callsign. Back up the entire user-dat
 directory so current preferences, the applied preset name and baseline, login
 metadata and the shared preset library remain together.
 
-Current user records, named preset entries and applied baselines require
-explicit configuration_version: 6 and nested configuration.filters/settings.
-Ordinary codecs do not migrate old data. A separate login-owned coordinator
-recognizes safe unversioned/version 1-5 records, validates their historical
-shape and rules, preserves settings/controls/metadata, and resets filters and
-retired shared presets once to the configured new-user PASS rule 0. Current v6
-empty rules remain empty. Frozen v5 recognition does not accept new predicates
-or activate discarded filters.
+Current profiles and shared preset libraries use explicit version seven. Profiles
+store both dialect banks, six controls in each and independent applied baselines.
+Shared preferences and login metadata remain separate. Use schema-seven CONFIG
+for both-bank configuration export/restore; schema six is a limited legacy
+GO/settings interface and cannot back up the complete current profile.
 
-Originals are preserved in .pre-v6.bak files before per-file atomic replacement;
-existing .pre-v5.bak backups remain untouched. A conflicting backup protects the
-original. Library replacement precedes profile replacement with precise partial
-outcomes and safe retries that retain new v6 entries. Only authoritative initial
-profile absence permits new-user creation. A library-only cleanup failure on a
-valid v6 profile does not block unrelated preference saves.
+The login-owned one-time upgrade recognizes safe pre-seven structure without
+compiling discarded rules. It clears earlier filters, all six switches and old
+named presets, then initializes both banks from the current operator mode/source
+defaults. Selected dialect and unrelated preferences remain. Valid presets created
+after library reset survive retries from later SSIDs. Current-seven empty
+selections remain empty.
 
-Malformed, unsafe, future or unsupported records remain protected. A user can
-connect with temporary defaults and a warning, but LOAD, SAVE PRESET and YAML
-writes cannot overwrite that configuration. Login timestamp/IP save failure
-after a successful read instead continues with the restored preferences and a
-warning. Deployment and production-data changes require separate authorization.
+Upgrade originals receive verified adjacent `.pre-v7.bak` backups. A different
+existing backup protects the original; older backup generations remain untouched.
+When both replacements are eligible, both backups precede library then profile
+writes. The files commit separately. Profile reset, library reset and notice
+acknowledgement have independent completion, so interruption may repeat a notice
+but never a completed reset. Ordinary saves/acknowledgements do not create these
+upgrade backups. Only initial authoritative profile absence permits creation.
 
-User records have separate 1 MiB physical-read, normalized-encoding and final
-replacement limits. Preferences and applied baselines must each fit the 256 KiB
-standalone-preset encoding. Expensive alias expansion is also refused under a
-shared decoding-work budget; work units are not file or heap bytes. Preserve
-refused originals for backup and repair. A connected session whose file becomes
-unreadable can use admitted temporary changes with a warning; later saves and
-ordinary logout retry the authoritative file. Login-protected sessions keep
-their protection until logout. SAVE checks both destinations before either write.
+Malformed/future/unsafe or over-budget data remains protected, including against
+logout autosave. A valid restore followed by login metadata save failure keeps
+the restored preferences with a warning. Profile files remain limited to1 MiB,
+libraries to8 MiB/20 names; complete configurations, native CC state, tagged
+baselines and output frames have additional byte/work limits. Refused originals
+must be retained for diagnosis and repair.
 
-Before upgrading, stop server writers and external editors, and retain a backup
-of the user-data directory and its matching binary. Older user-record writers
-can drop the new marker and preset reference or normalize exact values; older
-strict preset decoders reject the new snapshot fields. For downgrade, stop
-writers again and restore the matching earlier binary and data backup. Keep the
-current backup intact; do not try an older writer against its only copy. The
-directory has one writer process; transaction locks do not coordinate separate
-server processes or external edits. See
-[ADR-0244](decisions/ADR-0244-exact-configuration-persistence.md) and
-[ADR-0329](decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md).
+Before upgrade, stop server writers/external editors and retain the whole user
+directory with its matching executable. For rollback, stop writers, preserve the
+current files, then restore a matching old executable, profiles and shared
+library. This loses later changes across affected SSIDs. Never relabel versions
+or use an older writer on the only current copy. A directory has one writer
+process; in-process locks do not coordinate external editors or other processes.
+Implementation approval does not authorize live data operations or deployment.
+See [CC recovery](cc-dialect.md#presets-limits-and-recovery) and
+[ADR-0330](decisions/ADR-0330-native-cc-banks-and-generation-seven.md).
 
 ## PSKReporter MQTT Debug Logging
 

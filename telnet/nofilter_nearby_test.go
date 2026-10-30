@@ -16,6 +16,10 @@ func TestResetFilterRetainsUserGridAndRetiresNearbyBothDialects(t *testing.T) {
 		t.Fatal("FN31 test cells unavailable")
 	}
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+		if dialect == DialectCC {
+			testNativeCCNoFilterRetainsGridAndInactiveNearby(t)
+			continue
+		}
 		c := configurationTestClient(presetTestServer(t), "W1ABC-1")
 		c.dialect, c.grid, c.gridCell, c.gridCoarseCell = dialect, "FN31", fine, coarse
 		c.configuredSettings = filter.SettingsConfiguration{Dialect: string(dialect), Grid: "FN31", DedupePolicy: "FAST"}

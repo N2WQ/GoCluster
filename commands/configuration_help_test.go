@@ -9,6 +9,14 @@ func TestConfigurationCommandHelp(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
 		response := p.ProcessCommandForClient("HELP SHOW FILTER", "W1ABC-1", "", nil, dialect)
+		if dialect == "cc" {
+			for _, want := range []string{"native CC state", "DOC|DOS|DXCTY|DXSTATE", "INHERIT", "active allow-all", "SCHEMA 7", "RESUME"} {
+				if !strings.Contains(response, want) {
+					t.Fatalf("native CC readback help omits %q: %s", want, response)
+				}
+			}
+			continue
+		}
 		for _, want := range []string{"FULL", "RULE", "65,536", "always pause", "canonical numbered rules", "NEARBY", "Slot IDs", "ON/OFF", "GET YAML FILTER SCHEMA 6"} {
 			if !strings.Contains(response, want) {
 				t.Fatalf("readback help omits %q: %s", want, response)

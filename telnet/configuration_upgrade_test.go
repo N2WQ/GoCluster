@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -22,6 +23,28 @@ import (
 
 // Literal flat keys follow the previous binary's yaml tags, not the new DTO.
 func oldLoginRecord(version int) []byte {
+	if version == 6 {
+		return []byte(`configuration_version: 6
+configuration:
+  filters:
+    rules: [{slot: 4, action: reject, expr: "UNSUPPORTED_OLD_EXPRESSION"}]
+    include_beacons: false
+    allow_wwv: false
+    allow_wcy: true
+    allow_announce: false
+    allow_self: false
+    allow_toxic: false
+  settings:
+    dialect: cc
+    grid: FN31
+    noise_class: URBAN
+    dedupe_policy: MED
+    path_min_observation_count: 42
+    solar_summary_minutes: 15
+recent_ips: [192.0.2.7, 192.0.2.8]
+last_login_utc: 2026-10-01T12:00:00Z
+`)
+	}
 	if version == 5 {
 		return []byte(`configuration_version: 5
 configuration:
@@ -120,12 +143,59 @@ func connectUpgradeSession(t *testing.T, s *Server, call string) (net.Conn, *buf
 	return conn, reader, done, greeting.String()
 }
 
-func upgradeWireGet(t *testing.T, conn net.Conn, reader *bufio.Reader, prefix string) (filter.V6Configuration, string) {
+func waitUpgradeOutputReleased(t *testing.T, s *Server, call string) {
 	t.Helper()
+	s.clientsMutex.RLock()
+	c := s.clients[call]
+	s.clientsMutex.RUnlock()
+	if c == nil {
+		t.Fatal("logged-in client is unavailable")
+	}
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		c.bulletinResponseMu.Lock()
+		held := c.configurationOutputHeld
+		c.bulletinResponseMu.Unlock()
+		if !held {
+			return
+		}
+		runtime.Gosched()
+	}
+	t.Fatal("previous bounded response did not release its writer ownership")
+}
+
+func upgradeHumanCommand(t *testing.T, s *Server, call string, conn net.Conn, reader *bufio.Reader, command string) string {
+	t.Helper()
+	waitUpgradeOutputReleased(t, s, call)
+	if _, err := io.WriteString(conn, command+"\r\n"); err != nil {
+		t.Fatal(err)
+	}
+	ending := "Type RESUME when ready. Missed spots are not replayed.\r\n"
+	if command == "RESUME" {
+		ending = "\r\n"
+	}
+	var response strings.Builder
+	for response.Len() < maxYAMLBytes {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("human response did not finish: %v", err)
+		}
+		response.WriteString(line)
+		if strings.HasSuffix(response.String(), ending) && (command != "RESUME" || strings.Contains(response.String(), "Live spots resumed.")) {
+			return response.String()
+		}
+	}
+	t.Fatal("human response exceeded its bound")
+	return ""
+}
+
+func upgradeWireGet(t *testing.T, s *Server, call string, conn net.Conn, reader *bufio.Reader, prefix string) (filter.V7Configuration, string) {
+	t.Helper()
+	waitUpgradeOutputReleased(t, s, call)
 	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := io.WriteString(conn, prefix+"GET YAML CONFIG SCHEMA 6 ID Upgrade-1\r\n"); err != nil {
+	if _, err := io.WriteString(conn, prefix+"GET YAML CONFIG SCHEMA 7 ID Upgrade-1\r\n"); err != nil {
 		t.Fatal(err)
 	}
 	var response strings.Builder
@@ -138,16 +208,46 @@ func upgradeWireGet(t *testing.T, conn net.Conn, reader *bufio.Reader, prefix st
 		if line == "---\r\n" {
 			frame := readMachineTestFrame(t, bufio.NewReader(io.MultiReader(strings.NewReader("---\r\n"), reader)))
 			var envelope struct {
-				Configuration filter.V6Configuration `yaml:"configuration"`
+				SchemaVersion int                     `yaml:"schema_version"`
+				Configuration *filter.V7Configuration `yaml:"configuration"`
+				Error         *v7DocumentError        `yaml:"error"`
 			}
 			if err := yaml.Unmarshal([]byte(frame), &envelope); err != nil {
 				t.Fatal(err)
 			}
-			return envelope.Configuration, response.String()
+			if envelope.SchemaVersion != 7 || envelope.Configuration == nil || envelope.Error != nil {
+				t.Fatalf("current backup readback failed: %s", frame)
+			}
+			return *envelope.Configuration, response.String() + frame
 		}
 	}
 	t.Fatal("missing bounded correlated upgrade readback")
-	return filter.V6Configuration{}, ""
+	return filter.V7Configuration{}, ""
+}
+
+func saveCurrentV7TestRecord(t *testing.T, call string, record *filter.V7UserRecord) {
+	t.Helper()
+	payload, err := filter.PrepareV7UserRecord(call, record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := payload.Commit(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func currentV7GOTestConfiguration(t *testing.T, definitions []filter.RuleDefinition, settings filter.SettingsConfiguration) filter.V7Configuration {
+	t.Helper()
+	configuration, err := filter.DefaultV7Configuration(settings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	configuration.Filters.GO.Rules = definitions
+	canonical, _, _, err := filter.PrepareV7Configuration(configuration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return canonical
 }
 
 func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
@@ -161,7 +261,7 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 		}
 	})
 	for _, transport := range []string{"native", "ziutek"} {
-		for _, version := range []int{0, 1, 2, 3, 4, 5} {
+		for _, version := range []int{0, 1, 2, 3, 4, 5, 6} {
 			t.Run(fmt.Sprintf("%s/version-%d", transport, version), func(t *testing.T) {
 				s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
 					opts.Transport, opts.EchoMode, opts.LoginGreeting = transport, "off", "READY\n"
@@ -183,8 +283,8 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 					t.Fatal(err)
 				}
 				conn, reader, done, greeting := connectUpgradeSession(t, s, call)
-				cfg, loginTail := upgradeWireGet(t, conn, reader, "")
-				if !strings.Contains(greeting+loginTail, "Your old filters were reset. Your settings were kept.") {
+				cfg, loginTail := upgradeWireGet(t, s, call, conn, reader, "")
+				if !strings.Contains(greeting+loginTail, "earlier upgrade reset your GO and CC filter banks") {
 					t.Fatal("successful old-profile reset was not explained to the user")
 				}
 				if strings.Contains(greeting, "temporary defaults") {
@@ -195,51 +295,56 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 					PathMinObservationCount: 42, SolarSummaryMinutes: 15,
 				}
 				if cfg.Settings != wantSettings ||
-					!reflect.DeepEqual(cfg.Filters.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,RTTY AND SOURCE=HUMAN"}}) {
+					!reflect.DeepEqual(cfg.Filters.GO.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,RTTY AND SOURCE=HUMAN"}}) ||
+					!slices.Equal(cfg.Filters.CC.Modes, []string{"CW", "RTTY"}) || !slices.Equal(cfg.Filters.CC.Sources, []string{"HUMAN"}) {
 					t.Fatalf("old preferences/default-mode reset lost: %+v", cfg)
 				}
-				if cfg.Filters.AllowSelf != filter.DefaultBoolFalse || cfg.Filters.AllowWCY != filter.DefaultBoolTrue ||
-					cfg.Filters.IncludeBeacons != filter.DefaultBoolFalse || cfg.Filters.AllowWWV != filter.DefaultBoolFalse ||
-					cfg.Filters.AllowAnnounce != filter.DefaultBoolFalse || cfg.Filters.AllowToxic != filter.DefaultBoolFalse {
-					t.Fatal("separate controls were reset")
+				for _, control := range []filter.DefaultBool{cfg.Filters.GO.AllowSelf, cfg.Filters.GO.AllowWCY,
+					cfg.Filters.GO.IncludeBeacons, cfg.Filters.GO.AllowWWV, cfg.Filters.GO.AllowAnnounce, cfg.Filters.GO.AllowToxic,
+					cfg.Filters.CC.AllowSelf, cfg.Filters.CC.AllowWCY, cfg.Filters.CC.IncludeBeacons,
+					cfg.Filters.CC.AllowWWV, cfg.Filters.CC.AllowAnnounce, cfg.Filters.CC.AllowToxic} {
+					if control != filter.DefaultBoolDefault {
+						t.Fatal("upgrade retained an old delivery switch")
+					}
 				}
-				_, value, err := filter.PrepareV6Configuration(cfg)
+				_, goValue, ccValue, err := filter.PrepareV7Configuration(cfg)
 				if err != nil {
 					t.Fatal(err)
 				}
 				skimmer := spot.NewSpot("LZ1ABC", "LZ2ABC", 14020, "CW")
 				skimmer.IsHuman = false
-				if value.Matches(skimmer) {
+				if goValue.Matches(skimmer) || ccValue.Matches(skimmer) {
 					t.Fatal("upgrade did not use the configured HUMAN source default")
 				}
 				skimmer.IsHuman = true
-				if !value.Matches(skimmer) {
+				if !goValue.Matches(skimmer) || !ccValue.Matches(skimmer) {
 					t.Fatal("upgrade did not allow matching human reports")
 				}
-				loaded, err := filter.LoadUserRecord(call)
-				if err != nil || loaded.ConfigurationVersion != 6 || loaded.Preset != nil ||
+				loaded, err := filter.LoadV7UserRecord(call)
+				if err != nil || loaded.ConfigurationVersion != 7 || loaded.Presets.GO != nil || loaded.Presets.CC != nil ||
 					!slices.Contains(loaded.RecentIPs, "192.0.2.7") {
 					t.Fatalf("upgraded durable metadata: %v %+v", err, loaded)
 				}
-				if names, err := filter.ListPresets(call); err != nil || len(names) != 0 {
+				if names, err := filter.ListV7Presets(call); err != nil || len(names) != 0 {
 					t.Fatalf("old preset library still blocks the upgraded user: %v %v", names, err)
 				}
-				_, saveResponse := upgradeWireGet(t, conn, reader, "SAVE PRESET AFTERUPGRADE\r\n")
-				if !strings.Contains(saveResponse, "Saved preset AFTERUPGRADE for") {
+				_, saveResponse := upgradeWireGet(t, s, call, conn, reader, "SAVE PRESET AFTERUPGRADE\r\n")
+				if !strings.Contains(saveResponse, "Saved preset AFTERUPGRADE (CC) for") {
 					t.Fatalf("upgraded user cannot save a new preset: %s", saveResponse)
 				}
-				changed, response := upgradeWireGet(t, conn, reader, "PASS RULE 0 MODE=FT8\r\n")
-				if strings.Contains(response, "failed to persist") || changed.Filters.Rules[0].Expr != "MODE=FT8" {
+				changed, response := upgradeWireGet(t, s, call, conn, reader, "SET/FT8\r\n")
+				if !strings.Contains(response, "Saved and active") || !slices.Contains(changed.Filters.CC.Modes, "FT8") ||
+					!slices.Equal(changed.Filters.GO.Rules, cfg.Filters.GO.Rules) {
 					t.Fatalf("post-upgrade human save failed: %s", response)
 				}
 				closeHandshakeTranscriptSession(t, conn, done)
 				conn2, reader2, _, greeting2 := connectUpgradeSession(t, s, call)
-				reloaded, _ := upgradeWireGet(t, conn2, reader2, "")
+				reloaded, _ := upgradeWireGet(t, s, call, conn2, reader2, "")
 				if !reloaded.Equal(changed) || strings.Contains(greeting2, "temporary defaults") {
-					t.Fatal("second login reset the user's new Boolean rules")
+					t.Fatal("second login reset the user's native CC selection")
 				}
-				if names, err := filter.ListPresets(call); err != nil || !slices.Equal(names, []string{"AFTERUPGRADE"}) {
-					t.Fatalf("second login wiped the new Boolean preset: %v %v", names, err)
+				if names, err := filter.ListV7Presets(call); err != nil || !slices.Equal(names, []string{"AFTERUPGRADE"}) {
+					t.Fatalf("second login wiped the new tagged preset: %v %v", names, err)
 				}
 				after, err := os.ReadFile(path)
 				if err != nil || bytes.Equal(after, original) {
@@ -310,22 +415,22 @@ func TestNewSSIDWithOldSharedPresetsCanSaveImmediately(t *testing.T) {
 		t.Fatal(err)
 	}
 	conn, reader, _, greeting := connectUpgradeSession(t, s, call)
-	cfg, tail := upgradeWireGet(t, conn, reader, "")
-	if !strings.Contains(greeting+tail, "Old shared presets were reset") ||
-		strings.Contains(greeting+tail, "reset for Boolean filtering") {
+	cfg, tail := upgradeWireGet(t, s, call, conn, reader, "")
+	if !strings.Contains(strings.Join(strings.Fields(greeting+tail), " "), "old named presets were cleared") ||
+		strings.Contains(greeting+tail, "earlier upgrade reset your GO and CC filter banks") {
 		t.Fatal("new SSID received a misleading filter-reset notice")
 	}
-	if !slices.Equal(cfg.Filters.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW AND SOURCE=HUMAN"}}) {
+	if !slices.Equal(cfg.Filters.GO.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW AND SOURCE=HUMAN"}}) {
 		t.Fatal("new SSID did not retain new-user source defaults")
 	}
-	if names, err := filter.ListPresets(call); err != nil || len(names) != 0 {
+	if names, err := filter.ListV7Presets(call); err != nil || len(names) != 0 {
 		t.Fatalf("old shared library blocks a new SSID: %v %v", names, err)
 	}
-	if backup, err := os.ReadFile(library + ".pre-v6.bak"); err != nil || !bytes.Equal(backup, original) {
+	if backup, err := os.ReadFile(library + ".pre-v7.bak"); err != nil || !bytes.Equal(backup, original) {
 		t.Fatal("new-SSID cleanup failed to preserve the original library backup")
 	}
-	_, reply := upgradeWireGet(t, conn, reader, "SAVE PRESET NEWSSID\r\n")
-	if !strings.Contains(reply, "Saved preset NEWSSID for") {
+	_, reply := upgradeWireGet(t, s, call, conn, reader, "SAVE PRESET NEWSSID\r\n")
+	if !strings.Contains(reply, "Saved preset NEWSSID (GO) for") {
 		t.Fatalf("new SSID still cannot save: %s", reply)
 	}
 }
@@ -361,12 +466,12 @@ func TestNewSSIDPresetCleanupFailureAndInitialCommitBoundary(t *testing.T) {
 				t.Fatalf("new-SSID failure changed normal creation: %+v", result)
 			}
 			if failCommit {
-				if strings.Contains(result.warning, "shared preset cleanup") ||
+				if strings.Contains(result.warning, "shared preset reset") ||
 					!strings.Contains(result.warning, "starting settings are active but could not be saved") {
 					t.Fatal("failed initial profile commit reached library cleanup")
 				}
 			} else {
-				if !strings.Contains(result.warning, "shared preset cleanup could not finish") {
+				if !strings.Contains(result.warning, "shared preset reset is pending") {
 					t.Fatal("bad library cleanup was not reported")
 				}
 				if err := c.saveFilter(); err != nil {
@@ -377,7 +482,7 @@ func TestNewSSIDPresetCleanupFailureAndInitialCommitBoundary(t *testing.T) {
 			if err != nil || !bytes.Equal(after, original) {
 				t.Fatal("failed new-SSID cleanup changed library bytes")
 			}
-			if _, err := os.Stat(library + ".pre-v6.bak"); !errors.Is(err, os.ErrNotExist) {
+			if _, err := os.Stat(library + ".pre-v7.bak"); !errors.Is(err, os.ErrNotExist) {
 				t.Fatal("unadmitted cleanup created an original backup")
 			}
 		})
@@ -388,11 +493,10 @@ func TestCurrentProfileBadLibraryDoesNotResetOrProtectLogin(t *testing.T) {
 	s := presetTestServer(t)
 	call := "LZ3NY-11"
 	f := testRuleFilter(t, filter.RuleDefinition{Slot: 3, Action: filter.RuleReject, Expr: "MODE=CW"})
-	if err := filter.SaveUserRecord(call, &filter.UserRecord{
-		Filter: *f, Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "MED",
-	}); err != nil {
-		t.Fatal(err)
-	}
+	configuration := currentV7GOTestConfiguration(t, f.PreparedRules().Definitions(), filter.SettingsConfiguration{
+		Dialect: "go", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "MED",
+	})
+	saveCurrentV7TestRecord(t, call, &filter.V7UserRecord{Configuration: configuration})
 	library := presetLibraryPathFor(call)
 	if err := os.MkdirAll(filepath.Dir(library), 0o700); err != nil {
 		t.Fatal(err)
@@ -403,8 +507,8 @@ func TestCurrentProfileBadLibraryDoesNotResetOrProtectLogin(t *testing.T) {
 	}
 	c := configurationTestClient(s, call)
 	result := s.restoreClientRecordOwned(c, time.Now().UTC())
-	if c.recordProtected || result.loadError != nil || !strings.Contains(result.warning, "preset cleanup failed") ||
-		c.configuredSettings.Dialect != "cc" || c.configuredSettings.Grid != "FN31" ||
+	if c.recordProtected || result.loadError != nil || result.profileReset || !strings.Contains(result.warning, "preset reset is pending") ||
+		c.configuredSettings.Dialect != "go" || c.configuredSettings.Grid != "FN31" ||
 		!slices.Equal(c.filter.PreparedRules().Definitions(), f.PreparedRules().Definitions()) {
 		t.Fatalf("library-only failure damaged a current profile: %+v", result)
 	}

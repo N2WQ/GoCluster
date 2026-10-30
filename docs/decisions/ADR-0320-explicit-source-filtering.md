@@ -9,6 +9,8 @@ description: Omitted SOURCE imposes no restriction; shipped starting rules selec
 
 > ADR-0329 supersedes only the generation-specific no-reset and NEARBY-toggle clauses below. The ordinary SOURCE policy and configured mode/source starting rule remain unchanged; retired v0-v5 filters reset once into generation 6. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 
+> [ADR-0330](ADR-0330-native-cc-banks-and-generation-seven.md) replaces affected shared GO/CC ownership and generation/reset clauses with independent native CC banks and generation seven. This record retains its historical decision; compatible GO predicate/source and transaction contracts continue.
+
 ## Context
 
 An implicit HUMAN restriction made source-less PASS expressions differ from

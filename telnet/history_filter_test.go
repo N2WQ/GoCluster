@@ -107,7 +107,6 @@ func TestHistoryFilterDigestRelevantProjection(t *testing.T) {
 	initial := c.historyFilterDigest()
 	no := false
 	c.filter.AllowWWV, c.filter.AllowWCY, c.filter.AllowAnnounce, c.filter.AllowSelf = &no, &no, &no, &no
-	c.dialect = DialectName("CC")
 	c.configuredSettings = filter.SettingsConfiguration{Dialect: "CC", Grid: "IO91", DedupePolicy: "slow", SolarSummaryMinutes: 60}
 	c.solarSummaryMinutes = 60
 	if got := c.historyFilterDigest(); got != initial {

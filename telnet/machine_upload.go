@@ -1,3 +1,5 @@
+// File role: Deadline-bound YAML frame reception with schema-specific byte
+// limits and terminal recovery that cannot execute an unread request tail.
 package telnet
 
 import (
@@ -10,6 +12,7 @@ import (
 
 const (
 	maxYAMLBytes      = 65_536
+	maxV7YAMLBytes    = 262_144
 	yamlUploadTimeout = 30 * time.Second
 )
 
@@ -36,6 +39,7 @@ type yamlReceptionHooks struct {
 type yamlReception struct {
 	client   *Client
 	deadline time.Time
+	limit    int
 	now      func() time.Time
 	mu       sync.Mutex
 	finished bool
@@ -45,7 +49,13 @@ type yamlReception struct {
 }
 
 func (c *Client) receiveYAMLBody(deadline time.Time) ([]byte, error) {
-	return c.receiveYAMLBodyWithHooks(deadline, yamlReceptionHooks{
+	return c.receiveYAMLBodyLimit(deadline, maxYAMLBytes)
+}
+
+// receiveYAMLBodyLimit selects the limit from the validated command header;
+// payload size or content never upgrades a legacy reception to schema 7.
+func (c *Client) receiveYAMLBodyLimit(deadline time.Time, limit int) ([]byte, error) {
+	return c.receiveYAMLBodyLimitWithHooks(deadline, limit, yamlReceptionHooks{
 		now: time.Now,
 		afterFunc: func(duration time.Duration, callback func()) yamlWatchdog {
 			return time.AfterFunc(duration, callback)
@@ -58,6 +68,10 @@ func (c *Client) receiveYAMLBody(deadline time.Time) ([]byte, error) {
 // marker needs only a three-byte probe. Every failure interrupts the connection
 // before returning, so partially consumed payloads cannot reenter command dispatch.
 func (c *Client) receiveYAMLBodyWithHooks(deadline time.Time, hooks yamlReceptionHooks) (body []byte, err error) {
+	return c.receiveYAMLBodyLimitWithHooks(deadline, maxYAMLBytes, hooks)
+}
+
+func (c *Client) receiveYAMLBodyLimitWithHooks(deadline time.Time, limit int, hooks yamlReceptionHooks) (body []byte, err error) {
 	defer func() {
 		if err != nil {
 			c.preserveRecordOnExit.Store(true)
@@ -65,19 +79,22 @@ func (c *Client) receiveYAMLBodyWithHooks(deadline time.Time, hooks yamlReceptio
 			body = nil
 		}
 	}()
+	if limit != maxYAMLBytes && limit != maxV7YAMLBytes {
+		return nil, fmt.Errorf("%w: unsupported body limit", errYAMLUploadFraming)
+	}
 	if !hooks.now().Before(deadline) {
 		return nil, errYAMLUploadDeadline
 	}
 	if err := c.setReadDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("%w: setting deadline: %w", errYAMLUploadFraming, err)
 	}
-	reception := &yamlReception{client: c, deadline: deadline, now: hooks.now, done: make(chan struct{})}
+	reception := &yamlReception{client: c, deadline: deadline, limit: limit, now: hooks.now, done: make(chan struct{})}
 	reception.timer = hooks.afterFunc(deadline.Sub(hooks.now()), reception.expire)
 	defer reception.disarm()
 	if err := reception.startMarker(); err != nil {
 		return nil, err
 	}
-	body = make([]byte, 0, maxYAMLBytes)
+	body = make([]byte, 0, limit)
 	for {
 		complete, err := reception.bodyLine(&body)
 		if err != nil {
@@ -162,7 +179,7 @@ func (r *yamlReception) bodyLine(body *[]byte) (bool, error) {
 		}
 		probe[i] = b
 		if b != '.' {
-			if err := appendYAMLBody(body, probe[:i+1]); err != nil {
+			if err := r.appendBody(body, probe[:i+1]); err != nil {
 				return false, err
 			}
 			return false, r.bodyLineRest(body, b)
@@ -175,10 +192,10 @@ func (r *yamlReception) bodyLine(body *[]byte) (bool, error) {
 	if b == '\n' || b == '\r' {
 		return true, r.lineEnding(b)
 	}
-	if err := appendYAMLBody(body, probe[:]); err != nil {
+	if err := r.appendBody(body, probe[:]); err != nil {
 		return false, err
 	}
-	if err := appendYAMLBody(body, []byte{b}); err != nil {
+	if err := r.appendBody(body, []byte{b}); err != nil {
 		return false, err
 	}
 	return false, r.bodyLineRest(body, b)
@@ -194,13 +211,13 @@ func (r *yamlReception) bodyLineRest(body *[]byte, b byte) error {
 			if next != '\n' {
 				return fmt.Errorf("%w: CR must be followed by LF", errYAMLUploadFraming)
 			}
-			return appendYAMLBody(body, []byte{next})
+			return r.appendBody(body, []byte{next})
 		}
 		next, err := r.readByte()
 		if err != nil {
 			return err
 		}
-		if err := appendYAMLBody(body, []byte{next}); err != nil {
+		if err := r.appendBody(body, []byte{next}); err != nil {
 			return err
 		}
 		b = next
@@ -208,13 +225,25 @@ func (r *yamlReception) bodyLineRest(body *[]byte, b byte) error {
 	return nil
 }
 
-func appendYAMLBody(body *[]byte, data []byte) error {
-	if len(data) > maxYAMLBytes-len(*body) {
-		return errYAMLUploadTooLarge
+func (r *yamlReception) appendBody(body *[]byte, data []byte) error {
+	if len(data) > r.limit-len(*body) {
+		if r.limit == maxYAMLBytes {
+			return errYAMLUploadTooLarge
+		}
+		return yamlUploadLimitError{limit: r.limit}
 	}
 	*body = append(*body, data...)
 	return nil
 }
+
+// Preserve the legacy error identity while reporting the selected larger limit.
+type yamlUploadLimitError struct{ limit int }
+
+func (e yamlUploadLimitError) Error() string {
+	return fmt.Sprintf("YAML body exceeds %d-byte limit", e.limit)
+}
+
+func (e yamlUploadLimitError) Unwrap() error { return errYAMLUploadTooLarge }
 
 func (r *yamlReception) lineEnding(b byte) error {
 	if b == '\n' {

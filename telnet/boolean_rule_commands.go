@@ -102,6 +102,9 @@ func (e *filterCommandEngine) stageBooleanFilterCommand(c *Client, line string) 
 		return humanCommandOutcome{}
 	}
 	command, handled, usage := parseBooleanRuleCommand(line)
+	if handled && c.dialect == DialectCC {
+		return nativeCCRefusal(nativeCCCommandGuidance)
+	}
 	if !handled {
 		if e.booleanLegacyMutation(line, c.dialect) {
 			return booleanRuleRefusal(booleanRuleDiscovery)

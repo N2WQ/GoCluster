@@ -19,8 +19,9 @@ import (
 
 const maxRecentIPs = 5
 
-// UserRecord stores per-callsign metadata that should survive across sessions.
-// Native fields are transport-only; YAML is explicitly bound to the v6 DTO.
+// UserRecord is the frozen one-bank v6 carrier used by legacy codecs. Current
+// sessions use explicit V7UserRecord APIs so no inactive bank can be projected
+// away through this facade. Native fields are transport-only.
 type UserRecord struct {
 	ConfigurationVersion int `yaml:"configuration_version,omitempty"`
 	Filter               `yaml:",inline"`

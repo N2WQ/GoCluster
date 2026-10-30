@@ -280,7 +280,31 @@ func TestAdmissionLoginMetadataOverflowDoesNotProtectFittingRecord(t *testing.T)
 	s := presetTestServer(t)
 	c := configurationTestClient(s, "W1ABC-1")
 	path := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
-	before := writeAdmissionRecord(t, c.callsign, metadataRecordAt(t, filter.MaxUserRecordBytes-2))
+	cfg, err := filter.DefaultV7Configuration(filter.SettingsConfiguration{Dialect: "go", DedupePolicy: "MED"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := &filter.V7UserRecord{ConfigurationVersion: 7, Configuration: cfg}
+	encode := func(n, tail int) []byte {
+		record.RecentIPs = []string{strings.Repeat("A\n", n) + strings.Repeat("Z", tail+1)}
+		data, marshalErr := yaml.Marshal(record)
+		if marshalErr != nil {
+			t.Fatal(marshalErr)
+		}
+		return data
+	}
+	first, second := len(encode(1, 0)), len(encode(2, 0))
+	n := 1 + (filter.MaxUserRecordBytes-2-first)/(second-first)
+	before := encode(n, filter.MaxUserRecordBytes-2-len(encode(n, 0)))
+	if len(before) != filter.MaxUserRecordBytes-2 {
+		t.Fatal("current metadata fixture is not exact")
+	}
+	if _, err := filter.DecodeV7UserRecord(before); err != nil {
+		t.Fatal("fitting current record refused", err)
+	}
+	if err := os.WriteFile(path, before, 0o600); err != nil {
+		t.Fatal(err)
+	}
 	commits := 0
 	s.commitLoginRecordFn = func(*filter.PreparedUserRecord) error { commits++; return nil }
 	restored := s.restoreClientRecordOwned(c, time.Now().UTC())

@@ -11,6 +11,10 @@ import (
 
 func TestFilterDiscoveryBooleanOwnerFeedbackHasNoEffects(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+		if dialect == DialectCC {
+			testNativeCCDiscoveryRefusal(t)
+			continue
+		}
 		x := newHelpOwnerSession(t, dialect)
 		c := x.client
 		for _, line := range []string{"PASS", "REJECT", "PASS RULE", "REJECT RULE 10 MODE=CW", "PASS MODE CW", "REJECT BAND ALL", "PASS NEARBY ON", "REJECT NEARBY OFF", "PASS NEARBY", "REJECT NEARBY", "SET/FILTER NEARBY ON", "UNSET/FILTER NEARBY OFF", "SET/FILTER NEARBY/ON", "SET/FILTER NEARBY/OFF"} {
@@ -31,6 +35,17 @@ func TestFilterDiscoveryBooleanOwnerFeedbackHasNoEffects(t *testing.T) {
 
 func TestFilterDiscoveryPC93AliasCommitsActualSwitch(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+		if dialect == DialectCC {
+			s, c := nativeCCTestCommittedSession(t)
+			for _, action := range []string{"REJECT", "PASS"} {
+				response, handled := s.filterEngine.Handle(c, action+" PC93")
+				if !handled || strings.Contains(response, "No changes applied.") || c.filter.AnnounceEnabled() != (action == "PASS") {
+					t.Fatalf("native PC93 did not reach the ANNOUNCE owner: %q", response)
+				}
+				assertNativeCCTestSaved(t, c)
+			}
+			continue
+		}
 		x := newHelpOwnerSession(t, dialect)
 		for _, action := range []string{"REJECT", "PASS"} {
 			writes := x.writes

@@ -2,104 +2,84 @@ GoCluster help - CC dialect
 
 Getting started:
   SHOW/DX 10             Show 10 recent spots matching your filters.
-  SHOW/FILTER            See your current filters.
-  SHOW SETTINGS          See your preferences and session settings.
-  SET GRID FN31          Set your Maidenhead grid square.
+  SHOW/FILTER            Inspect active native CC selections.
+  SHOW SETTINGS          Inspect preferences and session settings.
+  SET GRID FN31          Set your grid square.
   BYE                    Disconnect.
 
 Type HELP followed by a command for details:
-  HELP SHOW/DX
-  HELP RULE
-  HELP PASS
-  HELP REJECT
+  HELP SET/FILTER
+  HELP SET/NOFILTER
+  HELP FILTERS
 
 Reading and posting spots:
-  SHOW/DX                Show recent spots matching your filters.
-  SHOW MYDX              Same as SHOW/DX.
-  SH/DX                  Short form of SHOW/DX.
+  SHOW/DX | SH/DX        Search recent spots matching your filters.
+  SHOW MYDX              Same history with explicit query selections.
   DX                     Post a spot.
-  SHOW DXCC              Look up a callsign or country prefix.
+  SHOW DXCC              Look up callsign or country metadata.
   WHOSPOTSME             Show recent spotter countries for your call.
 
 Space weather bulletins:
-  SHOW WWV               Show the latest five WWV bulletins.
-  SHOW WCY               Show the latest five WCY bulletins.
-  SHOW WWV FULL          Show retained WWV bulletins from the last 24 hours.
-  SHOW WCY FULL          Show retained WCY bulletins from the last 24 hours.
+  SHOW WWV [FULL]        Show WWV bulletins; FULL selects retained history.
+  SHOW WCY [FULL]        Show WCY bulletins; FULL selects retained history.
 
 Examples:
-  SHOW/DX 10             Show the latest 10 matching spots.
-  SHOW/DX K1ABC 10       Search for spots of K1ABC.
   SHOW/DX 10 BAND 20     Search for 10 matching spots on 20m.
   SHOW/DX 10 MODE CW     Search for 10 matching CW spots.
   SHOW/DX 10 COMMENT CQ  Search stored comments for literal CQ.
-  DX 14025.0 K1ABC CQ    Post K1ABC on 14025.0 kHz with comment CQ.
+  DX 14025.0 K1ABC CQ    Post a DX spot.
 
 Changing filters:
-  PASS RULE              Replace one slot with an allowing expression.
-  REJECT RULE            Replace one slot with a vetoing expression.
-  SHOW/FILTER            See your current settings and rules.
-  SHOW/FILTER RULE       Same as SHOW/FILTER.
-  SHOW/FILTER FULL       Show rules, controls and program counts.
-  RESET FILTER RULE      Clear one slot or ALL; preserve settings.
-  RESET FILTER           Clear personal rules; preserve settings.
+  SET/FILTER             Replace geography or edit frequency slots.
+  SET/<MODE>             Enable an operator-configured mode shortcut.
+  SET/NO<MODE>           Disable an operator-configured mode shortcut.
+  UNSET/<MODE>           Disable the same configured mode.
+  SET/SKIMMER            Enable the SKIMMER source selection.
+  SET/NOSKIMMER          Disable the SKIMMER source selection.
+  UNSET/SKIMMER          Disable the SKIMMER source selection.
+  SET/NOFILTER           Restore operator defaults; keep switches.
+  SHOW/FILTER FULL       Show native selections, controls and DXBM basis.
+  SH/FILTER              Short form of SHOW/FILTER.
 
 What you can filter:
-  Combine band, mode, source, geography, calls, comments and more.
-  DX means the station being spotted; DE means the spotter.
-  HELP RULE lists every field, supported value and expression limit.
+  DOC/DOS select spotter country/state; DXCTY/DXSTATE select the DX.
+  Mode and source selections both apply. Geography categories use AND.
+  Values within one list use OR. Missing data fails PASS and survives REJECT.
+  OFF disables only its category. DXBM selects frequency, not decoded mode.
 
-Examples (separate full-rule replacements):
-  PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN
-  REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"
-
-A complete recipe: human-reported CW/FT8 on 20m/40m:
-  RESET FILTER RULE ALL
-  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN
+A complete recipe:
+  SET/NOFILTER
+  SET/FILTER DOC/PASS K,VE
+  SET/FILTER DXBM/PASS 20-CW,40
   SHOW/FILTER
 
-  This replaces all personal rules. Separate controls are unchanged.
-  SELF ON can bypass personal rules; see HELP SHOW MYDX.
-
 Filter rules to remember:
-  Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.
-  Any PASS can qualify; any matching REJECT vetoes it.
-  No active PASS means unrestricted except for matching REJECT rules.
-  No rules means no personal restriction.
-  New users start with an ordinary editable default PASS rule in slot 0.
-  PASS without SOURCE allows humans and skimmers.
-  Add AND SOURCE=HUMAN to select human reports only.
-  To narrow it, replace/remove slot 0; adding another PASS broadens it.
-  RESET FILTER clears rules, preserving separate controls/preferences.
-  Reset does not reinstall default slot 0. See HELP RULE for full details.
+  Geography edits replace their list and clear that category's band
+  exceptions.
+  DXBM edits are incremental; first PASS after OFF starts a whitelist.
+  First REJECT starts a blacklist. Active allow-all remains active.
+  Mode shortcuts require the operator's cc_shortcut flag.
+  Per-band geography uses native schema-seven YAML; terminal syntax and
+  CC User integration for per-band geography remain unverified.
+  Long lists need YAML; splitting replacing commands loses earlier values.
+  Boolean mutations require DIALECT GO, which preserves the CC bank.
 
 Comment rules:
-  PASS RULE 0 COMMENT="CQ DX"
-  REJECT RULE 9 COMMENT="QRT"
-  ASCII case-insensitive literal substrings, not regular expressions.
-  Inside a quoted value, double a literal quote: COMMENT="CQ ""DX"""
-  Edit/clear the numbered slot to replace/remove the whole rule.
-  SHOW DX COMMENT remains a history query, not a saved rule edit.
+  SHOW/DX COMMENT is a history search, not a saved CC category.
 
-CC shortcuts:
-  SH/FILTER                 Short form of SHOW/FILTER.
+Separate switches:
+  PASS | REJECT             Enable or disable the six separate switches.
+  UNSET/FILTER              Disable a named switch; see HELP.
   SET/ANN | SET/NOANN       Allow or block announcements.
   SET/BEACON | SET/NOBEACON Allow or block beacon spots.
   SET/WWV | SET/NOWWV       Allow or block WWV bulletins.
   SET/WCY | SET/NOWCY       Allow or block WCY bulletins.
-  SET/SELF | SET/NOSELF     Allow or block your own spots.
-  SET/FILTER                Separate switches only; see HELP.
-  UNSET/FILTER              Separate switches only; see HELP.
-  REJECT TOXIC              Hide human spots already classified as toxic.
-  PASS TOXIC                Allow human spots already classified as toxic.
+  SET/SELF | SET/NOSELF     Allow or block spots of your own call.
+  TOXIC is a GoCluster switch for already classified toxic spots.
+  OWN, BOB, DX/NODX, TALK, WX and announcement/weather geography are absent.
 
 Nearby filtering:
-  SET GRID FN31          Set your location.
-  PASS RULE 0 NEARBY     Replace rule 0 with nearby selection.
-
-  NEARBY combines with other conditions using NOT, AND and OR.
-  It does not change geography conditions or duplicate suppression.
-  Type HELP NEARBY or HELP RULE for details.
+  NEARBY belongs to the GO expression bank; CC adds no proximity gate.
 
 Preferences and propagation:
   SHOW SETTINGS          Show preferences and session settings.
@@ -121,42 +101,32 @@ Examples:
   SET SOLAR OFF          Stop solar summaries.
 
 Saving and loading presets:
-  SAVE PRESET <name>     Save your filters and preferences under a name.
-  LIST PRESET            List your saved presets.
-  LOAD PRESET <name>     Apply a preset and save this login's defaults.
-  DELETE PRESET <name>   Delete a saved preset.
-
-Examples:
-  SAVE PRESET CONTEST
-  LOAD PRESET CONTEST
+  SAVE PRESET <name>     Save the active bank and shared preferences.
+  LIST PRESET            List names shared by your numeric SSIDs.
+  LOAD PRESET <name>     Apply its tagged bank and announce the selection.
+  DELETE PRESET <name>   Remove the named preset.
 
 Pausing live spots:
   PAUSE                  Pause live spots for 30 seconds.
   PAUSE 60               Pause for 60 seconds (maximum 300).
-  SHOW HOLD              Show time remaining and spots suppressed.
+  SHOW HOLD              Show the remaining pause and suppressed spots.
   RESUME                 Resume live spots immediately.
-
-  Filter and settings readbacks temporarily pause live spots.
-  Type RESUME when ready, or wait for the pause to expire.
-  Spots missed during a pause are not replayed.
+  Filter/settings readbacks pause live spots; missed spots are not replayed.
 
 Diagnostics:
-  SHOW BUILD             Show server version and build information.
-  SHOW OWN               Show your login call and own-call identity.
-  SET DIAG               Select diagnostic information in spot comments.
+  SHOW BUILD             Show version/build information.
+  SHOW OWN               Show login and baseline own-call identity.
+  SET DIAG               Choose diagnostic spot comments.
 
 More help:
-  HELP RULE              Canonical Boolean grammar, fields and values.
-  HELP PASS              Rule updates and separate enable controls.
-  HELP REJECT            Rule updates and separate disable controls.
-  HELP FILTERS           Navigate to rules and separate controls.
-  HELP SYMBOLS           Confidence and path reliability symbols.
-  HELP <command>         Detailed help for a command.
+  HELP FILTERS           Native CC rules and support boundaries.
+  HELP SYMBOLS           Confidence and path symbols.
+  HELP <command>         Detailed command help.
 
 Other commands:
-  HELP                   Show this help.
+  HELP                   Show this overview.
+  DIALECT                Inspect or switch independent GO/CC banks.
   BYE                    Disconnect (also QUIT or EXIT).
 
 Syntax used in detailed help:
-  <value> means required; [value] means optional.
-  A|B means choose one. Do not type the brackets.
+  <value> is required; [value] is optional. A|B means choose one.

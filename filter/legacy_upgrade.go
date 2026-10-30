@@ -90,7 +90,7 @@ func (store loginUpgradeStore) upgradeWithOutcome(callsign string, commit func(*
 		return nil, outcome, err
 	}
 	var record *UserRecord
-	if version == CurrentConfigurationVersion {
+	if version == V6ConfigurationVersion {
 		var stored *V6UserRecord
 		stored, err = DecodeV6UserRecord(original)
 		if err == nil {
@@ -103,8 +103,12 @@ func (store loginUpgradeStore) upgradeWithOutcome(callsign string, commit func(*
 		return nil, outcome, err
 	}
 	var prepared *PreparedUserRecord
-	if version != CurrentConfigurationVersion {
-		prepared, err = PrepareUserRecord(callsign, record)
+	if version != V6ConfigurationVersion {
+		stored, encodeErr := V6UserRecordFromRuntime(record)
+		if encodeErr != nil {
+			return nil, outcome, encodeErr
+		}
+		prepared, err = PrepareV6UserRecord(callsign, stored)
 		if err != nil {
 			return nil, outcome, fmt.Errorf("prepare upgraded profile: %w", err)
 		}
@@ -158,7 +162,7 @@ func (store loginUpgradeStore) upgradeWithOutcome(callsign string, commit func(*
 }
 
 func upgradeLibraryFailure(record *UserRecord, version int, stage string, cause error) (*UserRecord, LoginUpgradeOutcome, error) {
-	if version != CurrentConfigurationVersion {
+	if version != V6ConfigurationVersion {
 		record = nil
 	}
 	return record, LoginUpgradeOutcome{}, fmt.Errorf("%w: %s: %w", ErrLoginUpgradeLibrary, stage, cause)
@@ -218,7 +222,7 @@ func prepareLegacyLibraryUpgrade(path string) ([]byte, []byte, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		if version != CurrentConfigurationVersion {
+		if version != V6ConfigurationVersion {
 			if err := validateRetiredPreset(value, version, state); err != nil {
 				return nil, nil, fmt.Errorf("legacy preset %s: %w", name, err)
 			}

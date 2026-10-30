@@ -335,9 +335,9 @@ func (f *familyDeliveryFixture) startTelnet(t *testing.T, self bool) *telnet.Ser
 	f.normalConn, f.normalReader = correctionEvidenceLogin(t, port, "DL1ABC", "OFF")
 	f.diagConn, f.diagReader = correctionEvidenceLogin(t, port, "DL2ABC", "CONF")
 	f.selfConn, f.selfReader = correctionEvidenceLogin(t, port, "N2WQ", "OFF")
-	command, acknowledgement := "REJECT SELF\r\n", "Self spots disabled"
+	command, acknowledgement := "REJECT SELF\r\n", "Own-call spots disabled"
 	if self {
-		command, acknowledgement = "PASS SELF\r\n", "Self spots enabled"
+		command, acknowledgement = "PASS SELF\r\n", "Own-call spots enabled"
 	}
 	if _, err := io.WriteString(f.selfConn, command); err != nil {
 		t.Fatal(err)

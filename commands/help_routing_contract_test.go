@@ -20,7 +20,7 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 	if dialect == "cc" {
 		history, readback = "SHOW/DX", "SHOW/FILTER"
 	}
-	return []helpRoutingCase{
+	cases := []helpRoutingCase{
 		{"HELP", "HELP", "HELP [command]"}, {"H", "HELP", "HELP [command]"},
 		{"H SHOW BUILD", "HELP", "HELP [command]"}, {"HELP SHOW BUILD", "HELP", "HELP [command]"},
 		{"SHOW", "SHOW", "SHOW DXCC"}, {"SH", "SHOW", "SHOW DXCC"},
@@ -61,6 +61,7 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"SHOW/FILTER COMMENT", "SHOW FILTER COMMENT", "Usage: HELP RULE"},
 		{"SH/FILTER COMMENT", "SHOW FILTER COMMENT", "Usage: HELP RULE"},
 		{"SHOW SETTINGS", "SHOW SETTINGS", "Usage: SHOW SETTINGS"},
+		{"SHOW/SETTINGS", "SHOW SETTINGS", "Usage: SHOW SETTINGS"}, {"SH/SETTINGS EXTRA", "SHOW SETTINGS", "Usage: SHOW SETTINGS"},
 		{"RULE", "RULE", "Usage: HELP RULE"},
 		{"PASS", "PASS", "PASS RULE <0..9> <expression>"}, {"REJECT", "REJECT", "REJECT RULE <0..9> <expression>"},
 		{"PASS RULE 0 MODE=CW", "PASS RULE", "PASS RULE <0..9> <expression>"},
@@ -95,6 +96,22 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"SHOW HOLD", "SHOW HOLD", "SHOW HOLD"}, {"RESUME", "RESUME", "RESUME"},
 		{"BYE", "BYE", "BYE"}, {"QUIT", "BYE", "BYE"}, {"EXIT", "BYE", "BYE"},
 	}
+	if dialect == "cc" {
+		for index := range cases {
+			test := &cases[index]
+			switch test.canonical {
+			case "SHOW/FILTER":
+				test.usage = "DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL"
+			case "RULE", "PASS RULE", "REJECT RULE", "RESET FILTER", "RESET FILTER RULE", "NEARBY", "PASS COMMENT", "REJECT COMMENT", "REMOVE PASS COMMENT", "REMOVE REJECT COMMENT", "RESET FILTER COMMENT", "SHOW FILTER COMMENT", "PASS MINSNR", "REJECT MINSNR":
+				test.usage = "DIALECT GO"
+			case "PASS", "REJECT":
+				if strings.Contains(test.usage, "RULE") {
+					test.usage = "HELP SET/FILTER"
+				}
+			}
+		}
+	}
+	return cases
 }
 
 func assertHelpRouting(t testing.TB, p *Processor, dialect string, tc helpRoutingCase) {
@@ -139,8 +156,8 @@ func TestHelpRoutingDispatchDerivedFamilies(t *testing.T) {
 	for _, tc := range []helpRoutingCase{
 		{"SET/FILTER BEACON/ON", "SET/FILTER", "SET/FILTER <switch> [ALL]"},
 		{"UNSET/FILTER BEACON", "UNSET/FILTER", "UNSET/FILTER <switch> [ALL]"},
-		{"SET/FILTER DXBM/REJECT 20", "SET/FILTER", "HELP RULE"},
-		{"SET/NOFILTER", "SET/NOFILTER", "Usage: HELP RULE"},
+		{"SET/FILTER DXBM/REJECT 20", "SET/FILTER", "SET/FILTER DXBM/REJECT"},
+		{"SET/NOFILTER", "SET/NOFILTER", "Usage: SET/NOFILTER"},
 	} {
 		assertHelpRouting(t, p, "cc", tc)
 	}
@@ -179,6 +196,7 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 		"SHOW/WWV": "SHOW WWV", "SH/WWV": "SHOW WWV", "SHOW/WCY": "SHOW WCY", "SH/WCY": "SHOW WCY",
 		"SH PROP": "SHOW PROP", "SHOW/PROP": "SHOW PROP", "SH/PROP": "SHOW PROP",
 		"SHOW/FILTER COMMENT": "SHOW FILTER COMMENT", "SH/FILTER COMMENT": "SHOW FILTER COMMENT",
+		"SHOW/SETTINGS": "SHOW SETTINGS", "SH/SETTINGS": "SHOW SETTINGS",
 	}
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
@@ -219,9 +237,13 @@ func TestHelpRoutingVisibleAliases(t *testing.T) {
 		for _, tc := range []struct{ topic, aliases string }{
 			{"HELP", "H"}, {"SHOW", "SH"}, {"SHOW BUILD", "SH BUILD"},
 			{"SHOW OWN", "SH OWN"}, {"SHOW DXCC", "SH DXCC"}, {"SHOW MYDX", "SH MYDX"},
+			{"SHOW SETTINGS", "SHOW/SETTINGS, SH/SETTINGS"},
 			{"SHOW WWV", "SH WWV, SHOW/WWV, SH/WWV"}, {"SHOW WCY", "SH WCY, SHOW/WCY, SH/WCY"},
 			{"NEARBY", "PASS NEARBY, REJECT NEARBY"}, {readback, filterAliases}, {history, historyAliases},
 		} {
+			if dialect == "cc" && tc.topic == "NEARBY" {
+				continue // Native CC refuses Boolean proximity mutations.
+			}
 			response := p.ProcessCommandForClient("HELP "+tc.topic, "W1ABC", "", nil, dialect)
 			if !strings.Contains(response, "\nAliases: "+tc.aliases+"\n") {
 				t.Fatalf("%s HELP %q hid executable aliases %q: %q", dialect, tc.topic, tc.aliases, response)
@@ -249,13 +271,16 @@ func TestHelpRoutingLoadedShortcutModesAndFixedPrecedence(t *testing.T) {
 	t.Cleanup(func() { spot.ConfigureTaxonomy(previous) })
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, mode := range []string{"TEST_MODE", "MODE_ALIAS"} {
-		for _, prefix := range []string{"SET/", "SET/NO"} {
+		for _, prefix := range []string{"SET/", "SET/NO", "UNSET/"} {
 			canonical := "SET/<MODE>"
 			if prefix == "SET/NO" {
 				canonical = "SET/NO<MODE>"
 			}
-			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode, canonical, "Usage: HELP RULE"})
-			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode + " EXTRA", canonical, "Usage: HELP RULE"})
+			if prefix == "UNSET/" {
+				canonical = "UNSET/<MODE>"
+			}
+			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode, canonical, "Usage: " + canonical})
+			assertHelpRouting(t, p, "cc", helpRoutingCase{prefix + mode + " EXTRA", canonical, "Usage: " + canonical})
 			if got := p.ProcessCommandForClient("HELP "+prefix+mode, "W1ABC", "", nil, "go"); !strings.HasPrefix(got, "Unknown help topic: ") {
 				t.Fatalf("GO HELP advertised loaded CC shortcut %q: %q", prefix+mode, got)
 			}
@@ -268,7 +293,7 @@ func TestHelpRoutingLoadedShortcutModesAndFixedPrecedence(t *testing.T) {
 	}
 	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/ANN", "SET/ANN", "Alias of PASS ANNOUNCE."})
 	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/NOANN", "SET/NOANN", "Alias of REJECT ANNOUNCE."})
-	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/NOFILTER", "SET/NOFILTER", "Usage: HELP RULE"})
+	assertHelpRouting(t, p, "cc", helpRoutingCase{"SET/NOFILTER", "SET/NOFILTER", "Usage: SET/NOFILTER"})
 }
 
 func FuzzHelpRoutingWholeTokenBoundaries(f *testing.F) {

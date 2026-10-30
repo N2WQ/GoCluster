@@ -27,7 +27,7 @@ func TestHelpOverviewPresentation(t *testing.T) {
 				}
 				previous = index
 			}
-			if strings.Contains(got, "YAML") || strings.Contains(got, "Bucket p50") || strings.Contains(got, "Confidence glyphs:") {
+			if dialect == "go" && strings.Contains(got, "YAML") || strings.Contains(got, "Bucket p50") || strings.Contains(got, "Confidence glyphs:") {
 				t.Fatal("overview includes displaced machine/scientific reference")
 			}
 		})
@@ -68,6 +68,12 @@ func TestBooleanRuleHelpCanonicalCatalog(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		text := p.ProcessCommandForClient("HELP RULE", "N0CALL", "", nil, dialect)
 		assertHelpWidth(t, text)
+		if dialect == "cc" {
+			if !strings.Contains(text, "GO dialect only") || !strings.Contains(text, "HELP SET/FILTER") || strings.Contains(text, "PASS RULE 0") {
+				t.Fatal("native CC HELP RULE advertised Boolean edits")
+			}
+			continue
+		}
 		flat := strings.Join(strings.Fields(text), " ")
 		for _, want := range []string{
 			"PASS without SOURCE allows humans and skimmers.",

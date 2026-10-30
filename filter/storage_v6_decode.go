@@ -93,8 +93,8 @@ func validateV6StoredVersion(node *yaml.Node) error {
 		return fmt.Errorf("%w: explicit v6 integer marker required", ErrUnsupportedConfigurationVersion)
 	}
 	var version int
-	if err := marker.Decode(&version); err != nil || version != CurrentConfigurationVersion {
-		return fmt.Errorf("%w: expected %d", ErrUnsupportedConfigurationVersion, CurrentConfigurationVersion)
+	if err := marker.Decode(&version); err != nil || version != V6ConfigurationVersion {
+		return fmt.Errorf("%w: expected %d", ErrUnsupportedConfigurationVersion, V6ConfigurationVersion)
 	}
 	return nil
 }

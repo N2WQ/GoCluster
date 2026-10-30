@@ -99,46 +99,42 @@ failures retain their existing persistence behavior.
 If a valid record is restored but updating the login timestamp/IP fails, login
 continues with those preferences and a warning.
 
-Login resets recognized unversioned and version 1-5 profiles once. Old personal
-rules, the global NEARBY setting and the applied-preset association are discarded.
-The replacement is one ordinary editable PASS rule in slot 0 using configured
-new-user modes and sources. Saved settings, six separate controls and full-SSID
-login metadata are retained; marked records preserve exact DEFAULT, false, empty
-and zero choices. Unversioned records retain their historical normalization,
-including MED for a blank dedupe selection. The login reports the reset.
+Login resets recognized pre-seven profiles once. It discards old personal filters,
+old applied associations and all six switch selections. Both GO and native CC
+banks start from the same current operator mode/source defaults. Selected dialect,
+unrelated configured settings and full-SSID login metadata remain. A saved CC
+user stays in CC. Safe old fields are recognized structurally without compiling
+expressions that will be discarded.
 
-Old shared preset entries are removed under the base-call library lock without
-deleting generation-6 presets created by another SSID or an earlier retry.
-Current-generation profiles, including empty rule sets, are not reset again.
-This does not translate filters or accept old machine schemas. A newly created
-SSID also attempts retired-library cleanup after its profile has been saved.
+The shared base-call library clears old presets once. Its reset marker commits
+with replacement, and valid new version-seven entries survive later profile or
+notice retries from any SSID. A new SSID attempts library reset after successful
+profile creation. Current-generation empty selections remain empty.
 
-If the record itself is unreadable, unsafe or uses an unrecognized version,
-or its required upgrade cannot be committed, login uses protected temporary
-defaults without overwriting that record. Human preference changes are
-temporary; readbacks remain available. SAVE PRESET is rejected before any
-library write, and LOAD PRESET and PUT/PATCH cannot commit configuration.
-LIST/DELETE retain their separate preset-library behavior. File replacements
-are atomic individually, not one cross-file transaction; upgrade failures must
-be reported and retried safely without overwriting the original backups.
-Original backups use `.pre-v6.bak` beside the user record or preset library.
-Earlier `.pre-v5.bak` files remain untouched. Both replacement payloads are
-admitted before writing; library replacement precedes profile replacement.
-A library-success/profile-failure result is reported precisely and retried safely.
-Only the initial authoritative missing-profile read permits new-user creation.
-A different existing backup is never overwritten. A library-only cleanup
-failure on an already-valid v6 profile warns without replacing that user's
-settings or blocking unrelated preference saves.
+Reset completion and notification are independent. A full writer flush permits
+metadata-only acknowledgement by the current connection owner; it does not prove
+the user read the notice. Failed acknowledgement can repeat historical notice,
+never completed reset work. Library failure is reported separately and does not
+prevent an independently backed-up profile reset or unrelated preference saves.
 
-Raw and normalized user records must each fit 1 MiB. The proposed saved record,
-including login metadata and the applied baseline, must also fit 1 MiB.
-Preferences and each baseline must fit 256 KiB when encoded as a standalone
-preset. A small file can still be refused for expensive alias expansion; these
-processing limits are separate from file sizes. Refused files are preserved.
-Human changes are admitted before becoming live. If a connected user's file
-becomes unreadable, fitting changes remain temporary with a warning. Later saves
-and ordinary logout retry a repaired file using its authoritative metadata.
-Sessions that started with protected defaults keep that protection until logout.
+Unsafe, malformed/future, over-budget or failed required upgrade records remain
+protected. Temporary defaults and later human edits cannot overwrite them at
+logout. SAVE/LOAD and machine writes cannot commit that profile. LIST/DELETE
+retain their separate library behavior. Only initial authoritative profile absence
+permits creation. A valid restore followed by timestamp/IP save failure retains
+restored preferences and reports the metadata failure.
+
+During upgrade, each eligible file needs admission and verified original backup
+before replacement. Both backups precede library-first/profile-second writes when
+both replacements are eligible. Files commit separately, with safe partial outcomes;
+there is no two-file rollback. `.pre-v7.bak` backups never overwrite different
+existing content. Ordinary saves and notice acknowledgements do not create backups.
+
+Human changes admit the whole profile and promised views before publication;
+late save failure leaves both banks active in memory with an unsaved warning.
+Later complete save persists both. Machine updates and LOAD commit first.
+Profiles stay limited to 1 MiB, with additional configuration, baseline, native
+CC and decode-work bounds. See [full behavior and recovery](../docs/cc-dialect.md).
 
 Manual DX reputation and posting allowances are shared by the baseline station:
 `N2WQ-1` and `N2WQ-2` both use `N2WQ`. Their saved configuration remains separate.
@@ -234,9 +230,12 @@ Blank `NCDXF B` source-class beacon comments display `NCDXF BEACON`.
 This describes the Boolean filter MVP in the current local checkout, not a
 production deployment or a claim that new source files are published on main.
 Private local-cluster acceptance remains pending. The telnet layer owns command
-admission and publication; personal selection uses one prepared Boolean engine.
+admission and publication. GO uses immutable Boolean rules; CC uses its own
+immutable native categories and independently saved state.
 
-Both `go` and `cc` use the same numbered-rule commands:
+GO uses the following numbered-rule commands. CC owns separate native state;
+see [CC commands, schema 7 and recovery](../docs/cc-dialect.md). The Boolean
+examples below apply to GO.
 
 ```text
 PASS RULE <0..9> <expression>
@@ -279,8 +278,9 @@ PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8
 
 Other PASS slots can still qualify other spots. Use `SHOW FILTER RULE` before
 editing; clearing all slots is deliberate, not a recipe for preserving them.
-Old category, MODE-delta, MINSNR, COMMENT-list, DXBM, NOFILTER and CC filter/mode
-shortcut mutations are refused without translation. There is no `RESET RULE`
+GO refuses retired category, MODE-delta, MINSNR, COMMENT-list, DXBM and NOFILTER
+mutations without translation. Native CC mode, geography, DXBM and NOFILTER
+commands have their own bank owner. There is no `RESET RULE`
 or `SET DX FILTER` alias. `HELP RULE` is the shared expression reference.
 
 Expressions support comparisons, the operand-free NEARBY predicate, parentheses,
@@ -314,7 +314,8 @@ comparisons require one value. `PATH=UNLIKELY` does not include CLOSED; use
 `PATH=UNLIKELY,CLOSED` to select both. EVENT remains family-level: POTA and
 POTA-1234 set the same family bit, while the reference stays in the comment.
 Non-COMMENT operands are case-insensitive and normalized. Configured
-MODE/EVENT names and mode aliases containing `_` work in both dialects; login
+GO MODE/EVENT names and mode aliases containing `_` are supported; native CC
+modes use their own list and enabled shortcut grammar. Login
 callsigns and machine request IDs retain their stricter rules.
 
 DXCALL reads `DXCall`; DECALL prefers `DECallStripped`, falling back to `DECall`.
@@ -327,10 +328,12 @@ Separate controls are not expression fields. In both dialects,
 named control. PC93 aliases ANNOUNCE. These switches accept no value or one
 `ALL`; `PASS BEACON OFF` is refused. Old NEARBY toggle commands are refused;
 use a numbered expression such as `PASS RULE 0 MODE=CW AND NEARBY`.
-CC `SET/FILTER` and `UNSET/FILTER` retain these controls only. Inline
+CC `SET/FILTER` and `UNSET/FILTER` retain these control forms. Native geography
+and DXBM also belong to SET/FILTER. Inline
 `SET/FILTER <switch>/ON|/OFF` takes no extra values; UNSET has no inline flags
 and there are no NEARBY control aliases. Named CC control shortcuts such as `SET/BEACON` and
-`SET/SELF` take no arguments; old category shortcuts are not supported.
+`SET/SELF` take no arguments; [native mode/category commands](../docs/cc-dialect.md#terminal-commands)
+have their own grammar and do not mutate GO rules.
 
 Live self-spots require SELF enabled and bypass personal rules, but
 still honor TOXIC. Command/history self matches retain their exception
@@ -444,8 +447,9 @@ Changing saved comment rules invalidates continuation and pending publication.
 Retention, page counts, work budgets, errors and warnings remain as documented
 under [archive history](#archive-history-and-continuation).
 
-Rules survive reconnects and presets through the [schema 6](#client-yaml-configuration)
-and [native v6](#persistence-format-and-rollback) contracts. Older COMMENT-list
+GO rules survive reconnects and tagged presets through [schema 7](../docs/cc-dialect.md#yaml-and-backups)
+and [native v7](#persistence-format-and-rollback). The retained schema-six GO
+interface edits only the active GO bank. Older COMMENT-list
 mechanics in [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
 are historical, not a supported compatibility engine.
 
@@ -757,6 +761,12 @@ width, and the complete rule body is admitted before output allocation.
 
 ## Client YAML Configuration
 
+Schema 7 is the current complete both-bank interface. See the
+[resource ownership table and upload rules](../docs/cc-dialect.md#yaml-and-backups).
+The schema-six examples below describe the retained legacy GO/settings interface:
+FILTER/CONFIG require effective GO, SETTINGS/CAPABILITIES also work in CC with
+warnings and no fabricated Boolean state. Schema six is not a full backup.
+
 The following canonical commands work independently of the human dialect:
 
 | Command | Purpose |
@@ -1011,195 +1021,57 @@ Ordinary commands and machine headers keep the configured command-line limit
 
 ## Named Presets
 
-These commands work in both `go` and `cc` dialects:
+`SAVE PRESET <name>`, `LIST PRESET`, `LOAD PRESET <name>` and
+`DELETE PRESET <name>` share 20 names across the base callsign's numeric SSIDs.
+A preset stores the active GO or native CC bank, its six controls and shared
+preferences with an explicit dialect tag. LOAD restores that bank, announces a
+dialect switch, leaves the other bank intact and restarts the solar schedule.
+Login/IP metadata, diagnostics, pauses and derived caches are not preset choices.
 
-| Command | Effect |
-| --- | --- |
-| `SAVE PRESET <name>` | Snapshot current filters and preferences; replace an existing name. |
-| `LIST PRESET` | Show uppercase names alphabetically, with the count and limit. |
-| `LOAD PRESET <name>` | Apply the snapshot and save this login call/SSID's defaults. |
-| `DELETE PRESET <name>` | Delete the snapshot without changing current settings. |
+Each bank keeps an independent association and immutable baseline across
+reconnect. Shared preference changes can mark either baseline modified. Deleting
+or overwriting the library name does not change an applied baseline. Failed LOAD
+changes neither live nor saved preferences. SAVE first admits both library and
+profile; if library replacement succeeds but association persistence fails, it
+reports that partial success and keeps both prior associations.
 
-Numeric SSIDs share the baseline callsign's collection. Portable prefixes and
-non-numeric hyphen suffixes retain the existing baseline-call identity rules.
-Other callsigns cannot address this collection through these commands. Loading
-does not change another connected SSID's live state or saved default.
-
-Names contain 1-32 ASCII letters, digits or hyphens, starting with
-a letter or digit. They are case-insensitive and stored/displayed uppercase.
-Each callsign can keep 20 presets, each with at most 256 KiB of standalone YAML
-preferences. Replacement is allowed at capacity; a new name requires deleting
-another preset. Presets remain independent snapshots after later preference
-changes. The collection read limit remains 8 MiB. A valid preset can LOAD even
-when its complete FULL/YAML readback exceeds the separate 65,536-byte response
-budget; LOAD checks its acknowledgement rather than requiring CONFIG readback
-to fit.
-
-The snapshot includes canonical rules, the six separate controls, dialect,
-dedupe policy, grid, noise class, path sample minimum and solar cadence. It
-excludes login/IP history, diagnostics, read pause and derived location caches.
-Native v6 snapshots preserve exact configured choices. LOAD uses server
-restrictions: disabled dedupe policies use the ordinary fallback and a path
-sample override applies only above the server minimum. GRID owns both location
-resolutions; NEARBY has no independent toggle or user-cell snapshot. Missing
-geometry makes that predicate false while other OR branches remain usable.
-
-LOAD restarts the chosen SOLAR schedule at the next wall-clock-aligned tick;
-enabled nodes send summaries only when conditions are active.
-
-Successful LOAD associates the name and establishes the successfully applied
-preferences as the reference. Server adjustments are reported separately.
-Successful SAVE associates the exact captured preferences that were written.
-Both human views and YAML status show `(modified)`/`modified: true` when the
-current preferences differ from that reference. Reversing changes clears it;
-this does not imply that every difference was caused by the user. Pause,
-and diagnostics do not affect it.
-
-The association and reference survive reconnect for the full callsign/SSID.
-Deleting or overwriting the named library entry leaves the already applied
-snapshot and reference intact. Failed LOAD preserves the previous preferences,
-association and reference, both live and on disk.
-
-SAVE prepares and admits both the library and SSID association before writing
-either. Admission failure changes neither file. SAVE has an explicit
-partial-success outcome when the admitted library write succeeds but the later
-SSID association write fails:
-
-```text
-Saved preset CONTEST, but could not persist its association for W1ABC-1.
-Previous preset association and baseline retained.
-```
-
-The old association/reference remain recoverable from disk after reconnect,
-and every ordinary preference save preserves them. The saved library snapshot
-remains available. Protected temporary-defaults sessions reject SAVE before
-changing the library and reject LOAD before changing configuration.
-
-Ordinary per-SSID autosaving remains in place. Named collections are separate
-runtime data at `data/users/presets/<hex-encoded-baseline-call>.yaml` under
-`filter.UserDataDir`. Include that directory in user-data backups. Collections
-are read on demand, with an 8 MiB read limit; no collection cache or background
-worker is retained. A fixed array of 64 locks serializes updates in one cluster
-process, including commands from different SSIDs. Multiple processes must not
-write the same user-data directory concurrently.
-
-SAVE/DELETE replace a complete collection using a synced, closed temporary file.
-LOAD prepares detached preferences, preserves the target SSID's login metadata,
-and atomically commits its user record before changing live settings. Missing,
-invalid, oversized or unreadable presets produce errors. Failed writes leave the
-previous file intact; a failed LOAD leaves live settings and saved defaults
-unchanged. Malformed collections are not reset or overwritten automatically.
-Successful SAVE/DELETE logs include collection cardinality. Handled failures
-clean up their temporary files; a cleanup failure is logged for the operator.
+See [preset ownership, limits and recovery](../docs/cc-dialect.md#presets-limits-and-recovery).
+Malformed/future libraries remain protected. One-time upgrade reset clears old
+presets once; presets created afterward survive unfinished profile/notice retries.
+Collections are read on demand under a fixed base-call lock stripe, with no
+library cache or background worker. One process may write a user-data directory.
 
 ### Persistence Format And Rollback
 
-User records, named preset entries and applied baselines require explicit
-`configuration_version: 6` and nested `configuration.filters/settings`.
-Strict codecs refuse older formats; login separately performs the recognized
-unversioned/version 1-5 reset described above. Current library entries and
-baselines must satisfy v6. Explicit-zero, malformed, future or unsafe documents
-remain protected. An encoder's zero version for a newly constructed in-memory
-DTO is not supported disk version 0. There is no category converter,
-marker-only upgrade or compatibility engine. Reset originals have adjacent
-`.pre-v6.bak` backups; existing v6 records and new presets are not reset again.
+Current files use `configuration_version: 7`. User records contain
+`configuration.filters.go`, `configuration.filters.cc`, shared `settings`,
+per-bank `presets`, login metadata and fixed `notice` fields. Library files
+contain their version, durable `reset_generation` and tagged named entries.
+This differs from the legacy schema-six machine interface and disk shape.
 
-Native records are not machine envelopes: they have no `schema_version`,
-`request_id` or `if_revision`. A codec-shaped record with an optional applied
-reference can look like this (illustrative, not executed validation):
+Profiles remain limited to 1 MiB, tagged presets to 192 KiB within the existing
+256 KiB physical cap, and libraries to 8 MiB/20 names. Whole-document decode work
+is bounded at 2 MiB per profile and 16 MiB per library; it is not a heap-size
+claim. Native CC canonical state is limited to 128 KiB and complete schema-seven
+frames to 256 KiB. Actual both-bank encodings, both baselines and human inspection
+must fit before acceptance. Individually maximal collections need not fit together.
 
-```yaml
-configuration_version: 6
-configuration:
-  filters:
-    rules:
-      - {slot: 0, action: pass, expr: 'MODE=CW AND SOURCE=HUMAN'}
-    include_beacons: DEFAULT
-    allow_wwv: DEFAULT
-    allow_wcy: DEFAULT
-    allow_announce: DEFAULT
-    allow_self: DEFAULT
-    allow_toxic: DEFAULT
-  settings:
-    dialect: ""
-    grid: ""
-    noise_class: ""
-    dedupe_policy: ""
-    path_min_observation_count: 0
-    solar_summary_minutes: 0
-preset:
-  name: CONTEST
-  baseline:
-    configuration_version: 6
-    configuration:
-      filters:
-        rules: []
-        include_beacons: DEFAULT
-        allow_wwv: DEFAULT
-        allow_wcy: DEFAULT
-        allow_announce: DEFAULT
-        allow_self: DEFAULT
-        allow_toxic: DEFAULT
-      settings:
-        dialect: ""
-        grid: ""
-        noise_class: ""
-        dedupe_policy: ""
-        path_min_observation_count: 0
-        solar_summary_minutes: 0
-recent_ips:
-  - 192.0.2.1
-last_login_utc: 2026-10-21T18:00:00Z
-```
+During the one-time upgrade only, each admitted replacement requires verification
+of the original adjacent `.pre-v7.bak`. Different existing backups are protected.
+Library reset and its marker commit together; profile/library replacement is not
+a two-file transaction. An independently safe profile may reset while the shared
+preset reset remains pending. Ordinary saves and notice acknowledgements use the
+existing synced/closed temporary file and atomic replacement without new backups.
 
-The retained baseline may differ from the current configuration and is not
-looked up afresh in the library. Login/IP metadata stays outside configuration.
-A library has a `presets` mapping, with a version on each named entry, not a
-top-level library version:
+A notice's complete writer flush permits a strict metadata-only acknowledgement.
+It proves a transmission opportunity, not an operator read. Failed acknowledgement
+may repeat a historical notice; completed resets never repeat. Protected temporary
+sessions cannot autosave over refused originals.
 
-```yaml
-presets:
-  CONTEST:
-    configuration_version: 6
-    configuration:
-      filters:
-        rules:
-          - {slot: 0, action: pass, expr: 'DXSTATE=NY,ON'}
-        include_beacons: DEFAULT
-        allow_wwv: DEFAULT
-        allow_wcy: DEFAULT
-        allow_announce: DEFAULT
-        allow_self: DEFAULT
-        allow_toxic: DEFAULT
-      settings:
-        dialect: ""
-        grid: ""
-        noise_class: ""
-        dedupe_policy: ""
-        path_min_observation_count: 0
-        solar_summary_minutes: 0
-```
-
-The native runtime record/configuration/preset wrappers use the v6 codecs in
-`filter/storage_v6_io_adapter.go`, `storage_v6.go`, `storage_v6_decode.go` and
-`preset_v6.go`. Those are current checkout routes, not published-main claims.
-Raw, normalized and prospective user records (including metadata/baseline)
-must each fit 1,048,576 bytes. Each standalone configuration/preset/baseline
-must fit 262,144 bytes in preset form; libraries allow 20 names and
-8,388,608 bytes. Shared physical-plus-logical decode work is separately bounded
-at 2,097,152 per record and 16,777,216 per collection. Decode work is not file
-size or retained heap bytes. Refusal preserves the original document.
-
-Per-SSID preference and association saves use synced, closed temporary files
-and atomic replacement. The configuration transaction covers reconnect's
-record read, login metadata update and registration, including competing older
-saves. It does not provide coordination between separate cluster processes.
-
-Back up `data/users` with writers stopped before upgrading, and stop writers
-before restoring a backup or changing server versions. An older user-record
-writer can discard association/version metadata and normalize exact values;
-an older preset reader may reject the new fields. Downgrade therefore requires
-a compatible backup rather than assuming the new records are interchangeable.
+Stop writers before backups or restoration. Preserve current files before rollback,
+then restore a matching old executable, profiles and shared library. This loses
+later changes across affected SSIDs. Do not relabel versions or pair an older
+writer with newer records. See [ADR-0330](../docs/decisions/ADR-0330-native-cc-banks-and-generation-seven.md).
 
 ## Dedupe Policies
 
@@ -1443,5 +1315,5 @@ snapshot. Refresh duration depends on installation and source size; see
 
 Archive version 6 stores the observed State values. Versions 2–5 remain readable
 with unknown State; history never consults current registry addresses.
-Configuration is separately schema 6/native disk v6, with no older-format
+Configuration separately uses schema seven/native disk v7 and a limited schema-six GO interface, with no older-format
 conversion. Use matching backups for downgrade.

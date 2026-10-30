@@ -24,6 +24,9 @@ func (s *Server) queueMachineReply(c *Client, response string, terminal bool) bo
 }
 
 func (s *Server) handleMachineCommand(c *Client, line string) machineDispatch {
+	if v7MachineActive() {
+		return s.handleV7MachineCommand(c, line)
+	}
 	return s.handleV6MachineCommand(c, line)
 }
 

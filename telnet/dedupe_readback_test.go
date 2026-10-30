@@ -41,8 +41,15 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 				s.dedupeFastEnabled, s.dedupeMedEnabled, s.dedupeSlowEnabled = tc.fast, tc.med, tc.slow
 				s.defaultDedupePolicy, s.defaultDedupeSet = dedupePolicySlow, true
 				c := configurationTestClient(s, "W1ABC-1")
-				record := &filter.UserRecord{Filter: *testRuleFilter(t), Dialect: string(dialect), DedupePolicy: tc.raw}
-				prepared, err := filter.PrepareUserRecord(c.callsign, record)
+				ccDefaults, err := filter.CurrentDefaultCCConfiguration()
+				if err != nil {
+					t.Fatal(err)
+				}
+				configuration := filter.V7Configuration{
+					Filters:  filter.V7FilterBanks{CC: ccDefaults},
+					Settings: filter.SettingsConfiguration{Dialect: string(dialect), DedupePolicy: tc.raw},
+				}
+				prepared, err := filter.PrepareV7UserRecord(c.callsign, &filter.V7UserRecord{ConfigurationVersion: 7, Configuration: configuration})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -54,21 +61,47 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 					t.Fatal("marked record did not restore exact configuration")
 				}
 				if tc.nearby {
-					c.filter = passRuleTestFilter(t, "NEARBY")
+					configuration, err := c.captureV7Configuration()
+					if err != nil {
+						t.Fatal(err)
+					}
+					configuration.Filters.GO.Rules = []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "NEARBY"}}
+					canonical, goRuntime, ccRuntime, err := filter.PrepareV7Configuration(configuration)
+					if err != nil {
+						t.Fatal(err)
+					}
+					c.filterBanks = &canonical.Filters
+					if dialect == DialectGo {
+						*c.filter = goRuntime
+					} else {
+						*c.filter = ccRuntime // CC keeps NEARBY exclusively in inactive GO.
+					}
 				}
 				if tc.usable {
 					c.gridCell, c.gridCoarseCell = 1, 2
 				}
-				baseline, err := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Preset()
+				configuration, err = c.captureV7Configuration()
 				if err != nil {
 					t.Fatal(err)
 				}
-				c.presetReference = &filter.PresetReference{Name: "CONTROL13", Baseline: baseline}
+				baseline, err := filter.V7PresetFromConfiguration(configuration, string(dialect))
+				if err != nil {
+					t.Fatal(err)
+				}
+				ref := &filter.V7PresetReference{Name: "CONTROL13", Baseline: baseline}
+				if dialect == DialectGo {
+					c.v7PresetReferences.GO = ref
+				} else {
+					c.v7PresetReferences.CC = ref
+				}
 				if err := c.saveFilter(); err != nil {
 					t.Fatal(err)
 				}
-				before := filter.ConfigurationFromFilter(c.filter, c.configuredSettings).Clone()
-				ref, err := c.presetReference.Clone()
+				before, err := c.captureV7Configuration()
+				if err != nil {
+					t.Fatal(err)
+				}
+				references, err := c.v7PresetReferences.Clone()
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -82,7 +115,7 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 				s.commitConfigurationFn = func(*filter.PreparedUserRecord) error { attempts++; return nil }
 				for range 2 {
 					show, handled := s.handleDedupeCommand(c, "show dedupe")
-					settings, err := s.renderHumanReadback(c, "SETTINGS", "", time.Second)
+					settings, err := s.renderOwnedHumanReadback(c, "SETTINGS", "", time.Second)
 					if !handled || err != nil {
 						t.Fatalf("read failed: %q, %v", show, err)
 					}
@@ -122,9 +155,10 @@ func TestDedupeReadbacksPreserveConfiguredOwners(t *testing.T) {
 						t.Fatal("readback changed existing runtime interpretation")
 					}
 					after, err := os.ReadFile(path)
+					afterConfiguration, captureErr := c.captureV7Configuration()
 					if err != nil || !bytes.Equal(saved, after) || attempts != 0 || c.configurationRevision != revision ||
-						c.getDedupePolicy() != runtime || !reflect.DeepEqual(ref, c.presetReference) ||
-						!before.Equal(filter.ConfigurationFromFilter(c.filter, c.configuredSettings)) {
+						captureErr != nil || c.getDedupePolicy() != runtime || !reflect.DeepEqual(references, c.v7PresetReferences) ||
+						!before.Equal(afterConfiguration) {
 						t.Fatal("read changed configured/runtime/preset/revision/disk owner")
 					}
 				}

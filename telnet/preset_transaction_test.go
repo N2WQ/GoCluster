@@ -88,12 +88,12 @@ func mustLoadPreset(t *testing.T, name string) *filter.SavedPreset {
 
 func TestPresetSavePartialSuccessRetainsDurableAssociation(t *testing.T) {
 	s := presetTestServer(t)
-	c := presetTransactionClient(s)
+	c := v7CurrentTestClient(t, s, "N2WQ-1")
 	c.filter = passRuleTestFilter(t, "DXCALL=K1*")
-	if response, _ := s.handlePresetCommand(c, "SAVE PRESET OLD"); response != "Saved preset OLD for N2WQ.\n" {
+	if response, _ := s.handlePresetCommand(c, "SAVE PRESET OLD"); response != "Saved preset OLD (GO) for N2WQ.\n" {
 		t.Fatal(response)
 	}
-	old := c.presetReference
+	old := c.v7PresetReferences
 	path := filepath.Join(filter.UserDataDir, "N2WQ-1.yaml")
 	before := presetDiskBytes(t, path)
 	c.filter = passRuleTestFilter(t, "DXCALL=W1*")
@@ -101,11 +101,15 @@ func TestPresetSavePartialSuccessRetainsDurableAssociation(t *testing.T) {
 		return errors.New("association commit failed")
 	}
 	response, _ := s.handlePresetCommand(c, "SAVE PRESET NEW")
-	want := "Saved preset NEW, but could not persist its association for N2WQ-1.\nPrevious preset association and baseline retained.\n"
-	if response != want || c.presetReference != old || !bytes.Equal(before, presetDiskBytes(t, path)) {
+	want := "Saved preset NEW, but could not persist its association for N2WQ-1.\nPrevious preset associations and baselines retained.\n"
+	if response != want || c.v7PresetReferences != old || !bytes.Equal(before, presetDiskBytes(t, path)) {
 		t.Fatalf("partial SAVE changed the previous association: %q", response)
 	}
-	if got := mustLoadPreset(t, "NEW").PreparedRules().Definitions(); len(got) != 1 || got[0].Expr != "DXCALL=W1*" {
+	saved, err := filter.LoadV7Preset(c.callsign, "NEW")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := saved.GO.Rules; len(got) != 1 || got[0].Expr != "DXCALL=W1*" {
 		t.Fatalf("partial SAVE lost the successful library snapshot: %v", got)
 	}
 	s.commitConfigurationFn = nil
@@ -114,8 +118,8 @@ func TestPresetSavePartialSuccessRetainsDurableAssociation(t *testing.T) {
 	}
 	// A subsequent ordinary preference save may persist W1*, but the existing
 	// association must still recover OLD with its original K1* baseline.
-	record, err := filter.LoadUserRecord(c.callsign)
-	if err != nil || record.Preset == nil || record.Preset.Name != "OLD" || record.PreparedRules().Definitions()[0].Expr != "DXCALL=W1*" || record.Preset.Baseline.PreparedRules().Definitions()[0].Expr != "DXCALL=K1*" {
+	record, err := filter.LoadV7UserRecord(c.callsign)
+	if err != nil || record.Presets.GO == nil || record.Presets.GO.Name != "OLD" || record.Configuration.Filters.GO.Rules[0].Expr != "DXCALL=W1*" || record.Presets.GO.Baseline.GO.Rules[0].Expr != "DXCALL=K1*" {
 		t.Fatalf("ordinary save lost the previous baseline: record=%+v err=%v", record, err)
 	}
 	bs := presetDiskBytes(t, path)
@@ -124,7 +128,7 @@ func TestPresetSavePartialSuccessRetainsDurableAssociation(t *testing.T) {
 	}
 	reconnected := presetTransactionClient(s)
 	s.restoreClientRecordOwned(reconnected, time.Now().UTC())
-	if reconnected.presetReference == nil || reconnected.presetReference.Name != "OLD" || reconnected.presetReference.Baseline.PreparedRules().Definitions()[0].Expr != "DXCALL=K1*" || reconnected.filter.PreparedRules().Definitions()[0].Expr != "DXCALL=W1*" {
+	if reconnected.v7PresetReferences.GO == nil || reconnected.v7PresetReferences.GO.Name != "OLD" || reconnected.v7PresetReferences.GO.Baseline.GO.Rules[0].Expr != "DXCALL=K1*" || reconnected.filter.PreparedRules().Definitions()[0].Expr != "DXCALL=W1*" {
 		t.Fatal("reconnect did not restore the retained association and current preferences")
 	}
 }

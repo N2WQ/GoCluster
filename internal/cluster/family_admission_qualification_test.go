@@ -87,7 +87,7 @@ func familyQualifiedRefusedSELF(t *testing.T, release bool) {
 	if _, err := io.WriteString(conn, "PASS SELF\r\n"); err != nil {
 		t.Fatal(err)
 	}
-	familyQualifiedAwaitLine(t, conn, reader, "Self spots enabled")
+	familyQualifiedAwaitLine(t, conn, reader, "Own-call spots enabled")
 	tracker := stats.NewTracker()
 	var lastOutput atomic.Int64
 	p := newOutputPipeline(dedup.NewDeduplicator(0, false, 8), nil, nil, nil, nil, nil,

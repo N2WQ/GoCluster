@@ -4467,6 +4467,11 @@ func formatNetworkLines(telnetSrv *telnet.Server, clientList []string) []string 
 		commandPacingWaits = telnetSrv.CommandPacingWaits()
 	}
 	lines = append(lines, fmt.Sprintf("[yellow]Command pacing waits[-]: %d", commandPacingWaits))
+	var configurationInput, configurationOutput int64
+	if telnetSrv != nil {
+		configurationInput, configurationOutput = telnetSrv.ConfigurationTransferStats()
+	}
+	lines = append(lines, fmt.Sprintf("[yellow]Config transfer reserved bytes[-]: input %d/8388608 output %d/8388608", configurationInput, configurationOutput))
 	lines = append(lines, clientLines...)
 	return lines
 }

@@ -31,6 +31,16 @@ func TestNamedPresetHelp(t *testing.T) {
 		}
 		for _, topic := range []string{"SHOW FILTER", "RESET FILTER"} {
 			response := p.ProcessCommandForClient("HELP "+topic, "N2WQ", "", nil, dialect)
+			if dialect == "cc" {
+				want := "Inspect native CC state."
+				if topic == "RESET FILTER" {
+					want = "GO dialect only."
+				}
+				if !strings.Contains(response, want) || !strings.Contains(response, "Usage:") {
+					t.Fatalf("cc %s HELP missing %q: %s", topic, want, response)
+				}
+				continue
+			}
 			if !strings.Contains(response, "Usage:") || !strings.Contains(response, "filter state") && !strings.Contains(response, "Reset filters") {
 				t.Fatalf("%s existing %s HELP changed: %s", dialect, topic, response)
 			}

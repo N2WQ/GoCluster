@@ -218,7 +218,7 @@ func TestPreparedRecordValidationBoundaries(t *testing.T) {
 	if _, err := PrepareUserPreferences("not a login", nil, nil); err == nil || err.Error() != "invalid login callsign" {
 		t.Fatal("preference login-before-nil order changed")
 	}
-	if _, err := PrepareUserPreferences("N2WQ-1", &SavedPreset{ConfigurationVersion: CurrentConfigurationVersion + 1}, nil); err != nil {
+	if _, err := PrepareUserPreferences("N2WQ-1", &SavedPreset{ConfigurationVersion: V6ConfigurationVersion + 1}, nil); err != nil {
 		t.Fatal("preference preparation added input preset-version validation")
 	}
 	path := userRecordPath("N2WQ-1")
@@ -247,7 +247,7 @@ func TestPreparedRecordRefusalHasNoEffects(t *testing.T) {
 	usePresetTestDir(t)
 	UserDataDir = filepath.Join(UserDataDir, "not-created")
 	for _, record := range []*UserRecord{
-		{ConfigurationVersion: CurrentConfigurationVersion + 1},
+		{ConfigurationVersion: V6ConfigurationVersion + 1},
 		{Filter: Filter{AllowWWV: nil}, Grid: strings.Repeat("A", MaxPresetBytes+1)},
 		{Preset: &PresetReference{Name: "lower", Baseline: testSavedPreset()}},
 	} {

@@ -11,7 +11,7 @@ import (
 // matching. Unrelated selections are deliberately active, so an accidental
 // global reset cannot pass just by producing the requested bands and modes.
 func TestHelpBandModeRecipe(t *testing.T) {
-	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+	for _, dialect := range []DialectName{DialectGo} {
 		t.Run(string(dialect), func(t *testing.T) {
 			server := presetTestServer(t)
 			client := configurationTestClient(server, "W1ABC-1")

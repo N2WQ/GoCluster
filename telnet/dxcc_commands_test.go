@@ -17,6 +17,10 @@ func TestDXCCCanonicalRuleOperands(t *testing.T) {
 		for _, field := range []string{"DXDXCC", "DEDXCC"} {
 			for _, operator := range []string{"=", "<>"} {
 				t.Run(string(dialect)+"/"+field+operator, func(t *testing.T) {
+					if dialect == DialectCC {
+						testNativeCCCanonicalCountryOperands(t, field, operator)
+						return
+					}
 					candidate, _, _ := booleanCommandFixture(t, dialect)
 					calls := 0
 					candidate.server = &Server{ctyLookup: func() *cty.CTYDatabase {

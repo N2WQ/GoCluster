@@ -67,6 +67,9 @@ func filterBasicsLines() []string {
 }
 
 func helpOverviewLines(dialect string) []string {
+	if dialect == "cc" {
+		return nativeCCHelpOverviewLines()
+	}
 	show, short, readback := "SHOW DX", "SH DX", "SHOW FILTER"
 	if dialect == "cc" {
 		show, short, readback = "SHOW/DX", "SH/DX", "SHOW/FILTER"
@@ -177,6 +180,9 @@ func preferencesOverviewLines() []string {
 }
 
 func filterReferenceHelpLines(dialect string) []string {
+	if dialect == "cc" {
+		return nativeCCFilterReferenceLines()
+	}
 	lines := []string{"Filter reference:", "  HELP RULE is the canonical Boolean grammar, field and value reference."}
 	lines = append(lines, filterBasicsLines()...)
 	lines = append(lines, filterRecipeLines(dialect)...)

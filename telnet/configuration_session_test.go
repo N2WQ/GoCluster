@@ -77,10 +77,19 @@ func TestMachineGETOverflowReleasesOwnershipBeforeBlockedReporter(t *testing.T) 
 func TestConfigurationSaveAndReconnectHandoff(t *testing.T) {
 	s := presetTestServer(t)
 	s.maxConnections = 1
-	old := configurationTestClient(s, "W1ABC-1")
+	old := v7CurrentTestClient(t, s, "W1ABC-1")
 	old.configuredSettings = filter.SettingsConfiguration{Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST"}
 	old.configurationInitialized = true
-	old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})}
+	baseline, err := old.captureV7Configuration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseline.Settings.NoiseClass = "QUIET"
+	set, err := filter.V7PresetFromConfiguration(baseline, "go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	old.v7PresetReferences.GO = &filter.V7PresetReference{Name: "CONTEST", Baseline: set}
 	s.registerClient(old)
 	entered, finish := make(chan struct{}), make(chan struct{})
 	s.commitConfigurationFn = func(prepared *filter.PreparedUserRecord) error {
@@ -120,7 +129,7 @@ func TestConfigurationSaveAndReconnectHandoff(t *testing.T) {
 	if saveErr != nil || restoreErr != nil {
 		t.Fatalf("save=%v restore=%v", saveErr, restoreErr)
 	}
-	if next.configuredSettings.NoiseClass != "URBAN" || next.presetReference == nil || next.presetReference.Name != "CONTEST" || next.presetReference.Baseline.NoiseClass != "QUIET" {
+	if next.configuredSettings.NoiseClass != "URBAN" || next.v7PresetReferences.GO == nil || next.v7PresetReferences.GO.Name != "CONTEST" || next.v7PresetReferences.GO.Baseline.Settings.NoiseClass != "QUIET" {
 		t.Fatal("handoff did not restore the committed preferences and baseline together")
 	}
 	s.commitConfigurationFn = nil
@@ -223,7 +232,15 @@ func TestConfigurationProtectedTemporaryDefaults(t *testing.T) {
 func TestConfigurationLoginMetadataFailureRestoresPreferences(t *testing.T) {
 	s := presetTestServer(t)
 	call := "W1ABC-1"
-	if err := filter.SaveUserRecord(call, &filter.UserRecord{Filter: *testRuleFilter(t), Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "SLOW"}); err != nil {
+	cfg, err := filter.DefaultV7Configuration(filter.SettingsConfiguration{Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN", DedupePolicy: "SLOW"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := filter.PrepareV7UserRecord(call, &filter.V7UserRecord{Configuration: cfg})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := payload.Commit(); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(filter.UserDataDir, call+".yaml")

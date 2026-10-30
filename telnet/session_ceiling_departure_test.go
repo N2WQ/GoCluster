@@ -23,16 +23,24 @@ func TestSessionCeilingDepartingSameIdentity(t *testing.T) {
 	for _, competingWinner := range []bool{false, true} {
 		t.Run(fmt.Sprintf("competing_winner_%t", competingWinner), func(t *testing.T) {
 			s := newSessionCeilingServer(t, 1)
-			old := configurationTestClient(s, "K1ABC-1")
+			old := v7CurrentTestClient(t, s, "K1ABC-1")
 			old.configuredSettings = filter.SettingsConfiguration{Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "FAST"}
 			old.configurationInitialized = true
-			baseline := testSavedPreset(t, filter.V6Configuration{Settings: filter.SettingsConfiguration{Dialect: "go", NoiseClass: "QUIET", DedupePolicy: "FAST"}})
-			old.presetReference = &filter.PresetReference{Name: "CONTEST", Baseline: baseline}
+			cfg, err := old.captureV7Configuration()
+			if err != nil {
+				t.Fatal(err)
+			}
+			cfg.Settings.NoiseClass = "QUIET"
+			baseline, err := filter.V7PresetFromConfiguration(cfg, "go")
+			if err != nil {
+				t.Fatal(err)
+			}
+			old.v7PresetReferences.GO = &filter.V7PresetReference{Name: "CONTEST", Baseline: baseline}
 			s.registerClient(old)
 			if err := old.saveFilter(); err != nil {
 				t.Fatalf("initial owner save: %v", err)
 			}
-			if err := filter.SavePreset(old.callsign, "CONTEST", baseline); err != nil {
+			if err := filter.SaveV7Preset(old.callsign, "CONTEST", baseline); err != nil {
 				t.Fatalf("initial shared preset: %v", err)
 			}
 			profile := filepath.Join(filter.UserDataDir, old.callsign+".yaml")
@@ -178,7 +186,7 @@ func TestSessionCeilingDepartingSameIdentity(t *testing.T) {
 				if err != nil {
 					t.Fatalf("reconnect did not acquire freed capacity: %v", err)
 				}
-				if replacement.configuredSettings.NoiseClass != "INDUSTRIAL" || replacement.presetReference == nil || replacement.presetReference.Name != "CONTEST" || replacement.presetReference.Baseline.NoiseClass != "QUIET" {
+				if replacement.configuredSettings.NoiseClass != "INDUSTRIAL" || replacement.v7PresetReferences.GO == nil || replacement.v7PresetReferences.GO.Name != "CONTEST" || replacement.v7PresetReferences.GO.Baseline.Settings.NoiseClass != "QUIET" {
 					t.Fatal("reconnect did not restore the final saved preferences and preset baseline")
 				}
 				s.clientsMutex.RLock()

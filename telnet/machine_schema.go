@@ -132,8 +132,8 @@ func machineBoolean(node *yaml.Node, path string) (bool, error) {
 	return false, schemaError(path, "expected a boolean")
 }
 
-func machineInteger(node *yaml.Node, path string, allowString bool) (int, error) {
-	if node.Kind != yaml.ScalarNode || (node.Tag != "!!int" && (!allowString || node.Tag != "!!str")) {
+func machineInteger(node *yaml.Node, path string) (int, error) {
+	if node.Kind != yaml.ScalarNode || node.Tag != "!!int" {
 		return 0, schemaError(path, "expected an integer")
 	}
 	value, err := strconv.ParseInt(strings.ReplaceAll(node.Value, "_", ""), 0, strconv.IntSize)

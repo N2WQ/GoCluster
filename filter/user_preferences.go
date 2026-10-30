@@ -96,7 +96,7 @@ func PrepareConfiguration(callsign string, cfg Configuration, ref *PresetReferen
 }
 
 func applyRecordConfiguration(record *UserRecord, cfg Configuration) {
-	record.ConfigurationVersion = CurrentConfigurationVersion
+	record.ConfigurationVersion = V6ConfigurationVersion
 	record.Filter = cfg.FilterValue()
 	record.Dialect = cfg.Settings.Dialect
 	record.Grid = cfg.Settings.Grid

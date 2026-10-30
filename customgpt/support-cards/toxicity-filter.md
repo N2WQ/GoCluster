@@ -12,7 +12,9 @@ comment was classified toxic.
 
 ## Must Include
 
-- Run `SHOW FILTER` to confirm `REJECT TOXIC` is active.
+- Inspect the active dialect's `SHOW FILTER`: GO uses `REJECT TOXIC`, while
+  CC also supports `SET/NOTOXIC`. Each bank remembers its own switch; changing
+  one leaves the other untouched. See [CC controls](../../docs/cc-dialect.md).
 - Distinguish `TOXIC` from `UNKNOWN`, `SAFE_LOCAL`, and `UNAVAILABLE`.
 - Confirm toxicity classifier configuration and Worker auth/timeout/429/5xx
   health before guessing the classification.

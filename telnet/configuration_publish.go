@@ -97,6 +97,10 @@ func (s *Server) publishConfigurationState(c *Client, settings filter.SettingsCo
 	c.configuredSettings = settings
 	c.configurationInitialized = true
 	c.presetReference = ref
+	if prepared.filterBanks != nil {
+		c.filterBanks = prepared.filterBanks
+		c.v7PresetReferences = prepared.v7PresetReferences
+	}
 	c.filterMu.Unlock()
 	c.pathMu.Unlock()
 }
@@ -127,6 +131,10 @@ func (s *Server) publishHumanPreferenceState(c, staged *Client, forceSolar bool)
 		c.setSolarSummaryMinutes(staged.configuredSettings.SolarSummaryMinutes, s.now())
 	}
 	c.configuredSettings, c.configurationInitialized = staged.configuredSettings, true
+	if staged.filterBanks != nil {
+		c.filterBanks = staged.filterBanks
+		c.v7PresetReferences = staged.v7PresetReferences
+	}
 	c.filterMu.Unlock()
 	c.pathMu.Unlock()
 }

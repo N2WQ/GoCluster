@@ -141,8 +141,8 @@ func TestTaxonomyUnderscoreRetainsTerminalMachineIntent(t *testing.T) {
 func loadHumanInputTaxonomy(t *testing.T) {
 	t.Helper()
 	const definition = "modes:\n" +
-		"  - name: CW\n    filter_visible: true\n    default_filter_allowed: true\n    variants: [CW_ALIAS]\n" +
-		"  - name: TEST_MODE\n    filter_visible: true\n    default_filter_allowed: true\n" +
+		"  - name: CW\n    filter_visible: true\n    default_filter_allowed: true\n    cc_shortcut: true\n    variants: [CW_ALIAS]\n" +
+		"  - name: TEST_MODE\n    filter_visible: true\n    default_filter_allowed: true\n    cc_shortcut: true\n" +
 		"  - name: UNKNOWN\n    filter_visible: true\n    default_filter_allowed: true\n" +
 		"events:\n  - name: TEST_EVENT\n    filter_visible: true\n  - name: OTHER_EVENT\n    filter_visible: true\n"
 	path := filepath.Join(t.TempDir(), "spot_taxonomy.yaml")
@@ -164,6 +164,10 @@ func TestHumanTaxonomyReaderPublicationStorageAndMatcher(t *testing.T) {
 		for _, dialect := range []DialectName{DialectGo, DialectCC} {
 			for _, field := range []string{"MODE", "EVENT"} {
 				t.Run(fmt.Sprintf("%s/%s/ziutek=%v", dialect, field, ziutek), func(t *testing.T) {
+					if dialect == DialectCC {
+						testNativeCCTaxonomyPublication(t, ziutek, field)
+						return
+					}
 					s := presetTestServer(t)
 					expression, excluded := "MODE=cw_alias,test_mode", "MODE=unknown_mode"
 					if field == "EVENT" {

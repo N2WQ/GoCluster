@@ -40,6 +40,7 @@ func newFilterDefaultRules() *PreparedRuleSet {
 // Its zero value represents a nil Filter and fails closed.
 type MatchSnapshot struct {
 	rules         *PreparedRuleSet
+	cc            *PreparedCCFilter
 	valid         bool
 	beacons, self bool
 	toxic         bool
@@ -51,6 +52,7 @@ func (f *Filter) MatchSnapshot() MatchSnapshot {
 	}
 	return MatchSnapshot{
 		rules: f.preparedRules, valid: true,
+		cc:      f.preparedCC,
 		beacons: f.BeaconsEnabled(), self: f.SelfEnabled(), toxic: f.ToxicEnabled(),
 	}
 }
@@ -64,11 +66,16 @@ func (s MatchSnapshot) MatchesWithContext(value *spot.Spot, context EvaluationCo
 	if !s.valid || value == nil || (value.IsBeacon && !s.beacons) || !s.AllowsToxicity(value) {
 		return false
 	}
+	if s.cc != nil {
+		return s.cc.Matches(value, context)
+	}
 	return s.rules.Matches(value, context)
 }
 
-func (s MatchSnapshot) PathFilterActive() bool   { return s.valid && s.rules.NeedsPath() }
-func (s MatchSnapshot) NearbyFilterActive() bool { return s.valid && s.rules.NeedsNearby() }
+func (s MatchSnapshot) PathFilterActive() bool { return s.valid && s.cc == nil && s.rules.NeedsPath() }
+func (s MatchSnapshot) NearbyFilterActive() bool {
+	return s.valid && s.cc == nil && s.rules.NeedsNearby()
+}
 
 func (s MatchSnapshot) SelfEnabled() bool { return s.valid && s.self }
 

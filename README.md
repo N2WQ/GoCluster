@@ -9,11 +9,11 @@ to your telnet client or logging program. You can choose which spots to see,
 hide repeated reports, and view optional hints about radio conditions.
 
 > [!IMPORTANT]
-> This checkout contains the Boolean-filter MVP, using schema 6 and a fresh
-> isolated user store. It is not a production rollout or a claim that published
-> release assets already contain this change. Recognized old profiles receive
-> a one-time filter reset at login while retaining settings; old machine schemas
-> remain refused. See the [upgrade contract](telnet/README.md#login-and-session-behavior).
+> This checkout adds independent GO and native CC filters with schema 7.
+> The upgrade resets old filters, their six switches and old named presets;
+> selected dialect and unrelated settings remain. Use schema 7 CONFIG for a
+> complete two-bank backup. Schema 6 remains a limited GO/settings interface.
+> This is not a production rollout. See [CC commands and recovery](docs/cc-dialect.md).
 
 ## On This Page
 

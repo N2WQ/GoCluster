@@ -39,7 +39,7 @@ func (set *V6SavedPreset) Clone() (*V6SavedPreset, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &V6SavedPreset{ConfigurationVersion: CurrentConfigurationVersion, Configuration: cfg}, nil
+	return &V6SavedPreset{ConfigurationVersion: V6ConfigurationVersion, Configuration: cfg}, nil
 }
 
 // Clone detaches the bounded applied snapshot without a YAML roundtrip.
@@ -59,7 +59,7 @@ func (ref *V6PresetReference) Clone() (*V6PresetReference, error) {
 }
 
 func validateV6EncodingVersion(version int) error {
-	if version != 0 && version != CurrentConfigurationVersion {
+	if version != 0 && version != V6ConfigurationVersion {
 		return ErrUnsupportedConfigurationVersion
 	}
 	return nil
@@ -104,7 +104,7 @@ func prepareV6StoredConfiguration(c V6Configuration) (V6Configuration, error) {
 	if err != nil {
 		return V6Configuration{}, err
 	}
-	data, err := yaml.Marshal(&V6SavedPreset{ConfigurationVersion: CurrentConfigurationVersion, Configuration: canonical})
+	data, err := yaml.Marshal(&V6SavedPreset{ConfigurationVersion: V6ConfigurationVersion, Configuration: canonical})
 	if err != nil {
 		return V6Configuration{}, err
 	}

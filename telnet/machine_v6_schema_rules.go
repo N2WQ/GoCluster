@@ -1,3 +1,4 @@
+// File role: Strict legacy GO rule decoding, reused by the schema-seven GO bank.
 package telnet
 
 import (
@@ -26,7 +27,7 @@ func decodeV6MachineRules(node *yaml.Node, path string, resolve func(string) (in
 		if err != nil {
 			return nil, err
 		}
-		slot, err := machineInteger(fields["slot"], itemPath+".slot", false)
+		slot, err := machineInteger(fields["slot"], itemPath+".slot")
 		if err != nil {
 			return nil, err
 		}

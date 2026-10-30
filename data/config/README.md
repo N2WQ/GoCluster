@@ -328,190 +328,46 @@ PC18/PC92 active wire configuration:
 
 ## User Configuration Storage
 
-User preferences are stored under `filter.UserDataDir` (normally `data/users`),
-separately from the files in this deployment-config directory. Each full callsign,
-including its SSID, owns one record such as `N2WQ-1.yaml`. The `presets` subdirectory
-holds named snapshots shared by the base callsign's numeric SSIDs; back it up
-with user records.
+User preferences live under `filter.UserDataDir` (normally `data/users`),
+separately from deployment configuration. Each full login callsign/SSID owns a
+version-seven profile containing independent GO and native CC filter banks,
+six controls per bank, shared preferences, independent applied preset baselines,
+login/IP metadata and fixed upgrade-notice metadata. The `presets` subdirectory
+holds the shared base-call tagged library. Include it in user-data backups.
 
-Native user records require `configuration_version: 6` and nested
-`configuration.filters` and `configuration.settings`. Rules are numbered Boolean
-definitions, not category maps. The six separate controls preserve `DEFAULT`
-versus explicit `false`/`true`; settings preserve empty default selections and
-numeric zero sentinels. `recent_ips` and `last_login_utc` remain user metadata
-outside `configuration`, not preset preferences.
+Both banks initially use the operator's current mode/source defaults. The one-time
+upgrade clears every earlier filter, its six switches and old named presets while
+preserving selected dialect, unrelated configured settings and login metadata.
+New presets survive subsequent SSID/reset/notice retries. Original eligible files
+receive verified `.pre-v7.bak` backups; ordinary saves do not create these backups.
+Malformed/future files remain protected, including against disconnect autosave.
 
-This source-derived example is a native user record, not a machine upload:
+Use `GET YAML CONFIG SCHEMA 7` for both-bank configuration backup and explicit
+`PUT YAML CONFIG SCHEMA 7` for a full restore. Schema six remains a limited legacy
+GO/settings interface, not a complete backup. Machine requests have their own
+`schema_version`, `request_id`, optional/required revision and `configuration`
+envelope; they are not native disk files. Read-only status, applied baselines,
+reset metadata and login history are not writable machine configuration fields.
+See [CC commands and complete YAML contract](../../docs/cc-dialect.md).
 
-```yaml
-configuration_version: 6
-configuration:
-  filters:
-    rules:
-      - {slot: 0, action: pass, expr: 'MODE=CW AND SOURCE=HUMAN'}
-    include_beacons: DEFAULT
-    allow_wwv: DEFAULT
-    allow_wcy: DEFAULT
-    allow_announce: DEFAULT
-    allow_self: DEFAULT
-    allow_toxic: DEFAULT
-  settings:
-    dialect: ""
-    grid: ""
-    noise_class: ""
-    dedupe_policy: ""
-    path_min_observation_count: 0
-    solar_summary_minutes: 0
-recent_ips:
-  - 192.0.2.1
-last_login_utc: 2026-10-21T18:00:00Z
-```
+The strict current storage owners are `filter/profile_v7.go`, `storage_v7.go`,
+`storage_v7_decode.go`, `preset_v7.go`, `preset_v7_io.go` and `upgrade_v7.go`.
+Historical v6 DTO codecs remain frozen for the legacy GO machine interface.
+Profiles stay limited to 1 MiB, libraries to 8 MiB/20 names; complete configuration,
+tagged presets, native CC state and wrapped outputs have additional independent
+bounds. Decode work is bounded separately from physical bytes and retained heap.
 
-An optional `preset` mapping contains `name` and `baseline`. The baseline is an
-independent snapshot with its own `configuration_version: 6` and nested
-`configuration.filters/settings`, not a lookup of the library's current entry.
-The named library is a `presets` mapping; each normalized name owns one versioned
-snapshot, for example:
+Human late-save failure keeps accepted changes active, with an unsaved warning.
+Machine writes and preset LOAD commit before publication. One revision covers
+both banks, controls, shared preferences and dialect selection. Unavailable runtime
+fallbacks do not rewrite configured DEFAULT/empty choices during ordinary restore.
 
-```yaml
-presets:
-  CONTEST:
-    configuration_version: 6
-    configuration:
-      filters:
-        rules:
-          - {slot: 0, action: pass, expr: 'DXSTATE=NY,ON'}
-        include_beacons: DEFAULT
-        allow_wwv: DEFAULT
-        allow_wcy: DEFAULT
-        allow_announce: DEFAULT
-        allow_self: DEFAULT
-        allow_toxic: DEFAULT
-      settings:
-        dialect: ""
-        grid: ""
-        noise_class: ""
-        dedupe_policy: ""
-        path_min_observation_count: 0
-        solar_summary_minutes: 0
-```
-
-There is no top-level library version or machine `schema_version`/request
-envelope on disk. Every current entry and applied baseline must be v6. Strict
-v6 decoding refuses missing, zero, old and future disk version markers. A zero version
-is only a newly constructed in-memory encoder DTO convention; it is never a
-supported disk version.
-
-Login has a separate reset-only upgrade path for recognized unversioned and
-version 1-5 records. It preserves settings, separate controls and metadata,
-discards old filters/NEARBY/applied association, and installs the same configured
-mode/source rule as new accounts in editable PASS slot 0. Old preset entries
-are cleared while existing v6 entries survive. Originals are backed up before
-replacement; subsequent logins do not reinstall this rule or wipe new presets.
-This is not translation of old filters or acceptance of older machine schemas.
-The original-file backup suffix is `.pre-v6.bak`. Backups must match the original
-bytes on retry; a conflicting backup stops the reset. Existing .pre-v5.bak
-files stay untouched. Admit both replacements before mutation, write the library
-first, and retain precise partial-failure/retry outcomes. Only initial profile
-absence grants new-user creation; library or later not-found errors do not. Restore or rollback
-requires stopping writers and using compatible binary/data copies, not editing
-the version marker. Historical unversioned settings retain the old loader's
-normalization/default meaning; marked version 1-5 preferences retain exact
-empty/zero/false selections.
-
-Unreadable, malformed, over-budget or unrecognized-version records are
-protected and left untouched. A login unable to restore or upgrade its record uses warned
-temporary defaults, not a successful migration. LOAD, machine writes and SAVE
-PRESET are rejected for that protected record; SAVE fails before writing the
-named library. Ordinary preference and teardown saves also preserve it. If only
-the login timestamp/IP save fails after a successful read, login continues with
-the restored preferences and preset reference plus a warning.
-
-New accounts and recognized old-profile resets receive the validated configured
-`filter.default_modes` and `filter.default_sources` as an
-ordinary editable PASS rule in slot 0. The expression combines MODE and SOURCE
-with AND; ALL, both sources or an empty source selection explicitly writes
-SOURCE=HUMAN,SKIMMER. The shipped default_sources lists HUMAN and SKIMMER.
-A PASS without SOURCE imposes no source restriction, just like REJECT.
-Explicit SOURCE=HUMAN rules remain human-only, including saved defaults.
-Changing the shipped configuration does not rewrite saved profiles or presets.
-Startup validates the configured rule after taxonomy loading. Existing/restored v6
-records with `rules: []` stay empty. Adding another PASS broadens selection;
-edit or remove slot 0 to narrow it. `RESET FILTER RULE <0..9|ALL>` clears only
-selected slots. `RESET FILTER` clears all rules, including NEARBY terms. Neither reinstalls slot 0 or resets separate controls/settings.
-
-SNR is a Boolean rule field, separate from deployment YAML. For example,
-`REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10` explicitly limits the
-rejection to skimmer reports. SNR is known whenever `HasReport` is true,
-including human reports, zero and negative values. Missing-report comparisons
-are false, including `<>`; NOT negates that result. There is no implicit human
-exemption, saved `min_snr` map or old-schema preservation path. See `HELP RULE`
-and the [telnet filter contract](../../telnet/README.md#filters).
-
-User-record writes atomically commit preferences together with the applied preset
-name and one bounded baseline. LOAD rebuilds GRID-owned runtime geometry and
-commits the full-SSID record before live publication. Missing geometry makes
-NEARBY false; it does not block unrelated OR branches. It records the applied snapshot, including
-reported server adjustments; SAVE associates the same capture written to the
-named library. If the named save succeeds but its association fails, the previous
-live and disk association/baseline remain recoverable. Ordinary saves preserve
-that reference, and library overwrite or deletion does not alter the applied
-snapshot. Reconnect restores the reference for that full callsign. Preferences
-differing from the baseline show `(modified)`; reversing them clears the label.
-
-User records have separate 1 MiB (1,048,576-byte) raw-read, normalized-encoding
-and final-write limits. Each configuration, preset and applied baseline has a
-256 KiB (262,144-byte) standalone SavedPreset encoding limit. Decoding has one
-shared physical-plus-logical processing budget for node visits and decoded
-scalar bytes, including alias expansion: 2,097,152 units per record and
-16,777,216 per collection. Nested baselines do not start a new budget. These are
-work units, not heap or file bytes.
-Refused files remain untouched. Human candidates are admitted before publication;
-a warm session with a refused destination can use fitting temporary changes with
-a warning, then retry a repaired file on a later save or ordinary logout. A
-login that started with protected defaults remains protected for that session.
-SAVE admits the library and association before either write; only later I/O
-failure can produce its documented partial success.
-
-Preset budgets remain 20 names per owner, 256 KiB per encoded snapshot and
-8 MiB (8,388,608 bytes) per collection. Trial rule guardrails are ten slots
-(0-9), 128 total atoms and 512 total values; each expression is limited to
-1,024 raw and canonical bytes, 32 atoms, 128 nodes and nesting depth 8.
-Each comparison atom has at most 32 values; NEARBY has none. each COMMENT operand has 1-64 printable ASCII
-bytes including a non-space byte. Nesting counts parentheses and NOT, not flat
-AND/OR height. These limits do not enlarge the configured human line limit
-(128 bytes by default) or the 65,536-byte machine upload/final-response limits.
-Valid large presets can LOAD even when a FULL or YAML readback exceeds 64 KiB.
-PUT/PATCH/VALIDATE instead require the resulting
-complete CONFIG readback to fit, including reserved response metadata. An
-unchanged PUT still persists before success, repairing an earlier failed human
-save without resetting unrelated solar, GRID, diagnostic or pause state.
-
-The live experiment uses isolated storage. Recognized old profiles now have
-the explicit reset-only login upgrade above; ordinary strict reads do not
-convert profiles or reinterpret an edited version marker. No production bulk
-rewrite is performed by the implementation task.
-Stop writers before backup, repair or restore; use one writer process per
-user-data directory. Writes replace a destination only after the temporary file
-has been written, synced and closed. Downgrade requires a matching binary and
-data backup; never delete or relabel a protected record to force admission.
-See [backup instructions](../../docs/ENVIRONMENT.md#user-configuration-backups-and-downgrades).
-[ADR-0244](../../docs/decisions/ADR-0244-exact-configuration-persistence.md)
-records earlier persistence history, not an active pre-v5 conversion contract.
-
-The current native boundary is owned by `filter/configuration_v6.go`,
-`filter/storage_v6.go`, `filter/storage_v6_decode.go`,
-`filter/storage_v6_io_adapter.go` and `filter/preset_v6.go` in the checkout.
-Human edits admit detached candidates before publication, then keep accepted
-edits live with a warning if a later save fails. Machine writes commit before
-publication and preserve both live and saved state on failure. All machine GETs,
-including SETTINGS and CAPABILITIES, require explicit `SCHEMA 6`; upload bodies
-require `schema_version: 6`, not the native disk envelope. See the
-[client protocol](../../telnet/README.md#client-yaml-configuration) and
-[normative domain contract](../../docs/domain-contract.md#boolean-personal-rules)
-for rule semantics, ordinary Boolean NEARBY and the required unavailable-geometry
-rule-only recovery behavior. The unchanged saved GRID may remain unmappable
-while exact syntax and every other settings check stay enforced.
+Stop writers before backup, repair, restore or executable downgrade; permit one
+writer process per user directory. Preserve current files before rolling back,
+then restore a matching binary, profiles and shared library. Restoring older
+backups loses later changes across affected SSIDs. Never delete or relabel a
+protected record to force admission. See [ADR-0330](../../docs/decisions/ADR-0330-native-cc-banks-and-generation-seven.md)
+and [backup operations](../../docs/ENVIRONMENT.md#user-configuration-backups-and-downgrades).
 
 ## FCC And ISED Reference Data And Enforcement
 
@@ -597,8 +453,9 @@ current snapshot.
 
 Back up user profiles, preset libraries and the archive with writers stopped
 before changing binaries. Native user records, named entries and applied
-baselines use configuration version 6; machine configuration uses explicit
-schema 6 only. Archive version 6 is separate factual metadata history: it
+baselines use configuration version seven. Machine schema seven manages both
+banks; schema six remains a limited GO/settings interface. Archive version six
+is separate factual metadata history: it
 records observed DX/DE State, while archive versions 2-5 retain unknown State
 without consulting today's registry. Historically, earlier Canadian-data
 readers could reject codes or skip archive rows even when a version matched;

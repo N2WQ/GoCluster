@@ -184,6 +184,10 @@ func (c *Client) captureConfiguration(limit int) (filter.Configuration, error) {
 }
 
 func (c *Client) refreshConfigurationRevision() {
+	if c.filterBanks != nil {
+		c.refreshV7ConfigurationRevision()
+		return
+	}
 	c.refreshV6ConfigurationRevision()
 }
 
@@ -226,6 +230,33 @@ func (c *Client) saveFilterOwned() error {
 	}
 	if c.recordProtected {
 		return errProtectedRecord
+	}
+	if c.filterBanks != nil {
+		// Teardown already interrupted the socket. Let the existing writer drop
+		// its pending frame before obtaining a separate bounded save owner. The
+		// SSID lease prevents replacement; the writer never needs that lease.
+		if configurationTransferClosed(c) && c.writerStopped != nil {
+			<-c.writerStopped
+		}
+		reservation, err := c.reserveConfigurationPreparation()
+		if err != nil {
+			return err
+		}
+		defer reservation.Release()
+		cfg, err := c.captureV7Configuration()
+		if err != nil {
+			return err
+		}
+		c.refreshV7ConfigurationRevision()
+		prepared, err := c.server.prepareV7ConfigurationRecord(c, cfg, c.v7PresetReferences)
+		if err != nil {
+			return err
+		}
+		if err := c.server.commitConfigurationRecord(prepared); err != nil {
+			return err
+		}
+		c.configurationUnsaved = false
+		return nil
 	}
 	cfg, err := c.captureConfiguration(0)
 	if err != nil {

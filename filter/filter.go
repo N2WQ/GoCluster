@@ -205,7 +205,8 @@ func EnsureUserDataDir() error {
 // Callers synchronize capture/publication; MatchSnapshot detaches delivery state.
 // Programs are bounded by rule preparation and released with their last owner.
 type Filter struct {
-	preparedRules *PreparedRuleSet `yaml:"-"`
+	preparedRules *PreparedRuleSet  `yaml:"-"`
+	preparedCC    *PreparedCCFilter `yaml:"-"`
 
 	IncludeBeacons *bool `yaml:"include_beacons,omitempty"`
 	AllowWWV       *bool `yaml:"allow_wwv,omitempty"`

@@ -70,10 +70,10 @@ func upgradeStoredVersion(node *yaml.Node) (int, error) {
 			return 0, fmt.Errorf("%w: explicit integer marker required", ErrUnsupportedConfigurationVersion)
 		}
 		seen = true
-		if err := value.Decode(&version); err != nil || version < 1 || version > CurrentConfigurationVersion {
+		if err := value.Decode(&version); err != nil || version < 1 || version > V6ConfigurationVersion {
 			return 0, ErrUnsupportedConfigurationVersion
 		}
-		if aliased && version != CurrentConfigurationVersion && version != retiredV5Version {
+		if aliased && version != V6ConfigurationVersion && version != retiredV5Version {
 			return 0, ErrUnsupportedConfigurationVersion
 		}
 	}
@@ -287,7 +287,7 @@ func decodeLegacyLogin(node *yaml.Node, version int, state *storageDecodeState, 
 		}
 	}
 	return &UserRecord{
-		ConfigurationVersion: CurrentConfigurationVersion,
+		ConfigurationVersion: V6ConfigurationVersion,
 		Filter: Filter{preparedRules: defaults,
 			IncludeBeacons: value.IncludeBeacons, AllowWWV: value.AllowWWV,
 			AllowWCY: value.AllowWCY, AllowAnnounce: value.AllowAnnounce,

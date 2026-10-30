@@ -21,7 +21,7 @@ const (
 	cursorNextFailure
 	cursorSettings
 	cursorSettingsRestore
-	cursorPresentation
+	cursorBankActivation
 	cursorInvalid
 	cursorClose
 	cursorReconnect
@@ -76,7 +76,7 @@ func FuzzHistoryCursorSequences(f *testing.F) {
 		{cursorFresh, 144, cursorNextFailure, 0, cursorNextFailure, 1, cursorNext, 16, cursorStaleToken, 0},
 		{cursorFresh, 0, cursorNextFailure, 144, cursorNextFailure, 145, cursorNext, 1, cursorStaleToken, 0},
 		{cursorFresh, 0, cursorFreshFailure, 0, cursorStaleToken, 0, cursorFresh, 0},
-		{cursorFresh, 0, cursorSettingsRestore, 0, cursorStaleToken, 0, cursorFresh, 0, cursorPresentation, 0, cursorNext, 0},
+		{cursorFresh, 0, cursorSettingsRestore, 0, cursorStaleToken, 0, cursorFresh, 0, cursorBankActivation, 0, cursorNext, 0},
 		{cursorFresh, 0, cursorNextSettingsDuringRead, 0, cursorFreshSettingsDuringRead, 0},
 		{cursorFresh, 0, cursorNextReplacementDuringRead, 0, cursorFreshReplacementDuringRead, 0},
 		{cursorFresh, 0, cursorCloseDuringRead, 0, cursorNext, 0, cursorReconnect, 0, cursorStaleToken, 0, cursorFresh, 0},
@@ -139,8 +139,9 @@ func (s *cursorFuzzSession) apply(operation, argument byte) {
 	switch operation {
 	case cursorSettings, cursorSettingsRestore:
 		s.settings(operation == cursorSettingsRestore)
-	case cursorPresentation:
+	case cursorBankActivation:
 		if !s.model.closed {
+			s.retire()
 			s.server.runPreferenceCommand(s.client, "fixture", func(c *Client, _ string) (string, bool) {
 				c.pathMu.Lock()
 				if c.dialect == DialectGo {

@@ -4,6 +4,8 @@
 - Date: 2026-10-29
 - Decision Origin: Design
 
+> [ADR-0330](ADR-0330-native-cc-banks-and-generation-seven.md) replaces affected shared GO/CC ownership and generation/reset clauses with independent native CC banks and generation seven. This record retains its historical decision; compatible GO predicate/source and transaction contracts continue.
+
 ## Context
 
 A global NEARBY switch selected geography-projected rules, applied a separate

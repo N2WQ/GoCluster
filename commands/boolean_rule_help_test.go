@@ -44,7 +44,7 @@ func TestBooleanRuleHelpSharedReference(t *testing.T) {
 
 func TestBooleanRuleHelpReadableLayout(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
-	for _, dialect := range []string{"go", "cc"} {
+	for _, dialect := range []string{"go"} {
 		t.Run(dialect, func(t *testing.T) {
 			text := p.ProcessCommandForClient("HELP RULE", "N0CALL", "", nil, dialect)
 			assertHelpWidth(t, text)

@@ -23,7 +23,7 @@ type DialectName string
 const (
 	// DialectGo is the default PASS/REJECT/SHOW FILTER syntax.
 	DialectGo DialectName = "go"
-	// DialectCC models a subset of CC Cluster aliases mapped onto existing filter atoms.
+	// DialectCC selects its independently saved native CC bank and command grammar.
 	DialectCC DialectName = "cc"
 )
 
@@ -158,6 +158,9 @@ func (e *filterCommandEngine) Handle(client *Client, line string) (string, bool)
 }
 
 func (e *filterCommandEngine) stageOwned(client *Client, line string) humanCommandOutcome {
+	if outcome := e.stageNativeCCFilterCommand(client, line); outcome.handled {
+		return outcome
+	}
 	if outcome := e.stageBooleanFilterCommand(client, line); outcome.handled {
 		return outcome
 	}
@@ -219,6 +222,18 @@ func (e *filterCommandEngine) hintForOtherDialect(tokens, upper []string, active
 func (e *filterCommandEngine) execute(client *Client, cmd parsedFilterCommand) (string, bool) {
 	switch cmd.action {
 	case actionSummary:
+		if client.dialect == DialectCC && client.filter.IsCC() {
+			client.filterMu.RLock()
+			cfg, _ := client.filter.NativeCCConfiguration()
+			client.filterMu.RUnlock()
+			response, err := renderNativeCCBody(maxV7YAMLBytes, func(h *humanResponse) error {
+				return writeNativeCCRows(h, cfg, "")
+			})
+			if err != nil {
+				return fmt.Sprintf("Readback failed: %v\n", err), false
+			}
+			return response, false
+		}
 		client.filterMu.RLock()
 		resp, err := formatBooleanFilterSnapshot(client.filter)
 		client.filterMu.RUnlock()
@@ -328,7 +343,8 @@ func parseCCDialect(tokens, upper []string) (parsedFilterCommand, bool, string) 
 	case "SET/NOSKIMMER":
 		return parseCCShortcut(upper, parsedFilterCommand{action: actionBlock, domain: "SOURCE", args: []string{"SKIMMER"}})
 	case "SET/NOFILTER":
-		// CC "no filter" means allow everything.
+		// Native staging owns the reset-to-operator-defaults behavior. This
+		// fallback header remains for discovery of the other dialect's syntax.
 		return parseCCShortcut(upper, parsedFilterCommand{action: actionAllow, domain: "NOFILTER"})
 	case "SET/FILTER":
 		if len(upper) < 2 {
@@ -430,7 +446,7 @@ func featureLabels(name string) (enable string, disable string, status string) {
 	case "ANNOUNCE":
 		return "Announcements", "Announcements", "Announcements"
 	case "SELF":
-		return "Self spots", "Self spots", "Self spots"
+		return "Own-call spots", "Own-call spots", "Own-call spots"
 	case "TOXIC":
 		return "Toxic spots", "Toxic spots", "Toxic spots"
 	default:

@@ -100,7 +100,7 @@ func TestBooleanPreparedStateCopyBoundaries(t *testing.T) {
 }
 
 func TestBooleanPreparedStateActiveV6SerializationBoundary(t *testing.T) {
-	if filter.CurrentConfigurationVersion != 6 {
+	if filter.V6ConfigurationVersion != 6 {
 		t.Fatal("Boolean activation requires disk version 6")
 	}
 	cfg, runtimeFilter := booleanBoundaryConfiguration(t, "MODE=CW")

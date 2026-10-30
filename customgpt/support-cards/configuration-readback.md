@@ -1,339 +1,220 @@
 ---
 title: "Support Card: Configuration Readbacks And Client YAML"
-description: Support boundaries for human configuration readbacks and schema-6 requests.
+description: Independent GO/CC banks, schema 7 and limited schema-6 access.
 ---
 
 ## Match
 
-Use for human SHOW FILTER/RULE/FULL or SHOW SETTINGS output, canonical
-GET/PUT/PATCH/VALIDATE YAML configuration commands, revision conflicts, upload
-errors, protected temporary records, preset modification status or partial SAVE.
-If `getSupportRoute` is not decisive, follow source-map or troubleshooting links
-and retrieve this card with `getDoc`; it is not a new automatic Worker route.
+Use for filter/settings inspection, dialect switching, YAML configuration,
+revision conflicts, upload errors, upgrade notices, protected records and preset
+partial results. Retrieve with `getDoc` when source-map routing applies; this
+card does not add an automatic Worker route.
 
 ## First Safe Check
 
-Identify whether this is a human readback, a machine upload/readback, a preset
-operation or a login warning. Retrieve the relevant section of `telnet/README.md`
-before interpreting the exact command and response. Ask for one redacted
-command/error artifact that distinguishes the next step.
+Identify the active dialect, exact command/header and one redacted response.
+Distinguish human edits, machine requests, preset operations and login notices.
+Start with [Using CC](../../docs/cc-dialect.md),
+[GO filters](../../telnet/README.md#filters) or the
+[client protocol](../../telnet/README.md#client-yaml-configuration).
+Local source behavior does not establish publication, deployment or validation.
 
 ## Must Include
 
-- Login and SHOW FILTER use actual settings and numbered expressions, never
-  independent lists that lose AND/OR/NOT relationships. New accounts see
-  "Default settings and filters"; returning accounts see "Current settings and
-  filters". Legacy reset users retain settings and get a short reset notice.
-  Old-library cleanup alone is not a profile reset. Source eligibility is not
-  a feed-connection status. Short rules use command syntax; long exact display
-  pieces require decoding or YAML, not direct pasting.
+- GO and CC remember independent filters and independent BEACON, SELF, TOXIC,
+  ANNOUNCE, WWV and WCY selections. Switching activates the saved bank. GRID,
+  noise, dedupe, PATHSAMPLES and SOLAR are shared. GO Boolean mutations require
+  GO; CC uses native mode/source, geography and DXBM commands. Retrieve compiled
+  HELP for exact aliases; do not translate arbitrary GO rules into CC.
+- CC mode choices apply to HUMAN and SKIMMER. Source choices do not change modes
+  or start feeds. Geography lists use OR within a category and AND across enabled
+  categories; missing/invalid metadata fails PASS and survives REJECT. Global
+  edits replace that category and clear its band exceptions, even if unchanged.
+  Per-band geography uses GoCluster YAML; native CC User compatibility remains
+  unverified. DXBM uses reported frequency and its fixed 15-band/37-slot table.
+  Retrieve [CC commands](../../docs/cc-dialect.md#terminal-commands) for details.
+- CC `SET/NOFILTER` restores current operator modes/sources and clears geography,
+  band exceptions and DXBM while keeping six controls, GO and shared preferences.
+  This differs from the one-time upgrade reset.
+- GO `SHOW FILTER [RULE|FULL]` preserves exact expressions; CC `SHOW/FILTER`
+  shows native selections/controls. `SHOW SETTINGS` separates configured,
+  effective and session state. Human lines are at most 78 printable ASCII
+  characters plus CRLF. Quoted display pieces are lossless display, not
+  necessarily pasteable commands; concatenate decoded pieces without separators.
+  Expression quotes instead double literal quotes.
+- Human readbacks suppress spots through preparation, queueing and successful
+  delivery, then for the reading interval. `RESUME` ends the pause; missed spots
+  are not replayed. Machine GET and `SHOW HOLD` status/usage do not create pauses.
+  Acknowledgements are not strict barriers for already admitted spots. See
+  [read pause](../../telnet/README.md#read-pause).
+- Live own-call spots require SELF and TOXIC, then bypass personal criteria.
+  History's exception is independent of SELF, still obeying TOXIC and explicit
+  query selectors. SELF does not mean reports the user submitted about others.
 
-- Personal selection uses one prepared Boolean engine, not a category
-  compatibility gate. Both dialects use `PASS RULE <0..9> <expression>`,
-  `REJECT RULE <0..9> <expression>` and `HELP RULE`. Setting a slot replaces
-  its action and whole expression. Matching REJECT vetoes; PASS rules are ORed.
-  No active PASS means unrestricted personal selection except matching REJECTs.
-  Slots are not priorities. Adding PASS broadens selection; edit or remove an
-  existing PASS, including default slot 0, to narrow it. See
-  [Filters](../../telnet/README.md#filters).
+## YAML Ownership And Limits
 
-- New accounts and old-profile resets receive the same configured MODE/SOURCE
-  selection as editable PASS slot 0. Existing/restored Boolean empty rules stay empty.
-  A PASS without SOURCE allows HUMAN and SKIMMER. SOURCE comparisons use normal
-  Boolean logic. Explicit SOURCE=HUMAN stays human-only, including saved defaults.
-  The shipped starting selection now includes both sources. Existing profiles
-  and presets are not rewritten; source-less saved PASS rules now admit matching
-  skimmer reports too. Neither PASS nor REJECT adds an implicit source condition.
-  `RESET FILTER RULE <0..9|ALL>` clears selected slots;
-  `RESET FILTER` clears all rules, including their NEARBY terms. Neither reinstalls
-  defaults nor resets separate controls/settings. Old category, MODE-delta,
-  MINSNR, COMMENT-list, DXBM and NOFILTER mutations are refused, not translated.
-  There are no AR-style rule aliases or translators.
+Use `GET YAML CONFIG SCHEMA 7` for a complete writable both-bank configuration
+backup. Restore only its `configuration` in a new envelope/current revision;
+status, associations, baselines, notices and the library are not writable CONFIG.
+FILTER owns the tagged active bank; SETTINGS owns shared preferences/selection.
+Complete PUT/VALIDATE CONFIG describes both banks. Ordinary PATCH cannot supply
+an inactive bank or combine filter editing with dialect selection. Retrieve
+[YAML shapes and presence rules](../../docs/cc-dialect.md#yaml-and-backups).
 
-- HELP accepts source-verified aliases and command arguments without executing
-  them: SH BUILD/OWN/DXCC/MYDX/PROP, shared CC PASS/REJECT and both-dialect slash
-  filter readbacks. The longest complete head wins; unsupported names remain
-  unknown. Fixed CC shortcuts take precedence over loaded mode aliases. See
-  [TSR-0065](../../docs/troubleshooting/TSR-0065-help-routing-alias-coverage.md).
+Schema-seven writes use `PUT|PATCH YAML <resource> SCHEMA 7`; validation uses
+`VALIDATE YAML CONFIG SCHEMA 7`. Bodies require matching `schema_version: 7`;
+PUT/PATCH require the current `if_revision`.
+PATCH replaces supplied mode/source/rule lists; named controls update separately.
+Global geography clears that category's overrides; band-only PATCH edits named
+rows, and an empty bands map changes none. DXBM PATCH supplies complete state.
 
-- BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate controls,
-  not expression fields. Shared PASS/REJECT switches take no value or ALL;
-  NEARBY is a bare expression predicate; retired toggle forms are refused. CC SET/FILTER and
-  UNSET/FILTER retain controls only. Retrieve current
-  [commands HELP ownership](../../commands/README.md#help-source-of-truth)
-  for exact control/alias grammar. The category mechanics in
-  [TSR-0064](../../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md)
-  and [TSR-0066](../../docs/troubleshooting/TSR-0066-command-discovery-wording.md)
-  are historical, not current mutation instructions. Spot queued confirms
-  intake, not delivery.
+Schema 6 is limited compatibility, not a complete backup. FILTER and CONFIG need
+GO active; CONFIG proposals must remain in GO. SETTINGS/CAPABILITIES remain
+available in CC with compatibility guidance, and SETTINGS can switch banks.
+Do not present inactive GO as CC state. Legacy GET requires `SCHEMA 6`; legacy
+upload headers retain no schema suffix and bodies require `schema_version: 6`.
 
-- Stored user records have separate 1 MiB raw, normalized and exact-write limits;
-  configuration and baseline each use the 256 KiB standalone-preset encoding.
-  Expensive alias expansion can also be refused; decoding-work units are not
-  file or heap bytes. Preserve refused files for backup/repair. Initial protected
-  defaults remain protected for the session; a warm refusal allows admitted
-  temporary changes with a warning and retries a repaired authoritative record
-  on later saves or ordinary logout. A prospective oversized replacement rejects
-  before publication. SAVE admits library and association before either write;
-  only a later association I/O failure can produce partial success. Retrieve
-  [native storage](../../data/config/README.md#user-configuration-storage);
-  [ADR-0270](../../docs/decisions/ADR-0270-complete-storage-admission.md)
-  records admission history, not a pre-v5 migration contract.
+| Boundary | Limit |
+| --- | --- |
+| Native CC canonical state | 128 KiB |
+| Complete CONFIG or tagged preset | 192 KiB |
+| Schema-seven upload/final frame and native CC human filter output | 256 KiB |
+| GO human readback and schema-six upload/final frame | 65,536 bytes |
+| Physical profile | 1 MiB |
+| Shared preset library | 8 MiB and 20 names |
 
-- DXDXCC/DEDXCC human and YAML request operands accept positive ADIF integers
-  and exact canonical CTY labels, not callsign lookups. `DXDXCC<>K` normalizes
-  to `DXDXCC<>291`; `DXDXCC=IT9` selects entity 248 while `DXCALL=IT9*` is a
-  literal callsign-prefix pattern. Labels need CTY; unknown/conflicting labels
-  refuse the whole edit, including rules with NEARBY. One snapshot covers the request.
-  Readbacks and saved rules are numeric; native loaders remain numeric-only.
-  Numeric-only requests and saved-rule reload need no CTY. SHOW DX/MYDX retain CTY-label precedence and numeric
-  count arguments; SHOW DXCC lookup is unchanged. Route to
-  [DXCC distinctions](../../telnet/README.md#canonical-dxcc-prefixes).
+Complete encoding, metadata, both baselines and shared decode-work limits also
+apply; maximal lists need not fit together. Input/output reservations can return
+busy before preparation. Human lines retain their configured limit, 128 bytes
+by default. Use YAML for long replacements; never split a replacing list.
 
-- History MODE keyword aliases use the loaded filter-visible vocabulary.
-  BAND/MODE/COMMENT aliases are values first or after a comma; otherwise a
-  standalone keyword starts a clause. With COMMENT mapped to CW,
-  `SHOW DX MODE COMMENT COMMENT POTA` selects CW and literal POTA text.
-  Absent/hidden aliases retain ordinary COMMENT clause behavior. A refused
-  request preserves the previous search and preferences; copy returned NEXT
-  commands. Retrieve [ADR-0273](../../docs/decisions/ADR-0273-history-comment-alias-boundary.md)
-  or [TSR-0063](../../docs/troubleshooting/TSR-0063-history-comment-alias-boundary.md)
-  for boundary and checker details; do not infer production archive/model quality.
+Uploads use standalone `---`/`...` markers and a 30-second absolute reception
+deadline. Unknown/read-only fields, nulls, contradictions, duplicate keys,
+aliases, merges and extra documents are refused. Unsafe/incomplete/oversized
+framing and malformed upload headers close the connection so tails cannot become
+commands. Fully received invalid documents return framed errors. One preference
+revision covers both banks, controls, shared settings and selection. Refetch
+after conflict or reconnect; login/notice metadata does not advance it or history.
 
-- `SHOW FILTER` and `SHOW FILTER RULE` show current settings, exact
-  canonical numbered rules and individual controls. `SHOW FILTER FULL`
-  adds geometry detail and preparation counts. SHOW/FILTER and SH/FILTER retain RULE/FULL readback aliases;
-  category views are unsupported. SHOW SETTINGS separates configured selections,
-  effective choices and session status; both views show the preset.
-  [Human readbacks](../../telnet/README.md#human-configuration-readbacks)
-  own the output contract. Rendering reads immutable prepared rules; it does
-  not compile expressions or apply another category gate.
-- Missing/unknown values make every comparison false, including `<>`; NOT
-  negates that result. Blank MODE is known `UNKNOWN`; eventless spots use
-  `EVENT=NONE`. The expression field is `CONF`, not `CONFIDENCE`, and is unknown
-  for confidence-exempt modes. PATH classes match exactly: UNLIKELY excludes
-  CLOSED; `PATH=UNLIKELY,CLOSED` selects both. SNR is known for any present
-  report, including human and zero reports. Retrieve `HELP RULE` and
-  [field semantics](../../docs/domain-contract.md#expressions-and-field-semantics)
-  rather than applying old category exemptions.
-- Every human line is at most 78 printable ASCII characters followed by CRLF.
-  Exact strings use quoted ASCII escapes. Complete quoted pieces joined by +
-  preserve long values without trimming whitespace or splitting escapes.
-  These are Go-style display quotes/escapes, not expression quoting or
-  necessarily copyable commands. Decode each piece and concatenate without
-  separators; indentation, line endings and + are not stored characters.
-  Expressions instead double literal quotes and keep backslashes literal.
-  Every complete response must fit 65,536 bytes or return an explicit size
-  error. Human input keeps the configured limit, 128 bytes by default;
-  use schema 6 YAML for longer expressions.
-- Effective path minimums come from restored runtime state and loaded server
-  configuration. With station/beacon floors 21/11, reconnect leaves a saved
-  personal minimum of 15 inactive, so effective values remain 21/11. An active
-  personal minimum of 30 gives 30/30. Explain disabled/unavailable prediction.
-- NEARBY is a zero-operand predicate with ordinary NOT/AND/OR logic. It does not
-  suppress geography, change SOURCE or choose dedupe. Either endpoint may share
-  the user's H3 cell; 160m/80m/60m use coarse resolution and other supported bands
-  fine resolution. The helper is preserved exactly: empty/??? after fallback
-  makes the band unavailable; unsupported nonempty labels retain fine behavior.
-  Missing required location or no matching endpoint makes NEARBY false.
-  NOT NEARBY includes unknown proximity, not proof of distance. Other OR branches
-  remain usable. See [NEARBY](../../telnet/README.md#grid-noise-and-nearby).
-- GRID/provenance/cells have one client-configuration owner. Unrelated edits
-  preserve location without repeating callsign lookup. PATH/display enablement
-  does not control NEARBY. No NEARBY/PATH demand means no new capture mapping.
-  A supplied rules list can be edited through PUT/PATCH/VALIDATE with all other
-  settings/controls unchanged even if GRID is unmappable. Only mapping is waived;
-  syntax and every other setting check remain. Human rule edits need no location.
-  Preserve SELF/history exceptions, TOXIC and mandatory explicit history clauses.
-  Route to [recovery](../../docs/domain-contract.md#nearby-predicate-and-recovery)
-  rather than weakening rules. TSR-0109's old independent cell-pair contract is
-  retired by [ADR-0329](../../docs/decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md).
-- Human readbacks, including size errors, suppress spots before preparation,
-  through queueing/delivery and for the full interval after successful write
-  and flush. They ignore zero row thresholds and use 30 seconds for a zero
-  duration. Longer pauses remain; later processed PAUSE/RESUME takes precedence.
-  Pending delivery is not an already-running reading countdown; the SETTINGS
-  snapshot describes the full interval that follows server delivery.
-- SHOW HOLD accepts exactly two tokens with case-insensitive ASCII-space
-  separation; extra tokens return handled usage without pause-state effects.
-  Its status and usage replies bypass automatic pause. SH HOLD and slash forms
-  remain unsupported, and TAB remains invalid human wire input. Suppression
-  counts describe eligible live traffic, not a command effect or cluster total.
-- Every machine GET requires explicit `SCHEMA 6`, including SETTINGS and
-  CAPABILITIES: `GET YAML FILTER|SETTINGS|CONFIG|CAPABILITIES SCHEMA 6 [ID <id>]`.
-  Machine success/errors have no pause-state effects or human footer. Existing
-  suppressed counts may still increase from live traffic during a prior pause.
-- GET separates exact writable configuration from read-only status. Preserve
-  explicit false, zero, empty values/collections and DEFAULT selections. GET IDs
-  are 1-32 ASCII letters/digits/hyphens and preserve case; CAPABILITIES is read-only.
-- PUT/PATCH headers have no schema suffix; bodies require `schema_version: 6`.
-  PUT requires a complete FILTER, SETTINGS or CONFIG resource. PATCH retains
-  omissions; a supplied `rules` list replaces all slots, and `[]` clears it.
-  It is not a per-slot merge. VALIDATE YAML CONFIG checks a complete proposal
-  without applying or saving it. Rule entries require slot, lowercase action
-  pass/reject and expr. Missing/old schemas and category fields are refused,
-  not translated or preserved as hidden maps. Retrieve
-  [the client protocol](../../telnet/README.md#client-yaml-configuration)
-  for the strict writable envelope, field sets and examples. Duplicate
-  keys/slots, unknown/read-only fields, nulls, anchors, aliases, merges,
-  custom tags and extra documents fail unchanged.
-- `GET YAML CAPABILITIES SCHEMA 6` advertises `supported_schema_versions: [6]`,
-  rule vocabulary/operators and bounds, not the old settings-availability
-  matrix. Runtime settings validation and effective node config remain
-  authoritative. NEARBY is advertised in rule_predicates with operand_count 0
-  and operators []; comparison fields remain separate. Rule status contains
-  configured_count, one program count mapping, and canonical slot/action/expr
-  entries. Retired nearby_enabled/nearby_active/projected/suspended fields are absent.
-  Even a false nearby_enabled proposal is refused.
-- PUT/PATCH use GET's matching revision as if_revision. GET again after reconnect,
-  restart or conflict. Validation/persistence failure leaves live and saved
-  configuration unchanged; unavailable choices are rejected. Even an unchanged
-  PUT persists before success, repairing failed human autosave without resetting
-  solar scheduling, GRID-owned state, diagnostics or pause.
-- Every new readback's 65,536-byte final budget includes CRLF, markers and human
-  footers. Complete output or an explicit error replaces silent truncation.
-  Machine proposals must fit a complete CONFIG readback with reserved metadata;
-  valid larger presets may still LOAD under the separate 256 KiB preset limit.
-- Uploads use standalone ---/... lines, 65,536 actual body bytes excluding
-  markers, and a 30-second absolute deadline from valid-header acceptance.
-  Malformed upload headers and oversized/expired/incomplete/unreliable framing
-  close the connection without dispatching remaining bytes. Fully received
-  invalid documents return framed YAML errors and leave the connection open.
-  Terminal rejection also skips final preference autosave, preserving the disk
-  record even when an earlier human command changed live state but failed to save.
-- Unreadable/unsupported user records are preserved. Protected temporary-defaults
-  sessions allow readbacks and temporary human changes but reject SAVE before
-  any library write, LOAD and PUT/PATCH. A login timestamp/IP save warning after
-  successful restoration instead continues with the restored preferences.
-- Preset modified compares current preferences with the retained applied/saved
-  reference for the full callsign/SSID. Reversing changes clears it; PAUSE,
-  and diagnostics do not affect it. Library overwrite or
-  deletion does not change the reference. Partial SAVE retains the previous
-  association/reference live and on disk, including subsequent ordinary saves.
+## Persistence, Presets And Upgrade Notices
 
-## Must Avoid
+Generation seven stores both banks in one profile. First recognized pre-seven
+login discards old filters, resets all six controls in both banks to defaults
+and clears associations/baselines. It preserves configured dialect, unrelated
+settings and login metadata under their restore contracts. The shared library
+clears old presets, including v6, once; new v7 presets survive later SSID upgrades
+and retries. Each eligible reset replacement needs admission and a verified
+original `.pre-v7.bak`; different existing backups are protected. Do not compile
+old rules or edit version markers to migrate.
 
-- Do not offer callsign lookup keys as canonical DXCC labels, prefix-bearing
-  native saved files, category mutation compatibility, AR-style aliases or
-  automatic conversion. Keep literal callsign patterns,
-  ADIF entity comparisons, CTY history selectors and SHOW DXCC lookup separate.
+Profile reset, library reset and notice acknowledgement complete independently.
+Library reset/marker share one commit. When both replacements are eligible,
+the library commits first.
+There is no two-file transaction: library failure can leave presets unavailable
+while an independently safe profile reset succeeds; profile failure never undoes
+a completed library reset. Historical notices report completed work. Full writer
+flush gives a transmission opportunity, not proof of reading. Failed
+acknowledgement can repeat the notice, never the reset. See
+[ADR-0330](../../docs/decisions/ADR-0330-native-cc-banks-and-generation-seven.md).
 
-- Do not invent SHOW YAML aliases, pagination, a force-revision command or an
-  operator setting for raising these limits.
-- Do not upload read-only status or omit required PUT fields to mean defaults.
-- Do not silently substitute an unavailable choice, promise memory-only success
-  or skip persistence because a PUT matches the current live configuration.
-- Do not claim a malformed upload tail can become ordinary commands, or confuse
-  the ordinary 128-byte shipped command-header limit with the upload-body limit.
-- Do not reset/delete a protected record or overwrite a named preset with
-  temporary defaults as a first troubleshooting step.
-- Do not treat a saved library snapshot as proof that its new SSID association
-  persisted, or treat all SSIDs as one session configuration.
-- Do not apply category map/exemption semantics to expressions or calculate
-  effective path minimums from a saved preference reconnect did not activate.
-- Do not strip quoted spaces, join wrapped pieces with a separator, or treat
-  the human effective format as the client YAML schema.
+Machine writes and LOAD commit before live publication. Human late-save failures
+retain both banks' active unsaved changes across switches, with warnings until a
+complete save succeeds. Protected temporary sessions cannot overwrite refused
+originals or SAVE/LOAD/apply machine writes. A timestamp/IP save warning after
+successful restoration keeps restored preferences; it does not mean a reset.
+
+SAVE stores the active bank/controls and shared preferences with a GO/CC tag.
+LOAD restores that bank/shared preferences, announces a switch and keeps the
+other bank. Each bank has an applied reference/baseline; shared edits can mark
+either modified. Library overwrite/delete does not rewrite applied baselines.
+SAVE may succeed in the library but fail its profile association; both previous
+associations remain. Retrieve [presets](../../telnet/README.md#named-presets).
+
+Stop writers before backup/repair/restore; one process owns a user directory.
+Rollback needs matching binary, profiles and shared library. Preserve current
+files first: restoring old backups loses later changes across affected SSIDs.
+See [storage](../../data/config/README.md#user-configuration-storage).
+
+## GO Boolean Rules
+
+GO `PASS RULE`/`REJECT RULE` slots 0-9 replace whole expressions. REJECT vetoes;
+PASS rules are ORed, and no PASS means unrestricted apart from REJECTs. Edit or
+remove an existing PASS, including default slot 0, to narrow selection. GO
+`RESET FILTER [RULE <slot|ALL>]` clears rules without reinstalling defaults or
+changing controls/settings. A source-less PASS admits matching HUMAN/SKIMMER;
+explicit SOURCE guards use ordinary Boolean logic. See
+[GO filters](../../telnet/README.md#filters) and `HELP RULE`.
+
+Unknown comparisons, including `<>`, are false; NOT negates them. Blank MODE is
+known `UNKNOWN`, eventless spots use `EVENT=NONE`, the field is `CONF`, and PATH
+classes match exactly. GO DXDXCC/DEDXCC requests accept positive ADIF integers
+or exact canonical CTY labels; saved/readback rules are numeric. Keep callsign
+patterns, entity comparisons, CTY history selectors and SHOW DXCC lookup distinct.
+Retrieve [field semantics](../../docs/domain-contract.md#expressions-and-field-semantics)
+and [DXCC distinctions](../../telnet/README.md#canonical-dxcc-prefixes).
+
+## NEARBY
+
+GO NEARBY is a zero-operand Boolean predicate; either endpoint can qualify in the
+user's H3 cell. Missing required location is false, and NOT includes unknown
+proximity. NEARBY does not suppress geography or choose dedupe. GRID/cells have
+one client owner. Rule-only recovery waives only mapping availability for an
+unchanged GRID with a supplied rules list and every other setting/control
+unchanged. Syntax and other checks remain. Retrieve the
+[NEARBY/recovery contract](../../docs/domain-contract.md#nearby-predicate-and-recovery)
+for band resolution and effective path minimums. CC has no NEARBY category.
 
 ## US And Canadian State And Version Compatibility
 
-DXSTATE/DESTATE compare observed canonical metadata against 60 FCC mailing codes
-and 13 Canadian province/territory codes. Missing/invalid State is unknown:
-`DXSTATE<>CA` is false, while `NOT DXSTATE=CA` is true. A reject-only set may
-admit unknown State because no rejection matched. NEARBY combines with State
-through ordinary Boolean logic; it does not suppress geography. Registered address does not establish
-operating location; do not infer it from a portable prefix, grid or call district.
-Enrichment remains active when `fcc_uls.enabled` is false: that flag disables
-license rejection only. Missing/unavailable state stays empty.
-FCC extraction/rebuilding and ISED publication make their own cached calls
-unavailable. Apply unknown/NOT expression semantics, not an implicit PASS/REJECT
-exemption; archived empty State stays empty after refresh. See the
-[State filter documentation](../../telnet/README.md#us-state-and-canadian-province-filters)
-for the refresh interruption and its measured local duration.
-
-Machine schema 6 is explicit on every GET. Native records require explicit
-`configuration_version: 6` and nested `configuration.filters/settings`.
-Named library entries and applied baselines each require version 6; a library
-has a `presets` mapping, not a top-level version or machine envelope.
-Pure v6 decoding refuses older formats. Login separately upgrades recognized
-unversioned/version 1-5 profiles once, preserving settings, separate controls
-and metadata while installing the same configured mode/source rule as a new account.
-Old preset entries/associations are cleared; existing v6 presets survive.
-Original .pre-v6.bak backups precede replacement; prior .pre-v5.bak files are
-untouched. Only initial authoritative profile absence permits new-user creation.
-Library replacement precedes profile replacement with truthful partial outcomes
-and safe retry, preserving newly created v6 presets. Explicit disk zero, future, malformed
-and unsafe inputs remain protected. No version-marker edit or old-rule
-translation is supported. See [ADR-0318](../../docs/decisions/ADR-0318-old-profile-reset-upgrade.md).
-Stop writers before backup/repair/restore; one writer process owns the data
-directory. Atomic replacement writes, syncs and closes its temporary file first.
-Downgrades require matching binary/data backups.
-
-Archive version 6 separately stores observed State; older archive versions 2–5
-have unknown State, without current-registry hydration. This archive metadata
-history is not configuration migration. Failed FCC imports retain the last good
-FCC database. Route storage details to
-[User Configuration Storage](../../data/config/README.md#user-configuration-storage).
-
-## Sources
-
-- [telnet/README.md human readbacks](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#human-configuration-readbacks)
-- [telnet/README.md client schema and framing](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#client-yaml-configuration)
-- [telnet/README.md named presets and persistence](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md#named-presets)
-- [commands/README.md HELP ownership](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md)
-- [data/config/README.md effective node YAML](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md)
-- [Boolean personal-rule contract](../../docs/domain-contract.md#boolean-personal-rules)
-
-The Boolean/v6 routes describe the current local MVP, not production deployment
-or completed private local-cluster acceptance. That acceptance remains pending. New source
-owners named here are local checkout paths, not claims of publication on main.
-
-Canadian licensing uses the required `ised` configuration block and independent
-paired ISED snapshot. `ised.enabled: false` keeps downloads and enrichment on.
-The same DXSTATE/DESTATE fields accept all 13 province/territory codes alongside
-the 60 FCC codes. Base-call CTY selects source, including foreign portable calls.
-Events use inclusive UTC dates; a prefix match means callsign plausibility,
-without proving eligibility. History uses stored State. Archive version 6 is
-separate from native configuration v6 and machine schema 6. For source/failure
-details, see [ADR-0254](../../docs/decisions/ADR-0254-canadian-ised-license-and-state-reuse.md)
-and [configuration](../../data/config/README.md#fcc-and-ised-reference-data-and-enforcement);
-any pre-v5 category/schema mechanics in the ADR are historical.
+GO DXSTATE/DESTATE and CC state categories use observed canonical metadata;
+registered address does not prove operating location. Missing GO comparisons
+are false; CC missing metadata fails PASS and survives REJECT. Archived empty
+State is not hydrated from today's registry. Archive version 6 is separate from
+configuration generation 7 and machine schemas. Retrieve
+[State documentation](../../telnet/README.md#us-state-and-canadian-province-filters)
+for FCC/ISED enrichment and refresh interruptions.
 
 ## MINSNR
 
-This retained heading routes former MINSNR questions to
-[Boolean SNR expressions](../../telnet/README.md#minimum-snr), not a saved
-threshold map. For example, `REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10`
-explicitly limits rejection to skimmer reports below 10. Without that source
-guard, present human reports also participate. Zero/negative reports are known;
-missing reports make comparisons false, including `<>`, and NOT negates that.
-[ADR-0258](../../docs/decisions/ADR-0258-per-mode-minimum-snr-filter.md)
-records historical pre-v5 category mechanics, not current exemptions or schema
-compatibility. Rule changes retain preset/revision/history invalidation and
-the human-versus-machine publication boundaries above.
+This retained anchor routes former MINSNR questions to GO
+[SNR expressions](../../telnet/README.md#minimum-snr), not saved threshold maps.
+`REJECT RULE 9 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10` explicitly limits
+rejection to those skimmer reports. Without SOURCE, present human reports also
+participate. Zero/negative reports are known; missing comparisons are false,
+including `<>`, and NOT negates that. Native CC has no MINSNR category.
 
 ## Literal Comment Rules
 
-Retrieve [the comment contract](../../telnet/README.md#comment-filters-and-searches)
-for saved atoms such as `COMMENT="CQ ""DX"""`. Each operand is 1–64 printable
-ASCII bytes with a non-space byte; matching is an ASCII case-insensitive literal
-substring, not regex/glob/word matching. Preserve case, punctuation and spaces;
-expression quotes double literal quotes, and backslash is literal.
-Use SHOW FILTER RULE or `GET YAML FILTER SCHEMA 6`. Edit/clear the whole slot,
-not a COMMENT list. Saved/effective readbacks consume retained immutable
-programs; no phrase-list compatibility is supported.
+GO atoms such as `COMMENT="CQ ""DX"""` use an ASCII case-insensitive literal
+substring, not regex/glob/word matching. Operands are 1-64 printable ASCII bytes
+with a non-space byte. Preserve punctuation/spaces; expression quotes double
+quotes and backslash is literal. Edit/clear the whole slot, not a COMMENT list.
+Retrieve [comment rules](../../telnet/README.md#comment-filters-and-searches)
+and [rule limits](../../telnet/README.md#filters).
 
-Rule budgets are ten slots, 1,024 raw and canonical bytes per expression,
-32 atoms/128 nodes/depth 8 per rule, 32 values per comparison atom and 128 atoms/512 values
-total. Depth counts parentheses/NOT, not flat AND/OR height. These do not
-replace human-line, machine, stored-byte or decode-work bounds. NEARBY consumes
-one atom/node and zero values; retrieve
-[the primary limits](../../telnet/README.md#filters) before diagnosing refusal.
+SHOW DX/MYDX explicit COMMENT is independent query grammar in either dialect and
+mandatory even for self-spots. Follow returned NEXT commands. Mode aliases can
+collide with BAND/MODE/COMMENT keywords; retrieve
+[archive history](../../commands/README.md#archive-history) and
+[ADR-0273](../../docs/decisions/ADR-0273-history-comment-alias-boundary.md).
+A scan-budget stop is incomplete search, not proof of no match.
 
-SHOW DX/MYDX accepts COMMENT after selector/count options. Its phrase is mandatory
-even for self-spots, while saved filters retain existing self exceptions. Follow
-the returned NEXT command; comment edits invalidate continuation. A rare match
-may exhaust a page's scan budget, which is incomplete search rather than absence.
-See [archive history](../../commands/README.md#archive-history).
-[ADR-0261](../../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
-records historical saved-list mechanics; explicit archive phrase grammar is
-separate and unchanged.
+## Must Avoid
+
+- Do not show GO rules as CC state, call schema 6 a complete backup or translate
+  unsupported commands into another bank's edits.
+- Do not promise native CC User/per-band terminal compatibility or invent OWN,
+  BOB, DX/NODX, TALK, announcement/weather geography or independent WX controls.
+- Do not upload status, invent force-revision/size-limit settings, reset protected
+  files as first aid or equate library success with association success.
+- Do not repeat resets to clear notices or equate successful flush with reading.
+
+## Sources
+
+- [CC banks, commands, YAML and recovery](../../docs/cc-dialect.md)
+- [Current storage/bank decision](../../docs/decisions/ADR-0330-native-cc-banks-and-generation-seven.md)
+- [Human readbacks](../../telnet/README.md#human-configuration-readbacks)
+- [Client YAML](../../telnet/README.md#client-yaml-configuration)
+- [Named presets](../../telnet/README.md#named-presets)
+- [Operator storage](../../data/config/README.md#user-configuration-storage)
+- [Compiled HELP](../../commands/README.md#help-source-of-truth)

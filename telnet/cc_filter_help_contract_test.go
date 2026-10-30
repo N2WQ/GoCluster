@@ -10,16 +10,19 @@ import (
 )
 
 func TestCCFilterHelpSurvivingSwitchAcceptance(t *testing.T) {
-	x := newHelpOwnerSession(t, DialectCC)
-	c, engine := x.client, x.server.filterEngine
-	original, pointer, settings, baseline := c.filter.PreparedRules(), c.filter, c.configuredSettings, c.presetReference.Baseline
+	s, c := v7IndependentClient(t)
+	engine := s.filterEngine
+	original, err := c.captureV7Configuration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pointer, settings, references := c.filter, c.configuredSettings, c.v7PresetReferences
 	for _, domain := range []string{"BEACON", "WWV", "WCY", "ANNOUNCE", "PC93", "SELF", "TOXIC"} {
 		for _, verb := range []string{"UNSET/FILTER", "SET/FILTER"} {
-			writes := x.writes
 			response, handled := engine.Handle(c, verb+" "+domain)
-			if !handled || x.writes != writes+1 || strings.Contains(response, "No changes applied.") ||
-				strings.Contains(response, "warning") || c.filter != pointer || c.filter.PreparedRules() != original ||
-				c.configuredSettings != settings || c.presetReference.Baseline != baseline {
+			if !handled || strings.Contains(response, "No changes applied.") ||
+				strings.Contains(response, "warning") || c.filter != pointer ||
+				c.configuredSettings != settings || c.v7PresetReferences != references {
 				t.Fatalf("surviving CC switch changed rules/settings/baseline: %s %s => %q", verb, domain, response)
 			}
 			enabled := verb == "SET/FILTER"
@@ -31,22 +34,39 @@ func TestCCFilterHelpSurvivingSwitchAcceptance(t *testing.T) {
 			if got != enabled {
 				t.Fatalf("CC switch reversed operation: %s %s", verb, domain)
 			}
-			x.assertSaved(t)
+			live, err := c.captureV7Configuration()
+			if err != nil {
+				t.Fatal(err)
+			}
+			record, err := filter.LoadV7UserRecord(c.callsign)
+			if err != nil || !record.Configuration.Equal(live) || !(filter.V6Configuration{Filters: original.Filters.GO}).Equal(filter.V6Configuration{Filters: live.Filters.GO}) {
+				t.Fatalf("native switch acknowledgement lost durable/wrong-bank state: %v", err)
+			}
 		}
 	}
 }
 
 func TestCCFilterHelpRetiredFormsHaveNoEffects(t *testing.T) {
-	x := newHelpOwnerSession(t, DialectCC)
-	c := x.client
+	s, c := v7IndependentClient(t)
+	if response, handled := s.filterEngine.Handle(c, "SET/FILTER BEACON/OFF"); !handled || strings.Contains(response, "No changes") {
+		t.Fatal("native refusal fixture was not durably initialized")
+	}
 	for _, line := range []string{"SET/FILTER NEARBY ON", "UNSET/FILTER NEARBY OFF", "SET/FILTER BAND 20", "UNSET/FILTER MODE CW", "SET/FILTER DXBM 20 CW",
-		"SET/NOFILTER", "SET/FILTER NOFILTER", "PASS COMMENT CQ", "PASS MINSNR CW 10"} {
-		before, writes, revision := c.captureV6Configuration(), x.writes, c.configurationRevision
+		"SET/FILTER NOFILTER", "PASS COMMENT CQ", "PASS MINSNR CW 10"} {
+		before, err := c.captureV7Configuration()
+		if err != nil {
+			t.Fatal(err)
+		}
+		revision := c.configurationRevision
 		path := filepath.Join(filter.UserDataDir, c.callsign+".yaml")
 		disk := presetDiskBytes(t, path)
-		response, handled := x.server.filterEngine.Handle(c, line)
-		if !handled || !strings.Contains(response, "HELP RULE") || !strings.Contains(response, "No changes applied.") ||
-			!before.Equal(c.captureV6Configuration()) || x.writes != writes || c.configurationRevision != revision ||
+		response, handled := s.filterEngine.Handle(c, line)
+		after, err := c.captureV7Configuration()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !handled || strings.Contains(response, "HELP RULE") || !strings.Contains(response, "No changes applied.") ||
+			!before.Equal(after) || c.configurationRevision != revision ||
 			!bytes.Equal(disk, presetDiskBytes(t, path)) {
 			t.Fatalf("retired CC form executed, saved or lost recovery guidance: %q => %q", line, response)
 		}

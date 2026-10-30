@@ -86,6 +86,8 @@ func newHumanPreferenceCandidate(c *Client) *Client {
 		grid: c.grid, gridDerived: c.gridDerived, gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
 		noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
 		configuredSettings: settings, configurationInitialized: true, solarSummaryMinutes: minutes,
+		filterBanks: c.filterBanks, v7PresetReferences: c.v7PresetReferences, v7Notice: c.v7Notice,
+		v7LibraryResetGeneration: c.v7LibraryResetGeneration, configurationUnsaved: c.configurationUnsaved,
 	}
 	staged.setDedupePolicy(c.getDedupePolicy())
 	if c.filter != nil {
@@ -96,6 +98,9 @@ func newHumanPreferenceCandidate(c *Client) *Client {
 }
 
 func (s *Server) runHumanPreferenceOwned(c *Client, line string, stage func(*Client, string) humanCommandOutcome) (string, bool) {
+	if c.filterBanks != nil {
+		return s.runV7HumanPreferenceOwned(c, line, stage)
+	}
 	staged := newHumanPreferenceCandidate(c)
 	outcome := stage(staged, line)
 	if !outcome.publish {
@@ -141,6 +146,15 @@ func (s *Server) runHumanPreferenceOwned(c *Client, line string, stage func(*Cli
 // potentially large live summaries out of the detached candidate path. It uses
 // only the existing parsers; domain validation still belongs to staged execution.
 func (e *filterCommandEngine) preflightHumanFilterOwned(c *Client, line string) (humanCommandOutcome, bool) {
+	if c.dialect == DialectCC {
+		_, handled, refusal := parseNativeCCCommand(line)
+		if handled {
+			if refusal != "" {
+				return nativeCCRefusal(refusal), false
+			}
+			return humanCommandOutcome{}, true
+		}
+	}
 	if _, handled, _ := parseBooleanRuleCommand(line); handled {
 		return humanCommandOutcome{}, true
 	}

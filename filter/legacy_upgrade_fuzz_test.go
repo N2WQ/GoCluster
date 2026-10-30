@@ -74,7 +74,7 @@ func FuzzLoginUpgradeDecode(f *testing.F) {
 			return
 		}
 		version, err := upgradeStoredVersion(node)
-		if err != nil || version >= CurrentConfigurationVersion {
+		if err != nil || version >= V6ConfigurationVersion {
 			return
 		}
 		record, err := decodeRetiredLogin(node, version, state, defaults)
@@ -94,7 +94,7 @@ func FuzzLoginUpgradeDecode(f *testing.F) {
 			t.Fatal("accepted bounded old profile cannot encode canonical v6", err)
 		}
 		decoded, err := DecodeV6UserRecord(encoded)
-		if err != nil || decoded.ConfigurationVersion != CurrentConfigurationVersion ||
+		if err != nil || decoded.ConfigurationVersion != V6ConfigurationVersion ||
 			!decoded.Configuration.Equal(stored.Configuration) {
 			t.Fatal("accepted old profile cannot round-trip strict v6", err)
 		}

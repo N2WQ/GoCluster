@@ -1,7 +1,11 @@
 // HELP owns only presentation; telnet owns rule admission and mutation.
 package commands
 
-func installBooleanRuleHelp(catalog *helpCatalog) {
+func installBooleanRuleHelp(catalog *helpCatalog, dialect string) {
+	if dialect == "cc" {
+		installNativeCCHelpBoundary(catalog)
+		return
+	}
 	lines := []string{"RULE - Numbered Boolean personal filters.", "Usage: HELP RULE"}
 	for _, text := range BooleanRuleHelpLines() {
 		if text == "" {
@@ -22,7 +26,7 @@ func installBooleanRuleHelp(catalog *helpCatalog) {
 			summary = "Veto matching spots or disable separate controls."
 		}
 		notes := []string{
-			"Rule syntax is identical in GO and CC. Setting a slot replaces its action and full expression.",
+			"GO uses numbered Boolean rules. A slot edit replaces its action and full expression; native CC selections are separate.",
 			"PASS rules are ORed; a matching REJECT vetoes them. Slot IDs are not priorities.",
 			"See HELP RULE for expressions, supported fields and values, defaults and limits.",
 			"Controls remain separate from expressions. PC93 aliases ANNOUNCE.",

@@ -326,7 +326,7 @@ func TestV6MachineCoordinatorRuntimePresetAdapterOwnsDefinitions(t *testing.T) {
 	_, c, cfg := v6CoordinatorFixture(t)
 	ref, err := filter.V6PresetReferenceFromRuntime(c.presetReference)
 	if err != nil || ref.Baseline.ConfigurationVersion != 6 ||
-		c.presetReference.Baseline.ConfigurationVersion != filter.CurrentConfigurationVersion ||
+		c.presetReference.Baseline.ConfigurationVersion != filter.V6ConfigurationVersion ||
 		!ref.Baseline.Configuration.Equal(cfg) {
 		t.Fatalf("adapter marker or exact values lost: %+v %v", ref, err)
 	}

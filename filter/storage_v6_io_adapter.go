@@ -13,6 +13,9 @@ func V6UserRecordFromRuntime(record *UserRecord) (*V6UserRecord, error) {
 	if record == nil {
 		return nil, errors.New("nil user record")
 	}
+	if record.IsCC() {
+		return nil, errors.New("native CC filters require schema seven")
+	}
 	if err := validateV6EncodingVersion(record.ConfigurationVersion); err != nil {
 		return nil, err
 	}
@@ -21,7 +24,7 @@ func V6UserRecordFromRuntime(record *UserRecord) (*V6UserRecord, error) {
 		return nil, err
 	}
 	return &V6UserRecord{
-		ConfigurationVersion: CurrentConfigurationVersion,
+		ConfigurationVersion: V6ConfigurationVersion,
 		Configuration:        recordConfiguration(record).V6(), Preset: ref,
 		RecentIPs: record.RecentIPs, LastLoginUTC: record.LastLoginUTC,
 	}, nil
@@ -43,7 +46,7 @@ func RuntimeUserRecordFromV6(record *V6UserRecord) (*UserRecord, error) {
 		return nil, err
 	}
 	return &UserRecord{
-		ConfigurationVersion: CurrentConfigurationVersion, Filter: value, Preset: ref,
+		ConfigurationVersion: V6ConfigurationVersion, Filter: value, Preset: ref,
 		Dialect: cfg.Settings.Dialect, Grid: cfg.Settings.Grid, NoiseClass: cfg.Settings.NoiseClass,
 		DedupePolicy: cfg.Settings.DedupePolicy, PathMinObservationCount: cfg.Settings.PathMinObservationCount,
 		SolarSummaryMinutes: cfg.Settings.SolarSummaryMinutes,
@@ -52,6 +55,9 @@ func RuntimeUserRecordFromV6(record *V6UserRecord) (*UserRecord, error) {
 }
 
 func (f Filter) MarshalYAML() (any, error) {
+	if f.IsCC() {
+		return nil, errors.New("native CC filters require a tagged schema-seven document")
+	}
 	return V6ConfigurationFromFilter(&f, SettingsConfiguration{}).Filters, nil
 }
 
@@ -67,9 +73,17 @@ func (f *Filter) UnmarshalYAML(node *yaml.Node) error {
 	return err
 }
 
-func (c Configuration) MarshalYAML() (any, error) { return c.V6(), nil }
+func (c Configuration) MarshalYAML() (any, error) {
+	if c.Filters.preparedCC != nil {
+		return nil, errors.New("native CC filters require a tagged schema-seven document")
+	}
+	return c.V6(), nil
+}
 
 func (f FilterConfiguration) MarshalYAML() (any, error) {
+	if f.preparedCC != nil {
+		return nil, errors.New("native CC filters require a tagged schema-seven document")
+	}
 	return (Configuration{Filters: f}).V6().Filters, nil
 }
 
@@ -133,11 +147,11 @@ func V6ConfigurationFromPreset(set *SavedPreset) V6Configuration {
 // V6SavedPresetFromRuntime owns canonical definitions and stamps DTO version 6.
 // This conversion never loads legacy files or grants replacement authority.
 func V6SavedPresetFromRuntime(set *SavedPreset) (*V6SavedPreset, error) {
-	if set == nil || set.ConfigurationVersion != CurrentConfigurationVersion {
+	if set == nil || set.ConfigurationVersion != V6ConfigurationVersion {
 		return nil, errors.New("invalid runtime v6 preset baseline")
 	}
 	return (&V6SavedPreset{
-		ConfigurationVersion: CurrentConfigurationVersion,
+		ConfigurationVersion: V6ConfigurationVersion,
 		Configuration:        V6ConfigurationFromPreset(set),
 	}).Clone()
 }
@@ -154,7 +168,7 @@ func RuntimeSavedPresetFromV6(set *V6SavedPreset) (*SavedPreset, error) {
 		return nil, err
 	}
 	return &SavedPreset{
-		ConfigurationVersion: CurrentConfigurationVersion, Filter: value,
+		ConfigurationVersion: V6ConfigurationVersion, Filter: value,
 		Dialect: cfg.Settings.Dialect, Grid: cfg.Settings.Grid, NoiseClass: cfg.Settings.NoiseClass,
 		DedupePolicy: cfg.Settings.DedupePolicy, PathMinObservationCount: cfg.Settings.PathMinObservationCount,
 		SolarSummaryMinutes: cfg.Settings.SolarSummaryMinutes,

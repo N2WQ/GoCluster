@@ -50,23 +50,31 @@ func TestBooleanActivationLiveAndHistoryUsePreparedRules(t *testing.T) {
 }
 
 func TestBooleanActivationHumanSavePresetAndReload(t *testing.T) {
-	s, c, cfg := v6CoordinatorFixture(t)
+	s, c := v7MachineTestClient(t)
+	bankedV6SelectGO(t, c)
 	s.filterEngine = newFilterCommandEngine()
-	v6CoordinatorSeed(t, c, cfg)
+	initial, err := c.captureV7Configuration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveCurrentV7TestRecord(t, c.callsign, &filter.V7UserRecord{Configuration: initial})
 	response, handled := s.filterEngine.Handle(c, `PASS RULE 3 COMMENT="CQ test"`)
 	if !handled || !strings.Contains(response, "Rule 3 set.") || strings.Contains(response, "warning:") {
 		t.Fatalf("active human rule dispatch failed: %s", response)
 	}
-	record, err := filter.LoadUserRecord(c.callsign)
+	record, err := filter.LoadV7UserRecord(c.callsign)
 	if err != nil {
 		t.Fatal(err)
 	}
-	native := filter.ConfigurationFromFilter(&record.Filter, c.configuredSettings)
-	if record.ConfigurationVersion != 6 || !native.V6().Equal(c.captureV6Configuration()) {
+	current, err := c.captureV7Configuration()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.ConfigurationVersion != 7 || !record.Configuration.Equal(current) {
 		t.Fatal("native record route lost the active rule/settings state")
 	}
 	if response, handled := s.handlePresetCommand(c, "SAVE PRESET EXPERIMENT"); !handled ||
-		!strings.Contains(response, "Saved preset EXPERIMENT for") {
+		!strings.Contains(response, "Saved preset EXPERIMENT (GO) for") {
 		t.Fatalf("native preset SAVE failed: %s", response)
 	}
 	saved := c.captureV6Configuration()
@@ -78,7 +86,7 @@ func TestBooleanActivationHumanSavePresetAndReload(t *testing.T) {
 		t.Fatal("reset reinstalled defaults or changed unrelated settings")
 	}
 	if response, handled := s.handlePresetCommand(c, "LOAD PRESET EXPERIMENT"); !handled ||
-		!strings.Contains(response, "Loaded preset EXPERIMENT;") || !c.captureV6Configuration().Equal(saved) {
+		!strings.Contains(response, "Loaded preset EXPERIMENT (GO);") || !c.captureV6Configuration().Equal(saved) {
 		t.Fatalf("native preset LOAD did not restore full Boolean state: %s", response)
 	}
 	replacement := configurationTestClient(s, c.callsign)

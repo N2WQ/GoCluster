@@ -53,7 +53,7 @@ func (set *SavedPreset) Clone() (*SavedPreset, error) {
 	if set == nil {
 		return nil, errors.New("nil saved preset")
 	}
-	if set.ConfigurationVersion != 0 && set.ConfigurationVersion != CurrentConfigurationVersion {
+	if set.ConfigurationVersion != 0 && set.ConfigurationVersion != V6ConfigurationVersion {
 		return nil, ErrUnsupportedConfigurationVersion
 	}
 	return ConfigurationFromPreset(set).Preset()

@@ -11,8 +11,8 @@ import (
 )
 
 func TestV6ConfigurationLegacyCarrierBoundary(t *testing.T) {
-	if CurrentConfigurationVersion != 6 {
-		t.Fatal("v6 model is not the active storage version")
+	if V6ConfigurationVersion != 6 {
+		t.Fatal("legacy model is not frozen at storage version six")
 	}
 	f := NewFilter()
 	settings := SettingsConfiguration{Dialect: "cc", Grid: "FN31", SolarSummaryMinutes: 0}

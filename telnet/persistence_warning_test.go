@@ -23,8 +23,16 @@ func assertPersistenceWarning(t *testing.T, response string) {
 func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
 		for _, fault := range []string{"save", "malformed", "future", "protected"} {
-			for _, operation := range []string{"band", "comment-add", "comment-remove", "comment-reset", "reset", "dialect"} {
+			operations := []string{"band", "comment-add", "comment-remove", "comment-reset", "reset", "dialect"}
+			if dialect == DialectCC {
+				operations = []string{"mode", "source", "country", "category-off", "reset", "dialect"}
+			}
+			for _, operation := range operations {
 				t.Run(string(dialect)+"/"+fault+"/"+operation, func(t *testing.T) {
+					if dialect == DialectCC {
+						testNativeCCPersistenceWarning(t, fault, operation)
+						return
+					}
 					s := presetTestServer(t)
 					s.filterEngine = newFilterCommandEngine()
 					c := configurationTestClient(s, "W1ABC-1")
@@ -118,6 +126,10 @@ func TestHumanPersistenceWarningsKeepLiveChanges(t *testing.T) {
 func TestHumanPersistenceWarningPreservesSaveAttemptRules(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
 		t.Run(string(dialect), func(t *testing.T) {
+			if dialect == DialectCC {
+				testNativeCCPersistenceSaveAttempts(t)
+				return
+			}
 			s := presetTestServer(t)
 			s.filterEngine = newFilterCommandEngine()
 			c := configurationTestClient(s, "W1ABC-1")

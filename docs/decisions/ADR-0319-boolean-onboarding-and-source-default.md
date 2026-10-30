@@ -9,6 +9,8 @@ description: Consistent starting rules, explicit skimmer selection, and exact ru
 
 > ADR-0329 replaces the generation-specific reset boundary below: recognized v0-v5 filters/presets reset to the configured new-user rule once; v6 empty rules remain empty. Unaffected onboarding contracts stand; ADR-0320 still governs SOURCE. See [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md).
 
+> [ADR-0330](ADR-0330-native-cc-banks-and-generation-seven.md) replaces affected shared GO/CC ownership and generation/reset clauses with independent native CC banks and generation seven. This record retains its historical decision; compatible GO predicate/source and transaction contracts continue.
+
 ## Context
 
 [ADR-0320](ADR-0320-explicit-source-filtering.md) supersedes the implicit
