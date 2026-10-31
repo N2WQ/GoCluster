@@ -40,8 +40,9 @@ def decode_frame(raw, resource, request_id, version):
     if not raw.endswith(b"\n") or not lines or lines[0].rstrip(b"\r\n") != b"---" or lines[-1].rstrip(b"\r\n") != b"...":
         raise ValueError("incomplete or malformed YAML frame")
     errors = []
-    if len(raw) > MAX_FRAME:
-        errors.append("frame exceeds 65536 raw bytes")
+    limit = MAX_BUFFER if version == 7 else MAX_FRAME
+    if len(raw) > limit:
+        errors.append(f"frame exceeds {limit} raw bytes")
     if any(not line.endswith(b"\r\n") or b"\r" in line[:-2] for line in lines):
         errors.append("line endings violate CRLF contract")
     text = b"\n".join(line.rstrip(b"\r\n") for line in lines).decode("utf-8", "strict")
@@ -640,6 +641,9 @@ class Suite:
         assert doc["configuration"] == cc and doc["status"]["preset"]["associated"] is True
         self.unchanged(a, "LOAD PRESET " + names[0], "not found")
 
+    def history_label(self):
+        return "T" + self.token
+
     def history_result(self, a, command, target, frequencies, expected):
         """Require exact labeled archive rows, never a queue ACK or empty PASS."""
         before = a.get()
@@ -651,7 +655,7 @@ class Suite:
             if not line.startswith("DX de"):
                 continue
             row = re.match(r"^DX de\s+\S+:\s+([0-9.]+)\s+(\S+)\s+", line)
-            labels = re.findall(r"\bT" + self.token + r"-([01])\b", line)
+            labels = re.findall(r"\b" + re.escape(self.history_label()) + r"-([01])\b", line)
             assert row and len(labels) == 1, "history returned malformed or unrelated row: " + line
             actual.append((row.group(2), float(row.group(1)), int(labels[0])))
         wanted = [(target, float(frequencies[index]), index) for index in expected]
@@ -889,6 +893,963 @@ class Suite:
         return int(bool(failures or self.wire_failures or self.cleanup_errors or self.owned))
 
 
+class V7Session(Session):
+    """Schema-seven live session; legacy Session remains available to fixtures."""
+
+    def __init__(self, suite, call):
+        self.suite, self.call, self.closed = suite, call, False
+        # Avoid exhausting per-IP admission during reconnect tests; never retry
+        # a refused connection as though it were a successful test.
+        now = time.monotonic()
+        delay = getattr(suite, "next_connection_at", 0) - now
+        if delay > 0:
+            check(now + delay < suite.deadline, "connection pacing exceeds run deadline")
+            time.sleep(delay)
+        suite.next_connection_at = time.monotonic() + .4
+        self.sock = socket.create_connection((suite.args.host, suite.args.port), suite.args.timeout)
+        self.reader = TelnetReader(self.sock, min(suite.deadline, time.monotonic() + suite.args.timeout))
+        try:
+            self.reader.until(b"login: ")
+            self.send(call + "\r\n", count=False)
+            while b"UTC>" not in self.reader.buffer:
+                if b"Invalid call" in self.reader.buffer:
+                    raise ValueError(f"server refused test login {call}")
+                self.reader._receive()
+            greeting = self.reader.until(b"UTC>")
+            check(("Hello " + call).encode() in greeting, "successful login greeting absent")
+        except BaseException:
+            self.sock.close()
+            raise
+        suite.sessions.append(self)
+
+    def get(self, resource="CONFIG", version=7):
+        return super().get(resource, version)
+
+    def human(self, command, expected=None, *, resource="CONFIG"):
+        identifier = self.suite.identifier()
+        sync = f"GET YAML {resource} SCHEMA 7 ID {identifier}"
+        self.send(command + "\r\n" + sync + "\r\n")
+        self.suite.commands += 1
+        document, prefix = self.frame(resource, identifier, 7, command)
+        if len(prefix) > MAX_BUFFER or (prefix and not prefix.endswith(b"\r\n")) or any(
+                not line.endswith(b"\r") or b"\r" in line[:-1] for line in prefix.split(b"\n")[:-1]):
+            self.suite.wire_failures.append({"call": self.call, "command": command, "errors": ["human reply violates CRLF/size contract"]})
+        text = prefix.replace(b"\r\r\n", b"\r\n").decode("ascii", "strict")
+        lines = text.splitlines()
+        if self.reader.remote_echo:
+            for echoed in (command.upper(), sync):
+                if echoed in lines:
+                    lines.remove(echoed)
+        text = "\n".join(lines)
+        if expected is not None:
+            check(expected in text, f"{command}: missing {expected!r}: {text[:1000]}")
+        # Large human output may still hold the configuration-output lease when
+        # the immediate GET arrives. Retry only the read-only barrier, never the
+        # human command; retain every refusal in the transcript and report.
+        retry_deadline = min(self.suite.deadline, time.monotonic() + 3)
+        while document.get("error", {}).get("code") == "configuration_busy" and time.monotonic() < retry_deadline:
+            self.suite.busy_barriers = getattr(self.suite, "busy_barriers", [])
+            self.suite.busy_barriers.append({"call": self.call, "command": command, "request_id": identifier})
+            time.sleep(.1)
+            identifier = self.suite.identifier()
+            retry = f"GET YAML {resource} SCHEMA 7 ID {identifier}"
+            self.send(retry + "\r\n")
+            document, retry_prefix = self.frame(resource, identifier, 7, retry)
+            if len(retry_prefix) > MAX_BUFFER or (retry_prefix and not retry_prefix.endswith(b"\r\n")) or any(
+                    not line.endswith(b"\r") or b"\r" in line[:-1] for line in retry_prefix.split(b"\n")[:-1]):
+                self.suite.wire_failures.append({"call": self.call, "command": retry, "errors": ["retry prefix violates CRLF/size contract"]})
+        check("error" not in document and isinstance(document.get("configuration"), dict)
+              and isinstance(document.get("status"), dict) and bool(document.get("revision")),
+              f"invalid barrier response: {document}")
+        return text, document
+
+    def upload(self, verb, resource, configuration, version=7, revision=None, raw_body=None, error_id=False):
+        identifier = self.suite.identifier()
+        body = {"schema_version": version, "request_id": identifier, "configuration": configuration}
+        if verb != "VALIDATE":
+            body["if_revision"] = revision or self.get()["revision"]
+        body_text = raw_body(identifier, body) if raw_body else yaml.safe_dump(body, sort_keys=False)
+        # Schema 6 uploads select their version in the document, while schema
+        # 7 requires an explicit header for the larger transport limit.
+        command = f"{verb} YAML {resource}" + (f" SCHEMA {version}" if version == 7 else "")
+        self.send(command + "\r\n---\r\n" + body_text.replace("\n", "\r\n") + "...\r\n")
+        result = self.frame(resource, "" if error_id else identifier, version, command)[0]
+        if "error" not in result:
+            check(result.get("result", {}).get("operation") == verb, "wrong operation receipt")
+        return result
+
+
+def v7_required_cases(cc_shortcuts=()):
+    """Explicit inventory: every omitted or interrupted case is a failure."""
+    return ["GO rule add", "GO rule replace", "GO invalid atomic", "GO retired NEARBY",
+            "GO rule remove", "GO rule reset", "CC DOC pass", "CC DOC replace",
+            "CC DOC reject", "CC DOC off", "CC DXSTATE pass", "CC DXBM pass",
+            "CC DXBM off", "CC DXBM reject", "CC invalid atomic", "bank switching", "GET resources",
+            "PUT CONFIG unchanged", "PATCH SETTINGS", "VALIDATE CONFIG", "stale write",
+            "preset sharing", "preset cross dialect", "preset cleanup",
+            "history labeled spot", "GO HELP", "CC HELP", "GO settings", "CC settings",
+            "GO pause resume", "CC pause resume", "GO retired category", "CC GO rule refusal",
+            "settings controls", "GO delivery controls", "CC modes and sources", "CC delivery controls", "CC geographic families",
+            "HELP topics and aliases", "general reads", "WWV and WCY", "history selection and paging",
+            "schema 6 compatibility", "schema 7 filter writes", "schema 7 config PATCH", "invalid machine input", "GO rule readbacks", "CC filter readbacks",
+            "terminal uploads", "logout aliases", "preset round trip after reconnect",
+            "CC schema 7 FILTER PUT and PATCH", "schema 7 CONFIG changed both banks",
+            "schema 6 GO writes preserve CC", "CC implied DOC", "dialect GO aliases",
+            "preset invalid names", "preset overwrite"] + [
+                f"{dialect} {name}" for dialect in ("GO", "CC") for name in (
+                    "pause default", "pause 1", "pause 300", "invalid pauses", "show hold",
+                    "dialect discovery", "invalid settings", "settings aliases", "solar off",
+                    "WHOSPOTSME band", "PROP forecast", "PC93 alias", "HELP discovery",
+                    "DXCC alias", "PROP aliases")
+            ] + ["CC UNSET SKIMMER", "CC SET/FILTER controls", "CC UNSET/FILTER controls",
+                 "CC inline controls", "CC control shortcuts", "CC unsupported control forms"] + [
+                f"CC configured shortcut {mode}" for mode in cc_shortcuts
+            ]
+
+
+def validate_v7_baseline(document):
+    """Reject incomplete backups and either pre-existing preset association."""
+    check(document.get("schema_version") == 7 and document.get("resource") == "CONFIG", "backup is not schema 7 CONFIG")
+    cfg = document.get("configuration")
+    check(isinstance(cfg, dict) and set(cfg) == {"filters", "settings"}, "incomplete configuration")
+    banks, settings = cfg["filters"], cfg["settings"]
+    check(isinstance(banks, dict) and set(banks) == {"go", "cc"}, "incomplete filter banks")
+    check(isinstance(settings, dict) and {"dialect", "grid", "noise_class", "dedupe_policy", "path_min_observation_count", "solar_summary_minutes"} <= set(settings), "incomplete settings")
+    controls = {"include_beacons", "allow_wwv", "allow_wcy", "allow_announce", "allow_self", "allow_toxic"}
+    check(isinstance(banks["go"], dict) and controls | {"rules"} <= set(banks["go"]), "incomplete GO bank")
+    check(isinstance(banks["cc"], dict) and controls | {"modes", "sources", "geography", "dxbm"} <= set(banks["cc"]), "incomplete CC bank")
+    status = document.get("status", {})
+    presets = status.get("presets")
+    check(isinstance(presets, dict) and set(presets) == {"go", "cc"} and
+          all(isinstance(p, dict) and p.get("associated") is False for p in presets.values()),
+          "refusing associated or unreadable preset bank")
+    check(isinstance(status.get("session"), dict) and status["session"].get("temporary_defaults") is False,
+          "refusing temporary or unreadable defaults")
+    check(isinstance(document.get("revision"), str) and bool(document["revision"]), "missing revision")
+
+
+class V7Suite(Suite):
+    """Live v7 suite keeps both banks and temporary preset ownership explicit."""
+
+    def history_label(self):
+        # Avoid the comment parser's unanchored digit+DB SNR pattern while
+        # retaining a bijective mapping of the original random hex token.
+        return "T" + self.token.translate(str.maketrans({"B": "G", "D": "H"}))
+
+    def history_result(self, session, command, target, frequencies, expected):
+        # A work-limited page is partial evidence. Follow its cursor with a
+        # fixed page/time bound and keep the exact row oracle across all pages.
+        deadline = min(getattr(self, "deadline", float("inf")), time.monotonic() + 120)
+        wanted = [(target, float(frequencies[index]), index) for index in expected]
+        initial_cursor = re.search(r"\bNEXT\s+(H1[A-F0-9]{32})\b", command)
+        actual, seen_tokens = [], ({initial_cursor.group(1)} if initial_cursor else set())
+        for _ in range(64):
+            if time.monotonic() >= deadline:
+                raise BlockedPrerequisite("history continuation time budget exhausted")
+            before = session.get()
+            check(before["status"]["session"]["pause_active"] is True,
+                  "history delivery hold expired before query")
+            text, after = session.human(command)
+            check(after["status"]["session"]["pause_active"] is True,
+                  "history delivery hold expired during query")
+            assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"], "history search changed saved preferences"
+            assert "Warning: unreadable archive records" not in text, "history contains unreadable records"
+            for line in text.splitlines():
+                if not line.startswith("DX de"):
+                    continue
+                row = re.match(r"^DX de\s+\S+:\s+([0-9.]+)\s+(\S+)\s+", line)
+                labels = re.findall(r"\b" + re.escape(self.history_label()) + r"-([01])\b", line)
+                assert row and len(labels) == 1, "history returned malformed or unrelated row: " + line
+                identity = (row.group(2), float(row.group(1)), int(labels[0]))
+                assert identity in wanted and identity not in actual, "unexpected or duplicate history row: " + line
+                actual.append(identity)
+            partial = "Search work limit reached; this page is incomplete." in text
+            exhausted = "End of retained history search." in text or "No matching retained spots." in text
+            cursors = re.findall(r"Continue older history: SHOW DX NEXT (H1[A-F0-9]{32})", text)
+            assert len(cursors) <= 1, "ambiguous history continuation"
+            assert not (exhausted and (partial or cursors)), "contradictory history completion status"
+            assert not ("No matching retained spots." in text and actual), "empty history status with rows"
+            if not partial:
+                assert exhausted or cursors, "history page lacks completion or continuation status"
+                assert wanted or exhausted, "empty result is not an exhausted search"
+                assert sorted(actual) == sorted(wanted), f"{command}: expected {wanted!r}, got {actual!r}"
+                return text
+            assert len(cursors) == 1, "work-limited page lacks continuation"
+            token = cursors[0]
+            assert token not in seen_tokens, "repeated history continuation"
+            seen_tokens.add(token)
+            command = "SHOW DX NEXT " + token
+        raise BlockedPrerequisite("history continuation page budget exhausted")
+
+    def __init__(self, args):
+        super().__init__(args)
+        # Login accepts one- or two-digit SSIDs, so use two distinct values.
+        start = getattr(args, "ssid_start", None) or int(self.token, 16) % 98 + 1
+        self.calls = [args.call.upper() + "-" + str(start + i) for i in range(2)]
+
+    def cleanup(self):
+        if not hasattr(self, "residual_associations"):
+            self.residual_associations = {}
+        for session in self.sessions:
+            if not session.closed:
+                session.sock.close()
+                session.closed = True
+        self.deadline = time.monotonic() + 120
+        for call, baseline in self.baselines.items():
+            try:
+                c = V7Session(self, call)
+                try:
+                    self.acknowledge(c.upload("PUT", "CONFIG", baseline["configuration"]))
+                    c.human("SET DIAG " + baseline["status"]["session"]["diagnostic_comments"])
+                    c.human("RESUME")
+                    c.close()
+                finally:
+                    if not c.closed:
+                        c.sock.close()
+                        c.closed = True
+                verify = V7Session(self, call)
+                try:
+                    restored = verify.get()
+                    self.residual_associations[call] = restored["status"]["presets"]
+                    check(restored["configuration"] == baseline["configuration"],
+                          "full two-bank baseline did not survive reconnect")
+                finally:
+                    verify.close()
+            except Exception as error:
+                self.cleanup_errors.append({"call": call, "detail": str(error)})
+        # A lost restore ACK must not prevent deletion of a possibly committed
+        # test-owned preset. Use a fresh connection and retain ownership on error.
+        for name in list(self.owned):
+            try:
+                c = V7Session(self, self.calls[0])
+                try:
+                    response, _ = c.human("DELETE PRESET " + name)
+                    check("Deleted preset" in response or "not found" in response, response)
+                    self.owned.remove(name)
+                finally:
+                    c.close()
+            except Exception as error:
+                self.cleanup_errors.append({"preset": name, "detail": str(error)})
+        for session in self.sessions:
+            if not session.closed:
+                session.sock.close()
+                session.closed = True
+
+    def _unchanged_refusal(self, a, command):
+        before = a.get()
+        text, after = a.human(command)
+        check(any(word in text for word in ("No changes applied", "Usage:", "Invalid", "Use numbered", "requires GO", "only available")),
+              f"refusal absent: {command}: {text}")
+        check(before["configuration"] == after["configuration"] and before["revision"] == after["revision"],
+              f"refusal changed configuration: {command}")
+
+    def _rule(self, a, command, slot, action=None, expr=None):
+        _, doc = a.human(command)
+        rules = doc["configuration"]["filters"]["go"]["rules"] or []
+        matches = [r for r in rules if r["slot"] == slot]
+        if action is None:
+            check(not matches, f"rule {slot} still present: {rules}")
+        else:
+            check(len(matches) == 1 and matches[0]["action"] == action and matches[0]["expr"] == expr,
+                  f"wrong rule: {rules}")
+
+    def _cc(self, a, command, category, expected):
+        _, doc = a.human(command)
+        actual = doc["configuration"]["filters"]["cc"]["geography"][category]["global"]
+        check(actual == expected, f"{command}: expected {expected}, got {actual}")
+
+    def exercise(self, a, b):
+        a.human("DIALECT GO")
+        self.case("GO rule add", lambda: self._rule(a, "PASS RULE 9 MODE=CW AND NEARBY", 9, "pass", "MODE=CW AND NEARBY"))
+        self.case("GO rule replace", lambda: self._rule(a, "REJECT RULE 9 BAND=20", 9, "reject", "BAND=20M"))
+        self.case("GO invalid atomic", lambda: self._unchanged_refusal(a, "PASS RULE 9 MODE=NOT_A_MODE"))
+        self.case("GO retired NEARBY", lambda: self._unchanged_refusal(a, "PASS NEARBY ON"))
+        self.case("GO rule remove", lambda: self._rule(a, "RESET FILTER RULE 9", 9))
+        a.human("PASS RULE 9 MODE=CW")
+        def reset_rules():
+            _, doc = a.human("RESET FILTER RULE ALL")
+            check(not doc["configuration"]["filters"]["go"]["rules"], "rule reset left rules")
+        self.case("GO rule reset", reset_rules)
+        self.case("GO retired category", lambda: self._unchanged_refusal(a, "PASS BAND 20M"))
+        a.human("PASS RULE 9 MODE=CW AND NEARBY")
+        before_switch = a.get()["configuration"]["filters"]["go"]
+        a.human("DIALECT CC")
+        self.case("CC DOC pass", lambda: self._cc(a, "SET/FILTER DOC/PASS K", "DOC", {"action": "pass", "countries": [291]}))
+        self.case("CC DOC replace", lambda: self._cc(a, "SET/FILTER DOC/PASS VE", "DOC", {"action": "pass", "countries": [1]}))
+        self.case("CC DOC reject", lambda: self._cc(a, "SET/FILTER DOC/REJECT K", "DOC", {"action": "reject", "countries": [291]}))
+        self.case("CC DOC off", lambda: self._cc(a, "SET/FILTER DOC/OFF", "DOC", {"action": "off"}))
+        self.case("CC DXSTATE pass", lambda: self._cc(a, "SET/FILTER DXSTATE/PASS NY", "DXSTATE", {"action": "pass", "states": ["NY"]}))
+        def dxbm(active):
+            _, doc = a.human("SET/FILTER DXBM/" + ("PASS 20" if active else "OFF"))
+            actual = doc["configuration"]["filters"]["cc"]["dxbm"]
+            check(actual["active"] is active, "DXBM active state mismatch")
+            if active:
+                check(actual["base_allow"] is False and actual["slots"] == {"20-CW": True, "20-RTTY": True, "20-SSB": True}, "DXBM PASS selected wrong slots")
+        self.case("CC DXBM pass", lambda: dxbm(True))
+        self.case("CC DXBM off", lambda: dxbm(False))
+        def dxbm_reject():
+            _, doc = a.human("SET/FILTER DXBM/REJECT 20")
+            actual = doc["configuration"]["filters"]["cc"]["dxbm"]
+            check(actual["active"] is True and actual["base_allow"] is True and
+                  actual["slots"] == {"20-CW": False, "20-RTTY": False, "20-SSB": False}, "DXBM REJECT selected wrong slots")
+            a.human("SET/FILTER DXBM/OFF")
+        self.case("CC DXBM reject", dxbm_reject)
+        self.case("CC invalid atomic", lambda: self._unchanged_refusal(a, "SET/FILTER DXSTATE/PASS NY,ZZ"))
+        self.case("CC GO rule refusal", lambda: self._unchanged_refusal(a, "PASS RULE 0 MODE=CW"))
+        cc = copy.deepcopy(a.get()["configuration"]["filters"]["cc"])
+        def switch():
+            _, doc = a.human("DIALECT GO")
+            check(doc["configuration"]["filters"]["go"] == before_switch, "GO bank changed while inactive")
+            _, doc = a.human("DIALECT CC")
+            check(doc["configuration"]["filters"]["cc"] == cc, "CC bank changed while inactive")
+        self.case("bank switching", switch)
+        def gets():
+            for resource in ("CONFIG", "FILTER", "SETTINGS", "CAPABILITIES"):
+                doc = a.get(resource)
+                if resource == "FILTER":
+                    check(doc["configuration"]["dialect"] == "cc", "FILTER is not tagged CC")
+                if resource == "CONFIG":
+                    check(set(doc["configuration"]["filters"]) == {"go", "cc"}, "missing bank")
+        self.case("GET resources", gets)
+        def put():
+            before = a.get()
+            self.acknowledge(a.upload("PUT", "CONFIG", before["configuration"], revision=before["revision"]))
+            check(a.get()["configuration"] == before["configuration"], "PUT changed configuration")
+        self.case("PUT CONFIG unchanged", put)
+        def patch():
+            before = a.get()["configuration"]
+            self.acknowledge(a.upload("PATCH", "SETTINGS", {"noise_class": "URBAN"}))
+            after = a.get()["configuration"]
+            check(after["settings"]["noise_class"] == "URBAN" and after["filters"] == before["filters"], "PATCH lost bank")
+        self.case("PATCH SETTINGS", patch)
+        def validate():
+            before = a.get()
+            self.acknowledge(a.upload("VALIDATE", "CONFIG", before["configuration"]), False)
+            after = a.get()
+            check(before["configuration"] == after["configuration"] and before["revision"] == after["revision"], "VALIDATE changed state")
+        self.case("VALIDATE CONFIG", validate)
+        def stale():
+            before = a.get()
+            result = a.upload("PATCH", "SETTINGS", {"noise_class": "RURAL"}, revision="stale-revision")
+            check("error" in result, "stale write accepted")
+            after = a.get()
+            check(before["configuration"] == after["configuration"] and before["revision"] == after["revision"], "stale write changed state")
+        self.case("stale write", stale)
+        self._more_cases(a)
+        self._end_user_cases(a)
+        self._configured_shortcuts(a)
+        self._presets(a, b)
+        if not b.closed:
+            b.close()
+        self.case("terminal uploads", self._v7_terminal_uploads)
+        self.case("logout aliases", self._v7_logouts)
+        for dialect in ("GO", "CC"):
+            a.human("DIALECT " + dialect)
+            self.case(dialect + " HELP", lambda: a.human("HELP", "GoCluster help"))
+            self.case(dialect + " settings", lambda: a.human("SHOW SETTINGS", "Session"))
+            def pause():
+                _, doc = a.human("PAUSE 30")
+                check(doc["status"]["session"]["pause_active"] is True, "pause absent")
+                _, doc = a.human("RESUME")
+                check(doc["status"]["session"]["pause_active"] is False, "resume failed")
+            self.case(dialect + " pause resume", pause)
+        history_ok = self.case("history labeled spot", lambda: self._history(a))
+        if history_ok:
+            self.case("history selection and paging", lambda: self._history_selection_v7(a))
+
+    def _more_cases(self, a):
+        def go_controls():
+            a.human("DIALECT GO")
+            for word, field in (("BEACON", "include_beacons"), ("WWV", "allow_wwv"), ("WCY", "allow_wcy"),
+                                ("ANNOUNCE", "allow_announce"), ("SELF", "allow_self"), ("TOXIC", "allow_toxic")):
+                for enabled in (True, False):
+                    _, doc = a.human(("PASS " if enabled else "REJECT ") + word)
+                    check(doc["configuration"]["filters"]["go"][field] is enabled, f"GO {word} not {enabled}")
+        self.case("GO delivery controls", go_controls)
+        def rule_views():
+            self._rule(a, "PASS RULE 9 MODE=CW", 9, "pass", "MODE=CW")
+            for command in ("SHOW FILTER", "SHOW FILTER RULE", "SHOW FILTER FULL", "HELP RULE"):
+                response, _ = a.human(command)
+                check("RULE" in response.upper() and not any(word in response for word in ("Unknown command", "Unknown help topic")), f"{command}: wrong rule readback")
+                if command.startswith("SHOW"):
+                    check("PASS RULE 9 MODE=CW" in response, f"{command}: missing seeded rule")
+                if command == "SHOW FILTER FULL":
+                    check("Program" in response and "occupied slots" in response, "GO FULL lacks preparation details")
+        self.case("GO rule readbacks", rule_views)
+        def settings():
+            for command, field, value in (("SET GRID FN31", "grid", "FN31"),
+                                           ("SET NOISE RURAL", "noise_class", "RURAL"),
+                                           ("SET PATHSAMPLES 1000", "path_min_observation_count", 1000),
+                                           ("SET SOLAR 30", "solar_summary_minutes", 30),
+                                           ("SET DEDUPE FAST", "dedupe_policy", "FAST")):
+                _, doc = a.human(command)
+                check(doc["configuration"]["settings"][field] == value, f"{command}: setting absent")
+            for mode in ("OFF", "DEDUPE", "SOURCE", "CONF", "PATH", "MODE"):
+                _, doc = a.human("SET DIAG " + mode)
+                check(doc["status"]["session"]["diagnostic_comments"].upper() == mode, f"diagnostic mode {mode} absent")
+        self.case("settings controls", settings)
+        def modes_sources():
+            a.human("DIALECT CC")
+            for command, field, value, present in (("SET/FT8", "modes", "FT8", True), ("SET/NOFT8", "modes", "FT8", False),
+                                                    ("SET/FT8", "modes", "FT8", True), ("UNSET/FT8", "modes", "FT8", False),
+                                                    ("SET/SKIMMER", "sources", "SKIMMER", True), ("SET/NOSKIMMER", "sources", "SKIMMER", False)):
+                _, doc = a.human(command)
+                check((value in doc["configuration"]["filters"]["cc"][field]) is present, f"{command}: wrong {field}")
+        self.case("CC modes and sources", modes_sources)
+        def controls():
+            for word, field in (("BEACON", "include_beacons"), ("WWV", "allow_wwv"), ("WCY", "allow_wcy"),
+                                ("ANN", "allow_announce"), ("SELF", "allow_self"), ("TOXIC", "allow_toxic")):
+                for enabled in (True, False):
+                    command = ("PASS" if enabled else "REJECT") + " TOXIC" if word == "TOXIC" else "SET/" + ("" if enabled else "NO") + word
+                    _, doc = a.human(command)
+                    check(doc["configuration"]["filters"]["cc"][field] is enabled, f"CC {word} not {enabled}")
+        self.case("CC delivery controls", controls)
+        def geography():
+            for category, argument, field, val in (("DOS", "NY", "states", "NY"), ("DXCTY", "VE", "countries", 1), ("DXSTATE", "NY", "states", "NY")):
+                for action in ("PASS", "REJECT"):
+                    self._cc(a, f"SET/FILTER {category}/{action} {argument}", category, {"action": action.lower(), field: [val]})
+                self._cc(a, f"SET/FILTER {category}/OFF", category, {"action": "off"})
+        self.case("CC geographic families", geography)
+        def cc_views():
+            self._cc(a, "SET/FILTER DOC/PASS K", "DOC", {"action": "pass", "countries": [291]})
+            for head in ("SHOW/FILTER", "SH/FILTER"):
+                for category, expected in (("", "Active filter bank: CC"), ("FULL", "Active filter bank: CC"),
+                                           ("DOC", "DOC - spotter country"), ("DOS", "DOS - spotter"),
+                                           ("DXCTY", "DXCTY"), ("DXSTATE", "DXSTATE"), ("DXBM", "DXBM:"),
+                                           ("MODE", "Modes:"), ("SOURCE", "Sources:")):
+                    command = head + (" " + category if category else "")
+                    response, _ = a.human(command)
+                    check(expected.lower() in response.lower() and not any(word in response for word in ("Unknown command", "Usage:")), f"{command}: wrong filter view")
+                    flat = " ".join(response.split())
+                    if category in ("", "FULL", "DOC"):
+                        check("Global: PASS" in flat and "ADIF values: 291" in flat, f"{command}: missing seeded DOC selection")
+                    if category == "FULL":
+                        check(all(label in response for label in ("DOC -", "DOS -", "DXCTY -", "DXSTATE -", "DXBM:", "Modes:", "Sources:")), f"{command}: incomplete FULL view")
+        self.case("CC filter readbacks", cc_views)
+        def helps():
+            for dialect in ("GO", "CC"):
+                a.human("DIALECT " + dialect)
+                for command in ("HELP", "H", "HELP LOAD PRESET", "HELP SHOW SETTINGS"):
+                    text, _ = a.human(command)
+                    check(text.strip() and "Unknown command" not in text and "Unknown help topic" not in text, f"{command}: missing help")
+                a.human("HELP MADEUP", "Unknown help topic")
+        self.case("HELP topics and aliases", helps)
+        def reads():
+            for dialect in ("GO", "CC"):
+                a.human("DIALECT " + dialect)
+                for command, expected in (("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call:"),
+                                          ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"),
+                                          ("WHOSPOTSME", "WHOSPOTSME"), ("SHOW PROP", "Usage: SHOW PROP")):
+                    a.human(command, expected)
+        self.case("general reads", reads)
+        def bulletin():
+            for dialect in ("GO", "CC"):
+                a.human("DIALECT " + dialect)
+                for command in ("SHOW WWV", "SHOW WCY", "SH WWV", "SH WCY", "SHOW/WWV", "SHOW/WCY", "SH/WWV", "SH/WCY", "SHOW WWV FULL", "SHOW WCY FULL"):
+                    response, _ = a.human(command)
+                    check(("WWV" in response if "WWV" in command else "WCY" in response) and
+                          not any(word in response for word in ("Unknown command", "Unknown help topic", "Usage:")), f"{command}: missing bulletin response")
+        self.case("WWV and WCY", bulletin)
+        def filter_writes():
+            a.human("DIALECT GO")
+            before = a.get("FILTER")
+            self.acknowledge(a.upload("PUT", "FILTER", before["configuration"], revision=before["revision"]))
+            check(a.get("FILTER")["configuration"] == before["configuration"], "FILTER PUT changed state")
+            self.acknowledge(a.upload("PATCH", "FILTER", {"dialect": "go", "filters": {"allow_wwv": True}}))
+            check(a.get("FILTER")["configuration"]["filters"]["allow_wwv"] is True, "FILTER PATCH failed")
+            settings = a.get("SETTINGS")
+            self.acknowledge(a.upload("PUT", "SETTINGS", settings["configuration"], revision=settings["revision"]))
+            check(a.get("SETTINGS")["configuration"] == settings["configuration"], "SETTINGS PUT changed state")
+        self.case("schema 7 filter writes", filter_writes)
+        def config_patch():
+            before = a.get()["configuration"]
+            self.acknowledge(a.upload("PATCH", "CONFIG", {"settings": {"noise_class": "QUIET"}}))
+            after = a.get()["configuration"]
+            check(after["settings"]["noise_class"] == "QUIET" and after["filters"] == before["filters"], "CONFIG PATCH damaged banks")
+        self.case("schema 7 config PATCH", config_patch)
+        def invalid():
+            before = a.get()
+            result = a.upload("PATCH", "SETTINGS", {"unexpected": True})
+            check("error" in result, "invalid settings accepted")
+            after = a.get()
+            check(after["configuration"] == before["configuration"] and after["revision"] == before["revision"], "invalid write changed state")
+        self.case("invalid machine input", invalid)
+        def schema_six():
+            a.human("DIALECT GO")
+            for resource in ("FILTER", "CONFIG", "SETTINGS", "CAPABILITIES"):
+                a.get(resource, 6)
+            a.human("DIALECT CC")
+            for resource in ("SETTINGS", "CAPABILITIES"):
+                a.get(resource, 6)
+            for resource in ("FILTER", "CONFIG"):
+                identifier = self.identifier()
+                command = f"GET YAML {resource} SCHEMA 6 ID {identifier}"
+                a.send(command + "\r\n")
+                doc, _ = a.frame(resource, identifier, 6, command)
+                check("error" in doc, f"schema 6 {resource} unexpectedly available in CC")
+        self.case("schema 6 compatibility", schema_six)
+
+        def cc_filter_writes():
+            a.human("DIALECT CC")
+            original = a.get()
+            filtered = a.get("FILTER")
+            check(filtered["configuration"]["dialect"] == "cc", "CC FILTER missing tag")
+            self.acknowledge(a.upload("PUT", "FILTER", filtered["configuration"], revision=filtered["revision"]))
+            check(a.get()["configuration"] == original["configuration"], "unchanged CC FILTER PUT changed a bank")
+            before = a.get()["configuration"]
+            expected = copy.deepcopy(before)
+            expected["filters"]["cc"]["allow_wwv"] = not before["filters"]["cc"]["allow_wwv"]
+            self.acknowledge(a.upload("PATCH", "FILTER", {"dialect": "cc", "filters": {"allow_wwv": expected["filters"]["cc"]["allow_wwv"]}}))
+            check(a.get()["configuration"] == expected, "CC FILTER PATCH damaged or failed to update configuration")
+        self.case("CC schema 7 FILTER PUT and PATCH", cc_filter_writes)
+
+        def changed_config():
+            before = a.get()["configuration"]
+            candidate = copy.deepcopy(before)
+            for bank in ("go", "cc"):
+                candidate["filters"][bank]["allow_wwv"] = not before["filters"][bank]["allow_wwv"]
+            candidate["settings"]["noise_class"] = "RURAL" if before["settings"]["noise_class"] != "RURAL" else "URBAN"
+            self.acknowledge(a.upload("PUT", "CONFIG", candidate))
+            check(a.get()["configuration"] == candidate, "CONFIG PUT did not update both banks and settings")
+            self.acknowledge(a.upload("PUT", "CONFIG", before))
+            check(a.get()["configuration"] == before, "CONFIG PUT did not restore the snapshot")
+        self.case("schema 7 CONFIG changed both banks", changed_config)
+
+        def legacy_writes():
+            a.human("DIALECT GO")
+            before = a.get()["configuration"]
+            for resource in ("FILTER", "CONFIG", "SETTINGS"):
+                projected = a.get(resource, 6)
+                self.acknowledge(a.upload("PUT", resource, projected["configuration"], version=6, revision=projected["revision"]))
+                check(a.get()["configuration"] == before, f"schema 6 {resource} PUT changed either bank")
+        self.case("schema 6 GO writes preserve CC", legacy_writes)
+
+        def implied_doc():
+            a.human("DIALECT CC")
+            self._cc(a, "SET/FILTER K,VE/PASS", "DOC", {"action": "pass", "countries": [1, 291]})
+            self._cc(a, "SET/FILTER K/REJECT", "DOC", {"action": "reject", "countries": [291]})
+            self._cc(a, "SET/FILTER DOC/OFF", "DOC", {"action": "off"})
+        self.case("CC implied DOC", implied_doc)
+
+        def dialect_aliases():
+            for alias in ("CLASSIC", "DEFAULT", "GOCLUSTER"):
+                a.human("DIALECT CC")
+                before = a.get()["configuration"]
+                _, doc = a.human("DIALECT " + alias, "Dialect set to GO")
+                expected = copy.deepcopy(before)
+                expected["settings"]["dialect"] = "go"
+                check(doc["configuration"] == expected, f"DIALECT {alias}: wrong selection or damaged settings")
+        self.case("dialect GO aliases", dialect_aliases)
+
+    def _end_user_cases(self, a):
+        """Exercise user-facing commands and refusal atomicity in both dialects."""
+        for dialect in ("GO", "CC"):
+            a.human("DIALECT " + dialect)
+
+            def pause(command, seconds):
+                before = a.get()
+                text, after = a.human(command, f"paused for {seconds}s.")
+                check("Missed spots are not replayed." in text, "pause did not describe missed spots")
+                check(before["configuration"] == after["configuration"] and before["revision"] == after["revision"],
+                      "pause changed saved preferences")
+                if seconds > 1:
+                    status = after["status"]["session"]
+                    check(status["pause_active"] is True and 0 < status["pause_remaining_seconds"] <= seconds,
+                          "pause status did not match requested duration")
+
+            for label, command, duration in (("pause default", "PAUSE", 30),
+                                             ("pause 1", "PAUSE 1", 1),
+                                             ("pause 300", "PAUSE 300", 300)):
+                self.case(dialect + " " + label, lambda c=command, n=duration: pause(c, n))
+
+            def invalid_pauses():
+                a.human("PAUSE 120", "paused for 120s.")
+                before = a.get()
+                for command in ("PAUSE 0", "PAUSE 301", "PAUSE BAD", "PAUSE 3 EXTRA"):
+                    _, after = a.human(command, "Usage: PAUSE")
+                    status = after["status"]["session"]
+                    check(status["pause_active"] is True and status["pause_remaining_seconds"] > 90,
+                          f"{command}: invalid duration changed the existing pause")
+                    check(after["configuration"] == before["configuration"] and after["revision"] == before["revision"],
+                          f"{command}: invalid duration changed preferences")
+            self.case(dialect + " invalid pauses", invalid_pauses)
+
+            def hold():
+                response, doc = a.human("SHOW HOLD", "Live spots paused")
+                check("Suppressed spots:" in response and doc["status"]["session"]["pause_active"] is True,
+                      "SHOW HOLD did not report the active pause")
+                a.human("SHOW HOLD EXTRA", "Usage: SHOW HOLD")
+                _, doc = a.human("RESUME")
+                check(doc["status"]["session"]["pause_active"] is False, "RESUME did not clear the pause")
+                a.human("SHOW HOLD", "Live spots are not paused")
+            self.case(dialect + " show hold", hold)
+
+            def dialect_discovery():
+                before = a.get()
+                a.human("DIALECT", "Current dialect: " + dialect)
+                a.human("DIALECT LIST", "Available dialects: CC, GO")
+                _, after = a.human("DIALECT LIST EXTRA", "Usage: DIALECT")
+                check(after["configuration"] == before["configuration"] and after["revision"] == before["revision"],
+                      "dialect query or invalid argument changed preferences")
+            self.case(dialect + " dialect discovery", dialect_discovery)
+
+            def invalid_settings():
+                for command in ("SET GRID FN31 EXTRA", "SET NOISE URBAN EXTRA",
+                                "SET PATHSAMPLES 40 EXTRA", "SET SOLAR OFF EXTRA",
+                                "SET DEDUPE FAST EXTRA", "SET DIAG OFF EXTRA"):
+                    before = a.get()
+                    text, after = a.human(command, "Usage:")
+                    check(text and before["configuration"] == after["configuration"] and before["revision"] == after["revision"]
+                          and before["status"]["session"]["diagnostic_comments"] == after["status"]["session"]["diagnostic_comments"],
+                          f"{command}: refusal changed state")
+            self.case(dialect + " invalid settings", invalid_settings)
+
+            def settings_aliases():
+                before = a.get()
+                for command in ("SHOW SETTINGS", "SHOW/SETTINGS", "SH/SETTINGS"):
+                    response, after = a.human(command, "Session")
+                    check("Grid" in response and "Noise" in response, f"{command}: incomplete settings view")
+                    check(after["configuration"] == before["configuration"] and after["revision"] == before["revision"],
+                          f"{command}: settings view changed preferences")
+            self.case(dialect + " settings aliases", settings_aliases)
+
+            def solar_off():
+                _, doc = a.human("SET SOLAR OFF", "Solar summaries: OFF")
+                check(doc["configuration"]["settings"]["solar_summary_minutes"] == 0, "solar off was not saved")
+            self.case(dialect + " solar off", solar_off)
+            self.case(dialect + " WHOSPOTSME band", lambda: a.human("WHOSPOTSME 20M", "WHOSPOTSME 20M"))
+            self.case(dialect + " PROP forecast", lambda: a.human("SHOW PROP FN31 20M CW", "20m"))
+
+            def pc93_alias():
+                bank = dialect.lower()
+                for verb, enabled in (("PASS", True), ("REJECT", False)):
+                    _, doc = a.human(verb + " PC93")
+                    check(doc["configuration"]["filters"][bank]["allow_announce"] is enabled,
+                          f"{verb} PC93 did not change ANNOUNCE")
+            self.case(dialect + " PC93 alias", pc93_alias)
+
+            def help_discovery():
+                reference = "Native CC filter reference:" if dialect == "CC" else "Filter reference:"
+                a.human("HELP FILTERS", reference)
+                a.human("HELP SYMBOLS", "Confidence glyphs:")
+                for topic, expected in (("SHOW HOLD", "Usage: SHOW HOLD"),
+                                        ("SET SOLAR", "SET SOLAR <15|30|60|OFF>"),
+                                        ("SAVE PRESET", "SAVE PRESET <name>"),
+                                        ("SHOW/SETTINGS", "Usage: SHOW SETTINGS")):
+                    a.human("HELP " + topic, expected)
+                if dialect == "CC":
+                    for verb in ("SET/FILTER", "UNSET/FILTER"):
+                        response, _ = a.human("HELP " + verb, verb + " -")
+                        check("Switches:" in response, f"HELP {verb}: missing switch list")
+            self.case(dialect + " HELP discovery", help_discovery)
+            self.case(dialect + " DXCC alias", lambda: a.human("SH DXCC VE", "Canada"))
+
+            def prop_aliases():
+                for head in ("SH PROP", "SHOW/PROP", "SH/PROP"):
+                    response, _ = a.human(head + " FN31 20M CW", "20m")
+                    check("Unknown command" not in response and "Usage:" not in response,
+                          f"{head}: propagation alias refused")
+            self.case(dialect + " PROP aliases", prop_aliases)
+
+        a.human("DIALECT CC")
+        def unset_skimmer():
+            a.human("SET/SKIMMER")
+            _, doc = a.human("UNSET/SKIMMER")
+            check("SKIMMER" not in doc["configuration"]["filters"]["cc"]["sources"],
+                  "UNSET/SKIMMER did not disable skimmer reports")
+        self.case("CC UNSET SKIMMER", unset_skimmer)
+
+        controls = (("BEACON", "include_beacons"), ("WWV", "allow_wwv"),
+                    ("WCY", "allow_wcy"), ("ANNOUNCE", "allow_announce"),
+                    ("PC93", "allow_announce"), ("SELF", "allow_self"),
+                    ("TOXIC", "allow_toxic"))
+        def cc_controls(verb, enabled):
+            for word, field in controls:
+                # Seed the opposite value so an acknowledged no-op cannot pass.
+                a.human(("REJECT " if enabled else "PASS ") + word)
+                before = a.get()["configuration"]
+                _, doc = a.human(verb + " " + word + " ALL")
+                expected = copy.deepcopy(before)
+                expected["filters"]["cc"][field] = enabled
+                check(doc["configuration"] == expected, f"{verb} {word}: wrong state or unrelated changes")
+        self.case("CC SET/FILTER controls", lambda: cc_controls("SET/FILTER", True))
+        self.case("CC UNSET/FILTER controls", lambda: cc_controls("UNSET/FILTER", False))
+
+        def inline_controls():
+            for word, field in controls:
+                for suffix, enabled in (("ON", True), ("OFF", False)):
+                    a.human(("REJECT " if enabled else "PASS ") + word)
+                    _, doc = a.human(f"SET/FILTER {word}/{suffix}")
+                    check(doc["configuration"]["filters"]["cc"][field] is enabled,
+                          f"SET/FILTER {word}/{suffix}: wrong control")
+        self.case("CC inline controls", inline_controls)
+
+        def control_shortcuts():
+            aliases = (("ANN", "allow_announce"), ("ANNOUNCE", "allow_announce"),
+                       ("BEACON", "include_beacons"), ("WWV", "allow_wwv"),
+                       ("WCY", "allow_wcy"), ("SELF", "allow_self"), ("TOXIC", "allow_toxic"))
+            for word, field in aliases:
+                for command, enabled in (("SET/" + word, True), ("SET/NO" + word, False), ("UNSET/" + word, False)):
+                    # Establish opposite state even when the same control has aliases.
+                    a.human(("REJECT " if enabled else "PASS ") + ("ANNOUNCE" if word == "ANN" else word))
+                    _, doc = a.human(command)
+                    check(doc["configuration"]["filters"]["cc"][field] is enabled,
+                          f"{command}: wrong control")
+        self.case("CC control shortcuts", control_shortcuts)
+
+        def unsupported_control_forms():
+            for command in ("UNSET/FILTER WWV/OFF", "SET/FILTER BEACON/OFF EXTRA", "SET/FILTER DOC/PASS"):
+                before = a.get()
+                text, after = a.human(command)
+                check(any(word in text.lower() for word in ("usage:", "no changes", "require", "does not accept", "use set/filter")),
+                      f"{command}: refusal absent")
+                check(after["configuration"] == before["configuration"] and after["revision"] == before["revision"],
+                      f"{command}: invalid control changed preferences")
+        self.case("CC unsupported control forms", unsupported_control_forms)
+
+    def _configured_shortcuts(self, a):
+        """Check each caller-supplied canonical mode against the CC bank."""
+        a.human("DIALECT CC")
+        for mode in getattr(self.args, "cc_shortcuts", ()):
+            def shortcut(name=mode):
+                for command, enabled in (("SET/" + name, True), ("SET/NO" + name, False),
+                                         ("SET/" + name, True), ("UNSET/" + name, False)):
+                    seed = ("UNSET/" if enabled else "SET/") + name
+                    _, seeded = a.human(seed)
+                    before = seeded["configuration"]
+                    check((name in before["filters"]["cc"]["modes"]) is (not enabled),
+                          f"{seed}: could not establish opposite mode state")
+                    _, doc = a.human(command)
+                    expected = copy.deepcopy(before)
+                    modes = set(expected["filters"]["cc"]["modes"])
+                    if enabled:
+                        modes.add(name)
+                    else:
+                        modes.discard(name)
+                    actual = doc["configuration"]
+                    actual_modes = actual["filters"]["cc"]["modes"]
+                    check(len(actual_modes) == len(set(actual_modes)) and set(actual_modes) == modes,
+                          f"{command}: incorrect mode selection {actual_modes}")
+                    expected["filters"]["cc"]["modes"] = actual_modes
+                    check(actual == expected, f"{command}: changed unrelated configuration")
+            self.case(f"CC configured shortcut {mode}", shortcut)
+
+    def _presets(self, a, b):
+        name = "LIVE-" + self.token
+        def invalid_names():
+            for command in ("SAVE PRESET", "SAVE PRESET GOOD_BAD", "LOAD PRESET ONE TWO", "LIST PRESET EXTRA"):
+                before = a.get()
+                _, after = a.human(command, "Usage:")
+                check(before["configuration"] == after["configuration"] and before["revision"] == after["revision"]
+                      and before["status"]["presets"] == after["status"]["presets"],
+                      f"{command}: invalid preset request changed settings or associations")
+        self.case("preset invalid names", invalid_names)
+        def sharing():
+            a.human("DIALECT CC")
+            listing, _ = a.human("LIST PRESET")
+            check(name not in listing, "preset collision")
+            count = re.search(r"\((\d+)/20\)", listing)
+            check(count and int(count.group(1)) < 20, "no available preset slot")
+            self.owned.add(name)
+            text, saved = a.human("SAVE PRESET " + name, "Saved preset")
+            status = saved["status"]["presets"]["cc"]
+            check("not saved" not in text.lower() and "could not" not in text.lower() and
+                  status["associated"] is True and status["name"] == name and status["modified"] is False,
+                  "SAVE did not establish the preset association")
+            self.saved_preset = copy.deepcopy(saved["configuration"])
+            listing, _ = b.human("LIST PRESET")
+            check(name in listing, "shared preset absent")
+        if not self.case("preset sharing", sharing):
+            def blocked():
+                raise BlockedPrerequisite("preset was not safely created and verified")
+            for case in ("preset cross dialect", "preset overwrite", "preset round trip after reconnect", "preset cleanup"):
+                self.case(case, blocked)
+            return
+        def cross():
+            before = b.get()["configuration"]
+            b.human("DIALECT GO")
+            text, loaded = b.human("LOAD PRESET " + name, "Loaded preset")
+            status = loaded["status"]["presets"]["cc"]
+            check("not saved" not in text.lower() and "could not" not in text.lower() and
+                  status["associated"] is True and status["name"] == name and status["modified"] is False,
+                  "LOAD did not establish the preset association")
+            after = loaded["configuration"]
+            check(after["settings"] == self.saved_preset["settings"] and after["filters"]["cc"] == self.saved_preset["filters"]["cc"] and
+                  after["filters"]["go"] == before["filters"]["go"], "preset did not restore CC or damaged inactive GO bank")
+        self.case("preset cross dialect", cross)
+        def overwrite():
+            a.human("DIALECT CC")
+            before = a.get()["configuration"]
+            noise = "URBAN" if before["settings"]["noise_class"] != "URBAN" else "RURAL"
+            a.human("SET NOISE " + noise)
+            _, saved = a.human("SAVE PRESET " + name, "Saved preset")
+            check(saved["status"]["presets"]["cc"]["associated"] is True and
+                  saved["status"]["presets"]["cc"]["name"] == name and
+                  saved["status"]["presets"]["cc"]["modified"] is False, "overwrite did not save association")
+            expected = saved["configuration"]
+            prior_b = b.get()["configuration"]
+            _, loaded = b.human("LOAD PRESET " + name, "Loaded preset")
+            actual = loaded["configuration"]
+            check(actual["settings"] == expected["settings"] and actual["filters"]["cc"] == expected["filters"]["cc"]
+                  and actual["filters"]["go"] == prior_b["filters"]["go"], "overwrite did not replace the shared preset")
+            check(loaded["status"]["presets"]["cc"]["name"] == name and
+                  loaded["status"]["presets"]["cc"]["modified"] is False, "overwritten preset association mismatch")
+        self.case("preset overwrite", overwrite)
+        def reconnect():
+            expected = b.get()["configuration"]
+            b.close()
+            reconnected = V7Session(self, self.calls[1])
+            try:
+                check(reconnected.get()["configuration"] == expected, "preset did not survive reconnect")
+            finally:
+                reconnected.close()
+        self.case("preset round trip after reconnect", reconnect)
+        def delete():
+            check(name in self.owned, "refusing to delete a preset that this run does not own")
+            a.human("DELETE PRESET " + name, "Deleted preset")
+            self.owned.remove(name)
+        self.case("preset cleanup", delete)
+
+    def _v7_logouts(self):
+        for verb in ("BYE", "QUIT", "EXIT"):
+            V7Session(self, self.calls[1]).close(verb)
+
+    def _v7_terminal_uploads(self):
+        for kind in ("header", "oversize", "incomplete", "deadline"):
+            session = V7Session(self, self.calls[1])
+            before = session.get()["configuration"]
+            if kind == "header":
+                payload = "PUT YAML CONFIG SCHEMA 7 EXTRA\r\n---\r\nRESUME\r\n...\r\n"
+            elif kind == "oversize":
+                payload = "PUT YAML CONFIG SCHEMA 7\r\n---\r\n#" + "X" * MAX_BUFFER + "\r\n...\r\n"
+            else:
+                payload = "PUT YAML CONFIG SCHEMA 7\r\n---\r\n"
+            try:
+                try:
+                    session.send(payload)
+                except ConnectionResetError:
+                    pass
+                if kind == "incomplete":
+                    session.sock.shutdown(socket.SHUT_WR)
+                session.reader.deadline = min(self.deadline, time.monotonic() + (36 if kind == "deadline" else 12))
+                received = bytearray()
+                try:
+                    while len(received) <= MAX_BUFFER:
+                        received.extend(session.reader.line())
+                    raise ValueError("terminal response exceeded bound")
+                except (EOFError, ConnectionResetError):
+                    pass
+                self.log.write(f"\nTERMINAL {kind}\n".encode() + received)
+            finally:
+                session.sock.close()
+                session.closed = True
+            verify = V7Session(self, self.calls[1])
+            try:
+                check(verify.get()["configuration"] == before, f"{kind} upload changed configuration")
+            finally:
+                verify.close()
+
+    def _history(self, a):
+        a.human("DIALECT GO")
+        a.human("RESET FILTER")
+        # Drain already queued live spots at the correlated barrier, then hold
+        # live delivery while exact history rows are collected.
+        _, paused = a.human("PAUSE 300")
+        check(paused["status"]["session"]["pause_active"] is True, "history delivery hold not active")
+        # Earlier control tests deliberately disable these switches. Resetting
+        # rules does not reset controls; history must request an unrestricted view.
+        for control in ("BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC"):
+            a.human("PASS " + control)
+        ready = self.started_at + self.args.history_wait_seconds
+        remaining = ready - time.monotonic()
+        if remaining > 0:
+            check(time.monotonic() + remaining < self.deadline, "history probation wait exceeds run deadline")
+            time.sleep(remaining)
+        target = "VA3UXA"
+        offset = int(self.token[-2:], 16)
+        frequencies = [28010 + offset % 90, 21010 + offset % 90]
+        label = self.history_label()
+        for command in (f"DX {frequencies[0]} {target} CW {label}-0 up-5?", f"DX {target} {frequencies[1]} FT8 {label}-1 up-5?"):
+            response, _ = a.human(command)
+            if "Spot rejected." in response:
+                raise BlockedPrerequisite("server rejected the labeled spot; retained history cannot be qualified")
+            check("Spot queued." in response, f"DX intake was not confirmed: {response}")
+        deadline = min(self.deadline, time.monotonic() + self.args.history_timeout_seconds)
+        while time.monotonic() < deadline:
+            text, state = a.human(f"SHOW DX {target} 2 COMMENT {label}")
+            check(state["status"]["session"]["pause_active"] is True, "history delivery hold expired while polling")
+            if all(re.search(r"\b" + label + "-" + str(index) + r"\b", text) for index in (0, 1)):
+                self.history_result(a, f"SHOW DX {target} 2 COMMENT {label}", target, frequencies, [0, 1])
+                self.history_target, self.history_frequencies = target, frequencies
+                return
+            time.sleep(.5)
+        raise BlockedPrerequisite("both labeled spots not found in retained history")
+
+    def _history_selection_v7(self, a):
+        target, frequencies = self.history_target, self.history_frequencies
+        label = self.history_label()
+        for dialect in ("GO", "CC"):
+            a.human("DIALECT " + dialect)
+            if dialect == "CC":
+                a.human("SET/NOFILTER")
+                # NOFILTER restores operator defaults, which need not include
+                # the two modes in our labeled history fixtures.
+                a.human("SET/CW")
+                a.human("SET/FT8")
+                for control in ("BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC"):
+                    a.human("PASS " + control)
+            for selector, expected in (("BAND 10", [0]), ("BAND 15", [1]), ("MODE CW", [0]),
+                                       ("MODE FT8", [1]), ("BAND 10 MODE FT8", []),
+                                       ("BAND 10,15 MODE CW,FT8", [0, 1])):
+                self.history_result(a, f"SHOW DX {target} 2 {selector} COMMENT {label}", target, frequencies, expected)
+            for alias in (("SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX") if dialect == "GO" else
+                          ("SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX", "SHOW/DX", "SH/DX")):
+                self.history_result(a, f"{alias} {target} 2 COMMENT {label}", target, frequencies, [0, 1])
+            self.unchanged(a, "SHOW DX " + target + " 2 BAND INVALID", "Invalid BAND selection")
+        a.human("DIALECT GO")
+        first = self.history_result(a, f"SHOW DX {target} 1 COMMENT {label}", target, frequencies, [1])
+        cursor = re.search(r"H1[A-F0-9]{32}", first)
+        check(cursor is not None, "history continuation token absent")
+        self.unchanged(a, "SHOW DX " + target + " 1 BAND INVALID", "Invalid BAND selection")
+        self.history_result(a, "SHOW DX NEXT " + cursor.group(), target, frequencies, [0])
+
+    def run(self):
+        required = v7_required_cases(getattr(self.args, "cc_shortcuts", ()))
+        self.residual_associations = {}
+        self.started_at = time.monotonic()
+        print("Test profiles: " + ", ".join(self.calls), flush=True)
+        try:
+            a, b = [V7Session(self, call) for call in self.calls]
+            for session in (a, b):
+                baseline = session.get()
+                validate_v7_baseline(baseline)
+                self.baselines[session.call] = baseline
+            (self.args.output / "baselines.json").write_text(json.dumps(self.baselines, indent=2), encoding="utf-8")
+            self.remote_build, _ = a.human("SHOW BUILD", "Build version:")
+            self.exercise(a, b)
+        except Exception as error:
+            self.results.append({"case": "setup/run", "result": "FAIL", "detail": f"{type(error).__name__}: {error}"})
+        finally:
+            self.cleanup()
+            self.account_required(required)
+            counts = {status: sum(row["result"] == status and row["case"] in required for row in self.results) for status in ("PASS", "FAIL", "BLOCKED", "UNEXECUTED")}
+            report = {"host": self.args.host, "port": self.args.port, "remote_build": getattr(self, "remote_build", "unknown"),
+                      "commands_including_GET_barriers": self.commands, "required": required, "required_leaf_results": counts,
+                      "results": self.results, "wire_failures": self.wire_failures, "cleanup_errors": self.cleanup_errors,
+                      "busy_barriers": getattr(self, "busy_barriers", []),
+                      "remaining_owned_presets": sorted(self.owned), "residual_remote_test_profiles": list(self.baselines),
+                      "residual_profile_preset_associations": self.residual_associations,
+                      "test_spot_comment": self.history_label(),
+                      "retired_coverage": "schema 1-4 filters, legacy category commands and NEARBY toggles were replaced by schema 7 and GO rules / native CC"}
+            (self.args.output / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+            self.log.close()
+        failures = sum(row["result"] != "PASS" for row in self.results)
+        print(json.dumps({"commands": self.commands, "required_leaf_results": counts, "failures": failures,
+                          "wire_failures": len(self.wire_failures), "cleanup_errors": self.cleanup_errors,
+                          "output": str(self.args.output)}, indent=2))
+        return int(bool(failures or self.wire_failures or self.cleanup_errors or self.owned))
+
+
 def main():
     if sys.flags.optimize:
         raise RuntimeError("optimized Python disables safety guards; rerun without -O/PYTHONOPTIMIZE")
@@ -899,10 +1860,24 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--timeout", type=float, default=12)
     parser.add_argument("--run-seconds", type=float, default=900)
+    parser.add_argument("--ssid-start", type=int, required=True, help="first of two verified unused adjacent numeric SSIDs (1..98)")
+    parser.add_argument("--history-wait-seconds", type=float, default=0, help="minimum elapsed time after start before posting history stimuli")
+    parser.add_argument("--history-timeout-seconds", type=float, default=120, help="maximum time to await both labeled history rows")
+    parser.add_argument("--cc-shortcuts", default=None, metavar="CW,FT8,...",
+                        help="canonical enabled CC shortcut modes, comma-separated (optional)")
     args = parser.parse_args()
-    if not re.fullmatch(r"[A-Za-z0-9]+", args.call) or not 1 <= args.port <= 65535 or args.timeout <= 0 or args.run_seconds <= 0:
+    if args.cc_shortcuts is not None:
+        parts = [part.strip().upper() for part in args.cc_shortcuts.split(",")]
+        reserved = {"NOFILTER", "SKIMMER", "NOSKIMMER", "ANN", "ANNOUNCE", "BEACON", "WWV", "WCY", "SELF", "TOXIC"}
+        if (any(not re.fullmatch(r"[A-Z0-9_]+", part) or part.startswith("NO") or part in reserved for part in parts)
+                or len(parts) != len(set(parts)) or len(parts) > 128):
+            parser.error("--cc-shortcuts requires distinct canonical mode names without fixed-command collisions")
+        args.cc_shortcuts = parts
+    else:
+        args.cc_shortcuts = []
+    if not re.fullmatch(r"[A-Za-z0-9]+", args.call) or not 1 <= args.port <= 65535 or args.timeout <= 0 or args.run_seconds <= 0 or args.history_wait_seconds < 0 or args.history_timeout_seconds <= 0 or (args.ssid_start is not None and not 1 <= args.ssid_start <= 98):
         parser.error("use a base callsign, valid port and positive deadlines")
-    return Suite(args).run()
+    return V7Suite(args).run()
 
 
 if __name__ == "__main__":

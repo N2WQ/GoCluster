@@ -1,159 +1,77 @@
 # Live telnet command regression
 
-`scripts/test-telnet-commands.py` replaces the ad hoc October 3, 2026 live
-preset test (38 commands, conversation `01a10480-fa10-76c3-ad00-6374493f3d99`).
-The original evidence remains in `.tmp/preset-live-current.log` and `.json`.
-The current harness covers that preset sequence and the subsequent command
-families found in current dispatch, HELP, source tests and ADR-0243 through
-ADR-0261, plus history BAND/MODE selections. The current harness requires
-schema 4 to snapshot and restore comment preferences, including hidden-field
-preservation checks for older schemas.
-
-Run only against an owner-authorized server. It creates numeric SSIDs under the
-supplied base call, changes their preferences, creates/deletes uniquely named
-presets, reconnects, sends two short labeled human spots and deliberately closes
-malformed/oversized/incomplete/expired uploads. Those spots may be admitted,
-filtered or deduplicated by the live pipeline. Their archive lifetime belongs to
-the server; this script does not remove archived records.
+`scripts/test-telnet-commands.py` tests a running, owner-authorized cluster.
+It uses schema 7 to capture both GO and CC filter banks and shared settings,
+and checks the captured configuration after restoration and reconnect. The
+legacy transport classes are also used by the isolated command-fix runner.
 
 ## Setup and execution
 
-Python 3.14 no longer supplies the old test's `telnetlib`. The harness uses a
-bounded standard-library socket client and PyYAML 6.0.3 in an isolated environment:
+Use Python with PyYAML 6.0.3. The output directory must not exist. Choose two
+adjacent numeric SSIDs that are not active; an existing login with the same
+identity may be displaced. Check existing profile ownership before choosing
+SSIDs. Login may migrate a base call's old preset library. Test profiles and
+preset associations can remain after cleanup, and labeled test spots can remain
+in the archive.
 
 ```powershell
 python -m venv .tmp/telnet-test-venv
 .tmp/telnet-test-venv/Scripts/python.exe -m pip install PyYAML==6.0.3
-$env:PYTHONDONTWRITEBYTECODE = '1'
-.tmp/telnet-test-venv/Scripts/python.exe scripts/test_telnet_commands_test.py
-.tmp/telnet-test-venv/Scripts/python.exe -u scripts/test-telnet-commands.py `
-  --host dxc.n2wq.com --port 8300 --call VA3UXA `
+.tmp/telnet-test-venv/Scripts/python.exe -B scripts/test_telnet_commands_test.py
+.tmp/telnet-test-venv/Scripts/python.exe -B -u scripts/test-telnet-commands.py `
+  --host 127.0.0.1 --port 8300 --call LZ1XA --ssid-start 78 `
+  --history-wait-seconds 65 --history-timeout-seconds 120 `
+  --cc-shortcuts CW,RTTY,FT8,FT4,FT2,PSK `
   --output .tmp/telnet-command-new-run
 ```
 
-The output directory must not exist. Use ordinary Python; optimized Python
-(`-O`, `-OO`, `PYTHONOPTIMIZE`) is refused because it disables assertions.
-Default command timeout is 12 seconds; the test budget is 900 seconds. Upload
-expiry explicitly waits up to 36 seconds. Cleanup has a separate 120-second
-budget. Connection buffers and per-response recovery are capped at 262,144
-bytes; strict application responses still fail above 65,536 bytes.
+Use ordinary Python; optimized mode is refused because it disables assertions.
+The optional history wait allows configured new-call probation to expire before
+posting; a rejected spot blocks history coverage and is not counted as a pass.
+The separate history timeout allows held spots to reach the archive. The suite
+follows work-limited history pages within a bounded time and page budget and
+requires exact rows or exhausted status. Supply
+`--cc-shortcuts` from the running server’s loaded taxonomy to check each
+configured mode shortcut; without it, shortcut coverage is representative.
+The suite bounds socket buffers and deadlines, records wire failures separately,
+and uses a fresh connection and separate cleanup budget for restoration.
 
 ## Coverage and evidence
 
-| Contract | Live stimulus and falsifiable observation | Deterministic supplement |
-|---|---|---|
-| Telnet framing and correlation | Split-capable IAC decoding; complete YAML markers, resource/version/request ID, raw CRLF and final byte count | Offline split, EOF, timeout, malformed marker, duplicate-key, identity and echo fixtures |
-| Human readbacks | Both dialects; overview, FULL, 27 categories and CONF/PC93 aliases; headings, representative values, 78 printable-ASCII columns, delivery hold | Existing configuration human/readback tests |
-| Human filter commands | PASS/REJECT and CC mutations; barrier GET verifies maps, lists and toggles; mixed-invalid lists preserve configuration/revision | State, MINSNR, canonical DXCC and GRID2 package tests |
-| Settings and diagnostics | GRID, NOISE, PATHSAMPLES, SOLAR, DEDUPE, DIAG, DIALECT; exact configuration/status after commands | Existing command/settings tests |
-| Pause | Default, 1/300 boundaries, invalid durations, SHOW HOLD, RESUME; state and remaining duration | Existing manual/delivery-timed pause tests |
-| Machine schema versions | All GET resources in schemas 1/2/3/4; old shapes and hidden-field preservation | State/MINSNR/comment projection and transaction fixtures |
-| Comment rules/search | Literal punctuation/repeated spaces, idempotent additions, opposite moves, removal/clears, 64/65-byte phrases; labeled archive query | Matching truth tables, 32/33-entry limits, snapshots, concurrent invalidation, storage and parser fuzz fixtures |
-| PUT/PATCH | Unchanged and changed PUT for every writable resource; PATCH collection replacement and omission preservation; fresh revisions | Existing machine transaction/persistence-failure tests |
-| Validation and conflicts | VALIDATE changes neither revision nor configuration; stale writes and malformed values reject atomically | Existing machine schema/transaction tests |
-| Presets | Case normalization, ordered listing, cross-SSID sharing, exact new-field round trips, overwrite, invalid inputs, CC/NEARBY and reconnect, association/modified state, deletion without preference changes | Existing preset ownership, disk failure and transaction tests |
-| History | Exact-call rows; singleton/list BAND/MODE, category AND, COMMENT-last punctuation, MODE UNKNOWN, saved-filter narrowing; selected NEXT and invalid-request preservation; count bounds and GO/CC aliases | Commands/telnet history tests cover matching before counting, parser/fuzz boundaries, immutable selections, self exceptions, cutoff/work limits and concurrent invalidation; offline harness fixtures reject ignored categories, union matching, preference mutation and lost selections |
-| Terminal uploads | Bad header, over-limit body, missing end marker and absolute expiry; FIN or RST required; reconnect configuration unchanged | Existing terminal framing/deadline/session tests |
-| General commands | HELP/H, BUILD, OWN, DXCC, WHOSPOTSME, PROP, DX syntax and BYE/QUIT/EXIT | Existing processor/help tests |
+The required inventory in the script covers representative GO numbered rules,
+NEARBY and retired syntax; native CC geography, DXBM, modes, sources and
+controls; dialect switching; settings; HELP and read commands; history; presets;
+schema 6 compatibility and schema 7 reads and writes; malformed uploads; and
+logout. Missing or interrupted required cases are reported as unexecuted, not
+as passes. Individual command cases are representative and do not establish
+all combinations or live spot-filtering behavior.
 
-Every human command is followed by a uniquely correlated GET barrier, so the
-collector does not stop merely because a substring appeared in a partial
-response. Negotiated input echo is removed once and cannot satisfy response
-assertions. YAML and human CRCRLF anomalies are recorded as failures before
-tolerant semantic decoding; they cannot produce a clean exit.
-
-Command acknowledgement and readback establish parsing and configuration
-continuity. They do not alone prove live spot filtering, scientific prediction,
-latency, throughput or delivery under overload. Local state/SNR/history fixtures
-provide the deterministic evidence for those filtering contracts; no performance
-or scientific-model improvement is claimed. A missing usable live history page
-is a failed coverage condition, not an empty-history PASS.
-
-The same two labeled DX stimuli establish history-selection evidence: 10m/CW
-and 15m/FT8, with explicit mode tokens and exact per-run labels. Their target is
-CTY-valid and differs from the authorized base call (K1ABC for VA3UXA tests,
-otherwise VA3UXA), so history's existing self exception cannot hide saved-filter
-failures. Both labeled archive rows must be present; admission/deduplication
-that loses either row fails coverage. Tests compare the exact callsign,
-frequency and label identities, rather than acknowledgements or nonempty
-output. No additional DX stimuli are sent.
-
-Raw ingress has two distinct contracts: ordinary DX input retains the command
-reader's safe character list (ASCII letters, digits, spaces and `/ # @ - . , * ? _`),
-while recognized COMMENT prefixes admit printable
-ASCII in their phrase. Submitted DX fixtures therefore use `up-5?`; `:` and `!`
-would be rejected before DX dispatch. The matching history query uses `up-5?`,
-and its negative punctuation query uses `up-5!`, which is legal after SHOW
-COMMENT but differs from the archived phrase. Collector-only fixtures bypass
-raw ingress; actual Go reader fixtures validate both emitted DX command orders.
-
-The default 128-byte limit covers the entire edited DX command, excluding its
-line ending. Node configuration can change that limit; it is not a separate
-comment-length allowance.
-
-Selections require comma-separated lists (spaces around commas are allowed),
-OR within each list and AND across BAND, MODE and COMMENT. Crossed 10m/FT8
-selection and a mismatched literal punctuation
-suffix must return an exhausted empty search. Saved band/mode blocks must hide
-otherwise selected rows, and each search must preserve configuration/revision.
-A count-one combined selection supplies a NEXT token; missing/invalid/repeated
-categories and ALL/NONE are rejected before that token returns the remaining
-labeled row. MODE UNKNOWN is valid; BAND UNKNOWN is unsupported and rejected.
-Missing commas between values reject the request and preserve NEXT, just like
-other invalid selections. Local `TestHistoryBandModeConfiguredAliases` loads a
-temporary taxonomy with BAND/MODE variants for CW and asserts exact selected
-rows and clause boundaries. The shared-server harness uses the deployed taxonomy
-and does not alter it; these local cases establish configured-alias behavior.
-GO rejects slash aliases; accepted aliases in GO/CC return the
-same exact selected identities. Offline synthetic-session defects prove the
-collector rejects false-green responses; they do not prove server behavior.
-These exact tests require the selected labeled rows within the page work
-budget and exhausted status for empty searches. A timeout, unreadable-record
-warning or incomplete page instead fails coverage; the harness does not treat
-that bounded-search limitation as proof that no matching records exist.
+A correlated machine readback follows human commands. Tests check saved state
+and revisions where applicable; an acknowledgement alone is not evidence that
+an edit took effect. Offline fixtures exercise malformed frames, echo, identity,
+two-bank restoration, cleanup errors and false-success responses. Observed
+live results and their limitations are in the output directory.
 
 ## Ownership, restoration and output
 
-The main callsign is used only for GET and BUILD discovery. Its persisted
-preferences are checked unchanged. Ordinary login bookkeeping still occurs.
-Mutation uses numeric SSIDs. The harness refuses protected temporary defaults or
-an existing preset association before modifying a test profile. It snapshots
-each profile's exact schema-4 configuration before changes and saves snapshots
-to `baselines.json`.
+The suite refuses incomplete schema 7 backups, temporary defaults, and a
+pre-existing preset association in either bank. It saves the two-bank snapshots
+in `baselines.json`. Cleanup restores the captured writable configuration,
+restores diagnostics, ends the test pause, deletes only test-owned preset names, and
+checks configuration after reconnect. Any cleanup error is reported separately
+and causes a failing exit. A lost connection or process termination may prevent
+cleanup; inspect the saved baseline and result before retrying.
 
-Cleanup runs in `finally`, closes active test sockets and uses fresh connections
-to PUT the captured configuration, restore diagnostics, RESUME, delete only
-test-owned names and verify configuration after another reconnect. Preset names
-are checked for collisions/capacity before SAVE and reserved for cleanup before
-sending: a lost acknowledgement may still have committed a preset. Restoration
-failure is reported separately and causes nonzero exit. Hard process termination
-or network loss can prevent cleanup; use the snapshot and ownership list to
-recover rather than assuming cleanup succeeded.
+CONFIG uploads do not restore preset association references. A test-owned
+profile may therefore retain a reference to a deleted test preset. Results
+record residual profiles and associations; do not treat configuration equality
+as restoration of every profile field. Login bookkeeping and migration effects
+also remain outside the writable configuration backup.
 
-The remote command API cannot delete user records or clear an applied preset's
-reference. Test SSID records and their deleted-preset associations can remain,
-even after exact writable configuration is restored. These are reported as
-residual test profiles; no main-account preset association is changed.
-
-`transcript.bin` retains Telnet-decoded application bytes before newline
-normalization, with case/callsign labels. It excludes the Telnet negotiation
-control bytes. `results.json` records remote BUILD identity, semantic cases,
-wire failures, cleanup failures, test names and residual profiles. Its command
-count includes GET barriers and cleanup, so it is not comparable directly with
-the original 38-command count. Any semantic, wire or cleanup failure, or remaining
-owned preset, produces nonzero exit.
-
-The remote BUILD display is evidence of the observed deployment, not proof that
-the local checkout's commit ran. Local tests validate the checkout separately.
-Raw transcripts may contain server metadata; keep them local when sharing only
-the relevant failure excerpts is sufficient.
-
-The entrypoint keeps transport, the command matrix and cleanup together so the
-whole authorized mutation/restoration sequence can be reviewed in one place.
-Its length comes from explicit command cases; it adds no general testing framework.
-This document owns harness prerequisites and observed evidence. Operator/support
-documentation and the durable decision for runtime BAND/MODE commands belong to
-the accompanying implementation.
+`transcript.bin` contains decoded application bytes, and `results.json` records
+required cases, failures, wire errors, cleanup outcomes, and test identities.
+A live pass does not prove production latency, scientific accuracy, filtering
+recall, or delivery under load.
 
 ## COMMENT CPU and literal-input regression
 
@@ -210,6 +128,29 @@ alongside drop/backlog checks against the deployment's capacity budget.
 
 ## Observed validation
 
+On October 29, 2026 (America/New_York), the final expanded live run
+`.tmp/telnet-v7-lz1xa-08` completed 1,318 commands and passed all 100 required
+groups, with no wire or cleanup errors. It covered both dialects, the six
+configured CC mode shortcuts, schema 6 and 7 writes, preset overwrite, and
+history continuation across work-limited pages. The writable configurations of
+LZ1XA-82 and LZ1XA-83 were restored after reconnect. Test preset associations
+remain on those profiles; labeled test spots may remain in the archive.
+
+On October 29, 2026 (America/New_York), `.tmp/telnet-v7-lz1bb-04`
+recorded 1,273 commands and 93 passing required groups, with no failed,
+blocked, unexecuted, wire or cleanup results. This includes both labeled
+history rows, both dialects, and the six configured CC mode shortcuts. The
+writable configurations of LZ1BB-97 and LZ1BB-98 were restored and verified
+after reconnect; references to the deleted test preset remain on those profiles.
+
+On October 29, 2026 (America/New_York), `.tmp/telnet-v7-lz1bb-03`
+recorded 49 passing required groups, one blocked history prerequisite, one
+unexecuted dependent group, and no wire or cleanup errors. Both test spots
+were queued, but the history query did not establish both labeled rows. The
+run used LZ1BB-94 and LZ1BB-95; their writable configurations were restored,
+and test preset references remain on those profiles. Subsequent history-mode
+setup changes are not qualified by that run.
+
 On October 7, 2026 (America/New_York), the final complete run against
 `dxc.n2wq.com:8300` reported release `261008r4c40`, build version `261008`,
 Go `go1.27.1`. It executed 792 commands including barriers and cleanup, with
@@ -238,8 +179,7 @@ diff whitespace; code-map generation/check is run after documentation updates.
 
 That October 7 live run predates the COMMENT/schema-4 feature and does not
 validate its behavior or performance. It also predates history BAND/MODE
-selections; the extended harness requires a separate owner-authorized live run
-to establish deployed behavior. No live execution is implied by offline
+selections; it does not qualify the newer schema 7 harness or its live behavior. No live execution is implied by offline
 collector fixtures or local Go tests.
 
 ## Local command-fix regression runner
