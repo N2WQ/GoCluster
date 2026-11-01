@@ -49,6 +49,11 @@ transfers gate ownership.
 6. Report only findings and evidence.
    - Name inspected files, commands, and unknowns.
    - The lead agent must disposition every material finding.
+   - After a material revision, challenge the revised scope again, focusing on
+     affected areas unless broader assumptions changed. Repeat until material
+     findings are resolved or explicitly accepted as residual risks. Unresolved
+     product decisions and unaccepted material risks block an approval-ready
+     ledger; the lead cannot accept risk for the owner.
 
 ## Output Expectations
 

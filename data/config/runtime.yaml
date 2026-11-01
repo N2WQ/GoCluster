@@ -69,7 +69,7 @@ telnet:
   echo_mode: "server"              # Input echo policy: server (default), local, or off (relies on telnet IAC negotiation)
   broadcast_workers: 10            # 0 means automatic (uses all CPU cores, minimum 4)
   broadcast_queue_size: 8192       # Buffer depth for the global telnet broadcast queue
-  broadcast_batch_interval_ms: 200 # Micro-batching interval for telnet broadcasts (0 = immediate)
+  broadcast_batch_interval_ms: 100 # Micro-batching interval for telnet broadcasts (0 = immediate)
   worker_queue_size: 1024          # Jobs queued per broadcast worker before dropping
   client_buffer_size: 512          # Per-client spot backlog before a slow session drops spots
   control_queue_size: 32           # Per-client control backlog (bulletins/prompts/keepalives); full queue disconnects

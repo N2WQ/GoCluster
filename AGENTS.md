@@ -64,8 +64,10 @@ Before Non-trivial mutation:
    must be dispositioned in the Scope Ledger or block its publication.
 3. Propose a versioned Scope Ledger containing the objective, agreed scope,
    boundaries, material risks or unknowns, and validation plan.
-4. Challenge the scope before approval. Revise and reapprove it when new
-   evidence materially changes authority, scope, risk, or validation.
+4. Challenge the initial scope before approval. After a material revision,
+   challenge the revised scope again and disposition material findings before
+   requesting approval. Revise and reapprove it when new evidence materially
+   changes authority, scope, risk, or validation.
 5. Wait for the exact token `Approved vN` matching that ledger.
 
 Only exact `Approved vN` authorizes the matching agreed scope. Discussion,

@@ -105,6 +105,10 @@ try {
   Set-Content -LiteralPath $fixtureAgents -Value $agentsLF.Replace("`n", "`r`n") -NoNewline
 
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "positive contract"
+  Invoke-MutationFixture "AGENTS.md" { Replace-Once "AGENTS.md" "Challenge the initial scope before approval." "The initial scope needs no challenge." } { Invoke-Fixture 1 "initial and revised scope challenge missing" "initial scope challenge required" }
+  Invoke-MutationFixture "docs/change-workflow.md" { Replace-Once "docs/change-workflow.md" "revision, challenge the revised scope again before requesting approval." "revision, no further challenge is required." } { Invoke-Fixture 1 "detailed initial and revised scope challenge missing" "revised scope challenge required" }
+  Invoke-MutationFixture "docs/change-workflow.md" { Replace-Once "docs/change-workflow.md" "revision, challenge the revised scope again before requesting approval." "revision, challenge the revised scope again before requesting approval. The revised scope needs no challenge." } { Invoke-Fixture 1 "revised scope challenge contradiction" "revised scope rejects contradictory exemption" }
+  Invoke-MutationFixture "docs/change-workflow.md" { Replace-Once "docs/change-workflow.md" "Repeat until every material finding is resolved or explicitly accepted as a" "Findings may remain unresolved without acceptance as a" } { Invoke-Fixture 1 "scope challenge disposition gate missing" "material findings require disposition" }
   Invoke-SkillFixture 0 "PASS all requested repo skills verified." "positive skill methods"
   $frontmatterPath = '.agents/skills/initial-review/SKILL.md'
   Invoke-MutationFixture $frontmatterPath { Replace-Once $frontmatterPath "`n---`n" "`n----------`n" } { Invoke-SkillFixture 1 "[initial-review] missing SKILL.md front matter" "skill rejects nonexact frontmatter delimiter" }

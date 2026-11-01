@@ -33,6 +33,10 @@ still appear verbatim with the ledger’s actual version number.
 
 Only the exact matching `Approved vN` authorizes Non-trivial mutation.
 
+Challenge the initial scope before approval. After a material revision, repeat
+the challenge as directed by `docs/change-workflow.md` before requesting
+approval; unresolved material findings cannot be hidden by the template.
+
 Discussion, recommendations, questions, agreement with individual findings,
 requests to continue planning, or approval of another ledger version do not
 authorize implementation.

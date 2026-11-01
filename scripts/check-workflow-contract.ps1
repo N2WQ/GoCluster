@@ -151,6 +151,7 @@ $adr0227 = $text["docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.m
 $adr0228 = $text["docs/decisions/ADR-0228-corrective-ci-enforcement.md"]
 
 Require-Text "AGENTS.md" $agents 'Only exact `Approved vN` authorizes the matching agreed scope.' "approval authority route missing"
+Require-Pattern "AGENTS.md" $agents 'Challenge the initial scope before approval\. After a material revision,\s+challenge the revised scope again' "initial and revised scope challenge missing"
 Require-Text "AGENTS.md" $agents "Only explicitly agreed items are executable." "agreed-scope authority missing"
 Require-Pattern "AGENTS.md" $agents 'Stop\s+and obtain revised approval' "scope-expansion reapproval route missing"
 Require-Text "AGENTS.md" $agents "validation follows the touched surface" "touched-surface validation authority missing"
@@ -211,6 +212,9 @@ Forbid-Pattern "AGENTS.md#Fresh Lead Review" $agentFreshLead $freshLeadReclassif
 
 Require-Pattern "docs/change-workflow.md" $workflow 'Only exact `Approved vN` for the current ledger authorizes Non-trivial\s+mutation\.' "detailed approval route missing"
 Require-Pattern "docs/change-workflow.md" $workflow 'Only explicitly\s+agreed items may be implemented\.' "detailed agreed-scope rule missing"
+Require-Pattern "docs/change-workflow.md" $workflow 'Challenge the initial proposed scope before approval\. After a material scope\s+revision, challenge the revised scope again before requesting approval\.' "detailed initial and revised scope challenge missing"
+Require-Pattern "docs/change-workflow.md" $workflow 'Repeat until every material finding is resolved or explicitly accepted as a\s+residual risk; unresolved product decisions and unaccepted material risks block\s+an approval-ready ledger\.' "scope challenge disposition gate missing"
+Forbid-Pattern "docs/change-workflow.md" $workflow '(?i)(?:no further challenge is required|revised scope (?:needs|requires) no challenge)' "revised scope challenge contradiction"
 Require-Text "docs/change-workflow.md" $workflow "Standard and High-risk are internal routes." "internal risk-routing rule missing"
 Require-Pattern "docs/change-workflow.md" $workflow 'Uncertainty that could affect safety,\s+scope, validation, or compatibility is High-risk until resolved\.' "uncertainty High-risk route missing"
 Require-Text "docs/change-workflow.md" $workflow "Line count alone does not determine substantiality." "substantial-Go rule missing"

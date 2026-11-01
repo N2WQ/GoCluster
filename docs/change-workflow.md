@@ -52,7 +52,13 @@ A Proposed Scope Ledger identifies its version, objective, agreed items,
 boundaries, material risks or unknowns, and validation plan. Only explicitly
 agreed items may be implemented.
 
-Challenge the proposed scope before approval. New evidence requires a revised
+Challenge the initial proposed scope before approval. After a material scope
+revision, challenge the revised scope again before requesting approval. Focus
+the repeated challenge on affected areas unless broader assumptions changed.
+Repeat until every material finding is resolved or explicitly accepted as a
+residual risk; unresolved product decisions and unaccepted material risks block
+an approval-ready ledger. A lead recommendation does not accept risk for the
+owner. New evidence requires a revised
 ledger and exact reapproval when it materially changes what is authorized,
 scope boundaries, accepted risk, or required validation. Wording-only changes
 do not require a new version. Independent scope review is appropriate only for
