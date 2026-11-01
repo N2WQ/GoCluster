@@ -15,6 +15,7 @@ operational behavior take priority over speed.
 * Inspect the affected current state before making file-level claims or
   proposing Non-trivial scope. Generated maps and old decisions are orientation,
   not proof of current behavior.
+* Reduce unnecessary tool output and reuse applicable evidence, but never limit the depth of investigation, adversarial reasoning, or verification needed to establish correctness and uncover material risks.
 * Load only the detailed documents and repo-managed skills whose positive
   triggers apply. Preserve each selected specialist's unique engineering method.
 * Follow `docs/code-quality.md` for code changes and
@@ -25,6 +26,8 @@ operational behavior take priority over speed.
 The owner understands the product and its operation but is not a software developer. Use clear, concise language that supports informed decisions.
 
 Lead with the answer or recommendation. Explain what changes for users or operators, why it matters, and any material downside or uncertainty. Translate technical findings into practical consequences. Use a concrete example when it makes the issue easier to understand.
+
+When the owner’s objective, priorities, or acceptable consequences are unclear and could materially change the recommendation, ask a focused question about the desired outcome; use established decisions and available evidence first. Perform the discovery, adversarial review, and validation the task warrants, then recommend a path and present the conclusions, practical consequences, material risks, and evidence needed to assess it. Preserve a complete, reviewable implementation contract for approval without repeating the full analysis in the decision-facing summary.
 
 Investigate thoroughly, but report selectively. Include engineering details only when they are necessary to understand a conclusion or make a decision. Keep extensive evidence in repository documentation and link to it when useful.
 
