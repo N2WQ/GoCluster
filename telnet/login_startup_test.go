@@ -167,23 +167,28 @@ func TestLoginBulletinTemplateTextIsLiteral(t *testing.T) {
 }
 
 func TestNearbyRuleStartupHasNoGlobalWarning(t *testing.T) {
-	for _, greeting := range []string{shippedBooleanGreeting(t), "Welcome\n<STARTUP_INFO>Prompt\n"} {
-		s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
-			opts.EchoMode, opts.LoginGreeting = "off", greeting
+	for _, tc := range []struct{ name, greeting string }{
+		{"shipped", shippedBooleanGreeting(t)},
+		{"custom", "Welcome\n<STARTUP_INFO>Prompt\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
+				opts.EchoMode, opts.LoginGreeting = "off", tc.greeting
+			})
+			f := passRuleTestFilter(t, "NEARBY")
+			if err := filter.SaveUserRecord("K1BUL", &filter.UserRecord{Filter: *f, Dialect: "go"}); err != nil {
+				t.Fatal(err)
+			}
+			marker := "UTC>"
+			if strings.Contains(tc.greeting, "Prompt") {
+				marker = "Prompt"
+			}
+			_, got := openStartupSession(t, s, marker)
+			warning, prompt := strings.Index(got, "NEARBY is ON"), strings.LastIndex(got, marker)
+			if warning >= 0 || prompt < 0 {
+				t.Fatalf("retired global warning or missing prompt: %q", got)
+			}
 		})
-		f := passRuleTestFilter(t, "NEARBY")
-		if err := filter.SaveUserRecord("K1BUL", &filter.UserRecord{Filter: *f, Dialect: "go"}); err != nil {
-			t.Fatal(err)
-		}
-		marker := "UTC>"
-		if strings.Contains(greeting, "Prompt") {
-			marker = "Prompt"
-		}
-		_, got := openStartupSession(t, s, marker)
-		warning, prompt := strings.Index(got, "NEARBY is ON"), strings.LastIndex(got, marker)
-		if warning >= 0 || prompt < 0 {
-			t.Fatalf("retired global warning or missing prompt: %q", got)
-		}
 	}
 }
 
