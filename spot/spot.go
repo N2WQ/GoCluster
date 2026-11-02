@@ -811,6 +811,12 @@ func (s *Spot) FormatDXClusterCW(showSpeed bool) string {
 		}
 	}
 	if !showSpeed {
+		// A spot's canonical line is shared by its recipients. Reuse it only
+		// when both paths resolve to the same sanitized comment and beacon
+		// fallback; otherwise the canonical comment may expose hidden speed.
+		if comment == s.formatZoneGridComment() {
+			return s.FormatDXCluster()
+		}
 		return s.buildDXClusterLine(comment)
 	}
 	return s.buildDXClusterLineWithCWSpeeds(comment, s.CWSpeeds)

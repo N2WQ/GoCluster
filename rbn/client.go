@@ -782,19 +782,33 @@ func stripRBNSpeedCQComment(mode, comment string) string {
 	return comment
 }
 
-// rbnCWDisplayProjection recognizes speed pairs before canonical comment
-// parsing can reorder tokens. The scanner's line limit bounds both results.
-func rbnCWDisplayProjection(tokens []spotToken, consumed []bool, freq float64) (string, []string, bool) {
-	var haveWPM bool
+func hasRBNWPM(tokens []spotToken, consumed []bool) bool {
 	for i := range tokens {
-		if !consumed[i] && equalFoldASCII(tokens[i].clean, "WPM") {
-			haveWPM = true
-			break
+		if consumed[i] {
+			continue
+		}
+		// The parser trims the assembled comment; conservatively recognize a
+		// WPM token that outer Unicode whitespace may hide until that cleanup.
+		clean := strings.TrimSpace(tokens[i].clean)
+		if equalFoldASCII(clean, "WPM") {
+			return true
+		}
+		// The canonical parser can peel HHMMZ from the beginning of a token
+		// before classifying its remainder. This only enables cleanup tracing;
+		// speed pairs are still recognized from the original raw tokens.
+		if len(clean) > 5 && (clean[4] == 'Z' || clean[4] == 'z') &&
+			strutil.IsAllDigitsASCII(clean[:4]) && equalFoldASCII(strings.TrimSpace(clean[5:]), "WPM") {
+			return true
 		}
 	}
-	if !haveWPM {
-		return "", nil, false
-	}
+	return false
+}
+
+// rbnCWDisplayProjection recognizes pairs from original tokens, while using
+// the canonical parse's cleanup decisions for every other token. The trace
+// offsets refer to the compact comment built from the unconsumed clean tokens.
+// The scanner's line limit bounds the transient projection and speed labels.
+func rbnCWDisplayProjection(tokens []spotToken, consumed []bool, trace []spot.CommentDisplayToken) (string, []string, bool) {
 	projectionConsumed := append([]bool(nil), consumed...)
 	var speeds []string
 	for i := 0; i+1 < len(tokens); i++ {
@@ -810,13 +824,48 @@ func rbnCWDisplayProjection(tokens []spotToken, consumed []bool, freq float64) (
 		i++
 	}
 	var parts []string
+	var offset, traceIndex, count int
 	for i, token := range tokens {
-		if !projectionConsumed[i] && token.clean != "" {
+		if consumed[i] || token.clean == "" {
+			continue
+		}
+		if count > 0 {
+			offset++
+		}
+		start := offset
+		offset += len(token.clean)
+		count++
+		// The parser may trim a whole whitespace-only token at the ends of
+		// the assembled comment. All other tokens map by their byte offsets.
+		if traceIndex >= len(trace) || trace[traceIndex].Start < start || trace[traceIndex].Start >= offset {
+			continue
+		}
+		decision := trace[traceIndex]
+		traceIndex++
+		if projectionConsumed[i] || decision.Removed {
+			continue
+		}
+		if !decision.TimePeeled && decision.Start == start && decision.End == offset {
 			parts = append(parts, token.raw)
+			continue
+		}
+		// Only bytes excluded by canonical outer trimming or the peeled time
+		// prefix are removed. Punctuation outside the clean token remains
+		// ordinary source text, including punctuation around a time prefix.
+		cleanStart := token.trimStart - token.start
+		cleanEnd := token.trimEnd - token.start
+		visibleStart := cleanStart + decision.Start - start
+		visibleEnd := cleanStart + decision.End - start
+		prefix, suffix := token.raw[:cleanStart], token.raw[cleanEnd:]
+		if decision.TimePeeled {
+			timeStart := cleanStart + decision.TimeStart - start
+			timeEnd := cleanStart + decision.TimeEnd - start
+			parts = append(parts, prefix+token.raw[visibleStart:timeStart]+decision.TimeRemainder+token.raw[timeEnd:visibleEnd]+suffix)
+		} else {
+			parts = append(parts, prefix+token.raw[visibleStart:visibleEnd]+suffix)
 		}
 	}
-	comment := strings.Join(parts, " ")
-	return spot.ParseSpotCommentWithoutSpeedReordering(comment, freq).Comment, speeds, true
+	return strings.Join(parts, " "), speeds, true
 }
 
 func consumeRBNSpotClass(tokens []spotToken, consumed []bool) (SpotClass, bool) {
@@ -936,7 +985,14 @@ func (c *Client) parseSpot(line string) {
 		spotClass = class
 	}
 
-	parsed := spot.ParseSpotComment(buildComment(tokens, consumed), freq)
+	commentInput := buildComment(tokens, consumed)
+	var parsed spot.CommentParseResult
+	var displayTrace []spot.CommentDisplayToken
+	if !c.minimalParse && hasRBNWPM(tokens, consumed) {
+		parsed, displayTrace = spot.ParseSpotCommentWithDisplayTrace(commentInput, freq)
+	} else {
+		parsed = spot.ParseSpotComment(commentInput, freq)
+	}
 	mode := parsed.Mode
 	if !spot.IsValidNormalizedCallsign(dxCall) {
 		c.reportBadCall("DX", "invalid_callsign", dxCall, deCall, dxCall, mode)
@@ -982,8 +1038,8 @@ func (c *Client) parseSpot(line string) {
 	if comment != "" {
 		s.Comment = comment
 	}
-	if !c.minimalParse && mode == "CW" {
-		s.CWDisplayComment, s.CWSpeeds, s.CWDisplayAvailable = rbnCWDisplayProjection(tokens, consumed, freq)
+	if !c.minimalParse && mode == "CW" && displayTrace != nil {
+		s.CWDisplayComment, s.CWSpeeds, s.CWDisplayAvailable = rbnCWDisplayProjection(tokens, consumed, displayTrace)
 	}
 	s.Events = parsed.Events
 	s.IsHuman = c.minimalParse

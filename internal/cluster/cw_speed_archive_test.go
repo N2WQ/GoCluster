@@ -44,8 +44,13 @@ func TestCWSpeedBeaconArchiveSnapshotReopen(t *testing.T) {
 	if !got.CWDisplayAvailable || len(got.CWSpeeds) != 2 || got.CWSpeeds[0] != "0 WPM" || got.CWSpeeds[1] != "30 WPM" {
 		t.Fatalf("reopened beacon lost speeds: %+v", got)
 	}
-	if off := got.FormatDXClusterCW(false); !strings.Contains(off, "NCDXF BEACON") || strings.Contains(off, "0 WPM") {
-		t.Fatalf("bad disabled display: %q", off)
+	for _, warm := range []bool{false, true} {
+		if warm {
+			_ = got.FormatDXCluster()
+		}
+		if off := got.FormatDXClusterCW(false); !strings.Contains(off, "NCDXF BEACON") || strings.Contains(off, "0 WPM") {
+			t.Fatalf("bad disabled display (warm=%v): %q", warm, off)
+		}
 	}
 	if on := got.FormatDXClusterCW(true); !strings.Contains(on, "NCDXF BEACON") || !strings.Contains(on, "0 WPM") {
 		t.Fatalf("bad enabled display: %q", on)

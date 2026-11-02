@@ -11,6 +11,7 @@ func FuzzCommentParserLegacyDifferential(f *testing.F) {
 	for _, seed := range []string{
 		"ııı XX CW", "ıııı XX XAA", "ȿ CW", "\xff CW", "1200ZFT8 POTA 10 dB",
 		"20 WPM CW", "45 BPS RTTY", "SSB -4 73 88 CQ", " \t,;:!.\t ",
+		"CW +22 WPM 5 dB", "CW 20 WPM 30 WPM 5 dB", "\u2003CW 5 dB 22 0318ZWPM\u2003",
 		strings.Repeat("A ", 256), strings.Repeat("A", 1024),
 	} {
 		f.Add(seed, 14020.0)

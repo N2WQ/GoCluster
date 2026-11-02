@@ -17,6 +17,19 @@ type CommentParseResult struct {
 	Events    EventMask
 }
 
+// CommentDisplayToken describes canonical cleanup of one source token. Speed
+// consumption is excluded so RBN can recognize speed from the raw payload.
+// Start and End are byte offsets into the comment passed to the parser.
+// TimeStart and TimeEnd delimit the clean token before its time prefix is peeled.
+type CommentDisplayToken struct {
+	Start, End    int
+	Removed       bool
+	TimePeeled    bool
+	TimeStart     int
+	TimeEnd       int
+	TimeRemainder string
+}
+
 type acTokenKind int
 
 const (
@@ -361,17 +374,26 @@ func buildComment(tokens []commentToken, consumed []bool) string {
 // When no explicit mode token is present, Mode is left empty so downstream mode
 // assignment can apply history and allocation logic.
 func ParseSpotComment(comment string, freq float64) CommentParseResult {
-	return parseSpotComment(comment, freq, true)
+	return parseSpotComment(comment, freq, true, nil)
+}
+
+// ParseSpotCommentWithDisplayTrace returns cleanup decisions made by the same
+// canonical parse. The trace is transient and belongs to the caller.
+func ParseSpotCommentWithDisplayTrace(comment string, freq float64) (CommentParseResult, []CommentDisplayToken) {
+	var trace []CommentDisplayToken
+	result := parseSpotComment(comment, freq, true, &trace)
+	return result, trace
 }
 
 // ParseSpotCommentWithoutSpeedReordering preserves the source order of speed-like
-// words while applying the usual mode, report and time cleanup. RBN uses this
-// only for a display projection; canonical matching uses ParseSpotComment.
+// words while applying mode, report and time cleanup without speed handling.
+// Its cleanup decisions can differ from those of the canonical parser.
 func ParseSpotCommentWithoutSpeedReordering(comment string, freq float64) CommentParseResult {
-	return parseSpotComment(comment, freq, false)
+	return parseSpotComment(comment, freq, false, nil)
 }
 
-func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentParseResult {
+func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]CommentDisplayToken) CommentParseResult {
+	originalComment := comment
 	comment = strings.TrimSpace(comment)
 	if comment == "" {
 		return CommentParseResult{}
@@ -379,6 +401,22 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 
 	tokens := tokenizeComment(comment)
 	consumed := make([]bool, len(tokens))
+	var display []CommentDisplayToken
+	var traceOffset int
+	if trace != nil {
+		traceOffset = strings.Index(originalComment, comment)
+		display = make([]CommentDisplayToken, len(tokens))
+		for i, token := range tokens {
+			display[i].Start = traceOffset + token.start
+			display[i].End = traceOffset + token.end
+		}
+		*trace = display
+	}
+	markRemoved := func(index int) {
+		if display != nil {
+			display[index].Removed = true
+		}
+	}
 	cursor := acCursor{scanner: getKeywordScanner(), text: strings.ToUpper(comment)}
 
 	var (
@@ -400,6 +438,12 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 		if timeToken == "" {
 			if ts, remainder := peelTimePrefix(clean); ts != "" {
 				timeToken = ts
+				if display != nil {
+					display[idx].TimePeeled = true
+					display[idx].TimeStart = traceOffset + tok.trimStart
+					display[idx].TimeEnd = traceOffset + tok.trimEnd
+					display[idx].TimeRemainder = remainder
+				}
 				shift := len(originalClean) - len(remainder)
 				clean = remainder
 				tokens[idx].clean = remainder
@@ -414,6 +458,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 		}
 		if clean == "" {
 			consumed[idx] = true
+			markRemoved(idx)
 			continue
 		}
 		events |= eventFromCommentToken(tok.upper)
@@ -422,6 +467,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 				timeToken = clean
 			}
 			consumed[idx] = true
+			markRemoved(idx)
 			pendingNumIdx = -1
 			continue
 		}
@@ -432,6 +478,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 				if mode == "" {
 					mode = NormalizeVoiceMode(pat.mode, freq)
 					consumed[idx] = true
+					markRemoved(idx)
 					continue
 				}
 			case acTokenDB:
@@ -440,10 +487,13 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 					hasReport = true
 					consumed[idx] = true
 					consumed[pendingNumIdx] = true
+					markRemoved(idx)
+					markRemoved(pendingNumIdx)
 					pendingNumIdx = -1
 					continue
 				}
 				consumed[idx] = true
+				markRemoved(idx)
 				continue
 			case acTokenWPM, acTokenBPS:
 				if reorderSpeed && speedValue == "" && pendingNumIdx >= 0 {
@@ -466,6 +516,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 				report = v
 				hasReport = true
 				consumed[idx] = true
+				markRemoved(idx)
 				continue
 			}
 		}
@@ -486,6 +537,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentPa
 			report = pendingNumValue
 			hasReport = true
 			consumed[pendingNumIdx] = true
+			markRemoved(pendingNumIdx)
 		}
 	}
 

@@ -240,6 +240,12 @@ starting the updated binary. Verify the `Archive: writing to` startup message:
 an initialization error disables archiving. Removed spot history is not rebuilt;
 new history accumulates over time. The separate bulletin archive is unaffected.
 
+After that initial upgrade, the CW display correction needs no archive reset.
+New spots use the corrected display. Older records keep their saved display,
+including any affected by the earlier parsing defect, until they expire. To
+remove those records sooner, stop the server and reset the configured spot
+archive; this deletes all history in that archive.
+
 ## Filters
 
 This describes the Boolean filter MVP in the current local checkout, not a

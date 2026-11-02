@@ -3,6 +3,7 @@ package telnet
 import (
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -79,20 +80,22 @@ func TestCWSpeedLiveUsersAndDiagnostics(t *testing.T) {
 
 func BenchmarkCWSpeedFormat(b *testing.B) {
 	for _, tc := range []struct {
-		name       string
-		projection bool
-		enabled    bool
+		name, canonical, want string
+		projection, enabled   bool
 	}{
-		{"ordinary", false, false},
-		{"speed-off", true, false},
-		{"speed-on", true, true},
+		{"ordinary", "POTA", "CW POTA", false, false},
+		{"speed-off-equal", "POTA", "CW POTA", true, false},
+		{"speed-off-different", "22 WPM 30 WPM POTA", "CW POTA", true, false},
+		{"speed-on", "22 WPM 30 WPM POTA", "CW POTA 22 WPM 30 WPM", true, true},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			sp := cwSpeedFixture()
 			sp.CWDisplayAvailable = tc.projection
+			sp.Comment = tc.canonical
 			c := &Client{configuredSettings: filter.SettingsConfiguration{CWSpeed: tc.enabled}}
+			_ = sp.FormatDXCluster() // Compare repeated fanout after the base line is cached.
 			line := formatCWSpotForClient(c, sp)
-			if line == "" || tc.projection && strings.Contains(line, "22 WPM") != tc.enabled {
+			if got := cwCommentRegion(line); got != tc.want {
 				b.Fatalf("incorrect formatted output: %q", line)
 			}
 			b.ReportAllocs()
@@ -101,6 +104,96 @@ func BenchmarkCWSpeedFormat(b *testing.B) {
 				_ = formatCWSpotForClient(c, sp)
 			}
 		})
+	}
+}
+
+func cwCommentRegion(line string) string {
+	return strings.TrimSpace(line[39 : spot.CurrentDXClusterLayout().TailStartColumn-1])
+}
+
+func TestCWSpeedConcurrentUsersColdAndWarm(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		warm, equal bool
+	}{
+		{"cold-equal", false, true}, {"warm-equal", true, true},
+		{"cold-different", false, false}, {"warm-different", true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			sp := cwSpeedFixture()
+			if tc.equal {
+				sp.Comment = "POTA"
+			}
+			if tc.warm {
+				_ = sp.FormatDXCluster()
+			}
+			on := &Client{configuredSettings: filter.SettingsConfiguration{CWSpeed: true}}
+			off := &Client{}
+			start := make(chan struct{})
+			errors := make(chan string, 32)
+			var wg sync.WaitGroup
+			for i := 0; i < 32; i++ {
+				wg.Add(1)
+				go func(enabled bool) {
+					defer wg.Done()
+					<-start
+					c, want := off, "CW POTA"
+					if enabled {
+						c, want = on, "CW POTA 22 WPM 30 WPM"
+					}
+					for range 1000 {
+						if got := cwCommentRegion(formatCWSpotForClient(c, sp)); got != want {
+							errors <- got
+							return
+						}
+					}
+				}(i%2 == 0)
+			}
+			close(start)
+			wg.Wait()
+			close(errors)
+			for got := range errors {
+				t.Errorf("mixed-user display: %q", got)
+			}
+		})
+	}
+}
+
+func TestCWSpeedHistorySignedTextAndDiagnostics(t *testing.T) {
+	cfg := config.ArchiveConfig{DBPath: filepath.Join(t.TempDir(), "archive"), QueueSize: 4, BatchSize: 1, BatchIntervalMS: 1}
+	w, err := archive.NewWriter(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Start()
+	sp := cwSpeedFixture()
+	sp.Time = time.Now().UTC()
+	sp.HasReport, sp.Report = true, 5
+	sp.Comment, sp.CWDisplayComment, sp.CWSpeeds = "+22 WPM", "+22 WPM", nil
+	w.Enqueue(sp)
+	w.Stop()
+	w, err = archive.NewWriter(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(w.Stop)
+	s, c := historyTestSession(func(req archive.HistoryRequest) (archive.HistoryPage, error) {
+		return w.ReadHistoryPage(req)
+	})
+	c.configurationInitialized = true
+	for _, enabled := range []bool{false, true} {
+		c.filterMu.Lock()
+		c.configuredSettings.CWSpeed = enabled
+		c.filterMu.Unlock()
+		line := runHistory(t, s, c, "SHOW DX 1 COMMENT +22")
+		if !strings.Contains(line, "CW 5 dB +22 WPM") {
+			t.Fatalf("speed enabled=%v: lost ordinary signed text or matching: %q", enabled, line)
+		}
+	}
+	c.setDiagMode(diagModeSource)
+	line := runHistory(t, s, c, "SHOW DX 1 COMMENT +22")
+	if !strings.Contains(line, "CW 5 dB +22 WPM") {
+		t.Fatalf("diagnostic history lost ordinary signed text: %q", line)
 	}
 }
 

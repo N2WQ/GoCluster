@@ -126,6 +126,9 @@ func checkCommentParserDifferential(t testing.TB, comment string, frequency floa
 	if got := ParseSpotComment(comment, frequency); got != want {
 		t.Fatalf("comment bytes=%d prefix=%q frequency=%v: got %+v, legacy %+v", len(comment), comment[:min(len(comment), 128)], frequency, got, want)
 	}
+	if got, _ := ParseSpotCommentWithDisplayTrace(comment, frequency); got != want {
+		t.Fatalf("traced comment bytes=%d prefix=%q frequency=%v: got %+v, legacy %+v", len(comment), comment[:min(len(comment), 128)], frequency, got, want)
+	}
 }
 
 func TestCommentCursorTaxonomyVisibility(t *testing.T) {

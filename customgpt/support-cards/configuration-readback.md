@@ -28,8 +28,11 @@ Local source behavior does not establish publication, deployment or validation.
   HELP for exact aliases; do not translate arbitrary GO rules into CC.
 - `SET CWSPEED ON|OFF` controls available RBN CW speed on live and historical
   spots, defaults to OFF, and is suppressed by diagnostics. Comment matching
-  retains the stored comment even when speed is hidden. The spot archive needs
-  a fresh database for this upgrade; it accumulates only new records afterward.
+  retains the stored comment even when speed is hidden. The initial CW speed
+  upgrade needs a fresh spot archive; it accumulates only new records afterward.
+  The later display correction needs no reset, but cannot repair projections
+  already stored by the earlier binary. Those records expire normally; an
+  optional spot-archive reset deletes them and all other spot history.
 - CC mode choices apply to HUMAN and SKIMMER. Source choices do not change modes
   or start feeds. Geography lists use OR within a category and AND across enabled
   categories; missing/invalid metadata fails PASS and survives REJECT. Global
