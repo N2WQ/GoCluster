@@ -65,6 +65,11 @@ func TestRBNProjectionCanonicalOuterUnicodeWhitespace(t *testing.T) {
 		{"trailing", "CW 5 dB 22 WPM 0000Z POTA\u2003 CQ", "22 WPM POTA", "POTA", "CW 5 dB POTA", "CW 5 dB POTA 22 WPM", []string{"22 WPM"}},
 		{"leading", "\u2003CW 5 dB 22 WPM 0000Z CQ", "", "", "CW 5 dB", "CW 5 dB 22 WPM", []string{"22 WPM"}},
 		{"unit trailing whitespace is not raw speed", "CW 5 dB 22 WPM\u2003 CQ", "", "22 WPM", "CW 5 dB 22 WPM", "CW 5 dB 22 WPM", nil},
+		{"punctuation followed by whitespace", "CW 0000Z 5 dB 22 WPM,\u2003 CQ", "", "22 WPM,", "CW 5 dB 22 WPM,", "CW 5 dB 22 WPM,", nil},
+		{"time-prefixed unit with punctuation and whitespace", "CW 5 dB 22 0000ZWPM,\u2003 CQ", "", "22 WPM,", "CW 5 dB 22 WPM,", "CW 5 dB 22 WPM,", nil},
+		{"multiple punctuation and lowercase", "CW 0000Z 5 dB 22 wpm,;!\u2003 CQ", "", "22 wpm,;!", "CW 5 dB 22 wpm,;!", "CW 5 dB 22 wpm,;!", nil},
+		{"leading whitespace and punctuation", "\u2003,WPM CW 5 dB 22 CQ", "WPM 22", ",WPM 22", "CW 5 dB ,WPM 22", "CW 5 dB ,WPM 22", nil},
+		{"leading punctuation and time-prefixed unit", "\u2003,0000ZWPM CW 5 dB 22 CQ", "WPM 22", ",WPM 22", "CW 5 dB ,WPM 22", "CW 5 dB ,WPM 22", nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, false, 2)
@@ -80,6 +85,41 @@ func TestRBNProjectionCanonicalOuterUnicodeWhitespace(t *testing.T) {
 				t.Errorf("ON=%q want %q", got, tc.on)
 			}
 		})
+	}
+}
+
+func TestRBNProjectionUnicodeScannerOffset(t *testing.T) {
+	c := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, false, 2)
+	c.parseSpot("DX de K1ABC: 3547.0 OZ4ADX CW 5 dB 22 ıııı FOO WPMX CQ 0000Z")
+	s := mustReadSpot(t, c)
+	if !s.HasReport || s.Report != 5 || s.Comment != "22 WPM ıııı WPMX" || !s.CWDisplayAvailable || s.CWDisplayComment != "22 ıııı FOO WPMX" || len(s.CWSpeeds) != 0 {
+		t.Fatalf("report=%d canonical=%q available=%v display=%q speeds=%q", s.Report, s.Comment, s.CWDisplayAvailable, s.CWDisplayComment, s.CWSpeeds)
+	}
+	for _, show := range []bool{false, true} {
+		if got := commentField(s.FormatDXClusterCW(show)); !strings.Contains(got, "FOO") {
+			t.Errorf("show=%v lost ordinary text: %q", show, got)
+		}
+	}
+
+	control := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, false, 2)
+	control.parseSpot("DX de K1ABC: 3547.0 OZ4ADX CW 5 dB 22 FOO WPMX CQ 0000Z")
+	if got := mustReadSpot(t, control); got.CWDisplayAvailable || got.Comment != "22 FOO WPMX" {
+		t.Fatalf("ASCII control changed: %+v", got)
+	}
+
+	unicodeControl := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, false, 2)
+	unicodeControl.parseSpot("DX de K1ABC: 3547.0 OZ4ADX CW 5 dB 22 ÿ POTA WPMX, CQ 0000Z")
+	if got := mustReadSpot(t, unicodeControl); !got.CWDisplayAvailable || got.Comment != "22 ÿ POTA WPMX" || got.CWDisplayComment != "22 ÿ POTA WPMX," || len(got.CWSpeeds) != 0 {
+		t.Fatalf("conservative Unicode control: canonical=%q display=%q speeds=%q", got.Comment, got.CWDisplayComment, got.CWSpeeds)
+	}
+}
+
+func TestRBNProjectionConservativeInteriorToken(t *testing.T) {
+	c := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, false, 2)
+	c.parseSpot("DX de K1ABC: 3547.0 OZ4ADX CW 5 dB 22 WPM,\u2003! POTA 30 WPM CQ 0000Z")
+	s := mustReadSpot(t, c)
+	if !s.HasReport || s.Report != 5 || s.Comment != "22 WPM WPM, POTA 30" || !s.CWDisplayAvailable || s.CWDisplayComment != "22 WPM,\u2003! POTA" || !reflect.DeepEqual(s.CWSpeeds, []string{"30 WPM"}) {
+		t.Fatalf("report=%d canonical=%q display=%q speeds=%q", s.Report, s.Comment, s.CWDisplayComment, s.CWSpeeds)
 	}
 }
 
@@ -176,6 +216,28 @@ func FuzzRBNCWSpeedRawPunctuation(f *testing.F) {
 		s := mustReadSpot(t, c)
 		if !s.HasReport || s.Report != 5 || !s.CWDisplayAvailable || len(s.CWSpeeds) != 0 || s.CWDisplayComment != speedLike+" POTA" {
 			t.Fatalf("input=%q report=%d display=%q speeds=%q", body, s.Report, s.CWDisplayComment, s.CWSpeeds)
+		}
+	})
+}
+
+func FuzzRBNCWPunctuationWhitespace(f *testing.F) {
+	f.Add(uint8(22), uint8(0), uint8(0), false)
+	f.Add(uint8(200), uint8(4), uint8(3), true)
+	f.Fuzz(func(t *testing.T, raw, punctuationIndex, whitespaceIndex uint8, timeOnUnit bool) {
+		punctuation := []string{",", ";", ":", "!", ".", ",;!"}[int(punctuationIndex)%6]
+		whitespace := []string{"\u2003", "\u00a0", "\u202f", "\u3000"}[int(whitespaceIndex)%4]
+		value := int(raw) % 201
+		unit := "WPM" + punctuation + whitespace
+		body := fmt.Sprintf("CW 0000Z 5 dB %d %s CQ", value, unit)
+		if timeOnUnit {
+			body = fmt.Sprintf("CW 5 dB %d 0000Z%s CQ", value, unit)
+		}
+		c := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, false, 2)
+		c.parseSpot("DX de K1ABC: 3547.0 OZ4ADX " + body)
+		s := mustReadSpot(t, c)
+		want := fmt.Sprintf("%d WPM%s", value, punctuation)
+		if !s.HasReport || s.Report != 5 || s.Comment != "" || !s.CWDisplayAvailable || len(s.CWSpeeds) != 0 || s.CWDisplayComment != want {
+			t.Fatalf("input=%q report=%d canonical=%q display=%q speeds=%q want=%q", body, s.Report, s.Comment, s.CWDisplayComment, s.CWSpeeds, want)
 		}
 	})
 }

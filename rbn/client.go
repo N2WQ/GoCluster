@@ -783,13 +783,15 @@ func stripRBNSpeedCQComment(mode, comment string) string {
 }
 
 func hasRBNWPM(tokens []spotToken, consumed []bool) bool {
+	embeddedWPM := false
 	for i := range tokens {
 		if consumed[i] {
 			continue
 		}
-		// The parser trims the assembled comment; conservatively recognize a
-		// WPM token that outer Unicode whitespace may hide until that cleanup.
-		clean := strings.TrimSpace(tokens[i].clean)
+		// The canonical parser trims outer whitespace before it trims token
+		// punctuation. Mirror that order conservatively for the trace gate;
+		// raw tokens alone still decide whether a speed pair is recognized.
+		clean := strings.Trim(strings.TrimSpace(tokens[i].clean), ",;:!.")
 		if equalFoldASCII(clean, "WPM") {
 			return true
 		}
@@ -799,6 +801,27 @@ func hasRBNWPM(tokens []spotToken, consumed []bool) bool {
 		if len(clean) > 5 && (clean[4] == 'Z' || clean[4] == 'z') &&
 			strutil.IsAllDigitsASCII(clean[:4]) && equalFoldASCII(strings.TrimSpace(clean[5:]), "WPM") {
 			return true
+		}
+		for start := 0; start+3 <= len(clean); start++ {
+			if (clean[start] == 'W' || clean[start] == 'w') && equalFoldASCII(clean[start:start+3], "WPM") {
+				embeddedWPM = true
+				break
+			}
+		}
+	}
+	if embeddedWPM {
+		// Unicode uppercase can change byte widths while the canonical
+		// scanner retains source offsets. Its WPM match can then land inside
+		// a longer word; trace only this unusual combination conservatively.
+		for i := range tokens {
+			if consumed[i] {
+				continue
+			}
+			for j := 0; j < len(tokens[i].clean); j++ {
+				if tokens[i].clean[j] >= 0x80 {
+					return true
+				}
+			}
 		}
 	}
 	return false

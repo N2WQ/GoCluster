@@ -63,6 +63,10 @@ affected. No production incidence or load impact was measured.
 - Root cause: Display cleanup did not reuse the canonical parse's decisions.
 - Contributing factors: Earlier tests put the signal report before speed-like
   text and checked metadata without asserting all surviving ordinary text.
+- Follow-up: Punctuation combined with Unicode whitespace, and Unicode case
+  mapping that shifts scanner offsets, could bypass the projection precheck.
+  The precheck must conservatively cover those cases while raw tokens alone
+  determine speed metadata.
 - Durable decision: No change to ADR-0332; this restores its display contract.
 
 ## Decision Linkage
