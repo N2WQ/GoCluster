@@ -81,6 +81,8 @@ func (s *Server) prepareBankedV6Readback(c *Client, cmd machineCommand) (bankedV
 }
 
 func renderCCBankedV6Readback(settings filter.SettingsConfiguration, status configurationReadbackStatus, resource, id, revision string) (string, error) {
+	settings.CWSpeed = false
+	status.Configured.CWSpeed = false
 	var configuration any
 	switch resource {
 	case "SETTINGS":

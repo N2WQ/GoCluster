@@ -66,7 +66,8 @@ func decodeV7DiscardProfile(node *yaml.Node, version int, state *storageDecodeSt
 		if err := decodeRetiredV5Value(node, state, &old); err != nil {
 			return SettingsConfiguration{}, nil, time.Time{}, err
 		}
-		return SettingsConfiguration(old.Configuration.Settings), trimRecentIPs(old.RecentIPs), old.LastLoginUTC, nil
+		settings := old.Configuration.Settings
+		return SettingsConfiguration{Dialect: settings.Dialect, Grid: settings.Grid, NoiseClass: settings.NoiseClass, DedupePolicy: settings.DedupePolicy, PathMinObservationCount: settings.PathMinObservationCount, SolarSummaryMinutes: settings.SolarSummaryMinutes}, trimRecentIPs(old.RecentIPs), old.LastLoginUTC, nil
 	default:
 		if version < 0 || version > 4 {
 			return SettingsConfiguration{}, nil, time.Time{}, ErrUnsupportedConfigurationVersion

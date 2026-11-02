@@ -76,15 +76,18 @@ func (c V7Configuration) Clone() V7Configuration {
 }
 
 func (c V7Configuration) Equal(other V7Configuration) bool {
-	return (V6Configuration{Filters: c.Filters.GO, Settings: c.Settings}).Equal(V6Configuration{Filters: other.Filters.GO, Settings: other.Settings}) && c.Filters.CC.Equal(other.Filters.CC)
+	return c.Settings.CWSpeed == other.Settings.CWSpeed && (V6Configuration{Filters: c.Filters.GO, Settings: c.Settings}).Equal(V6Configuration{Filters: other.Filters.GO, Settings: other.Settings}) && c.Filters.CC.Equal(other.Filters.CC)
 }
 
 // Fingerprint includes both banks and selection, never login/notice/baseline data.
 func (c V7Configuration) Fingerprint() [32]byte {
 	goHash := (V6Configuration{Filters: c.Filters.GO, Settings: c.Settings}).Fingerprint()
 	ccHash := c.Filters.CC.Fingerprint()
-	var payload [65]byte
+	var payload [66]byte
 	payload[0] = V7ConfigurationVersion
+	if c.Settings.CWSpeed {
+		payload[65] = 1
+	}
 	copy(payload[1:33], goHash[:])
 	copy(payload[33:], ccHash[:])
 	return sha256.Sum256(payload[:])

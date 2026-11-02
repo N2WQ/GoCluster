@@ -39,7 +39,7 @@ func v7MachineCapabilities() any {
 		SupportedSchemaVersions: []int{6, 7}, Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"},
 		GOFilterFields: slices.Clone(machineV6FilterFields[:]), GOLegacySchema6: v6MachineCapabilities(),
 		CC:             v7CCCapability{machineV7CCFields[:], machineV7GeographyNames[:], filter.CCSupportedBands(), filter.CCSupportedSlots(), filter.MaxCCModes, filter.MaxCCCountries, filter.MaxCCStates, filter.MaxCCCanonicalBytes},
-		SettingsFields: slices.Clone(machineSettingFields[:]), ResponseBytes: maxV7YAMLBytes, UploadBytes: maxV7YAMLBytes,
+		SettingsFields: append(slices.Clone(machineSettingFields[:]), "cw_speed"), ResponseBytes: maxV7YAMLBytes, UploadBytes: maxV7YAMLBytes,
 		ConfigurationBytes: filter.MaxV7ConfigurationBytes, CompleteBackupResource: "PUT YAML CONFIG SCHEMA 7",
 		NativePerBandTerminalVerified: false,
 	}

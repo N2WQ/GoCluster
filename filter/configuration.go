@@ -86,6 +86,7 @@ type SettingsConfiguration struct {
 	DedupePolicy            string `yaml:"dedupe_policy"`
 	PathMinObservationCount int    `yaml:"path_min_observation_count"`
 	SolarSummaryMinutes     int    `yaml:"solar_summary_minutes"`
+	CWSpeed                 bool   `yaml:"cw_speed,omitempty"`
 }
 
 // FilterConfiguration captures immutable rules and controls, not runtime cells.

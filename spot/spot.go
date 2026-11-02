@@ -70,6 +70,9 @@ type Spot struct {
 	Report              int            // Signal report in dB (SNR for digital modes, signal strength for CW)
 	Time                time.Time      // When the spot was created
 	Comment             string         // User comment or additional info
+	CWDisplayAvailable  bool           // RBN CW source-order display projection is available.
+	CWDisplayComment    string         // Display text without recognized CW speed pairs.
+	CWSpeeds            []string       // Complete source-order CW speed labels; bounded by RBN line size.
 	Events              EventMask      // Portable/activation event families parsed from Comment
 	SourceType          SourceType     // Where this spot came from
 	SourceNode          string         // Originating node/cluster
@@ -569,6 +572,9 @@ func (s *Spot) CloneWithComment(comment string) *Spot {
 		Report:              s.Report,
 		Time:                s.Time,
 		Comment:             comment,
+		CWDisplayAvailable:  s.CWDisplayAvailable,
+		CWDisplayComment:    s.CWDisplayComment,
+		CWSpeeds:            append([]string(nil), s.CWSpeeds...),
 		Events:              s.Events,
 		SourceType:          s.SourceType,
 		SourceNode:          s.SourceNode,
@@ -605,6 +611,13 @@ func (s *Spot) CloneWithComment(comment string) *Spot {
 		DECallStripped:      s.DECallStripped,
 		DECallNormStripped:  s.DECallNormStripped,
 		ownedSnapshot:       true,
+	}
+	// The projection describes the original canonical comment. A caller that
+	// replaces that comment must not inherit a stale display projection.
+	if comment != s.Comment {
+		clone.CWDisplayAvailable = false
+		clone.CWDisplayComment = ""
+		clone.CWSpeeds = nil
 	}
 	return clone
 }
@@ -777,7 +790,37 @@ func (s *Spot) FormatDXClusterWithComment(comment string) string {
 	return s.buildDXClusterLine(sanitizeDXClusterComment(comment))
 }
 
+// FormatDXClusterCW renders the RBN CW display projection without changing the
+// canonical comment. Each speed is appended only when the complete label fits.
+func (s *Spot) FormatDXClusterCW(showSpeed bool) string {
+	if s == nil {
+		return ""
+	}
+	if !s.CWDisplayAvailable {
+		return s.FormatDXCluster()
+	}
+	comment := sanitizeDXClusterComment(s.CWDisplayComment)
+	if comment == "" && s.IsBeacon {
+		// Archive snapshots persist the synthetic beacon comment, but not the
+		// source-class hint that originally selected NCDXF's special label.
+		switch s.Comment {
+		case BeaconCommentDefault, BeaconCommentNCDXF:
+			comment = s.Comment
+		default:
+			comment = s.blankBeaconComment()
+		}
+	}
+	if !showSpeed {
+		return s.buildDXClusterLine(comment)
+	}
+	return s.buildDXClusterLineWithCWSpeeds(comment, s.CWSpeeds)
+}
+
 func (s *Spot) buildDXClusterLine(commentPayload string) string {
+	return s.buildDXClusterLineWithCWSpeeds(commentPayload, nil)
+}
+
+func (s *Spot) buildDXClusterLineWithCWSpeeds(commentPayload string, speeds []string) string {
 	layout := currentDXClusterLayout()
 	timeStr := s.Time.UTC().Format("1504Z")
 	freqStr := strconv.FormatFloat(s.Frequency, 'f', 2, 64)
@@ -882,6 +925,15 @@ func (s *Spot) buildDXClusterLine(commentPayload string) string {
 			}
 			b.AppendString(trimmed)
 		}
+	}
+	for _, speed := range speeds {
+		// The fixed tail starts at tailStartIdx; leave the existing mandatory
+		// gap and never write a partial speed label.
+		if speed == "" || b.Len()+1+len(speed) > tailStartIdx-1 {
+			break
+		}
+		b.AppendByte(' ')
+		b.AppendString(speed)
 	}
 
 	gridLabel := formatGridLabel(s.DXMetadata.Grid, s.DXMetadata.GridDerived)

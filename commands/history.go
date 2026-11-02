@@ -229,12 +229,18 @@ func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match fun
 // RenderHistoryPage emits unchanged spot lines, then honest completion/warning
 // status. Cumulative flags prevent an older empty page from claiming no matches.
 func RenderHistoryPage(page archive.HistoryPage, token string, older, unreadable, hadMatches bool) string {
+	return RenderHistoryPageWithFormatter(page, token, older, unreadable, hadMatches, (*spot.Spot).FormatDXCluster)
+}
+
+// RenderHistoryPageWithFormatter formats each owned spot with the caller's
+// captured display settings; selection and continuation remain unchanged.
+func RenderHistoryPageWithFormatter(page archive.HistoryPage, token string, older, unreadable, hadMatches bool, format func(*spot.Spot) string) string {
 	var result strings.Builder
 	if older {
 		result.WriteString("Older retained history page:\n")
 	}
 	for i := len(page.Spots) - 1; i >= 0; i-- {
-		result.WriteString(page.Spots[i].FormatDXCluster())
+		result.WriteString(format(page.Spots[i]))
 		result.WriteString("\r\n")
 	}
 	if unreadable || page.Unreadable > 0 {

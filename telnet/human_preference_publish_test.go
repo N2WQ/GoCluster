@@ -73,8 +73,8 @@ func TestHumanPreferenceSolarPublicationClockAndBroadcasterProgress(t *testing.T
 			c.setSolarSummaryMinutes(15, clock)
 			c.refreshConfigurationRevision()
 			c.historySearch = &historySearch{token: "unchanged matching cursor"}
-			cursor, generation, revision, pointer := c.historySearch, c.historyGeneration, c.configurationRevision, c.filter
 			c.setDiagMode(diagModeSource)
+			cursor, generation, revision, pointer := c.historySearch, c.historyGeneration, c.configurationRevision, c.filter
 			c.readPauseEpoch = 7
 			c.readPausePending.Store(true)
 			c.readPauseUntilUnixNano.Store(1234)

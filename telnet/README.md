@@ -225,6 +225,21 @@ in their normal positions. This is a telnet and archive display convention; it
 does not rewrite the comment forwarded to peers.
 Blank `NCDXF B` source-class beacon comments display `NCDXF BEACON`.
 
+### RBN CW speed
+
+Use `SET CWSPEED ON` to display available CW speeds on RBN spots and stored
+history. Use `SET CWSPEED OFF` to hide them. The saved preference defaults to
+OFF and applies in both GO and CC. `SHOW SETTINGS` shows the current choice.
+Diagnostic mode hides speed. If a complete speed cannot fit on a spot line,
+it is omitted. Comment filters and searches use the existing stored comment,
+so they can match speed text that the setting hides from the displayed line.
+
+The spot archive stores new speeds as spots arrive. For this upgrade, stop the
+server and remove only the configured `archive.db_path` spot database before
+starting the updated binary. Verify the `Archive: writing to` startup message:
+an initialization error disables archiving. Removed spot history is not rebuilt;
+new history accumulates over time. The separate bulletin archive is unaffected.
+
 ## Filters
 
 This describes the Boolean filter MVP in the current local checkout, not a

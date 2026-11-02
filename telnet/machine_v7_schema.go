@@ -27,6 +27,8 @@ type v7MachineRequest struct {
 	bankFields    uint8
 	goPatch       v6MachineRequest
 	ccPatch       v7MachineCCPatch
+	cwSpeed       bool
+	cwSpeedSet    bool
 }
 
 func decodeV7MachineRequest(body []byte, command machineCommand, resolve func(string) (int, error)) (v7MachineRequest, error) {
@@ -163,9 +165,31 @@ func (r *v7MachineRequest) decodeBank(dialect string, node *yaml.Node, path stri
 }
 
 func (r *v7MachineRequest) decodeSettings(node *yaml.Node, path string, complete bool) error {
-	if err := r.goPatch.decodeSettings(node, path, complete); err != nil {
+	fields := append(append([]string(nil), machineSettingFields[:]...), "cw_speed")
+	values, err := machineObject(node, path, fields, false)
+	if err != nil {
+		return err
+	}
+	legacy := *node
+	legacy.Content = make([]*yaml.Node, 0, len(node.Content))
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value != "cw_speed" {
+			legacy.Content = append(legacy.Content, node.Content[i], node.Content[i+1])
+		}
+	}
+	if field := values["cw_speed"]; field != nil {
+		r.cwSpeed, err = machineBoolean(field, path+".cw_speed")
+		if err != nil {
+			return err
+		}
+		r.cwSpeedSet = true
+	} else if complete {
+		r.cwSpeedSet = true
+	}
+	if err := r.goPatch.decodeSettings(&legacy, path, complete); err != nil {
 		return err
 	}
 	r.Configuration.Settings = r.goPatch.Configuration.Settings
+	r.Configuration.Settings.CWSpeed = r.cwSpeed
 	return nil
 }

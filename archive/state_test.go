@@ -67,7 +67,7 @@ func TestStateArchiveCanadianProvinceRoundtrip(t *testing.T) {
 			s := spot.NewSpot("VE3ABC", "W1ABC", 14020, "CW")
 			s.DXMetadata.State, s.DEMetadata.State = province, "NY"
 			raw := encodeRecord(s)
-			if raw[0] != 6 {
+			if raw[0] != 7 {
 				t.Fatalf("province caused archive format version change: %d", raw[0])
 			}
 			decoded, err := decodeSpot(s.Time.UnixNano(), raw)
@@ -91,7 +91,7 @@ func TestStateArchiveRoundTripAndSnapshot(t *testing.T) {
 	s.DXMetadata.State, s.DEMetadata.State = "TX", ""
 	snapshot := <-w.queue
 	raw := encodeRecord(snapshot)
-	if raw[0] != 6 {
+	if raw[0] != 7 {
 		t.Fatalf("writer version = %d", raw[0])
 	}
 	decoded, err := decodeSpot(s.Time.UnixNano(), raw)

@@ -8,6 +8,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -44,7 +45,8 @@ const (
 	recordVersionV3         = 3
 	recordVersionV4         = 4
 	recordVersionV5         = 5
-	recordVersion           = 6
+	recordVersionV6         = 6
+	recordVersion           = 7
 	recordFixedHeaderSizeV2 = 28
 	recordFixedHeaderSize   = 36
 )
@@ -69,6 +71,8 @@ const (
 	fieldToxicityModel
 	fieldDXState
 	fieldDEState
+	fieldCWDisplayComment
+	fieldCWSpeeds
 	fieldCount
 )
 
@@ -76,10 +80,12 @@ const (
 	fieldCountV3         = fieldEvents
 	fieldCountV4         = fieldEvents + 1
 	fieldCountV5         = fieldDXState
+	fieldCountV6         = fieldCWDisplayComment
 	recordHeaderSizeV2   = recordFixedHeaderSizeV2 + fieldCountV3*2
 	recordHeaderSizeV3   = recordFixedHeaderSize + fieldCountV3*2
 	recordHeaderSizeV4   = recordFixedHeaderSize + fieldCountV4*2
 	recordHeaderSizeV5   = recordFixedHeaderSize + fieldCountV5*2
+	recordHeaderSizeV6   = recordFixedHeaderSize + fieldCountV6*2
 	recordHeaderSize     = recordFixedHeaderSize + fieldCount*2
 	recentScanMultiplier = 20
 	recentScanGrowth     = 4
@@ -91,6 +97,7 @@ const (
 	flagIsHuman
 	flagDXGridDerived
 	flagDEGridDerived
+	flagCWDisplayAvailable
 )
 
 var errInvalidRecord = errors.New("archive: invalid record encoding")
@@ -105,6 +112,8 @@ func recordLayout(version byte) (fixedHeaderSize int, headerSize int, fieldN int
 		return recordFixedHeaderSize, recordHeaderSizeV4, fieldCountV4, true
 	case recordVersionV5:
 		return recordFixedHeaderSize, recordHeaderSizeV5, fieldCountV5, true
+	case recordVersionV6:
+		return recordFixedHeaderSize, recordHeaderSizeV6, fieldCountV6, true
 	case recordVersion:
 		return recordFixedHeaderSize, recordHeaderSize, fieldCount, true
 	default:
@@ -607,6 +616,9 @@ type archiveRecord struct {
 	deCallStripped     string
 	mode               string
 	comment            string
+	cwDisplayAvailable bool
+	cwDisplayComment   string
+	cwSpeeds           string
 	source             string
 	sourceNode         string
 	confidence         string
@@ -641,7 +653,7 @@ func encodeRecord(s *spot.Spot) []byte {
 
 // encodeRecordInto returns a complete record in caller-owned storage. Every
 // returned byte is overwritten, including reserved header bytes and lengths.
-// The linear layout stays together to preserve the existing version-6 codec.
+// The linear layout keeps version-specific fields in their canonical order.
 func encodeRecordInto(buf []byte, s *spot.Spot) []byte {
 	dxCall := strings.TrimSpace(s.DXCallNorm)
 	if dxCall == "" {
@@ -661,6 +673,8 @@ func encodeRecordInto(buf []byte, s *spot.Spot) []byte {
 	}
 	mode = strings.ToUpper(mode)
 	comment := strings.TrimSpace(s.Comment)
+	cwDisplayComment := s.CWDisplayComment
+	cwSpeeds := strings.Join(s.CWSpeeds, "\x00")
 	source := strings.TrimSpace(string(s.SourceType))
 	sourceNode := strings.TrimSpace(s.SourceNode)
 	confidence := strings.TrimSpace(s.Confidence)
@@ -705,6 +719,8 @@ func encodeRecordInto(buf []byte, s *spot.Spot) []byte {
 		len(toxicityModel),
 		len(dxState),
 		len(deState),
+		len(cwDisplayComment),
+		len(cwSpeeds),
 	}
 	total := recordHeaderSize
 	for _, l := range lengths {
@@ -728,6 +744,9 @@ func encodeRecordInto(buf []byte, s *spot.Spot) []byte {
 	}
 	if s.DEMetadata.GridDerived {
 		flags |= flagDEGridDerived
+	}
+	if s.CWDisplayAvailable {
+		flags |= flagCWDisplayAvailable
 	}
 	buf[1] = flags
 	buf[2] = s.TTL
@@ -772,6 +791,8 @@ func encodeRecordInto(buf []byte, s *spot.Spot) []byte {
 	writeString(toxicityModel)
 	writeString(dxState)
 	writeString(deState)
+	writeString(cwDisplayComment)
+	writeString(cwSpeeds)
 	return buf
 }
 
@@ -792,7 +813,7 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 	dxADIF := int(binary.BigEndian.Uint32(raw[20:]))
 	deADIF := int(binary.BigEndian.Uint32(raw[24:]))
 	observedFreq := freq
-	if raw[0] == recordVersionV3 || raw[0] == recordVersionV4 || raw[0] == recordVersionV5 || raw[0] == recordVersion {
+	if raw[0] != recordVersionV2 {
 		observedFreq = math.Float64frombits(binary.BigEndian.Uint64(raw[28:]))
 	}
 
@@ -842,6 +863,22 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 		fields[fieldDEState] != "" && !spot.IsState(fields[fieldDEState]) {
 		return archiveRecord{}, errInvalidRecord
 	}
+	var cwSpeeds string
+	if fieldN > fieldCWSpeeds {
+		if len(fields[fieldCWDisplayComment]) > 1024 || len(fields[fieldCWSpeeds]) > 1024 {
+			return archiveRecord{}, errInvalidRecord
+		}
+		if encoded := fields[fieldCWSpeeds]; encoded != "" {
+			for _, label := range strings.Split(encoded, "\x00") {
+				value, ok := strings.CutSuffix(label, " WPM")
+				n, err := strconv.Atoi(value)
+				if !ok || !strutil.IsAllDigitsASCII(value) || err != nil || n > 200 {
+					return archiveRecord{}, errInvalidRecord
+				}
+			}
+			cwSpeeds = encoded
+		}
+	}
 
 	return archiveRecord{
 		dxCall:             fields[fieldDXCall],
@@ -849,6 +886,9 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 		deCallStripped:     fields[fieldDECallStripped],
 		mode:               fields[fieldMode],
 		comment:            fields[fieldComment],
+		cwDisplayAvailable: fieldN > fieldCWSpeeds && flags&flagCWDisplayAvailable != 0,
+		cwDisplayComment:   fields[fieldCWDisplayComment],
+		cwSpeeds:           cwSpeeds,
 		source:             fields[fieldSource],
 		sourceNode:         fields[fieldSourceNode],
 		confidence:         fields[fieldConfidence],
@@ -897,6 +937,8 @@ func decodeSpot(ts int64, raw []byte) (*spot.Spot, error) {
 		Report:             rec.report,
 		Time:               time.Unix(0, ts).UTC(),
 		Comment:            rec.comment,
+		CWDisplayAvailable: rec.cwDisplayAvailable,
+		CWDisplayComment:   rec.cwDisplayComment,
 		Events:             rec.events,
 		SourceType:         spot.SourceType(rec.source),
 		SourceNode:         rec.sourceNode,
@@ -908,6 +950,9 @@ func decodeSpot(ts int64, raw []byte) (*spot.Spot, error) {
 		ToxicityStatus:     spot.NormalizeToxicityStatus(rec.toxicityStatus),
 		ToxicityCategories: splitArchiveCSV(rec.toxicityCategories),
 		ToxicityModel:      rec.toxicityModel,
+	}
+	if rec.cwSpeeds != "" {
+		s.CWSpeeds = strings.Split(rec.cwSpeeds, "\x00")
 	}
 	if rec.deCallStripped != "" {
 		s.DECallNormStripped = rec.deCallStripped

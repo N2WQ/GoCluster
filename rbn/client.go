@@ -782,6 +782,43 @@ func stripRBNSpeedCQComment(mode, comment string) string {
 	return comment
 }
 
+// rbnCWDisplayProjection recognizes speed pairs before canonical comment
+// parsing can reorder tokens. The scanner's line limit bounds both results.
+func rbnCWDisplayProjection(tokens []spotToken, consumed []bool, freq float64) (string, []string, bool) {
+	var haveWPM bool
+	for i := range tokens {
+		if !consumed[i] && equalFoldASCII(tokens[i].clean, "WPM") {
+			haveWPM = true
+			break
+		}
+	}
+	if !haveWPM {
+		return "", nil, false
+	}
+	projectionConsumed := append([]bool(nil), consumed...)
+	var speeds []string
+	for i := 0; i+1 < len(tokens); i++ {
+		if projectionConsumed[i] || projectionConsumed[i+1] || !equalFoldASCII(tokens[i+1].raw, "WPM") || !strutil.IsAllDigitsASCII(tokens[i].raw) {
+			continue
+		}
+		value, err := strconv.Atoi(tokens[i].raw)
+		if err != nil || value > 200 {
+			continue
+		}
+		speeds = append(speeds, strings.Clone(tokens[i].raw)+" WPM")
+		projectionConsumed[i], projectionConsumed[i+1] = true, true
+		i++
+	}
+	var parts []string
+	for i, token := range tokens {
+		if !projectionConsumed[i] && token.clean != "" {
+			parts = append(parts, token.raw)
+		}
+	}
+	comment := strings.Join(parts, " ")
+	return spot.ParseSpotCommentWithoutSpeedReordering(comment, freq).Comment, speeds, true
+}
+
 func consumeRBNSpotClass(tokens []spotToken, consumed []bool) (SpotClass, bool) {
 	for idx := 0; idx < len(tokens); idx++ {
 		if consumed[idx] {
@@ -944,6 +981,9 @@ func (c *Client) parseSpot(line string) {
 	}
 	if comment != "" {
 		s.Comment = comment
+	}
+	if !c.minimalParse && mode == "CW" {
+		s.CWDisplayComment, s.CWSpeeds, s.CWDisplayAvailable = rbnCWDisplayProjection(tokens, consumed, freq)
 	}
 	s.Events = parsed.Events
 	s.IsHuman = c.minimalParse

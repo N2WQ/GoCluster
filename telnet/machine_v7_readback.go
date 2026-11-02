@@ -4,6 +4,7 @@
 package telnet
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -16,9 +17,43 @@ import (
 const maxV7ErrorBytes = 4 << 10
 
 type v7ReadbackStatus struct {
-	configurationReadbackStatus `yaml:",inline"`
-	ActiveDialect               string                          `yaml:"active_dialect"`
-	Presets                     map[string]readbackPresetStatus `yaml:"presets"`
+	Configured    v7SettingsReadback              `yaml:"configured"`
+	Effective     readbackEffectiveStatus         `yaml:"effective"`
+	Session       readbackSessionStatus           `yaml:"session"`
+	Server        readbackServerStatus            `yaml:"server"`
+	Preset        readbackPresetStatus            `yaml:"preset"`
+	ActiveDialect string                          `yaml:"active_dialect"`
+	Presets       map[string]readbackPresetStatus `yaml:"presets"`
+}
+
+// Compact status is only used if the regular frame would exceed its hard
+// bound. Large configured values remain block encoded; small status maps use
+// flow style to make room without dropping fields or changing YAML values.
+type v7CompactReadbackStatus struct {
+	Configured    v7SettingsReadback              `yaml:"configured"`
+	Effective     readbackEffectiveStatus         `yaml:"effective,flow"`
+	Session       readbackSessionStatus           `yaml:"session,flow"`
+	Server        readbackServerStatus            `yaml:"server,flow"`
+	Preset        readbackPresetStatus            `yaml:"preset,flow"`
+	ActiveDialect string                          `yaml:"active_dialect"`
+	Presets       map[string]readbackPresetStatus `yaml:"presets,flow"`
+}
+
+// The v7 protocol must include false explicitly while the stored preference
+// stays optional for older records and the frozen v6 wire format omits it.
+type v7SettingsReadback struct {
+	Dialect                 string `yaml:"dialect"`
+	Grid                    string `yaml:"grid"`
+	NoiseClass              string `yaml:"noise_class"`
+	DedupePolicy            string `yaml:"dedupe_policy"`
+	PathMinObservationCount int    `yaml:"path_min_observation_count"`
+	SolarSummaryMinutes     int    `yaml:"solar_summary_minutes"`
+	CWSpeed                 bool   `yaml:"cw_speed"`
+}
+
+func v7SettingsView(s filter.SettingsConfiguration) v7SettingsReadback {
+	return v7SettingsReadback{s.Dialect, s.Grid, s.NoiseClass, s.DedupePolicy,
+		s.PathMinObservationCount, s.SolarSummaryMinutes, s.CWSpeed}
 }
 
 type v7DocumentError struct {
@@ -71,22 +106,55 @@ func renderV7YAMLReadback(cfg filter.V7Configuration, goSet *filter.PreparedRule
 			Filters any    `yaml:"filters"`
 		}{active, bank}
 	case "SETTINGS":
-		configuration = cfg.Settings
+		configuration = v7SettingsView(cfg.Settings)
 	case "CONFIG":
-		configuration = cfg
+		configuration = struct {
+			Filters  filter.V7FilterBanks `yaml:"filters"`
+			Settings v7SettingsReadback   `yaml:"settings"`
+		}{cfg.Filters, v7SettingsView(cfg.Settings)}
 	case "CAPABILITIES":
 		configuration = v7MachineCapabilities()
 	default:
 		return "", fmt.Errorf("unknown YAML resource")
 	}
-	return encodeBoundedYAMLLimit(struct {
-		SchemaVersion int              `yaml:"schema_version"`
-		RequestID     string           `yaml:"request_id"`
-		Resource      string           `yaml:"resource"`
-		Revision      string           `yaml:"revision"`
-		Configuration any              `yaml:"configuration"`
-		Status        v7ReadbackStatus `yaml:"status"`
-	}{7, requestID, resource, revision, configuration, v7ReadbackStatus{status, active, presets}}, maxV7YAMLBytes)
+	view := v7ReadbackStatus{
+		Configured: v7SettingsView(status.Configured), Effective: status.Effective,
+		Session: status.Session, Server: status.Server, Preset: status.Preset,
+		ActiveDialect: active, Presets: presets,
+	}
+	encode := func(configurationView, statusView any) (string, error) {
+		return encodeBoundedYAMLLimit(struct {
+			SchemaVersion int    `yaml:"schema_version"`
+			RequestID     string `yaml:"request_id"`
+			Resource      string `yaml:"resource"`
+			Revision      string `yaml:"revision"`
+			Configuration any    `yaml:"configuration"`
+			Status        any    `yaml:"status"`
+		}{7, requestID, resource, revision, configurationView, statusView}, maxV7YAMLBytes)
+	}
+	result, err := encode(configuration, view)
+	if !errors.Is(err, errReadbackTooLarge) {
+		return result, err
+	}
+	// Preserve the previous v7 admission boundary. Compact formatting may only
+	// recover a frame that fit before the new preference appeared; it must not
+	// admit an already oversized configuration through a shorter representation.
+	if resource != "CONFIG" {
+		return "", err
+	}
+	prior := cfg
+	prior.Settings.CWSpeed = false
+	priorStatus := status
+	priorStatus.Configured = prior.Settings
+	legacy := struct {
+		configurationReadbackStatus `yaml:",inline"`
+		ActiveDialect               string                          `yaml:"active_dialect"`
+		Presets                     map[string]readbackPresetStatus `yaml:"presets"`
+	}{priorStatus, active, presets}
+	if _, priorErr := encode(prior, legacy); priorErr != nil {
+		return "", err
+	}
+	return encode(configuration, v7CompactReadbackStatus(view))
 }
 
 func renderV7YAMLCommandError(resource, requestID, revision, code, message string) string {

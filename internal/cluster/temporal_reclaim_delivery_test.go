@@ -178,7 +178,7 @@ func temporalReclaimAssertDelivery(t *testing.T, f ambiguityDeliveryFixture, at 
 	}
 }
 
-// Inspect raw version-six records before archive decoding can normalize calls.
+// Inspect raw version-seven records before archive decoding can normalize calls.
 // The independently assembled target bytes use literal inputs and format
 // offsets; neither the emitted Spot nor the production encoder is the oracle.
 func temporalReclaimAssertArchiveBytes(t *testing.T, path string, at time.Time, wantRows int) {
@@ -205,16 +205,16 @@ func temporalReclaimAssertArchiveBytes(t *testing.T, path string, at time.Time, 
 	for valid := iter.First(); valid; valid = iter.Next() {
 		rows++
 		key, raw := iter.Key(), iter.Value()
-		if len(key) != 14 || int64(binary.BigEndian.Uint64(key[2:10])) != at.UnixNano() || len(raw) < 74 || raw[0] != 6 {
+		if len(key) != 14 || int64(binary.BigEndian.Uint64(key[2:10])) != at.UnixNano() || len(raw) < 78 || raw[0] != 7 {
 			t.Errorf("raw persisted key/header changed: key=%x raw=%x", key, raw)
 			continue
 		}
 		dxLength := int(binary.BigEndian.Uint16(raw[36:38]))
-		if 74+dxLength > len(raw) {
+		if 78+dxLength > len(raw) {
 			t.Error("raw DX length exceeds record")
 			continue
 		}
-		if string(raw[74:74+dxLength]) == "K1XYZ" {
+		if string(raw[78:78+dxLength]) == "K1XYZ" {
 			continue
 		}
 		targets++
@@ -232,9 +232,9 @@ func temporalReclaimAssertArchiveBytes(t *testing.T, path string, at time.Time, 
 
 func temporalReclaimExpectedArchiveBytes() []byte {
 	fields := []string{"K1ABC", "N0AAA", "N0AAA", "CW", "", "MANUAL", "", "C", "20m",
-		"", "FN31", "", "", "", "UNKNOWN", "", "", "", ""}
-	raw := make([]byte, 74)
-	raw[0], raw[1], raw[2] = 6, 2, 5
+		"", "FN31", "", "", "", "UNKNOWN", "", "", "", "", "", ""}
+	raw := make([]byte, 78)
+	raw[0], raw[1], raw[2] = 7, 2, 5
 	binary.BigEndian.PutUint64(raw[4:12], math.Float64bits(14020))
 	binary.BigEndian.PutUint16(raw[18:20], 5)
 	binary.BigEndian.PutUint32(raw[24:28], 291)

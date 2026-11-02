@@ -25,6 +25,13 @@ type V6Configuration struct {
 	Settings SettingsConfiguration `yaml:"settings"`
 }
 
+// MarshalYAML keeps the frozen v6 codec independent of v7-only preferences.
+func (c V6Configuration) MarshalYAML() (any, error) {
+	type plainV6Configuration V6Configuration
+	c.Settings.CWSpeed = false
+	return plainV6Configuration(c), nil
+}
+
 // PreparedRules returns the immutable personal rule set. Nil is valid absence.
 func (f *Filter) PreparedRules() *PreparedRuleSet {
 	if f == nil {

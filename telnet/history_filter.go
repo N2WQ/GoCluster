@@ -28,6 +28,7 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 		callsign: c.callsign, dialect: c.dialect, grid: c.grid, gridDerived: c.gridDerived,
 		gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
 		noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
+		configuredSettings: filter.SettingsConfiguration{CWSpeed: c.configuredSettings.CWSpeed},
 	}
 	if c.filter != nil {
 		value := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Clone().FilterValue()
@@ -54,6 +55,7 @@ func (c *Client) historyFilterDigest() [32]byte {
 	state := pathState{grid: c.grid, gridDerived: c.gridDerived, gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell}
 	valid := c.filter != nil
 	dialect := normalizeDialectName(string(c.dialect))
+	cwSpeed := c.configuredSettings.CWSpeed
 	c.filterMu.RUnlock()
 	c.pathMu.RUnlock()
 	geometry := matching.NearbyFilterActive() || matching.PathFilterActive()
@@ -64,7 +66,7 @@ func (c *Client) historyFilterDigest() [32]byte {
 	cfg.Filters.AllowWWV, cfg.Filters.AllowWCY = filter.DefaultBoolDefault, filter.DefaultBoolDefault
 	cfg.Filters.AllowAnnounce, cfg.Filters.AllowSelf = filter.DefaultBoolDefault, filter.DefaultBoolDefault
 	configured := cfg.Fingerprint()
-	var payload [39]byte
+	var payload [40]byte
 	copy(payload[:32], configured[:])
 	if valid {
 		payload[32] = 1
@@ -83,6 +85,9 @@ func (c *Client) historyFilterDigest() [32]byte {
 	// so GO -> CC -> GO cannot revive an earlier continuation.
 	if dialect == DialectCC {
 		payload[38] = 1
+	}
+	if cwSpeed {
+		payload[39] = 1
 	}
 	return sha256.Sum256(payload[:])
 }

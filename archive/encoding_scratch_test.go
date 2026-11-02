@@ -22,10 +22,10 @@ func TestEncodingScratchOverwriteAndCapacity(t *testing.T) {
 	wantRich[1] = 15 // All four flags; the original oracle intentionally uses 7.
 	// Empty legacy toxicity is UNKNOWN, not an empty field. All other header
 	// values and payload lengths are literal zero; toxicity is field 14.
-	wantEmpty := make([]byte, 81)
-	wantEmpty[0], wantEmpty[64] = 6, 0
+	wantEmpty := make([]byte, 85)
+	wantEmpty[0], wantEmpty[64] = 7, 0
 	wantEmpty[65] = 7
-	copy(wantEmpty[74:], "UNKNOWN")
+	copy(wantEmpty[78:], "UNKNOWN")
 	for _, size := range []int{0, 1, len(wantRich), len(wantRich) + 64} {
 		t.Run(fmt.Sprintf("capacity_%d", size), func(t *testing.T) {
 			buf := make([]byte, size)

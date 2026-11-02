@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0332 | Per-User RBN CW Speed Display | Accepted | 2026-11-01 | RBN ingest, archive, telnet, user preferences | none; complements ADR-0116 | none | [ADR-0332](decisions/ADR-0332-per-user-rbn-cw-speed-display.md) |
 | ADR-0331 | Repeat Material Scope Challenges | Accepted | 2026-11-01 | Codex workflow, scope review, approval | refines ADR-0224 | none | [ADR-0331](decisions/ADR-0331-repeat-material-scope-challenges.md) |
 | ADR-0330 | Native CC Banks and Generation Seven | Accepted | 2026-10-29 | CC compatibility, dialect ownership, schema 7, reset recovery | affected shared-bank and generation/reset clauses of ADR-0317-0320 and ADR-0329; refines ADR-0238/0244 | none | [ADR-0330](decisions/ADR-0330-native-cc-banks-and-generation-seven.md) |
 | ADR-0329 | NEARBY Boolean Predicate and Generation Six | Accepted | 2026-10-29 | rules, GRID ownership, schema 6, protected reset | affected NEARBY/schema/reset clauses of ADR-0207 and ADR-0317-0320 | none | [ADR-0329](decisions/ADR-0329-nearby-boolean-predicate-and-generation-six.md) |

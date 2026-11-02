@@ -109,6 +109,7 @@ will hear the station or make a contact.
 | Pause live spots for 60 seconds | `PAUSE 60` |
 | Check or end a pause | `SHOW HOLD` or `RESUME` |
 | Inspect or change repeated-spot suppression | `SHOW DEDUPE` or `SET DEDUPE FAST` |
+| Show or hide RBN CW speed | `SET CWSPEED ON` or `SET CWSPEED OFF` |
 | See countries reporting your own call | `WHOSPOTSME 20M` |
 | Request a propagation outlook | `SHOW PROP IT9 20m FT8` (set your own grid first) |
 | Receive active solar summaries | `SET SOLAR 30` (every 30 minutes while active, on enabled nodes); `SET SOLAR OFF` to stop |
@@ -828,6 +829,7 @@ Preferences and propagation:
   SHOW DEDUPE            Show duplicate-spot suppression settings.
   SET DEDUPE             Choose FAST, MED or SLOW duplicate suppression.
   SET SOLAR              Set the cadence for active solar summaries.
+  SET CWSPEED            Show or hide RBN CW speed.
   DIALECT                Show or switch between GO and CC command styles.
 
 Examples:

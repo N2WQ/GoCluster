@@ -42,6 +42,7 @@ func v6RuleReadback(set *filter.PreparedRuleSet) v6ReadbackRuleStatus {
 // Rendering only reads the immutable set; it never prepares, compiles, or derives
 // preset association from mutable session state.
 func renderV6YAMLReadback(cfg filter.V6Configuration, set *filter.PreparedRuleSet, status configurationReadbackStatus, resource, requestID, revision string, warnings ...string) (string, error) {
+	cfg.Settings.CWSpeed = false
 	resource = strings.ToUpper(resource)
 	var configuration any
 	switch resource {

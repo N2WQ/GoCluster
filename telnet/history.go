@@ -32,6 +32,8 @@ type historyRequest struct {
 	filter     historyFilterSnapshot
 	generation uint64
 	older      bool
+	cwSpeed    bool
+	diag       diagMode
 }
 
 // observeHistoryDigest runs inside the configuration transaction. A change
@@ -81,12 +83,13 @@ func (s *Server) beginHistory(c *Client, line string) (historyRequest, string, e
 	}
 	c.refreshConfigurationRevision()
 	snapshot := c.captureHistoryFilter()
+	cwSpeed := c.cwSpeedEnabled()
 	c.historyMu.Lock()
 	defer c.historyMu.Unlock()
 	if c.historyClosed {
 		return historyRequest{}, "", errClientClosed
 	}
-	request := historyRequest{filter: snapshot, older: command.Token != ""}
+	request := historyRequest{filter: snapshot, older: command.Token != "", cwSpeed: cwSpeed, diag: c.getDiagMode()}
 	if request.older {
 		if c.historySearch == nil || c.historySearch.token != command.Token {
 			return historyRequest{}, "Invalid history continuation. Start a fresh SHOW DX search.\n", nil
@@ -140,7 +143,9 @@ func (s *Server) handleHistoryCommand(c *Client, line string) (bool, bool) {
 			}
 		}
 		if readErr == nil {
-			response = commands.RenderHistoryPage(page, state.token, request.older, state.unreadable, request.search.hadMatches)
+			response = commands.RenderHistoryPageWithFormatter(page, state.token, request.older, state.unreadable, request.search.hadMatches, func(sp *spot.Spot) string {
+				return sp.FormatDXClusterCW(request.cwSpeed && request.diag == diagModeOff)
+			})
 		}
 	}
 	if readErr != nil {

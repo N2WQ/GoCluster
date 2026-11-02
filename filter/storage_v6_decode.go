@@ -100,6 +100,9 @@ func validateV6StoredVersion(node *yaml.Node) error {
 }
 
 func (state *storageDecodeState) validateV6StoredFields(node *yaml.Node, typ reflect.Type) error {
+	if typ == reflect.TypeFor[SettingsConfiguration]() && v6StoredField(node, "cw_speed") != nil {
+		return errors.New("unknown stored configuration field \"cw_speed\"")
+	}
 	if typ == reflect.TypeFor[V6UserRecord]() || typ == reflect.TypeFor[V6SavedPreset]() {
 		if err := validateV6StoredVersion(node); err != nil {
 			return err

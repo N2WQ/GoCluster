@@ -361,6 +361,17 @@ func buildComment(tokens []commentToken, consumed []bool) string {
 // When no explicit mode token is present, Mode is left empty so downstream mode
 // assignment can apply history and allocation logic.
 func ParseSpotComment(comment string, freq float64) CommentParseResult {
+	return parseSpotComment(comment, freq, true)
+}
+
+// ParseSpotCommentWithoutSpeedReordering preserves the source order of speed-like
+// words while applying the usual mode, report and time cleanup. RBN uses this
+// only for a display projection; canonical matching uses ParseSpotComment.
+func ParseSpotCommentWithoutSpeedReordering(comment string, freq float64) CommentParseResult {
+	return parseSpotComment(comment, freq, false)
+}
+
+func parseSpotComment(comment string, freq float64, reorderSpeed bool) CommentParseResult {
 	comment = strings.TrimSpace(comment)
 	if comment == "" {
 		return CommentParseResult{}
@@ -392,6 +403,9 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 				shift := len(originalClean) - len(remainder)
 				clean = remainder
 				tokens[idx].clean = remainder
+				if !reorderSpeed {
+					tokens[idx].raw = remainder
+				}
 				tokens[idx].upper = strings.ToUpper(remainder)
 				tokens[idx].trimStart = tok.trimStart + shift
 				tokens[idx].trimEnd = tokens[idx].trimStart + len(remainder)
@@ -432,7 +446,7 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 				consumed[idx] = true
 				continue
 			case acTokenWPM, acTokenBPS:
-				if speedValue == "" && pendingNumIdx >= 0 {
+				if reorderSpeed && speedValue == "" && pendingNumIdx >= 0 {
 					speedValue = tokens[pendingNumIdx].clean
 					if pat.kind == acTokenWPM {
 						speedUnit = "WPM"
@@ -475,7 +489,18 @@ func ParseSpotComment(comment string, freq float64) CommentParseResult {
 		}
 	}
 
-	cleaned := buildComment(tokens, consumed)
+	var cleaned string
+	if reorderSpeed {
+		cleaned = buildComment(tokens, consumed)
+	} else {
+		parts := make([]string, 0, len(tokens))
+		for i, token := range tokens {
+			if !consumed[i] && token.clean != "" {
+				parts = append(parts, token.raw)
+			}
+		}
+		cleaned = strings.Join(parts, " ")
+	}
 	if !hasReport && cleaned != "" {
 		if m := snrPattern.FindStringSubmatch(cleaned); len(m) == 2 {
 			if v, err := strconv.Atoi(m[1]); err == nil {

@@ -90,6 +90,7 @@ Preferences and propagation:
   SHOW DEDUPE            Show duplicate-spot suppression settings.
   SET DEDUPE             Choose FAST, MED or SLOW duplicate suppression.
   SET SOLAR              Set the cadence for active solar summaries.
+  SET CWSPEED            Show or hide RBN CW speed.
   DIALECT                Show or switch between GO and CC command styles.
 
 Examples:

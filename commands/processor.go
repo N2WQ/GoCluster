@@ -595,6 +595,11 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		},
 	)
 	add("SET SOLAR", "SET SOLAR - Solar summary cadence.", setSolarLines)
+	add("SET CWSPEED", "SET CWSPEED - Show or hide RBN CW speed.", helpEntryLines(
+		"SET CWSPEED - Show or hide RBN CW speed.",
+		[]string{"SET CWSPEED <ON|OFF>"}, nil,
+		[]string{"The saved setting applies to live spots and stored history.", "Diagnostic mode hides speed. Comment matching is unchanged."},
+	))
 
 	presetNotes := []string{
 		"Presets are shared across your numeric SSIDs; commands work in both dialects.",
@@ -752,6 +757,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SET DEDUPE",
 			"SET DIAG",
 			"SET SOLAR",
+			"SET CWSPEED",
 			"SET GRID",
 			"SET NOISE",
 			"SET PATHSAMPLES",
@@ -859,6 +865,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SET DEDUPE",
 			"SET DIAG",
 			"SET SOLAR",
+			"SET CWSPEED",
 			"SET GRID",
 			"SET NOISE",
 			"SET PATHSAMPLES",

@@ -23,9 +23,13 @@ Local source behavior does not establish publication, deployment or validation.
 
 - GO and CC remember independent filters and independent BEACON, SELF, TOXIC,
   ANNOUNCE, WWV and WCY selections. Switching activates the saved bank. GRID,
-  noise, dedupe, PATHSAMPLES and SOLAR are shared. GO Boolean mutations require
+  noise, dedupe, PATHSAMPLES, SOLAR and CWSPEED are shared. GO Boolean mutations require
   GO; CC uses native mode/source, geography and DXBM commands. Retrieve compiled
   HELP for exact aliases; do not translate arbitrary GO rules into CC.
+- `SET CWSPEED ON|OFF` controls available RBN CW speed on live and historical
+  spots, defaults to OFF, and is suppressed by diagnostics. Comment matching
+  retains the stored comment even when speed is hidden. The spot archive needs
+  a fresh database for this upgrade; it accumulates only new records afterward.
 - CC mode choices apply to HUMAN and SKIMMER. Source choices do not change modes
   or start feeds. Geography lists use OR within a category and AND across enabled
   categories; missing/invalid metadata fails PASS and survives REJECT. Global

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ebdd7437cddb043b`
+- Source fingerprint: `61912b07e61b8f46`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 12 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 153 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 154 |
 | `dxcluster/peer` | `peer` | 62 | 133 |
-| `dxcluster/spot` | `spot` | 38 | 65 |
-| `dxcluster/telnet` | `telnet` | 79 | 161 |
+| `dxcluster/spot` | `spot` | 38 | 66 |
+| `dxcluster/telnet` | `telnet` | 80 | 163 |
 
 ## In-Scope Package Edges
 
@@ -203,6 +203,7 @@ Test files:
 - `internal/cluster/custom_scp_family_delivery_test.go`
 - `internal/cluster/custom_scp_freshness_delivery_test.go`
 - `internal/cluster/custom_scp_static_future_delivery_test.go`
+- `internal/cluster/cw_speed_archive_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_job_windows_test.go`
@@ -595,6 +596,7 @@ Test files:
 - `spot/custom_scp_lifecycle_test.go`
 - `spot/custom_scp_persistence_bench_test.go`
 - `spot/custom_scp_store_test.go`
+- `spot/cw_speed_display_test.go`
 - `spot/dedupe_key_test.go`
 - `spot/f1_f2_test.go`
 - `spot/ft_frequency_test.go`
@@ -664,6 +666,7 @@ Source files:
 - `telnet/configuration_v7_admission.go`
 - `telnet/configuration_v7_human.go`
 - `telnet/configuration_v7_startup.go`
+- `telnet/cwspeed.go`
 - `telnet/dedupe_readback.go`
 - `telnet/events.go`
 - `telnet/filter_commands.go`
@@ -756,6 +759,7 @@ Test files:
 - `telnet/configuration_transfer_writer_test.go`
 - `telnet/configuration_upgrade_test.go`
 - `telnet/configuration_v7_integration_test.go`
+- `telnet/cwspeed_test.go`
 - `telnet/dedupe_collision_test.go`
 - `telnet/dedupe_policy_test.go`
 - `telnet/dedupe_readback_test.go`
@@ -794,6 +798,7 @@ Test files:
 - `telnet/login_ssid_test.go`
 - `telnet/login_startup_test.go`
 - `telnet/machine_commands_test.go`
+- `telnet/machine_cw_speed_test.go`
 - `telnet/machine_deadline_lifecycle_test.go`
 - `telnet/machine_failure_persistence_test.go`
 - `telnet/machine_input_test.go`
@@ -887,6 +892,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0332 | Accepted | 2026-11-01 | RBN ingest, archive, telnet, user preferences | `area:telnet` |
 | ADR-0328 | Accepted | 2026-10-28 | telnet commands, input pacing, operator settings | `area:commands, area:telnet` |
 | ADR-0327 | Accepted | 2026-10-28 | telnet admission, IP capacity, reconnect, persistence | `area:telnet` |
 | ADR-0326 | Accepted | 2026-10-28 | telnet admission, station capacity, reconnect, persistence | `area:telnet` |

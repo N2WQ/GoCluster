@@ -76,6 +76,15 @@ It includes `configuration.filters.go`, `configuration.filters.cc` and shared
 not writable backup fields. Restore the writable `configuration` in a new
 request envelope with the current revision; do not upload the GET status.
 
+Shared setting `cw_speed` is a boolean controlling RBN CW speed display. Old
+profiles, presets, and complete restores without it use false; PATCH leaves an
+omitted value unchanged. Schema six does not expose it and schema-six writes
+preserve the current choice. Older strict schema-seven clients or executables
+may reject the new field; use compatible clients and backups for rollback.
+Near the frame limit, schema-seven readback may use YAML flow mappings for
+status fields while preserving the same values. Clients must parse YAML rather
+than depend on indentation or line-by-line field placement.
+
 | Surface | Ownership |
 | --- | --- |
 | `GET YAML FILTER SCHEMA 7` | Tagged active bank and its six controls. |

@@ -534,7 +534,14 @@ func (c *Client) setDiagMode(mode diagMode) {
 	if c == nil {
 		return
 	}
-	c.diagMode.Store(uint32(mode))
+	// Serialize diagnostic changes with history publication. A change followed
+	// by restoration must still invalidate a page prepared between them.
+	c.historyMu.Lock()
+	if diagMode(c.diagMode.Load()) != mode {
+		c.diagMode.Store(uint32(mode))
+		c.historyGeneration++
+	}
+	c.historyMu.Unlock()
 }
 
 func (c *Client) getDiagMode() diagMode {
@@ -4141,6 +4148,13 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			continue
 		}
 
+		if resp, handled := s.handleCWSpeedCommand(client, line); handled {
+			if resp != "" && !s.sendCommandResponse(client, resp, "CW speed command response") {
+				return
+			}
+			continue
+		}
+
 		if resp, handled := s.handleShowPropCommand(client, line); handled {
 			if resp != "" {
 				if !s.sendCommandResponse(client, resp, "show prop command response") {
@@ -4330,7 +4344,7 @@ func (s *Server) formatSpotForClient(client *Client, sp *spot.Spot) string {
 	if mode != diagModeOff {
 		return s.formatSpotForClientWithDiag(client, sp, mode)
 	}
-	base := sp.FormatDXCluster()
+	base := formatCWSpotForClient(client, sp)
 	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
 		return base + "\n"
 	}
@@ -4406,7 +4420,7 @@ func (s *Server) formatSpotForClientWithPrediction(client *Client, sp *spot.Spot
 	if mode != diagModeOff {
 		return s.formatSpotForClientWithDiagPrediction(client, sp, mode, prediction)
 	}
-	base := sp.FormatDXCluster()
+	base := formatCWSpotForClient(client, sp)
 	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
 		return base + "\n"
 	}

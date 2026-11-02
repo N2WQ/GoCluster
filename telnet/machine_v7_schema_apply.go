@@ -24,6 +24,9 @@ func (r v7MachineRequest) apply(before filter.V7Configuration, activeDialect str
 		return before, err
 	}
 	result.Filters.GO, result.Settings = goResult.Filters, goResult.Settings
+	if r.cwSpeedSet {
+		result.Settings.CWSpeed = r.cwSpeed
+	}
 	result.Filters.CC = r.ccPatch.apply(result.Filters.CC)
 	return result, nil
 }

@@ -513,7 +513,7 @@ func (f familyDeliveryFixture) assertRows(t *testing.T, destination string, rows
 	}
 }
 
-// Literal version-six values are assembled before decoding without borrowing
+// Literal version-seven values are assembled before decoding without borrowing
 // emitted Spots or the archive encoder. Timestamp keys give a separate oracle.
 func familyDeliveryAssertArchiveBytes(t *testing.T, path string, inputs []familyDeliveryInput) {
 	t.Helper()
@@ -561,10 +561,17 @@ func familyDeliveryAssertArchiveBytes(t *testing.T, path string, inputs []family
 }
 
 func familyDeliveryExpectedArchiveBytes(in familyDeliveryInput) []byte {
+	return familyDeliveryExpectedArchiveBytesWithCW(in, false, "", "")
+}
+
+func familyDeliveryExpectedArchiveBytesWithCW(in familyDeliveryInput, present bool, displayComment, speeds string) []byte {
 	fields := []string{in.call, in.receiver, in.receiver, "CW", in.comment, "MANUAL", "", in.glyph, "20m",
-		"", "", "", "NA", "", "UNKNOWN", "", "", "", ""}
-	raw := make([]byte, 74)
-	raw[0], raw[1], raw[2] = 6, 3, 5 // report + human; unknown grids.
+		"", "", "", "NA", "", "UNKNOWN", "", "", "", "", displayComment, speeds}
+	raw := make([]byte, 78)
+	raw[0], raw[1], raw[2] = 7, 3, 5 // report + human; unknown grids.
+	if present {
+		raw[1] |= 16
+	}
 	binary.BigEndian.PutUint64(raw[4:12], math.Float64bits(14030))
 	binary.BigEndian.PutUint32(raw[12:16], 10)
 	binary.BigEndian.PutUint16(raw[18:20], 5)
@@ -577,6 +584,43 @@ func familyDeliveryExpectedArchiveBytes(in familyDeliveryInput) []byte {
 		raw = append(raw, field...)
 	}
 	return raw
+}
+
+func TestFamilyDeliveryArchiveSpeedBytes(t *testing.T) {
+	at := time.Now().UTC().Truncate(time.Second)
+	in := familyDeliveryInput{"K1ABC", "N0AAA", "22 WPM POTA", "V", at}
+	cfg := config.ArchiveConfig{DBPath: filepath.Join(t.TempDir(), "archive"), QueueSize: 4, BatchSize: 1, BatchIntervalMS: 1}
+	w, err := archive.NewWriter(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Start()
+	s := in.spot()
+	s.Confidence = in.glyph
+	s.DECallStripped = in.receiver
+	s.CWDisplayAvailable, s.CWDisplayComment = true, "POTA"
+	s.CWSpeeds = []string{"0 WPM", "30 WPM"}
+	w.Enqueue(s)
+	w.Stop()
+	db, err := pebble.Open(cfg.DBPath, &pebble.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: []byte("s|"), UpperBound: []byte("s}")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = iter.Close() }()
+	if !iter.First() {
+		t.Fatal("archive did not retain the spot")
+	}
+	if want := familyDeliveryExpectedArchiveBytesWithCW(in, true, "POTA", "0 WPM\x0030 WPM"); !bytes.Equal(iter.Value(), want) {
+		t.Fatalf("CW archive bytes differ: got=%x want=%x", iter.Value(), want)
+	}
+	if iter.Next() || iter.Error() != nil {
+		t.Fatalf("unexpected extra row or iterator error: %v", iter.Error())
+	}
 }
 
 func familyDeliveryExpectedSCPBytes(inputs []familyDeliveryInput) map[string][]byte {

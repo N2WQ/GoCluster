@@ -9,7 +9,9 @@ import (
 // Nil and empty rule lists are equivalent; cached program identities are ignored.
 // Callers must prepare edited or untrusted definitions before comparison.
 func (c V6Configuration) Equal(other V6Configuration) bool {
-	return c.Settings == other.Settings &&
+	a, b := c.Settings, other.Settings
+	a.CWSpeed, b.CWSpeed = false, false
+	return a == b &&
 		c.Filters.toggles() == other.Filters.toggles() &&
 		slices.Equal(c.Filters.Rules, other.Filters.Rules)
 }

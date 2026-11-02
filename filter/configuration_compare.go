@@ -33,9 +33,19 @@ func (c Configuration) Fingerprint() [32]byte {
 		_, _ = h.Write(native[:])
 		var result [32]byte
 		h.Sum(result[:0])
-		return result
+		return fingerprintCWSpeed(result, c.Settings.CWSpeed)
 	}
-	return c.V6().Fingerprint()
+	return fingerprintCWSpeed(c.V6().Fingerprint(), c.Settings.CWSpeed)
+}
+
+func fingerprintCWSpeed(base [32]byte, enabled bool) [32]byte {
+	if !enabled {
+		return base
+	}
+	var payload [33]byte
+	copy(payload[:32], base[:])
+	payload[32] = 1
+	return sha256.Sum256(payload[:])
 }
 
 func writeFingerprintString(h hash.Hash, value string) {

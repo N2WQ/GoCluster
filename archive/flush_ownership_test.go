@@ -33,6 +33,14 @@ func TestFlushPreservesOwnedInputAndRecordBytes(t *testing.T) {
 			return r
 		}()},
 		{name: "normalized", edit: func(s *spot.Spot) { s.EnsureNormalized() }, want: ownedFlushRecord()},
+		{name: "cw_speed_projection", edit: func(s *spot.Spot) {
+			s.CWDisplayAvailable, s.CWDisplayComment = true, "POTA"
+			s.CWSpeeds = []string{"0 WPM", "30 WPM"}
+		}, want: func() archiveRecord {
+			r := ownedFlushRecord()
+			r.cwDisplayAvailable, r.cwDisplayComment, r.cwSpeeds = true, "POTA", "0 WPM\x0030 WPM"
+			return r
+		}()},
 		{name: "populated_caches", edit: func(s *spot.Spot) {
 			s.DXCallNorm, s.DECallNorm, s.DECallNormStripped = "K2CACHE/P", "W2CACHE-2", "W2CACHE"
 			s.ModeNorm, s.BandNorm = "RTTY", "40m"
@@ -78,7 +86,7 @@ func TestFlushPreservesOwnedInputAndRecordBytes(t *testing.T) {
 			}
 			defer closer.Close()
 			if want := ownedFlushExpectedBytes(tc.want); !bytes.Equal(raw, want) {
-				t.Errorf("persisted version-6 bytes differ: got %x want %x", raw, want)
+				t.Errorf("persisted version-7 bytes differ: got %x want %x", raw, want)
 			}
 			rec, err := decodeRecord(raw)
 			if err != nil {
@@ -249,14 +257,18 @@ func ownedFlushPublicFields(s *spot.Spot) map[string]any {
 	return fields
 }
 
-// Build the expected version-6 layout independently of encodeRecord. Field
+// Build the expected version-7 layout independently of encodeRecord. Field
 // values come from the literal oracle above, including the explicit POTA token.
 func ownedFlushExpectedBytes(r archiveRecord) []byte {
 	fields := []string{r.dxCall, r.deCall, r.deCallStripped, r.mode, r.comment,
 		r.source, r.sourceNode, r.confidence, r.band, r.dxGrid, r.deGrid,
-		r.dxCont, r.deCont, "POTA", r.toxicityStatus, r.toxicityCategories, r.toxicityModel, r.dxState, r.deState}
-	raw := make([]byte, 74)
-	raw[0], raw[1], raw[2] = 6, 7, 3 // report, human and DX-derived-grid flags
+		r.dxCont, r.deCont, "POTA", r.toxicityStatus, r.toxicityCategories, r.toxicityModel, r.dxState, r.deState,
+		r.cwDisplayComment, r.cwSpeeds}
+	raw := make([]byte, 78)
+	raw[0], raw[1], raw[2] = 7, 7, 3 // report, human and DX-derived-grid flags
+	if r.cwDisplayAvailable {
+		raw[1] |= 16
+	}
 	binary.BigEndian.PutUint64(raw[4:12], math.Float64bits(14074.5))
 	binary.BigEndian.PutUint32(raw[12:16], 0xfffffff4) // signed -12 dB
 	binary.BigEndian.PutUint16(raw[16:18], 5)

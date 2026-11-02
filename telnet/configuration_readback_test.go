@@ -33,6 +33,7 @@ func TestHumanReadbackLiteralSettingsDefaults(t *testing.T) {
 		"Noise         DEFAULT; effective QUIET\r\n" +
 		"Dedupe        DEFAULT; secondary duplicate suppression disabled\r\n" +
 		"Path samples  DEFAULT; prediction unavailable\r\n" +
+		"CW speed      Off\r\n" +
 		"Solar         Off\r\n\r\nSession only\r\nDiagnostics   Off\r\nLive spots    Flowing\r\n" + readbackFooterLiteral
 	if err != nil || got != want {
 		t.Fatalf("human settings mismatch: %q, %v", got, err)

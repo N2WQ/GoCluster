@@ -334,6 +334,13 @@ func writeHumanSettings(h *humanResponse, cfg filter.SettingsConfiguration, stat
 	if err := writeHumanPathSettings(h, cfg.PathMinObservationCount, runtime); err != nil {
 		return err
 	}
+	cwSpeed := "Off"
+	if cfg.CWSpeed {
+		cwSpeed = "On"
+	}
+	if err := h.row("CW speed", cwSpeed); err != nil {
+		return err
+	}
 	solar := "Off"
 	if cfg.SolarSummaryMinutes != 0 {
 		solar = fmt.Sprintf("%d minutes; unavailable on this server", cfg.SolarSummaryMinutes)
