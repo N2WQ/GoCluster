@@ -183,10 +183,10 @@ func TestPC92Q4RuntimeQualification(t *testing.T) {
 	// persisted. Wait through the unchanged periodic interval for a committed
 	// snapshot taken after all topology preparation finished.
 	d.report.Initial, err = d.await(func(s peer.QualificationState) bool {
-		return s.Persistence.LastProjectionSnapshotUnixNano >= populationReady.UnixNano() && s.Persistence.ProjectionCommits > 0 && s.Diagnostics.Written > 0
+		return s.Persistence.LastProjectionSnapshotUnixNano >= populationReady.UnixNano() && s.Persistence.ProjectionCommits > 0 && s.Diagnostics.CurrentWritten > 0
 	}, time.Duration(cfg.Peering.Topology.PersistIntervalSeconds)*time.Second+5*time.Second)
 	if err != nil {
-		t.Fatalf("enabled persistence/helper evidence: %v", err)
+		t.Fatalf("enabled persistence/diagnostic evidence: %v", err)
 	}
 	if err := q4EnabledOwnership(d.report.Initial); err != nil {
 		t.Fatal(err)
@@ -264,8 +264,8 @@ func q4EnabledOwnership(s peer.QualificationState) error {
 	if !p.Enabled || p.ReservedBytes != 16<<20 || p.EngineBackingBytes != 8<<20 || p.HostReservedBytes != 2<<20 || p.Active != 1 || p.Opening != 0 || p.Retiring != 0 || p.CleanupFailed || p.ProjectionCommits == 0 {
 		return fmt.Errorf("Q4 enabled SQLite ownership/commit missing: %+v", p)
 	}
-	if d.Disabled || d.Degraded || d.CleanupFailed || d.Generation == 0 || d.Written == 0 || d.ChargedBytes != 3<<20 {
-		return fmt.Errorf("Q4 enabled companion ownership/write missing: %+v", d)
+	if d.Disabled || d.Degraded || d.CleanupFailed || d.Generation == 0 || d.CurrentWritten == 0 || d.ChargedBytes <= 0 || d.ChargedBytes > 3<<20 {
+		return fmt.Errorf("Q4 enabled diagnostic ownership/write missing: %+v", d)
 	}
 	if c.Parents != s.MaxPeers+128 || c.ProjectionParents != 2 || c.Active < s.Established+s.Pending {
 		return fmt.Errorf("Q4 active context ownership missing: %+v", c)

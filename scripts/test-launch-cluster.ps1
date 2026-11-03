@@ -22,13 +22,12 @@ function Invoke-LauncherFixture([string]$Name, [string]$Profiles, [string]$Failu
     $freshRoot = Join-Path $root ('.tmp/' + $expectedMode + '/fresh')
     $null = New-Item -ItemType Directory -Path $freshRoot -Force
     $clusterPath = Join-Path $freshRoot 'gocluster.exe'
-    $peerPath = Join-Path $freshRoot 'peerdiag.exe'
     $protected = @{}
-    foreach ($path in @((Join-Path $root 'gocluster.exe'), (Join-Path $root 'gocluster_pgo.exe'), (Join-Path $root 'peerdiag.exe'), $clusterPath, $peerPath)) {
+    foreach ($path in @((Join-Path $root 'gocluster.exe'), (Join-Path $root 'gocluster_pgo.exe'), (Join-Path $root 'peerdiag.exe'), $clusterPath)) {
         Set-Content $path 'SENTINEL'
         $protected[$path] = (Get-FileHash $path).Hash
     }
-    $fixtureState = @{ builds = 0; versions = 0; launches = 0; mode = ''; cluster = $clusterPath; peer = $peerPath; failure = $Failure; root = $root }
+    $fixtureState = @{ builds = 0; versions = 0; launches = 0; mode = ''; cluster = $clusterPath; failure = $Failure; root = $root }
     foreach ($mode in @('pgo','ordinary')) {
         $name = if ($mode -eq 'pgo') { 'consolidate-and-build-pgo.ps1' } else { 'build-executable-pair.ps1' }
         $builder = @'
@@ -36,7 +35,7 @@ $fixtureState.builds++
 $fixtureState.mode = 'MODE'
 if ($fixtureState.failure -eq 'build') { throw 'fixture build failed' }
 if ($fixtureState.failure -eq 'incomplete') { return }
-[pscustomobject]@{ ClusterPath=$fixtureState.cluster; PeerDiagnosticPath=$fixtureState.peer }
+[pscustomobject]@{ ClusterPath=$fixtureState.cluster }
 '@
         $builder.Replace('MODE',$mode) | Set-Content (Join-Path $scripts $name)
     }
@@ -64,7 +63,7 @@ if ($fixtureState.failure -eq 'incomplete') { return }
         try { & (Join-Path $root 'launch-cluster.ps1') 6>$null } catch { $caught = $_.Exception.Message }
         $expectedError = switch ($Failure) {
             'build' { 'fixture build failed' }
-            'incomplete' { 'Builder did not return a complete executable pair.' }
+            'incomplete' { 'Builder did not return a fresh cluster executable.' }
             'version' { 'Fresh cluster version probe failed.' }
             'runtime' { 'Fresh cluster exited with code 8.' }
             default { '' }

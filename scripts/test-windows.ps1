@@ -173,15 +173,6 @@ try {
             throw "Test build produced no executable: $($package.Binary)"
         }
 
-        if ($package.ImportPath -eq 'dxcluster/internal/peerdiag') {
-            $companion = Join-Path ([IO.Path]::GetDirectoryName($package.Binary)) 'peerdiag.exe'
-            Assert-PlainOutputPath $companion
-            Write-Host "COMPANION $companion"
-            if ($PrepareOnly) {
-                & go build -o $companion ./cmd/peerdiag
-                if ($LASTEXITCODE -ne 0) { throw 'Peer diagnostic companion build failed.' }
-            }
-        }
         if ($PrepareOnly) { continue }
 
         # test2json executes this saved binary itself. Its marker mode prevents

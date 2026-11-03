@@ -65,6 +65,8 @@ type clusterRuntime struct {
 	startupErr        error
 
 	logMux            *logFanout
+	v6Logging         *v6LogRuntime
+	rotationHook      *propRotationHook
 	propagationLog    lineSink
 	droppedCallLogger *droppedCallLogger
 	eventFileLogger   *eventFileLogger
@@ -144,6 +146,7 @@ type clusterRuntime struct {
 	outputRetirement   sync.Once
 
 	peerManager     *peer.Manager
+	peerLogEmitter  peerdiag.StreamEmitter
 	archiveWriter   *archive.Writer
 	bulletinHistory *bulletinhistory.Store
 	processor       *commands.Processor
@@ -206,12 +209,18 @@ func (r *clusterRuntime) initialize() bool {
 	if !r.loadYAMLReferenceTables() {
 		return false
 	}
+	if !r.checkLoggingConflict() {
+		return false
+	}
 	r.initializeCallCacheAndMeta()
 	if !r.initializeReferenceData() {
 		return false
 	}
 	r.initializePipelineCore()
 	if !r.initializeServices() {
+		return false
+	}
+	if !r.checkLoggingConflict() {
 		return false
 	}
 	r.connectFeeds()
@@ -221,41 +230,37 @@ func (r *clusterRuntime) initialize() bool {
 }
 
 func (r *clusterRuntime) setupLoggingAndUI() bool {
-	logMux, logErr := setupLogging(r.cfg.Logging, os.Stdout)
-	r.logMux = logMux
-	// logFanout handles timestamp formatting for each sink.
-	log.SetFlags(0)
-	log.SetOutput(logMux)
-	if logErr != nil {
-		log.Printf("Logging: %v", logErr)
+	if r.v6Logging == nil {
+		var err error
+		r.v6Logging, err = newV6LogRuntime(os.Stderr)
+		if err != nil {
+			return r.failStartup("Unable to initialize common logging: %v", err)
+		}
+		log.SetFlags(0)
+		log.SetOutput(&sharedProcessLogRouter)
 	}
-	droppedCallLogger, droppedCallErr := newDroppedCallLogger(r.cfg.Logging.DroppedCalls)
-	r.droppedCallLogger = droppedCallLogger
-	if droppedCallErr != nil {
-		log.Printf("Logging: %v", droppedCallErr)
-	}
-	eventLogger, eventLogErr := newEventFileLogger(r.cfg.Logging)
-	r.eventFileLogger = eventLogger
-	if eventLogErr != nil {
-		log.Printf("Logging: %v", eventLogErr)
-	}
-	propagationLog, propagationLogErr := newPropagationLogSink(r.cfg.Logging.Propagation)
-	r.propagationLog = propagationLog
-	if propagationLogErr != nil && !errors.Is(propagationLogErr, errPropagationLoggingDisabled) {
-		log.Printf("Logging: %v", propagationLogErr)
+	r.v6Logging.useStdout(os.Stdout)
+	r.rotationHook = &propRotationHook{}
+	r.v6Logging.rootedRotation = r.rotationHook.onRootedRotate
+	r.v6Logging.registerPropagationRoot = r.rotationHook.setRoot
+	r.v6Logging.startFiles(r.cfg.Logging, r.rotationHook.onRotate, r.cfg.Peering.Enabled)
+	emitter := &r.v6Logging.files
+	r.peerLogEmitter = emitter
+	r.droppedCallLogger = newUnifiedDroppedCallLogger(r.cfg.Logging.DroppedCalls, emitter)
+	r.eventFileLogger = newUnifiedEventFileLogger(r.cfg.Logging, emitter)
+	if r.cfg.Logging.Propagation.Enabled {
+		r.propagationLog = &unifiedLogLineSink{emitter: emitter, stream: streamPropagation}
 	}
 	log.Printf("Loaded configuration from %s", r.configSource)
 	r.logConfigDiagnostics()
 	if err := spot.SetDXClusterLineLength(r.cfg.Telnet.OutputLineLength); err != nil {
 		return r.failStartup("Invalid telnet output line length: %v", err)
 	}
-
 	if !r.loadPathReliabilityConfig() {
 		return false
 	}
 	r.loadSolarWeatherConfig()
 	r.configureSurface()
-
 	log.Printf("DX Cluster Server %s starting... (commit=%s built=%s)", r.versionInfo.Version, r.versionInfo.Commit, r.versionInfo.BuildTime)
 	r.ctx, r.cancel = context.WithCancel(context.Background())
 	return true
@@ -362,7 +367,12 @@ func (r *clusterRuntime) configureSurface() {
 		if !renderAllowed {
 			log.Printf("UI disabled (tview-v2 requires an interactive console)")
 		} else {
-			r.surface = ui.NewDashboardV2(r.cfg.UI, true)
+			surface, err := newV6Surface(r.cfg.UI)
+			if err != nil {
+				log.Printf("UI disabled: %v", err)
+			} else {
+				r.surface = surface
+			}
 		}
 	default:
 		log.Printf("UI disabled (unsupported mode=%q)", uiMode)
@@ -370,15 +380,11 @@ func (r *clusterRuntime) configureSurface() {
 
 	if r.surface != nil {
 		r.surface.WaitReady()
-		if r.logMux != nil {
-			// UI surfaces render their own timestamps; keep log lines raw.
-			r.logMux.SetConsoleSink(r.surface.SystemWriter(), false)
+		if surface, ok := r.surface.(*v6Surface); ok {
+			r.v6Logging.fanout.setConsole(v6DashboardAdmission{surface: surface})
 		}
 		r.surface.SetStats([]string{"Initializing..."})
 		return
-	}
-	if r.logMux != nil {
-		r.logMux.SetConsoleSink(os.Stdout, true)
 	}
 }
 
@@ -403,21 +409,16 @@ func (r *clusterRuntime) startBackgroundServices() {
 			log.Printf("Prop report enabled, but propagation logging is disabled; no propagation log rotation events will trigger reports")
 		}
 		propRunner := newPropReportGenerator(r.configSource, log.Default())
-		r.propScheduler = newPropReportScheduler(true, propRunner, log.Default(), propReportTimeout)
-		r.propScheduler.Start(r.ctx)
-		if setter, ok := r.propagationLog.(rotateHookSetter); ok {
-			setter.SetRotateHook(func(prevDate time.Time, prevPath, newPath string) {
-				if prevDate.IsZero() {
-					return
-				}
-				r.propScheduler.Enqueue(propReportJob{
-					Date:    prevDate,
-					LogPath: prevPath,
-				})
-			})
+		r.propScheduler = newPropReportScheduler(propRunner, log.Default(), propReportTimeout)
+		if r.propScheduler.Start(r.ctx) {
+			if r.rotationHook != nil {
+				r.rotationHook.setScheduler(r.propScheduler)
+			}
+			startPropReportDailyScheduler(r.ctx, r.cfg.PropReport, r.cfg.Logging.Propagation, r.propScheduler, r.rotationHook)
+			log.Printf("Prop report scheduler enabled")
+		} else {
+			log.Printf("Prop report scheduler unavailable: previous worker remains active")
 		}
-		startPropReportDailyScheduler(r.ctx, r.cfg.PropReport, r.cfg.Logging.Propagation, r.propScheduler)
-		log.Printf("Prop report scheduler enabled")
 	} else {
 		log.Printf("Prop report scheduler disabled")
 	}
@@ -465,7 +466,7 @@ func (r *clusterRuntime) initializeCallCacheAndMeta() {
 
 	r.metaCache = newCallMetaCache(r.cfg.GridCacheSize, time.Duration(r.cfg.GridCacheTTLSec)*time.Second)
 	if r.surface == nil {
-		r.cfg.Print()
+		r.cfg.PrintTo(&sharedProcessLogRouter)
 		return
 	}
 	log.Printf("Configuration loaded for %s (%s)", r.cfg.Server.Name, r.cfg.Server.NodeID)
@@ -1074,7 +1075,7 @@ func (r *clusterRuntime) initializePeerManager() bool {
 	if !r.cfg.Peering.Enabled {
 		return true
 	}
-	diagnostics := peerdiag.New(peerdiag.Options{Enabled: r.cfg.Logging.PeerConnections.Enabled, Directory: r.cfg.Logging.PeerConnections.Dir, RetentionDays: r.cfg.Logging.PeerConnections.RetentionDays, DedupeWindow: time.Duration(r.cfg.Logging.PeerConnections.DedupeWindowSeconds) * time.Second, OverlongPath: "logs/peering_overlong.log"})
+	diagnostics := peerdiag.New(r.cfg.Logging.PeerConnections.Enabled, r.peerLogEmitter, streamPeerConnections, streamPeerOverlong)
 	pm, err := peer.NewManager(r.cfg.Peering, r.cfg.Peering.LocalCallsign, r.ingestInput, r.cfg.SpotPolicy.MaxAgeSeconds, diagnostics)
 	if err != nil {
 		diagnostics.Stop()
@@ -1086,7 +1087,6 @@ func (r *clusterRuntime) initializePeerManager() bool {
 	if err := pm.SetBuildIdentity(r.versionInfo.Version, r.versionInfo.ReleaseTag, r.versionInfo.Commit, r.versionInfo.BuildTime, r.versionInfo.GoVersion); err != nil {
 		return r.failStartup("Invalid peering build identity: %v", err)
 	}
-	diagnostics.Start()
 	return true
 }
 
@@ -1153,6 +1153,9 @@ func (r *clusterRuntime) currentPeerMembership() peer.LocalMembership {
 // callbacks are ready. The first PC18/PC92 exchange therefore sees authoritative
 // metadata and a complete current-user provider, including an empty population.
 func (r *clusterRuntime) startNetworkServices() bool {
+	if !r.checkLoggingConflict() {
+		return false
+	}
 	if err := r.telnetServer.Start(); err != nil {
 		return r.failStartup("Failed to start telnet server: %v", err)
 	}
@@ -1519,6 +1522,7 @@ func (r *clusterRuntime) startMonitors() {
 
 	statsInterval := time.Duration(r.cfg.Stats.DisplayIntervalSeconds) * time.Second
 	go displayStatsWithFCC(
+		r.ctx,
 		statsInterval,
 		r.statsTracker,
 		r.ingestValidator,
@@ -1597,15 +1601,43 @@ func (r *clusterRuntime) logStartup() {
 	maybeStartDiagServer()
 }
 
-func (r *clusterRuntime) waitForShutdown() {
+func logConflictError(streams [2]uint8) error {
+	return fmt.Errorf("logging destinations %s and %s refer to the same folder or file", logStreamName(streams[0]), logStreamName(streams[1]))
+}
+
+func (r *clusterRuntime) checkLoggingConflict() bool {
+	if r.v6Logging == nil {
+		return true
+	}
+	select {
+	case streams := <-r.v6Logging.conflicts:
+		return r.failStartup("%v", logConflictError(streams))
+	default:
+		return true
+	}
+}
+
+func (r *clusterRuntime) waitForShutdown() error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigChan)
 
-	sig := <-sigChan
-	log.Printf("Received signal: %v", sig)
+	var conflict <-chan [2]uint8
+	if r.v6Logging != nil {
+		conflict = r.v6Logging.conflicts
+	}
+	var result error
+	select {
+	case sig := <-sigChan:
+		log.Printf("Received signal: %v", sig)
+	case streams := <-conflict:
+		result = logConflictError(streams)
+		log.Print(result)
+	}
 	log.Println("Shutting down gracefully...")
 	r.shutdown()
 	log.Println("Cluster stopped")
+	return result
 }
 
 func (r *clusterRuntime) shutdown() {
@@ -1715,6 +1747,12 @@ func (r *clusterRuntime) close() {
 	if r.voacapSSN != nil {
 		r.voacapSSN.Wait()
 	}
+	// Every logging destination shares one shutdown deadline. A stuck file,
+	// console, dashboard, or report worker must not hold shutdown indefinitely.
+	if r.v6Logging != nil {
+		r.closeV6Logging(time.Now().Add(2 * time.Second))
+		return
+	}
 	if r.propScheduler != nil {
 		r.propScheduler.Wait()
 	}
@@ -1732,6 +1770,38 @@ func (r *clusterRuntime) close() {
 	}
 	if r.logMux != nil {
 		r.logMux.Close()
+	}
+}
+
+func (r *clusterRuntime) closeV6Logging(deadline time.Time) {
+	var surfaceDone <-chan struct{}
+	if surface, ok := r.surface.(*v6Surface); ok {
+		surface.beginStop()
+		surfaceDone = surface.Done()
+	}
+	if r.droppedCallLogger != nil {
+		_ = r.droppedCallLogger.Close()
+	}
+	if r.eventFileLogger != nil {
+		_ = r.eventFileLogger.Close()
+	}
+	if r.propagationLog != nil {
+		_ = r.propagationLog.Close()
+	}
+	if r.rotationHook != nil {
+		r.rotationHook.close()
+	}
+	r.v6Logging.close(deadline)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
+	defer cancel()
+	if surfaceDone != nil {
+		select {
+		case <-surfaceDone:
+		case <-ctx.Done():
+		}
+	}
+	if r.propScheduler != nil {
+		r.propScheduler.WaitContext(ctx)
 	}
 }
 

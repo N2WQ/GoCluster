@@ -23,11 +23,18 @@ function Restore-FixtureInputs {
     Set-Content -LiteralPath (Join-Path $reference 'perl/Fixture.pm') -Value 'reference'
     $added = Join-Path $fixture 'new-input.pl'
     if (Test-Path -LiteralPath $added) { Remove-Item -LiteralPath $added }
+    $legacy = Join-Path $fixture 'cmd/peerdiag/main.go'
+    if (Test-Path -LiteralPath $legacy) { Remove-Item -LiteralPath $legacy }
 }
 
 function Invoke-WrapperFixture([string]$Family, [string]$Case, [string]$Reason = '') {
     Restore-FixtureInputs
     if ($Case -eq 'asset_missing') { Remove-Item -LiteralPath (Join-Path $fixture 'data/cty/cty.plist') }
+    if ($Case -eq 'legacy_helper_source') {
+        $legacy = Join-Path $fixture 'cmd/peerdiag/main.go'
+        $null = New-Item -ItemType Directory -Path (Split-Path -Parent $legacy) -Force
+        Set-Content -LiteralPath $legacy -Value 'package main // synthetic historical companion'
+    }
     $env:PC92_FIXTURE_FAMILY = $Family
     $env:PC92_FIXTURE_SCENARIO = $Case
     $label = "$Family-$Case"
@@ -56,10 +63,7 @@ function Invoke-WrapperFixture([string]$Family, [string]$Case, [string]$Reason =
         $built = ($processes | Where-Object { $_.StartsWith('build:') }).Substring(6)
         $executed = ($processes | Where-Object { $_.StartsWith('execute:') }).Substring(8)
         if ($built -cne $executed -or (Get-FileHash -LiteralPath $built).Hash -cne $verdict.executable_sha256) { throw "$label did not execute the retained binary" }
-        $helperBuilds = @($processes | Where-Object { $_.StartsWith('helper-build:') })
-        if ($helperBuilds.Count -ne 1) { throw "$label did not build exactly one companion" }
-        $helper = $helperBuilds[0].Substring(13)
-        if ($helper -cne $verdict.helper_executable -or (Get-FileHash -LiteralPath $helper).Hash -cne $verdict.helper_executable_sha256 -or (Split-Path -Parent $helper) -cne (Split-Path -Parent $built)) { throw "$label lost companion source/sibling provenance" }
+        if ($verdict.schema_version -ne 2 -or @($processes | Where-Object { $_.StartsWith('helper-build:') }).Count -ne 0 -or $verdict.PSObject.Properties.Name -contains 'helper_executable') { throw "$label unexpectedly retained a companion" }
         if ($Family -eq 'retry') {
             $cty = [IO.Path]::GetFullPath((Join-Path $fixture 'data/cty/cty.plist'))
             foreach ($manifest in @('source-before.json', 'source-after-build.json', 'source-after-run.json')) {
@@ -156,9 +160,7 @@ try {
             Invoke-WrapperFixture $family 'build_source_changed' 'source_changed_during_build'
             Invoke-WrapperFixture $family 'test_failed' 'test_failed'
             Invoke-WrapperFixture $family 'binary_changed' 'binary_changed_during_run'
-            Invoke-WrapperFixture $family 'helper_changed' 'helper_changed_during_run'
-            Invoke-WrapperFixture $family 'helper_missing' 'helper_missing_during_run'
-            Invoke-WrapperFixture $family 'helper_build_failed' 'helper_build_failed'
+            Invoke-WrapperFixture $family 'legacy_helper_source' 'legacy_helper_source_present'
         }
         Invoke-WrapperFixture $family 'missing_case' 'missing_case'
         Invoke-WrapperFixture $family 'short_duration' 'short_duration'

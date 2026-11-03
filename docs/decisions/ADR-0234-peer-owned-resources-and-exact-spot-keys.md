@@ -90,6 +90,8 @@ protocol deadline, retry policy or topology authority changes here.
 
 ## Links
 
+- [ADR-0333](ADR-0333-shared-bounded-runtime-logging.md) supersedes the peer
+  diagnostics process and retirement clauses; the other decisions remain.
 - [ADR-0237](ADR-0237-remove-console-peer-log-status.md) supersedes only the
   console peer-log status display; diagnostic ownership and accounting remain.
 - [Approved v15](../pc18-pc92-scope-ledger-v15.md)

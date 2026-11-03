@@ -871,13 +871,10 @@ try {
     $env:GOOS = "windows"
     $env:GOARCH = "amd64"
     Invoke-CheckedCommand -CommandName 'go' -Arguments @('build', '-trimpath', '-ldflags', $ldflags, '-o', $exePath, '.') -FailureMessage 'go build failed.'
-    # The companion owns peer diagnostic file I/O. It must come from the same
-    # package source and sit beside the cluster; runtime never searches PATH.
-    $peerDiagnosticExe = Join-Path $stageRoot "peerdiag.exe"
-    Invoke-CheckedCommand -CommandName 'go' -Arguments @('build', '-trimpath', '-o', $peerDiagnosticExe, './cmd/peerdiag') -FailureMessage 'peer diagnostic companion build failed.'
-    @($exePath, $peerDiagnosticExe) | ForEach-Object {
+    $manifest = @($exePath | ForEach-Object {
         [ordered]@{ file = [IO.Path]::GetFileName($_); sha256 = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash }
-    } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $stageRoot 'binaries.json')
+    })
+    ConvertTo-Json -InputObject $manifest | Set-Content -LiteralPath (Join-Path $stageRoot 'binaries.json')
 
     Compress-Archive -LiteralPath $stageRoot -DestinationPath $preparedZip
     $owner = Write-ReleaseOwnership -Paths $paths -PreparedStage $stageRoot -PreparedZip $preparedZip

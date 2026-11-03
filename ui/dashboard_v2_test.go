@@ -1,6 +1,9 @@
 package ui
 
 import (
+	"errors"
+	"io"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +12,159 @@ import (
 
 	"github.com/rivo/tview"
 )
+
+func boundedSystemTestDashboard() *DashboardV2 {
+	d := &DashboardV2{
+		eventsStream: newStreamPanelWithOptions("Events", streamPanelOptions{
+			MaxEvents: 32, MaxBytes: 1 << 20, MaxMessageBytes: 4096, EvictOnByteLimit: true,
+		}, false),
+		scheduler: newFrameScheduler(nil, 60, 50*time.Millisecond, nil),
+	}
+	d.activePage.Store("pipeline")
+	return d
+}
+
+func TestBoundedSystemWriterConstruction(t *testing.T) {
+	d := boundedSystemTestDashboard()
+	discard := func(DashboardSystemDiscard) {}
+	for _, limit := range []int{0, -1, dashboardV2MaxSystemRowBytes + 1} {
+		if _, err := d.NewBoundedSystemWriter(limit, discard); err == nil {
+			t.Fatalf("accepted invalid limit %d", limit)
+		}
+	}
+	if _, err := d.NewBoundedSystemWriter(1, nil); err == nil {
+		t.Fatal("accepted nil discard callback")
+	}
+	var nilDashboard *DashboardV2
+	if _, err := nilDashboard.NewBoundedSystemWriter(1, discard); err == nil {
+		t.Fatal("accepted nil dashboard")
+	}
+	for _, limit := range []int{1, dashboardV2MaxSystemRowBytes} {
+		w, err := d.NewBoundedSystemWriter(limit, discard)
+		if err != nil || cap(w.buf) != limit || len(w.buf) != 0 {
+			t.Fatalf("limit %d: writer=%v err=%v", limit, w, err)
+		}
+		if err := w.Close(); err != nil || w.buf != nil {
+			t.Fatalf("limit %d: close err=%v, buffer retained=%v", limit, err, w.buf != nil)
+		}
+	}
+}
+
+func TestBoundedSystemWriterSplitFramingAndOwnership(t *testing.T) {
+	input := "alpha\r\r\n\nbeta\r\ngamma\npartial"
+	for split := 0; split <= len(input); split++ {
+		d := boundedSystemTestDashboard()
+		var losses []DashboardSystemDiscard
+		w, err := d.NewBoundedSystemWriter(64, func(kind DashboardSystemDiscard) { losses = append(losses, kind) })
+		if err != nil {
+			t.Fatal(err)
+		}
+		first := []byte(input[:split])
+		if n, err := w.Write(first); err != nil || n != len(first) {
+			t.Fatalf("split %d first write = %d, %v", split, n, err)
+		}
+		for i := range first {
+			first[i] = 'X'
+		}
+		if n, err := w.Write([]byte(input[split:])); err != nil || n != len(input)-split {
+			t.Fatalf("split %d second write = %d, %v", split, n, err)
+		}
+		if got, want := d.eventsStream.view.allRowsLocked(), []string{"alpha", "", "beta", "gamma"}; !slices.Equal(got, want) {
+			t.Fatalf("split %d rows = %#v, want %#v", split, got, want)
+		}
+		if err := w.Close(); err != nil || !slices.Equal(losses, []DashboardSystemDiscard{DashboardSystemIncompleteRow}) {
+			t.Fatalf("split %d close: losses=%v err=%v", split, losses, err)
+		}
+		if err := w.Close(); err != nil || len(losses) != 1 || w.buf != nil {
+			t.Fatalf("split %d repeated close: losses=%v err=%v", split, losses, err)
+		}
+		if n, err := w.Write([]byte("late\n")); n != 0 || !errors.Is(err, io.ErrClosedPipe) {
+			t.Fatalf("split %d closed write = %d, %v", split, n, err)
+		}
+	}
+}
+
+func TestBoundedSystemWriterOversizeAndRecovery(t *testing.T) {
+	d := boundedSystemTestDashboard()
+	var losses []DashboardSystemDiscard
+	w, err := d.NewBoundedSystemWriter(4, func(kind DashboardSystemDiscard) { losses = append(losses, kind) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		if _, err := w.Write([]byte("x")); err != nil {
+			t.Fatal(err)
+		}
+		if len(w.buf) > 4 || cap(w.buf) != 4 {
+			t.Fatalf("fragment %d: len=%d cap=%d", i, len(w.buf), cap(w.buf))
+		}
+	}
+	if !slices.Equal(losses, []DashboardSystemDiscard{DashboardSystemOversizedRow}) {
+		t.Fatalf("overflow losses = %v", losses)
+	}
+	_, _ = w.Write([]byte("\r\nok\n1234\n1234\r\nlast"))
+	if got, want := d.eventsStream.view.allRowsLocked(), []string{"ok", "1234"}; !slices.Equal(got, want) {
+		t.Fatalf("rows = %#v, want %#v", got, want)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	wantLosses := []DashboardSystemDiscard{DashboardSystemOversizedRow, DashboardSystemOversizedRow, DashboardSystemIncompleteRow}
+	if !slices.Equal(losses, wantLosses) {
+		t.Fatalf("losses = %v, want %v", losses, wantLosses)
+	}
+}
+
+func TestBoundedSystemWriterGapDoesNotSpliceOrDoubleCount(t *testing.T) {
+	d := boundedSystemTestDashboard()
+	var losses []DashboardSystemDiscard
+	w, err := d.NewBoundedSystemWriter(4, func(kind DashboardSystemDiscard) { losses = append(losses, kind) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte("abc"))
+	w.MarkGap() // A rejected "DEF" is counted by the caller.
+	w.MarkGap()
+	_, _ = w.Write([]byte("ghi\nok\n"))
+	if got, want := d.eventsStream.view.allRowsLocked(), []string{"ok"}; !slices.Equal(got, want) {
+		t.Fatalf("rows across gap = %#v, want %#v", got, want)
+	}
+	if !slices.Equal(losses, []DashboardSystemDiscard{DashboardSystemGapRowsUnknown}) {
+		t.Fatalf("gap losses = %v", losses)
+	}
+	_, _ = w.Write([]byte("12345"))
+	w.MarkGap() // The overflowing row was already counted as one known loss.
+	_, _ = w.Write([]byte("tail\nend\n"))
+	w.MarkGap()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	wantLosses := []DashboardSystemDiscard{DashboardSystemGapRowsUnknown, DashboardSystemOversizedRow, DashboardSystemGapRowsUnknown}
+	if !slices.Equal(losses, wantLosses) {
+		t.Fatalf("gap and overflow losses = %v, want %v", losses, wantLosses)
+	}
+	if got, want := d.eventsStream.view.allRowsLocked(), []string{"ok", "end"}; !slices.Equal(got, want) {
+		t.Fatalf("recovered rows = %#v, want %#v", got, want)
+	}
+}
+
+func TestBoundedSystemWriterUsesDashboardTruncation(t *testing.T) {
+	d := boundedSystemTestDashboard()
+	var losses []DashboardSystemDiscard
+	w, err := d.NewBoundedSystemWriter(8192, func(kind DashboardSystemDiscard) { losses = append(losses, kind) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = w.Write([]byte(strings.Repeat("x", 4097) + "\n"))
+	want := strings.Repeat("x", 4081) + "... [truncated]"
+	if got := d.eventsStream.view.allRowsLocked(); !slices.Equal(got, []string{want}) {
+		t.Fatal("dashboard did not retain its configured truncation")
+	}
+	if d.eventsStream.view.truncated != 1 || len(losses) != 0 {
+		t.Fatalf("truncated=%d losses=%v", d.eventsStream.view.truncated, losses)
+	}
+	_ = w.Close()
+}
 
 func TestStreamPanelOverflow(t *testing.T) {
 	panel := newStreamPanel("Corrected", 2, true)
@@ -317,6 +473,62 @@ func TestAppendStreamBuffersWhileHiddenButDoesNotSchedule(t *testing.T) {
 	d.AppendSystem("sys visible")
 	if batch := d.scheduler.collectBatch(); len(batch) != 1 {
 		t.Fatalf("expected one scheduled draw for active page, got %d callbacks", len(batch))
+	}
+}
+
+func TestDashboardLifecycleWitnessesReadinessAndTermination(t *testing.T) {
+	ready, runDone := make(chan struct{}), make(chan struct{})
+	d := &DashboardV2{ready: ready, runDone: runDone}
+	close(runDone)
+	if d.WaitReadyStatus() {
+		t.Fatal("application exit before first draw appeared ready")
+	}
+
+	ready, runDone = make(chan struct{}), make(chan struct{})
+	schedulerDone := make(chan struct{})
+	d = &DashboardV2{ready: ready, runDone: runDone, scheduler: &frameScheduler{done: schedulerDone}}
+	d.wg.Add(1)
+	close(ready)
+	if !d.WaitReadyStatus() {
+		t.Fatal("first draw was not recognized")
+	}
+	finished := make(chan struct{})
+	go func() { d.WaitStopped(); close(finished) }()
+	close(runDone)
+	select {
+	case <-finished:
+		t.Fatal("application exit alone falsely proved scheduler retirement")
+	default:
+	}
+	close(schedulerDone)
+	select {
+	case <-finished:
+		t.Fatal("scheduler and app exit alone falsely proved dashboard worker retirement")
+	default:
+	}
+	d.wg.Done()
+	select {
+	case <-finished:
+	case <-time.After(time.Second):
+		t.Fatal("retirement was not observed after both workers returned")
+	}
+}
+
+func TestDashboardDroppedAndReputationFilters(t *testing.T) {
+	d := &DashboardV2{
+		ingestValidation: newStreamPanel("Validation", 10, true),
+		eventsStream:     newStreamPanel("Events", 10, false),
+		scheduler:        newFrameScheduler(nil, 60, 50*time.Millisecond, nil),
+	}
+	d.AppendDropped("other drop must not appear")
+	d.AppendDropped("CTY drop: accepted")
+	d.AppendReputation("reputation must not appear")
+	got := d.ingestValidation.SnapshotText()
+	if !strings.Contains(got, "CTY drop: accepted") || strings.Contains(got, "other drop") {
+		t.Fatalf("validation pane routing changed: %q", got)
+	}
+	if strings.Contains(d.eventsStream.SnapshotText(), "reputation must not appear") {
+		t.Fatal("reputation no-op acquired a display route")
 	}
 }
 

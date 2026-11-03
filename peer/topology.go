@@ -89,7 +89,7 @@ func ensurePeerNodesSchema(db *topologyDatabase) error {
 }
 
 // applyLegacy retains the latest diagnostic of each legacy family. Errors are
-// returned to the manager's bounded diagnostic mailbox, never logged inline.
+// returned to the manager's bounded diagnostic producer, never written inline.
 func (t *topologyStore) applyLegacy(parent context.Context, frame *Frame, now time.Time) error {
 	if t == nil || frame == nil {
 		return nil

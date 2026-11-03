@@ -8,6 +8,23 @@ do not qualify the current source. Finish docs/maps before capture and retain
 raw-byte source identity with outside-checkout evidence; acceptance remains open
 until the complete fresh bundle passes.
 
+Fresh qualification run receipts use schema 2 and attest the single retained
+test executable. The finalizer still verifies the sibling companion and its hash
+for historical schema 1 receipts; changing a receipt version cannot remove that
+requirement for a source tree containing the companion program. Historical
+results remain tied to their original source and do not qualify the new logger.
+V15-08 explicitly describes the former companion and must not be claimed as a
+literal pass for the replacement. Current release qualification stays open until
+a source-bound mapping and current workload evidence establish the peer memory
+and operation obligations with the common logger. Historical V15-08 records
+and their verification requirements are retained.
+
+The approved peer diagnostic allowance is 4 MiB, but the current logger has
+not yet established or reported a complete live-memory charge. The historical
+qualification gates still enforce 3 MiB and reject an unavailable charge or a
+charge above that amount. Do not claim the 32 MiB metadata partition or 480 MiB
+overall qualification until a revised accounting is proved.
+
 **Current authority:** [approved v15](pc18-pc92-scope-ledger-v15.md) consolidates
 the demonstrated shared-dedupe corrections, measured latency work and remaining
 context/diagnostic/SQLite ownership proofs. Its

@@ -4,44 +4,33 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"dxcluster/internal/peerdiag"
 )
 
-// Tests consume the concrete mailbox independently. No callback or test hook is
-// installed in any production actor; the polling observer owns its own join.
+// Tests observe records after admission through the common logger queue.
 func observeConnectionEvents(t *testing.T, m *Manager, observe func(ConnectionEvent)) {
 	t.Helper()
 	observeTimedConnectionEvents(t, m, func(event ConnectionEvent, _ time.Time) { observe(event) })
 }
 
-// The timestamp belongs to the producer's immutable mailbox record. Polling or
+// The timestamp belongs to the producer's immutable diagnostic record. Polling or
 // callback delay must not become the clock for retry/phase measurements.
 func observeTimedConnectionEvents(t *testing.T, m *Manager, observe func(ConnectionEvent, time.Time)) {
 	t.Helper()
-	m.diagnostics = peerdiag.New(peerdiag.Options{Enabled: true})
-	t.Cleanup(m.diagnostics.Stop)
+	service, events, _ := newDiagnosticTestService(t, true, false)
+	m.diagnostics = service
 	stop, done := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(time.Millisecond)
-		defer ticker.Stop()
 		for {
 			select {
 			case <-stop:
 				return
-			case <-ticker.C:
-			}
-			for {
-				event, ok := m.diagnostics.Next()
-				if !ok {
-					break
-				}
-				if event.Kind != peerdiag.Connection {
+			case event := <-events:
+				if !strings.HasPrefix(event.line, "event=peer_connection ") {
 					continue
 				}
 				var value ConnectionEvent
-				for _, field := range strings.Fields(string(event.Data[:event.Length])) {
+				for _, field := range strings.Fields(event.line) {
 					key, text, ok := strings.Cut(field, "=")
 					if !ok {
 						continue
@@ -59,7 +48,7 @@ func observeTimedConnectionEvents(t *testing.T, m *Manager, observe func(Connect
 						value.Reason = text
 					}
 				}
-				observe(value, time.Unix(0, event.UnixNano).UTC())
+				observe(value, event.at)
 			}
 		}
 	}()

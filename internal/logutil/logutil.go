@@ -9,6 +9,9 @@ import (
 
 const DailyArchiveDateLayout = "02-Jan-2006"
 
+// PeerOverlongPath is the fixed size-rotated peer diagnostic destination.
+const PeerOverlongPath = "logs/peering_overlong.log"
+
 // SafePrintf calls logger.Printf when logger is non-nil.
 func SafePrintf(logger interface{ Printf(string, ...any) }, format string, args ...any) {
 	if logger == nil {

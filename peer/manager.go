@@ -58,13 +58,17 @@ type Manager struct {
 	cancel              context.CancelFunc
 	listener            net.Listener
 
-	legacyCh                   chan legacyWork
-	rawBroadcast               func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
-	wwvBroadcast               func(kind, line string, receivedAt time.Time)
-	announceBroadcast          func(line string)
-	directMessage              func(to, line string)
-	reconnects                 atomic.Uint64
+	legacyCh          chan legacyWork
+	rawBroadcast      func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
+	wwvBroadcast      func(kind, line string, receivedAt time.Time)
+	announceBroadcast func(line string)
+	directMessage     func(to, line string)
+	reconnects        atomic.Uint64
+	// Active diagnostic borrows use this lock until the logger Service is
+	// detached. After Stop, the pointer-free summary belongs to this Manager.
+	diagnosticsMu              sync.RWMutex
 	diagnostics                *peerdiag.Service
+	retiredDiagnostics         peerdiag.Retired
 	protocol                   *protocolController
 	bulletinDedupe             *dedupeCache
 	candidates                 *boundedIndex[*session, *candidateState]
@@ -277,7 +281,12 @@ func (m *Manager) Stop() {
 		}
 		m.wg.Wait()
 		m.stopContextOwners()
-		m.diagnostics.Stop()
+		// Prevent new borrows and join every Manager-side diagnostic call before
+		// dropping the logger-owned Service. The retired value holds no pointers.
+		m.diagnosticsMu.Lock()
+		m.retiredDiagnostics = m.diagnostics.Retire()
+		m.diagnostics = nil
+		m.diagnosticsMu.Unlock()
 		if m.protocol != nil {
 			m.protocol.drainQueuedProjections()
 		}
@@ -382,9 +391,14 @@ func (m *Manager) ingestSpot(s *spot.Spot) bool {
 }
 
 // reportBadCallParseDrop emits fixed metadata; detailed records are owned by
-// the isolated peer diagnostic process and never call shared UI/log callbacks.
+// the common bounded logger and never call UI or filesystem operations.
 func (m *Manager) reportBadCallParseDrop(frame *Frame, sess *session, err error) {
-	if m == nil || m.diagnostics == nil || frame == nil || err == nil {
+	if m == nil || frame == nil || err == nil {
+		return
+	}
+	m.diagnosticsMu.RLock()
+	defer m.diagnosticsMu.RUnlock()
+	if m.diagnostics == nil {
 		return
 	}
 	fields := frame.payloadFields()
@@ -471,24 +485,39 @@ func (m *Manager) SetRawBroadcast(fn func(string)) {
 }
 
 func (m *Manager) reportConnection(ev ConnectionEvent) {
-	if m == nil || m.diagnostics == nil {
+	if m == nil {
+		return
+	}
+	m.diagnosticsMu.RLock()
+	defer m.diagnosticsMu.RUnlock()
+	if m.diagnostics == nil {
 		return
 	}
 	m.diagnostics.Emit(peerdiag.Connection, peerdiag.Fields{Direction: ev.Direction, Action: ev.Action, Peer: ev.Peer, Endpoint: ev.Endpoint, Reason: ev.Reason})
 }
 
-// reportDiagnostic accepts only borrowed primitive values. The mailbox reserves its
-// fixed record before sanitizing/copying; no actor formats an arbitrary error.
+// reportDiagnostic accepts only borrowed primitive values. The peer producer
+// sanitizes them into bounded shared logger records without formatting errors.
 func (m *Manager) reportDiagnostic(action, peer, reason string) {
-	if m == nil || m.diagnostics == nil {
+	if m == nil {
+		return
+	}
+	m.diagnosticsMu.RLock()
+	defer m.diagnosticsMu.RUnlock()
+	if m.diagnostics == nil {
 		return
 	}
 	m.diagnostics.Emit(peerdiag.Diagnostic, peerdiag.Fields{Action: action, Peer: peer, Reason: reason})
 }
 
 func (m *Manager) DiagnosticStats() peerdiag.Stats {
-	if m == nil || m.diagnostics == nil {
+	if m == nil {
 		return peerdiag.Stats{Disabled: true}
+	}
+	m.diagnosticsMu.RLock()
+	defer m.diagnosticsMu.RUnlock()
+	if m.diagnostics == nil {
+		return m.retiredDiagnostics.Snapshot()
 	}
 	return m.diagnostics.Snapshot()
 }

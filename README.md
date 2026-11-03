@@ -935,8 +935,9 @@ other arguments, preserving the existing version behavior.
 Use the [logs and health guide](docs/OPERATOR_GUIDE.md#logs-and-health) and
 [logging configuration reference](data/config/README.md) for file locations,
 retention, and enabled event logs. Path diagnostics use the propagation log.
-Keep the `peerdiag` companion beside the cluster executable for detailed peer
-diagnostics; see [peer operations](peer/README.md#diagnostics-and-persistence).
+The cluster executable writes peer diagnostics using the same asynchronous
+logging as the other categories; see [peer operations](peer/README.md#diagnostics-and-persistence).
+Logs are disposable and records can be lost without a warning.
 
 ## Repo Layout
 

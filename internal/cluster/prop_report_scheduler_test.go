@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"log"
+	"sync"
 	"testing"
 	"time"
 )
@@ -12,6 +13,114 @@ type stubReportRunner struct {
 	started chan propReportJob
 	block   chan struct{}
 	err     error
+}
+
+type stuckReportRunner struct{ started, release chan struct{} }
+
+func (r *stuckReportRunner) Run(context.Context, propReportJob) error {
+	close(r.started)
+	<-r.release
+	return nil
+}
+
+func TestPropReportSchedulerRetainsStuckWorkerAcrossRestart(t *testing.T) {
+	runner := &stuckReportRunner{started: make(chan struct{}), release: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	var release sync.Once
+	defer func() { cancel(); release.Do(func() { close(runner.release) }) }()
+	s := newPropReportScheduler(runner, nil, time.Minute)
+	if !s.Start(ctx) {
+		t.Fatal("initial worker not started")
+	}
+	if !s.Enqueue(propReportJob{Date: time.Now()}) {
+		t.Fatal("job rejected")
+	}
+	select {
+	case <-runner.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runner did not start")
+	}
+	cancel()
+	waitCtx, stopWait := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer stopWait()
+	if s.WaitContext(waitCtx) {
+		t.Fatal("blocked runner reported retired")
+	}
+	replacement := newPropReportScheduler(&stubReportRunner{}, nil, time.Second)
+	if replacement.Start(context.Background()) {
+		t.Fatal("replacement started while old runner remained blocked")
+	}
+	if replacement.Enqueue(propReportJob{Date: time.Now()}) {
+		t.Fatal("rejected scheduler accepted a job")
+	}
+	if !replacement.WaitContext(context.Background()) {
+		t.Fatal("unstarted scheduler did not retire")
+	}
+	release.Do(func() { close(runner.release) })
+	finishCtx, finish := context.WithTimeout(context.Background(), 5*time.Second)
+	defer finish()
+	if !s.WaitContext(finishCtx) {
+		t.Fatal("old worker did not retire")
+	}
+	newCtx, cancelNew := context.WithCancel(context.Background())
+	newScheduler := newPropReportScheduler(&stubReportRunner{}, nil, time.Second)
+	if !newScheduler.Start(newCtx) {
+		t.Fatal("replacement refused after confirmed retirement")
+	}
+	cancelNew()
+	if !newScheduler.WaitContext(finishCtx) {
+		t.Fatal("replacement did not retire")
+	}
+}
+
+func TestPropReportSchedulerConcurrentStartAndWait(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	s := newPropReportScheduler(&stubReportRunner{}, nil, time.Second)
+	const attempts = 8
+	results := make(chan bool, attempts)
+	var wg sync.WaitGroup
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); results <- s.Start(ctx) }()
+	}
+	wg.Wait()
+	close(results)
+	starts := 0
+	for started := range results {
+		if started {
+			starts++
+		}
+	}
+	if starts != 1 {
+		t.Fatalf("successful starts = %d", starts)
+	}
+	cancel()
+	for i := 0; i < attempts; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if !s.WaitContext(context.Background()) {
+				t.Error("wait failed")
+			}
+		}()
+	}
+	wg.Wait()
+}
+
+func TestPropReportSchedulerWaitBeforeStartPreventsLaterStart(t *testing.T) {
+	s := newPropReportScheduler(&stubReportRunner{}, nil, time.Second)
+	if !s.WaitContext(context.Background()) {
+		t.Fatal("unstarted scheduler did not retire")
+	}
+	if s.Start(context.Background()) {
+		t.Fatal("retired scheduler started later")
+	}
+	if s.Enqueue(propReportJob{Date: time.Now()}) {
+		t.Fatal("retired scheduler accepted a job")
+	}
+	if !s.WaitContext(context.Background()) {
+		t.Fatal("repeated wait did not return")
+	}
 }
 
 func (s *stubReportRunner) Run(ctx context.Context, job propReportJob) error {
@@ -35,7 +144,7 @@ func TestPropReportSchedulerSkipsDuplicate(t *testing.T) {
 		block:   make(chan struct{}),
 	}
 	logger := log.New(io.Discard, "", 0)
-	scheduler := newPropReportScheduler(true, runner, logger, 250*time.Millisecond)
+	scheduler := newPropReportScheduler(runner, logger, 250*time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	scheduler.Start(ctx)
@@ -63,7 +172,7 @@ func TestPropReportSchedulerSkipsDuplicate(t *testing.T) {
 func TestPropReportSchedulerDropsWhenQueueFull(t *testing.T) {
 	runner := &stubReportRunner{}
 	logger := log.New(io.Discard, "", 0)
-	scheduler := newPropReportScheduler(true, runner, logger, 250*time.Millisecond)
+	scheduler := newPropReportScheduler(runner, logger, 250*time.Millisecond)
 
 	job1 := propReportJob{Date: time.Date(2026, time.January, 24, 0, 0, 0, 0, time.UTC), LogPath: "data/logs/24-Jan-2026.log"}
 	job2 := propReportJob{Date: time.Date(2026, time.January, 25, 0, 0, 0, 0, time.UTC), LogPath: "data/logs/25-Jan-2026.log"}

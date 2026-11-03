@@ -39,7 +39,8 @@ Required run IDs are `runtime/q1`, `runtime/q2`, `runtime/q3`,
 `cache/cache-memory`, `cache/cache-sustained` and `retry/qualification`.
 Diagnostic and preflight runs cannot substitute for them. Keep each complete
 directory, including verdict, log, observations when applicable, three source
-manifests, test executable and sibling `peerdiag.exe`.
+manifests and test executable. Historical schema 1 receipts also require the
+original sibling `peerdiag.exe`; current schema 2 receipts do not.
 
 Q6 also records named absolute `reference_root` and `perl_executable` paths,
 plus `perl_library` and `reference_dll_directory` (empty strings if unused).

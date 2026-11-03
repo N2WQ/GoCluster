@@ -124,13 +124,20 @@ function Assert-PC92FinalRun([string]$Directory, [string]$ID, [string]$Root, [st
         Add-PC92FinalArtifact ([pscustomobject]@{ path = $manifestPath; sha256 = (Get-FileHash -LiteralPath $manifestPath).Hash }) $Closure
         if ((Get-Content -LiteralPath $manifestPath -Raw).Trim() -cne $current) { throw "run_source_changed: $ID/$name" }
     }
-    # The test and helper must still be the retained sibling pair. Paths to
-    # another run's binary are not accepted even when hashes happen to match.
+    # Historical v1 evidence requires the actual sibling helper and its hash.
+    # V2 is valid only for sources that no longer contain the helper program;
+    # changing an old receipt's schema cannot waive its companion evidence.
     $binary = Join-Path $Directory ($parts[0] + '.test.exe')
-    $helper = Join-Path $Directory 'peerdiag.exe'
-    if ($run.executable -cne $binary -or $run.helper_executable -cne $helper) { throw "run_binary_path_mismatch: $ID" }
+    if (($run.schema_version -isnot [int] -and $run.schema_version -isnot [long]) -or $run.schema_version -notin @(1, 2)) { throw "invalid_run_schema: $ID" }
+    if ($run.executable -cne $binary) { throw "run_binary_path_mismatch: $ID" }
     Add-PC92FinalArtifact ([pscustomobject]@{ path = $binary; sha256 = $run.executable_sha256 }) $Closure
-    Add-PC92FinalArtifact ([pscustomobject]@{ path = $helper; sha256 = $run.helper_executable_sha256 }) $Closure
+    if ($run.schema_version -eq 1) {
+        $helper = Join-Path $Directory 'peerdiag.exe'
+        if ($run.helper_executable -cne $helper) { throw "run_binary_path_mismatch: $ID" }
+        Add-PC92FinalArtifact ([pscustomobject]@{ path = $helper; sha256 = $run.helper_executable_sha256 }) $Closure
+    } elseif (Test-Path -LiteralPath (Join-Path $Root 'cmd/peerdiag/main.go') -PathType Leaf) {
+        throw "run_schema_source_mismatch: $ID"
+    }
     $log = Join-Path $Directory 'test.log'
     Add-PC92FinalArtifact ([pscustomobject]@{ path = $log; sha256 = $run.test_log_sha256 }) $Closure
     $observation = Join-Path $Directory 'observations.json'

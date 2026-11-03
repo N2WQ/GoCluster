@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"dxcluster/config"
+	"dxcluster/internal/asynclog"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -81,6 +82,10 @@ type DashboardV2 struct {
 	wg     sync.WaitGroup
 
 	ready chan struct{}
+	// runDone closes only when the application goroutine has actually returned.
+	// Stop may time out waiting for the scheduler, so its return alone is not a
+	// witness that a dashboard generation can safely be replaced.
+	runDone chan struct{}
 
 	snapshot   atomic.Pointer[dashboardSnapshot]
 	statsMu    sync.Mutex
@@ -142,6 +147,12 @@ type DashboardV2 struct {
 
 // NewDashboardV2 constructs the v2 dashboard if enabled.
 func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
+	return newDashboardV2(cfg, enable, nil)
+}
+
+// An injected screen is used by build-tagged integration tests. Production
+// keeps tview's normal terminal selection by passing nil.
+func newDashboardV2(cfg config.UIConfig, enable bool, screen tcell.Screen) *DashboardV2 {
 	if !enable {
 		return nil
 	}
@@ -149,6 +160,9 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	// Stop calls the retained cancel function; the returned dashboard owns that lifecycle.
 	ctx, cancel := context.WithCancel(context.Background())
 	app := tview.NewApplication().EnableMouse(cfg.V2.EnableMouse)
+	if screen != nil {
+		app.SetScreen(screen)
+	}
 	pages := tview.NewPages()
 	ready := make(chan struct{})
 	var once sync.Once
@@ -164,6 +178,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 		ctx:                    ctx,
 		cancel:                 cancel,
 		ready:                  ready,
+		runDone:                make(chan struct{}),
 		pageOrder:              cfg.V2.Pages,
 		metrics:                metrics,
 		pagePresent:            make(map[string]bool),
@@ -280,6 +295,7 @@ func NewDashboardV2(cfg config.UIConfig, enable bool) *DashboardV2 {
 	d.installRoot()
 
 	go func() {
+		defer close(d.runDone)
 		if err := app.Run(); err != nil {
 			log.Printf("UI: tview-v2 error: %v", err)
 		}
@@ -516,10 +532,52 @@ func (d *DashboardV2) cyclePage(delta int) {
 }
 
 func (d *DashboardV2) WaitReady() {
+	_ = d.WaitReadyStatus()
+}
+
+// WaitReadyStatus distinguishes a first draw from an application that exited
+// before drawing. The caller owns any deadline and retains the dashboard if
+// terminal work has not actually returned.
+func (d *DashboardV2) WaitReadyStatus() bool {
 	if d == nil || d.ready == nil {
+		return false
+	}
+	if d.runDone == nil {
+		<-d.ready
+		return true
+	}
+	select {
+	case <-d.runDone:
+		return false
+	default:
+	}
+	select {
+	case <-d.ready:
+		select {
+		case <-d.runDone:
+			return false
+		default:
+			return true
+		}
+	case <-d.runDone:
+		return false
+	}
+}
+
+// WaitStopped witnesses the scheduler, application, and dashboard-owned
+// goroutines, not just the time-bounded return from Stop. It may block; the
+// lifecycle owner must retain the dashboard until it returns.
+func (d *DashboardV2) WaitStopped() {
+	if d == nil {
 		return
 	}
-	<-d.ready
+	if d.scheduler != nil {
+		<-d.scheduler.done
+	}
+	if d.runDone != nil {
+		<-d.runDone
+	}
+	d.wg.Wait()
 }
 
 func (d *DashboardV2) Stop() {
@@ -772,6 +830,125 @@ func (d *DashboardV2) SystemWriter() io.Writer {
 		return nil
 	}
 	return &dashboardV2LineWriter{append: d.AppendSystem}
+}
+
+// DashboardSystemDiscard describes a row lost by a bounded system writer.
+type DashboardSystemDiscard uint8
+
+const (
+	DashboardSystemOversizedRow DashboardSystemDiscard = iota + 1
+	DashboardSystemIncompleteRow
+	DashboardSystemGapRowsUnknown
+)
+
+const dashboardV2MaxSystemRowBytes = asynclog.MaxMessageBytes
+
+// DashboardV2BoundedSystemWriter stages at most one bounded, incomplete row.
+// Its owner must serialize Write, MarkGap, and Close, including their callbacks.
+// The owner must reserve its buffer and temporary row copies before construction
+// and keep that backing charged until the writer and its callbacks have retired.
+type DashboardV2BoundedSystemWriter struct {
+	dashboard   *DashboardV2
+	onDiscard   func(DashboardSystemDiscard)
+	buf         []byte
+	discard     DashboardSystemDiscard
+	gapReported bool
+	closed      bool
+}
+
+// NewBoundedSystemWriter creates a logger-owned writer after its caller has
+// reserved maxRowBytes of staging and the accompanying writer/callback backing.
+// The limit counts bytes before trailing carriage returns are removed.
+func (d *DashboardV2) NewBoundedSystemWriter(maxRowBytes int, onDiscard func(DashboardSystemDiscard)) (*DashboardV2BoundedSystemWriter, error) {
+	if d == nil || onDiscard == nil || maxRowBytes < 1 || maxRowBytes > dashboardV2MaxSystemRowBytes {
+		return nil, fmt.Errorf("invalid bounded dashboard system writer configuration")
+	}
+	return &DashboardV2BoundedSystemWriter{
+		dashboard: d,
+		onDiscard: onDiscard,
+		buf:       make([]byte, 0, maxRowBytes),
+	}, nil
+}
+
+// Write borrows p only for the duration of the call. The callback and display
+// delivery run synchronously without an internal lock held by the writer.
+func (w *DashboardV2BoundedSystemWriter) Write(p []byte) (int, error) {
+	if w == nil || w.closed {
+		return 0, io.ErrClosedPipe
+	}
+	n := len(p)
+	for len(p) > 0 {
+		idx := bytes.IndexByte(p, '\n')
+		if w.discard != 0 {
+			if w.discard == DashboardSystemGapRowsUnknown && !w.gapReported {
+				w.gapReported = true
+				w.onDiscard(DashboardSystemGapRowsUnknown)
+			}
+			if idx < 0 {
+				break
+			}
+			p = p[idx+1:]
+			w.discard = 0
+			w.gapReported = false
+			continue
+		}
+		fragment := p
+		if idx >= 0 {
+			fragment = p[:idx]
+		}
+		if len(fragment) > cap(w.buf)-len(w.buf) {
+			w.buf = w.buf[:0]
+			w.discard = DashboardSystemOversizedRow
+			w.onDiscard(DashboardSystemOversizedRow)
+			if idx < 0 {
+				break
+			}
+			p = p[idx+1:]
+			w.discard = 0
+			continue
+		}
+		w.buf = append(w.buf, fragment...)
+		if idx < 0 {
+			break
+		}
+		line := string(bytes.TrimRight(w.buf, "\r"))
+		w.buf = w.buf[:0]
+		w.dashboard.AppendSystem(line)
+		p = p[idx+1:]
+	}
+	return n, nil
+}
+
+// MarkGap invalidates any incomplete row and resynchronizes after the next LF.
+// Already displayed rows cannot be recalled. A caller must record the rejected
+// input separately; the callback identifies only possible additional row loss.
+func (w *DashboardV2BoundedSystemWriter) MarkGap() {
+	if w == nil || w.closed {
+		return
+	}
+	if len(w.buf) > 0 && !w.gapReported {
+		w.gapReported = true
+		w.onDiscard(DashboardSystemGapRowsUnknown)
+	}
+	w.buf = w.buf[:0]
+	w.discard = DashboardSystemGapRowsUnknown
+}
+
+// Close drops one valid unfinished row and releases the writer's fixed buffer.
+// Oversized or gap-discarded rows have already been accounted for separately.
+func (w *DashboardV2BoundedSystemWriter) Close() error {
+	if w == nil || w.closed {
+		return nil
+	}
+	incomplete := w.discard == 0 && len(w.buf) != 0
+	w.closed = true
+	w.buf = nil
+	w.dashboard = nil
+	if incomplete {
+		w.onDiscard(DashboardSystemIncompleteRow)
+	}
+	w.onDiscard = nil
+	return nil
 }
 
 func newBoxedTextView(title string) *tview.TextView {

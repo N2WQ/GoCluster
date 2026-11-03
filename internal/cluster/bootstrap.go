@@ -263,24 +263,39 @@ func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
 
 // Run is the live-binary entrypoint behind the root package main wrapper.
 // It preserves the existing configuration load, startup, and shutdown flow.
-func Run(versionInfo BuildInfo) error {
+func Run(versionInfo BuildInfo) (runErr error) {
 	currentBuildInfo = versionInfo
+	logging, err := newV6LogRuntime(os.Stderr)
+	if err != nil {
+		return err
+	}
+	log.SetFlags(0)
+	log.SetOutput(&sharedProcessLogRouter)
+	var cluster *clusterRuntime
+	defer func() {
+		if runErr != nil {
+			logging.startupFailure(fmt.Sprintf("Startup failed: %v", runErr))
+		}
+		if cluster != nil {
+			cluster.close()
+		}
+		logging.close(time.Now().Add(2 * time.Second))
+	}()
 	cfg, configSource, diagnostics, err := loadClusterConfig()
 	if err != nil {
 		logStartupConfigDiagnosticsFallback(diagnostics)
 		return err
 	}
 	applyGoRuntimeTuning(cfg.GoRuntime)
-	runtime := newClusterRuntime(versionInfo, cfg, configSource, diagnostics)
-	defer runtime.close()
-	if !runtime.initialize() {
-		if runtime.startupErr != nil {
-			return runtime.startupErr
+	cluster = newClusterRuntime(versionInfo, cfg, configSource, diagnostics)
+	cluster.v6Logging = logging
+	if !cluster.initialize() {
+		if cluster.startupErr != nil {
+			return cluster.startupErr
 		}
 		return fmt.Errorf("cluster startup aborted")
 	}
-	runtime.waitForShutdown()
-	return nil
+	return cluster.waitForShutdown()
 }
 
 // Purpose: Build a reporter callback for unlicensed drops.
@@ -661,7 +676,10 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, voacapFallback voacapFallbackSnapshotProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, humanTelnetFeeds []humanTelnetFeed, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
+func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, voacapFallback voacapFallbackSnapshotProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, humanTelnetFeeds []humanTelnetFeed, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
+	if ctx.Err() != nil {
+		return
+	}
 	if interval <= 0 {
 		interval = 30 * time.Second
 	}
@@ -673,7 +691,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 	var prevPathOnly pathOnlySnapshot
 	var fccSnap *fccSnapshot
 	if !uls.RefreshInProgress() {
-		fccSnap = loadFCCSnapshot(fccDBPath)
+		fccSnap = loadFCCSnapshot(ctx, fccDBPath)
 	}
 	gcWindow := &gcPauseWindow{}
 	{
@@ -682,7 +700,12 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		_, _, _ = gcWindow.snapshot(&mem)
 	}
 
-	for range ticker.C {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 		var mem runtime.MemStats
 		runtime.ReadMemStats(&mem)
 		gcP99, gcCount, _ := gcWindow.snapshot(&mem)
@@ -694,7 +717,7 @@ func displayStatsWithFCC(interval time.Duration, tracker *stats.Tracker, ingestS
 		// Refresh FCC snapshot each interval to reflect completed downloads/builds.
 		// Skip reads while a refresh/swap is active to avoid holding the DB open.
 		if !uls.RefreshInProgress() {
-			fccSnap = loadFCCSnapshot(fccDBPath)
+			fccSnap = loadFCCSnapshot(ctx, fccDBPath)
 		}
 
 		sourceTotals := tracker.GetSourceCounts()
@@ -2769,10 +2792,10 @@ func sleepWithContext(ctx context.Context, d time.Duration) bool {
 
 // Purpose: Enqueue daily propagation reports on a fixed UTC schedule.
 // Key aspects: Uses configured refresh time, skips when logging is disabled, and
-// verifies the prior-day log file exists before enqueueing.
+// submits the prior-day archive for the bounded report worker to read.
 // Upstream: main prop-report initialization.
 // Downstream: nextDailyUTC, propReportScheduler.Enqueue.
-func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportConfig, logCfg config.PropagationLoggingConfig, scheduler *propReportScheduler) {
+func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportConfig, logCfg config.PropagationLoggingConfig, scheduler *propReportScheduler, hook *propRotationHook) {
 	if scheduler == nil || !cfg.Enabled {
 		return
 	}
@@ -2793,21 +2816,30 @@ func startPropReportDailyScheduler(ctx context.Context, cfg config.PropReportCon
 			}
 			now := time.Now().UTC()
 			reportDate := dateOnly(now).AddDate(0, 0, -1)
-			logPath := filepath.Join(logDir, logFileNameForDate(reportDate))
-			if _, err := os.Stat(logPath); err != nil {
-				if os.IsNotExist(err) {
-					log.Printf("Prop report skip: log file missing for %s (%s)", reportDate.Format("2006-01-02"), logPath)
-				} else {
-					log.Printf("Prop report skip: log file stat failed for %s (%s): %v", reportDate.Format("2006-01-02"), logPath, err)
-				}
-				continue
+			root := hook.reportRoot()
+			if root != nil {
+				enqueueDailyPropReportInRoot(scheduler, logDir, reportDate, root)
 			}
-			scheduler.Enqueue(propReportJob{
-				Date:    reportDate,
-				LogPath: logPath,
-			})
 		}
 	}()
+}
+
+func enqueueDailyPropReport(scheduler *propReportScheduler, logDir string, reportDate time.Time) bool {
+	return enqueueDailyPropReportInRoot(scheduler, logDir, reportDate, nil)
+}
+
+func enqueueDailyPropReportInRoot(scheduler *propReportScheduler, logDir string, reportDate time.Time, root *os.Root) bool {
+	archiveName := logFileNameForDate(reportDate)
+	activeName := activeLogFileNameForDir(logDir)
+	// Case-folding filesystems can alias names even on Linux. Windows short
+	// names are also ambiguous without filesystem I/O, so conservatively skip
+	// this unusual configuration rather than report the live file as an archive.
+	same := strings.EqualFold(archiveName, activeName) || (runtime.GOOS == "windows" && strings.Contains(activeName, "~"))
+	if same {
+		log.Printf("Prop report skip: archive unavailable for %s (active filename may alias archive)", reportDate.Format("2006-01-02"))
+		return false
+	}
+	return scheduler.Enqueue(propReportJob{Date: reportDate, LogPath: filepath.Join(logDir, archiveName), root: root})
 }
 
 // Purpose: Download and parse the CTY database when updated.
@@ -3834,7 +3866,7 @@ func restoreCustomSCPStoreFromCheckpoint(ctx context.Context, dbPath string) err
 // Upstream: displayStatsWithFCC.
 // Downstream: sql.Open, db.QueryRow, os.Stat.
 // loadFCCSnapshot opens the FCC ULS database to report simple stats for the dashboard.
-func loadFCCSnapshot(path string) *fccSnapshot {
+func loadFCCSnapshot(ctx context.Context, path string) *fccSnapshot {
 	if strings.TrimSpace(path) == "" {
 		return nil
 	}
@@ -3851,7 +3883,7 @@ func loadFCCSnapshot(path string) *fccSnapshot {
 
 	count := func(table string) int64 {
 		var c int64
-		if err := db.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM "+table).Scan(&c); err != nil {
+		if err := db.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+table).Scan(&c); err != nil {
 			log.Printf("Warning: FCC ULS count %s failed: %v", table, err)
 			return 0
 		}

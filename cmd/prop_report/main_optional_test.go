@@ -77,6 +77,7 @@ func TestPropLocalNarrativeFallback(t *testing.T) {
 			f.json, f.report = filepath.Join(t.TempDir(), "summary.json"), filepath.Join(t.TempDir(), "report.md")
 			var requests atomic.Int32
 			var requestOK atomic.Bool
+			requestContent := make(chan string, 1)
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
 				var req struct {
@@ -84,7 +85,14 @@ func TestPropLocalNarrativeFallback(t *testing.T) {
 					Messages []struct{ Role, Content string }
 				}
 				err := json.NewDecoder(r.Body).Decode(&req)
-				requestOK.Store(err == nil && r.Method == "POST" && r.Header.Get("Authorization") == "Bearer fixture-only" && req.Model == "fixture-model" && len(req.Messages) == 2 && req.Messages[1].Content == string(localJSON))
+				valid := err == nil && r.Method == "POST" && r.Header.Get("Authorization") == "Bearer fixture-only" && req.Model == "fixture-model" && len(req.Messages) == 2
+				requestOK.Store(valid)
+				if valid {
+					select {
+					case requestContent <- req.Messages[1].Content:
+					default:
+					}
+				}
 				switch kind {
 				case "http-error":
 					w.WriteHeader(503)
@@ -107,12 +115,16 @@ func TestPropLocalNarrativeFallback(t *testing.T) {
 			if code != 0 || requests.Load() != 1 || !requestOK.Load() || !strings.Contains(out, "Wrote report:") {
 				t.Fatalf("request/output path absent: %d / %d / %v / %q / %q", code, requests.Load(), requestOK.Load(), out, diag)
 			}
-			if !bytes.Equal(localJSON, assertPropJSON(t, f)) {
-				t.Fatal("optional narrative changed observation summary")
+			actualJSON := assertPropJSON(t, f)
+			if content := <-requestContent; content != string(actualJSON) {
+				t.Fatal("LLM request did not contain this run's exact observation summary")
 			}
 			got, err := os.ReadFile(f.report)
 			if err != nil {
 				t.Fatal(err)
+			}
+			if !bytes.Equal(localJSON, actualJSON) {
+				t.Fatal("optional narrative changed observation summary")
 			}
 			want := string(localReport)
 			if kind == "narrative" {

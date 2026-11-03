@@ -1,12 +1,11 @@
 # GoCluster Release Package
 
 This zip is the ready-to-run Windows amd64 operator package. It contains
-`gocluster.exe`, its sibling `peerdiag.exe`, public example config, required runtime reference data, and a
+`gocluster.exe`, public example config, required runtime reference data, and a
 small documentation bundle.
 
-Keep both executables together. The cluster launches the companion for peer
-diagnostic files; a missing companion degrades logging and appears in peer
-status. `binaries.json` records both package hashes; `licenses/` includes the
+The cluster executable writes peer diagnostic files. `binaries.json` records
+the executable hash; `licenses/` includes the
 topology SQLite fork and engine notices, and the Go BSD notice for adapted
 bounded path resolution.
 
@@ -81,10 +80,9 @@ source with Go `1.26+`:
 
 ```sh
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
-GOOS=linux GOARCH=amd64 go build -trimpath -o peerdiag ./cmd/peerdiag
 ```
 
-Keep both Linux executables in the same directory. Deploy them with the required
+Deploy the Linux executable with the required
 runtime data from the source tree, including `data/cty`, `data/h3`, `data/peers/topology.db`, and
 `data/skm_correction/rbnskew.json` when those inputs are used by your config.
 

@@ -1,5 +1,9 @@
 # ADR-0250: Go 1.27 Development And Fresh Launcher Builds
 
+The companion packaging clause is superseded by
+[ADR-0333](ADR-0333-shared-bounded-runtime-logging.md); the remaining decision
+is unchanged.
+
 - Status: Accepted (Codex environment selection superseded by ADR-0259)
 - Date: 2026-10-06
 - Decision Origin: Troubleshooting chat

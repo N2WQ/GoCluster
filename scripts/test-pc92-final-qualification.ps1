@@ -91,7 +91,7 @@ function Restore-FinalFixture {
         })
         $lines | Set-Content -LiteralPath $log
         $runID = [guid]::NewGuid().ToString('N')
-        $run = [pscustomobject]@{ family = $parts[0]; profile = $parts[1]; status = 'measured'; diagnostic = $false;
+        $run = [pscustomobject]@{ schema_version = 1; family = $parts[0]; profile = $parts[1]; status = 'measured'; diagnostic = $false;
             measurement_passed = $true; provenance_passed = $true; profile_accepted = $true; exit_code = 0;
             failure_reasons = @(); repository_root = $root; runtime_settings = 'GOMAXPROCS=2 GOGC=50 GOMEMLIMIT=1536MiB';
             go_version = (Get-PC92QualificationGoVersion); external_inputs = @($externalInputs); executable = $binary;
@@ -147,6 +147,23 @@ function Invoke-FinalFixture([string]$Name, [scriptblock]$Edit, [string]$Reason 
 }
 
 Invoke-FinalFixture positive {}
+Invoke-FinalFixture single-executable-v2 {
+    Edit-FinalFixtureRun runtime/q1 { param($r) $r.schema_version = 2; $r.PSObject.Properties.Remove('helper_executable'); $r.PSObject.Properties.Remove('helper_executable_sha256') }
+}
+Invoke-FinalFixture invalid-run-schema { Edit-FinalFixtureRun runtime/q1 { param($r) $r.schema_version = 3 } } 'invalid_run_schema'
+$legacySource = Join-Path $root 'cmd/peerdiag/main.go'
+$null = New-Item -ItemType Directory -Path (Split-Path -Parent $legacySource) -Force
+Set-Content -LiteralPath $legacySource -Value 'package main // synthetic historical companion'
+$priorDigest = $digest
+$digest = Get-PC92FinalSourceDigest $root
+try {
+    Invoke-FinalFixture v2-cannot-waive-legacy-helper {
+        Edit-FinalFixtureRun runtime/q1 { param($r) $r.schema_version = 2; $r.PSObject.Properties.Remove('helper_executable'); $r.PSObject.Properties.Remove('helper_executable_sha256') }
+    } 'run_schema_source_mismatch'
+} finally {
+    Remove-Item -LiteralPath $legacySource
+    $digest = $priorDigest
+}
 foreach ($id in $requirements.profiles) {
     Invoke-FinalFixture ('missing-' + $id.Replace('/', '-')) { $bundle.runs = @($bundle.runs | Where-Object id -CNE $id) } 'missing_profile' $true
 }

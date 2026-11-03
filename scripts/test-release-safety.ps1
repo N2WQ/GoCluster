@@ -152,7 +152,6 @@ function global:go {
     $op = if ($nativeArgs[0] -eq 'mod') { 'go-tidy' }
         elseif ($nativeArgs -contains './cmd/codemap') { 'go-map' }
         elseif ($nativeArgs -contains './cmd/release_readme') { 'go-readme' }
-        elseif ($nativeArgs -contains './cmd/peerdiag') { 'go-build-peer' }
         elseif ($nativeArgs[0] -eq 'build') { 'go-build-main' }
         else { throw "Unplanned Go operation: $($nativeArgs -join ' ')" }
     if ($state.Fault -cne $op) {
@@ -162,7 +161,7 @@ function global:go {
         } elseif ($op.StartsWith('go-build-')) {
             $out = [Array]::IndexOf($nativeArgs, '-o')
             [IO.File]::WriteAllText($nativeArgs[$out + 1], "$op-$($state.BuildSerial)")
-            if ($op -eq 'go-build-peer') {
+            if ($op -eq 'go-build-main') {
                 if ($state.Fault -eq 'marker') {
                     New-Item -ItemType Directory -Path (Join-Path (Split-Path -Parent $nativeArgs[$out + 1]) '.gocluster-release-owner.json') | Out-Null
                 }
@@ -304,7 +303,7 @@ try {
         Reset-ReleaseNative $repo
         $global:ReleaseSafetyFixture.SuccessStderr = $true
         Invoke-ActualRelease $repo @{ PackageOnly = $true }
-        Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'go-build-peer').Count -eq 1) 'Success with stderr did not reach both builds.'
+        Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'go-build-main').Count -eq 1) 'Success with stderr did not reach the build.'
         $global:ReleaseSafetyFixture.Fault = 'go-tidy'
         Expect-ReleaseRefusal { Invoke-GoRunHost @('mod', 'tidy', '-diff') } 'failed'
     }
@@ -318,12 +317,14 @@ try {
         $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $repo 'gocluster-windows-amd64.zip'))
         try {
             $names = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-            foreach ($required in @('ready_to_run/gocluster.exe', 'ready_to_run/peerdiag.exe', 'ready_to_run/binaries.json', 'ready_to_run/README.md', 'ready_to_run/docs/OPERATOR_GUIDE.md')) {
+            foreach ($required in @('ready_to_run/gocluster.exe', 'ready_to_run/binaries.json', 'ready_to_run/README.md', 'ready_to_run/docs/OPERATOR_GUIDE.md')) {
                 Assert-Fixture ($names -contains $required) "Missing archive payload: $required"
             }
+            Assert-Fixture (-not ($names -contains 'ready_to_run/peerdiag.exe')) 'Obsolete companion entered the ZIP.'
             Assert-Fixture (@($names | Where-Object { $_ -match 'owner|rollback|\.git|main\.go|data/users' }).Count -eq 0) 'Private bookkeeping or source entered the ZIP.'
         } finally { $zip.Dispose() }
         $hashes = [IO.File]::ReadAllText((Join-Path $repo 'ready_to_run/binaries.json')) | ConvertFrom-Json
+        Assert-Fixture (@($hashes).Count -eq 1 -and $hashes[0].file -ceq 'gocluster.exe') 'Binary manifest must describe only the cluster executable.'
         foreach ($hash in $hashes) { Assert-Fixture ($hash.sha256 -ceq (Get-FileHash -LiteralPath (Join-Path $repo ('ready_to_run/' + $hash.file)) -Algorithm SHA256).Hash) 'Binary manifest checksum mismatch.' }
         $env:GOOS = 'linux'; $env:GOARCH = 'arm64'
     }
@@ -369,12 +370,12 @@ try {
                 foreach ($call in $helpers) {
                     Assert-Fixture ($call.CGO -ceq '0') "Helper inherited CGO: $($call.Operation)"
                 }
-                foreach ($call in @($calls | Where-Object { $_.Operation -in @('go-tidy', 'go-build-main', 'go-build-peer') })) {
+                foreach ($call in @($calls | Where-Object { $_.Operation -in @('go-tidy', 'go-build-main') })) {
                     Assert-Fixture ($call.CGO -ceq $expectedCGO) "Caller CGO changed for $($call.Operation)"
                 }
                 if (-not $fault) {
                     Assert-Fixture ($helpers.Count -eq 2) 'Successful release did not execute both helpers.'
-                    Assert-Fixture (@($calls | Where-Object Operation -like 'go-build-*').Count -eq 2) 'Both packaged binary builds were not checked.'
+                    Assert-Fixture (@($calls | Where-Object Operation -like 'go-build-*').Count -eq 1) 'Cluster binary build was not checked exactly once.'
                 } else { Assert-NoReleaseAfter $fault }
             }
         }
@@ -385,7 +386,7 @@ try {
         Run-ReleaseCase "environment restoration after failure: $combination" {
             if ($combination -in @('os-only', 'both')) { $env:GOOS = 'linux' } else { Remove-Item Env:GOOS -ErrorAction SilentlyContinue }
             if ($combination -in @('arch-only', 'both')) { $env:GOARCH = 'arm64' } else { Remove-Item Env:GOARCH -ErrorAction SilentlyContinue }
-            $repo = New-ReleaseFixture; Reset-ReleaseNative $repo 'go-build-peer'
+            $repo = New-ReleaseFixture; Reset-ReleaseNative $repo 'go-build-main'
             Invoke-ActualRelease $repo @{ PackageOnly = $true } 'failed'
         }
     }
@@ -398,7 +399,7 @@ try {
             Assert-Fixture ($global:ReleaseSafetyFixture.Calls.Count -eq 0) 'Forbidden publish switch reached native operations.'
         }
     }
-    foreach ($fault in @('git-root', 'git-status', 'go-tidy', 'go-map', 'git-head', 'git-abbrev', 'git-files', 'git-target', 'gh-auth', 'git-local', 'git-remote', 'gh-repo', 'gh-page1', 'go-readme', 'go-build-main', 'go-build-peer', 'archive', 'git-tag', 'git-push', 'gh-create')) {
+    foreach ($fault in @('git-root', 'git-status', 'go-tidy', 'go-map', 'git-head', 'git-abbrev', 'git-files', 'git-target', 'gh-auth', 'git-local', 'git-remote', 'gh-repo', 'gh-page1', 'go-readme', 'go-build-main', 'archive', 'git-tag', 'git-push', 'gh-create')) {
         Run-ReleaseCase "native stop: $fault" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo $fault
             Invoke-ActualRelease $repo @{} '.'
@@ -528,7 +529,7 @@ try {
             if ($null -ne $legacy.StageBytes) { Assert-FixtureBytes $stageBackup $legacy.StageBytes }
             if ($legacy.ZipHash) { Assert-Fixture ((Get-FileHash -LiteralPath $zipBackup -Algorithm SHA256).Hash -ceq $legacy.ZipHash) 'Owned rebuild discarded the retained legacy ZIP.' }
         }
-        foreach ($fault in @('go-build-main', 'go-build-peer')) {
+        foreach ($fault in @('go-build-main')) {
             Run-ReleaseCase "legacy $shape survives $fault" {
                 $repo = New-ReleaseFixture
                 $legacy = New-LegacyReleaseOutputs $repo $shape
@@ -619,7 +620,7 @@ try {
         Assert-Fixture (-not (Test-Path -LiteralPath (Join-Path $legacy.StageRoot '.gocluster-release-owner.json'))) 'Rollback rewrote ownership into unknown legacy contents.'
         Remove-RunDirectory $runRoot $runRoot
     }
-    foreach ($fault in @('go-tidy', 'go-readme', 'go-build-main', 'go-build-peer', 'archive', 'marker')) {
+    foreach ($fault in @('go-tidy', 'go-readme', 'go-build-main', 'archive', 'marker')) {
         Run-ReleaseCase "prior outputs survive: $fault" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
             Invoke-ActualRelease $repo @{ PackageOnly = $true }

@@ -21,7 +21,7 @@ function Invoke-PC92QualificationRun {
         if (-not (Test-Path -LiteralPath $output -PathType Container) -or @(Get-ChildItem -LiteralPath $output -Force).Count -gt 0) { throw 'output_not_fresh' }
     } else { $null = New-Item -ItemType Directory -Path $output }
     $run = [ordered]@{
-        schema_version = 1; run_id = [guid]::NewGuid().ToString('N'); family = $Family; profile = $Profile
+        schema_version = 2; run_id = [guid]::NewGuid().ToString('N'); family = $Family; profile = $Profile
         status = 'incomplete'; measurement_passed = $false; provenance_passed = $false; profile_accepted = $false
         qualified = $false; overall_accepted = $false; failure_reasons = @(); diagnostic = $plan.diagnostic
         open_evidence = @('Complete 480 MiB enabled-SQLite, context-backing and retirement ownership proof remains open.', 'Required final-source qualification profiles are separate evidence.')
@@ -39,6 +39,7 @@ function Invoke-PC92QualificationRun {
     $failure = $null
     try {
         Set-Location -LiteralPath $root
+        if (Test-Path -LiteralPath (Join-Path $root 'cmd/peerdiag/main.go') -PathType Leaf) { throw 'legacy_helper_source_present' }
         foreach ($name in $names | Where-Object { $_ -like 'GOCLUSTER_PC92_*' }) { [Environment]::SetEnvironmentVariable($name, [NullString]::Value, 'Process') }
         foreach ($name in $plan.environment.Keys) { [Environment]::SetEnvironmentVariable($name, $plan.environment[$name], 'Process') }
         $env:GOCLUSTER_PC92_RUN_ID = $run.run_id
@@ -96,22 +97,12 @@ function Invoke-PC92QualificationRun {
         & go @arguments 2>&1 | Tee-Object -FilePath (Join-Path $output 'build.log')
         if ($LASTEXITCODE -ne 0) { throw 'build_failed' }
         if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw 'missing_binary' }
-        $helperName = if ([Runtime.InteropServices.RuntimeInformation]::IsOSPlatform([Runtime.InteropServices.OSPlatform]::Windows)) { 'peerdiag.exe' } else { 'peerdiag' }
-        $helper = Join-Path $output $helperName
-        $helperArguments = @('build', '-trimpath', '-o', $helper, './cmd/peerdiag')
-        $run['helper_build_arguments'] = $helperArguments
-        & go @helperArguments 2>&1 | Tee-Object -FilePath (Join-Path $output 'helper-build.log')
-        if ($LASTEXITCODE -ne 0) { throw 'helper_build_failed' }
-        if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw 'missing_helper_binary' }
         $built = Get-PC92InputManifest $root $Family $external
         $built | Set-Content -LiteralPath (Join-Path $output 'source-after-build.json')
         if ($before -cne $built) { throw 'source_changed_during_build' }
         $hash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
         $run['executable'] = $binary
         $run['executable_sha256'] = $hash
-        $helperHash = (Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash
-        $run['helper_executable'] = $helper
-        $run['helper_executable_sha256'] = $helperHash
         $roots = @($plan.tests | Where-Object { -not $_.Contains('/') })
         $pattern = '^(' + (($roots | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')$'
         $testArguments = @('-test.count=1', '-test.v', "-test.timeout=$($plan.timeout)", "-test.run=$pattern")
@@ -132,8 +123,6 @@ function Invoke-PC92QualificationRun {
         $after | Set-Content -LiteralPath (Join-Path $output 'source-after-run.json')
         if ($before -cne $after) { throw 'source_changed_during_run' }
         if ((Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash -cne $hash) { throw 'binary_changed_during_run' }
-        if (-not (Test-Path -LiteralPath $helper -PathType Leaf)) { throw 'helper_missing_during_run' }
-        if ((Get-FileHash -LiteralPath $helper -Algorithm SHA256).Hash -cne $helperHash) { throw 'helper_changed_during_run' }
         if ($Family -eq 'q6') { Assert-PC92PinnedReference $env:DXSPIDER_ROOT }
         $run.provenance_passed = $true
         $run['test_log_sha256'] = (Get-FileHash -LiteralPath (Join-Path $output 'test.log') -Algorithm SHA256).Hash

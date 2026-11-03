@@ -6,6 +6,7 @@ package config
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"net"
 	"net/url"
 	"os"
@@ -541,8 +542,10 @@ func normalizeUIV2(cfg *UIConfig, raw map[string]any) error {
 		"pipeline": {},
 		"events":   {},
 	}
-	seen := make(map[string]struct{}, len(pages))
-	normalized := make([]string, 0, len(pages))
+	seen := make(map[string]struct{}, len(defaultUIV2Pages))
+	// Only four distinct names are valid. Do not retain the potentially much
+	// larger input slice, or backing strings containing trimmed whitespace.
+	normalized := make([]string, 0, len(defaultUIV2Pages))
 	for _, page := range pages {
 		name := strings.ToLower(strings.TrimSpace(page))
 		if name == "" {
@@ -555,6 +558,16 @@ func normalizeUIV2(cfg *UIConfig, raw map[string]any) error {
 			return fmt.Errorf("invalid ui.v2.pages: duplicate entry %q", page)
 		}
 		seen[name] = struct{}{}
+		switch name {
+		case "overview":
+			name = "overview"
+		case "ingest":
+			name = "ingest"
+		case "pipeline":
+			name = "pipeline"
+		case "events":
+			name = "events"
+		}
 		normalized = append(normalized, name)
 	}
 	if len(normalized) == 0 {
@@ -1653,7 +1666,7 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 	presence := captureLoadRawPresence(raw)
 
 	if presence.legacySecondaryWindow || presence.legacySecondaryPrefer {
-		fmt.Printf("Warning: dedup.secondary_window_seconds and dedup.secondary_prefer_stronger_snr are deprecated and ignored; use secondary_fast_* / secondary_med_* / secondary_slow_* instead.\n")
+		diagnostics.addWarning("dedup.secondary_window_seconds and dedup.secondary_prefer_stronger_snr are deprecated and ignored; use secondary_fast_* / secondary_med_* / secondary_slow_* instead.")
 	}
 
 	if err := normalizeUIConfig(&cfg, raw); err != nil {
@@ -1708,8 +1721,10 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 func normalizeUIConfig(cfg *Config, raw map[string]any) error {
 	uiMode := strings.ToLower(strings.TrimSpace(cfg.UI.Mode))
 	switch uiMode {
-	case "tview-v2", "headless":
-		cfg.UI.Mode = uiMode
+	case "tview-v2":
+		cfg.UI.Mode = "tview-v2"
+	case "headless":
+		cfg.UI.Mode = "headless"
 	default:
 		return fmt.Errorf("invalid ui.mode %q: must be headless or tview-v2", cfg.UI.Mode)
 	}
@@ -1746,7 +1761,10 @@ func normalizeLoggingAndPropReportConfig(cfg *Config, presence loadRawPresence) 
 	if err := normalizeEventFileLoggingConfigs(cfg, presence); err != nil {
 		return err
 	}
-	return normalizePropagationLoggingConfig(cfg, presence)
+	if err := normalizePropagationLoggingConfig(cfg, presence); err != nil {
+		return err
+	}
+	return validateLogFolderNames(cfg)
 }
 
 func normalizeDroppedCallLoggingConfig(cfg *Config, presence loadRawPresence) error {
@@ -3720,14 +3738,19 @@ func mergeYAMLMaps(dst, src map[string]any) map[string]any {
 // Print prints a human-readable configuration summary.
 // Key aspects: Focuses on operationally relevant fields.
 // Upstream: main.go startup logging.
-// Downstream: fmt.Printf.
+// Downstream: PrintTo.
 func (c *Config) Print() {
-	fmt.Printf("Server: %s (%s)\n", c.Server.Name, c.Server.NodeID)
+	c.PrintTo(os.Stdout)
+}
+
+// PrintTo writes the configuration summary to the caller's selected output.
+func (c *Config) PrintTo(w io.Writer) {
+	fmt.Fprintf(w, "Server: %s (%s)\n", c.Server.Name, c.Server.NodeID)
 	workerDesc := "auto"
 	if c.Telnet.BroadcastWorkers > 0 {
 		workerDesc = fmt.Sprintf("%d", c.Telnet.BroadcastWorkers)
 	}
-	fmt.Printf("Telnet: port %d (transport=%s echo_mode=%s broadcast workers=%s queue=%d worker_queue=%d client_buffer=%d skip_handshake=%s)\n",
+	fmt.Fprintf(w, "Telnet: port %d (transport=%s echo_mode=%s broadcast workers=%s queue=%d worker_queue=%d client_buffer=%d skip_handshake=%s)\n",
 		c.Telnet.Port,
 		c.Telnet.Transport,
 		c.Telnet.EchoMode,
@@ -3736,24 +3759,24 @@ func (c *Config) Print() {
 		c.Telnet.WorkerQueue,
 		c.Telnet.ClientBuffer,
 		c.Telnet.SkipHandshake)
-	fmt.Printf("Telnet writer/reject: writer_batch=%dB/%dms reject_workers=%d reject_queue=%d reject_deadline=%dms\n",
+	fmt.Fprintf(w, "Telnet writer/reject: writer_batch=%dB/%dms reject_workers=%d reject_queue=%d reject_deadline=%dms\n",
 		c.Telnet.WriterBatchMaxBytes,
 		c.Telnet.WriterBatchWaitMS,
 		c.Telnet.RejectWorkers,
 		c.Telnet.RejectQueueSize,
 		c.Telnet.RejectWriteDeadlineMS)
-	fmt.Printf("Telnet read pause: min_rows=%d seconds=%d\n",
+	fmt.Fprintf(w, "Telnet read pause: min_rows=%d seconds=%d\n",
 		c.Telnet.AutoReadPauseMinRows,
 		c.Telnet.AutoReadPauseSeconds)
-	fmt.Printf("Telnet bulletins: dedupe_window=%ds dedupe_max_entries=%d\n",
+	fmt.Fprintf(w, "Telnet bulletins: dedupe_window=%ds dedupe_max_entries=%d\n",
 		c.Telnet.BulletinDedupeWindowSeconds,
 		c.Telnet.BulletinDedupeMaxEntries)
-	fmt.Printf("Go runtime: memory_limit_mib=%d gc_percent=%d max_procs=%d\n",
+	fmt.Fprintf(w, "Go runtime: memory_limit_mib=%d gc_percent=%d max_procs=%d\n",
 		c.GoRuntime.MemoryLimitMiB,
 		c.GoRuntime.GCPercent,
 		c.GoRuntime.MaxProcs)
-	fmt.Printf("Who spots me: window=%dm\n", c.WhoSpotsMe.WindowMinutes)
-	fmt.Printf("Telnet Tier-A: prelogin_max=%d prelogin_timeout=%ds ip_rate=%.2f/s ip_burst=%d subnet_rate=%.2f/s subnet_burst=%d global_rate=%.2f/s global_burst=%d ip_concurrency=%d\n",
+	fmt.Fprintf(w, "Who spots me: window=%dm\n", c.WhoSpotsMe.WindowMinutes)
+	fmt.Fprintf(w, "Telnet Tier-A: prelogin_max=%d prelogin_timeout=%ds ip_rate=%.2f/s ip_burst=%d subnet_rate=%.2f/s subnet_burst=%d global_rate=%.2f/s global_burst=%d ip_concurrency=%d\n",
 		c.Telnet.MaxPreloginSessions,
 		c.Telnet.PreloginTimeoutSeconds,
 		c.Telnet.AcceptRatePerIP,
@@ -3763,7 +3786,7 @@ func (c *Config) Print() {
 		c.Telnet.AcceptRateGlobal,
 		c.Telnet.AcceptBurstGlobal,
 		c.Telnet.PreloginConcurrencyPerIP)
-	fmt.Printf("Telnet Tier-A geo: asn_rate=%.2f/s asn_burst=%d country_rate=%.2f/s country_burst=%d log_interval=%ds log_sample=%.2f max_lines=%d\n",
+	fmt.Fprintf(w, "Telnet Tier-A geo: asn_rate=%.2f/s asn_burst=%d country_rate=%.2f/s country_burst=%d log_interval=%ds log_sample=%.2f max_lines=%d\n",
 		c.Telnet.AcceptRatePerASN,
 		c.Telnet.AcceptBurstPerASN,
 		c.Telnet.AcceptRatePerCountry,
@@ -3772,7 +3795,7 @@ func (c *Config) Print() {
 		c.Telnet.AdmissionLogSampleRate,
 		c.Telnet.AdmissionLogMaxReasonLinesPerInterval)
 	if c.Reputation.Enabled {
-		fmt.Printf("Reputation: enabled (cymru=%t api=%t pebble=%s v4_mem=%t wait=%ds ramp=%ds per_band=%d..%d total=%d..%d prefix4=%d@%d/s prefix6=%d@%d/s)\n",
+		fmt.Fprintf(w, "Reputation: enabled (cymru=%t api=%t pebble=%s v4_mem=%t wait=%ds ramp=%ds per_band=%d..%d total=%d..%d prefix4=%d@%d/s prefix6=%d@%d/s)\n",
 			c.Reputation.FallbackTeamCymru,
 			c.Reputation.IPInfoAPIEnabled,
 			c.Reputation.IPInfoPebblePath,
@@ -3788,16 +3811,16 @@ func (c *Config) Print() {
 			c.Reputation.IPv6BucketSize,
 			c.Reputation.IPv6BucketRefillPerSec)
 	}
-	fmt.Printf("UI: mode=%s v2_pages=%s target_fps=%d\n",
+	fmt.Fprintf(w, "UI: mode=%s v2_pages=%s target_fps=%d\n",
 		c.UI.Mode,
 		strings.Join(c.UI.V2.Pages, ","),
 		c.UI.V2.TargetFPS)
 	if c.Logging.Enabled {
-		fmt.Printf("Logging: enabled (dir=%s retention_days=%d drop_dedupe_window_seconds=%d)\n", c.Logging.Dir, c.Logging.RetentionDays, c.Logging.DropDedupeWindowSeconds)
+		fmt.Fprintf(w, "Logging: enabled (dir=%s retention_days=%d drop_dedupe_window_seconds=%d)\n", c.Logging.Dir, c.Logging.RetentionDays, c.Logging.DropDedupeWindowSeconds)
 	} else {
-		fmt.Printf("Logging: disabled (drop_dedupe_window_seconds=%d)\n", c.Logging.DropDedupeWindowSeconds)
+		fmt.Fprintf(w, "Logging: disabled (drop_dedupe_window_seconds=%d)\n", c.Logging.DropDedupeWindowSeconds)
 	}
-	fmt.Printf("Dropped-call logs: enabled=%t dir=%s retention_days=%d dedupe_window_seconds=%d files(bad_de_dx=%t no_license=%t harmonics=%t)\n",
+	fmt.Fprintf(w, "Dropped-call logs: enabled=%t dir=%s retention_days=%d dedupe_window_seconds=%d files(bad_de_dx=%t no_license=%t harmonics=%t)\n",
 		c.Logging.DroppedCalls.Enabled,
 		c.Logging.DroppedCalls.Dir,
 		c.Logging.DroppedCalls.RetentionDays,
@@ -3805,23 +3828,23 @@ func (c *Config) Print() {
 		c.Logging.DroppedCalls.BadDEDX,
 		c.Logging.DroppedCalls.NoLicense,
 		c.Logging.DroppedCalls.Harmonics)
-	fmt.Printf("File-only event logs: login=%t reputation=%t telnet=%t ingest=%t peer=%t\n",
+	fmt.Fprintf(w, "File-only event logs: login=%t reputation=%t telnet=%t ingest=%t peer=%t\n",
 		c.Logging.LoginAttempts.Enabled,
 		c.Logging.ReputationDrops.Enabled,
 		c.Logging.TelnetConnections.Enabled,
 		c.Logging.IngestConnections.Enabled,
 		c.Logging.PeerConnections.Enabled)
-	fmt.Printf("Propagation log: enabled=%t dir=%s retention_days=%d\n",
+	fmt.Fprintf(w, "Propagation log: enabled=%t dir=%s retention_days=%d\n",
 		c.Logging.Propagation.Enabled,
 		c.Logging.Propagation.Dir,
 		c.Logging.Propagation.RetentionDays)
 	if c.PropReport.Enabled {
-		fmt.Printf("Prop report: enabled (refresh=%s UTC)\n", c.PropReport.RefreshUTC)
+		fmt.Fprintf(w, "Prop report: enabled (refresh=%s UTC)\n", c.PropReport.RefreshUTC)
 	} else {
-		fmt.Printf("Prop report: disabled\n")
+		fmt.Fprintf(w, "Prop report: disabled\n")
 	}
 	if c.RBN.Enabled {
-		fmt.Printf("RBN CW/RTTY: %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
+		fmt.Fprintf(w, "RBN CW/RTTY: %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
 			c.RBN.Host,
 			c.RBN.Port,
 			c.RBN.Callsign,
@@ -3830,7 +3853,7 @@ func (c *Config) Print() {
 			c.RBN.KeepaliveSec)
 	}
 	if c.RBNDigital.Enabled {
-		fmt.Printf("RBN Digital (FT4/FT8): %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
+		fmt.Fprintf(w, "RBN Digital (FT4/FT8): %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
 			c.RBNDigital.Host,
 			c.RBNDigital.Port,
 			c.RBNDigital.Callsign,
@@ -3842,7 +3865,7 @@ func (c *Config) Print() {
 		if !human.Enabled {
 			continue
 		}
-		fmt.Printf("Human/relay telnet %s: %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
+		fmt.Fprintf(w, "Human/relay telnet %s: %s:%d (as %s, transport=%s slot_buffer=%d keepalive=%ds)\n",
 			human.Name,
 			human.Host,
 			human.Port,
@@ -3852,7 +3875,7 @@ func (c *Config) Print() {
 			human.KeepaliveSec)
 	}
 	if c.DXSummit.Enabled {
-		fmt.Printf("DXSummit: %s (poll=%ds max_records=%d lookback=%ds bands=%s buffer=%d timeout=%dms)\n",
+		fmt.Fprintf(w, "DXSummit: %s (poll=%ds max_records=%d lookback=%ds bands=%s buffer=%d timeout=%dms)\n",
 			c.DXSummit.BaseURL,
 			c.DXSummit.PollIntervalSeconds,
 			c.DXSummit.MaxRecordsPerPoll,
@@ -3862,7 +3885,7 @@ func (c *Config) Print() {
 			c.DXSummit.RequestTimeoutMS)
 	}
 	if c.Archive.Enabled {
-		fmt.Printf("Archive: %s (queue=%d batch=%d/%dms cleanup=%ds retention=%ds sync=%s auto_delete_corrupt=%t)\n",
+		fmt.Fprintf(w, "Archive: %s (queue=%d batch=%d/%dms cleanup=%ds retention=%ds sync=%s auto_delete_corrupt=%t)\n",
 			c.Archive.DBPath,
 			c.Archive.QueueSize,
 			c.Archive.BatchSize,
@@ -3885,7 +3908,7 @@ func (c *Config) Print() {
 		if c.PSKReporter.MQTTInboundQueueDepth > 0 {
 			mqttQueueDesc = fmt.Sprintf("%d", c.PSKReporter.MQTTInboundQueueDepth)
 		}
-		fmt.Printf("PSKReporter: %s:%d (topic: %s buffer=%d workers=%s mqtt_inbound_workers=%s mqtt_inbound_queue=%s qos12_timeout=%dms)\n",
+		fmt.Fprintf(w, "PSKReporter: %s:%d (topic: %s buffer=%d workers=%s mqtt_inbound_workers=%s mqtt_inbound_queue=%s qos12_timeout=%dms)\n",
 			c.PSKReporter.Broker,
 			c.PSKReporter.Port,
 			c.PSKReporter.Topic,
@@ -3911,7 +3934,7 @@ func (c *Config) Print() {
 	if c.Dedup.SecondarySlowWindowSeconds > 0 {
 		secondarySlow = fmt.Sprintf("%ds", c.Dedup.SecondarySlowWindowSeconds)
 	}
-	fmt.Printf("Dedup: cluster=%s (prefer_stronger=%t) secondary_fast=%s (prefer_stronger=%t) secondary_med=%s (prefer_stronger=%t) secondary_slow=%s (prefer_stronger=%t) default_policy=%s\n",
+	fmt.Fprintf(w, "Dedup: cluster=%s (prefer_stronger=%t) secondary_fast=%s (prefer_stronger=%t) secondary_med=%s (prefer_stronger=%t) secondary_slow=%s (prefer_stronger=%t) default_policy=%s\n",
 		clusterWindow,
 		c.Dedup.PreferStrongerSNR,
 		secondaryFast,
@@ -3921,19 +3944,19 @@ func (c *Config) Print() {
 		secondarySlow,
 		c.Dedup.SecondarySlowPreferStrong,
 		c.Dedup.DefaultPolicy)
-	fmt.Printf("Flood control: enabled=%t partition=%s log_interval=%ds rails=%s\n",
+	fmt.Fprintf(w, "Flood control: enabled=%t partition=%s log_interval=%ds rails=%s\n",
 		c.FloodControl.Enabled,
 		c.FloodControl.PartitionMode,
 		c.FloodControl.LogIntervalSeconds,
 		c.FloodControl.Rails.summary())
 	if len(c.Filter.DefaultModes) > 0 {
-		fmt.Printf("Default modes: %s\n", strings.Join(c.Filter.DefaultModes, ", "))
+		fmt.Fprintf(w, "Default modes: %s\n", strings.Join(c.Filter.DefaultModes, ", "))
 	}
 	if len(c.Filter.DefaultSources) > 0 {
-		fmt.Printf("Default sources: %s\n", strings.Join(c.Filter.DefaultSources, ", "))
+		fmt.Fprintf(w, "Default sources: %s\n", strings.Join(c.Filter.DefaultSources, ", "))
 	}
 	if c.Peering.Enabled {
-		fmt.Printf("Peering: listen_port=%d peers=%d hop=%d transport=%s keepalive=%ds config=%ds forward_spots=%t topology=%s retention=%dh\n",
+		fmt.Fprintf(w, "Peering: listen_port=%d peers=%d hop=%d transport=%s keepalive=%ds config=%ds forward_spots=%t topology=%s retention=%dh\n",
 			c.Peering.ListenPort,
 			len(c.Peering.Peers),
 			c.Peering.HopCount,
@@ -3944,12 +3967,12 @@ func (c *Config) Print() {
 			c.Peering.Topology.DBPath,
 			c.Peering.Topology.RetentionHours)
 	}
-	fmt.Printf("Stats interval: %ds\n", c.Stats.DisplayIntervalSeconds)
+	fmt.Fprintf(w, "Stats interval: %ds\n", c.Stats.DisplayIntervalSeconds)
 	status := "disabled"
 	if c.CallCorrection.Enabled {
 		status = "enabled"
 	}
-	fmt.Printf("Call correction: %s (min_reports=%d slash_min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
+	fmt.Fprintf(w, "Call correction: %s (min_reports=%d slash_min_reports=%d advantage>%d confidence>=%d%% recency=%ds max_edit=%d tol=%.1fHz distance_cw=%s distance_rtty=%s invalid_action=%s d3_extra:+%d/+%d/+%d%%)\n",
 		status,
 		c.CallCorrection.MinConsensusReports,
 		c.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports,
@@ -3964,7 +3987,7 @@ func (c *Config) Print() {
 		c.CallCorrection.Distance3ExtraReports,
 		c.CallCorrection.Distance3ExtraAdvantage,
 		c.CallCorrection.Distance3ExtraConfidence)
-	fmt.Printf("Call correction family policy: truncation(enabled=%t delta<=%d shorter_len>=%d prefix=%t suffix=%t relax_advantage=%t->%d validated(longer=%t shorter_unvalidated=%t) length_bonus=%t(max=%d validated=%t shorter_unvalidated=%t) delta2_rails=%t(extra_conf=%d validated=%t shorter_unvalidated=%t)) telnet_suppression(enabled=%t edit_neighbor=%t window=%ds max_entries=%d fallback_tol=%.1fHz)\n",
+	fmt.Fprintf(w, "Call correction family policy: truncation(enabled=%t delta<=%d shorter_len>=%d prefix=%t suffix=%t relax_advantage=%t->%d validated(longer=%t shorter_unvalidated=%t) length_bonus=%t(max=%d validated=%t shorter_unvalidated=%t) delta2_rails=%t(extra_conf=%d validated=%t shorter_unvalidated=%t)) telnet_suppression(enabled=%t edit_neighbor=%t window=%ds max_entries=%d fallback_tol=%.1fHz)\n",
 		c.CallCorrection.FamilyPolicy.Truncation.Enabled,
 		c.CallCorrection.FamilyPolicy.Truncation.MaxLengthDelta,
 		c.CallCorrection.FamilyPolicy.Truncation.MinShorterLength,
@@ -3987,13 +4010,13 @@ func (c *Config) Print() {
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.WindowSeconds,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.MaxEntries,
 		c.CallCorrection.FamilyPolicy.TelnetSuppression.FrequencyToleranceFallbackHz)
-	fmt.Printf("Call correction voice: tol=%.0fHz\n",
+	fmt.Fprintf(w, "Call correction voice: tol=%.0fHz\n",
 		c.CallCorrection.VoiceFrequencyToleranceHz)
 	stabilizerStatus := "disabled"
 	if c.CallCorrection.StabilizerEnabled {
 		stabilizerStatus = "enabled"
 	}
-	fmt.Printf("Call correction stabilizer: %s (delay=%ds max_checks=%d timeout_action=%s max_pending=%d p_delay_pct=%d p_delay_checks=%d ambiguous_checks=%d edit_neighbor=%t edit_neighbor_checks=%d edit_neighbor_min_spotters=%d resolver_neighborhood=%t resolver_neighborhood_radius=%d resolver_neighborhood_max_distance=%d resolver_neighborhood_allow_trunc=%t resolver_recent_plus1=%t min_unique=%d subject_weaker=%t max_distance=%d allow_trunc=%t)\n",
+	fmt.Fprintf(w, "Call correction stabilizer: %s (delay=%ds max_checks=%d timeout_action=%s max_pending=%d p_delay_pct=%d p_delay_checks=%d ambiguous_checks=%d edit_neighbor=%t edit_neighbor_checks=%d edit_neighbor_min_spotters=%d resolver_neighborhood=%t resolver_neighborhood_radius=%d resolver_neighborhood_max_distance=%d resolver_neighborhood_allow_trunc=%t resolver_recent_plus1=%t min_unique=%d subject_weaker=%t max_distance=%d allow_trunc=%t)\n",
 		stabilizerStatus,
 		c.CallCorrection.StabilizerDelaySeconds,
 		c.CallCorrection.StabilizerMaxChecks,
@@ -4018,7 +4041,7 @@ func (c *Config) Print() {
 	if c.CallCorrection.BayesBonus.Enabled {
 		bayesStatus = "enabled"
 	}
-	fmt.Printf("Call correction bayes bonus: %s (w_d1=%d w_d2=%d tau_w=%d alpha_recent=%d obs_cap=%d prior=[%d,%d] report_thr=[%d,%d] adv_thr=[%d,%d] adv_delta_w=[%d,%d] adv_conf=[%d,%d] require_candidate_validated=%t require_subject_unvalidated_d2=%t)\n",
+	fmt.Fprintf(w, "Call correction bayes bonus: %s (w_d1=%d w_d2=%d tau_w=%d alpha_recent=%d obs_cap=%d prior=[%d,%d] report_thr=[%d,%d] adv_thr=[%d,%d] adv_delta_w=[%d,%d] adv_conf=[%d,%d] require_candidate_validated=%t require_subject_unvalidated_d2=%t)\n",
 		bayesStatus,
 		c.CallCorrection.BayesBonus.WeightDistance1Milli,
 		c.CallCorrection.BayesBonus.WeightDistance2Milli,
@@ -4041,7 +4064,7 @@ func (c *Config) Print() {
 	if c.CallCorrection.TemporalDecoder.Enabled {
 		temporalStatus = "enabled"
 	}
-	fmt.Printf("Call correction temporal decoder: %s (scope=%s lag=%ds max_wait=%ds beam=%d max_obs=%d stay_bonus=%d switch_penalty=%d family_penalty=%d edit1_penalty=%d min_score=%d min_margin=%d overflow_action=%s max_pending=%d max_active_keys=%d max_events_per_key=%d)\n",
+	fmt.Fprintf(w, "Call correction temporal decoder: %s (scope=%s lag=%ds max_wait=%ds beam=%d max_obs=%d stay_bonus=%d switch_penalty=%d family_penalty=%d edit1_penalty=%d min_score=%d min_margin=%d overflow_action=%s max_pending=%d max_active_keys=%d max_events_per_key=%d)\n",
 		temporalStatus,
 		c.CallCorrection.TemporalDecoder.Scope,
 		c.CallCorrection.TemporalDecoder.LagSeconds,
@@ -4058,7 +4081,7 @@ func (c *Config) Print() {
 		c.CallCorrection.TemporalDecoder.MaxPending,
 		c.CallCorrection.TemporalDecoder.MaxActiveKeys,
 		c.CallCorrection.TemporalDecoder.MaxEventsPerKey)
-	fmt.Printf("Call correction FT corroboration: p_unique=%d v_unique=%d ft8=%ds/%ds ft4=%ds/%ds ft2=%ds/%ds\n",
+	fmt.Fprintf(w, "Call correction FT corroboration: p_unique=%d v_unique=%d ft8=%ds/%ds ft4=%ds/%ds ft2=%ds/%ds\n",
 		c.CallCorrection.PMinUniqueSpotters,
 		c.CallCorrection.VMinUniqueSpotters,
 		c.CallCorrection.FT8QuietGapSeconds,
@@ -4072,22 +4095,22 @@ func (c *Config) Print() {
 	if c.Harmonics.Enabled {
 		harmonicStatus = "enabled"
 	}
-	fmt.Printf("Harmonics: %s (recency=%ds max_multiple=%d tolerance=%.1fHz min_report_delta=%ddB)\n",
+	fmt.Fprintf(w, "Harmonics: %s (recency=%ds max_multiple=%d tolerance=%.1fHz min_report_delta=%ddB)\n",
 		harmonicStatus,
 		c.Harmonics.RecencySeconds,
 		c.Harmonics.MaxHarmonicMultiple,
 		c.Harmonics.FrequencyToleranceHz,
 		c.Harmonics.MinReportDelta)
 
-	fmt.Printf("Spot policy: max_age=%ds\n", c.SpotPolicy.MaxAgeSeconds)
+	fmt.Fprintf(w, "Spot policy: max_age=%ds\n", c.SpotPolicy.MaxAgeSeconds)
 	if c.CTY.File != "" {
-		fmt.Printf("CTY database: %s\n", c.CTY.File)
+		fmt.Fprintf(w, "CTY database: %s\n", c.CTY.File)
 	}
 	if c.CTY.Enabled && c.CTY.URL != "" {
-		fmt.Printf("CTY refresh: %s UTC (source=%s)\n", c.CTY.RefreshUTC, c.CTY.URL)
+		fmt.Fprintf(w, "CTY refresh: %s UTC (source=%s)\n", c.CTY.RefreshUTC, c.CTY.URL)
 	}
 	if c.FCCULS.URL != "" {
-		fmt.Printf("FCC ULS: enforcement=%t; refresh %s UTC (source=%s archive=%s db=%s allowlist=%s cache_ttl=%ds)\n",
+		fmt.Fprintf(w, "FCC ULS: enforcement=%t; refresh %s UTC (source=%s archive=%s db=%s allowlist=%s cache_ttl=%ds)\n",
 			c.FCCULS.Enabled,
 			c.FCCULS.RefreshUTC,
 			c.FCCULS.URL,
@@ -4097,7 +4120,7 @@ func (c *Config) Print() {
 			c.FCCULS.CacheTTLSeconds)
 	}
 	if c.ISED.URL != "" {
-		fmt.Printf("ISED: enforcement=%t; refresh %s UTC (source=%s special_source=%s archive=%s special_archive=%s db=%s cache_ttl=%ds, capped at UTC midnight)\n",
+		fmt.Fprintf(w, "ISED: enforcement=%t; refresh %s UTC (source=%s special_source=%s archive=%s special_archive=%s db=%s cache_ttl=%ds, capped at UTC midnight)\n",
 			c.ISED.Enabled, c.ISED.RefreshUTC, c.ISED.URL, c.ISED.SpecialURL,
 			c.ISED.Archive, c.ISED.SpecialArchive, c.ISED.DBPath, c.FCCULS.CacheTTLSeconds)
 	}
@@ -4106,7 +4129,7 @@ func (c *Config) Print() {
 		if c.GridDBCheckOnMiss != nil {
 			dbCheckOnMiss = *c.GridDBCheckOnMiss
 		}
-		fmt.Printf("Grid/known DB: %s (flush=%ds cache=%d cache_ttl=%ds db_check_on_miss=%t ttl=%dd block_cache=%dMB bloom_bits=%d memtable=%dMB l0_compact=%d l0_stop=%d write_queue=%d)\n",
+		fmt.Fprintf(w, "Grid/known DB: %s (flush=%ds cache=%d cache_ttl=%ds db_check_on_miss=%t ttl=%dd block_cache=%dMB bloom_bits=%d memtable=%dMB l0_compact=%d l0_stop=%d write_queue=%d)\n",
 			c.GridDBPath,
 			c.GridFlushSec,
 			c.GridCacheSize,
@@ -4121,9 +4144,9 @@ func (c *Config) Print() {
 			c.GridWriteQueueDepth)
 	}
 	if c.Skew.Enabled {
-		fmt.Printf("Skew: refresh %s UTC (min_abs_skew=%g source=%s)\n", c.Skew.RefreshUTC, c.Skew.MinAbsSkew, c.Skew.URL)
+		fmt.Fprintf(w, "Skew: refresh %s UTC (min_abs_skew=%g source=%s)\n", c.Skew.RefreshUTC, c.Skew.MinAbsSkew, c.Skew.URL)
 	}
-	fmt.Printf("Ring buffer capacity: %d spots\n", c.Buffer.Capacity)
+	fmt.Fprintf(w, "Ring buffer capacity: %d spots\n", c.Buffer.Capacity)
 }
 
 // Purpose: Normalize per-band-state overrides for correction settings.

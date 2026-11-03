@@ -360,8 +360,8 @@ func (v *virtualLogView) evictOldestLocked() {
 		if v.bytes < 0 {
 			v.bytes = 0
 		}
-		v.lines[v.head] = ""
 	}
+	v.lines[v.head] = ""
 	v.head = (v.head + 1) % v.max
 	v.count--
 }
@@ -372,7 +372,8 @@ func truncateStringBytes(s string, maxBytes int) string {
 	}
 	const suffix = "... [truncated]"
 	if maxBytes <= len(suffix) {
-		return utf8Prefix(s, maxBytes)
+		// A prefix, including an empty one, can retain the entire input backing.
+		return strings.Clone(utf8Prefix(s, maxBytes))
 	}
 	prefixLen := maxBytes - len(suffix)
 	return utf8Prefix(s, prefixLen) + suffix

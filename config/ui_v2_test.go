@@ -3,7 +3,26 @@ package config
 import (
 	"strings"
 	"testing"
+	"unsafe"
 )
+
+func TestNormalizeUIConfigDoesNotRetainLargeInput(t *testing.T) {
+	pageInput := strings.Repeat(" ", 1<<20) + "overview "
+	modeInput := strings.Repeat(" ", 1<<20) + "tview-v2 "
+	pages := make([]string, 10000)
+	pages[0] = pageInput
+	cfg := Config{UI: UIConfig{Mode: modeInput, V2: UIV2Config{Pages: pages}}}
+	if err := normalizeUIConfig(&cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.UI.V2.Pages) != 1 || cap(cfg.UI.V2.Pages) > 4 || cfg.UI.V2.Pages[0] != "overview" {
+		t.Fatalf("normalized pages = %q, capacity %d", cfg.UI.V2.Pages, cap(cfg.UI.V2.Pages))
+	}
+	if unsafe.StringData(cfg.UI.V2.Pages[0]) == unsafe.StringData(strings.TrimSpace(pageInput)) ||
+		unsafe.StringData(cfg.UI.Mode) == unsafe.StringData(strings.TrimSpace(modeInput)) {
+		t.Fatal("normalized UI config retains input string backing")
+	}
+}
 
 func TestLoadUIV2Defaults(t *testing.T) {
 	dir := testConfigDir(t)

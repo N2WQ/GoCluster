@@ -1,11 +1,11 @@
 <#
 .SYNOPSIS
-    Merge CPU profiles and publish an isolated Windows amd64 PGO executable pair.
+    Merge CPU profiles and publish an isolated Windows amd64 PGO executable.
 .DESCRIPTION
     Requires logs/cpu-*.pprof and the matching root gocluster.exe. Merges profiles
-    with go tool pprof, then publishes both executables and binaries.json under
-    a unique .tmp/pgo directory. Returns the successful pair paths as an object.
-    Existing executable pairs stay intact; caller location is restored.
+    with go tool pprof, then publishes the executable and binaries.json under
+    a unique .tmp/pgo directory. Returns the successful build paths as an object.
+    Existing builds stay intact; caller location is restored.
 #>
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest

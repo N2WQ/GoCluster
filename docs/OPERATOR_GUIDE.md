@@ -28,7 +28,6 @@ Linux operators currently build from source:
 
 ```sh
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
-GOOS=linux GOARCH=amd64 go build -trimpath -o peerdiag ./cmd/peerdiag
 ```
 
 ## Configure A Real Node
@@ -94,7 +93,6 @@ To compile from source on Windows:
 ```pwsh
 go test ./...
 go build -trimpath -o gocluster.exe .
-go build -trimpath -o peerdiag.exe ./cmd/peerdiag
 ```
 
 ## Run On Linux
@@ -104,10 +102,9 @@ Build from the repository root with Go `1.26+`:
 ```sh
 go test ./...
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
-GOOS=linux GOARCH=amd64 go build -trimpath -o peerdiag ./cmd/peerdiag
 ```
 
-Install both executables and the required runtime data together, for example under
+Install the executable and the required runtime data together, for example under
 `/opt/gocluster`. Keep a complete private config directory at a stable path
 such as `/opt/gocluster/data/config.local`.
 
@@ -124,7 +121,7 @@ data, then assign ownership to the service user:
 ```sh
 sudo useradd -r -s /bin/false gocluster
 sudo mkdir -p /opt/gocluster
-sudo cp gocluster peerdiag /opt/gocluster/
+sudo cp gocluster /opt/gocluster/
 sudo cp -R data /opt/gocluster/
 sudo chown -R gocluster:gocluster /opt/gocluster
 ```
@@ -855,6 +852,23 @@ prediction aggregates used by the daily propagation report. The file-only event
 logs cover login attempt failures, reputation-gated spot drops, telnet client
 lifecycle, ingest source lifecycle, and peer lifecycle. They do not add local UI
 or console panes.
+
+Files, console and dashboard use fixed-queue asynchronous logging. A full queue
+or unavailable destination can drop records without stopping the application.
+File messages over 2 KiB are dropped. Dashboard messages can span several queue
+records and are shortened to the pane's configured limit. A message too large
+to fit the bounded dashboard queue can be dropped. Logs are disposable:
+lost records do not produce a loss or recovery warning, and propagation reports
+can use incomplete logs without saying so. A destination whose operation never
+returns may remain unavailable until restart.
+
+Use separate physical folders for file log categories. GoCluster rejects a
+configuration when it discovers that folders or active files are shared; if
+the conflict is discovered after startup, it shuts down. If a folder cannot be
+checked, file logging can remain unavailable while the application continues.
+Retention uses UTC calendar dates from the system clock; an incorrect clock can
+change expiry. An archive held open for a report can remain until a later
+cleanup, particularly on Windows.
 Under `systemd`, stdout/stderr also go to journald and can be tailed with:
 
 ```sh

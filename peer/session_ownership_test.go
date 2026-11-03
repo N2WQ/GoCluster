@@ -8,13 +8,23 @@ import (
 	"time"
 
 	"dxcluster/config"
-	"dxcluster/internal/peerdiag"
+	"dxcluster/internal/asynclog"
 )
 
 func TestSessionOwnerReservationSurvivesDiagnosticOverload(t *testing.T) {
 	m, _ := newInboundHarnessManager(t, inboundScenario{name: t.Name()})
-	m.diagnostics = peerdiag.New(peerdiag.Options{Enabled: true})
-	for range peerdiag.QueueSize {
+	service, _, _ := newDiagnosticTestService(t, true, true)
+	m.diagnostics = service
+	before := m.DiagnosticStats()
+	m.reportDiagnostic("fill", "", "diagnostic pressure")
+	deadline := time.Now().Add(time.Second)
+	for m.DiagnosticStats().Queued != 0 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if m.DiagnosticStats().Queued != 0 {
+		t.Fatal("blocked sink did not start")
+	}
+	for range asynclog.SingleQueueSize {
 		m.reportDiagnostic("fill", "", "diagnostic pressure")
 	}
 	endpoint := PeerEndpoint{host: "pipe", remoteCall: "N1REM", family: config.PeeringPeerFamilyDXSpider}
@@ -55,7 +65,7 @@ func TestSessionOwnerReservationSurvivesDiagnosticOverload(t *testing.T) {
 			t.Fatalf("cycle %d retained session credits", i)
 		}
 	}
-	if stats := m.DiagnosticStats(); stats.Queued != peerdiag.QueueSize || stats.Dropped < 384 {
+	if stats := m.DiagnosticStats(); stats.Queued != asynclog.SingleQueueSize || stats.Dropped-before.Dropped < 384 {
 		t.Fatalf("diagnostic overflow accounting=%+v", stats)
 	}
 	m.Stop()

@@ -4,7 +4,6 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"runtime"
 	"runtime/debug"
@@ -188,6 +187,6 @@ func main() {
 		return
 	}
 	if err := cluster.Run(versionInfo.clusterBuildInfo()); err != nil {
-		log.Fatalf("Startup failed: %v", err)
+		os.Exit(1)
 	}
 }

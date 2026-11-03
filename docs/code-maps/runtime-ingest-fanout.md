@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `3c8288b061cead02`
+- Source fingerprint: `e6ddf7dd153e3064`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,8 +12,8 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 12 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 32 | 154 |
-| `dxcluster/peer` | `peer` | 62 | 133 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 50 | 177 |
+| `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 38 | 67 |
 | `dxcluster/telnet` | `telnet` | 80 | 163 |
 
@@ -52,8 +52,11 @@
 | `dxcluster/internal/cluster` | `dxcluster/filter` |
 | `dxcluster/internal/cluster` | `dxcluster/floodcontrol` |
 | `dxcluster/internal/cluster` | `dxcluster/gridstore` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/asynclog` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/correctionflow` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/linebuffer` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/logfiles` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/logidentity` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/logutil` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/pebbleresilience` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/peerdiag` |
@@ -141,6 +144,10 @@ Test files:
 Source files:
 - `internal/cluster/activity_monitor.go`
 - `internal/cluster/adaptive_refresher.go`
+- `internal/cluster/async_v6_files.go`
+- `internal/cluster/async_v6_runtime.go`
+- `internal/cluster/async_v6_surface.go`
+- `internal/cluster/async_v7_identity.go`
 - `internal/cluster/bootstrap.go`
 - `internal/cluster/call_meta_cache.go`
 - `internal/cluster/correction_decision_diagnostics.go`
@@ -154,6 +161,10 @@ Source files:
 - `internal/cluster/go_runtime_tuning.go`
 - `internal/cluster/ingest_health.go`
 - `internal/cluster/ingest_validation.go`
+- `internal/cluster/log_link_linux.go`
+- `internal/cluster/log_link_other.go`
+- `internal/cluster/log_link_windows.go`
+- `internal/cluster/log_record_framer.go`
 - `internal/cluster/logging.go`
 - `internal/cluster/main_runtime.go`
 - `internal/cluster/output_pipeline.go`
@@ -166,11 +177,21 @@ Source files:
 - `internal/cluster/peer_publication.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/replacement_license.go`
+- `internal/cluster/root_open_linux.go`
+- `internal/cluster/root_open_other.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/stabilizer_matrix.go`
 - `internal/cluster/telnet_family_suppressor.go`
 - `internal/cluster/temporal_result.go`
 - `internal/cluster/temporal_runtime.go`
+- `internal/cluster/unified_log_categories.go`
+- `internal/cluster/unified_log_destinations.go`
+- `internal/cluster/unified_log_fanout.go`
+- `internal/cluster/unified_log_line_sink.go`
+- `internal/cluster/unified_log_processors.go`
+- `internal/cluster/unified_log_rotation_hook.go`
+- `internal/cluster/unified_log_router.go`
+- `internal/cluster/unified_log_streams.go`
 
 Test files:
 - `internal/cluster/accepted_learning_bench_test.go`
@@ -181,6 +202,11 @@ Test files:
 - `internal/cluster/accepted_learning_shutdown_test.go`
 - `internal/cluster/activity_admission_wiring_test.go`
 - `internal/cluster/archive_fanout_delivery_test.go`
+- `internal/cluster/async_v6_console_test.go`
+- `internal/cluster/async_v6_dashboard_integration_test.go`
+- `internal/cluster/async_v6_files_test.go`
+- `internal/cluster/async_v6_runtime_test.go`
+- `internal/cluster/async_v7_identity_test.go`
 - `internal/cluster/boolean_defaults_test.go`
 - `internal/cluster/bulletin_ingress_test.go`
 - `internal/cluster/canadian_state_test.go`
@@ -233,6 +259,10 @@ Test files:
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/legacy_history_runtime_test.go`
 - `internal/cluster/license_replacement_delivery_test.go`
+- `internal/cluster/log_record_framer_test.go`
+- `internal/cluster/logging_bounded_cleanup_test.go`
+- `internal/cluster/logging_close_owner_test.go`
+- `internal/cluster/logging_root_test.go`
 - `internal/cluster/logging_test.go`
 - `internal/cluster/main_runtime_output_retirement_test.go`
 - `internal/cluster/main_runtime_test.go`
@@ -295,10 +325,12 @@ Test files:
 - `internal/cluster/peer_publication_bench_test.go`
 - `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/peer_spot_admission_test.go`
+- `internal/cluster/prop_report_rooted_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
 - `internal/cluster/pskr_zero_connected_test.go`
 - `internal/cluster/pskr_zero_mqtt_retirement_test.go`
 - `internal/cluster/pskr_zero_protocol_test.go`
+- `internal/cluster/root_open_test.go`
 - `internal/cluster/runtime_output_listener_other_test.go`
 - `internal/cluster/runtime_output_listener_windows_test.go`
 - `internal/cluster/runtime_output_retirement_test.go`
@@ -309,6 +341,7 @@ Test files:
 - `internal/cluster/stabilizer_test.go`
 - `internal/cluster/stabilizer_transition_delivery_test.go`
 - `internal/cluster/stabilizer_transition_license_test.go`
+- `internal/cluster/stats_shutdown_test.go`
 - `internal/cluster/support_basis_delivery_test.go`
 - `internal/cluster/support_basis_family_bench_test.go`
 - `internal/cluster/telnet_base_session_config_test.go`
@@ -325,6 +358,17 @@ Test files:
 - `internal/cluster/temporal_retirement_test.go`
 - `internal/cluster/temporal_runtime_test.go`
 - `internal/cluster/toxicity_config_contract_test.go`
+- `internal/cluster/unified_log_categories_test.go`
+- `internal/cluster/unified_log_destinations_test.go`
+- `internal/cluster/unified_log_fanout_test.go`
+- `internal/cluster/unified_log_line_sink_test.go`
+- `internal/cluster/unified_log_processors_test.go`
+- `internal/cluster/unified_log_rotation_hook_test.go`
+- `internal/cluster/unified_log_router_test.go`
+- `internal/cluster/unified_log_test_helpers_test.go`
+- `internal/cluster/unified_v3_config_summary_test.go`
+- `internal/cluster/unified_v3_daily_report_test.go`
+- `internal/cluster/unified_v3_main_binary_test.go`
 - `internal/cluster/voacap_cache_diagnostics_test.go`
 - `internal/cluster/voacap_persistence_profile_test.go`
 
@@ -408,6 +452,8 @@ Test files:
 - `peer/dedupe_index_test.go`
 - `peer/diagnostic_observer_clock_test.go`
 - `peer/diagnostic_observer_test.go`
+- `peer/diagnostic_retirement_test.go`
+- `peer/diagnostic_test_helpers_test.go`
 - `peer/forwarding_policy_test.go`
 - `peer/inbound_handshake_harness_test.go`
 - `peer/inbound_handshake_test.go`
@@ -893,6 +939,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0333 | Accepted | 2026-11-02 | logging, peer diagnostics, shutdown, operations | `area:peer` |
 | ADR-0332 | Accepted | 2026-11-01 | RBN ingest, archive, telnet, user preferences | `area:telnet` |
 | ADR-0328 | Accepted | 2026-10-28 | telnet commands, input pacing, operator settings | `area:commands, area:telnet` |
 | ADR-0327 | Accepted | 2026-10-28 | telnet admission, IP capacity, reconnect, persistence | `area:telnet` |

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"net/url"
 	"os"
@@ -28,8 +29,11 @@ type Logger interface {
 }
 
 type Options struct {
-	Date             time.Time
-	LogPath          string
+	Date    time.Time
+	LogPath string
+	// OpenLog, when set, supplies an owned read-only snapshot on the report
+	// worker. LogPath remains the display name and is never opened as fallback.
+	OpenLog          func() (io.ReadCloser, error)
 	JSONOut          string
 	ReportOut        string
 	ConfigDir        string
@@ -406,13 +410,44 @@ var (
 )
 
 func parseLog(path string) ([]string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
+	return parseLogFile(context.Background(), path)
+}
 
-	scanner := bufio.NewScanner(f)
+// reportFile gives the report worker sole ownership of the readable input.
+// It requires no lock file or write access to the input directory.
+type reportFile struct{ io.ReadCloser }
+
+func (f reportFile) Reader() io.Reader { return f.ReadCloser }
+
+func parseLogFile(ctx context.Context, path string) ([]string, error) {
+	return parseLogFileWithOpener(ctx, path, nil)
+}
+
+func parseLogFileWithOpener(ctx context.Context, path string, open func() (io.ReadCloser, error)) ([]string, error) {
+	result, err := reportSnapshots.scan(ctx, func() (reportSnapshot, error) {
+		var file io.ReadCloser
+		var err error
+		if open == nil {
+			file, err = os.Open(path)
+		} else {
+			file, err = open()
+		}
+		if err != nil {
+			return nil, err
+		}
+		if file == nil {
+			return nil, errors.New("report log opener returned no file")
+		}
+		return reportFile{file}, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read propagation log %q: %w", path, err)
+	}
+	return result.entries, nil
+}
+
+func parseLogReader(r io.Reader) ([]string, error) {
+	scanner := bufio.NewScanner(r)
 	const maxLineBytes = 1024 * 1024
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	lines := make([]string, 0, 4096)
@@ -1106,11 +1141,10 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 		}
 	}
 
-	entries, err := parseLog(logPath)
+	entries, err := parseLogFileWithOpener(ctx, logPath, opts.OpenLog)
 	if err != nil {
 		return result, err
 	}
-
 	bandHourStats, ge10VarByHour := collectPathSnapshotSamples(entries, date)
 	predByTS := make(map[string]*predTotals)
 	sparseP50VOACAPByTS := make(map[string]*sparseP50VOACAPTotals)
@@ -1700,7 +1734,7 @@ func Generate(ctx context.Context, opts Options) (Result, error) {
 func buildFinalReport(summary reportSummary) string {
 	var b strings.Builder
 	logName := filepath.Base(summary.LogFile)
-	fmt.Fprintf(&b, "I reviewed the entire %s log (%s) and summarized per band, by hour how much evidence we have (active fine buckets) and how strong it is (weight distribution). All times are UTC from the log.\n\n", summary.DateUTC, logName)
+	fmt.Fprintf(&b, "I reviewed the %s log (%s) and summarized per band, by hour how much evidence we have (active fine buckets) and how strong it is (weight distribution). All times are UTC from the log.\n\n", summary.DateUTC, logName)
 	b.WriteString("Availability-tagged snapshots use their recorded sampling time; unavailable or incomplete snapshots are omitted. Historical snapshots without those fields use the log emission time and its legacy zero-weight assumptions.\n\n")
 	b.WriteString("How to read this\n\n")
 	b.WriteString("f_med = median count of active fine buckets for the hour (higher = more evidence).\n")

@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,6 +10,63 @@ import (
 	"testing"
 	"time"
 )
+
+func TestDailyFileSinkReportsArchiveWhenNextOpenFails(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		staleStart bool
+	}{
+		{"running sink", false},
+		{"stale active file at startup", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "propagation")
+			sink, err := newDailyFileSink(dir, 7)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer sink.Close()
+			sink.workerHook = true
+			day := time.Now().UTC().Add(-24 * time.Hour)
+			if tc.staleStart {
+				line := formatLogTimestamp(day) + " previous\n"
+				if err := os.WriteFile(activeLogPathForDir(dir), []byte(line), 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else if !sink.writeLine("previous", day) {
+				t.Fatal("initial write failed")
+			}
+			var calls int
+			var gotDate time.Time
+			var gotPath, gotNewPath string
+			sink.SetRotateHook(func(previous time.Time, previousPath, newPath string) {
+				calls++
+				gotDate, gotPath, gotNewPath = previous, previousPath, newPath
+			})
+			failNext := true
+			sink.openFile = func(path string, flags int, mode os.FileMode) (*os.File, error) {
+				if failNext {
+					failNext = false
+					return nil, errors.New("injected open failure")
+				}
+				return os.OpenFile(path, flags, mode)
+			}
+			if sink.writeLine("during failure", day.Add(24*time.Hour)) {
+				t.Fatal("injected open failure reported success")
+			}
+			archive := archiveLogPathForDate(dir, day)
+			if calls != 1 || !gotDate.Equal(dateOnly(day)) || gotPath != archive || gotNewPath != activeLogPathForDir(dir) {
+				t.Fatalf("rotation calls=%d date=%v path=%q new=%q", calls, gotDate, gotPath, gotNewPath)
+			}
+			if data, err := os.ReadFile(archive); err != nil || !strings.Contains(string(data), "previous") {
+				t.Fatalf("archive=%q err=%v", data, err)
+			}
+			if !sink.writeLine("after recovery", day.Add(24*time.Hour)) || calls != 1 {
+				t.Fatalf("retry failed or duplicated rotation hook: calls=%d", calls)
+			}
+		})
+	}
+}
 
 func TestLogFileNameForDate(t *testing.T) {
 	when := time.Date(2026, time.January, 22, 12, 0, 0, 0, time.UTC)
@@ -168,43 +226,6 @@ func TestDailyFileSinkRotateHook(t *testing.T) {
 	}
 }
 
-func TestDailyFileSinkCleanupAsync(t *testing.T) {
-	dir := t.TempDir()
-	sink, err := newDailyFileSink(dir, 1)
-	if err != nil {
-		t.Fatalf("newDailyFileSink: %v", err)
-	}
-	defer sink.Close()
-
-	cleanupStarted := make(chan struct{})
-	cleanupBlock := make(chan struct{})
-	sink.cleanupFn = func(dir string, now time.Time, retentionDays int) error {
-		close(cleanupStarted)
-		<-cleanupBlock
-		return nil
-	}
-
-	done := make(chan struct{})
-	go func() {
-		sink.WriteLine("line", time.Now().UTC())
-		close(done)
-	}()
-
-	select {
-	case <-cleanupStarted:
-	case <-time.After(2 * time.Second):
-		t.Fatalf("cleanup did not start")
-	}
-
-	select {
-	case <-done:
-	case <-time.After(200 * time.Millisecond):
-		t.Fatalf("WriteLine blocked on cleanup; expected async cleanup")
-	}
-
-	close(cleanupBlock)
-}
-
 func TestRotateHookLoggingDoesNotDeadlock(t *testing.T) {
 	dir := t.TempDir()
 	sink, err := newDailyFileSink(dir, 1)
@@ -279,8 +300,7 @@ func TestDailyFileSinkAdoptsCurrentLegacyLog(t *testing.T) {
 	}
 }
 
-// Keep the real retention path, but wait for each asynchronous cleanup before
-// checking files so expired archives cannot pass merely by winning a race.
+// Observe the real retention path before checking files.
 func observeDailyFileCleanup(t *testing.T, sink *dailyFileSink) func() {
 	t.Helper()
 	done := make(chan error, 2)
@@ -337,7 +357,7 @@ func TestDailyFileSinkArchivesStaleActiveOnStartup(t *testing.T) {
 	}
 }
 
-func TestDailyFileSinkArchiveCollisionMergesWithoutOverwrite(t *testing.T) {
+func TestDailyFileSinkArchiveCollisionPreservesArchive(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "system")
 	sink, err := newDailyFileSink(dir, 2)
 	if err != nil {
@@ -365,8 +385,8 @@ func TestDailyFileSinkArchiveCollisionMergesWithoutOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read archive: %v", err)
 	}
-	if !strings.Contains(string(archiveData), "existing") || !strings.Contains(string(archiveData), "from-active") {
-		t.Fatalf("expected archive merge without overwrite, got %q", archiveData)
+	if string(archiveData) != "existing\n" {
+		t.Fatalf("expected existing archive unchanged, got %q", archiveData)
 	}
 	activeData, err := os.ReadFile(filepath.Join(dir, "system.log"))
 	if err != nil {

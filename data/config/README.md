@@ -203,11 +203,13 @@ Propagation logs:
 File-only event logs:
 - `logging.login_attempts`, `logging.reputation_drops`, `logging.telnet_connections`, `logging.ingest_connections`, and `logging.peer_connections` write separate file sinks and do not add UI/console output.
 - Each block supports `enabled`, `dir`, `retention_days`, and `dedupe_window_seconds`.
-- Peer records use the sibling `peerdiag` companion and a bounded diagnostic
-  mailbox. Peer status reports known dropped records separately from writes
-  whose outcome is unconfirmed. Missing, blocked or resource-refused diagnostic
-  storage degrades logging while the protocol continues; other event sinks
-  retain their existing ownership. See [peer diagnostics](../../peer/README.md#diagnostics-and-persistence).
+- Peer records use the cluster executable and the same fixed-queue asynchronous
+  delivery as other event logs. A blocked destination or full queue can lose
+  records without a loss warning or stopping peering. See
+  [peer diagnostics](../../peer/README.md#diagnostics-and-persistence).
+- Use separate physical folders for the file log categories. GoCluster rejects
+  shared folders or active files, including conflicts discovered after startup.
+  Logs are disposable; retention uses UTC calendar dates.
 - `retention_days: 0` inherits `logging.retention_days`; omitted `dedupe_window_seconds` inherits `logging.drop_dedupe_window_seconds`; explicit `dedupe_window_seconds: 0` disables de-dupe for that event log.
 - Active event files use the directory basename, such as
   `login_attempts.log`; archives retain the date-only format, such as

@@ -44,8 +44,9 @@ function Invoke-PairFixture([string]$Mode, [int]$FailBuild, [bool]$FailMerge = $
         if ($args[0] -ne 'build') { throw 'Unexpected Go call.' }
         $state.builds++
         if ($env:GOOS -ne 'windows' -or $env:GOARCH -ne 'amd64') { throw 'Incorrect operational target.' }
-        $output = if ($state.builds -eq 1) { $args[3].Substring(3) } else { $args[4] }
-        if ($state.builds -eq 1 -and (($Mode -eq 'ordinary' -and $args[1] -ne '-pgo=off') -or ($Mode -eq 'pgo' -and $args[1] -ne ('-pgo=' + (Join-Path $root 'logs/pgo-merged.pprof'))))) { throw 'Wrong PGO selection.' }
+        if ($state.builds -ne 1) { throw 'Unexpected extra build.' }
+        $output = $args[3].Substring(3)
+        if (($Mode -eq 'ordinary' -and $args[1] -ne '-pgo=off') -or ($Mode -eq 'pgo' -and $args[1] -ne ('-pgo=' + (Join-Path $root 'logs/pgo-merged.pprof')))) { throw 'Wrong PGO selection.' }
         $stage = [IO.Path]::GetDirectoryName($output)
         if ([IO.Path]::GetDirectoryName($stage) -ne $buildRoot -or -not [IO.Path]::GetFileName($stage).StartsWith('.stage-')) { throw 'Build escaped staging.' }
         $published = @(Get-ChildItem $buildRoot -Directory -Force | Where-Object Name -NotLike '.stage-*')
@@ -70,11 +71,11 @@ function Invoke-PairFixture([string]$Mode, [int]$FailBuild, [bool]$FailMerge = $
         $result = $null
         $scriptName = if ($Mode -eq 'pgo') { 'consolidate-and-build-pgo.ps1' } else { 'build-executable-pair.ps1' }
         try { $result = & (Join-Path $scripts $scriptName) 6>$null } catch { $caught = $_.Exception.Message }
-        $expected = if ($FailMerge) { 'pprof merge failed' } elseif ($FailBuild -eq 1) { 'go build failed' } elseif ($FailBuild -eq 2) { 'peer diagnostic companion build failed' } else { '' }
+        $expected = if ($FailMerge) { 'pprof merge failed' } elseif ($FailBuild -eq 1) { 'go build failed' } else { '' }
         if ($caught -cne $expected) { throw "Unexpected result: $caught (expected $expected)" }
         if ((Get-Location).Path -ne $location -or $env:GOOS -ne $goos -or $env:GOARCH -ne $goarch -or
             (Test-Path Env:GOOS) -ne $hadGoos -or (Test-Path Env:GOARCH) -ne $hadGoarch) { throw 'Caller state changed.' }
-        $expectedBuilds = if ($FailMerge) { 0 } elseif ($FailBuild -eq 1) { 1 } else { 2 }
+        $expectedBuilds = if ($FailMerge) { 0 } else { 1 }
         if ($state.builds -ne $expectedBuilds -or $state.merges -ne $(if ($Mode -eq 'pgo') { 1 } else { 0 })) { throw 'Wrong build/merge count.' }
         foreach ($path in $protected.Keys) { if ((Get-FileHash -LiteralPath $path).Hash -ne $protected[$path]) { throw "Prior output changed: $path" } }
         $directories = @(Get-ChildItem $buildRoot -Directory -Force)
@@ -85,9 +86,10 @@ function Invoke-PairFixture([string]$Mode, [int]$FailBuild, [bool]$FailMerge = $
             $state.publishedBefore++
             if ($directories.Count -ne $state.publishedBefore -or @($result).Count -ne 1 -or $result.Mode -ne $Mode) { throw 'Bad publication result.' }
             $clusterName = if ($Mode -eq 'pgo') { 'gocluster_pgo.exe' } else { 'gocluster.exe' }
-            if ($result.ClusterPath -ne (Join-Path $result.OutputDirectory $clusterName) -or $result.PeerDiagnosticPath -ne (Join-Path $result.OutputDirectory 'peerdiag.exe')) { throw 'Wrong pair paths.' }
+            if ($result.ClusterPath -ne (Join-Path $result.OutputDirectory $clusterName) -or $result.PSObject.Properties.Name -contains 'PeerDiagnosticPath') { throw 'Wrong executable result.' }
             $manifest = @(Get-Content $result.ManifestPath -Raw | ConvertFrom-Json)
-            if ($manifest.Count -ne 2 -or ($manifest.file -join ',') -ne "$clusterName,peerdiag.exe") { throw 'Wrong manifest.' }
+            if ($manifest.Count -ne 1 -or $manifest[0].file -ne $clusterName) { throw 'Wrong manifest.' }
+            if (Test-Path -LiteralPath (Join-Path $result.OutputDirectory 'peerdiag.exe')) { throw 'Unexpected companion executable.' }
             foreach ($entry in $manifest) {
                 $path = Join-Path $result.OutputDirectory $entry.file
                 if ((Get-FileHash $path).Hash -ne $entry.sha256) { throw 'Manifest mismatch.' }
@@ -102,12 +104,11 @@ try {
     foreach ($environmentState in @('absent','value','empty')) {
         foreach ($mode in @('pgo', 'ordinary')) {
             Invoke-PairFixture $mode 1 $false 1 $environmentState
-            Invoke-PairFixture $mode 2 $false 1 $environmentState
             Invoke-PairFixture $mode 0 $false 2 $environmentState
         }
         Invoke-PairFixture 'pgo' 0 $true 1 $environmentState
     }
-    Write-Host "PASS $passed isolated pair fixtures; no Go builds."
+    Write-Host "PASS $passed isolated build fixtures; no Go builds."
 } finally {
     Set-Location $originalLocation
     foreach ($name in $originalGoEnvironment.Keys) {

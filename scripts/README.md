@@ -11,7 +11,7 @@ runs version probes. Its fixtures are `test-agentic-tools.ps1` and the DXSpider
 dependency preflight fixtures are `test-pc92-dxspider-preflight.ps1`.
 
 From a Windows source checkout, `pwsh -NoProfile -File ./launch-cluster.ps1`
-builds one Windows amd64 cluster/peerdiag pair and launches that exact pair.
+builds one Windows amd64 cluster executable and launches that exact executable.
 `logs/cpu-*.pprof` selects the strict PGO route; an absent/empty profile set
 selects `build-executable-pair.ps1` with `-pgo=off`. A malformed profile, failed
 merge, or failed build is an error, with no launch or stale-binary fallback.
@@ -19,11 +19,12 @@ The standalone `consolidate-and-build-pgo.ps1` still requires profiles and the
 matching root `gocluster.exe` that captured them.
 
 Both routes publish a unique directory under `.tmp/ordinary` or `.tmp/pgo`
-only after both builds and the hash manifest succeed. They return an object
-with `Mode`, `OutputDirectory`, `ClusterPath`, `PeerDiagnosticPath`, and
-`ManifestPath`. Prior pairs and root executables remain intact. The launcher
+only after the build and hash manifest succeed. They return an object
+with `Mode`, `OutputDirectory`, `ClusterPath`, and `ManifestPath`. The builder's
+existing `build-executable-pair.ps1` name remains for callers. Prior builds and
+root executables remain intact. The launcher
 uses the repository's config directory and restores the caller's location and
-configuration environment after the process exits. Pair-build target settings
+configuration environment after the process exits. Build target settings
 are restored too. This does not start a Linux server from WSL or qualify PGO
 performance; matching capture provenance still matters.
 
@@ -84,7 +85,6 @@ paths. Preparation prints their actual absolute paths:
 ```text
 .tmp\windows-tests\dxcluster\peer\package.test.exe
 .tmp\windows-tests\dxcluster\internal\cluster\package.test.exe
-.tmp\windows-tests\dxcluster\internal\peerdiag\package.test.exe
 ```
 
 Windows Firewall application rules use the **full executable path**. Approve
@@ -95,9 +95,7 @@ stable paths do not resolve Windows Application Control denials. See
 [Microsoft's application-rule guidance](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules).
 
 Ordinary and race builds replace the binaries at the same paths, so they share
-firewall approvals. Relaunched test children retain those paths too. The
-peer diagnostic companion uses `peerdiag.exe` beside its package test binary;
-preparation builds and prints that path. Temporary VOACAP fixture executables
+firewall approvals. Relaunched test children retain those paths too. Temporary VOACAP fixture executables
 remain isolated; the inspected fixtures do not listen on network sockets.
 Moving the checkout changes the paths and requires corresponding rule updates.
 
@@ -166,7 +164,7 @@ for evidence boundaries and interpretation.
 
 ## Release Preparation
 
-`create-release.ps1` builds both binaries itself. A manual `go build` is not a
+`create-release.ps1` builds the cluster executable itself. A manual `go build` is not a
 prerequisite. Normal releases require clean committed source and fresh module
 files/code maps; a refusal includes the repository and offending Git paths.
 `-AllowDirty` and `-SkipCodeMapCheck` remain package-only exceptions. Root

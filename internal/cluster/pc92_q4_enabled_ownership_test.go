@@ -13,7 +13,7 @@ func TestQ4RequiresEnabledOwnership(t *testing.T) {
 	valid := peer.QualificationState{
 		MaxPeers: 64, Established: 64,
 		Persistence: peer.TopologyPersistenceStats{Enabled: true, ReservedBytes: 16 << 20, EngineBackingBytes: 8 << 20, HostReservedBytes: 2 << 20, Active: 1, ProjectionCommits: 1},
-		Diagnostics: peerdiag.Stats{Generation: 1, Written: 1, ChargedBytes: 3 << 20},
+		Diagnostics: peerdiag.Stats{Generation: 1, Written: 1, CurrentWritten: 1, ChargedBytes: 3 << 20},
 		Contexts:    peer.ContextOwnershipStats{Parents: 192, Active: 192, ProjectionParents: 2},
 	}
 	valid.Pending = 128
@@ -27,11 +27,12 @@ func TestQ4RequiresEnabledOwnership(t *testing.T) {
 		"no actual commit":          func(s *peer.QualificationState) { s.Persistence.ProjectionCommits = 0 },
 		"retired database":          func(s *peer.QualificationState) { s.Persistence.Retiring = 1 },
 		"failed database cleanup":   func(s *peer.QualificationState) { s.Persistence.CleanupFailed = true },
-		"helper disabled":           func(s *peer.QualificationState) { s.Diagnostics.Disabled = true },
-		"helper degraded":           func(s *peer.QualificationState) { s.Diagnostics.Degraded = true },
-		"helper absent":             func(s *peer.QualificationState) { s.Diagnostics.Generation = 0 },
-		"no actual helper write":    func(s *peer.QualificationState) { s.Diagnostics.Written = 0 },
-		"helper uncharged":          func(s *peer.QualificationState) { s.Diagnostics.ChargedBytes = 0 },
+		"diagnostic disabled":       func(s *peer.QualificationState) { s.Diagnostics.Disabled = true },
+		"diagnostic degraded":       func(s *peer.QualificationState) { s.Diagnostics.Degraded = true },
+		"diagnostic absent":         func(s *peer.QualificationState) { s.Diagnostics.Generation = 0 },
+		"no current owner write":    func(s *peer.QualificationState) { s.Diagnostics.CurrentWritten = 0 },
+		"diagnostic uncharged":      func(s *peer.QualificationState) { s.Diagnostics.ChargedBytes = 0 },
+		"diagnostic over budget":    func(s *peer.QualificationState) { s.Diagnostics.ChargedBytes = 3<<20 + 1 },
 		"missing fixed contexts":    func(s *peer.QualificationState) { s.Contexts.Parents-- },
 		"missing active context":    func(s *peer.QualificationState) { s.Contexts.Active-- },
 		"missing projection parent": func(s *peer.QualificationState) { s.Contexts.ProjectionParents-- },

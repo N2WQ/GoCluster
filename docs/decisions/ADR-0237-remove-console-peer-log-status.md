@@ -1,5 +1,9 @@
 # ADR-0237: Remove Console Peer-Log Status
 
+The companion-retention clause is superseded by
+[ADR-0333](ADR-0333-shared-bounded-runtime-logging.md); the remaining decision
+is unchanged.
+
 - Status: Accepted
 - Date: 2026-10-03
 - Decision Origin: Design

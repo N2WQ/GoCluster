@@ -1,5 +1,8 @@
 # Windows diagnostic native boundaries
 
+Historical record: these boundaries described the removed peerdiag companion.
+Current logging filesystem behavior and validation belong to the common logger.
+
 The helper's path and directory code adapts selected Go 1.26.4 behavior to
 enforce its existing memory reservation before native-output allocation.
 It is not a general replacement for the Go filesystem package.

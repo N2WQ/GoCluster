@@ -8,8 +8,6 @@ import (
 	"sync"
 	"testing"
 	"time"
-
-	"dxcluster/internal/peerdiag"
 )
 
 func TestSpotFrameParseChargeExactFieldAndASCIIShape(t *testing.T) {
@@ -107,8 +105,8 @@ func TestSpotLeaseInvalidDXAndDEDiagnosticConsumers(t *testing.T) {
 			}
 			b := newFrameParseBudget()
 			ctx := t.Context()
-			m := &Manager{parseBudget: b, diagnostics: peerdiag.New(peerdiag.Options{Enabled: true})}
-			t.Cleanup(m.diagnostics.Stop)
+			service, events, cleanup := newDiagnosticTestService(t, true, false)
+			m := &Manager{parseBudget: b, diagnostics: service}
 			s := &session{manager: m, ctx: ctx, remoteCall: "N1REM"}
 			dx, de := "K1ABC", "W1ABC"
 			if role == "DX" {
@@ -124,13 +122,21 @@ func TestSpotLeaseInvalidDXAndDEDiagnosticConsumers(t *testing.T) {
 				m.HandleFrame(frame, s)
 				return false, errors.New("intentional handler failure")
 			})
-			if err == nil || m.DiagnosticStats().Queued == 0 {
-				t.Fatalf("diagnostic consumer not exercised: stats=%+v err=%v", m.DiagnosticStats(), err)
+			if err == nil {
+				t.Fatal("expected handler failure")
+			}
+			select {
+			case event := <-events:
+				if !strings.Contains(event.line, "action=parse_rejected") {
+					t.Fatalf("unexpected diagnostic: %q", event.line)
+				}
+			case <-time.After(time.Second):
+				t.Fatal("diagnostic consumer not exercised")
 			}
 			if used, _ := b.usage(); used != 0 {
 				t.Fatalf("error path leaked%d bytes", used)
 			}
-			m.diagnostics.Stop()
+			cleanup()
 		}
 	}
 }

@@ -36,6 +36,8 @@ ui:
 
 # Optional UTC-rotated system log files. Active files keep stable names; archives
 # keep the existing date-only format, for example system.log -> 07-Jun-2026.log.
+# IMPORTANT: Give each enabled log category a different folder.
+# Sharing a folder can mix logs and cause rotation to fail.
 # Repeated file-log blocks use:
 #   dir: output directory; the active filename is derived from the directory name.
 #   retention_days: local retention window; 0 inherits the root logging value where supported.

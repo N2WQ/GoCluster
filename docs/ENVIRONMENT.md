@@ -159,8 +159,8 @@ native session authentication, sandbox operation, or permission to execute CGO
 test binaries. Run `scripts/verify-agentic-tools.ps1` in the new native session
 to verify its actual tool environment.
 
-The operational PowerShell launcher continues to build and run Windows
-executable pairs. Keep one authoritative checkout at `C:\src\gocluster`, also
+The operational PowerShell launcher builds and runs a fresh Windows
+executable. Keep one authoritative checkout at `C:\src\gocluster`, also
 accessible as `/mnt/c/src/gocluster` in WSL. Moving it is a separate operation
 that must account for runtime writers and operator paths. Match Git line-ending
 settings when accessing this existing Windows checkout, and trust only its exact
