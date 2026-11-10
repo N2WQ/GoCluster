@@ -160,6 +160,21 @@ unresolved product policy or authorize implementation.
 
 ## Recommendation Rules
 
+When genuinely viable, include reuse or adaptation of existing components in
+the comparison before proposing replacement. Preserve established behavior
+unless the objective or a demonstrated defect requires change. Justify new
+machinery and optional improvements against concrete requirements and their
+evidence cost. Prefer the smallest complete design supported by evidence,
+not the fewest changed lines; a larger design can be necessary for correctness,
+resilience, bounded resources, or performance.
+
+Reconcile consumer constraints and identify the hardest approach-invalidating
+claim before broad implementation. Use the smallest sufficient read-only proof
+or recommend a bounded feasibility investigation when mutation is necessary.
+Do not authorize dependent work on a failed premise. Keep peripheral unknowns
+explicit without inventing experiments for every uncertainty. Follow
+`docs/change-workflow.md` for reassessment and approval boundaries.
+
 The challenger may:
 
 * recommend one approach over another;

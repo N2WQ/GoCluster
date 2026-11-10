@@ -30,6 +30,14 @@ Review the actual final diff and touched files for:
 Use only the applicable sections of `docs/code-quality.md` and triggered skills
 for deeper domain review.
 
+Reuse this source-review method for meaningful implementation units before
+dependent work, as directed by `docs/change-workflow.md`. Follow each approved
+obligation into actual implementation, including refusals, error paths and
+relevant performance/resource contracts. Challenge whether the evidence could
+pass with that behavior missing or wrong. A test pass or item-to-file mapping
+alone is not a completeness verdict. Review expected behavior as well as tests,
+and keep permanent protection proportionate to distinct failure mechanisms.
+
 ## Go Review Method Trigger
 
 The Go code-quality review method is required only for High-risk or substantial

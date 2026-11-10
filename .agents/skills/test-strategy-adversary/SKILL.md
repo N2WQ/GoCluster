@@ -109,6 +109,20 @@ design implications. It must not:
 
 ## Post-approval Gate
 
+For approach-invalidating claims, distinguish the promised property from its
+proxy before dependent implementation: a queue counter does not prove total
+live backing, and sample message sizes do not prove a worst-case bound.
+Recommend the smallest sufficient evidence or bounded feasibility investigation
+without prescribing experiments for unrelated unknowns. Preserve applicable
+performance workloads, benchmarks, profiles and resource acceptance criteria.
+
+Reuse existing tests and runners where they detect the same material failures.
+Treat new permanent infrastructure as an evidence and maintenance obligation,
+not a default. A source-completeness review must follow actual normal and
+failure paths; a traceability map, static analyzer or passing suite alone
+cannot establish completeness. Apply the matrix to meaningful units before
+dependent work, without adding an approval for every internal checkpoint.
+
 1. Require exact approval of the current Scope Ledger and an implementation
    design detailed enough to derive falsifiable checks.
 2. Run before any implementation slice begins.

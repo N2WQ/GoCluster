@@ -25,6 +25,13 @@ A Codex Non-trivial change passes only when current evidence establishes that:
 Any unresolved material condition fails closeout. Report the failure, gap,
 waiver, or residual risk directly; do not convert missing evidence into a pass.
 
+First completed delivery requires the approved behavior and necessary evidence,
+including applicable performance and resource proofs. Distinguish implemented
+behavior, executed checks, and unmet obligations. Passing tools do not override
+a known completeness gap. Use the meaningful-unit source review and evidence-
+based failure diagnosis in `docs/change-workflow.md`; do not weaken required
+validation to reduce apparent time or token cost.
+
 ## Risk-triggered Evidence
 
 Use race checks for concurrency or shared-state changes, fuzzing for parser or
@@ -48,3 +55,8 @@ is required.
 Static workflow checkers cannot prove conversational approval, correct risk
 classification, adequate discovery, sufficient validation, genuine reviewer
 independence, or engineering quality.
+
+Keep review identity and independence explicit where review is reported, with
+material findings and outcomes. No separate reviewer is required for every
+change. Existing push-to-main CI and nightly race checks remain configured;
+local validation does not claim a hosted CI pass without observed evidence.

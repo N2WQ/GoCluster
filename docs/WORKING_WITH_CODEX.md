@@ -1,5 +1,16 @@
 # Working With Codex In gocluster
 
+The goal is complete, correct, high-performance code at the first completed
+delivery. Development can include fixes and reruns; no instruction guarantees
+zero defects or token savings. Codex should explain the outcome, recommendation,
+included work, meaningful tradeoff and verification in plain language. The full
+engineering scope remains reviewable and cannot hide extra executable work.
+
+You decide desired behavior and acceptable consequences. Codex owns the
+architecture, implementation details, completeness, performance engineering
+and failure diagnosis within approved scope. It should use earlier decisions
+before asking questions and explain alternatives with concrete examples.
+
 `AGENTS.md` is the Codex execution contract. `CLAUDE.md` separately governs
 Fable. They share codebase engineering standards but do not share planning,
 reporting, or agent-orchestration requirements.
@@ -64,6 +75,17 @@ lead-owned.
 
 ## Validation And Closeout
 
+Before a broad implementation, Codex checks critical feasibility and compares
+credible alternatives, including reuse. A smaller patch is not preferred when
+it would sacrifice correctness or performance. Each meaningful unit receives
+source review and appropriate checks before dependent work. Failures require
+diagnosis; a successful retry alone does not make a failure harmless.
+
+When work keeps expanding without useful progress, Codex should explain the
+failed assumption and smallest sound path forward. Routine checkpoints do not
+need another approval; material changes to scope, risk or validation still do.
+No arbitrary reasoning or test budget replaces required evidence.
+
 Approval rigor follows change risk; validation follows the touched surface.
 Markdown-only workflow changes do not require Go tests. Codex runs targeted
 checks while working and one final selected lane, then reruns only evidence
@@ -78,3 +100,10 @@ For commands, use `docs/dev-runbook.md`. For engineering rules, use only the
 applicable sections of `docs/code-quality.md`. Fable continues to follow its
 own workflow, review, validation, and template documents until separately
 changed.
+
+Your existing GitHub CI runs under its current push-to-main triggers and path
+filters; nightly race checks remain scheduled. You can continue pushing
+directly to main. Codex still runs the appropriate local checks before a push.
+The deferred tooling proposals and their reasons are retained in
+[ADR-0335](decisions/ADR-0335-complete-proportionate-codex-delivery.md); they are
+not authorized future work.

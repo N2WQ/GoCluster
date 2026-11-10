@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0335 | Complete Proportionate Codex Delivery | Accepted | 2026-11-10 | Codex workflow, owner decisions, feasibility, completeness, validation | Refines ADR-0221 communication/execution and ADR-0224 feasibility | none | [ADR-0335](decisions/ADR-0335-complete-proportionate-codex-delivery.md) |
 | ADR-0334 | Frequency-Change-Aware Secondary Dedupe | Accepted | 2026-11-10 | dedup, mode identity, shadow counters, fanout, operations | Refines ADR-0234 candidate secondary-key policy; extends ADR-0148 admitted contents | none | [ADR-0334](decisions/ADR-0334-frequency-change-aware-secondary-dedupe.md) |
 | ADR-0333 | Shared Bounded Runtime Logging | Accepted | 2026-11-02 | logging, peer diagnostics, shutdown, operations | ADR-0234 diagnostics process and retirement; ADR-0237 companion retention; ADR-0250 companion packaging | none | [ADR-0333](decisions/ADR-0333-shared-bounded-runtime-logging.md) |
 | ADR-0332 | Per-User RBN CW Speed Display | Accepted | 2026-11-01 | RBN ingest, archive, telnet, user preferences | none; complements ADR-0116 | none | [ADR-0332](decisions/ADR-0332-per-user-rbn-cw-speed-display.md) |

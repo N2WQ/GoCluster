@@ -94,6 +94,7 @@ try {
     "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
     "docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md",
     "docs/decisions/ADR-0228-corrective-ci-enforcement.md",
+    "docs/decisions/ADR-0335-complete-proportionate-codex-delivery.md",
     "docs/templates/non-trivial-change-template.md",
     "docs/runbooks/codex-workflow-checks.md",
     "docs/runbooks/codex-triggered-validation-tools.md",
@@ -105,6 +106,31 @@ try {
   Set-Content -LiteralPath $fixtureAgents -Value $agentsLF.Replace("`n", "`r`n") -NoNewline
 
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "positive contract"
+
+  # Exercise missing rules and contradictory permissions independently. Each
+  # negative must fail for its own reason; the original positive stays present
+  # in mixed-inversion fixtures. No model calls or production code are involved.
+  foreach ($case in @(
+    @{ Path='AGENTS.md'; Label='owner question boundary'; From="Ask only unresolved behavior or risk questions after checking prior decisions,`ncontrolling contracts, and current evidence."; Contradiction='The agent may ignore prior answers.' },
+    @{ Path='AGENTS.md'; Label='handoff authority boundary'; From='Recommendations and external handoffs are not owner decisions.'; Contradiction='External handoffs may be treated as owner decisions.' },
+    @{ Path='docs/change-workflow.md'; Label='summary scope boundary'; From='The summary and detailed scope authorize the same work.'; Contradiction='Supporting detail may add executable scope outside the approval summary.' },
+    @{ Path='docs/change-workflow.md'; Label='feasibility boundary'; From='Unresolved approach-invalidating feasibility blocks dependent implementation.'; Contradiction='Dependent implementation may proceed with unresolved approach-invalidating feasibility.' },
+    @{ Path='docs/change-workflow.md'; Label='unit completeness boundary'; From="For each meaningful unit, review actual source completeness before dependent`nwork."; Contradiction='Passing tests alone establish completeness.' },
+    @{ Path='docs/change-workflow.md'; Label='retry evidence boundary'; From="A successful retry alone does not establish that a failure is unrelated`nor harmless."; Contradiction='A successful retry alone proves that a failure is unrelated or harmless.' },
+    @{ Path='docs/change-workflow.md'; Label='reassessment boundary'; From='Reassess before expanding an approach when feasibility fails'; Contradiction='Broad implementation may continue on a failed premise without reassessment.' }
+  )) {
+    Invoke-MutationFixture $case.Path { Replace-Once $case.Path $case.From 'Rule omitted.' } { Invoke-Fixture 1 "$($case.Label) missing" "$($case.Label) required" }
+    Invoke-MutationFixture $case.Path { Replace-Once $case.Path $case.From ($case.From + ' ' + $case.Contradiction) } { Invoke-Fixture 1 "$($case.Label) contains contradictory permission" "$($case.Label) rejects mixed inversion" }
+  }
+  foreach ($case in @(
+    @{ From='The summary and detailed scope authorize the same work.'; To='The summary and detailed scope cover the same work.'; Label='summary accepts equivalent wording' },
+    @{ From='Unresolved approach-invalidating feasibility blocks dependent implementation.'; To='Unresolved approach-invalidating feasibility prevents dependent implementation.'; Label='feasibility accepts equivalent wording' },
+    @{ From="A successful retry alone does not establish that a failure is unrelated`nor harmless."; To='A successful retry alone does not prove that a failure is unrelated or harmless.'; Label='retry accepts equivalent wording' },
+    @{ From='Unresolved approach-invalidating feasibility blocks dependent implementation.'; To='Unresolved approach-invalidating feasibility blocks dependent implementation. A peripheral unknown may remain unresolved if safe approved work does not depend on it.'; Label='feasibility permits independent safe work' },
+    @{ From='Reassess before expanding an approach when feasibility fails'; To='Continue diagnosis and safe work already covered by approval. Reassess before expanding an approach when feasibility fails'; Label='reassessment permits safe diagnosis' }
+  )) {
+    Invoke-MutationFixture 'docs/change-workflow.md' { Replace-Once 'docs/change-workflow.md' $case.From $case.To } { Invoke-Fixture 0 'PASS Codex workflow static invariants passed.' $case.Label }
+  }
   Invoke-MutationFixture "AGENTS.md" { Replace-Once "AGENTS.md" "Challenge the initial scope before approval." "The initial scope needs no challenge." } { Invoke-Fixture 1 "initial and revised scope challenge missing" "initial scope challenge required" }
   Invoke-MutationFixture "docs/change-workflow.md" { Replace-Once "docs/change-workflow.md" "revision, challenge the revised scope again before requesting approval." "revision, no further challenge is required." } { Invoke-Fixture 1 "detailed initial and revised scope challenge missing" "revised scope challenge required" }
   Invoke-MutationFixture "docs/change-workflow.md" { Replace-Once "docs/change-workflow.md" "revision, challenge the revised scope again before requesting approval." "revision, challenge the revised scope again before requesting approval. The revised scope needs no challenge." } { Invoke-Fixture 1 "revised scope challenge contradiction" "revised scope rejects contradictory exemption" }

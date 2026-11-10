@@ -12,6 +12,23 @@ the user must provide before mutation may begin.
 
 ## Approval Packet
 
+Lead with a short owner-facing explanation: intended outcome, bounded included
+work, recommendation, benefit, meaningful tradeoff, material uncertainties,
+verification, and what happens if nothing changes. Use everyday language;
+explain decisions through concrete examples, not implementation terminology.
+State who challenged the scope, whether that review was independent, and the
+material findings and outcomes. No material findings is a valid result.
+
+The summary and complete engineering scope cover the same authorized work.
+Supporting detail may explain mechanisms and evidence but must not introduce
+additional executable items. The owner approves behavior, boundaries and
+consequences; the agent remains responsible for engineering correctness.
+Neither a mandatory card layout nor an additional approval stage is needed.
+
+Keep detailed evidence once in the existing work record or linked sources;
+do not require a new permanent ledger file for every task. The example below
+organizes engineering detail and does not replace the plain approval summary.
+
 ```text
 Proposed Scope Ledger vN
 
@@ -22,7 +39,7 @@ Boundaries: <explicit exclusions and stop conditions>
 Support-agent docs impact: Required | Not required - <reason>
 Material risks: <only applicable risks>
 Validation plan: <touched-surface commands or evidence>
-Scope challenge: <material finding and disposition, or none>
+Scope challenge: <reviewer, independence, material findings and outcomes, or none>
 
 Exact authorization required before implementation: Approved vN
 ```
@@ -82,3 +99,6 @@ Decision: <ADR/TSR reference when durable, otherwise concise disposition>
 Record evidence once. Explain failures, skips, waivers, residual risks, and
 high-risk evidence; do not enumerate successful but irrelevant process
 categories.
+
+Describe what is complete separately from which tools passed. An unresolved
+required proof keeps acceptance open even when every executed test passes.

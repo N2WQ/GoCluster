@@ -14,6 +14,11 @@ Fable ownership protections remain.
   context selection, and independent-evidence requirements. All other ADR-0221
   decisions remain accepted.
 
+[ADR-0335](ADR-0335-complete-proportionate-codex-delivery.md) further refines
+owner communication, design feasibility, meaningful-unit review, failure
+diagnosis and reassessment. Exact approval, risk-based independence and existing
+validation obligations remain unchanged.
+
 ## Context
 
 The Codex workflow accumulated strong engineering guidance alongside mandatory

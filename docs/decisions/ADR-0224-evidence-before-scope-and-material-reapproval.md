@@ -4,6 +4,12 @@
 - Date: 2026-07-11
 - Decision Origin: Design
 
+[ADR-0335](ADR-0335-complete-proportionate-codex-delivery.md) refines the
+treatment of unresolved feasibility: an approach-invalidating unknown cannot
+authorize dependent implementation. A bounded investigation may be approved;
+peripheral unknowns remain explicit where safe work does not depend on them.
+The original decision below remains the historical record.
+
 ## Context
 
 The Codex workflow requires inspection of current implementation, contracts,

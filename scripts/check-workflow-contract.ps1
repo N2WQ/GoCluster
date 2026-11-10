@@ -125,6 +125,7 @@ $requiredFiles = @(
   "docs/decisions/ADR-0225-remove-codex-target-reasoning-recommendation.md",
   "docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md",
   "docs/decisions/ADR-0228-corrective-ci-enforcement.md",
+  "docs/decisions/ADR-0335-complete-proportionate-codex-delivery.md",
   ".agents/skills/README.md",
   "scripts/README.md"
 )
@@ -149,6 +150,41 @@ $contractWorkflow = $text[".github/workflows/codex-workflow-contract.yml"]
 $raceWorkflow = $text[".github/workflows/nightly-race.yml"]
 $adr0227 = $text["docs/decisions/ADR-0227-push-to-main-ci-validation-backstops.md"]
 $adr0228 = $text["docs/decisions/ADR-0228-corrective-ci-enforcement.md"]
+
+# Guard representable relationships in the current policy owners. These are
+# deliberately bounded text checks, not a semantic parser or agent evaluation.
+$communication = Normalize-RelationshipText (Get-MarkdownSection $agents "### Communicating with the owner")
+$deliveryPolicy = Normalize-RelationshipText $workflow
+$deliveryGuards = @(
+  @{ Path='AGENTS.md'; Text=$communication; Label='owner question boundary';
+     Required='(?i)Ask only unresolved behavior or risk questions after checking prior decisions, controlling contracts, and current evidence\.';
+     Forbidden='(?i)\b(?:The agent|Codex) (?:may|can) ignore prior (?:answers|decisions)\b' },
+  @{ Path='AGENTS.md'; Text=$communication; Label='handoff authority boundary';
+     Required='(?i)Recommendations and external handoffs are not owner decisions\.';
+     Forbidden='(?i)\b(?:Recommendations|External handoffs) (?:are|may be (?:treated|recorded) as) owner decisions\b' },
+  @{ Path='docs/change-workflow.md'; Text=$deliveryPolicy; Label='summary scope boundary';
+     Required='(?i)The summary and detailed scope (?:authorize|cover) the same work\.';
+     Forbidden='(?i)\b(?:Supporting|Engineering) detail (?:may|can) add executable scope (?:absent from|outside) the approval summary\b' },
+  @{ Path='docs/change-workflow.md'; Text=$deliveryPolicy; Label='feasibility boundary';
+     Required='(?i)Unresolved approach-invalidating feasibility (?:blocks|prevents) dependent implementation\.';
+     Forbidden='(?i)\bDependent (?:implementation|work) (?:may|can) (?:proceed|continue) (?:with|despite) unresolved approach-invalidating feasibility\b' },
+  @{ Path='docs/change-workflow.md'; Text=$deliveryPolicy; Label='unit completeness boundary';
+     Required='(?i)For each meaningful unit, review actual source completeness before dependent work\.';
+     Forbidden='(?i)\bPassing (?:tests|checks) alone (?:establish|prove) completeness\b' },
+  @{ Path='docs/change-workflow.md'; Text=$deliveryPolicy; Label='retry evidence boundary';
+     Required='(?i)A successful retry alone does not (?:establish|prove) that a failure is unrelated or harmless\.';
+     Forbidden='(?i)\bA successful retry alone (?:establishes|proves) that a failure is unrelated or harmless\b' },
+  @{ Path='docs/change-workflow.md'; Text=$deliveryPolicy; Label='reassessment boundary';
+     Required='(?i)Reassess before expanding an approach when feasibility fails';
+     Forbidden='(?i)\bBroad implementation (?:may|can) continue on a failed premise without reassessment\b' }
+)
+foreach ($guard in $deliveryGuards) {
+  Require-Pattern $guard.Path $guard.Text $guard.Required "$($guard.Label) missing"
+  Forbid-Pattern $guard.Path $guard.Text $guard.Forbidden "$($guard.Label) contains contradictory permission"
+}
+Require-Text "docs/decisions/ADR-0221-codex-authority-and-evidence-workflow.md" $adr0221 'ADR-0335-complete-proportionate-codex-delivery.md' 'ADR-0221 delivery refinement link missing'
+Require-Text "docs/decisions/ADR-0224-evidence-before-scope-and-material-reapproval.md" $adr0224 'ADR-0335-complete-proportionate-codex-delivery.md' 'ADR-0224 delivery refinement link missing'
+Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0335 \|.*\| Accepted \|.*ADR-0221.*ADR-0224' 'ADR-0335 decision-index row missing'
 
 Require-Text "AGENTS.md" $agents 'Only exact `Approved vN` authorizes the matching agreed scope.' "approval authority route missing"
 Require-Pattern "AGENTS.md" $agents 'Challenge the initial scope before approval\. After a material revision,\s+challenge the revised scope again' "initial and revised scope challenge missing"

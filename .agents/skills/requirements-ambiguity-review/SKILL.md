@@ -230,6 +230,19 @@ Before responding, confirm that:
 
 Report the material result without a mandatory score or fixed envelope.
 
+Use the owner-communication rules in `AGENTS.md`. Check prior answers,
+controlling contracts and current evidence before asking. Reopen an answered
+question only for material new evidence, explaining what changed. Group related
+known questions; do not invent alternatives or impose an arbitrary option
+count. Give each material option an observable consequence, concrete example
+and meaningful tradeoff, including implementation burden when it affects the
+choice. Make a conditional recommendation without selecting policy.
+
+Keep the full ambiguity register available as evidence without printing every
+engineering field in the owner-facing explanation. Implementation uncertainty
+belongs to engineering unless it changes desired behavior or accepted risk.
+External handoffs and another agent's recommendations are not owner decisions.
+
 When material semantics remain unresolved, finish with the explicit user
 decision required.
 

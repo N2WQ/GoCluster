@@ -23,17 +23,27 @@ operational behavior take priority over speed.
 
 ### Communicating with the owner
 
-The owner understands the product and its operation but is not a software developer. Use clear, concise language that supports informed decisions.
+The owner understands the product and algorithms but is not a software
+developer. Complete, correct, high-performance code at the first completed
+delivery is the goal. Preserve the reasoning and evidence that goal requires;
+development may still require fixes and reruns.
 
-Lead with the answer or recommendation. Explain what changes for users or operators, why it matters, and any material downside or uncertainty. Translate technical findings into practical consequences. Use a concrete example when it makes the issue easier to understand.
+Lead with the outcome and recommendation. Approval summaries explain the
+bounded work, benefit, meaningful tradeoff, material uncertainty, verification,
+and what happens if nothing changes. Keep the complete engineering scope
+reviewable without repeating its analysis in the summary. Brevity must not hide
+risks or executable work; no fixed layout or word count is required.
 
-When the owner’s objective, priorities, or acceptable consequences are unclear and could materially change the recommendation, ask a focused question about the desired outcome; use established decisions and available evidence first. Perform the discovery, adversarial review, and validation the task warrants, then recommend a path and present the conclusions, practical consequences, material risks, and evidence needed to assess it. Preserve a complete, reviewable implementation contract for approval without repeating the full analysis in the decision-facing summary.
+Ask only unresolved behavior or risk questions after checking prior decisions,
+controlling contracts, and current evidence. Explain alternatives with concrete
+examples and meaningful consequences, including implementation burden when it
+changes the decision. Recommend a path without selecting policy for the owner.
+Recommendations and external handoffs are not owner decisions.
 
-Investigate thoroughly, but report selectively. Include engineering details only when they are necessary to understand a conclusion or make a decision. Keep extensive evidence in repository documentation and link to it when useful.
-
-When requesting a decision or approval, state your recommendation, the expected benefit, the meaningful tradeoff, and what happens if nothing changes. Ask about desired behavior and acceptable consequences. Resolve routine implementation choices yourself within the authorized scope.
-
-Apply this standard to progress updates, reviews, approval requests, and final responses. Brevity must never conceal a material risk. If another repository template requires excessive technical reporting, preserve its necessary checks in the work record and present the owner with a plain-language explanation.
+The agent owns architecture, implementation details, completeness, performance
+engineering, and failure diagnosis within approved scope. Resolve routine
+engineering choices; ask the owner about desired behavior and acceptable
+consequences. Apply this plain-language standard to updates and closeout too.
 
 ## Work Routes
 
@@ -196,6 +206,9 @@ as independent.
   contracts.
 * Review the final diff directly. Report material validation results once and
   explain failures, skips, waivers, or residual risks.
+* Follow `docs/change-workflow.md` for feasibility, meaningful implementation
+  units, failure diagnosis, and reassessment. Review actual source completeness
+  before dependent work; passing checks alone do not establish completeness.
 * Update affected documentation. Record an ADR only for a durable decision and
   a TSR for durable troubleshooting learning. Map each approved Non-trivial
   item compactly to implementation and validation.

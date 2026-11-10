@@ -46,11 +46,37 @@ Use fresh code maps and generated graphs only as orientation. Verify material
 conclusions against current source and tests. Use parallel discovery only for
 genuinely disjoint, material questions when its coordination cost is justified.
 
+Reconcile requirements across consumers before scope: a file-message limit
+cannot silently replace a different dashboard display limit. When credible
+alternatives exist, compare reuse, adaptation, and replacement against the
+actual objective, including compatibility, failure handling, resource bounds,
+performance, and evidence cost. The smallest diff is not necessarily the
+smallest complete solution. Justify new machinery and optional improvements by
+a concrete requirement; a larger design is appropriate when the evidence
+requires it. Do not manufacture alternatives when only one safe design exists.
+
+Unresolved approach-invalidating feasibility blocks dependent implementation.
+Use the smallest sufficient read-only evidence first. If mutation is needed to
+resolve feasibility, propose a bounded investigation before committing to the
+dependent design. Stop before dependent work if that investigation fails; do
+not use queue counters, representative samples, or passing tests as proof of a
+different promised bound. A peripheral unknown may remain explicit when the
+approved boundaries permit safe work that does not depend on its resolution.
+
+Use the owner-communication rules in `AGENTS.md`. Separate unresolved product
+semantics from engineering choices, batch related questions already known to
+be necessary, and do not reopen answered questions without material new
+evidence. Explain that evidence and its consequences if a decision reopens.
+
 ### Scope
 
 A Proposed Scope Ledger identifies its version, objective, agreed items,
 boundaries, material risks or unknowns, and validation plan. Only explicitly
 agreed items may be implemented.
+
+The summary and detailed scope authorize the same work. Supporting detail must
+not add executable scope absent from the approval summary. Preserve a complete
+reviewable contract, without requiring the owner to judge internal mechanisms.
 
 Challenge the initial proposed scope before approval. After a material scope
 revision, challenge the revised scope again before requesting approval. Focus
@@ -64,6 +90,12 @@ scope boundaries, accepted risk, or required validation. Wording-only changes
 do not require a new version. Independent scope review is appropriate only for
 High-risk, uncertain, disputed, difficult-to-reverse, or materially
 consequential scope.
+
+Briefly state who challenged the scope, whether review was lead-owned or used
+a separate independent context, and material findings with their disposition.
+A review with no material findings is valid; do not invent findings. This is
+evidence disclosure, not a fixed agent-result envelope or a universal subagent
+requirement.
 
 Decompose work when real rollback, ownership, uncertainty, or validation
 boundaries exist. A bounded coherent change may remain one slice. Broad
@@ -139,6 +171,11 @@ material evidence, dispositions findings, resolves conflicts, and retains all
 workflow authority without duplicating the complete delegated investigation.
 No execution-mode field or routine narration is required.
 
+Give each agent a bounded material question and a completion condition. Reuse
+valid findings, wait for meaningful results rather than repeatedly polling,
+and avoid overlapping discovery or repeated reviews without changed evidence.
+Do not impose arbitrary reasoning, testing, agent, time, or token caps.
+
 - Before approval, an agent may inspect and report findings but may not edit,
   propose diffs, format, generate artifacts, or run closeout suites.
 - After approval, a worker needs an approved disjoint objective, allowed paths,
@@ -159,6 +196,37 @@ or cleanup. Stop when an assumption fails or the blast radius expands.
 For code changes, read the universal kernel in `docs/code-quality.md` and only
 the risk sections that apply. For first-party YAML or support-critical Go, use
 the canonical config/comment rules when those surfaces are actually touched.
+
+For each meaningful unit, review actual source completeness before dependent
+work. Check the approved normal and failure paths, compatibility, ownership,
+resource bounds, documentation, and relevant performance requirements. Map
+obligations to implementation and evidence capable of exposing a mistake;
+passing tests, a traceability table, static analysis, or absence of placeholders
+is not sufficient alone. Use targeted tests and static checks appropriate to
+the unit before advancing. Internal checkpoints do not require new approval
+unless authority, scope, accepted risk, or required validation changes.
+
+Reuse suitable permanent tests and retain distinct failure detection under
+`docs/code-quality.md`. Do not repeat semantic matrices or build a new runner
+without a concrete evidence gap. Define relevant performance acceptance and
+workloads before claiming a performance result; preserve triggered benchmarks,
+profiles, race checks, and scientific or model evidence.
+
+## Reassessment
+
+Reassess before expanding an approach when feasibility fails, discoveries
+materially change scope or risk, or repeated redesign, rediscovery, or
+coordination produces no useful progress. Identify the failed assumption,
+still-valid evidence, and smallest sound path forward. Explain consequences
+in plain language; do not continue broad implementation on a failed premise.
+Continue diagnosis and safe work already covered by approval. Resolve reopened
+policy and obtain revised approval only for a material change to authority,
+scope, accepted risk, or required validation. Preserve unrelated work and leave
+an accurate, coherent stopped state if no authorized sound path remains.
+
+Do not trade required reasoning or evidence for a smaller apparent cost. First
+completed delivery requires the approved obligations and evidence; it is not a
+promise that development has no failed checks, fixes, or reruns.
 
 ## Review And Validation
 
@@ -181,6 +249,22 @@ Report material commands and results once. Include rationale or excerpts only
 for failures, skips, waivers, surprising behavior, high-risk command-backed
 claims, benchmarks, profiles, or runtime evidence. Never promote static
 reasoning into test or runtime confirmation.
+
+Classify failures using evidence: introduced defect, relevant inherited defect,
+unrelated failure, or invocation/environment error. If causation is unresolved,
+say so. A successful retry alone does not establish that a failure is unrelated
+or harmless. Correct setup before repeating expensive checks, use the selected
+native runner and platform prerequisites, preserve failed evidence, and rerun
+the evidence affected by a fix. Explain the practical consequence, corrective
+action, and remaining limitation instead of asking the owner to diagnose logs.
+Do not silently expand product scope to fix an unrelated failure or waive a
+required check. Retain raw evidence; summarize ordinary output and inspect
+relevant failures without flooding context with entire logs.
+
+Existing push-to-main GitHub CI, its path filters and manual triggers, and the
+nightly race schedule remain in place. Local validation follows the touched
+surface; post-push CI does not replace it. Workflow-only edits do not remove or
+skip configured GitHub checks. See `docs/dev-runbook.md` for commands.
 
 ## Documentation, Decisions, And Closeout
 
