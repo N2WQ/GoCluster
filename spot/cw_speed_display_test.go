@@ -3,6 +3,7 @@ package spot
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCWSpeedDisplayProjectionAndSnapshot(t *testing.T) {
@@ -95,14 +96,19 @@ func TestCWSpeedDisplayCacheEquivalence(t *testing.T) {
 }
 
 func TestCWSpeedDisplayNeverTruncatesLabel(t *testing.T) {
+	setDXClusterLineLength(t, 78)
 	s := NewSpot("K1ABC", "W1XYZ", 14030, "CW")
+	s.Time = time.Date(2026, time.November, 10, 22, 22, 0, 0, time.UTC)
 	s.HasReport, s.Report = true, 5
 	s.CWDisplayAvailable = true
 	s.CWDisplayComment = strings.Repeat("A", 200)
 	s.CWSpeeds = []string{"22 WPM"}
 	line := s.FormatDXClusterCW(true)
-	if strings.Contains(line, "22") || strings.Contains(line, "WPM") {
-		t.Fatalf("speed shown despite full comment: %q", line)
+	if !strings.Contains(line, "2222Z") {
+		t.Fatalf("missing fixed timestamp: %q", line)
+	}
+	if got, want := strings.TrimSpace(line[commentColumn:currentDXClusterLayout().tailStartIdx]), "CW 5 dB AAAAAAAAAAAAAAA"; got != want {
+		t.Fatalf("comment = %q, want %q (line %q)", got, want, line)
 	}
 }
 

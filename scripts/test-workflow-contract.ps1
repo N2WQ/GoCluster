@@ -424,10 +424,19 @@ try {
   $oldCounterpart = "---`nname: relocation-fixture`n---`nCounterpart: codex-skills/design-challenger/SKILL.md`n"
   Set-Content -LiteralPath $counterpartPath -Value $oldCounterpart -NoNewline
   & git -C $fixtureRoot init -q
+  if ($LASTEXITCODE -ne 0) { throw 'unable to initialize counterpart fixture repository' }
+  # This private repository owns its line endings; user Git settings must not
+  # turn the LF fixture into a native stderr warning in Windows PowerShell.
+  & git -C $fixtureRoot config --local core.autocrlf false
+  if ($LASTEXITCODE -ne 0) { throw 'unable to configure counterpart fixture line endings' }
   & git -C $fixtureRoot add -- $counterpart
+  if ($LASTEXITCODE -ne 0) { throw 'unable to stage counterpart baseline fixture' }
   & git -C $fixtureRoot -c user.name=Fixture -c user.email=fixture@example.invalid commit -qm baseline
   if ($LASTEXITCODE -ne 0) { throw 'unable to create counterpart baseline fixture' }
-  $counterpartBaseline = (& git -C $fixtureRoot rev-parse HEAD).Trim()
+  $counterpartRevision = & git -C $fixtureRoot rev-parse HEAD
+  if ($LASTEXITCODE -ne 0) { throw 'unable to resolve counterpart fixture baseline' }
+  $counterpartBaseline = ([string]$counterpartRevision).Trim()
+  if ($counterpartBaseline -eq '') { throw 'counterpart fixture baseline is empty' }
   $newCounterpart = $oldCounterpart.Replace('codex-skills/', '.agents/skills/')
   Set-Content -LiteralPath $counterpartPath -Value $newCounterpart -NoNewline
   Invoke-Fixture 0 "PASS Codex workflow static invariants passed." "baseline proves counterpart relocation only" @() $counterpartBaseline
