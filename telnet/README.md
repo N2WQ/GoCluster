@@ -1136,6 +1136,47 @@ SET DIAG DEDUPE use the ordinary resolved preference. Users retaining MED or SLO
 may see fewer local repeats than under the retired automatic FAST override.
 Select SET DEDUPE FAST explicitly when that is desired and available.
 
+### Frequency-change policy
+
+The operator-owned `dedup.secondary_frequency_changes` settings are separate
+from your FAST/MED/SLOW choice. They apply at startup and ship with `state: off`.
+
+| State | What reaches your feed |
+| --- | --- |
+| `off` | Historical suppression; frequency and mode do not distinguish repeats. |
+| `shadow` | The same spots and diagnostic tags as off; a separate candidate cache supplies comparison counters. |
+| `on` | The candidate can admit reported frequency changes and separates skimmer modes. Human modes remain grouped together. |
+
+Starting frequency tolerances are 500 Hz for skimmer CW/RTTY, 3000 Hz for
+skimmer FT8/FT4/FT2, 1000 Hz for other skimmer modes, and 2000 Hz for humans.
+A difference equal to tolerance remains a repeat. Each live entry allows up
+to the configured number of ordinary frequency-change admissions, initially
+two. Those admissions do not extend its window. A newly reported or stronger
+representative still passes under the configured report policy at any
+frequency; an outside-tolerance report exception moves the anchor and renews
+the window without spending or replenishing the change allowance.
+
+These rules recognize reported differences, not verified QSYs. Bad reports can
+add repeats. Report renewal can also change expiry timing, so a spot admitted
+by the historical engine may be suppressed and shown later by the candidate.
+Earlier primary suppression, averaging, holds and user filters still apply.
+
+In on, live `SET DIAG DEDUPE` uses a captured comparison anchor and canonical
+mode identity from the spot's decision. Queued formatting does not look up a
+newer cache anchor. Off/shadow tags and archived-history rendering remain
+unchanged. The shared MED gate still controls archive and peer admission;
+ring history can gain spots admitted by any enabled lane.
+
+The on-mode tag begins with `MM@anchor`, where `MM` is the hexadecimal mode
+byte and `anchor` is whole Hz (`-` means no existing anchor). Geography,
+source and policy follow it. The normal fixed comment width can shorten the
+later fields; the captured anchor is placed first.
+
+Shadow counters reset per run and appear in periodic runtime summaries; they
+do not provide example capture or prove usefulness. Activation requires later
+review. See [required config and migration](../data/config/README.md#secondary-frequency-change-policy)
+and [ADR-0334](../docs/decisions/ADR-0334-frequency-change-aware-secondary-dedupe.md).
+
 ## Bulletin Dedupe
 
 WWV, WCY, and `TO ALL` announcement lines are control traffic, not spots, so they do not pass through the spot dedupe pipeline.

@@ -5109,6 +5109,21 @@ func (s *Server) diagDedupeTag(client *Client, sp *spot.Spot) string {
 
 	var b strings.Builder
 	b.Grow(len(dedxcc) + len(keyToken) + len(source) + len(policyToken) + 3)
+	policyIndex := int(policy)
+	if policyIndex >= len(sp.SecondaryDedupe) {
+		policyIndex = int(dedupePolicyFast) // Same default as legacy labels/delivery.
+	}
+	// Put the captured anchor first: the fixed comment width can clip later
+	// fields when a mode/report prefix also occupies that space.
+	if evidence := sp.SecondaryDedupe[policyIndex]; evidence.Enabled {
+		fmt.Fprintf(&b, "%02X@", evidence.ModeID)
+		if evidence.HasAnchor {
+			b.WriteString(strconv.FormatInt(evidence.AnchorHz, 10))
+		} else {
+			b.WriteByte('-')
+		}
+		b.WriteByte('|')
+	}
 	b.WriteString(dedxcc)
 	b.WriteByte('|')
 	b.WriteString(keyToken)

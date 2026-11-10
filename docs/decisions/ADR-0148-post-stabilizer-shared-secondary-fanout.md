@@ -78,6 +78,9 @@ The ring/archive/peer/telnet output and hold boundaries here remain accepted.
   monitoring surface.
 
 ## Links
+- [ADR-0334](ADR-0334-frequency-change-aware-secondary-dedupe.md) adds optional
+  frequency/mode-aware secondary admissions under these existing final shared
+  gates. MED still owns archive/peer admission; hold timing remains accepted.
 - Related issues/PRs/commits: current working tree
 - Related tests: `internal/cluster/output_pipeline_delivery_test.go`,
   `internal/cluster/output_pipeline_ownership_test.go`

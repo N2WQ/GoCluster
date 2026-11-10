@@ -113,6 +113,60 @@ Configuration is split by concern so you only edit the relevant file:
 - `toxicity_safe_gate.yaml` - optional reference table for routine ham-radio comments that may bypass the classifier when the Worker is enabled.
 - `voacap_experiment.yaml` - optional tool config for manual VOACAP SSN forecast experiments; ignored by server startup and loaded by `voacap_ssn_forecast_watch`.
 
+### Secondary frequency-change policy
+
+`dedupe.yaml` requires this complete startup-owned subtree, including when off:
+
+```yaml
+dedup:
+  secondary_frequency_changes:
+    state: off
+    cw_rtty_tolerance_hz: 500
+    ft_tolerance_hz: 3000
+    other_skimmer_tolerance_hz: 1000
+    human_tolerance_hz: 2000
+    max_changes: 2
+```
+
+Merge it into the existing `dedup` mapping; do not replace the other dedupe
+settings. Add it to private complete config directories before starting the
+updated executable. Missing/null values, unknown states and nonpositive numeric
+values fail startup; there are no runtime defaults for absent settings. There
+is no `sample_dir` setting. The CW/RTTY tolerance must not be below the actual
+`spot_policy.frequency_averaging_tolerance_hz` in `pipeline.yaml`.
+
+`off` is the shipped state and retains historical suppression. `shadow` keeps
+historical spot output while comparing an independently retained candidate
+cache in the same per-key order. `on` uses the candidate alone. Changing state
+requires restart. Keep off for the initial shipment; these settings do not
+authorize automatic activation.
+
+The four tolerances cover skimmer CW/RTTY; skimmer FT8/FT4/FT2; all other
+skimmers; and all human modes. Operational frequencies are compared as nearest
+whole Hz. Equality at the tolerance is still a repeat. The positive
+`max_changes` value limits ordinary frequency-change admissions per entry
+lifetime, excluding initial mode admissions and report exceptions. A report
+exception outside tolerance moves anchor frequency/time without changing the
+count. It renews the existing report window; the count resets only on expiry.
+
+Expect more repeats if enabled. This is reported-change policy, not verified
+QSY detection. Skimmer canonical modes have separate candidate entries, while
+human inferred modes do not. Existing primary suppression and averaging can
+still hide changes before this stage.
+
+Shadow summaries use the existing stats cadence and ordinary runtime logging
+in both dashboard and headless modes. They identify run/start/interval and
+report cumulative and interval additions by reason, losses, all frequency-change
+admissions, limit-blocked attempts, baseline totals and both cache sizes.
+Ratios with no denominator are N/A. These count dedupe admissions, not completed
+delivery. Counters reset on restart; summaries are disposable and there is no
+sample capture or persistence. Later surviving cumulative summaries can cover
+a missing interval, but cannot recover a lost final summary after restart.
+Usefulness of added spots and harm from lost spots remain unmeasured until
+separate example-review work is approved. See [ADR-0334](../../docs/decisions/ADR-0334-frequency-change-aware-secondary-dedupe.md).
+
+### Editing and loading configuration
+
 Normal operator edits:
 - identity, ports, source credentials, source enablement, peer details, paths,
   logs, Go runtime controls, retention, and scheduled reports.

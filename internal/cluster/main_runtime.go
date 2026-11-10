@@ -136,9 +136,10 @@ type clusterRuntime struct {
 	ingestValidator *ingestValidator
 	ingestInput     chan<- *spot.Spot
 
-	secondaryFast *dedup.SecondaryDeduper
-	secondaryMed  *dedup.SecondaryDeduper
-	secondarySlow *dedup.SecondaryDeduper
+	secondaryFast       *dedup.SecondaryDeduper
+	secondaryMed        *dedup.SecondaryDeduper
+	secondarySlow       *dedup.SecondaryDeduper
+	secondaryRetirement sync.Once
 
 	modeAssigner       *spot.ModeAssigner
 	toxicityClassifier *toxicity.Classifier
@@ -216,7 +217,9 @@ func (r *clusterRuntime) initialize() bool {
 	if !r.initializeReferenceData() {
 		return false
 	}
-	r.initializePipelineCore()
+	if !r.initializePipelineCore() {
+		return false
+	}
 	if !r.initializeServices() {
 		return false
 	}
@@ -858,7 +861,10 @@ func (r *clusterRuntime) initializeSkewStore() {
 	r.skewStore = nil
 }
 
-func (r *clusterRuntime) initializePipelineCore() {
+func (r *clusterRuntime) initializePipelineCore() bool {
+	if !r.initializeSecondaryDedupers() {
+		return false
+	}
 	r.freqAverager = spot.NewFrequencyAverager()
 	r.freqAverager.StartCleanup(time.Minute, frequencyAverageWindow(r.cfg.SpotPolicy))
 	if r.cfg.Harmonics.Enabled {
@@ -915,40 +921,63 @@ func (r *clusterRuntime) initializePipelineCore() {
 	r.ingestValidator.Start()
 	r.ingestInput = r.ingestValidator.Input()
 
-	r.initializeSecondaryDedupers()
 	r.modeAssigner = newModeAssigner(r.cfg.ModeInference)
+	return true
 }
 
-func (r *clusterRuntime) initializeSecondaryDedupers() {
-	secondaryFastWindow := time.Duration(r.cfg.Dedup.SecondaryFastWindowSeconds) * time.Second
-	secondaryMedWindow := time.Duration(r.cfg.Dedup.SecondaryMedWindowSeconds) * time.Second
-	secondarySlowWindow := time.Duration(r.cfg.Dedup.SecondarySlowWindowSeconds) * time.Second
-
-	if secondaryFastWindow > 0 {
-		r.secondaryFast = dedup.NewSecondaryDeduper(secondaryFastWindow, r.cfg.Dedup.SecondaryFastPreferStrong)
-		r.secondaryFast.Start()
-		log.Printf("Secondary dedupe (fast) active with %v window", secondaryFastWindow)
-	} else {
-		log.Println("Secondary dedupe (fast) disabled")
+func (r *clusterRuntime) initializeSecondaryDedupers() bool {
+	cfg := r.cfg.Dedup.SecondaryFrequencyChanges
+	options := dedup.FrequencyChangeOptions{State: cfg.State, CWRTTYToleranceHz: cfg.CWRTTYToleranceHz,
+		FTToleranceHz: cfg.FTToleranceHz, OtherSkimmerToleranceHz: cfg.OtherSkimmerToleranceHz,
+		HumanToleranceHz: cfg.HumanToleranceHz, MaxChanges: cfg.MaxChanges}
+	policies := []struct {
+		name    string
+		seconds int
+		prefer  bool
+		key     dedup.SecondaryKeyMode
+	}{
+		{"fast", r.cfg.Dedup.SecondaryFastWindowSeconds, r.cfg.Dedup.SecondaryFastPreferStrong, dedup.SecondaryKeyGrid2},
+		{"med", r.cfg.Dedup.SecondaryMedWindowSeconds, r.cfg.Dedup.SecondaryMedPreferStrong, dedup.SecondaryKeyGrid2},
+		{"slow", r.cfg.Dedup.SecondarySlowWindowSeconds, r.cfg.Dedup.SecondarySlowPreferStrong, dedup.SecondaryKeyCQZone},
 	}
-	if secondaryMedWindow > 0 {
-		r.secondaryMed = dedup.NewSecondaryDeduper(secondaryMedWindow, r.cfg.Dedup.SecondaryMedPreferStrong)
-		r.secondaryMed.Start()
-		log.Printf("Secondary dedupe (med) active with %v window", secondaryMedWindow)
-	} else {
-		log.Println("Secondary dedupe (med) disabled")
+	var engines [3]*dedup.SecondaryDeduper
+	// Construct every policy before starting any worker, so invalid options
+	// cannot leave a partially started comparison owner behind.
+	for i, policy := range policies {
+		if policy.seconds <= 0 {
+			continue
+		}
+		engine, err := dedup.NewSecondaryDeduperWithFrequencyChanges(time.Duration(policy.seconds)*time.Second, policy.prefer, policy.key, options)
+		if err != nil {
+			return r.failStartup("Unable to initialize secondary dedupe (%s): %v", policy.name, err)
+		}
+		engines[i] = engine
 	}
-	if secondarySlowWindow > 0 {
-		r.secondarySlow = dedup.NewSecondaryDeduperWithKey(secondarySlowWindow, r.cfg.Dedup.SecondarySlowPreferStrong, dedup.SecondaryKeyCQZone)
-		r.secondarySlow.Start()
-		log.Printf("Secondary dedupe (slow) active with %v window", secondarySlowWindow)
-	} else {
-		log.Println("Secondary dedupe (slow) disabled")
+	r.secondaryFast, r.secondaryMed, r.secondarySlow = engines[0], engines[1], engines[2]
+	for i, engine := range engines {
+		if engine == nil {
+			log.Printf("Secondary dedupe (%s) disabled", policies[i].name)
+			continue
+		}
+		engine.Start()
+		log.Printf("Secondary dedupe (%s) active with %ds window; frequency changes=%s", policies[i].name, policies[i].seconds, cfg.State)
 	}
-
-	if secondaryFastWindow <= 0 && secondaryMedWindow <= 0 && secondarySlowWindow <= 0 {
+	if engines[0] == nil && engines[1] == nil && engines[2] == nil {
 		log.Println("Warning: secondary dedupe disabled (fast+med+slow=0); spots broadcast without secondary suppression")
 	}
+	return true
+}
+
+// stopSecondaryDedupers follows output retirement, including failed startup.
+// One runtime owner prevents closing a legacy off engine twice during close.
+func (r *clusterRuntime) stopSecondaryDedupers() {
+	r.secondaryRetirement.Do(func() {
+		for _, engine := range []*dedup.SecondaryDeduper{r.secondaryFast, r.secondaryMed, r.secondarySlow} {
+			if engine != nil {
+				engine.Stop()
+			}
+		}
+	})
 }
 
 func modeSeedsFromConfig(cfg config.ModeInferenceConfig) []spot.ModeSeed {
@@ -1665,15 +1694,7 @@ func (r *clusterRuntime) shutdown() {
 	if r.floodController != nil {
 		r.floodController.Stop()
 	}
-	if r.secondaryFast != nil {
-		r.secondaryFast.Stop()
-	}
-	if r.secondaryMed != nil {
-		r.secondaryMed.Stop()
-	}
-	if r.secondarySlow != nil {
-		r.secondarySlow.Stop()
-	}
+	r.stopSecondaryDedupers()
 	if r.rbnClient != nil {
 		r.rbnClient.Stop()
 	}
@@ -1694,6 +1715,7 @@ func (r *clusterRuntime) shutdown() {
 
 func (r *clusterRuntime) close() {
 	r.retireOutputPipeline()
+	r.stopSecondaryDedupers()
 	// close also runs after partial startup. Idempotent network stops release
 	// listeners, sessions, and peer workers before stores and context disappear.
 	if r.peerManager != nil {

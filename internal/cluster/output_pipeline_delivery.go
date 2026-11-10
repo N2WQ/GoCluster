@@ -153,33 +153,43 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 // policy lanes; archive and peer consume the final shared MED lane.
 func (p *outputPipeline) computeSecondaryAllows(s *spot.Spot) (bool, bool, bool) {
 	allowFast := true
+	var evidence [3]spot.SecondaryDedupeEvidence
 	if p.secondaryFast != nil {
-		allowFast = p.secondaryFast.ShouldForward(s)
+		allowFast, evidence[0] = p.secondaryFast.Evaluate(s)
 	}
 	allowMed := true
 	if p.secondaryMed != nil {
-		allowMed = p.secondaryMed.ShouldForward(s)
+		allowMed, evidence[1] = p.secondaryMed.Evaluate(s)
 	}
 	allowSlow := true
 	if p.secondarySlow != nil {
-		allowSlow = p.secondarySlow.ShouldForward(s)
+		allowSlow, evidence[2] = p.secondarySlow.Evaluate(s)
 	}
 	fallbackAllowed := allowFast
+	fallbackEvidence := evidence[0]
 	if p.secondaryFast == nil {
 		if p.secondaryMed != nil {
 			fallbackAllowed = allowMed
+			fallbackEvidence = evidence[1]
 		} else if p.secondarySlow != nil {
 			fallbackAllowed = allowSlow
+			fallbackEvidence = evidence[2]
 		}
 	}
 	if p.secondaryFast == nil {
 		allowFast = fallbackAllowed
+		evidence[0] = fallbackEvidence
 	}
 	if p.secondaryMed == nil {
 		allowMed = fallbackAllowed
+		evidence[1] = fallbackEvidence
 	}
 	if p.secondarySlow == nil {
 		allowSlow = fallbackAllowed
+		evidence[2] = fallbackEvidence
+	}
+	if s != nil {
+		s.SecondaryDedupe = evidence
 	}
 	return allowFast, allowMed, allowSlow
 }

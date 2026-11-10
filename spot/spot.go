@@ -114,6 +114,9 @@ type Spot struct {
 	// Broadcast-only overrides (telnet/archive view); canonical calls remain raw.
 	DECallStripped     string
 	DECallNormStripped string
+	// SecondaryDedupe is ephemeral live-output evidence, captured before fanout.
+	// Archive encoding deliberately omits it; queued diagnostics never consult caches.
+	SecondaryDedupe [3]SecondaryDedupeEvidence `json:"-"`
 }
 
 // CanonicalPSKMode returns the canonical PSK family label alongside the
@@ -610,6 +613,7 @@ func (s *Spot) CloneWithComment(comment string) *Spot {
 		DECoarseCellID:      s.DECoarseCellID,
 		DECallStripped:      s.DECallStripped,
 		DECallNormStripped:  s.DECallNormStripped,
+		SecondaryDedupe:     s.SecondaryDedupe,
 		ownedSnapshot:       true,
 	}
 	// The projection describes the original canonical comment. A caller that

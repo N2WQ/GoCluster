@@ -1,7 +1,7 @@
-// Package dedup also provides a late-stage secondary deduplicator used to
-// thin broadcast volume without altering the main ring buffer history. It
-// shares the same CPU-efficient hashing approach as the primary dedupe
-// engine but keys on DE metadata (DXCC + grid2 + band) plus DX call.
+// Package dedup also provides final secondary thinning for live output,
+// ring history, archive and local peer admission. Per-policy caches key on
+// reporting-area metadata, band, DX call and source class; the optional
+// frequency-change policy additionally separates canonical skimmer modes.
 package dedup
 
 import (
@@ -39,9 +39,8 @@ const (
 //   - Normalized DX call
 //   - Source class (human vs skimmer)
 //
-// It is intended
-// to run after call correction/harmonic/frequency adjustments and before
-// broadcast so the ring buffer remains intact.
+// It runs after correction, frequency adjustment and stabilization. The output
+// pipeline applies these decisions to its shared fanout, including history.
 type SecondaryDeduper struct {
 	window          time.Duration
 	preferStronger  bool
@@ -49,6 +48,7 @@ type SecondaryDeduper struct {
 	shards          []secondaryShard
 	cleanupInterval time.Duration
 	shutdown        chan struct{}
+	changes         *frequencyChanges
 }
 
 type secondaryShard struct {
@@ -65,7 +65,7 @@ type secondaryEntry struct {
 	hasReport bool
 }
 
-// NewSecondaryDeduper constructs a secondary deduper for broadcast-only suppression.
+// NewSecondaryDeduper constructs the historical secondary policy engine.
 // Key aspects: Initializes shard maps and window settings.
 // Upstream: main startup when secondary dedupe is enabled.
 // Downstream: shard allocation and state init.
@@ -101,6 +101,10 @@ func NewSecondaryDeduperWithKey(window time.Duration, preferStronger bool, keyMo
 // Downstream: cleanupLoop goroutine.
 // Start launches a periodic cleanup loop to bound memory.
 func (d *SecondaryDeduper) Start() {
+	if d.changes != nil {
+		d.startChanges()
+		return
+	}
 	// Purpose: Periodically purge expired entries.
 	// Key aspects: Runs until Stop closes shutdown.
 	// Upstream: SecondaryDeduper.Start.
@@ -114,6 +118,10 @@ func (d *SecondaryDeduper) Start() {
 // Downstream: channel close only.
 // Stop terminates the cleanup loop.
 func (d *SecondaryDeduper) Stop() {
+	if d.changes != nil {
+		d.stopChanges()
+		return
+	}
 	close(d.shutdown)
 }
 
@@ -126,6 +134,10 @@ func (d *SecondaryDeduper) Stop() {
 // the cached entry and the new spot is forwarded.
 // When required metadata is missing (DE DXCC <=0) it returns true to avoid false positives.
 func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
+	if d != nil && d.changes != nil {
+		forward, _ := d.evaluateChanges(s)
+		return forward
+	}
 	if d == nil || d.window <= 0 || s == nil {
 		return true
 	}
@@ -169,6 +181,9 @@ func (d *SecondaryDeduper) ShouldForward(s *spot.Spot) bool {
 // Downstream: shard counters under lock.
 // GetStats returns processed, duplicates, and cache size totals.
 func (d *SecondaryDeduper) GetStats() (processed uint64, duplicates uint64, cacheSize int) {
+	if d.changes != nil && d.changes.options.State == "on" {
+		return d.changeStats()
+	}
 	for i := range d.shards {
 		shard := &d.shards[i]
 		shard.mu.Lock()
@@ -244,6 +259,10 @@ func (d *SecondaryDeduper) cleanup() {
 }
 
 func (d *SecondaryDeduper) cleanupAt(now time.Time) {
+	if d.changes != nil {
+		d.cleanupChangesAt(now)
+		return
+	}
 	if d.window <= 0 {
 		return
 	}

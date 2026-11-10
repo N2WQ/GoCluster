@@ -694,6 +694,7 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 		fccSnap = loadFCCSnapshot(ctx, fccDBPath)
 	}
 	gcWindow := &gcPauseWindow{}
+	shadowReporter := &secondaryShadowReporter{}
 	{
 		var mem runtime.MemStats
 		runtime.ReadMemStats(&mem)
@@ -932,6 +933,7 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 		prevSourceCounts = sourceTotals
 		prevSourceModeCounts = sourceModeTotals
 
+		shadowReporter.report(now, secondaryPolicyEngines{secondaryFast, secondaryMed, secondarySlow}, func(line string) { log.Print(line) })
 		if dash != nil {
 			dash.SetStats(lines)
 			overviewLines := buildOverviewLines(tracker, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache, recentBandStore, ctyState, fccSnap, gridStats, gridDB, pathPredictor, voacapSSN, voacapFallback, modeAssigner, telnetSrv, clusterCall,

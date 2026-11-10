@@ -40,6 +40,7 @@ workflow rules.
 | Command HELP and command dispatch | [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md), `commands/` |
 | WWV/WCY history, login and five-report SHOW/slash commands | [bulletin history](../telnet/README.md#wwv-and-wcy-bulletin-history), [ADR-0323](../docs/decisions/ADR-0323-wwv-wcy-bulletin-history.md), `commands/bulletin_command.go` |
 | Spot record, formatting, confidence, correction | [spot/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/spot/README.md), `spot/` |
+| Frequency-change secondary dedupe, paired shadow comparison and live anchor snapshots | [policy](../telnet/README.md#frequency-change-policy), [config/migration](../data/config/README.md#secondary-frequency-change-policy), [ADR-0334](../docs/decisions/ADR-0334-frequency-change-aware-secondary-dedupe.md), [v6 validation status](../docs/qsy-dedupe-v6-validation.md); `dedup/`, `spot/taxonomy.go`, `internal/cluster/output_pipeline_delivery.go`, existing stats loop in `internal/cluster/bootstrap.go`; no sample/shared-logger extension |
 | Path reliability | [pathreliability/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/pathreliability/README.md), `pathreliability/` |
 | Config loading and validation | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), `config/` |
 | RBN ingest | [rbn/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/rbn/README.md), `rbn/` |

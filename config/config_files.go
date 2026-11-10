@@ -430,6 +430,19 @@ func validateConfiguredRuntimeValues(cfg Config) error {
 	if cfg.Telnet.AdmissionLogSampleRate < 0 || cfg.Telnet.AdmissionLogSampleRate > 1 {
 		return fmt.Errorf("invalid YAML setting %q: must be between 0 and 1", "telnet.admission_log_sample_rate")
 	}
+	changes := cfg.Dedup.SecondaryFrequencyChanges
+	switch changes.State {
+	case "off", "shadow", "on":
+	default:
+		return fmt.Errorf("invalid YAML setting %q: must be off, shadow, or on", "dedup.secondary_frequency_changes.state")
+	}
+	// Compare the actual loaded averaging policy, including fractional Hz,
+	// before normalization can substitute any older compatibility defaults.
+	averagingTolerance := cfg.SpotPolicy.FrequencyAveragingToleranceHz
+	if averagingTolerance >= math.Exp2(63) || changes.CWRTTYToleranceHz < int64(math.Ceil(averagingTolerance)) {
+		return fmt.Errorf("invalid YAML setting %q: must be >= spot_policy.frequency_averaging_tolerance_hz (%g)",
+			"dedup.secondary_frequency_changes.cw_rtty_tolerance_hz", cfg.SpotPolicy.FrequencyAveragingToleranceHz)
+	}
 	return nil
 }
 

@@ -313,6 +313,12 @@ policies and timing. If your chosen policy is disabled, the server selects an
 enabled one and tells you. NEARBY does not change your dedupe policy. Use
 `SET DEDUPE FAST` explicitly if you want more local repeats.
 
+The operator can also evaluate frequency-change-aware suppression. It ships
+`off`; `shadow` counts differences while keeping the existing spot feed, and
+`on` can show reported frequency or skimmer-mode changes sooner. This can add
+repeats and does not prove a real QSY. The per-user FAST/MED/SLOW controls still
+apply. See [operator settings](data/config/README.md#secondary-frequency-change-policy).
+
 See [dedupe details](telnet/README.md#dedupe-policies).
 
 ## Confidence Tags

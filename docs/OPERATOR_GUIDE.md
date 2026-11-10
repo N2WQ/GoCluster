@@ -72,6 +72,29 @@ entries. Each enabled entry owns an independent connection and bounded retry
 lifecycle, so an unavailable server stays red and retrying without holding up
 the other upstreams. The older single-map shape still loads as one entry.
 
+### Evaluate reported frequency changes
+
+Before using the updated binary with a private config directory, add the
+required `dedup.secondary_frequency_changes` subtree from
+[the config guide](../data/config/README.md#secondary-frequency-change-policy)
+to its existing `dedup` mapping. Keep `state: off` for the initial shipment.
+All tolerances and `max_changes` must be positive integers, even when off.
+No private configuration is migrated automatically.
+
+`shadow` compares the new rule while keeping historical spot output and live
+diagnostic tags. Periodic runtime summaries show run/start/interval identity,
+added and lost admissions, budget pressure and both cache cardinalities.
+Counters reset on restart and summaries use existing disposable logging.
+There is no captured example history to recover or inspect.
+
+`on` can show reported frequency and skimmer-mode changes sooner, accepting
+more repeats. Report exceptions still work at any frequency; false reports can
+move the anchor, and report renewal can delay some expiry-based forwards.
+Archive/peer follow MED and ring history follows any allowed lane, so this is
+broader than a per-user display preference. FAST/MED/SLOW commands remain the
+same. Counters alone cannot establish usefulness or review losses for harm;
+activation is a later decision. See [the decision and limits](decisions/ADR-0334-frequency-change-aware-secondary-dedupe.md).
+
 ## Run On Windows
 
 From the extracted `ready_to_run` directory:

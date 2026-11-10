@@ -6,12 +6,19 @@
 
 dedup:
   cluster_window_seconds: 120                 # Primary dedupe window (all sources before ring)
-  secondary_fast_window_seconds: 179          # Fast policy (broadcast-only, by DE DXCC+grid2)
-  secondary_med_window_seconds: 359           # Med policy (broadcast-only, by DE DXCC+grid2)
-  secondary_slow_window_seconds: 479          # Slow policy (broadcast-only, by DE DXCC+CQ zone)
+  secondary_fast_window_seconds: 179          # Fast shared output lane, by DE DXCC+grid2
+  secondary_med_window_seconds: 359           # Med shared output/archive/peer lane, by DE DXCC+grid2
+  secondary_slow_window_seconds: 479          # Slow shared output lane, by DE DXCC+CQ zone
   default_policy: SLOW                        # Default telnet policy for new users
   prefer_stronger_snr: true                   # Primary: keep strongest SNR on duplicate collisions
   secondary_fast_prefer_stronger_snr: false   # Fast: keep strongest SNR within bucket
   secondary_med_prefer_stronger_snr: false    # Med: keep strongest SNR within bucket
   secondary_slow_prefer_stronger_snr: false   # Slow: keep strongest SNR within bucket
   output_buffer_size: 20000                   # Capacity of dedup output channel (raise to reduce drops)
+  secondary_frequency_changes:
+    state: "off"                             # off preserves output; shadow compares only; on changes output
+    cw_rtty_tolerance_hz: 500                 # Must be >= spot_policy.frequency_averaging_tolerance_hz
+    ft_tolerance_hz: 3000                     # Starting policy for skimmer FT2/FT4/FT8, not a proven QSY threshold
+    other_skimmer_tolerance_hz: 1000          # Other skimmer modes
+    human_tolerance_hz: 2000                  # All human modes use the same tolerance
+    max_changes: 2                           # Per entry lifetime; report exceptions remain separate

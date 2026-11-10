@@ -853,18 +853,31 @@ func (c *PSKReporterConfig) SubscriptionTopics() []string {
 // Secondary dedupe has three policy windows (fast/med/slow) with independent SNR behavior.
 // When enabled, stronger SNR updates may replace the cached entry and be forwarded.
 type DedupConfig struct {
-	ClusterWindowSeconds       int    `yaml:"cluster_window_seconds"`             // <=0 disables primary dedup
-	SecondaryFastWindowSeconds int    `yaml:"secondary_fast_window_seconds"`      // <=0 disables fast secondary dedupe
-	SecondaryMedWindowSeconds  int    `yaml:"secondary_med_window_seconds"`       // <=0 disables med secondary dedupe
-	SecondarySlowWindowSeconds int    `yaml:"secondary_slow_window_seconds"`      // <=0 disables slow secondary dedupe
-	DefaultPolicy              string `yaml:"default_policy"`                     // default telnet policy for new user records
-	PreferStrongerSNR          bool   `yaml:"prefer_stronger_snr"`                // keep max SNR when dropping duplicates
-	SecondaryFastPreferStrong  bool   `yaml:"secondary_fast_prefer_stronger_snr"` // keep max SNR in fast secondary buckets
-	SecondaryMedPreferStrong   bool   `yaml:"secondary_med_prefer_stronger_snr"`  // keep max SNR in med secondary buckets
-	SecondarySlowPreferStrong  bool   `yaml:"secondary_slow_prefer_stronger_snr"` // keep max SNR in slow secondary buckets
-	OutputBufferSize           int    `yaml:"output_buffer_size"`                 // channel capacity for dedup output
-	LegacySecondaryWindow      int    `yaml:"secondary_window_seconds"`           // deprecated: accepted only so Load can warn and ignore it
-	LegacySecondaryPreferSNR   bool   `yaml:"secondary_prefer_stronger_snr"`      // deprecated: accepted only so Load can warn and ignore it
+	ClusterWindowSeconds       int                             `yaml:"cluster_window_seconds"`             // <=0 disables primary dedup
+	SecondaryFastWindowSeconds int                             `yaml:"secondary_fast_window_seconds"`      // <=0 disables fast secondary dedupe
+	SecondaryMedWindowSeconds  int                             `yaml:"secondary_med_window_seconds"`       // <=0 disables med secondary dedupe
+	SecondarySlowWindowSeconds int                             `yaml:"secondary_slow_window_seconds"`      // <=0 disables slow secondary dedupe
+	DefaultPolicy              string                          `yaml:"default_policy"`                     // default telnet policy for new user records
+	PreferStrongerSNR          bool                            `yaml:"prefer_stronger_snr"`                // keep max SNR when dropping duplicates
+	SecondaryFastPreferStrong  bool                            `yaml:"secondary_fast_prefer_stronger_snr"` // keep max SNR in fast secondary buckets
+	SecondaryMedPreferStrong   bool                            `yaml:"secondary_med_prefer_stronger_snr"`  // keep max SNR in med secondary buckets
+	SecondarySlowPreferStrong  bool                            `yaml:"secondary_slow_prefer_stronger_snr"` // keep max SNR in slow secondary buckets
+	OutputBufferSize           int                             `yaml:"output_buffer_size"`                 // channel capacity for dedup output
+	LegacySecondaryWindow      int                             `yaml:"secondary_window_seconds"`           // deprecated: accepted only so Load can warn and ignore it
+	LegacySecondaryPreferSNR   bool                            `yaml:"secondary_prefer_stronger_snr"`      // deprecated: accepted only so Load can warn and ignore it
+	SecondaryFrequencyChanges  SecondaryFrequencyChangesConfig `yaml:"secondary_frequency_changes"`
+}
+
+// SecondaryFrequencyChangesConfig owns the secondary-dedupe experiment. All
+// settings are required in YAML even while off; runtime consumers must use the
+// loaded values without replacing explicit operator policy with code defaults.
+type SecondaryFrequencyChangesConfig struct {
+	State                   string `yaml:"state"`
+	CWRTTYToleranceHz       int64  `yaml:"cw_rtty_tolerance_hz"`
+	FTToleranceHz           int64  `yaml:"ft_tolerance_hz"`
+	OtherSkimmerToleranceHz int64  `yaml:"other_skimmer_tolerance_hz"`
+	HumanToleranceHz        int64  `yaml:"human_tolerance_hz"`
+	MaxChanges              int    `yaml:"max_changes"`
 }
 
 // FilterConfig holds default filter behavior for new users.
@@ -1604,6 +1617,9 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 		diagnostics.addError(err.Error())
 	}
 	for _, err := range validateRawTelnetCommandRate(raw) {
+		diagnostics.addError(err.Error())
+	}
+	for _, err := range validateRawSecondaryFrequencyChanges(raw) {
 		diagnostics.addError(err.Error())
 	}
 
@@ -3944,6 +3960,10 @@ func (c *Config) PrintTo(w io.Writer) {
 		secondarySlow,
 		c.Dedup.SecondarySlowPreferStrong,
 		c.Dedup.DefaultPolicy)
+	changes := c.Dedup.SecondaryFrequencyChanges
+	fmt.Fprintf(w, "Secondary frequency changes: state=%s cw_rtty=%dHz ft=%dHz other_skimmer=%dHz human=%dHz max_changes=%d\n",
+		changes.State, changes.CWRTTYToleranceHz, changes.FTToleranceHz,
+		changes.OtherSkimmerToleranceHz, changes.HumanToleranceHz, changes.MaxChanges)
 	fmt.Fprintf(w, "Flood control: enabled=%t partition=%s log_interval=%ds rails=%s\n",
 		c.FloodControl.Enabled,
 		c.FloodControl.PartitionMode,

@@ -80,6 +80,7 @@ type Taxonomy struct {
 	filterModes       []string
 	defaultModes      []string
 	ccShortcutModes   []string
+	secondaryModes    map[string]secondaryModeIdentity
 
 	eventsByName       map[string]EventDefinition
 	eventMasksByName   map[string]EventMask
@@ -406,6 +407,7 @@ func buildTaxonomy(file taxonomyFile) (*Taxonomy, error) {
 		return len(t.eventReferenceList[i].prefix) > len(t.eventReferenceList[j].prefix)
 	})
 	t.keywordScanner = buildKeywordScanner(t)
+	t.buildSecondaryModeIdentities()
 
 	return t, nil
 }

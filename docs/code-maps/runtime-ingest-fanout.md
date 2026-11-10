@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e6ddf7dd153e3064`
+- Source fingerprint: `941bf480976fff3e`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 12 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 50 | 177 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 51 | 179 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
-| `dxcluster/spot` | `spot` | 38 | 67 |
-| `dxcluster/telnet` | `telnet` | 80 | 163 |
+| `dxcluster/spot` | `spot` | 39 | 68 |
+| `dxcluster/telnet` | `telnet` | 80 | 164 |
 
 ## In-Scope Package Edges
 
@@ -179,6 +179,7 @@ Source files:
 - `internal/cluster/replacement_license.go`
 - `internal/cluster/root_open_linux.go`
 - `internal/cluster/root_open_other.go`
+- `internal/cluster/secondary_shadow_summary.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/stabilizer_matrix.go`
 - `internal/cluster/telnet_family_suppressor.go`
@@ -334,6 +335,8 @@ Test files:
 - `internal/cluster/runtime_output_listener_other_test.go`
 - `internal/cluster/runtime_output_listener_windows_test.go`
 - `internal/cluster/runtime_output_retirement_test.go`
+- `internal/cluster/secondary_frequency_delivery_test.go`
+- `internal/cluster/secondary_shadow_summary_test.go`
 - `internal/cluster/short_portable_license_test.go`
 - `internal/cluster/stabilizer_matrix_test.go`
 - `internal/cluster/stabilizer_retirement_bench_test.go`
@@ -608,6 +611,7 @@ Source files:
 - `spot/resolver_evidence.go`
 - `spot/resolver_fresh.go`
 - `spot/resolver_loss.go`
+- `spot/secondary_dedupe.go`
 - `spot/self_spot.go`
 - `spot/signal_resolver.go`
 - `spot/signal_resolver_driver.go`
@@ -675,6 +679,7 @@ Test files:
 - `spot/resolver_support_basis_test.go`
 - `spot/resolver_sweep_bench_test.go`
 - `spot/resolver_sweep_test.go`
+- `spot/secondary_dedupe_test.go`
 - `spot/self_spot_test.go`
 - `spot/signal_resolver_bench_test.go`
 - `spot/signal_resolver_driver_test.go`
@@ -905,6 +910,7 @@ Test files:
 - `telnet/readback_writer_test.go`
 - `telnet/readline_test.go`
 - `telnet/reset_notice_v7_test.go`
+- `telnet/secondary_dedupe_diag_test.go`
 - `telnet/server_broadcast_worker_test.go`
 - `telnet/server_filter_test.go`
 - `telnet/server_options_test.go`

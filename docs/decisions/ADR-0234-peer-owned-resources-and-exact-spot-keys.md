@@ -90,6 +90,9 @@ protocol deadline, retry policy or topology authority changes here.
 
 ## Links
 
+- [ADR-0334](ADR-0334-frequency-change-aware-secondary-dedupe.md) refines only
+  the opt-in candidate secondary-key and frequency/report policy; historical
+  baseline and primary key behavior remain accepted.
 - [ADR-0333](ADR-0333-shared-bounded-runtime-logging.md) supersedes the peer
   diagnostics process and retirement clauses; the other decisions remain.
 - [ADR-0237](ADR-0237-remove-console-peer-log-status.md) supersedes only the
