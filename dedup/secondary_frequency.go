@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"dxcluster/spot"
@@ -48,6 +49,7 @@ type frequencyShard struct {
 type frequencyChanges struct {
 	options   FrequencyChangeOptions
 	startedAt time.Time
+	runID     uint64
 	shards    [secondaryShardCount]frequencyShard
 	lifeMu    sync.Mutex
 	started   bool
@@ -68,9 +70,13 @@ func NewSecondaryDeduperWithFrequencyChanges(window time.Duration, prefer bool, 
 	if options.State == "off" {
 		return NewSecondaryDeduperWithKey(window, prefer, keyMode), nil
 	}
+	runID, err := nextFrequencyRunID(&frequencyRunIDs)
+	if err != nil {
+		return nil, err
+	}
 	d := &SecondaryDeduper{window: window, preferStronger: prefer, keyMode: keyMode,
 		shards: make([]secondaryShard, secondaryShardCount), cleanupInterval: time.Minute,
-		shutdown: make(chan struct{}), changes: &frequencyChanges{options: options, startedAt: time.Now().UTC(), done: make(chan struct{})}}
+		shutdown: make(chan struct{}), changes: &frequencyChanges{options: options, startedAt: time.Now().UTC(), runID: runID, done: make(chan struct{})}}
 	for i := range d.shards {
 		if options.State == "shadow" {
 			d.shards[i].cache = make(map[[32]byte]secondaryEntry)
@@ -78,6 +84,23 @@ func NewSecondaryDeduperWithFrequencyChanges(window time.Duration, prefer bool, 
 		d.changes.shards[i].cache = make(map[[32]byte]frequencyEntry)
 	}
 	return d, nil
+}
+
+// One process-local scalar supplies immutable engine identities. A timestamp
+// alone can collide on coarse clocks. No engine or cache is retained here,
+// and allocation occurs only at construction, never on the spot path.
+var frequencyRunIDs atomic.Uint64
+
+func nextFrequencyRunID(counter *atomic.Uint64) (uint64, error) {
+	for {
+		previous := counter.Load()
+		if previous == ^uint64(0) {
+			return 0, fmt.Errorf("secondary frequency-change run identifiers exhausted")
+		}
+		if counter.CompareAndSwap(previous, previous+1) {
+			return previous + 1, nil
+		}
+	}
 }
 
 func validateFrequencyOptions(o FrequencyChangeOptions) error {

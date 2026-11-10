@@ -16,6 +16,76 @@ import (
 
 var frequencyTestTime = time.Unix(600000, 0).UTC()
 
+func TestFrequencyRunIdentityWithEqualStarts(t *testing.T) {
+	first := frequencyDeduper(t, "shadow", false)
+	second := frequencyDeduper(t, "shadow", false)
+	first.changes.startedAt = frequencyTestTime
+	second.changes.startedAt = frequencyTestTime
+	a, _ := first.ShadowStats()
+	b, _ := second.ShadowStats()
+	if a.RunID == 0 || b.RunID == 0 || a.RunID == b.RunID || !a.StartedAt.Equal(b.StartedAt) {
+		t.Fatalf("equal-start engines need distinct nonzero identities: %v / %v", a, b)
+	}
+	first.ShouldForward(frequencySpot(14025000, 0, true, 10, "CW", spot.SourceManual))
+	after, _ := first.ShadowStats()
+	if after.RunID != a.RunID || !after.StartedAt.Equal(a.StartedAt) {
+		t.Fatal("admission or snapshot changed run identity")
+	}
+}
+
+func TestFrequencyRunIdentityConcurrentConstruction(t *testing.T) {
+	const constructors = 64
+	ids := make(chan uint64, constructors)
+	start := make(chan struct{})
+	var workers sync.WaitGroup
+	for range constructors {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			<-start
+			d, err := NewSecondaryDeduperWithFrequencyChanges(time.Minute, false, SecondaryKeyGrid2, frequencyOptions("shadow"))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			snapshot, _ := d.ShadowStats()
+			ids <- snapshot.RunID
+		}()
+	}
+	close(start)
+	workers.Wait()
+	close(ids)
+	seen := make(map[uint64]bool, constructors)
+	for id := range ids {
+		if id == 0 || seen[id] {
+			t.Fatalf("zero or repeated concurrent run identity: %d", id)
+		}
+		seen[id] = true
+	}
+	if len(seen) != constructors {
+		t.Fatalf("got %d identities, want %d", len(seen), constructors)
+	}
+}
+
+func TestFrequencyRunIdentityExhaustion(t *testing.T) {
+	// A private counter exercises exhaustion without resetting shared process
+	// state or making other tests depend on their execution order.
+	var counter atomic.Uint64
+	if id, err := nextFrequencyRunID(&counter); err != nil || id != 1 {
+		t.Fatalf("first identity: %d, %v", id, err)
+	}
+	maximum := ^uint64(0)
+	counter.Store(maximum - 1)
+	if id, err := nextFrequencyRunID(&counter); err != nil || id != maximum {
+		t.Fatalf("last identity: %d, %v", id, err)
+	}
+	for range 2 {
+		if id, err := nextFrequencyRunID(&counter); err == nil || id != 0 || counter.Load() != maximum {
+			t.Fatalf("exhaustion must fail without wrapping: %d, %v, counter=%d", id, err, counter.Load())
+		}
+	}
+}
+
 func frequencyOptions(state string) FrequencyChangeOptions {
 	return FrequencyChangeOptions{State: state, CWRTTYToleranceHz: 500, FTToleranceHz: 3000,
 		OtherSkimmerToleranceHz: 1000, HumanToleranceHz: 2000, MaxChanges: 2}

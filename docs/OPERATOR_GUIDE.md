@@ -85,6 +85,9 @@ No private configuration is migrated automatically.
 diagnostic tags. Periodic runtime summaries show run/start/interval identity,
 added and lost admissions, budget pressure and both cache cardinalities.
 Counters reset on restart and summaries use existing disposable logging.
+The `run=<UTC-start>-<number>` identifier distinguishes engine lifetimes even
+when their start times match. The number is process-local, not a persistent
+or globally unique identifier.
 There is no captured example history to recover or inspect.
 
 `on` can show reported frequency and skimmer-mode changes sooner, accepting

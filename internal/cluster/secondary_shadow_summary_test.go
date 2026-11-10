@@ -34,6 +34,17 @@ func summaryTestSpot(at time.Time, frequency float64, reported bool) *spot.Spot 
 	return s
 }
 
+func summaryRunToken(t *testing.T, line string) string {
+	t.Helper()
+	for _, field := range strings.Fields(line) {
+		if strings.HasPrefix(field, "run=") {
+			return field
+		}
+	}
+	t.Fatalf("missing run identity: %s", line)
+	return ""
+}
+
 func TestSecondaryShadowSummaryGoldenAndRestart(t *testing.T) {
 	d := newSummaryTestEngine(t, "shadow")
 	base := time.Unix(600, 0)
@@ -59,22 +70,51 @@ func TestSecondaryShadowSummaryGoldenAndRestart(t *testing.T) {
 			t.Fatalf("missing %q: %s", want, lines[0])
 		}
 	}
+	firstRun := summaryRunToken(t, lines[0])
 	lines = nil
 	reporter.report(base.Add(202*time.Second), engines, emit)
+	if got := summaryRunToken(t, lines[0]); got != firstRun {
+		t.Fatalf("same engine changed run identity: %s -> %s", firstRun, got)
+	}
 	if !strings.Contains(lines[0], "interval[base=0 suppressed=0 added_new=0 added_report=0 added_frequency=0 lost=0") {
 		t.Fatalf("report reset or repeated cumulative counters: %s", lines[0])
 	}
 	replacement := newSummaryTestEngine(t, "shadow")
 	replacement.ShouldForward(summaryTestSpot(base, 14025, true))
+	// Force the collision even on clocks precise enough to distinguish these
+	// constructions. Keep the old counters so a missed reset cannot pass.
+	replacementSnapshot, _ := replacement.ShadowStats()
+	reporter.previous[0].StartedAt = replacementSnapshot.StartedAt
 	lines = nil
 	reporter.report(base, [3]*dedup.SecondaryDeduper{replacement}, emit)
-	if !strings.Contains(lines[0], "interval[base=1 suppressed=0") {
-		t.Fatal("replacement run inherited old interval")
+	if !strings.Contains(lines[0], "interval[base=1 suppressed=0 added_new=0 added_report=0 added_frequency=0 lost=0 frequency_admissions=0 limit_blocked=0]") {
+		t.Fatalf("replacement run inherited old interval: %s", lines[0])
+	}
+	if got := summaryRunToken(t, lines[0]); got == firstRun {
+		t.Fatalf("replacement inherited log run identity: %s", got)
 	}
 	lines = nil
 	reporter.report(base, [3]*dedup.SecondaryDeduper{newSummaryTestEngine(t, "off"), newSummaryTestEngine(t, "on")}, emit)
 	if len(lines) != 0 {
 		t.Fatal("off/on emitted comparison records")
+	}
+}
+
+func TestSecondaryShadowSummaryRunIdentityWithEqualStarts(t *testing.T) {
+	first := dedup.ShadowSnapshot{StartedAt: time.Unix(600, 0).UTC(), RunID: 11}
+	second := first
+	second.RunID = 12
+	for _, input := range []struct {
+		snapshot dedup.ShadowSnapshot
+		want     string
+	}{
+		{first, "run=1970-01-01T00:10:00Z-11"},
+		{second, "run=1970-01-01T00:10:00Z-12"},
+	} {
+		line := formatSecondaryShadowSummary(0, dedup.ShadowHuman, 1, first.StartedAt, input.snapshot, dedup.ShadowCounters{}, dedup.ShadowCounters{})
+		if got := summaryRunToken(t, line); got != input.want {
+			t.Fatalf("run identity=%q, want %q", got, input.want)
+		}
 	}
 }
 
@@ -92,7 +132,7 @@ func TestSecondaryShadowSummaryRatiosAndMaximumRecord(t *testing.T) {
 	c := dedup.ShadowCounters{BaselineForwarded: max, BaselineSuppressed: max, AddedNewEntry: max, AddedReportException: max,
 		AddedFrequencyChange: max, LostForwards: max, FrequencyAdmissions: max, LimitBlocked: max}
 	now := time.Date(9999, 12, 31, 23, 59, 59, 999999999, time.UTC)
-	s := dedup.ShadowSnapshot{StartedAt: now, BaselineCacheSize: int(^uint(0) >> 1), CandidateCacheSize: int(^uint(0) >> 1)}
+	s := dedup.ShadowSnapshot{StartedAt: now, RunID: max, BaselineCacheSize: int(^uint(0) >> 1), CandidateCacheSize: int(^uint(0) >> 1)}
 	line := formatSecondaryShadowSummary(2, dedup.ShadowOther, max, now, s, c, c)
 	if size := len(formatLogTimestamp(now)) + 1 + len(line); size > 2048 {
 		t.Fatalf("record bytes=%d", size)

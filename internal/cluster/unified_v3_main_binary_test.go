@@ -57,6 +57,12 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 	if err := os.Mkdir(cfgDir, 0700); err != nil {
 		t.Fatal(err)
 	}
+	// Configured reliability tables are validated even with correction off.
+	// Keep this executable fixture independent of ignored operator data/rbn.
+	reliabilityFile := filepath.Join(work, "spotter-reliability.txt")
+	if err := os.WriteFile(reliabilityFile, []byte("N0AAA 1\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
 	files := []string{"app.yaml", "archive.yaml", "data.yaml", "dedupe.yaml", "floodcontrol.yaml", "ingest.yaml", "mode_seeds.yaml", "peering.yaml", "pipeline.yaml", "prop_report.yaml", "reputation.yaml", "runtime.yaml", "path_reliability.yaml", "solarweather.yaml", "iaru_regions.yaml", "iaru_mode_inference.yaml", "spot_taxonomy.yaml"}
 	telnetPort := runtimeQualificationPort(t)
 	peerPort := runtimeQualificationPort(t)
@@ -121,14 +127,7 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 			correction["enabled"] = false
 			correction["confusion_model_enabled"] = false
 			for _, key := range []string{"spotter_reliability_file", "spotter_reliability_file_cw", "spotter_reliability_file_rtty"} {
-				asset, ok := correction[key].(string)
-				if !ok || asset == "" {
-					t.Fatalf("fixture missing %s", key)
-				}
-				if !filepath.IsAbs(asset) {
-					asset = filepath.Join(repo, asset)
-				}
-				correction[key] = asset
+				correction[key] = reliabilityFile
 			}
 		case "prop_report.yaml":
 			section("prop_report")["enabled"] = false

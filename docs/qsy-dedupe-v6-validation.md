@@ -78,6 +78,13 @@ Frequency-change admissions include cases where baseline also forwards.
 Limit-blocked counts only otherwise eligible step-4 attempts. Read-only stats
 do not mutate dedupe state; run identity distinguishes restart resets.
 
+The 2026-11-10 CI repair uses an immutable process-local engine number in
+snapshots and the `run=<UTC-start>-<number>` log identifier instead of treating
+a creation timestamp as unique. See [TSR-0117](troubleshooting/TSR-0117-ci-fixtures-and-shadow-run-identity.md)
+for the forced-collision regression, isolated executable fixture, and repair
+validation. This does not change admission rules or the resource/performance
+acceptance limits below.
+
 ## Performance and production evidence limits
 
 The original 2.5-times shadow memory target failed measurement. Approved v7

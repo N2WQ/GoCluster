@@ -32,7 +32,10 @@ type ShadowCounters struct {
 // ShadowSnapshot owns its values. Each shard contributes one internally
 // coherent transaction; collection never calls a logger while holding a lock.
 type ShadowSnapshot struct {
-	StartedAt          time.Time
+	StartedAt time.Time
+	// RunID is immutable and nonzero for an enabled snapshot. It distinguishes
+	// engines with equal StartedAt values within this process, not across boots.
+	RunID              uint64
 	Cohorts            [ShadowClassCount]ShadowCounters
 	BaselineCacheSize  int
 	CandidateCacheSize int
@@ -123,7 +126,7 @@ func (d *SecondaryDeduper) ShadowStats() (ShadowSnapshot, bool) {
 	if d == nil || d.changes == nil || d.changes.options.State != "shadow" {
 		return ShadowSnapshot{}, false
 	}
-	result := ShadowSnapshot{StartedAt: d.changes.startedAt}
+	result := ShadowSnapshot{StartedAt: d.changes.startedAt, RunID: d.changes.runID}
 	for i := range d.shards {
 		shard := &d.shards[i]
 		shard.mu.Lock()

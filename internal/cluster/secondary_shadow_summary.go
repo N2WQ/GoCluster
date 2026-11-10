@@ -1,3 +1,7 @@
+// File role: Formats bounded secondary-dedupe shadow admission summaries.
+// Crawler notes: Engine-owned run IDs separate counter lifetimes even when
+// clocks collide; snapshots release dedupe locks before any log emission.
+// Related docs: docs/qsy-dedupe-v6-validation.md, docs/troubleshooting/TSR-0117-ci-fixtures-and-shadow-run-identity.md.
 package cluster
 
 import (
@@ -29,8 +33,8 @@ func (r *secondaryShadowReporter) report(now time.Time, engines secondaryPolicyE
 			continue
 		}
 		previous := r.previous[policy]
-		if !previous.StartedAt.Equal(current.StartedAt) {
-			previous = dedup.ShadowSnapshot{StartedAt: current.StartedAt}
+		if previous.RunID != current.RunID {
+			previous = dedup.ShadowSnapshot{StartedAt: current.StartedAt, RunID: current.RunID}
 		}
 		// Copy before logging: neither a slow consumer nor logger backpressure
 		// may retain a policy lock or reset counters after a dropped record.
@@ -57,8 +61,8 @@ func shadowCounterDelta(current, previous dedup.ShadowCounters) dedup.ShadowCoun
 
 func formatSecondaryShadowSummary(policy, class int, sequence uint64, now time.Time, snapshot dedup.ShadowSnapshot, c, delta dedup.ShadowCounters) string {
 	policies := [...]string{"FAST", "MED", "SLOW"}
-	return fmt.Sprintf("Dedupe shadow admissions policy=%s class=%s run=%s at=%s seq=%d cumulative[base=%d suppressed=%d added_new=%d added_report=%d added_frequency=%d lost=%d frequency_admissions=%d limit_blocked=%d net_pct=%s limit_pct=%s] interval[base=%d suppressed=%d added_new=%d added_report=%d added_frequency=%d lost=%d frequency_admissions=%d limit_blocked=%d] cache[baseline=%d candidate=%d]",
-		policies[policy], dedup.ShadowClassName(class), snapshot.StartedAt.Format(time.RFC3339Nano), now.UTC().Format(time.RFC3339Nano), sequence,
+	return fmt.Sprintf("Dedupe shadow admissions policy=%s class=%s run=%s-%d at=%s seq=%d cumulative[base=%d suppressed=%d added_new=%d added_report=%d added_frequency=%d lost=%d frequency_admissions=%d limit_blocked=%d net_pct=%s limit_pct=%s] interval[base=%d suppressed=%d added_new=%d added_report=%d added_frequency=%d lost=%d frequency_admissions=%d limit_blocked=%d] cache[baseline=%d candidate=%d]",
+		policies[policy], dedup.ShadowClassName(class), snapshot.StartedAt.Format(time.RFC3339Nano), snapshot.RunID, now.UTC().Format(time.RFC3339Nano), sequence,
 		c.BaselineForwarded, c.BaselineSuppressed, c.AddedNewEntry, c.AddedReportException, c.AddedFrequencyChange, c.LostForwards,
 		c.FrequencyAdmissions, c.LimitBlocked, shadowNetPercent(c), shadowLimitPercent(c),
 		delta.BaselineForwarded, delta.BaselineSuppressed, delta.AddedNewEntry, delta.AddedReportException, delta.AddedFrequencyChange, delta.LostForwards,

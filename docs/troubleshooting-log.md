@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0117 | CI Fixtures and Shadow Run Identity | Monitoring | 2026-11-10 | executable fixture, secondary-dedupe shadow reporting | none | `docs/troubleshooting/TSR-0117-ci-fixtures-and-shadow-run-identity.md` |
 | TSR-0116 | RBN CW Display Projection Cleanup | Monitoring | 2026-11-01 | RBN parsing, CW display, archive history | none | `docs/troubleshooting/TSR-0116-rbn-cw-display-projection-cleanup.md` |
 | TSR-0115 | Version-Seven Preset LOAD Adjustments | Resolved | 2026-10-29 | telnet presets, applied settings, dual baselines, CC guide | none | `docs/troubleshooting/TSR-0115-version-seven-preset-load-adjustments.md` |
 | TSR-0114 | Telnet Replacement During Shutdown | Monitoring | 2026-10-28 | telnet registration, reconnect, shutdown cleanup | ADR-0325 | `docs/troubleshooting/TSR-0114-telnet-replacement-during-shutdown.md` |
