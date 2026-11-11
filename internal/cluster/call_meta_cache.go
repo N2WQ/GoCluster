@@ -41,6 +41,7 @@ type callMetaEntry struct {
 	gridUpdatedAt time.Time
 
 	cty        *cty.PrefixInfo
+	ctySource  *cty.SnapshotIdentity
 	ctyValid   bool
 	ctyChecked bool
 }
@@ -145,12 +146,13 @@ func (c *callMetaCache) LookupCTY(call string, db *cty.CTYDatabase) (*cty.Prefix
 		return info, ok, false
 	}
 	c.ctyLookups.Add(1)
+	source := db.SnapshotIdentity()
 	shard := c.shardFor(call)
 	shard.mu.Lock()
 	if elem, ok := shard.entries[call]; ok {
 		if entry, valid := elem.Value.(*callMetaEntry); valid && entry != nil {
 			shard.order.MoveToFront(elem)
-			if entry.ctyChecked {
+			if entry.ctyChecked && entry.ctySource == source {
 				if entry.ctyValid {
 					c.ctyHits.Add(1)
 					info := entry.cty
@@ -169,28 +171,32 @@ func (c *callMetaCache) LookupCTY(call string, db *cty.CTYDatabase) (*cty.Prefix
 	shard.mu.Unlock()
 
 	if shouldRejectCTYCall(call) {
-		shard.mu.Lock()
-		entry := shard.getOrCreate(call)
-		entry.ctyChecked = true
-		entry.ctyValid = false
-		entry.cty = nil
-		shard.mu.Unlock()
+		c.storeCTYResult(call, source, nil, false)
 		return nil, false, false
 	}
 
 	info, ok := db.LookupCallsignPortable(call)
+	c.storeCTYResult(call, source, info, ok)
+	return info, ok, false
+}
 
+// storeCTYResult publishes a resolved result with the identity captured from
+// that lookup's database. An old in-flight lookup may finish after Clear/new
+// publication; its tag prevents a new-snapshot caller from reusing the result.
+// The ordinary bounded entry owns only a tiny token and copied PrefixInfo.
+func (c *callMetaCache) storeCTYResult(call string, source *cty.SnapshotIdentity, info *cty.PrefixInfo, ok bool) {
+	shard := c.shardFor(call)
 	shard.mu.Lock()
 	entry := shard.getOrCreate(call)
 	entry.ctyChecked = true
 	entry.ctyValid = ok
+	entry.ctySource = source
 	if ok {
 		entry.cty = info
 	} else {
 		entry.cty = nil
 	}
 	shard.mu.Unlock()
-	return info, ok, false
 }
 
 // LookupGrid looks up a cached grid by callsign with TTL enforcement.
@@ -283,8 +289,9 @@ func (c *callMetaCache) UpdateGrid(call, grid string, derived bool) bool {
 	return true
 }
 
-// ApplyRecord applies a persisted record into the cache.
-// Key aspects: Prefer newer grid timestamps; keep CTY metadata when present.
+// ApplyRecord hydrates a persisted grid and provenance, never classification.
+// Legacy disk CTY fields lack coordinates and file identity; only LookupCTY
+// using the caller's active snapshot may establish a checked CTY hit or miss.
 // Upstream: grid lookup backfill.
 // Downstream: per-shard LRU mutation.
 func (c *callMetaCache) ApplyRecord(rec gridstore.Record) {
@@ -312,17 +319,6 @@ func (c *callMetaCache) ApplyRecord(rec gridstore.Record) {
 					entry.gridUpdatedAt = rec.UpdatedAt
 				}
 			}
-		}
-	}
-	if rec.CTYValid {
-		entry.ctyChecked = true
-		entry.ctyValid = true
-		entry.cty = &cty.PrefixInfo{
-			Country:   rec.CTYCountry,
-			ADIF:      rec.CTYADIF,
-			CQZone:    rec.CTYCQZone,
-			ITUZone:   rec.CTYITUZone,
-			Continent: rec.CTYContinent,
 		}
 	}
 }

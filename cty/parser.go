@@ -40,6 +40,9 @@ type CTYDatabase struct {
 	// exact calls without allowing them to classify longer, unrelated calls.
 	// Prefix matches remain O(L) in callsign length (typically < 15 bytes).
 	trie ctyTrie
+	// identity is separate from the database image so bounded external caches can
+	// tag results without keeping historical maps/tries alive across refreshes.
+	identity atomic.Pointer[SnapshotIdentity]
 	// metrics track lookup/caching behavior for stats reporting. Cache metrics are
 	// retained for compatibility but remain zero because the LRU is disabled.
 	totalLookups       atomic.Uint64

@@ -21,7 +21,7 @@
 | S0 | Baseline source/tool/test identity and comparable benchmarks | Passed targeted baseline |
 | S1 | Exact-only entries remain full-key matches, never prefix fallback; preserve portable precedence and inventory | Targeted ordinary/race/fuzz passed |
 | S2 | One CTY conversion negates west-positive longitude once in grid backfill and SHOW PROP; new estimates remain persisted | Targeted ordinary/race passed |
-| S3 | Disk supplies grid/provenance, never CTY authority; positive/negative classification cache belongs to its CTY snapshot with bounded identity metadata | Pending |
+| S3 | Disk supplies grid/provenance, never CTY authority; positive/negative classification cache belongs to its CTY snapshot with bounded identity metadata | Targeted ordinary/race passed |
 | S4 | Integrated/disposable backup, empty-start, recovery-isolation, restart/rollback and protected-input rehearsal; operator/support and decision records | Pending |
 | S5 | Final ordinary/race/analyzer/fuzz/benchmark/connected-regression/code-map/source review | Pending |
 
@@ -120,6 +120,21 @@ The shipped file is still SHA256
   no material issue. The independent non-steered oracle additionally derived
   `VK2ZZZ -> VK2(-34,-151) -> QF56`, with latitude bounds [-34,-33) and adjacent
   cases; no expected value or implementation was supplied to that reviewer.
+
+- S3 red evidence reproduced disk replacement of active hits/misses and literal
+  `JJ00` after hydrate/expire/purge/relookup (`s3-red.log`). Runtime hydration now
+  supplies grids/provenance only. Positive/negative cache entries carry a stable
+  token from the passed database, including late publication after refresh.
+  Tokens contain one byte, no database/map/closure/back-reference; the existing
+  per-shard LRU owns and evicts entry tokens, with no generation registry.
+  Concurrent first use, independently loaded/constructed snapshots, both worker
+  paths, contradictory disk fields, positive/negative late publication with and
+  without clear, 512-snapshot churn and zero warm allocations are covered.
+  Selected ordinary/race each passed 82 cases, zero skips
+  (`s3-{green,race}.log`). A separate source/test reviewer found no material issue.
+  Initial matched-workload benchmark allocation counts stay zero warm and three
+  cold; cold bytes increase from 240 to 256 due to the entry's identity field
+  and allocator size class. Timing is provisional until final paired measurements.
 
 ## Final result
 
