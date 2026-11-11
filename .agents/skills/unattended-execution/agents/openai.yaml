@@ -1,0 +1,4 @@
+interface:
+  display_name: "Unattended Execution"
+  short_description: "Plan and run approved work while the owner is away"
+  default_prompt: "Use $unattended-execution to plan, execute, or resume a bounded work queue under the repository's approval and validation rules."

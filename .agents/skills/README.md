@@ -8,6 +8,7 @@ their orchestration or reporting is simplified.
 | Skill | Positive trigger |
 | --- | --- |
 | `workflow-contract-audit` | Codex workflow authority, routing, skills, or enforcement changes |
+| `unattended-execution` | Plan, execute, or resume approved multi-slice work while the owner is unavailable |
 | `requirements-ambiguity-review` | Current evidence leaves material semantics genuinely multi-valued |
 | `scientific-model-oracle` | Scientific/model semantics, boundaries, classifications, or claims change |
 | `design-challenger` | A genuine consequential design fork remains |

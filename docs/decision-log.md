@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0342 | Repo-Owned Unattended Execution Skill | Accepted | 2026-11-11 | Codex skills, unattended planning/execution, validation and recovery | none | none | [ADR-0342](decisions/ADR-0342-unattended-execution.md) |
 | ADR-0341 | Stabilizer Live Output Retention and Acceptance | Accepted | 2026-11-11 | confidence, corrected grid, age, bounded telemetry | Refines ADR-0311/0148 | none | [ADR-0341](decisions/ADR-0341-stabilizer-live-output.md) |
 | ADR-0340 | CTY Coordinate and Classification Authority | Accepted | 2026-11-11 | CTY matching, coordinates, cache identity, persistence/rebuild | none | none | [ADR-0340](decisions/ADR-0340-cty-grid-authority.md) |
 | ADR-0339 | Stable Ordinary Broadcast Session Affinity | Accepted | 2026-11-11 | telnet workers, ordering, session membership | none | none | [ADR-0339](decisions/ADR-0339-stable-broadcast-affinity.md) |
