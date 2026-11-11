@@ -29,7 +29,7 @@ records execution; it does not authorize additional work.
 | S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Targeted validated; final lane pending |
 | S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Targeted validated; final lane pending |
 | S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Targeted validated; final lane pending |
-| S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Queued |
+| S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Targeted validated; final lane pending |
 | S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Queued |
 | S8 | Optional measured DX normalization once per worker job and SELF match once per recipient using existing exact helpers, without new retained state | Queued, conditional |
 | S9 | Optional temporal no-due return before allocation, with unchanged deadlines, force, order and model decisions | Queued, conditional |
@@ -174,6 +174,43 @@ validity change or claim is part of this work.
   snapshot/payload ownership is population/queue-coupled and no worker is added.
   TSR-0123 and operator/support routing explain periodic-only behavior and the
   existing synchronous callback limitation.
+- S6 detailed gate: component hook admission holds through cache/enqueue work;
+  terminal calls miss without cache/metric mutation. Controlled CTY callbacks
+  must prove async and timed-out sync derived sends persist before writer close;
+  cache-shard barriers prove admitted hook completion, and repeated stop uses
+  the actual production Once. Real background loops with per-instance operation
+  seams must prove checkpoint/integrity/recovery plus warning-child completion
+  before concrete store closure, including partial startup and recovery races.
+  Existing runtime output/HTTP retirement witnesses remain mandatory.
+- S6 red: the old retired lookup returned cached `FN20` rather than a terminal
+  miss (`s6-red-terminal.log`). Initial admission/lookup/provenance selection
+  passes 16 ordinary cases after hook fencing; this is not yet a slice verdict.
+- S6 baseline hook benchmarks use a frozen pre-fence test binary, GOMAXPROCS=2,
+  GOGC=50, memory target 1536MiB, eight samples (`s6-hook-baseline.txt`). An initial
+  native dotted-flag invocation was rejected before execution; quoted argument
+  arrays corrected it, with failed invocation retained separately.
+
+- S6 source completeness: separate read-only production review found no material
+  lifecycle defect. Grid-only cancellation precedes recovery launch; complete
+  background joins and concrete Close share the runtime Once. Existing output,
+  peer and global-cancellation order remains intact. Close failures now log a
+  warning; ADR-0338 and TSR-0124 record the decision and support boundary.
+- S6 final lifecycle selection passed 49 ordinary/race cases, zero skips
+  (`s6-complete*.log`), including existing output/HTTP retirement. Earlier race
+  selection also built gridstore but its regex selected zero gridstore tests;
+  no gridstore execution coverage is attributed to that invocation.
+- S6 review refinements: individual return channels reject any early repeated
+  caller; overflow requires all 4,097 admitted async callbacks; failure cleanup
+  releases and joins warning/startup owners; one blocked derived scenario now
+  routes through real runtime retirement and actual Close. Affected ordinary/
+  race reruns are retained as `s6-repeat-final*`, `s6-backlog-final*` and
+  `s6-runtime-writer-final*`. The final whole-branch lane remains mandatory.
+- S6 matched hook benchmarks (ten 500ms samples each, sequential quiet runs,
+  fixed environment) measured cache hit 78.02 to 92.72 ns (+18.84%) and unchanged
+  update 76.77 to 89.44 ns (+16.51%), zero B/op and zero allocs/op throughout
+  (`s6-hook-*-final.txt`, `s6-hook-benchstat.txt`). These isolate the correctness
+  fence, not full-pipeline/p99 cost. An earlier overlapping exploratory run is
+  retained but is not the matched result. No production latency claim is made.
 
 ## Closeout
 

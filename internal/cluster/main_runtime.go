@@ -116,15 +116,20 @@ type clusterRuntime struct {
 	customSCPStore  *spot.CustomSCPStore
 	whoSpotsMeStore *spot.WhoSpotsMeStore
 
-	gridStoreHandle   *gridStoreHandle
-	gridDBCheckOnMiss bool
-	gridDBCheckSource string
-	gridUpdater       func(call, grid string)
-	ctyUpdater        func(call string, info *cty.PrefixInfo)
-	gridUpdateState   *gridMetrics
-	stopGridWriter    func()
-	gridLookup        func(call string) (string, bool, bool)
-	gridLookupSync    func(call string) (string, bool, bool)
+	gridStoreHandle    *gridStoreHandle
+	gridDBCheckOnMiss  bool
+	gridDBCheckSource  string
+	gridUpdater        func(call, grid string)
+	ctyUpdater         func(call string, info *cty.PrefixInfo)
+	gridUpdateState    *gridMetrics
+	stopGridWriter     func()
+	gridLookup         func(call string) (string, bool, bool)
+	gridLookupSync     func(call string) (string, bool, bool)
+	gridCancel         context.CancelFunc
+	gridCheckpointDone <-chan struct{}
+	gridIntegrityDone  <-chan struct{}
+	gridRecoveryDone   <-chan struct{}
+	gridRetirement     sync.Once
 
 	skewStore *skew.Store
 
@@ -804,6 +809,10 @@ func (r *clusterRuntime) initializeWhoSpotsMeStore() {
 }
 
 func (r *clusterRuntime) initializeGridStore() bool {
+	// Grid background work has a narrower owner than the global runtime. Other
+	// output/peer dependencies must keep their existing shutdown order.
+	gridCtx, cancel := context.WithCancel(r.ctx)
+	r.gridCancel = cancel
 	gridOpts := gridstore.Options{
 		CacheSizeBytes:        int64(r.cfg.GridBlockCacheMB) << 20,
 		BloomFilterBitsPerKey: r.cfg.GridBloomFilterBits,
@@ -816,7 +825,7 @@ func (r *clusterRuntime) initializeGridStore() bool {
 	if err != nil {
 		if pebble.IsCorruptionError(err) {
 			log.Printf("Gridstore: corruption detected on open (%v); starting checkpoint restore", err)
-			startGridStoreRecovery(r.ctx, r.gridStoreHandle, r.cfg.GridDBPath, gridOpts, r.metaCache)
+			r.gridRecoveryDone = startGridStoreRecovery(gridCtx, r.gridStoreHandle, r.cfg.GridDBPath, gridOpts, r.metaCache)
 		} else {
 			return r.failStartup("Gridstore: failed to open grid database: %v", err)
 		}
@@ -830,9 +839,33 @@ func (r *clusterRuntime) initializeGridStore() bool {
 	gridTTL := time.Duration(r.cfg.GridTTLDays) * 24 * time.Hour
 	r.gridUpdater, r.ctyUpdater, r.gridUpdateState, r.stopGridWriter, r.gridLookup, r.gridLookupSync =
 		startGridWriter(r.gridStoreHandle, time.Duration(r.cfg.GridFlushSec)*time.Second, r.metaCache, gridTTL, r.gridDBCheckOnMiss, r.ctyLookup)
-	startGridCheckpointScheduler(r.ctx, r.gridStoreHandle, r.cfg.GridDBPath)
-	startGridIntegrityScheduler(r.ctx, r.gridStoreHandle)
+	r.gridCheckpointDone = startGridCheckpointScheduler(gridCtx, r.gridStoreHandle, r.cfg.GridDBPath)
+	r.gridIntegrityDone = startGridIntegrityScheduler(gridCtx, r.gridStoreHandle)
 	return true
+}
+
+// retireGridStore joins every grid producer and background owner before closing
+// storage. Synchronous storage/callback work stays owned until it returns;
+// repeated callers join the same complete retirement, including concrete Close.
+func (r *clusterRuntime) retireGridStore() {
+	r.gridRetirement.Do(func() {
+		if r.gridCancel != nil {
+			r.gridCancel()
+		}
+		if r.stopGridWriter != nil {
+			r.stopGridWriter()
+		}
+		for _, done := range []<-chan struct{}{r.gridCheckpointDone, r.gridIntegrityDone, r.gridRecoveryDone} {
+			if done != nil {
+				<-done
+			}
+		}
+		if r.gridStoreHandle != nil {
+			if err := r.gridStoreHandle.Close(); err != nil {
+				log.Printf("Warning: gridstore close failed: %v", err)
+			}
+		}
+	})
 }
 
 func (r *clusterRuntime) initializeSkewStore() {
@@ -1733,12 +1766,7 @@ func (r *clusterRuntime) close() {
 			log.Printf("Warning: bulletin history close failed: %v", err)
 		}
 	}
-	if r.stopGridWriter != nil {
-		r.stopGridWriter()
-	}
-	if r.gridStoreHandle != nil {
-		r.gridStoreHandle.Close()
-	}
+	r.retireGridStore()
 	if r.customSCPStore != nil {
 		_ = r.customSCPStore.Close()
 	} else if r.recentBandStore != nil {

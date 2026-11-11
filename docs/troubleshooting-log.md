@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0124 | Grid Store Retirement | Monitoring | 2026-11-11 | grid writer, maintenance and recovery ownership | ADR-0338 | `docs/troubleshooting/TSR-0124-grid-store-retirement.md` |
 | TSR-0123 | Periodic Keepalive Wire Delivery | Monitoring | 2026-11-10 | telnet periodic control output | none | `docs/troubleshooting/TSR-0123-periodic-keepalive-wire.md` |
 | TSR-0122 | Propagation Retention Zero | Monitoring | 2026-11-10 | runtime configuration and propagation logging | none | `docs/troubleshooting/TSR-0122-propagation-retention-zero.md` |
 | TSR-0121 | Cymru Pending Ownership | Monitoring | 2026-11-10 | reputation Cymru DNS queue and pending identities | none | `docs/troubleshooting/TSR-0121-cymru-pending-ownership.md` |

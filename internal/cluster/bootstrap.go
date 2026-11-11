@@ -3095,6 +3095,11 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 	}
 	updates := make(chan gridstore.Record, 8192)
 	done := make(chan struct{})
+	// External hooks retain read admission through their complete cache/enqueue
+	// operation. Stop fences them before closing producer-owned lookup queues.
+	var admission sync.RWMutex
+	var terminal bool
+	var stopOnce sync.Once
 	lookupQueue := make(chan gridLookupRequest, 4096)
 	lookupDone := make(chan struct{})
 	var lookupPendingMu sync.Mutex
@@ -3188,6 +3193,11 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 	// Upstream: processOutputSpots gridUpdate hook.
 	// Downstream: cache.UpdateGrid and updates channel.
 	gridUpdateFn := func(call, grid string) {
+		admission.RLock()
+		defer admission.RUnlock()
+		if terminal {
+			return
+		}
 		call = normalizeCallForMetadata(call)
 		grid = strings.TrimSpace(strings.ToUpper(grid))
 		if call == "" || len(grid) < 4 {
@@ -3219,6 +3229,11 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 	// Upstream: ingest validation cache misses.
 	// Downstream: updates channel.
 	ctyUpdateFn := func(call string, info *cty.PrefixInfo) {
+		admission.RLock()
+		defer admission.RUnlock()
+		if terminal {
+			return
+		}
 		if info == nil {
 			return
 		}
@@ -3248,21 +3263,29 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		}
 	}
 
-	// Purpose: Stop the grid writer and optional async lookup goroutine.
-	// Key aspects: Closes channels and waits for clean shutdown.
+	// Purpose: Retire external admission, then every lookup producer and writer.
+	// Key aspects: Admitted derived sends finish before updates closes; repeated
+	// callers join this same complete retirement without abandoning storage work.
 	// Upstream: main shutdown path.
 	// Downstream: channel close and done waits.
 	stopFn := func() {
-		close(updates)
-		<-done
-		if asyncLookupEnabled {
-			close(lookupQueue)
+		stopOnce.Do(func() {
+			admission.Lock()
+			terminal = true
+			if asyncLookupEnabled {
+				close(lookupQueue)
+			}
+			if syncLookupEnabled {
+				close(syncLookupQueue)
+			}
+			admission.Unlock()
+			// Lookup workers own any derived update they create. Their sends
+			// bypass terminal external hooks and finish against the live writer.
 			<-lookupDone
-		}
-		if syncLookupEnabled {
-			close(syncLookupQueue)
 			syncLookupWG.Wait()
-		}
+			close(updates)
+			<-done
+		})
 	}
 
 	// Purpose: Lookup a grid entry with optional async backfill on cache miss.
@@ -3270,6 +3293,11 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 	// Upstream: processOutputSpots gridLookup hook.
 	// Downstream: cache.LookupGrid and lookupQueue enqueue.
 	lookupFn := func(call string) (string, bool, bool) {
+		admission.RLock()
+		defer admission.RUnlock()
+		if terminal {
+			return "", false, false
+		}
 		rawCall := strutil.NormalizeUpper(call)
 		baseCall := normalizeCallForMetadata(rawCall)
 		if baseCall == "" {
@@ -3372,6 +3400,11 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		// Upstream: processOutputSpots grid backfill for RBN.
 		// Downstream: syncLookupQueue and cache.ApplyRecord.
 		lookupSyncFn = func(call string) (string, bool, bool) {
+			admission.RLock()
+			defer admission.RUnlock()
+			if terminal {
+				return "", false, false
+			}
 			rawCall := strutil.NormalizeUpper(call)
 			baseCall := normalizeCallForMetadata(rawCall)
 			if baseCall == "" {
@@ -3422,13 +3455,26 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 	return gridUpdateFn, ctyUpdateFn, metrics, stopFn, lookupFn, lookupSyncFn
 }
 
-func startGridCheckpointScheduler(ctx context.Context, storeHandle *gridStoreHandle, dbPath string) {
+// startGridCheckpointScheduler returns ownership of the complete maintenance
+// loop, including any synchronous checkpoint and cleanup already in progress.
+func startGridCheckpointScheduler(ctx context.Context, storeHandle *gridStoreHandle, dbPath string) <-chan struct{} {
+	return startGridCheckpointSchedulerWithOps(ctx, storeHandle, dbPath, nextGridCheckpointDelay,
+		func(store *gridstore.Store, path string) error { return store.Checkpoint(path) })
+}
+
+func startGridCheckpointSchedulerWithOps(ctx context.Context, storeHandle *gridStoreHandle, dbPath string, nextDelay func(time.Time) time.Duration, checkpoint func(*gridstore.Store, string) error) <-chan struct{} {
+	done := make(chan struct{})
 	if storeHandle == nil || strings.TrimSpace(dbPath) == "" {
-		return
+		close(done)
+		return done
 	}
 	go func() {
+		defer close(done)
 		for {
-			delay := nextGridCheckpointDelay(time.Now().UTC())
+			if ctx.Err() != nil {
+				return
+			}
+			delay := nextDelay(time.Now().UTC())
 			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
@@ -3449,7 +3495,7 @@ func startGridCheckpointScheduler(ctx context.Context, storeHandle *gridStoreHan
 			ts := time.Now().UTC().Format(gridCheckpointNameLayoutUTC)
 			tmp := filepath.Join(root, ".tmp-"+ts)
 			dest := filepath.Join(root, ts)
-			if err := store.Checkpoint(tmp); err != nil {
+			if err := checkpoint(store, tmp); err != nil {
 				log.Printf("Gridstore: checkpoint failed: %v", err)
 				_ = os.RemoveAll(tmp) // #nosec G703 -- Checkpoint temp name is generated beneath the operator-configured root.
 				continue
@@ -3467,15 +3513,32 @@ func startGridCheckpointScheduler(ctx context.Context, storeHandle *gridStoreHan
 			}
 		}
 	}()
+	return done
 }
 
-func startGridIntegrityScheduler(ctx context.Context, storeHandle *gridStoreHandle) {
+// startGridIntegrityScheduler exposes completion so its store access cannot
+// outlive the owning runtime's database retirement.
+func startGridIntegrityScheduler(ctx context.Context, storeHandle *gridStoreHandle) <-chan struct{} {
+	return startGridIntegritySchedulerWithOps(ctx, storeHandle,
+		func(now time.Time) time.Duration { return nextDailyUTC(gridIntegrityScanUTC, now, 5, 0) },
+		func(ctx context.Context, store *gridstore.Store) (gridstore.IntegrityStats, error) {
+			return store.Verify(ctx, gridIntegrityScanTimeout)
+		})
+}
+
+func startGridIntegritySchedulerWithOps(ctx context.Context, storeHandle *gridStoreHandle, nextDelay func(time.Time) time.Duration, verify func(context.Context, *gridstore.Store) (gridstore.IntegrityStats, error)) <-chan struct{} {
+	done := make(chan struct{})
 	if storeHandle == nil {
-		return
+		close(done)
+		return done
 	}
 	go func() {
+		defer close(done)
 		for {
-			delay := nextDailyUTC(gridIntegrityScanUTC, time.Now().UTC(), 5, 0)
+			if ctx.Err() != nil {
+				return
+			}
+			delay := nextDelay(time.Now().UTC())
 			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
@@ -3489,7 +3552,7 @@ func startGridIntegrityScheduler(ctx context.Context, storeHandle *gridStoreHand
 				continue
 			}
 			scanCtx, cancel := context.WithTimeout(ctx, gridIntegrityScanTimeout)
-			stats, err := store.Verify(scanCtx, gridIntegrityScanTimeout)
+			stats, err := verify(scanCtx, store)
 			cancel()
 			if err != nil {
 				log.Printf("Gridstore: integrity scan failed: %v", err)
@@ -3504,29 +3567,46 @@ func startGridIntegrityScheduler(ctx context.Context, storeHandle *gridStoreHand
 			log.Printf("Gridstore: integrity scan ok (records=%d duration=%s %s)", stats.Records, stats.Duration, countNote)
 		}
 	}()
+	return done
 }
 
-func startGridStoreRecovery(ctx context.Context, storeHandle *gridStoreHandle, dbPath string, opts gridstore.Options, metaCache *callMetaCache) {
+// startGridStoreRecovery owns restore, publication, cache invalidation and its
+// warning child. Completion fences every possible publication before close.
+func startGridStoreRecovery(ctx context.Context, storeHandle *gridStoreHandle, dbPath string, opts gridstore.Options, metaCache *callMetaCache) <-chan struct{} {
+	return startGridStoreRecoveryWithOps(ctx, storeHandle, dbPath, opts, metaCache,
+		restoreGridStoreFromCheckpoint, gridRestoreWarnAfter,
+		func() { log.Printf("Gridstore: restore still in progress after %s", gridRestoreWarnAfter) })
+}
+
+func startGridStoreRecoveryWithOps(ctx context.Context, storeHandle *gridStoreHandle, dbPath string, opts gridstore.Options, metaCache *callMetaCache, restore func(context.Context, string, gridstore.Options) (*gridstore.Store, string, error), warnAfter time.Duration, warn func()) <-chan struct{} {
+	done := make(chan struct{})
 	if storeHandle == nil {
-		return
+		close(done)
+		return done
 	}
 	storeHandle.Set(nil)
 	log.Printf("Gridstore: running without persistence during checkpoint restore (updates dropped)")
 	go func() {
+		defer close(done)
 		start := time.Now().UTC()
-		timer := time.NewTimer(gridRestoreWarnAfter)
-		defer timer.Stop()
+		timer := time.NewTimer(warnAfter)
 		restoreDone := make(chan struct{})
-		defer close(restoreDone)
+		warningDone := make(chan struct{})
+		defer func() {
+			timer.Stop()
+			close(restoreDone)
+			<-warningDone
+		}()
 		go func() {
+			defer close(warningDone)
 			select {
 			case <-timer.C:
-				log.Printf("Gridstore: restore still in progress after %s", gridRestoreWarnAfter)
+				warn()
 			case <-restoreDone:
 			}
 		}()
 
-		store, checkpointPath, err := restoreGridStoreFromCheckpoint(ctx, dbPath, opts)
+		store, checkpointPath, err := restore(ctx, dbPath, opts)
 		if err != nil {
 			log.Printf("Gridstore: checkpoint restore failed: %v", err)
 			return
@@ -3542,6 +3622,7 @@ func startGridStoreRecovery(ctx context.Context, storeHandle *gridStoreHandle, d
 			metaCache.Clear()
 		}
 	}()
+	return done
 }
 
 func gridCheckpointRoot(dbPath string) string {
