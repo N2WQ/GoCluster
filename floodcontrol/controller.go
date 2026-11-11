@@ -290,8 +290,11 @@ func (c *Controller) cleanup(now time.Time) {
 	defer c.mu.Unlock()
 	for _, rail := range c.rails {
 		for partition, actors := range rail.partitions {
+			// Expiry must preserve the same live threshold evidence as observe;
+			// retaining only one timestamp resets counts at each cleanup tick.
+			maxRetained := rail.threshold(partition) + 1
 			for actor, window := range actors {
-				pruneWindow(window, now, rail.window, 1)
+				pruneWindow(window, now, rail.window, maxRetained)
 				if len(window.times) == 0 {
 					delete(actors, actor)
 				}

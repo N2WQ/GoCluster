@@ -25,7 +25,7 @@ records execution; it does not authorize additional work.
 | Slice | Bounded behavior | Status |
 |---|---|---|
 | S1 | Grid pending merge keeps locator/provenance coherent; actual overrides derived; preserve CTY, observation, timestamp and expiry rules | Targeted validated; final lane pending |
-| S2 | Flood cleanup preserves threshold-plus-one live history and existing configured actions, modes, partitions, expiry and overflow behavior | Queued |
+| S2 | Flood cleanup preserves threshold-plus-one live history and existing configured actions, modes, partitions, expiry and overflow behavior | Targeted validated; final lane pending |
 | S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Queued |
 | S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Queued |
 | S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Queued |
@@ -119,6 +119,16 @@ validity change or claim is part of this work.
   error/drop, metrics and final-flush behavior. TSR-0119 and support routing
   explain the repaired boundary and exclude old-data repair. Troubleshooting
   index validation and `git diff --check` passed. Final broad lane remains open.
+- S2 detailed falsifiability: fixed-clock controller process/cleanup tests cover
+  thresholds above one, all three actions, repeated cleanup, separate source
+  thresholds, inclusive cutoff/expiry deletion and each selected DX mode.
+  Existing full package tests retain forwarding/overflow/dedup coverage. Tests
+  synchronously inspect actual decisions and output, not a copied prune algorithm.
+- S2 red: all new cleanup regressions exposed live-history loss (`s2-red.log`).
+  Full owner ordinary/race lanes each passed 17 cases, zero skips after repair
+  (`s2-green.log`, `s2-race.log`). Lead source review verified the sole behavior
+  change is cleanup's partition-specific retained count; existing mutex, action,
+  cutoff, actor cap and arrival paths are unchanged. TSR-0120 preserves ADR-0062.
 
 ## Closeout
 

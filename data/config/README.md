@@ -102,6 +102,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `openai.yaml` - optional secret-bearing tool config for LLM report generation.
 - `dedupe.yaml` - operator policy settings for primary/secondary dedupe windows and the default telnet dedupe policy for new users.
 - `floodcontrol.yaml` - operator policy settings for shared-ingest flood rails, actions, windows, and per-source thresholds.
+- Flood cleanup preserves live events through the configured sliding window, including its exact cutoff. Cleanup does not reset an actor's count; actions and fail-open actor-cap behavior remain owned by `floodcontrol.yaml`. See [TSR-0120](../../docs/troubleshooting/TSR-0120-flood-cleanup-live-history.md).
 - `spot_taxonomy.yaml` - reference table plus limited operator policy for supported modes, events, and PSKReporter routing; YAML can only select behavior families already implemented by the binary.
 - `mode_seeds.yaml` - reference table / algorithm calibration for digital frequency hints.
 - `iaru_regions.yaml` - reference table for DXCC/ADIF to IARU region mapping.
