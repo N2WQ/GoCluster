@@ -326,6 +326,7 @@ Read-pause behavior:
   spots resume.
 - Read pause suppresses live spot lines only; bulletins, talks, command
   replies, errors, keepalives, and close messages continue on the control path.
+- `telnet.keepalive_seconds` sends periodic exact CRLF control bytes, including during a live-spot pause; `0` disables this server heartbeat. TCP keepalive is separate. See [TSR-0123](../../docs/troubleshooting/TSR-0123-periodic-keepalive-wire.md).
 - A manual `PAUSE` sets a fresh duration. Automatic pauses may extend an active
   pause but cannot shorten it; their footer reports the effective remaining
   duration. Replies to `PAUSE`, `SHOW HOLD`, and `RESUME` do not trigger another

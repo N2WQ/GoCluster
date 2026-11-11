@@ -1230,6 +1230,11 @@ ignore the row threshold and use 30 seconds when the duration is zero.
 - Suppressed live spots do not count as slow-client queue drops and do not
   trigger extreme-drop disconnect policy.
 
+The server's periodic heartbeat is an exact CRLF control message, configured by
+`telnet.keepalive_seconds` (`0` disables it). It continues during a live-spot
+pause and uses the existing full-control-queue disconnect policy. TCP keepalive
+is a separate mechanism. See [TSR-0123](../docs/troubleshooting/TSR-0123-periodic-keepalive-wire.md).
+
 When automatic pausing applies, the command response gets a footer showing the
 effective remaining duration:
 

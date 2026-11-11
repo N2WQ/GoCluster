@@ -2447,11 +2447,27 @@ func (s *Server) keepaliveLoop() {
 		case <-s.shutdown:
 			return
 		case <-ticker.C:
-			s.clientsMutex.RLock()
-			for _, client := range s.clients {
-				s.sendClientMessage(client, "\r\n", "keepalive")
-			}
-			s.clientsMutex.RUnlock()
+			s.sendKeepalives()
+		}
+	}
+}
+
+// sendKeepalives offers one exact CRLF per current recipient through the sole
+// writer's bounded control queue. The local snapshot keeps queue-full close and
+// reporting outside membership locks; each queued raw payload owns its bytes.
+func (s *Server) sendKeepalives() {
+	s.clientsMutex.RLock()
+	clients := make([]*Client, 0, len(s.clients))
+	for _, client := range s.clients {
+		clients = append(clients, client)
+	}
+	s.clientsMutex.RUnlock()
+	for _, client := range clients {
+		if client == nil {
+			continue
+		}
+		if err := client.enqueueControl(controlMessage{raw: []byte("\r\n")}); err != nil && !isExpectedClientSendErr(err) {
+			log.Printf("Failed to enqueue keepalive for %s: %v", client.identity(), err)
 		}
 	}
 }

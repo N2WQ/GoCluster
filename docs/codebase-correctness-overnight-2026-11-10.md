@@ -28,7 +28,7 @@ records execution; it does not authorize additional work.
 | S2 | Flood cleanup preserves threshold-plus-one live history and existing configured actions, modes, partitions, expiry and overflow behavior | Targeted validated; final lane pending |
 | S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Targeted validated; final lane pending |
 | S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Targeted validated; final lane pending |
-| S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Queued |
+| S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Targeted validated; final lane pending |
 | S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Queued |
 | S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Queued |
 | S8 | Optional measured DX normalization once per worker job and SELF match once per recipient using existing exact helpers, without new retained state | Queued, conditional |
@@ -157,6 +157,23 @@ validity change or claim is part of this work.
   Lead source review confirms exactly one allowed-zero key changed, with existing
   normalizer/consumers and all unrelated config rules untouched. TSR-0122 records
   restoration of the existing contract; no new ADR/default is needed.
+- S5 detailed falsifiability: actual native/ziutek sessions consume literal
+  CRLF plus a following sentinel; fixed raw ownership, nil/closed/full clients,
+  writer priority/failure, and virtual-time actual-loop cadence/shutdown have
+  distinct checks. A write TryLock in the overflow reporter detects retained
+  membership locks without relying on a recursively successful read lock.
+- S5 red: periodic admission and actual timer ticks produced zero queued
+  heartbeats (`s5-red.log`). Production repair passed 46 ordinary/race cases,
+  zero skips (`s5-green.log`, `s5-race.log`). Read-only review refined pause tests
+  to seed distinct preferences, establish pending through beginHumanReadback,
+  and wait for real post-flush quiescence; four affected cases passed ordinary/
+  race (`s5-pause-final*.log`). The final virtual cadence completion assertion
+  passed ordinary/race (`s5-cadence-final*.log`).
+- S5 source completeness: lead and separate source review found no production
+  blocker. Generic whitespace/blank-command paths remain untouched; temporary
+  snapshot/payload ownership is population/queue-coupled and no worker is added.
+  TSR-0123 and operator/support routing explain periodic-only behavior and the
+  existing synchronous callback limitation.
 
 ## Closeout
 
