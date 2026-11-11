@@ -93,7 +93,7 @@ func TestHelpWordingRegisteredMailingVocabulary(t *testing.T) {
 func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go"} {
-		for _, topic := range []string{"", "FILTERS"} {
+		for _, topic := range []string{"FILTERS"} {
 			response := p.ProcessCommandForClient(strings.TrimSpace("HELP "+topic), "W1ABC-18", "", nil, dialect)
 			assertHelpWidth(t, response)
 			flat := strings.Join(strings.Fields(response), " ")

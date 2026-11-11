@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `941bf480976fff3e`
+- Source fingerprint: `33a8e97fa26d3323`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,7 +11,7 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 12 | 21 |
+| `dxcluster/commands` | `commands` | 13 | 21 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 51 | 179 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 39 | 68 |
@@ -111,6 +111,7 @@ Source files:
 - `commands/configuration_help.go`
 - `commands/help_overview.go`
 - `commands/help_routing.go`
+- `commands/help_tasks.go`
 - `commands/history.go`
 - `commands/history_clause.go`
 - `commands/history_selection.go`
@@ -945,6 +946,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0337 | Accepted | 2026-11-10 | commands, HELP, operator documentation | `area:commands` |
 | ADR-0333 | Accepted | 2026-11-02 | logging, peer diagnostics, shutdown, operations | `area:peer` |
 | ADR-0332 | Accepted | 2026-11-01 | RBN ingest, archive, telnet, user preferences | `area:telnet` |
 | ADR-0328 | Accepted | 2026-10-28 | telnet commands, input pacing, operator settings | `area:commands, area:telnet` |
@@ -983,7 +985,7 @@ Test files:
 | [ADR-0270](docs/decisions/ADR-0270-complete-storage-admission.md) | Accepted | 2026-10-09 | filter, telnet, quotas, temporary settings, SAVE ordering | `area:telnet, path:telnet` |
 | [ADR-0269](docs/decisions/ADR-0269-detached-human-preference-publication.md) | Accepted | 2026-10-09 | telnet, configuration, staging, publication, ownership | `area:telnet, path:telnet` |
 | [ADR-0266](docs/decisions/ADR-0266-bounded-human-line-rejection.md) | Accepted | 2026-10-09 | telnet, input, protocol, deadlines, lifecycle | `area:telnet, path:telnet` |
-| [ADR-0264](docs/decisions/ADR-0264-task-oriented-compiled-help.md) | Accepted | 2026-10-08 | commands, HELP, dialects, operator documentation | `area:commands, path:commands, path:telnet` |
+| [ADR-0264](docs/decisions/ADR-0264-task-oriented-compiled-help.md) | Superseded | 2026-10-08 | commands, HELP, dialects, operator documentation | `area:commands, path:commands, path:telnet` |
 | [ADR-0263](docs/decisions/ADR-0263-history-list-comma-boundaries.md) | Accepted | 2026-10-08 | commands, telnet, history parser, compatibility | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0262](docs/decisions/ADR-0262-history-band-mode-selections.md) | Accepted | 2026-10-08 | commands, telnet, history, parser, retained state | `area:commands, area:telnet, path:commands, path:telnet` |
 | [ADR-0261](docs/decisions/ADR-0261-literal-comment-filter-and-history.md) | Accepted | 2026-10-08 | filter, telnet, commands, YAML, persistence, history | `area:commands, area:telnet, path:commands, path:telnet` |

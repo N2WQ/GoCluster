@@ -2236,7 +2236,7 @@ def help_route_contract(key, dialect):
         "DX": ("DX - Post a spot (human entry).",
                ("DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]"), None, ()),
         "FILTERS": ("Filter reference:", (), None, ()),
-        "OVERVIEW": ("GoCluster help - " + dialect.upper() + " dialect", (), None, ()),
+        "OVERVIEW": ("Try these commands:", (), None, ()),
         "HELP": ("HELP - Show command list or command-specific help.", ("HELP [command]",),
                  "  With a command, shows detailed usage.", ("H",)),
         "SHOW BUILD": ("SHOW BUILD - Show binary build metadata.", ("SHOW BUILD",),
@@ -2705,7 +2705,17 @@ def require_discovery_help(lines, key, dialect):
                     "Spot queued confirms intake; filtering and processing determine delivery.",
                     "A missing or full input queue refuses the spot with an explicit response.")
         forbidden = ("free text", "guarantees delivery", "bypasses reputation", "SSID has its own allowance", "FCC license required to post")
-    elif key in ("OVERVIEW", "PASS", "REJECT"):
+    elif key == "OVERVIEW":
+        show, readback = ("SHOW DX", "SHOW FILTER") if dialect == "go" else ("SHOW/DX", "SHOW/FILTER")
+        required = (show + " 10", readback, "SHOW SETTINGS", "Call confidence:",
+                    "? One reporter; no added support for the call.",
+                    "S One reporter; stored or recent reports support the call.",
+                    "P Several reporters support the call.", "V Several reporters provide stronger support.",
+                    "C The cluster corrected the call.", "B A correction failed checks; the original call remains.",
+                    "HELP SPOTS", "HELP FILTERS", "HELP SETTINGS", "HELP PRESETS", "HELP SYMBOLS",
+                    "HELP TROUBLE", "HELP COMMANDS", "For help with one command, type HELP before its name:")
+        forbidden = ("GoCluster help -", "BYE", "RESET MODE", "RESET FILTER RULE ALL", "HELP WEB", "Path ratings do not guarantee contact.")
+    elif key in ("PASS", "REJECT"):
         required = ("Filter categories have their own selection rules; see HELP PASS/REJECT.",
                     "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name.",
                     "DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code.")

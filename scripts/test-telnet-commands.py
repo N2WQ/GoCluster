@@ -406,7 +406,7 @@ class Suite:
                     assert fields["comments"] == pa and fields["block_comments"] == re
                 self.case(f"{dialect} COMMENT step {step}", comment_rule)
             self.case(dialect + " COMMENT overlong", lambda: self.unchanged(a, "PASS COMMENT " + "A" * 65, "Usage:"))
-            for command, expected in (("HELP", "GoCluster help - "), ("H", "GoCluster help - "), ("DIALECT LIST", "GO"), ("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call: " + self.args.call.upper()), ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"), ("WHOSPOTSME", "WHOSPOTSME"), ("WHOSPOTSME 20M", "WHOSPOTSME")):
+            for command, expected in (("HELP", "Try these commands:"), ("H", "Try these commands:"), ("DIALECT LIST", "GO"), ("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call: " + self.args.call.upper()), ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"), ("WHOSPOTSME", "WHOSPOTSME"), ("WHOSPOTSME 20M", "WHOSPOTSME")):
                 self.case(dialect + " " + command, lambda c=command, e=expected: a.human(c, e))
             for category in ["", "FULL"] + CATEGORIES + ["CONF", "PC93"]:
                 command = ("SHOW FILTER" if dialect == "go" else "SHOW/FILTER") + (" " + category if category else "")

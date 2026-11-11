@@ -8,7 +8,7 @@ import (
 func TestNamedPresetHelp(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
-		list := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
+		list := p.ProcessCommandForClient("HELP COMMANDS", "N2WQ", "", nil, dialect)
 		for _, verb := range []string{"SAVE", "LIST", "LOAD", "DELETE"} {
 			topic := verb + " PRESET"
 			if !strings.Contains(list, topic) {

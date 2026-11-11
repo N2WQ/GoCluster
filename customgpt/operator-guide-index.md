@@ -35,7 +35,7 @@ existing operator-facing docs.
 | --- | --- |
 | Connect and log in | [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md) |
 | Find available commands | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [commands/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md) |
-| Get command-specific help, `HELP RULE`, rule fields/values and symbol legends | [commands/README.md HELP source](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md#help-source-of-truth) |
+| Get the short HELP menu, task guides, `HELP COMMANDS`, `HELP RULE` and symbol legends | [commands/README.md HELP source](https://raw.githubusercontent.com/N2WQ/GoCluster/main/commands/README.md#help-source-of-truth) |
 | Inspect GO numbered rules, native CC selections/controls and shared configured/effective settings | [human readbacks](../telnet/README.md#human-configuration-readbacks), [CC manual](../docs/cc-dialect.md), [configuration card](support-cards/configuration-readback.md) |
 | Back up/restore both banks with schema 7; distinguish active FILTER, shared SETTINGS and limited schema 6 | [client protocol](../telnet/README.md#client-yaml-configuration), [CC YAML ownership](../docs/cc-dialect.md#yaml-and-backups), [configuration card](support-cards/configuration-readback.md) |
 | Switch independent GO/CC banks and six controls; identify shared preferences | [CC bank contract](../docs/cc-dialect.md), [commands HELP](../commands/README.md#help-source-of-truth) |

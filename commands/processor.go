@@ -283,6 +283,9 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 	if normalized == "FILTERS" {
 		return strings.Join(filterReferenceHelpLines(dialect), "\n") + "\n"
 	}
+	if normalized == "COMMANDS" {
+		return strings.Join(commandIndexHelpLines(catalog), "\n") + "\n"
+	}
 	if normalized == "SYMBOLS" {
 		lines := append(confidenceHelpLines(), pathGlyphHelpLines(p.pathGlyphHelp)...)
 		return strings.Join(lines, "\n") + "\n"
@@ -294,7 +297,7 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 		return fmt.Sprintf("Unknown help topic: %s\nType HELP for available commands.\n", normalized)
 	}
 
-	return strings.Join(helpOverviewLines(dialect), "\n") + "\n"
+	return strings.Join(helpOverviewLines(dialect, p.pathGlyphHelp), "\n") + "\n"
 }
 
 type helpEntry struct {
@@ -886,6 +889,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	installConfigurationHelp(&catalog, dialect)
 	installCommentHelp(&catalog)
 	installBooleanRuleHelp(&catalog, dialect)
+	installTaskHelp(&catalog, dialect)
 	installHelpRoutingAliases(&catalog, dialect)
 	return catalog
 }
@@ -1004,7 +1008,7 @@ func wrapTextLines(text string, indentNext string) []string {
 }
 
 // confidenceHelpLines preserves the scientific legend in HELP SYMBOLS; the
-// overview describes commands, not confidence classifications.
+// landing page uses short descriptions of these same existing classifications.
 func confidenceHelpLines() []string {
 	lines := make([]string, 0, 16)
 	lines = append(lines, "Confidence glyphs:")
@@ -1021,11 +1025,12 @@ func confidenceHelpLines() []string {
 	return lines
 }
 
+func pathHelpAvailable(cfg PathGlyphHelpConfig) bool {
+	return cfg.Enabled && cfg.High != "" && cfg.Medium != "" && cfg.Low != "" && cfg.Unlikely != "" && cfg.Insufficient != "" && cfg.Closed != ""
+}
+
 func pathGlyphHelpLines(cfg PathGlyphHelpConfig) []string {
-	if !cfg.Enabled {
-		return nil
-	}
-	if cfg.High == "" || cfg.Medium == "" || cfg.Low == "" || cfg.Unlikely == "" || cfg.Insufficient == "" || cfg.Closed == "" {
+	if !pathHelpAvailable(cfg) {
 		return nil
 	}
 	lines := []string{

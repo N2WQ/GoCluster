@@ -88,6 +88,16 @@ def discovery_literal_reply(verb, unknown=False):
 
 
 def discovery_help_literal(key, dialect):
+    if key == "OVERVIEW":
+        show, readback = ("SHOW DX", "SHOW FILTER") if dialect == "go" else ("SHOW/DX", "SHOW/FILTER")
+        return ["Try these commands:", "  " + show + " 10", "  " + readback, "  SHOW SETTINGS",
+                "Call confidence:", "  ?  One reporter; no added support for the call.",
+                "  S  One reporter; stored or recent reports support the call.",
+                "  P  Several reporters support the call.", "  V  Several reporters provide stronger support.",
+                "  C  The cluster corrected the call.", "  B  A correction failed checks; the original call remains.",
+                "What would you like to do?", "  HELP SPOTS", "  HELP FILTERS", "  HELP SETTINGS",
+                "  HELP PRESETS", "  HELP SYMBOLS", "  HELP TROUBLE", "  HELP COMMANDS",
+                "For help with one command, type HELP before its name:", "  HELP " + show]
     # Deliberately distinct layout from generated HELP; literal semantic facts.
     if key == "DX":
         lines = ["DX - Post a spot (human entry).", "Usage: DX <freq_khz> <callsign> [comment]",
@@ -108,9 +118,7 @@ def discovery_help_literal(key, dialect):
         lines += ["Aliases: " + aliases, "Notes:"]
         notes = ["DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown."]
     else:
-        if key == "OVERVIEW":
-            lines = ["GoCluster help - " + dialect.upper() + " dialect"]
-        elif key == "FILTERS":
+        if key == "FILTERS":
             lines = ["Filter reference:"]
         elif dialect == "cc":
             lines = cc_help_literal("SET/FILTER" if key == "PASS" else "UNSET/FILTER")
@@ -615,7 +623,7 @@ class DriverControls(unittest.TestCase):
                     for bad in ([*lines, heading], [*lines, "  YT"], [line for line in lines if line != heading]):
                         with self.assertRaises(ValueError):
                             driver.require_discovery_help(bad, key, dialect)
-                if key in ("OVERVIEW", "PASS", "REJECT"):
+                if key in ("PASS", "REJECT"):
                     for note in ("MODE preserves visibility", "Filter categories have their own", "DXSTATE Spotted", "DESTATE Spotter"):
                         bad = [line for line in lines if note not in line]
                         with self.assertRaises(ValueError):
@@ -623,6 +631,12 @@ class DriverControls(unittest.TestCase):
                     bad = [line.replace("REJECT MODE ALL", "PASS MODE ALL").replace("UNSET/FILTER MODE ALL", "SET/FILTER MODE ALL") for line in lines]
                     with self.assertRaisesRegex(ValueError, "block-before-pass"):
                         driver.require_discovery_help(bad, key, dialect)
+                if key == "OVERVIEW":
+                    for note in ("HELP SPOTS", "HELP SETTINGS", "HELP PRESETS", "HELP TROUBLE", "HELP COMMANDS", "Call confidence:"):
+                        with self.assertRaises(ValueError):
+                            driver.require_discovery_help([line for line in lines if note not in line], key, dialect)
+                    with self.assertRaises(ValueError):
+                        driver.require_discovery_help([*lines, "  BYE"], key, dialect)
                 if key == "DX":
                     for note in ("station reputation admission", "Spot queued confirms", "Posting admission may", "Requires a valid logged", "Logins ending TEST",
                                  "Comment: ASCII", "Other punctuation", "whole command", "Mode/report may"):

@@ -11,7 +11,7 @@ native CC filter banks. It does not establish a production deployment.
 ## What Lives Here
 
 - command parsing for `HELP`, `DX`, `SHOW`, `BYE`, and related aliases
-- per-dialect HELP catalogs and task-oriented overviews
+- per-dialect HELP catalogs, short landing screens and task guides
 - build, dedupe, and path-glyph HELP notes injected from runtime snapshots
 - history, DXCC, propagation-outlook, and build-info read paths used by
   `SHOW DX`, `SHOW MYDX`, `SHOW DXCC`, `SHOW PROP`, and `SHOW BUILD`
@@ -22,6 +22,7 @@ native CC filter banks. It does not establish a production deployment.
 HELP rendering and its detailed references are owned by:
 
 - `helpOverviewLines(...)` in [`help_overview.go`](help_overview.go)
+- `installTaskHelp(...)` and `commandIndexHelpLines(...)` in [`help_tasks.go`](help_tasks.go)
 - `buildHelpCatalog(...)`
 - `filterReferenceHelpLines(...)` in [`help_overview.go`](help_overview.go)
 - `BooleanRuleHelpLines()` in `commands/boolean_rule_help.go`, installed by
@@ -32,7 +33,18 @@ HELP rendering and its detailed references are owned by:
 - `installCommentHelp(...)` in [`comment_help.go`](comment_help.go)
 - catalog head/alias routing in [`help_routing.go`](help_routing.go)
 
-The overview groups everyday commands by task. In GO, `HELP RULE` owns the
+The landing screen shows three starter commands, call confidence, configured
+path symbols and seven help links. It has no title or disconnect command.
+`HELP SPOTS`, `HELP SETTINGS`, `HELP PRESETS` and `HELP TROUBLE` give short
+examples and next steps. `HELP COMMANDS` lists every installed command topic,
+including machine YAML help, in stable alphabetical order. Existing aliases
+remain in command-specific help. These help topics do not add executable commands.
+
+New landing and task-guide descriptions use fewer than 25 words. Instructions
+use fewer than 20 words. Existing detailed command and model references remain
+available without rewriting their contracts.
+
+In GO, `HELP RULE` owns the
 Boolean expression, field, vocabulary, default/reset and bounds reference.
 PASS rules are ORed and matching REJECT vetoes them. In CC, `HELP SET/FILTER`
 owns native geography, frequency-slot and switch guidance; `HELP FILTERS`
@@ -63,9 +75,12 @@ COMMENT-list and Boolean mutations require GO expressions. Historical mechanics 
 [TSR-0064](../docs/troubleshooting/TSR-0064-cc-help-category-grammar.md)
 are not a compatibility contract.
 
-`HELP SYMBOLS` contains the existing confidence legend and the path legend when
-its configured display is available. Configured glyphs and reporting windows
-still come from startup snapshots; help does not read external text files.
+`HELP SYMBOLS` contains the existing detailed confidence legend and path legend.
+Both the landing screen and detailed path legend use the same startup mapping.
+They omit the path legend when display is disabled or its mapping is incomplete.
+A custom insufficient-data symbol is described explicitly rather than as blank.
+Configured glyphs and reporting windows still come from startup snapshots; help
+does not read external text files.
 
 YAML client commands retain command-specific help, such as
 `HELP GET YAML CONFIG`. Native CC guidance points to YAML for long replacing
@@ -82,18 +97,20 @@ HELP does not add executable aliases. See
 
 The main landing page [`../README.md`](../README.md) contains a generated HELP
 block for the default `go` dialect, with a processor-output comparison test.
-Regenerating that block is outside this documentation slice; it is not the
+The block is synchronized with the shipped configuration; it is not the
 authority for the active bank's filter contract.
 
 Reviewed GO and CC overview fixtures live under [`testdata`](testdata).
-Tests also check command discoverability, reference navigation and line widths.
+Tests also check command-index completeness, task navigation, short sentences,
+configured symbols, existing aliases and line widths.
 The emitted `filterRecipeLines` recipe begins with `RESET FILTER RULE ALL`;
 it deliberately removes every personal slot before installing its combined
 BAND/MODE rule. `telnet/help_recipe_test.go` instead exercises a combined
 slot-0 replacement retaining an independent REJECT. That different sequence
 does not prove the emitted reset recipe preserves unrelated rules. These
-tests cover different operator sequences. The pre-v5 category mechanics in
-[ADR-0264](../docs/decisions/ADR-0264-task-oriented-compiled-help.md) are historical.
+tests cover different operator sequences. The earlier presentation in
+[ADR-0264](../docs/decisions/ADR-0264-task-oriented-compiled-help.md) is superseded
+by [ADR-0337](../docs/decisions/ADR-0337-short-help-and-task-guides.md).
 
 ## Dialects
 

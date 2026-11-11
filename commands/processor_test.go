@@ -608,7 +608,7 @@ func TestHelpPerDialect(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"classic", "go", "cc"} {
 		text := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
-		for _, want := range []string{"Getting started:", "What you can filter:", "HELP <command>", "HELP SYMBOLS"} {
+		for _, want := range []string{"Try these commands:", "Call confidence:", "HELP COMMANDS", "HELP SYMBOLS"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s overview missing %q", dialect, want)
 			}
@@ -620,7 +620,8 @@ func TestHelpPerDialect(t *testing.T) {
 					t.Fatalf("CC native reference missing %q", want)
 				}
 			}
-			if strings.Contains(text, "PASS RULE 0") || !strings.Contains(text, "SET/NOFILTER") || !strings.Contains(text, "SET/ANN") {
+			index := p.ProcessCommandForClient("HELP COMMANDS", "N2WQ", "", nil, dialect)
+			if strings.Contains(text, "PASS RULE 0") || !strings.Contains(index, "SET/NOFILTER") || !strings.Contains(index, "SET/ANN") {
 				t.Fatal("native CC overview lost supported commands or advertises Boolean edits")
 			}
 			continue
@@ -895,8 +896,8 @@ func TestHelpPauseAcrossDialects(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc", "classic"} {
 		t.Run(dialect, func(t *testing.T) {
-			list := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
-			if !strings.Contains(list, "PAUSE                  Pause live spots for 30 seconds.") {
+			list := p.ProcessCommandForClient("HELP COMMANDS", "N2WQ", "", nil, dialect)
+			if !strings.Contains(list, "  PAUSE ") {
 				t.Fatalf("PAUSE missing from command list: %q", list)
 			}
 			response := p.ProcessCommandForClient("HELP pause 60", "N2WQ", "", nil, dialect)

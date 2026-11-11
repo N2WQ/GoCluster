@@ -66,89 +66,52 @@ func filterBasicsLines() []string {
 	}
 }
 
-func helpOverviewLines(dialect string) []string {
-	if dialect == "cc" {
-		return nativeCCHelpOverviewLines()
-	}
-	show, short, readback := "SHOW DX", "SH DX", "SHOW FILTER"
-	if dialect == "cc" {
-		show, short, readback = "SHOW/DX", "SH/DX", "SHOW/FILTER"
-	}
-	lines := []string{"GoCluster help - " + strings.ToUpper(dialect) + " dialect"}
-	lines = helpSection(lines, "Getting started",
-		helpRow{show + " 10", "Show 10 recent spots matching your filters."},
-		helpRow{readback, "See your current filters."},
-		helpRow{"SHOW SETTINGS", "See your preferences and session settings."},
-		helpRow{"SET GRID FN31", "Set your Maidenhead grid square."},
-		helpRow{"BYE", "Disconnect."})
-	lines = append(lines, "", "Type HELP followed by a command for details:", "  HELP "+show, "  HELP RULE", "  HELP PASS", "  HELP REJECT")
-	lines = helpSection(lines, "Reading and posting spots",
-		helpRow{show, "Show recent spots matching your filters."}, helpRow{"SHOW MYDX", "Same as " + show + "."},
-		helpRow{short, "Short form of " + show + "."}, helpRow{"DX", "Post a spot."},
-		helpRow{"SHOW DXCC", "Look up a callsign or country prefix."}, helpRow{"WHOSPOTSME", "Show recent spotter countries for your call."})
-	lines = helpSection(lines, "Space weather bulletins",
-		helpRow{"SHOW WWV", "Show the latest five WWV bulletins."}, helpRow{"SHOW WCY", "Show the latest five WCY bulletins."},
-		helpRow{"SHOW WWV FULL", "Show retained WWV bulletins from the last 24 hours."},
-		helpRow{"SHOW WCY FULL", "Show retained WCY bulletins from the last 24 hours."})
-	lines = helpSection(lines, "Examples",
-		helpRow{show + " 10", "Show the latest 10 matching spots."}, helpRow{show + " K1ABC 10", "Search for spots of K1ABC."},
-		helpRow{show + " 10 BAND 20", "Search for 10 matching spots on 20m."},
-		helpRow{show + " 10 MODE CW", "Search for 10 matching CW spots."},
-		helpRow{show + " 10 COMMENT CQ", "Search stored comments for literal CQ."},
-		helpRow{"DX 14025.0 K1ABC CQ", "Post K1ABC on 14025.0 kHz with comment CQ."})
-	lines = helpSection(lines, "Changing filters",
-		helpRow{"PASS RULE", "Replace one slot with an allowing expression."},
-		helpRow{"REJECT RULE", "Replace one slot with a vetoing expression."},
-		helpRow{readback, "See your current settings and rules."},
-		helpRow{readback + " RULE", "Same as " + readback + "."},
-		helpRow{readback + " FULL", "Show rules, controls and program counts."},
-		helpRow{"RESET FILTER RULE", "Clear one slot or ALL; preserve settings."},
-		helpRow{"RESET FILTER", "Clear personal rules; preserve settings."})
-	lines = append(lines, "", "What you can filter:",
-		"  Combine band, mode, source, geography, calls, comments and more.",
-		"  DX means the station being spotted; DE means the spotter.",
-		"  HELP RULE lists every field, supported value and expression limit.",
-		"", "Examples (separate full-rule replacements):",
-		"  PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN",
-		"  REJECT RULE 9 SNR<-15 OR COMMENT=\"test beacon\"")
-	lines = append(lines, filterRecipeLines(dialect)...)
-	lines = append(lines, filterBasicsLines()...)
-	lines = append(lines, commentOverviewLines()...)
-	lines = append(lines, featureOverviewLines(dialect)...)
-	lines = helpSection(lines, "Nearby filtering",
-		helpRow{"SET GRID FN31", "Set your location."},
-		helpRow{"PASS RULE 0 NEARBY", "Replace rule 0 with nearby selection."})
-	lines = append(lines, "", "  NEARBY combines with other conditions using NOT, AND and OR.",
-		"  It does not change geography conditions or duplicate suppression.",
-		"  Type HELP NEARBY or HELP RULE for details.")
-	lines = append(lines, preferencesOverviewLines()...)
-	lines = helpSection(lines, "Saving and loading presets",
-		helpRow{"SAVE PRESET <name>", "Save your filters and preferences under a name."}, helpRow{"LIST PRESET", "List your saved presets."},
-		helpRow{"LOAD PRESET <name>", "Apply a preset and save this login's defaults."}, helpRow{"DELETE PRESET <name>", "Delete a saved preset."})
-	lines = append(lines, "", "Examples:", "  SAVE PRESET CONTEST", "  LOAD PRESET CONTEST")
-	lines = helpSection(lines, "Pausing live spots",
-		helpRow{"PAUSE", "Pause live spots for 30 seconds."}, helpRow{"PAUSE 60", "Pause for 60 seconds (maximum 300)."},
-		helpRow{"SHOW HOLD", "Show time remaining and spots suppressed."}, helpRow{"RESUME", "Resume live spots immediately."})
-	lines = append(lines, "", "  Filter and settings readbacks temporarily pause live spots.", "  Type RESUME when ready, or wait for the pause to expire.", "  Spots missed during a pause are not replayed.")
-	lines = helpSection(lines, "Diagnostics", helpRow{"SHOW BUILD", "Show server version and build information."},
-		helpRow{"SHOW OWN", "Show your login call and own-call identity."}, helpRow{"SET DIAG", "Select diagnostic information in spot comments."})
-	lines = helpSection(lines, "More help", helpRow{"HELP RULE", "Canonical Boolean grammar, fields and values."},
-		helpRow{"HELP PASS", "Rule updates and separate enable controls."},
-		helpRow{"HELP REJECT", "Rule updates and separate disable controls."},
-		helpRow{"HELP FILTERS", "Navigate to rules and separate controls."}, helpRow{"HELP SYMBOLS", "Confidence and path reliability symbols."}, helpRow{"HELP <command>", "Detailed help for a command."})
-	lines = helpSection(lines, "Other commands", helpRow{"HELP", "Show this help."}, helpRow{"BYE", "Disconnect (also QUIT or EXIT)."})
-	return append(lines, "", "Syntax used in detailed help:", "  <value> means required; [value] means optional.", "  A|B means choose one. Do not type the brackets.")
+// helpOverviewLines renders the reviewed landing page. Symbols come from the same
+// startup snapshot as HELP SYMBOLS; no configuration or model state is changed.
+func helpOverviewLines(dialect string, path PathGlyphHelpConfig) []string {
+	show, readback := helpTaskCommands(dialect)
+	lines := []string{"Try these commands:"}
+	lines = append(lines,
+		"  "+show+" 10"+strings.Repeat(" ", 17-len(show+" 10"))+"Show 10 recent spots that match your filters.",
+		"  "+readback+strings.Repeat(" ", 17-len(readback))+"Show your current filters.",
+		"  SHOW SETTINGS    Show your settings.",
+		"", "Call confidence:",
+		"  ?  One reporter; no added support for the call.",
+		"  S  One reporter; stored or recent reports support the call.",
+		"  P  Several reporters support the call.",
+		"  V  Several reporters provide stronger support.",
+		"  C  The cluster corrected the call.",
+		"  B  A correction failed checks; the original call remains.")
+	lines = append(lines, briefPathHelpLines(path)...)
+	return append(lines,
+		"", "What would you like to do?",
+		"  HELP SPOTS       Find spots or report a station.",
+		"  HELP FILTERS     Choose which spots you receive.",
+		"  HELP SETTINGS    Change your location and settings.",
+		"  HELP PRESETS     Save or load your settings.",
+		"  HELP SYMBOLS     Learn more about call confidence and path reliability.",
+		"  HELP TROUBLE     Find help when something goes wrong.",
+		"  HELP COMMANDS    See all commands.",
+		"", "For help with one command, type HELP before its name:",
+		"  HELP "+show)
 }
 
-func commentOverviewLines() []string {
-	return []string{
-		"", "Comment rules:", `  PASS RULE 0 COMMENT="CQ DX"`,
-		`  REJECT RULE 9 COMMENT="QRT"`,
-		"  ASCII case-insensitive literal substrings, not regular expressions.",
-		`  Inside a quoted value, double a literal quote: COMMENT="CQ ""DX"""`,
-		"  Edit/clear the numbered slot to replace/remove the whole rule.",
-		"  SHOW DX COMMENT remains a history query, not a saved rule edit.",
+func briefPathHelpLines(cfg PathGlyphHelpConfig) []string {
+	if !pathHelpAvailable(cfg) {
+		return nil
 	}
+	lines := []string{"", "Path reliability:"}
+	// Wrap configured symbols rather than assuming the shipped ASCII mapping.
+	row := "  " + cfg.High + " Favorable   " + cfg.Medium + " Workable   " + cfg.Low + " Weak   " + cfg.Unlikely + " Poor   " + cfg.Closed + " Closed"
+	if len(row) <= helpMaxWidth {
+		lines = append(lines, row)
+	} else {
+		lines = append(lines, wrapTextLines(row, "  ")...)
+	}
+	if strings.TrimSpace(cfg.Insufficient) == "" {
+		return append(lines, "  A blank means no path rating is shown.")
+	}
+	return append(lines, wrapTextLines("  "+quoteHelpGlyph(cfg.Insufficient)+" means not enough recent reports.", "  ")...)
 }
 
 func featureOverviewLines(dialect string) []string {
@@ -167,16 +130,6 @@ func featureOverviewLines(dialect string) []string {
 	lines = append(lines, helpRowLines(helpRow{"BEACON", "Beacon spots."}, helpRow{"WWV", "WWV bulletins."}, helpRow{"WCY", "WCY bulletins."},
 		helpRow{"ANNOUNCE", "Announcements."}, helpRow{"SELF", "Your own spots."}, helpRow{"TOXIC", "Human spots already classified as toxic."})...)
 	return helpSection(lines, "Examples", helpRow{"REJECT BEACON", "Hide beacon spots."}, helpRow{"PASS ANNOUNCE", "Allow announcements."}, helpRow{"REJECT TOXIC", "Hide spots already classified as toxic."})
-}
-
-func preferencesOverviewLines() []string {
-	lines := helpSection(nil, "Preferences and propagation", helpRow{"SHOW SETTINGS", "Show preferences and session settings."},
-		helpRow{"SET GRID", "Set your Maidenhead grid square."}, helpRow{"SET NOISE", "Set your receiving noise environment."},
-		helpRow{"SHOW PROP", "Show an outlook to a callsign, prefix or grid."}, helpRow{"SET PATHSAMPLES", "Set the minimum recent report units for paths."},
-		helpRow{"SHOW DEDUPE", "Show duplicate-spot suppression settings."}, helpRow{"SET DEDUPE", "Choose FAST, MED or SLOW duplicate suppression."},
-		helpRow{"SET SOLAR", "Set the cadence for active solar summaries."}, helpRow{"SET CWSPEED", "Show or hide RBN CW speed."}, helpRow{"DIALECT", "Show or switch between GO and CC command styles."})
-	lines = append(lines, "", "Examples:", "  SET GRID FN31", "  SET NOISE SUBURBAN", "  SHOW PROP DL 20 CW", "  SET DEDUPE FAST")
-	return append(lines, helpRowLines(helpRow{"SET SOLAR 30", "Receive active solar summaries every 30 minutes."}, helpRow{"SET SOLAR OFF", "Stop solar summaries."})...)
 }
 
 func filterReferenceHelpLines(dialect string) []string {

@@ -50,7 +50,7 @@ that cluster's operator. You do not need to download or run GoCluster to use
 an existing cluster.
 
 1. Connect and enter your callsign when asked.
-2. Type `HELP` and press Enter to see the available commands.
+2. Type `HELP` and press Enter to see the short help menu.
 3. Type `SHOW DX 10` to see up to ten recent spots that pass your filters.
 4. Type `SHOW FILTER` to see your current filters, then `RESUME` when you are
    ready for live spots to continue.
@@ -712,180 +712,44 @@ See the [client protocol details](telnet/README.md#client-yaml-configuration).
 
 ### HELP
 
-Use `HELP` on your connection for the commands supported by your active dialect.
+Use `HELP` for a short menu, call confidence tags and configured path symbols.
+Use `HELP COMMANDS` for the complete command and help-topic index.
 
 <details>
-<summary>Expand the default GO command list and filter rules</summary>
+<summary>Expand the default GO help screen</summary>
 
 The section below mirrors the default `go` dialect `HELP` output from [`commands/processor.go`](commands/processor.go) using the shipped config in [`data/config`](data/config).
 
 <!-- BEGIN DEFAULT_GO_HELP -->
 ```text
-GoCluster help - GO dialect
+Try these commands:
+  SHOW DX 10       Show 10 recent spots that match your filters.
+  SHOW FILTER      Show your current filters.
+  SHOW SETTINGS    Show your settings.
 
-Getting started:
-  SHOW DX 10             Show 10 recent spots matching your filters.
-  SHOW FILTER            See your current filters.
-  SHOW SETTINGS          See your preferences and session settings.
-  SET GRID FN31          Set your Maidenhead grid square.
-  BYE                    Disconnect.
+Call confidence:
+  ?  One reporter; no added support for the call.
+  S  One reporter; stored or recent reports support the call.
+  P  Several reporters support the call.
+  V  Several reporters provide stronger support.
+  C  The cluster corrected the call.
+  B  A correction failed checks; the original call remains.
 
-Type HELP followed by a command for details:
+Path reliability:
+  > Favorable   = Workable   < Weak   - Poor   # Closed
+  A blank means no path rating is shown.
+
+What would you like to do?
+  HELP SPOTS       Find spots or report a station.
+  HELP FILTERS     Choose which spots you receive.
+  HELP SETTINGS    Change your location and settings.
+  HELP PRESETS     Save or load your settings.
+  HELP SYMBOLS     Learn more about call confidence and path reliability.
+  HELP TROUBLE     Find help when something goes wrong.
+  HELP COMMANDS    See all commands.
+
+For help with one command, type HELP before its name:
   HELP SHOW DX
-  HELP RULE
-  HELP PASS
-  HELP REJECT
-
-Reading and posting spots:
-  SHOW DX                Show recent spots matching your filters.
-  SHOW MYDX              Same as SHOW DX.
-  SH DX                  Short form of SHOW DX.
-  DX                     Post a spot.
-  SHOW DXCC              Look up a callsign or country prefix.
-  WHOSPOTSME             Show recent spotter countries for your call.
-
-Space weather bulletins:
-  SHOW WWV               Show the latest five WWV bulletins.
-  SHOW WCY               Show the latest five WCY bulletins.
-  SHOW WWV FULL          Show retained WWV bulletins from the last 24 hours.
-  SHOW WCY FULL          Show retained WCY bulletins from the last 24 hours.
-
-Examples:
-  SHOW DX 10             Show the latest 10 matching spots.
-  SHOW DX K1ABC 10       Search for spots of K1ABC.
-  SHOW DX 10 BAND 20     Search for 10 matching spots on 20m.
-  SHOW DX 10 MODE CW     Search for 10 matching CW spots.
-  SHOW DX 10 COMMENT CQ  Search stored comments for literal CQ.
-  DX 14025.0 K1ABC CQ    Post K1ABC on 14025.0 kHz with comment CQ.
-
-Changing filters:
-  PASS RULE              Replace one slot with an allowing expression.
-  REJECT RULE            Replace one slot with a vetoing expression.
-  SHOW FILTER            See your current settings and rules.
-  SHOW FILTER RULE       Same as SHOW FILTER.
-  SHOW FILTER FULL       Show rules, controls and program counts.
-  RESET FILTER RULE      Clear one slot or ALL; preserve settings.
-  RESET FILTER           Clear personal rules; preserve settings.
-
-What you can filter:
-  Combine band, mode, source, geography, calls, comments and more.
-  DX means the station being spotted; DE means the spotter.
-  HELP RULE lists every field, supported value and expression limit.
-
-Examples (separate full-rule replacements):
-  PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN
-  REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"
-
-A complete recipe: human-reported CW/FT8 on 20m/40m:
-  RESET FILTER RULE ALL
-  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN
-  SHOW FILTER
-
-  This replaces all personal rules. Separate controls are unchanged.
-  SELF ON can bypass personal rules; see HELP SHOW MYDX.
-
-Filter rules to remember:
-  Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.
-  Any PASS can qualify; any matching REJECT vetoes it.
-  No active PASS means unrestricted except for matching REJECT rules.
-  No rules means no personal restriction.
-  New users start with an ordinary editable default PASS rule in slot 0.
-  PASS without SOURCE allows humans and skimmers.
-  Add AND SOURCE=HUMAN to select human reports only.
-  To narrow it, replace/remove slot 0; adding another PASS broadens it.
-  RESET FILTER clears rules, preserving separate controls/preferences.
-  Reset does not reinstall default slot 0. See HELP RULE for full details.
-
-Comment rules:
-  PASS RULE 0 COMMENT="CQ DX"
-  REJECT RULE 9 COMMENT="QRT"
-  ASCII case-insensitive literal substrings, not regular expressions.
-  Inside a quoted value, double a literal quote: COMMENT="CQ ""DX"""
-  Edit/clear the numbered slot to replace/remove the whole rule.
-  SHOW DX COMMENT remains a history query, not a saved rule edit.
-
-Feature switches:
-  Use PASS to enable or REJECT to disable:
-  BEACON                 Beacon spots.
-  WWV                    WWV bulletins.
-  WCY                    WCY bulletins.
-  ANNOUNCE               Announcements.
-  SELF                   Your own spots.
-  TOXIC                  Human spots already classified as toxic.
-
-Examples:
-  REJECT BEACON          Hide beacon spots.
-  PASS ANNOUNCE          Allow announcements.
-  REJECT TOXIC           Hide spots already classified as toxic.
-
-Nearby filtering:
-  SET GRID FN31          Set your location.
-  PASS RULE 0 NEARBY     Replace rule 0 with nearby selection.
-
-  NEARBY combines with other conditions using NOT, AND and OR.
-  It does not change geography conditions or duplicate suppression.
-  Type HELP NEARBY or HELP RULE for details.
-
-Preferences and propagation:
-  SHOW SETTINGS          Show preferences and session settings.
-  SET GRID               Set your Maidenhead grid square.
-  SET NOISE              Set your receiving noise environment.
-  SHOW PROP              Show an outlook to a callsign, prefix or grid.
-  SET PATHSAMPLES        Set the minimum recent report units for paths.
-  SHOW DEDUPE            Show duplicate-spot suppression settings.
-  SET DEDUPE             Choose FAST, MED or SLOW duplicate suppression.
-  SET SOLAR              Set the cadence for active solar summaries.
-  SET CWSPEED            Show or hide RBN CW speed.
-  DIALECT                Show or switch between GO and CC command styles.
-
-Examples:
-  SET GRID FN31
-  SET NOISE SUBURBAN
-  SHOW PROP DL 20 CW
-  SET DEDUPE FAST
-  SET SOLAR 30           Receive active solar summaries every 30 minutes.
-  SET SOLAR OFF          Stop solar summaries.
-
-Saving and loading presets:
-  SAVE PRESET <name>     Save your filters and preferences under a name.
-  LIST PRESET            List your saved presets.
-  LOAD PRESET <name>     Apply a preset and save this login's defaults.
-  DELETE PRESET <name>   Delete a saved preset.
-
-Examples:
-  SAVE PRESET CONTEST
-  LOAD PRESET CONTEST
-
-Pausing live spots:
-  PAUSE                  Pause live spots for 30 seconds.
-  PAUSE 60               Pause for 60 seconds (maximum 300).
-  SHOW HOLD              Show time remaining and spots suppressed.
-  RESUME                 Resume live spots immediately.
-
-  Filter and settings readbacks temporarily pause live spots.
-  Type RESUME when ready, or wait for the pause to expire.
-  Spots missed during a pause are not replayed.
-
-Diagnostics:
-  SHOW BUILD             Show server version and build information.
-  SHOW OWN               Show your login call and own-call identity.
-  SET DIAG               Select diagnostic information in spot comments.
-
-More help:
-  HELP RULE              Canonical Boolean grammar, fields and values.
-  HELP PASS              Rule updates and separate enable controls.
-  HELP REJECT            Rule updates and separate disable controls.
-  HELP FILTERS           Navigate to rules and separate controls.
-  HELP SYMBOLS           Confidence and path reliability symbols.
-  HELP <command>         Detailed help for a command.
-
-Other commands:
-  HELP                   Show this help.
-  BYE                    Disconnect (also QUIT or EXIT).
-
-Syntax used in detailed help:
-  <value> means required; [value] means optional.
-  A|B means choose one. Do not type the brackets.
 ```
 <!-- END DEFAULT_GO_HELP -->
 

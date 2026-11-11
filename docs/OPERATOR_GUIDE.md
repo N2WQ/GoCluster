@@ -237,7 +237,12 @@ telnet localhost 8300
 
 Log in with your callsign. Useful first commands:
 
-- `HELP`: show commands grouped by task, filter categories and practical examples.
+- `HELP`: show starter commands, call confidence, path symbols and a short task menu.
+- `HELP SPOTS`: find spots or report a station.
+- `HELP SETTINGS`: change location and shared settings.
+- `HELP PRESETS`: save or load a setup, with replacement warnings.
+- `HELP TROUBLE`: start with pause status and safe checks.
+- `HELP COMMANDS`: browse all installed command help topics.
 - `HELP <command>`: show command-specific help.
 - `HELP PASS` / `HELP REJECT`: show detailed filter syntax, values and examples.
 - `HELP FILTERS`: show full filter rules and supported values.
@@ -277,10 +282,11 @@ Log in with your callsign. Useful first commands:
 - `DX <freq> <call> <comment>`: post a local human spot.
 - `BYE`: disconnect.
 
-In the CC dialect, use `HELP SET/FILTER` and `HELP UNSET/FILTER` for ordinary
-list filters. The overview uses CC spellings; COMMENT, MINSNR and NEARBY keep
-their shared PASS/REJECT syntax. YAML client commands are omitted from the
-overview but remain available, including their command-specific help.
+In the CC dialect, use `HELP SET/FILTER` for native geography, frequency slots
+and switches. Use `HELP UNSET/FILTER` for supported switch controls. Boolean
+rules, including COMMENT, SNR and NEARBY expressions, require GO. The landing
+screen uses CC spellings when CC is selected. YAML commands remain available
+through `HELP COMMANDS` and command-specific help.
 
 The top-level repository README contains the generated default `HELP` output.
 That block is checked against the command processor in tests.

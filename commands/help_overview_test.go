@@ -8,7 +8,7 @@ import (
 )
 
 func TestHelpOverviewPresentation(t *testing.T) {
-	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	p := NewProcessor(nil, nil, nil, nil, nil, nil, WithPathGlyphHelp(PathGlyphHelpConfig{Enabled: true, High: ">", Medium: "=", Low: "<", Unlikely: "-", Insufficient: " ", Closed: "#"}))
 	for _, dialect := range []string{"go", "cc"} {
 		t.Run(dialect, func(t *testing.T) {
 			got := p.ProcessCommandForClient("HELP", "N0CALL", "", nil, dialect)
@@ -20,7 +20,7 @@ func TestHelpOverviewPresentation(t *testing.T) {
 				t.Fatalf("%s HELP differs from the reviewed presentation fixture", dialect)
 			}
 			previous := -1
-			for _, section := range []string{"Getting started:", "Reading and posting spots:", "Changing filters:", "What you can filter:", "A complete recipe:", "Filter rules to remember:", "Comment rules:", "Nearby filtering:", "Preferences and propagation:", "Saving and loading presets:", "Pausing live spots:", "Diagnostics:", "More help:", "Other commands:", "Syntax used in detailed help:"} {
+			for _, section := range []string{"Try these commands:", "Call confidence:", "Path reliability:", "What would you like to do?", "For help with one command, type HELP before its name:"} {
 				index := strings.Index(got, section)
 				if index <= previous {
 					t.Fatalf("missing or out-of-order section %q", section)
@@ -39,19 +39,19 @@ func TestHelpCatalogDiscoverabilityAndWidths(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		catalog := buildHelpCatalog(dialect, DedupeHelpConfig{}, WhoSpotsMeHelpConfig{})
 		overview := p.ProcessCommandForClient("HELP", "N0CALL", "", nil, dialect)
+		index := p.ProcessCommandForClient("HELP COMMANDS", "N0CALL", "", nil, dialect)
 		for _, topic := range catalog.order {
 			text := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, dialect)
 			if strings.HasPrefix(text, "Unknown help topic:") {
 				t.Fatalf("%s advertised topic %s does not resolve", dialect, topic)
 			}
 			assertHelpWidth(t, text)
-			// Only machine YAML topics are deliberately hidden. Checking the
-			// full ordered catalog catches future human commands omitted by layout edits.
-			if !strings.Contains(topic, " YAML ") && !strings.Contains(overview, topic) {
-				t.Fatalf("%s overview omits catalog command %s", dialect, topic)
+			// All detailed topics remain reachable through the command index.
+			if !strings.Contains(index, topic) {
+				t.Fatalf("%s command index omits catalog command %s", dialect, topic)
 			}
 		}
-		for _, topic := range []string{"FILTERS", "SYMBOLS"} {
+		for _, topic := range []string{"SPOTS", "FILTERS", "SETTINGS", "PRESETS", "SYMBOLS", "TROUBLE", "COMMANDS"} {
 			text := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, dialect)
 			if strings.HasPrefix(text, "Unknown help topic:") || !strings.Contains(overview, "HELP "+topic) {
 				t.Fatalf("reference %s is not reachable/advertised", topic)
@@ -105,7 +105,7 @@ func TestBooleanRuleHelpCanonicalCatalog(t *testing.T) {
 func TestHelpNavigationNormalization(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
-		for _, topic := range []string{"filters", "symbols", "pass", "reject"} {
+		for _, topic := range []string{"spots", "filters", "settings", "presets", "symbols", "trouble", "commands", "pass", "reject"} {
 			want := p.ProcessCommandForClient("HELP "+strings.ToUpper(topic), "N0CALL", "", nil, dialect)
 			got := p.ProcessCommandForClient("  hElP   "+topic+"  ", "N0CALL", "", nil, dialect)
 			if got != want || strings.HasPrefix(got, "Unknown help topic:") {
@@ -117,7 +117,7 @@ func TestHelpNavigationNormalization(t *testing.T) {
 		}
 	}
 	got := p.ProcessCommandForClient("H", "N0CALL", "", nil, "classic")
-	if got != p.ProcessCommandForClient("HELP", "N0CALL", "", nil, "go") || !strings.HasPrefix(got, "GoCluster help - ") {
+	if got != p.ProcessCommandForClient("HELP", "N0CALL", "", nil, "go") || !strings.HasPrefix(got, "Try these commands:") {
 		t.Fatal("default dialect or H alias changed")
 	}
 }
@@ -152,6 +152,92 @@ func assertHelpWidth(t *testing.T, text string) {
 	for _, line := range strings.Split(text, "\n") {
 		if len(line) > helpMaxWidth {
 			t.Fatalf("HELP line exceeds %d bytes: %q", helpMaxWidth, line)
+		}
+	}
+}
+
+// These checks complement fixtures: copied output cannot hide a dead menu entry,
+// a lost narrow catalog topic, or a path legend using the wrong startup mapping.
+func TestHelpTaskNavigationAndIndex(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	for _, dialect := range []string{"go", "cc"} {
+		catalog := buildHelpCatalog(dialect, DedupeHelpConfig{}, WhoSpotsMeHelpConfig{})
+		index := p.ProcessCommandForClient("HELP COMMANDS", "N0CALL", "", nil, dialect)
+		if index != p.ProcessCommandForClient("HELP COMMANDS", "N0CALL", "", nil, dialect) {
+			t.Fatal("command index order is unstable")
+		}
+		for topic := range catalog.entries {
+			found := false
+			for _, line := range strings.Split(index, "\n") {
+				if strings.HasPrefix(line, "  "+topic+" ") {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("%s index lost exact topic %s", dialect, topic)
+			}
+		}
+		for _, topic := range []string{"DX", "SHOW SETTINGS", "SAVE PRESET", "LOAD PRESET", "SHOW HOLD", "RESUME", "GET YAML CONFIG", "BYE"} {
+			if !strings.Contains(index, "  "+topic+" ") {
+				t.Fatalf("index lost required command %s", topic)
+			}
+		}
+		for _, topic := range []string{"SPOTS", "SETTINGS", "PRESETS", "TROUBLE"} {
+			page := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, dialect)
+			assertHelpWidth(t, page)
+			// A stronger common limit keeps both descriptions and instructions short.
+			for _, line := range strings.Split(page, "\n") {
+				if len(strings.Fields(line)) >= 20 {
+					t.Fatalf("long task sentence: %q", line)
+				}
+				if strings.HasPrefix(line, "  HELP ") {
+					target := strings.TrimPrefix(line, "  ")
+					if strings.HasPrefix(p.ProcessCommandForClient(target, "N0CALL", "", nil, dialect), "Unknown help topic:") {
+						t.Fatalf("dead task link %s", target)
+					}
+				}
+			}
+		}
+		trouble := p.ProcessCommandForClient("HELP TROUBLE", "N0CALL", "", nil, dialect)
+		if !strings.Contains(trouble, "SHOW HOLD") || !strings.Contains(trouble, "RESUME") || strings.Index(trouble, "SHOW HOLD") > strings.Index(trouble, "RESUME") || strings.Contains(trouble, "RESET FILTER") {
+			t.Fatal("troubleshooting lost safe check-first order")
+		}
+		overview := p.ProcessCommandForClient("HELP", "N0CALL", "", nil, dialect)
+		for _, forbidden := range []string{"GoCluster help", "BYE", "HELP WEB", "guarantee contact", "Path reliability:"} {
+			if strings.Contains(overview, forbidden) {
+				t.Fatalf("unexpected overview content %q", forbidden)
+			}
+		}
+		for _, alias := range []string{"H", "h"} {
+			if p.ProcessCommandForClient(alias, "N0CALL", "", nil, dialect) != overview {
+				t.Fatal("HELP alias changed")
+			}
+		}
+	}
+}
+
+func TestHelpOverviewConfiguredSymbols(t *testing.T) {
+	for _, dialect := range []string{"go", "cc"} {
+		cfg := PathGlyphHelpConfig{Enabled: true, High: "A", Medium: "M", Low: "L", Unlikely: "U", Insufficient: "?", Closed: "X"}
+		p := NewProcessor(nil, nil, nil, nil, nil, nil, WithPathGlyphHelp(cfg))
+		text := p.ProcessCommandForClient("HELP", "N0CALL", "", nil, dialect)
+		for _, want := range []string{"A Favorable", "M Workable", "L Weak", "U Poor", "X Closed", `"?" means not enough recent reports.`} {
+			if !strings.Contains(text, want) {
+				t.Fatalf("custom symbol missing %q", want)
+			}
+		}
+		if strings.Contains(text, "A blank") {
+			t.Fatal("nonblank insufficient symbol described as blank")
+		}
+		assertHelpWidth(t, text)
+		disabledConfig := cfg
+		disabledConfig.Enabled = false
+		for _, disabled := range []PathGlyphHelpConfig{{}, disabledConfig, {Enabled: true, High: "A"}} {
+			p := NewProcessor(nil, nil, nil, nil, nil, nil, WithPathGlyphHelp(disabled))
+			if strings.Contains(p.ProcessCommandForClient("HELP", "N0CALL", "", nil, dialect), "Path reliability:") {
+				t.Fatal("unavailable path legend shown")
+			}
 		}
 	}
 }

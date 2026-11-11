@@ -1,6 +1,6 @@
 # ADR-0264: Task-Oriented Compiled HELP
 
-- Status: Accepted
+- Status: Superseded
 - Date: 2026-10-08
 - Decision Origin: Design
 
@@ -65,4 +65,5 @@ rebuilding the binary.
 - Related decisions: [ADR-0012](ADR-0012-cc-show-dx-alias.md),
   [ADR-0089](ADR-0089-set-solar-help-routing.md).
 - Related TSRs: none; no troubleshooting-origin change.
-- Supersedes / superseded by: none; existing command semantics remain in force.
+- Superseded for landing-page presentation by [ADR-0337](ADR-0337-short-help-and-task-guides.md).
+  Compiled ownership and existing command semantics remain in force.
