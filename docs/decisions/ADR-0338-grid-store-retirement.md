@@ -44,7 +44,8 @@ The owner approved this bounded lifecycle repair in overnight Scope Ledger v1.
 ### Benefits
 - Completion covers every grid storage owner, including partial startup and
   recovery's nested warning work.
-- Admitted final updates reach the existing writer before its final flush.
+- Admitted final updates retain their existing enqueue opportunity before writer
+  retirement; unavailable storage and bounded-queue overflow can still drop them.
 
 ### Risks
 - Each external hook now takes a read lock; measured local overhead and unchanged

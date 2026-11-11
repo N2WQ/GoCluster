@@ -809,10 +809,6 @@ func (r *clusterRuntime) initializeWhoSpotsMeStore() {
 }
 
 func (r *clusterRuntime) initializeGridStore() bool {
-	// Grid background work has a narrower owner than the global runtime. Other
-	// output/peer dependencies must keep their existing shutdown order.
-	gridCtx, cancel := context.WithCancel(r.ctx)
-	r.gridCancel = cancel
 	gridOpts := gridstore.Options{
 		CacheSizeBytes:        int64(r.cfg.GridBlockCacheMB) << 20,
 		BloomFilterBitsPerKey: r.cfg.GridBloomFilterBits,
@@ -822,13 +818,18 @@ func (r *clusterRuntime) initializeGridStore() bool {
 		WriteQueueDepth:       r.cfg.GridWriteQueueDepth,
 	}
 	gridStore, err := gridstore.Open(r.cfg.GridDBPath, gridOpts)
+	if err != nil && !pebble.IsCorruptionError(err) {
+		// Failed open owns no grid worker/context, including early startup paths
+		// which have not installed the global runtime context yet.
+		return r.failStartup("Gridstore: failed to open grid database: %v", err)
+	}
+	// Grid background work has a narrower owner than the global runtime. Install
+	// it before recovery can launch; preserve other dependency shutdown order.
+	gridCtx, cancel := context.WithCancel(r.ctx)
+	r.gridCancel = cancel
 	if err != nil {
-		if pebble.IsCorruptionError(err) {
-			log.Printf("Gridstore: corruption detected on open (%v); starting checkpoint restore", err)
-			r.gridRecoveryDone = startGridStoreRecovery(gridCtx, r.gridStoreHandle, r.cfg.GridDBPath, gridOpts, r.metaCache)
-		} else {
-			return r.failStartup("Gridstore: failed to open grid database: %v", err)
-		}
+		log.Printf("Gridstore: corruption detected on open (%v); starting checkpoint restore", err)
+		r.gridRecoveryDone = startGridStoreRecovery(gridCtx, r.gridStoreHandle, r.cfg.GridDBPath, gridOpts, r.metaCache)
 	} else {
 		r.gridStoreHandle.Set(gridStore)
 	}

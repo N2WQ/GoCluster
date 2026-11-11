@@ -49,6 +49,12 @@ Tags: gridstore, shutdown, lookup, checkpoint, recovery, ownership
 3. Restore completion proves the warning child finished.
    - Evidence: The warning operation can already be executing synchronously.
    - Outcome: Rejected. The child's own completion participates in recovery done.
+4. A child context may be created before any grid-open result is classified.
+   - Evidence: The full ordinary suite's existing startup-error test reaches
+     initializeGridStore before a runtime context exists. The first repair
+     panicked on its nil parent instead of logging the intended open failure.
+   - Outcome: Rejected. Non-corruption open failure returns before acquiring
+     grid background ownership; the child still exists before recovery launches.
 
 ## Findings
 - Root cause: Incomplete component ownership at the downstream retirement boundary.

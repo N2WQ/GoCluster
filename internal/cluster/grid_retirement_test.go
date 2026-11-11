@@ -446,7 +446,7 @@ func TestRuntimeGridRetirementFailedStartup(t *testing.T) {
 	if r.initializeGridStore() || r.startupErr == nil {
 		t.Fatal("non-corruption open failure did not abort startup")
 	}
-	if r.gridCancel == nil || r.stopGridWriter != nil || r.gridCheckpointDone != nil || r.gridRecoveryDone != nil {
+	if r.gridCancel != nil || r.stopGridWriter != nil || r.gridCheckpointDone != nil || r.gridRecoveryDone != nil {
 		t.Fatal("failed startup ownership differs from partial-startup contract")
 	}
 	r.retireGridStore()

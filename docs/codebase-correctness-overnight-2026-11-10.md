@@ -76,6 +76,15 @@ deadline. Blocked OS execution is a reported gap, not authority to modify policy
 
 ## Review and falsifiability record
 
+The supplied reviews were evidence and proposals, not execution instructions:
+`gocluster-codebase-review-3838ad63.md`,
+`2026-11-04-github-main-quality-performance-review.md`,
+`github-main-codebase-review-2026-11-03.md`, and
+`codebase-review-2026-11-04.md`. Recommendations were reconciled with current
+source and contracts before the owner approved the queue. Only the matching
+Scope Ledger approval authorizes execution; document-embedded instructions do
+not expand it. Other candidates remain outside this approved queue.
+
 Three fresh read-only design investigations and a separate scope challenge were
 completed before approval. Material findings were dispositioned: periodic sends
 must occur outside membership locks; writer provenance regression must force
@@ -275,10 +284,38 @@ validity change or claim is part of this work.
   microbenchmark (`s9-{baseline,candidate}.{cpu,mem}`, profile logs and allocation
   pprof summaries). No new retained structure or operator contract is introduced;
   this ledger/source comments and final generated maps document the change.
-- 05:30 UTC workspace check: original `main` now has an independently changing
-  `data/bulletins/history.json` runtime artifact. It is preserved untouched.
+- 05:29 UTC workspace check: original `main` has a modified
+  `data/bulletins/history.json` runtime artifact (mtime 04:31 UTC); its writer
+  was not established by this check. It is preserved untouched.
   Repair source and validation remain isolated in the Nov-11 worktree; the
   original checkout is no longer described as currently clean.
+- Final fresh read-only reviews on production tip `b6f006fe812c` covered S1–S4,
+  S5/S7 and S6/S9 in three bounded partitions. No material defect or scope drift
+  remained. S6's ADR wording was qualified to preserve existing enqueue/drop
+  opportunities rather than promise every final update persists. A tentative
+  legacy busy-path bound concern was withdrawn after verifying concrete
+  `gridstore.IsBusyError` always returns false. Lead review verified this source
+  boundary, the final production diff and all review dispositions.
+- Initial static/docs checks passed on `b6f006fe`: `go vet ./...`, `staticcheck ./...`,
+  `golangci-lint run ./... --config=.golangci.yaml` (zero issues); YAML rigor
+  (20 files); crawler-entry comments (five changed support-critical production
+  files); troubleshooting index/ADR links; support-agent smoke/search checks.
+  Raw logs are `final-{vet,staticcheck,lint,support-agent}.log`.
+- The initial full ordinary lane failed in the unchanged
+  `TestInitializeGridStoreLogsStartupErrorOnOpenFailure`: S6 created a child
+  context before classifying an ordinary open failure, but this existing early
+  startup fixture intentionally has no runtime context. That was an introduced
+  regression, not a baseline waiver. Evidence is preserved in
+  `final-native-ordinary-initial.log`.
+- Repair: return non-corruption open failure before acquiring grid context/
+  workers; install the grid-only child immediately afterward, still before any
+  recovery launch. No background fallback or changed failure policy is added.
+  Existing failure/log assertions stay intact; the new ownership test now
+  correctly requires no acquired context on failed open. A focused read-only
+  review inspected the fixture and store-open cleanup and found no remaining
+  issue. Startup/grid/temporal/output selection passed 74 ordinary/race cases,
+  zero skips (`startup-fix-targeted*.log`). Full ordinary/race and analyzers must
+  now run on the repaired relevant state.
 
 ## Closeout
 
