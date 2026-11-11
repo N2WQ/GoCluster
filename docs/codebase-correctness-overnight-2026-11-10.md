@@ -31,7 +31,7 @@ records execution; it does not authorize additional work.
 | S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Targeted validated; final lane pending |
 | S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Targeted validated; final lane pending |
 | S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Targeted validated; final lane pending |
-| S8 | Optional measured DX normalization once per worker job and SELF match once per recipient using existing exact helpers, without new retained state | Queued, conditional |
+| S8 | Optional measured DX normalization once per worker job and SELF match once per recipient using existing exact helpers, without new retained state | Deferred after measurement; candidate restored |
 | S9 | Optional temporal no-due return before allocation, with unchanged deadlines, force, order and model decisions | Queued, conditional |
 
 S8–S9 require all feasible correctness work to pass and sufficient final-validation
@@ -236,6 +236,25 @@ validity change or claim is part of this work.
   `s7-affinity-{baseline,candidate}.txt`, `s7-affinity-benchstat.txt`.
 - S7 ADR-0339/TSR-0125/operator/support routing record stable ordinary affinity,
   possible departure skew and the separate immediate SELF lane.
+
+- S8 candidate semantics passed 39 ordinary/race cases, zero skips, including
+  literal preferred-normalized/raw conflicts, portable and numeric/nonnumeric
+  suffixes, empty identities, SELF/toxicity/dedupe and comment behavior. Those
+  passes describe the investigated candidate, which is not retained.
+- S8 acceptance failed conservatively: first ten-sample comparison showed one
+  recipient 324.7 to 372.1ns (+14.63%), 10 recipients -4.57%, 100 -3.46%.
+  Candidate/baseline/baseline/candidate interleaving reduced but did not remove
+  the one-recipient regression: 326.7 to 336.8ns (+3.09%, p=.008), while 100
+  recipients improved 31.79 to 27.78us (-12.64%). Allocations stayed identical.
+  Group-size sensitivity and host variation prevent a clean acceptance against
+  the approved no-material-small-job-regression requirement. No production
+  weighting or live latency evidence resolves the tradeoff; no new policy was
+  selected. Existing normalization is restored rather than declaring a win.
+- S8 evidence: frozen binaries, `s8-normalize-*`, `s8-interleaved-*`, three-second
+  baseline/candidate CPU profiles and pprof summaries. Patch and distinguishing
+  tests are archived locally as `s8-rejected-normalization.patch` and
+  `s8-deliver-normalization-tests.go`; only this disposition is committed. No
+  operator/ADR/support change is required for an unretained optimization.
 
 ## Closeout
 
