@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `9965d421c94c6f0d`
+- Source fingerprint: `c8329b3e2140ec31`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 13 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 52 | 189 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 55 | 192 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 39 | 68 |
 | `dxcluster/telnet` | `telnet` | 80 | 168 |
@@ -169,6 +169,8 @@ Source files:
 - `internal/cluster/log_record_framer.go`
 - `internal/cluster/logging.go`
 - `internal/cluster/main_runtime.go`
+- `internal/cluster/output_age.go`
+- `internal/cluster/output_location.go`
 - `internal/cluster/output_pipeline.go`
 - `internal/cluster/output_pipeline_delivery.go`
 - `internal/cluster/output_pipeline_retirement.go`
@@ -183,6 +185,7 @@ Source files:
 - `internal/cluster/root_open_other.go`
 - `internal/cluster/secondary_shadow_summary.go`
 - `internal/cluster/stabilizer.go`
+- `internal/cluster/stabilizer_confidence.go`
 - `internal/cluster/stabilizer_matrix.go`
 - `internal/cluster/telnet_family_suppressor.go`
 - `internal/cluster/temporal_result.go`
@@ -215,6 +218,7 @@ Test files:
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
 - `internal/cluster/confidence_attribution_delivery_test.go`
+- `internal/cluster/corrected_grid_delivery_test.go`
 - `internal/cluster/correction_ambiguity_delivery_test.go`
 - `internal/cluster/correction_decision_cost_summary_test.go`
 - `internal/cluster/correction_decision_delivery_helpers_test.go`
@@ -284,6 +288,7 @@ Test files:
 - `internal/cluster/ordinary_harness_paths_nonwindows_test.go`
 - `internal/cluster/ordinary_harness_paths_test.go`
 - `internal/cluster/ordinary_harness_paths_windows_test.go`
+- `internal/cluster/output_age_test.go`
 - `internal/cluster/output_pipeline_collision_test.go`
 - `internal/cluster/output_pipeline_delivery_test.go`
 - `internal/cluster/output_pipeline_dropped_log_test.go`
@@ -349,6 +354,7 @@ Test files:
 - `internal/cluster/secondary_frequency_delivery_test.go`
 - `internal/cluster/secondary_shadow_summary_test.go`
 - `internal/cluster/short_portable_license_test.go`
+- `internal/cluster/stabilizer_confidence_test.go`
 - `internal/cluster/stabilizer_matrix_test.go`
 - `internal/cluster/stabilizer_retirement_bench_test.go`
 - `internal/cluster/stabilizer_retirement_test.go`

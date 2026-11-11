@@ -53,6 +53,7 @@ type outputPipeline struct {
 	harmonicCfg            config.HarmonicConfig
 	freqAvg                *spot.FrequencyAverager
 	spotPolicy             config.SpotPolicy
+	outputAgeNow           func() time.Time // Optional instance clock for final age boundaries; nil uses UTC now.
 	dash                   ui.Surface
 	gridUpdate             func(call, grid string)
 	gridLookup             func(call string) (string, bool, bool)
@@ -115,6 +116,8 @@ type outputSpotContext struct {
 	temporalResult             *runtimeTemporalResult
 	resolverSelectionOverride  *correctionflow.ResolverPrimarySelection
 	resolverReleaseAt          time.Time
+	dxIdentityChanged          bool // Accepted literal replacement; inherited grid is not new cache evidence.
+	stabilizerHeld             bool // True only after actual stabilizer admission, not initial overflow.
 }
 
 // newOutputPipeline wires optional runtime stages from config. Disabled stages

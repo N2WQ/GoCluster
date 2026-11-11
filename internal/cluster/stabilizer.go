@@ -30,12 +30,15 @@ type telnetStabilizerItem struct {
 	resolverKey      spot.ResolverSignalKey
 	hasResolverKey   bool
 	evidenceEnqueued bool
+	bestConfidence   stabilizerOrdinaryConfidence
 	temporalResult   *runtimeTemporalResult
 }
 
 // telnetStabilizerEnvelope carries the minimum context needed to retry a held
 // telnet spot without re-running upstream stages that already made a decision.
 // entryGlyph is captured at first admission and is immutable across retries.
+// bestConfidence is the strongest ordinary letter for the private Spot's
+// identity. The working Spot itself continues to carry fresh evidence.
 // Keeping this envelope small makes the delay queue easier to reason about
 // during overflow or shutdown investigations.
 type telnetStabilizerEnvelope struct {
@@ -47,6 +50,7 @@ type telnetStabilizerEnvelope struct {
 	resolverKey      spot.ResolverSignalKey
 	hasResolverKey   bool
 	evidenceEnqueued bool
+	bestConfidence   stabilizerOrdinaryConfidence
 	temporalResult   *runtimeTemporalResult
 }
 
@@ -205,13 +209,14 @@ func (s *telnetSpotStabilizer) EnqueueWithContext(
 	if sp == nil {
 		return false
 	}
-	return s.enqueueWithTemporalResult(sp, checksCompleted, delayReason, resolverKey, hasResolverKey, evidenceEnqueued, nil, nil, sp.Confidence)
+	best, _ := ordinaryStabilizerConfidence(sp.Confidence)
+	return s.enqueueWithTemporalResult(sp, checksCompleted, delayReason, resolverKey, hasResolverKey, evidenceEnqueued, nil, nil, sp.Confidence, best)
 }
 
 func (s *telnetSpotStabilizer) enqueueWithTemporalResult(
 	sp *spot.Spot, checksCompleted int, delayReason string, resolverKey spot.ResolverSignalKey,
 	hasResolverKey, evidenceEnqueued bool, temporalResult *runtimeTemporalResult,
-	peerOriginal *originalPeerPublication, entryGlyph string,
+	peerOriginal *originalPeerPublication, entryGlyph string, bestConfidence stabilizerOrdinaryConfidence,
 ) bool {
 	if s == nil || sp == nil {
 		return false
@@ -241,6 +246,7 @@ func (s *telnetSpotStabilizer) enqueueWithTemporalResult(
 		resolverKey:      resolverKey,
 		hasResolverKey:   hasResolverKey,
 		evidenceEnqueued: evidenceEnqueued,
+		bestConfidence:   bestConfidence,
 		temporalResult:   temporalResult,
 	}:
 		return true
@@ -359,6 +365,7 @@ func (s *telnetSpotStabilizer) run() {
 				resolverKey:      envelope.resolverKey,
 				hasResolverKey:   envelope.hasResolverKey,
 				evidenceEnqueued: envelope.evidenceEnqueued,
+				bestConfidence:   envelope.bestConfidence,
 				temporalResult:   envelope.temporalResult,
 			})
 			nextID++
@@ -385,6 +392,7 @@ func (s *telnetSpotStabilizer) run() {
 					resolverKey:      item.resolverKey,
 					hasResolverKey:   item.hasResolverKey,
 					evidenceEnqueued: item.evidenceEnqueued,
+					bestConfidence:   item.bestConfidence,
 					temporalResult:   item.temporalResult,
 				}:
 				case <-s.stop:

@@ -46,6 +46,14 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		return
 	}
 	delayed := envelope.spot
+	releaseCtx := outputSpotContext{spot: delayed, peerOriginal: envelope.peerOriginal,
+		temporalResult: envelope.temporalResult, stabilizerHeld: true}
+	if p.rejectExpiredOutput(&releaseCtx) {
+		return
+	}
+	heldCall := normalizedDXCall(delayed)
+	priorConfidence, _ := ordinaryStabilizerConfidence(delayed.Confidence)
+	bestConfidence := max(envelope.bestConfidence, priorConfidence)
 	checksCompleted := envelope.checksCompleted + 1
 	ctyDB := p.ctyLookup()
 	now := time.Now().UTC()
@@ -82,6 +90,13 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	if applyLicenseGate(delayed, ctyDB, p.metaCache, p.unlicensedReporter) {
 		return
 	}
+	if normalizedDXCall(delayed) != heldCall {
+		// Accepted replacement owns its confidence; the original's maximum
+		// cannot cross identity. C/B remain outside the ordinary ordering.
+		bestConfidence = stabilizerConfidenceUnknown
+	} else if fresh, ordinary := ordinaryStabilizerConfidence(delayed.Confidence); ordinary {
+		bestConfidence = max(bestConfidence, fresh)
+	}
 	delaySnapshot, delaySnapshotOK := spot.ResolverSnapshot{}, false
 	if hasResolverEvidence && p.signalResolver != nil {
 		delaySnapshot, delaySnapshotOK = p.signalResolver.LookupEligible(resolverEvidence.Key, now)
@@ -93,6 +108,11 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		delaySnapshot.EvidenceLoss, delaySnapshotOK = true, true
 	}
 	delayDecision := evaluateTelnetStabilizerDelay(delayed, p.recentBandStore, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK)
+	// Fresh support evaluation can contend on store locks. Sample again before
+	// either a retry reservation or a timeout disposition can consume the spot.
+	if p.rejectExpiredOutput(&releaseCtx) {
+		return
+	}
 	if shouldRetryTelnetByStabilizer(delayDecision, checksCompleted) {
 		if p.telnetStabilizer.enqueueWithTemporalResult(
 			delayed,
@@ -104,6 +124,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 			envelope.temporalResult,
 			envelope.peerOriginal,
 			envelope.entryGlyph,
+			bestConfidence,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()
@@ -116,8 +137,13 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		}
 		delayDecision.ShouldDelay = false
 	}
+	outputConfidence, retained := terminalStabilizerConfidence(delayed.Confidence, bestConfidence)
 	if !shouldRecordRecentBandAfterStabilizerDelay(p.correctionCfg.StabilizerTimeoutAction, delayDecision.ShouldDelay) {
+		delayed.Confidence = outputConfidence
 		if p.tracker != nil {
+			if retained {
+				p.tracker.IncrementStabilizerRetainedAboveFresh()
+			}
 			p.tracker.IncrementStabilizerSuppressedTimeout()
 			p.tracker.IncrementStabilizerSuppressedTimeoutReason(delayDecision.Reason.String())
 			p.tracker.ObserveStabilizerGlyphTurns(delayed.Confidence, checksCompleted)
@@ -125,27 +151,34 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 		}
 		return
 	}
+	releaseCtx.stabilizerResolverKey, releaseCtx.hasStabilizerResolverKey = resolverEvidence.Key, hasResolverEvidence
+	releaseCtx.dxIdentityChanged = normalizedDXCall(delayed) != heldCall
+	p.prepareOutputLocation(&releaseCtx, true)
+	if p.rejectExpiredOutput(&releaseCtx) {
+		return
+	}
 	// A terminal path counts before secondary thinning, even without fanout.
 	// Earlier correction/license aborts and shutdown drops never reach this point;
 	// re-holds return above. Initial admission overflow never enters this handler.
 	if p.tracker != nil {
-		p.tracker.ObserveStabilizerTransition(envelope.entryGlyph, delayed.Confidence, checksCompleted)
+		if retained {
+			p.tracker.IncrementStabilizerRetainedAboveFresh()
+		}
+		p.tracker.ObserveStabilizerTransition(envelope.entryGlyph, outputConfidence, checksCompleted)
 	}
 	p.recordAcceptedObservation(delayed)
+	delayed.Confidence = outputConfidence
 	plan := p.buildFinalDeliveryPlan(delayed)
-	releaseCtx := outputSpotContext{spot: delayed, peerOriginal: envelope.peerOriginal, temporalResult: envelope.temporalResult,
-		stabilizerResolverKey: resolverEvidence.Key, hasStabilizerResolverKey: hasResolverEvidence}
 	if !plan.normalFanoutAllowed() {
 		p.emitSpot(&releaseCtx, plan)
 		return
 	}
-	if p.tracker != nil {
+	p.updateGridCache(&releaseCtx)
+	if p.emitSpot(&releaseCtx, plan) && p.tracker != nil {
 		p.tracker.IncrementStabilizerReleasedDelayed()
 		p.tracker.IncrementStabilizerReleasedDelayedReason(stabilizerReleaseReason(delayDecision, envelope.delayReason))
 		p.tracker.ObserveStabilizerGlyphTurns(delayed.Confidence, checksCompleted)
 	}
-	p.updateGridCache(delayed)
-	p.emitSpot(&releaseCtx, plan)
 }
 
 // computeSecondaryAllows translates optional secondary dedup rails into
@@ -224,7 +257,7 @@ func (p *outputPipeline) deliverSpot(ctx *outputSpotContext) {
 		return
 	}
 	if plan.normalFanoutAllowed() {
-		p.updateGridCache(ctx.spot)
+		p.updateGridCache(ctx)
 	}
 	p.emitSpot(ctx, plan)
 }
@@ -244,6 +277,9 @@ func (p *outputPipeline) recordAcceptedObservation(s *spot.Spot) {
 // the stabilizer, or is reduced to a telnet self-echo. Secondary dedupe is the
 // final shared thinning gate after stabilizer processing.
 func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeliveryPlan, bool) {
+	if p.rejectExpiredOutput(ctx) {
+		return outputDeliveryPlan{}, false
+	}
 	s := ctx.spot
 	plan := outputDeliveryPlan{
 		allowFast:        true,
@@ -267,8 +303,12 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 		delaySnapshot.EvidenceLoss, delaySnapshotOK = true, true
 	}
 	delayDecision := evaluateTelnetStabilizerDelay(s, p.recentBandStore, p.correctionCfg, time.Now().UTC(), delaySnapshot, delaySnapshotOK)
+	if p.rejectExpiredOutput(ctx) {
+		return outputDeliveryPlan{}, false
+	}
 	if delayDecision.ShouldDelay {
 		delayed := cloneSpotForTelnetStabilizer(s)
+		bestConfidence, _ := ordinaryStabilizerConfidence(s.Confidence)
 		if delayed != nil && p.telnetStabilizer.enqueueWithTemporalResult(
 			delayed,
 			0,
@@ -279,12 +319,18 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 			ctx.temporalResult,
 			ctx.peerOriginal,
 			delayed.Confidence,
+			bestConfidence,
 		) {
 			if p.tracker != nil {
 				p.tracker.IncrementStabilizerHeld()
 				p.tracker.IncrementStabilizerHeldReason(delayDecision.Reason.String())
 			}
 			return plan, false
+		}
+		// A refused admission can wait on the scheduler lifecycle lock. It never
+		// acquired held ownership, but must still be fresh before core learning.
+		if p.rejectExpiredOutput(ctx) {
+			return outputDeliveryPlan{}, false
 		}
 		p.recordAcceptedObservation(s)
 		plan = p.buildFinalDeliveryPlan(s)
@@ -306,11 +352,14 @@ func (p *outputPipeline) resolveDeliveryPlan(ctx *outputSpotContext) (outputDeli
 	return plan, true
 }
 
-func (p *outputPipeline) updateGridCache(s *spot.Spot) {
+func (p *outputPipeline) updateGridCache(ctx *outputSpotContext) {
 	if p.gridUpdate == nil {
 		return
 	}
-	if dxGrid := strings.TrimSpace(s.DXMetadata.Grid); dxGrid != "" && !s.DXMetadata.GridDerived {
+	s := ctx.spot
+	// Target lookups own their persistence. Retained old values, including a
+	// same-grid reported flag, cannot promote target cache provenance.
+	if dxGrid := strings.TrimSpace(s.DXMetadata.Grid); !ctx.dxIdentityChanged && dxGrid != "" && !s.DXMetadata.GridDerived {
 		dxCall := s.DXCallNorm
 		if dxCall == "" {
 			dxCall = s.DXCall
@@ -328,13 +377,17 @@ func (p *outputPipeline) updateGridCache(s *spot.Spot) {
 
 // emitSpot seals local output for ring/archive/telnet. Peer publication uses the
 // separately owned original tuple, under the same final MED and timing gates.
-func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPlan) {
+// The result reports final age admission, not queue success or client receipt.
+func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPlan) bool {
 	if ctx == nil || ctx.spot == nil {
-		return
+		return false
+	}
+	if p.rejectExpiredOutput(ctx) {
+		return false
 	}
 	shared := ctx.spot.SealForAsync()
 	if shared == nil {
-		return
+		return false
 	}
 	if p.buf != nil && plan.normalFanoutAllowed() && shouldBufferSpot(shared) {
 		ctx.temporalResult.observeHandoff()
@@ -381,6 +434,7 @@ func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPla
 	if emittedNow && p.lastOutput != nil {
 		p.lastOutput.Store(time.Now().UTC().UnixNano())
 	}
+	return true
 }
 
 // selectFamilyEvidenceAt reads one existing eligible selection for the final

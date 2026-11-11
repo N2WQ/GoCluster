@@ -49,7 +49,27 @@ func TestStabilizerMatrixReplacesOverviewGlyphLine(t *testing.T) {
 	joined := strings.Join(lines, "\n")
 	if strings.Contains(joined, "Stabilizer Glyph") ||
 		!strings.Contains(joined, "Stabilizer: average turns per call (entered → ended)") ||
+		!strings.Contains(joined, "Stabilizer: age drops=0\nStabilizer: retained letter=0") ||
 		strings.Count(joined, "—") < 18 {
 		t.Fatalf("overview did not replace old glyph summary with empty matrix: %s", joined)
+	}
+}
+
+func TestStabilizerOutputSummaryCountersAndReset(t *testing.T) {
+	tr := stats.NewTracker()
+	for range 1234 {
+		tr.IncrementStabilizerAgeDropped()
+	}
+	for range 56 {
+		tr.IncrementStabilizerRetainedAboveFresh()
+	}
+	if got := strings.Join(formatStabilizerOutputSummary(tr), "\n"); got != "Stabilizer: age drops=1,234\nStabilizer: retained letter=56" {
+		t.Fatal(got)
+	}
+	tr.Reset()
+	for _, tracker := range []*stats.Tracker{tr, nil} {
+		if got := strings.Join(formatStabilizerOutputSummary(tracker), "\n"); got != "Stabilizer: age drops=0\nStabilizer: retained letter=0" {
+			t.Fatal(got)
+		}
 	}
 }

@@ -75,6 +75,7 @@ func (p *outputPipeline) applyToxicityStage(s *spot.Spot) bool {
 // burst corroboration rather than resolver family edits.
 func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRelease *runtimeTemporalRelease) bool {
 	s := ctx.spot
+	enteringCall := normalizedDXCall(s)
 	if spot.IsLocalSelfSpot(s) {
 		// Local self-spots are operator-authoritative input. Keep the existing
 		// pipeline ownership, but bypass resolver/temporal mutation and stamp V
@@ -157,6 +158,7 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 	if selectionOverride != nil {
 		ctx.stabilizerEvidenceLoss = selectionOverride.SnapshotOK && selectionOverride.Snapshot.EvidenceLoss
 	}
+	ctx.dxIdentityChanged = normalizedDXCall(s) != enteringCall
 	s.RefreshBeaconFlag()
 	ctx.dirty = true
 	return true
@@ -356,43 +358,7 @@ func (p *outputPipeline) prepareFanoutSpot(ctx *outputSpotContext) bool {
 	if isStale(s, p.spotPolicy) {
 		return false
 	}
-	if p.gridLookup != nil || p.gridLookupSync != nil {
-		gridBackfilled := false
-		dxCall := s.DXCallNorm
-		if dxCall == "" {
-			dxCall = s.DXCall
-		}
-		if strings.TrimSpace(s.DXMetadata.Grid) == "" {
-			dxLookupCall := normalizeCallForMetadata(dxCall)
-			if dxLookupCall == "" {
-				dxLookupCall = dxCall
-			}
-			if grid, derived, ok := lookupGridUnified(dxLookupCall, p.gridLookupSync, p.gridLookup); ok {
-				s.DXMetadata.Grid = grid
-				s.DXMetadata.GridDerived = derived
-				gridBackfilled = true
-			}
-		}
-		deCall := s.DECallNorm
-		if deCall == "" {
-			deCall = s.DECall
-		}
-		if strings.TrimSpace(s.DEMetadata.Grid) == "" {
-			deLookupCall := normalizeCallForMetadata(deCall)
-			if deLookupCall == "" {
-				deLookupCall = deCall
-			}
-			if grid, derived, ok := lookupGridUnified(deLookupCall, p.gridLookupSync, p.gridLookup); ok {
-				s.DEMetadata.Grid = grid
-				s.DEMetadata.GridDerived = derived
-				gridBackfilled = true
-			}
-		}
-		if gridBackfilled {
-			s.InvalidateMetadataCache()
-			s.EnsureNormalized()
-		}
-	}
+	p.prepareOutputLocation(ctx, false)
 	if p.pathPredictor != nil && p.pathPredictor.Config().Enabled {
 		hydrateSpotFinePathCells(s)
 		if s.HasReport {

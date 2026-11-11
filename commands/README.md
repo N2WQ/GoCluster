@@ -76,6 +76,9 @@ COMMENT-list and Boolean mutations require GO expressions. Historical mechanics 
 are not a compatibility contract.
 
 `HELP SYMBOLS` contains the existing detailed confidence legend and path legend.
+It also explains stabilizer letter retention: an unchanged held call keeps its
+strongest ordinary letter, while `DIAG CONF` shows current support. Confidence
+filters use the retained letter; corrected calls have their own outcome.
 Both the landing screen and detailed path legend use the same startup mapping.
 They omit the path legend when display is disabled or its mapping is incomplete.
 A custom insufficient-data symbol is described explicitly rather than as blank.

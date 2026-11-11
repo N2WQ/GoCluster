@@ -68,3 +68,5 @@ timing, lifecycle, queue capacity, and output behavior remain unchanged.
 - Refines: [ADR-0189](ADR-0189-tview-v2-pipeline-console-simplification.md),
   console Stabilizer Glyph display only
 - Related TSRs: none; requested observability change
+- Refined by [ADR-0341](ADR-0341-stabilizer-live-output.md): terminal ordinary
+  letter retention, held-age accounting and a separate retained-letter counter.

@@ -285,7 +285,7 @@ func TestRuntimeOutputCloseJoinsStabilizerReleaseConsumer(t *testing.T) {
 	// Only the actual configured one-second scheduler can reach this callback:
 	// the initial delivery is held before grid updates and final fanout.
 	runtimeRetirementWait(t, "real scheduled release callback", callback.entered)
-	if r.statsTracker.StabilizerHeld() != 1 || r.statsTracker.StabilizerReleasedDelayed() != 1 || r.spotBuffer.GetCount() != 0 {
+	if r.statsTracker.StabilizerHeld() != 1 || r.statsTracker.StabilizerReleasedDelayed() != 0 || r.spotBuffer.GetCount() != 0 {
 		t.Fatal("fixture did not reach the actual held-to-released consumer boundary")
 	}
 	closed := runtimeRetirementCall(t, callback.release, r.close)
@@ -314,7 +314,7 @@ func TestRuntimeOutputCloseJoinsStabilizerReleaseConsumer(t *testing.T) {
 	runtimeRetirementWait(t, "runtime close after released processing", closed)
 	runtimeRetirementAssertDone(t, r)
 	runtimeRetirementAssertHandoffs(t, r, s)
-	if !gridStopped.Load() || r.spotBuffer.GetCount() != 1 {
+	if !gridStopped.Load() || r.spotBuffer.GetCount() != 1 || r.statsTracker.StabilizerReleasedDelayed() != 1 {
 		t.Fatal("released envelope did not finish normal fanout before dependencies")
 	}
 }

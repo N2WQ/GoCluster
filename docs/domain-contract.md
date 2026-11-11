@@ -13,6 +13,32 @@ mixed control/data traffic. The system must stay bounded, predictable, and
 operable under normal load, reconnect churn, malformed input, and slow-client
 pressure.
 
+## Live stabilizer output boundary
+
+- For an unchanged admitted identity, retain the strongest terminal ordinary
+  letter reached (`? < S < P < V`), independently of immutable entry telemetry.
+  Keep current percentage/availability and fresh correction, validation, delay
+  and accepted-learning evidence. C/B are separate outcomes. Accepted identity
+  changes cannot inherit the original maximum. Filters use the output letter.
+- Preserve dynamic reason budgets and the accumulated completed-check count.
+  Correction does not reset it; accepted C ends the hold. No hard elapsed-time
+  guarantee follows from checks because queueing and ordinary locks can delay.
+- Preserve an attached DX grid unless accepted replacement lookup gives a
+  different full normalized locator. Same/missing lookups retain provenance.
+  Corrected fanout cannot persist inherited DX location under the replacement;
+  DE updates remain unchanged. Refresh country/zones/license and geographic
+  caches separately. Earlier path observations are not replayed or relocated.
+- Release-path location preparation uses existing cache-first asynchronous
+  lookup only: no worker/disk response wait, new queue, timer or goroutine.
+- Apply strict `age > limit` before core acceptance and final output offers,
+  including work delayed by lookup/admission locks or final grid writeback.
+  Pre-core expiry learns/counts no terminal transition. Post-core expiry keeps
+  once-only accepted learning/terminal metrics and offers nothing to ring,
+  archive, telnet, peer or family-witness history. This is admission, not receipt.
+- Count held age drops and terminal retained-above-fresh letters with fixed,
+  resettable counters. See [live contract](../spot/README.md#live-stabilizer-output)
+  and [metric boundaries](../ui/README.md#stabilizer-matrix).
+
 ## Protocol scope and telnet byte policy
 
 - The protocol is line-oriented over TCP.

@@ -218,6 +218,48 @@ CONF). Equal weights with one receiver for the retained call and two for the
 rejected candidate give 33%; unequal weights use the retained call's weighted
 share. The glyph records the outcome separately from that support percentage.
 
+### Live stabilizer output
+
+For an unchanged held call, terminal output keeps the strongest ordinary letter
+reached during the hold: `? < S < P < V`. Its current receiver-support percentage
+and availability are recomputed, so a retained `P` can accompany a lower number
+or `--%`. This records a level reached during the hold, not a calibrated
+probability or a guarantee of equally strong evidence at release. Confidence
+filters consume the retained letter.
+
+Correction, licensing, holding and accepted history learning use fresh evidence.
+The retained letter is applied only after accepted learning; it cannot turn weak
+history into V-only CustomSCP learning. `B` remains a rejected-correction outcome.
+An accepted replacement has `C` and its own support percentage. The original
+call's retained letter does not cross to the replacement.
+
+Completed checks never reset. Each recheck retains the current reason-based
+budget, so a low-P hold can extend to the longer unknown/ambiguity allowance
+when evidence weakens. A successful `C` correction ends the hold. Check counts
+exclude queueing time and do not promise a wall-clock deadline.
+
+An attached DX grid changes only after accepted call correction and a lookup
+that supplies a different complete normalized locator. Same/missing lookups keep
+the attached grid and its provenance; normal empty-grid backfill remains.
+Country/zones/license classification refresh independently. Corrected fanout
+never stores an inherited DX grid under the replacement call; lookup ownership
+handles its own persistence. DE writeback remains active. Retained grids still
+feed location filters/path consumers. Earlier path learning is not relocated or
+repeated. Delayed lookup uses the existing cache-first asynchronous owner without
+waiting for disk/worker replies; ordinary locks can still contend.
+
+The live age limit applies before core acceptance and again before final output
+offers. Age equal to the limit is permitted; older work is discarded. Pre-core
+expiry contributes no accepted learning or terminal transition. If expiry occurs
+after acceptance during final preparation, once-only learning and the terminal
+transition remain, but no ring/archive/telnet/peer offer or family witness occurs.
+This boundary is pipeline admission, not eventual client receipt. Existing
+disabled/zero/future timestamp handling remains at each original admission gate.
+
+See [matrix and counters](../ui/README.md#stabilizer-matrix) and
+[ADR-0341](../docs/decisions/ADR-0341-stabilizer-live-output.md). These changes
+apply to live output; replay fidelity and RF accuracy qualification are separate.
+
 ### FT2, FT4, And FT8
 
 FT modes use a separate corroboration stage in the main output pipeline.

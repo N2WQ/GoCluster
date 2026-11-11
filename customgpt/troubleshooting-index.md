@@ -4,6 +4,17 @@ Use this file when a user reports a problem or asks why GoCluster behaved a
 certain way. This is a routing layer, not the source of truth. Cite this file,
 then cite the underlying repo docs or TSRs.
 
+## Stabilizer output
+
+For lower ordinary terminal letters, a retained P with weaker/missing DIAG CONF,
+corrected-call grids, or stale held output, use the
+[live contract](../spot/README.md#live-stabilizer-output) and
+[TSR-0127](../docs/troubleshooting/TSR-0127-stabilizer-live-output.md).
+The matrix uses retained letters; `retained letter` counts terminal weakening
+and `age drops` counts held expiry. Neither proves RF accuracy or client receipt.
+Same/missing replacement lookups retain the attached grid without teaching it
+to the target cache. No old-database repair or replay parity is implied.
+
 ## Replay deadlines
 
 If identical target reports yield different replay corrections after changing

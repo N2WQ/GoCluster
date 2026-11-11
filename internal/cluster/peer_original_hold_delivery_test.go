@@ -291,7 +291,8 @@ func TestPeerOriginalStabilizerSchedulerPreservesRecord(t *testing.T) {
 	scheduler.Start()
 	t.Cleanup(scheduler.Stop)
 	for check := 0; check < 2; check++ {
-		if !scheduler.enqueueWithTemporalResult(s, check, "ambiguous", spot.ResolverSignalKey{}, false, false, nil, original, s.Confidence) {
+		best, _ := ordinaryStabilizerConfidence(s.Confidence)
+		if !scheduler.enqueueWithTemporalResult(s, check, "ambiguous", spot.ResolverSignalKey{}, false, false, nil, original, s.Confidence, best) {
 			t.Fatal("actual scheduler refused a free bounded slot")
 		}
 		select {

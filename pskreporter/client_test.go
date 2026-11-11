@@ -316,6 +316,21 @@ func TestHandlePayloadFiltersModesByTaxonomyRoute(t *testing.T) {
 	}
 }
 
+func TestHandlePayloadCorrectableModesCarrySourceGrids(t *testing.T) {
+	observed := time.Now().Add(-time.Minute).Unix()
+	for _, tc := range []struct {
+		mode      string
+		frequency int64
+	}{{"CW", 14020000}, {"RTTY", 14085000}} {
+		t.Run(tc.mode, func(t *testing.T) {
+			client := NewClient("localhost", 1883, nil, "", 1, 0, 0, 0, nil, nil, false, 2, 0)
+			payload := reportPresencePayload(tc.mode, tc.frequency, observed, "fast", reportPresenceState{fields: `"rp":5`, present: true, report: 5})
+			client.handlePayload(payload)
+			assertReportPresenceOutput(t, client, reportPresenceNormal, tc.mode, tc.mode, tc.frequency, observed, 5)
+		})
+	}
+}
+
 func TestHandlePayloadAdmitsPresentZeroSNR(t *testing.T) {
 	client := NewClient("localhost", 1883, nil, "", 1, 0, 0, 0, nil, nil, false, 2, 0)
 	observed := time.Now().Add(-time.Minute).Truncate(time.Second)

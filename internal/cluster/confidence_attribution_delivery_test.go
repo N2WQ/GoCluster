@@ -230,6 +230,9 @@ func confidenceAttributionDeliveryCase(t *testing.T, tc confidenceAttributionCas
 			t.Fatal("retry fixture did not retain ownership before first actual scheduler publication")
 		}
 		retry := temporalDeliveryReceiveRetry(t, p.telnetStabilizer, key, 1)
+		if retry.bestConfidence != stabilizerConfidencePartial {
+			t.Fatal("actual first ambiguous evaluation did not carry retained P")
+		}
 		fresh := time.Now().UTC()
 		temporalDeliveryRetirePopulation(t, r, driver, key, fresh, tc.winner)
 		temporalDeliverySeed(t, r, driver, key, fresh, 2*time.Minute, tc.winner, "K1ABD", 2, 1)
@@ -238,6 +241,9 @@ func confidenceAttributionDeliveryCase(t *testing.T, tc confidenceAttributionCas
 		p.handleStabilizerRelease(retry)
 		if p.tracker.StabilizerReleasedDelayed() != 1 || p.telnetStabilizer.Pending() != 0 {
 			t.Error("final actual retry did not retire one held delivery")
+		}
+		if p.tracker.StabilizerRetainedAboveFresh() != 0 {
+			t.Fatal("retained P replaced a real terminal B/C outcome")
 		}
 	default:
 		t.Fatal("unknown attribution path")

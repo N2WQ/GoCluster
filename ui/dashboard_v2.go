@@ -37,7 +37,9 @@ const (
 		"Entered ↓ / Ended →       ?     S     P     V     C     B\n" +
 		"?                        —     —     —     —     —     —\n" +
 		"S                        —     —     —     —     —     —\n" +
-		"P                        —     —     —     —     —     —"
+		"P                        —     —     —     —     —     —\n" +
+		"Stabilizer: age drops=--\n" +
+		"Stabilizer: retained letter=--"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
 		"\n" +
 		"[lightgray]Custom SCP[-]: -- (R) / -- (S)\n" +
@@ -53,7 +55,7 @@ const (
 	placeholderHarmonics          = "Harmonics: --"
 	placeholderEvents             = "No events yet."
 	streamPanelMaxLines           = 200
-	overviewPipelineDefaultHeight = 11
+	overviewPipelineDefaultHeight = 13
 	overviewPipelineMinHeight     = 4
 	overviewCachesDefaultHeight   = 9
 	overviewCachesMinHeight       = 3
@@ -760,7 +762,9 @@ func appendFilteredOverviewLines(dst []string, lines []string) []string {
 
 func isRemovedOverviewPipelineLine(line string) bool {
 	line = strings.TrimSpace(line)
-	if strings.HasPrefix(line, "Stabilizer: average turns per call (entered → ended)") {
+	if strings.HasPrefix(line, "Stabilizer: average turns per call (entered → ended)") ||
+		strings.HasPrefix(line, "Stabilizer: age drops=") ||
+		strings.HasPrefix(line, "Stabilizer: retained letter=") {
 		return false
 	}
 	for _, prefix := range []string{
@@ -1307,6 +1311,9 @@ PIPELINE METRICS (PLAIN ENGLISH)
     Rows: entry glyph ? / S / P. Columns: terminal glyph ? / S / P / V / C / B.
     Counts terminal release or timeout suppression, before output filtering.
     — means no observations. Refreshes with stats; reset clears the averages.
+    Ordinary letters keep the strongest level reached for the unchanged call.
+  Age drops: held spots discarded because they became too old.
+  Retained letter: terminal letter kept above fresh evidence; not retries.
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))
 	help.SetBorder(true).SetTitle("Help")
 	help.SetBorderColor(uiBorderColor)

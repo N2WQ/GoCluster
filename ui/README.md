@@ -38,6 +38,9 @@ decision (`?`, `S`, `P`, `V`, `C`, `B`). For example, an `S` spot released as `V
 after two checks contributes one observation of two turns to `S → V`.
 
 `B` means a proposed correction was rejected and the original call was retained.
+Terminal ordinary letters retain the strongest level reached for an unchanged
+held call (`? < S < P < V`); `C`/`B` are separate outcomes. Thus `S → ?`, `P → ?`
+and `P → S` stay empty by construction. This does not mean evidence never weakens.
 
 Each cell is total turns divided by completed spots in that cell. Values round
 to the nearest tenth, with halfway values rounded up (`2.25` displays as
@@ -45,7 +48,7 @@ to the nearest tenth, with halfway values rounded up (`2.25` displays as
 seconds. Each completed spot counts once, including timeout suppression and
 completion followed by secondary output filtering. Retries do not add samples.
 Immediate passes, initial queue overflow, earlier correction/license rejection,
-and work dropped during shutdown do not contribute. A failed retry enqueue
+pre-core age expiry, and work dropped during shutdown do not contribute. A failed retry enqueue
 ends an already admitted path and counts its completed checks once.
 
 The matrix refreshes on the same configured statistics cycle as the other
@@ -58,4 +61,21 @@ space than the old line; its table is 56 columns wide and its heading is 52.
 The existing headless `Stabilizer Glyph` diagnostics retain their final-glyph
 definition and fanout boundary. Their averages can differ from the console
 matrix, which counts terminal paths before output filtering. This display
-change does not alter stabilizer timing, retry limits, eligibility, or delivery.
+uses the retained letter, while holding and learning still use fresh evidence.
+Completed checks never reset, and current reason-based budgets remain in effect.
+
+The `Stabilizer: age drops=…` and `Stabilizer: retained letter=…` rows appear in all
+three Pipeline Quality panes and headless stats. `age drops` counts once for an
+actually held path discarded for age, before acceptance or final offers. It
+excludes unheld work and initial admission overflow. `retained letter` counts
+once when a terminal ordinary letter exceeds the fresh letter, including timeout
+suppression, retry overflow and later thinning. It excludes retries, pre-core
+aborts, C/B and percentage-only decreases. A later final age drop does not undo
+terminal accounting or accepted learning, but cannot create an output/family
+witness. Both counters reset with statistics reset/restart.
+
+The default Pipeline Quality pane is now 13 rows, including borders. It expands
+or scrolls with content. Legacy Held counts admission/retry events, and legacy
+release/suppression counters retain their existing reset behavior; they are not
+a conservation equation for unique spots. A retained letter can accompany a
+lower or unavailable current percentage. Confidence filters see that letter.

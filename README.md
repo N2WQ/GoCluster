@@ -335,6 +335,10 @@ These symbols describe support for the reported DX callsign:
 | `B` | A suggested correction failed validation; the original call was kept. |
 
 Use `PASS CONFIDENCE` or `REJECT CONFIDENCE` to filter these values.
+While a call waits in the stabilizer, its ordinary letter keeps the strongest
+level reached for that unchanged call: `? < S < P < V`. The percentage in
+`DIAG CONF` stays current and can fall or become unavailable. Filters see the
+retained letter. `C` and `B` remain separate correction outcomes.
 For calculation details, see [spot confidence](spot/README.md).
 
 ## Path Reliability Tags

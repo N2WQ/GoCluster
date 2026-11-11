@@ -138,6 +138,11 @@ func TestHelpReferenceStartupValues(t *testing.T) {
 			if !strings.Contains(text, "Confidence glyphs:") {
 				t.Fatal("confidence legend lost when path display unavailable")
 			}
+			for _, note := range []string{"strongest ?/S/P/V letter", "corrected call gets its own result", "DIAG CONF shows current support", "CONF filters use the retained"} {
+				if !strings.Contains(strings.Join(strings.Fields(text), " "), note) {
+					t.Fatalf("HELP SYMBOLS lost stabilizer contract: %s", note)
+				}
+			}
 			assertHelpWidth(t, text)
 			who := p.ProcessCommandForClient("HELP WHOSPOTSME", "N0CALL", "", nil, dialect)
 			if !strings.Contains(who, "last 17 minutes") {

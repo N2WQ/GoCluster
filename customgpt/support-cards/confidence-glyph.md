@@ -13,6 +13,11 @@ not infer meanings from other cluster software.
 ## Must Include
 
 - Explain only the documented GoCluster confidence meaning.
+- Live held output retains the strongest ordinary letter reached for an unchanged
+  call, but DIAG CONF support remains current and can fall/be unavailable. Filters
+  use the retained letter; fresh holding/accepted learning remain separate. C/B
+  are correction outcomes. See [live contract](../../spot/README.md#live-stabilizer-output)
+  and [TSR-0127](../../docs/troubleshooting/TSR-0127-stabilizer-live-output.md).
 - For `P`, say it is a confidence glyph, not an external-cluster field or a
   probability.
 - If the user asks about current HELP output, retrieve `commands/README.md`.

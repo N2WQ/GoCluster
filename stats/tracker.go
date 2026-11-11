@@ -50,6 +50,8 @@ type Tracker struct {
 	stabDelayed          atomic.Uint64
 	stabSuppressed       atomic.Uint64
 	stabOverflowRelease  atomic.Uint64
+	stabLetterRetained   atomic.Uint64
+	stabAgeDropped       atomic.Uint64
 	stabGlyphTurnTotal   sync.Map // string(glyph) -> *atomic.Uint64
 	stabGlyphTurnSamples sync.Map // string(glyph) -> *atomic.Uint64
 	stabHeldByReason     sync.Map // string -> *atomic.Uint64
@@ -191,6 +193,8 @@ func (t *Tracker) Reset() {
 	t.stabilizerTransitions.mu.Lock()
 	t.stabilizerTransitions.cells = [3][6]stabilizerTransitionCell{}
 	t.stabilizerTransitions.mu.Unlock()
+	t.stabLetterRetained.Store(0)
+	t.stabAgeDropped.Store(0)
 	t.modeCounts.Range(func(key, _ any) bool {
 		t.modeCounts.Delete(key)
 		return true
@@ -368,6 +372,40 @@ func (t *Tracker) IncrementStabilizerOverflowRelease() {
 		return
 	}
 	t.stabOverflowRelease.Add(1)
+}
+
+// IncrementStabilizerRetainedAboveFresh counts one terminal delayed path whose
+// ordinary output letter exceeds its fresh letter, including timeout
+// suppression and later output thinning. Retries and C/B do not count.
+func (t *Tracker) IncrementStabilizerRetainedAboveFresh() {
+	if t != nil {
+		t.stabLetterRetained.Add(1)
+	}
+}
+
+// StabilizerRetainedAboveFresh returns terminal retained-letter outcomes since
+// the last statistics reset. It does not count percentage-only decreases.
+func (t *Tracker) StabilizerRetainedAboveFresh() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.stabLetterRetained.Load()
+}
+
+// IncrementStabilizerAgeDropped records a held path discarded for age before
+// acceptance or final output offers. Initial overflow and unheld work do not count.
+func (t *Tracker) IncrementStabilizerAgeDropped() {
+	if t != nil {
+		t.stabAgeDropped.Add(1)
+	}
+}
+
+// StabilizerAgeDropped returns held paths dropped for age since statistics reset.
+func (t *Tracker) StabilizerAgeDropped() uint64 {
+	if t == nil {
+		return 0
+	}
+	return t.stabAgeDropped.Load()
 }
 
 // Purpose: Record a correction decision outcome/reason/path for observability.

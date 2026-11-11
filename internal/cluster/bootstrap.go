@@ -512,6 +512,15 @@ func formatStabilizerSummary(tracker *stats.Tracker) string {
 	)
 }
 
+// formatStabilizerOutputSummary exposes fixed terminal/drop counters in both
+// headless stats and the three console Pipeline Quality panes.
+func formatStabilizerOutputSummary(tracker *stats.Tracker) []string {
+	return []string{
+		fmt.Sprintf("Stabilizer: age drops=%s", humanize.Comma(int64(tracker.StabilizerAgeDropped()))),
+		fmt.Sprintf("Stabilizer: retained letter=%s", humanize.Comma(int64(tracker.StabilizerRetainedAboveFresh()))),
+	}
+}
+
 func formatFloodSummary(tracker *stats.Tracker) string {
 	if tracker == nil {
 		return "Flood: n/a"
@@ -922,6 +931,7 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 			"",
 			stabilizerLine,
 			stabilizerGlyphLine,
+			strings.Join(formatStabilizerOutputSummary(tracker), "\n"),
 			"",
 			temporalLine,
 			toxicityLine,
@@ -1198,15 +1208,19 @@ func recordPathOnlyDrop(stats *pathOnlyStats, reason pathOnlyDropReason) {
 // Purpose: Enforce the global max_age_seconds guard.
 // Key aspects: Drops old spots early to reduce work.
 // Upstream: ingest pipelines and output stage.
-// Downstream: time.Since and policy.MaxAgeSeconds.
+// Downstream: duration comparison and policy.MaxAgeSeconds.
 func isStale(s *spot.Spot, policy config.SpotPolicy) bool {
+	return isStaleAt(s, policy, time.Now().UTC())
+}
+
+func isStaleAt(s *spot.Spot, policy config.SpotPolicy, now time.Time) bool {
 	if s == nil || policy.MaxAgeSeconds <= 0 {
 		return false
 	}
 	if s.Time.IsZero() {
 		return false
 	}
-	return time.Since(s.Time) > time.Duration(policy.MaxAgeSeconds)*time.Second
+	return now.Sub(s.Time) > time.Duration(policy.MaxAgeSeconds)*time.Second
 }
 
 func cloneSpotForTelnetStabilizer(s *spot.Spot) *spot.Spot {
@@ -2232,6 +2246,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 			}
 			spotEntry.DXCall = winnerCall
 			spotEntry.DXCallNorm = winnerCall
+			resetCorrectedDXClassification(spotEntry)
 			temporalResult.confirm(preCorrectionCall, winnerCall)
 			spotEntry.Confidence = "C"
 			spotEntry.ConfidencePercent = winnerConfidence
@@ -2256,6 +2271,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 
 	spotEntry.DXCall = winnerCall
 	spotEntry.DXCallNorm = winnerCall
+	resetCorrectedDXClassification(spotEntry)
 	temporalResult.confirm(preCorrectionCall, winnerCall)
 	spotEntry.Confidence = "C"
 	spotEntry.ConfidencePercent = winnerConfidence
@@ -4261,6 +4277,7 @@ func buildOverviewLines(
 		"",
 	)
 	lines = append(lines, formatStabilizerMatrix(tracker)...)
+	lines = append(lines, formatStabilizerOutputSummary(tracker)...)
 	lines = append(lines,
 		"CACHES & DATA FRESHNESS",
 	)

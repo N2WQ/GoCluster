@@ -1019,6 +1019,8 @@ func confidenceHelpLines() []string {
 		"V - Resolver modes: higher-confidence multi-spotter support. FT modes: corroboration burst support at or above the configured V threshold.",
 		"C - The call was corrected.",
 		"B - A correction was attempted, but base-call or CTY validation failed, so the original call was kept.",
+		"The stabilizer keeps the strongest ?/S/P/V letter reached while a call waits. A corrected call gets its own result.",
+		"DIAG CONF shows current support, which may fall or be unavailable. CONF filters use the retained letter.",
 	} {
 		lines = append(lines, wrapTextLines(note, "    ")...)
 	}
