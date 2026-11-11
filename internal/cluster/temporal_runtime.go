@@ -90,6 +90,12 @@ func popRuntimeTemporalDue(h *runtimeTemporalHeap, now time.Time, force bool) []
 	if h == nil || h.Len() == 0 {
 		return nil
 	}
+	// Ordinary output processing checks pending holds before many are due.
+	// Avoid scratch allocation for that no-work case without moving deadlines.
+	head := (*h)[0]
+	if head == nil || (!force && head.due.After(now)) {
+		return nil
+	}
 	out := make([]*runtimeTemporalItem, 0, 8)
 	for h.Len() > 0 {
 		head := (*h)[0]

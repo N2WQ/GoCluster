@@ -32,7 +32,7 @@ records execution; it does not authorize additional work.
 | S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Targeted validated; final lane pending |
 | S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Targeted validated; final lane pending |
 | S8 | Optional measured DX normalization once per worker job and SELF match once per recipient using existing exact helpers, without new retained state | Deferred after measurement; candidate restored |
-| S9 | Optional temporal no-due return before allocation, with unchanged deadlines, force, order and model decisions | Queued, conditional |
+| S9 | Optional temporal no-due return before allocation, with unchanged deadlines, force, order and model decisions | Targeted validated; final lane pending |
 
 S8–S9 require all feasible correctness work to pass and sufficient final-validation
 reserve. S6 requires S1 to pass. One implementation slice writes at a time;
@@ -255,6 +255,30 @@ validity change or claim is part of this work.
   tests are archived locally as `s8-rejected-normalization.patch` and
   `s8-deliver-normalization-tests.go`; only this disposition is committed. No
   operator/ADR/support change is required for an unretained optimization.
+
+- S9 red: a real enabled controller retaining one future hold allocated once
+  per no-due Drain (`s9-red.log`). A root precheck now returns before scratch
+  allocation; only its caller's existing length check consumes this empty result.
+  Due equality, one-nanosecond future/elapsed boundaries, tie sequence, force,
+  nil/empty/nil-head behavior, pending ownership and deadlines are explicit.
+- S9 ordinary/race each passed 42 cases, zero skips (`s9-green.log`,
+  `s9-race.log`), including actual temporal decoder/retirement and output/HTTP
+  retirement controls. No scores, model inputs, timers or decisions changed;
+  scientific-model review is not triggered by this allocation-only guard.
+- S9 matched ten-sample local benchmark: real future controller Drain 32.070 to
+  7.109ns (-77.83%), 64 to zero B/op and one to zero allocs/op. Due two-item
+  control 53.77 to 58.20ns (+8.23%, about 4.4ns); forced future control
+  49.32 to 49.34ns (no significant difference). Both work-producing controls
+  retain 64B/one allocation. The small due-path CPU cost is explicit; no
+  production mixture, throughput or p99 improvement is inferred.
+- S9 three-second actual-controller CPU/allocation captures complement the
+  microbenchmark (`s9-{baseline,candidate}.{cpu,mem}`, profile logs and allocation
+  pprof summaries). No new retained structure or operator contract is introduced;
+  this ledger/source comments and final generated maps document the change.
+- 05:30 UTC workspace check: original `main` now has an independently changing
+  `data/bulletins/history.json` runtime artifact. It is preserved untouched.
+  Repair source and validation remain isolated in the Nov-11 worktree; the
+  original checkout is no longer described as currently clean.
 
 ## Closeout
 
