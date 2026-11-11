@@ -26,7 +26,7 @@ records execution; it does not authorize additional work.
 |---|---|---|
 | S1 | Grid pending merge keeps locator/provenance coherent; actual overrides derived; preserve CTY, observation, timestamp and expiry rules | Targeted validated; final lane pending |
 | S2 | Flood cleanup preserves threshold-plus-one live history and existing configured actions, modes, partitions, expiry and overflow behavior | Targeted validated; final lane pending |
-| S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Queued |
+| S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Targeted validated; final lane pending |
 | S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Queued |
 | S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Queued |
 | S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Queued |
@@ -129,6 +129,23 @@ validity change or claim is part of this work.
   (`s2-green.log`, `s2-race.log`). Lead source review verified the sole behavior
   change is cleanup's partition-specific retained count; existing mutex, action,
   cutoff, actor cap and arrival paths are unchanged. TSR-0120 preserves ADR-0062.
+- S3 detailed falsifiability: actual queue admission and production worker loop
+  are exercised with controlled local lookup completion. A read-only specialist
+  identified timestamp ABA; the approved identity alternative uses request-held
+  nonzero objects instead. Fullness is checked before allocation under the same
+  producer mutex, and only successful admission publishes ownership. The count
+  bound is queue capacity plus actual live workers; existing Start/Close and
+  cancellation/drain behavior are preserved, without process-byte claims.
+- S3 red: 3,016 pending keys for a 16-slot queue and refused same-time retry
+  (`s3-red-admission.log`); unconditional completion deletion removed newer
+  owners (`s3-red-completion.log`). Full reputation ordinary/race each passed
+  42 cases, zero skips (`s3-green.log`, `s3-race.log`). Cleanup refinement passed
+  three race cases. Reviewer required literal five-minute expected queue counts;
+  those final boundary assertions passed ordinary/race four-case selections.
+- S3 source completeness: lead and separate read-only review found no remaining
+  material issue after the literal TTL oracle refinement. Positive/negative
+  cache, timeout/lookup order and queue/worker policies are unchanged. TSR-0121
+  records overflow, generation identity, churn and cancellation limitations.
 
 ## Closeout
 

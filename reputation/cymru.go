@@ -23,13 +23,20 @@ type cymruResolver struct {
 	queue      chan cymruRequest
 	workers    int
 	pendingMu  sync.Mutex
-	pending    map[string]time.Time
-	resolver   *net.Resolver
+	// Pending identities belong only to queued or executing requests. The
+	// request-held pointer distinguishes generations even if wall time repeats.
+	pending  map[string]*cymruPending
+	resolver *net.Resolver
+}
+
+type cymruPending struct {
+	at time.Time
 }
 
 type cymruRequest struct {
-	ip  netip.Addr
-	key string
+	ip      netip.Addr
+	key     string
+	pending *cymruPending
 }
 
 func newCymruResolver(enabled bool, timeout, cacheTTL, negativeTTL time.Duration, maxEntries, workers int) *cymruResolver {
@@ -52,7 +59,7 @@ func newCymruResolver(enabled bool, timeout, cacheTTL, negativeTTL time.Duration
 		pendingTTL: 5 * time.Minute,
 		queue:      make(chan cymruRequest, workers*8),
 		workers:    workers,
-		pending:    make(map[string]time.Time),
+		pending:    make(map[string]*cymruPending),
 		resolver:   net.DefaultResolver,
 	}
 }
@@ -83,37 +90,52 @@ func (c *cymruResolver) enqueue(addr netip.Addr, key string, now time.Time) {
 		return
 	}
 	c.pendingMu.Lock()
-	if t, ok := c.pending[key]; ok {
-		if now.Sub(t) < c.pendingTTL {
-			c.pendingMu.Unlock()
-			return
-		}
+	defer c.pendingMu.Unlock()
+	if pending := c.pending[key]; pending != nil && now.Sub(pending.at) < c.pendingTTL {
+		return
 	}
-	c.pending[key] = now
-	c.pendingMu.Unlock()
+	// All producers hold pendingMu. A full queue is a valid nonblocking refusal
+	// point and avoids allocating an ownership object for every rejected IP.
+	if len(c.queue) == cap(c.queue) {
+		return
+	}
+	pending := &cymruPending{at: now}
 
 	select {
-	case c.queue <- cymruRequest{ip: addr, key: key}:
+	case c.queue <- cymruRequest{ip: addr, key: key, pending: pending}:
+		// A receiver may already be executing; its completion takes pendingMu
+		// too, so ownership is published before it can remove this reservation.
+		c.pending[key] = pending
 	default:
-		// Drop when queue is full to keep ingress non-blocking.
+		// No new owner exists when admission fails. Keep any older admitted
+		// reservation unchanged, including when this was a stale retry.
 	}
 }
 
 func (c *cymruResolver) worker(ctx context.Context) {
+	c.runWorker(ctx, c.lookupDNS)
+}
+
+// runWorker keeps the production queue/cache/retirement loop in one place.
+// Its fixed lookup operation is supplied before launch, so tests can control
+// completion ordering without DNS traffic or mutable package-global hooks.
+func (c *cymruResolver) runWorker(ctx context.Context, lookup func(context.Context, netip.Addr) (LookupResult, bool)) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case req := <-c.queue:
 			now := time.Now().UTC()
-			result, ok := c.lookupDNS(ctx, req.ip)
+			result, ok := lookup(ctx, req.ip)
 			if ok {
 				c.cache.set(req.key, result, now, false)
 			} else {
 				c.cache.set(req.key, LookupResult{}, now, true)
 			}
 			c.pendingMu.Lock()
-			delete(c.pending, req.key)
+			if c.pending[req.key] == req.pending {
+				delete(c.pending, req.key)
+			}
 			c.pendingMu.Unlock()
 		}
 	}
