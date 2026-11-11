@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0122 | Propagation Retention Zero | Monitoring | 2026-11-10 | runtime configuration and propagation logging | none | `docs/troubleshooting/TSR-0122-propagation-retention-zero.md` |
 | TSR-0121 | Cymru Pending Ownership | Monitoring | 2026-11-10 | reputation Cymru DNS queue and pending identities | none | `docs/troubleshooting/TSR-0121-cymru-pending-ownership.md` |
 | TSR-0120 | Flood Cleanup Live History | Monitoring | 2026-11-10 | shared ingest flood control | none | `docs/troubleshooting/TSR-0120-flood-cleanup-live-history.md` |
 | TSR-0119 | Grid Batch Provenance | Monitoring | 2026-11-10 | grid metadata batching and persistence | none | `docs/troubleshooting/TSR-0119-grid-batch-provenance.md` |

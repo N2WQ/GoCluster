@@ -250,6 +250,7 @@ Propagation logs:
   file sink and does not add UI/console output.
 - Each block supports `enabled`, `dir`, and `retention_days`.
 - `retention_days: 0` inherits `logging.retention_days`.
+- This explicit zero also loads when propagation logging is disabled. See [TSR-0122](../../docs/troubleshooting/TSR-0122-propagation-retention-zero.md) for the validation repair and consumer evidence.
 - The active propagation file is `propagation.log`; archives retain the
   date-only format, such as `07-Jun-2026.log`.
 - The daily `prop_report` tool defaults to the date-only propagation archive;

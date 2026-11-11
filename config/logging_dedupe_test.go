@@ -1,9 +1,32 @@
 package config
 
 import (
+	"fmt"
 	"path/filepath"
 	"testing"
 )
+
+func TestPropagationLoggingInheritsExplicitZeroRetention(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(fmt.Sprintf("enabled_%t", enabled), func(t *testing.T) {
+			dir := testConfigDir(t)
+			writeRequiredFloodControlFile(t, dir)
+			writeTestConfigOverlay(t, dir, "app.yaml", fmt.Sprintf(`logging:
+  retention_days: 13
+  propagation:
+    enabled: %t
+    retention_days: 0
+`, enabled))
+			cfg, err := Load(dir)
+			if err != nil {
+				t.Fatalf("documented zero inheritance rejected: %v", err)
+			}
+			if cfg.Logging.Propagation.RetentionDays != 13 || cfg.Logging.RetentionDays != 13 || cfg.Logging.Propagation.Enabled != enabled {
+				t.Fatalf("inheritance changed retention or enablement: %+v", cfg.Logging)
+			}
+		})
+	}
+}
 
 func TestLoggingDropDedupeWindowDefault(t *testing.T) {
 	dir := testConfigDir(t)

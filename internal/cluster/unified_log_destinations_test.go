@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,7 +10,63 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/internal/logfiles"
+
+	"gopkg.in/yaml.v3"
 )
+
+func TestFileDestinationPropagationRetentionFromLoadedConfig(t *testing.T) {
+	directory := t.TempDir()
+	// Copy only the required public configuration inventory. Optional tool and
+	// credential files are unrelated to loading this runtime-owned sentinel.
+	for _, name := range []string{"app.yaml", "archive.yaml", "data.yaml", "dedupe.yaml", "floodcontrol.yaml",
+		"ingest.yaml", "mode_seeds.yaml", "peering.yaml", "pipeline.yaml", "prop_report.yaml",
+		"reputation.yaml", "runtime.yaml", "path_reliability.yaml", "solarweather.yaml",
+		"iaru_regions.yaml", "iaru_mode_inference.yaml", "spot_taxonomy.yaml"} {
+		body, err := os.ReadFile(filepath.Join("..", "..", "data", "config", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name == "app.yaml" {
+			var document map[string]any
+			if err := yaml.Unmarshal(body, &document); err != nil {
+				t.Fatal(err)
+			}
+			logging, ok := document["logging"].(map[string]any)
+			if !ok {
+				t.Fatal("required app fixture lacks logging")
+			}
+			propagation, ok := logging["propagation"].(map[string]any)
+			if !ok {
+				t.Fatal("required app fixture lacks propagation logging")
+			}
+			logging["retention_days"], propagation["retention_days"] = 13, 0
+			body, err = yaml.Marshal(document)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := os.WriteFile(filepath.Join(directory, name), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := config.Load(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, destination := range fileDestinationConfigs(loaded.Logging, nil) {
+		if destination.Stream != streamPropagation {
+			continue
+		}
+		if found || destination.RetentionDays != 13 || destination.Kind != logfiles.Daily {
+			t.Fatalf("loaded propagation destination = %+v; want one daily destination with retention 13", destination)
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("loaded propagation destination missing")
+	}
+}
 
 func TestFileDestinationConfigsCompleteNormalizedSet(t *testing.T) {
 	event := func(path string, days int) config.EventFileLoggingConfig {

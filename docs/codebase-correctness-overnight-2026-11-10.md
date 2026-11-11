@@ -27,7 +27,7 @@ records execution; it does not authorize additional work.
 | S1 | Grid pending merge keeps locator/provenance coherent; actual overrides derived; preserve CTY, observation, timestamp and expiry rules | Targeted validated; final lane pending |
 | S2 | Flood cleanup preserves threshold-plus-one live history and existing configured actions, modes, partitions, expiry and overflow behavior | Targeted validated; final lane pending |
 | S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Targeted validated; final lane pending |
-| S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Queued |
+| S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Targeted validated; final lane pending |
 | S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Queued |
 | S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Queued |
 | S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Queued |
@@ -146,6 +146,17 @@ validity change or claim is part of this work.
   material issue after the literal TTL oracle refinement. Positive/negative
   cache, timeout/lookup order and queue/worker policies are unchanged. TSR-0121
   records overflow, generation identity, churn and cancellation limitations.
+- S4 detailed falsifiability: two complete-directory loads explicitly set parent
+  retention 13, propagation zero, and enabled true/false. Literal expected 13
+  prevents fallback-seven false greens. An independent cluster consumer fixture
+  copies only the required public files, runs the real loader and asserts the
+  propagation destination's literal retention 13 and daily kind.
+- S4 red: both full-loader cases rejected the documented zero (`s4-red.log`).
+  Full config ordinary/race each passed 627 cases, zero skips; destination
+  ordinary/race each passed five cases (`s4-config*.log`, `s4-consumer*.log`).
+  Lead source review confirms exactly one allowed-zero key changed, with existing
+  normalizer/consumers and all unrelated config rules untouched. TSR-0122 records
+  restoration of the existing contract; no new ADR/default is needed.
 
 ## Closeout
 

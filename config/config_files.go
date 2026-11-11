@@ -234,6 +234,7 @@ var runtimeAllowZeroSettings = map[string]struct{}{
 	"telnet.auto_read_pause_seconds":                                           {},
 	"telnet.bulletin_dedupe_window_seconds":                                    {},
 	"logging.drop_dedupe_window_seconds":                                       {},
+	"logging.propagation.retention_days":                                       {},
 	"logging.dropped_calls.dedupe_window_seconds":                              {},
 	"logging.login_attempts.retention_days":                                    {},
 	"logging.login_attempts.dedupe_window_seconds":                             {},
