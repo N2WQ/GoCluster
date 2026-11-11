@@ -207,7 +207,7 @@ func (s *Server) resolveShowPropTarget(raw string) (showPropTarget, bool) {
 	if !ok {
 		return showPropTarget{}, false
 	}
-	grid, ok = cty.Grid4FromLatLon(info.Latitude, info.Longitude)
+	grid, ok = cty.Grid4FromPrefixInfo(info)
 	if !ok {
 		return showPropTarget{}, false
 	}

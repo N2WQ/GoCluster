@@ -15,7 +15,8 @@ import (
 	"howett.net/plist"
 )
 
-// PrefixInfo describes the metadata stored for each CTY entry.
+// PrefixInfo preserves Country Files metadata, including north-positive latitude
+// and west-positive longitude. Convert coordinates only at geographic boundaries.
 type PrefixInfo struct {
 	Country       string  `plist:"Country"`
 	Prefix        string  `plist:"Prefix"`

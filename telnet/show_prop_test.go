@@ -416,7 +416,7 @@ func testShowPropCTY(t *testing.T) *cty.CTYDatabase {
 		<key>Latitude</key>
 		<real>37.5</real>
 		<key>Longitude</key>
-		<real>14.0</real>
+		<real>-14.0</real>
 		<key>ExactCallsign</key>
 		<false/>
 	</dict>

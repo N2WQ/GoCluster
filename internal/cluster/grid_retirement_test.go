@@ -54,7 +54,7 @@ func assertGridRetirementBlocked(t *testing.T, done <-chan struct{}) {
 
 func gridRetirementCTY(t *testing.T) *cty.CTYDatabase {
 	t.Helper()
-	db, err := cty.LoadCTYDatabaseFromReader(strings.NewReader(`<plist version="1.0"><dict><key>K1</key><dict><key>Country</key><string>Alpha</string><key>Prefix</key><string>K1</string><key>ExactCallsign</key><false/><key>Latitude</key><real>40.0</real><key>Longitude</key><real>-75.0</real></dict></dict></plist>`))
+	db, err := cty.LoadCTYDatabaseFromReader(strings.NewReader(`<plist version="1.0"><dict><key>K1</key><dict><key>Country</key><string>Alpha</string><key>Prefix</key><string>K1</string><key>ExactCallsign</key><false/><key>Latitude</key><real>40.0</real><key>Longitude</key><real>75.0</real></dict></dict></plist>`))
 	if err != nil {
 		t.Fatal(err)
 	}

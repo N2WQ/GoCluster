@@ -2,6 +2,17 @@ package cty
 
 import "math"
 
+// Grid4FromPrefixInfo locates a CTY record's representative coordinate, not a
+// verified station position. Country Files stores north-positive latitude and
+// west-positive longitude; only this boundary changes longitude to east-positive.
+// Raw PrefixInfo values and the generic geographic converter remain unchanged.
+func Grid4FromPrefixInfo(info *PrefixInfo) (string, bool) {
+	if info == nil {
+		return "", false
+	}
+	return Grid4FromLatLon(info.Latitude, -info.Longitude)
+}
+
 // Grid4FromLatLon returns the 4-character Maidenhead grid for a lat/lon pair.
 // It returns false when coordinates are out of range or non-finite.
 func Grid4FromLatLon(lat, lon float64) (string, bool) {

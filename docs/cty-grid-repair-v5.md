@@ -20,7 +20,7 @@
 | --- | --- | --- |
 | S0 | Baseline source/tool/test identity and comparable benchmarks | Passed targeted baseline |
 | S1 | Exact-only entries remain full-key matches, never prefix fallback; preserve portable precedence and inventory | Targeted ordinary/race/fuzz passed |
-| S2 | One CTY conversion negates west-positive longitude once in grid backfill and SHOW PROP; new estimates remain persisted | Pending |
+| S2 | One CTY conversion negates west-positive longitude once in grid backfill and SHOW PROP; new estimates remain persisted | Targeted ordinary/race passed |
 | S3 | Disk supplies grid/provenance, never CTY authority; positive/negative classification cache belongs to its CTY snapshot with bounded identity metadata | Pending |
 | S4 | Integrated/disposable backup, empty-start, recovery-isolation, restart/rollback and protected-input rehearsal; operator/support and decision records | Pending |
 | S5 | Final ordinary/race/analyzer/fuzz/benchmark/connected-regression/code-map/source review | Pending |
@@ -109,6 +109,17 @@ The shipped file is still SHA256
   1,718,289 executions in 30 seconds (`s1-fuzz.log`). A separate read-only
   source/test reviewer found no material issue; no reviewer test execution is
   claimed. Native PowerShell subsequently ran successfully without provisioning.
+- S2 red evidence: both production consumers returned mirrored literal grids,
+  including durable `K1ABC -> MN52` (`s2-red-{backfill,showprop}.log`). An initial
+  new test double-closed its store during failure cleanup; cleanup was repaired
+  and the numeric regression rerun before production mutation. Shared
+  `Grid4FromPrefixInfo` now owns sign conversion; mock CTY longitudes represent
+  their intended geographic locations. Both modes of real backfill, flush/reopen
+  and cold restart preserve derived grids. Selected ordinary/race each passed
+  64 cases, zero skips (`s2-{green,race}.log`). Separate source/test review found
+  no material issue. The independent non-steered oracle additionally derived
+  `VK2ZZZ -> VK2(-34,-151) -> QF56`, with latitude bounds [-34,-33) and adjacent
+  cases; no expected value or implementation was supplied to that reviewer.
 
 ## Final result
 

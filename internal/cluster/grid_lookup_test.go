@@ -74,7 +74,7 @@ func TestGridLookupDerivesWhenRecordMissingGrid(t *testing.T) {
 		<key>Latitude</key>
 		<real>40.0</real>
 		<key>Longitude</key>
-		<real>-75.0</real>
+		<real>75.0</real>
 	</dict>
 </dict>
 </plist>`

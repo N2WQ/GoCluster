@@ -3153,7 +3153,7 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		if info == nil {
 			return baseRec, nil
 		}
-		derivedGrid, ok := cty.Grid4FromLatLon(info.Latitude, info.Longitude)
+		derivedGrid, ok := cty.Grid4FromPrefixInfo(info)
 		if !ok {
 			return baseRec, nil
 		}
