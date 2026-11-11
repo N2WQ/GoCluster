@@ -1,4 +1,4 @@
 interface:
   display_name: "Go Code Quality Review"
   short_description: "Review High-risk or substantial Go diffs"
-  default_prompt: "Use this skill only for High-risk or substantial Go implementation, not every Non-trivial Go edit."
+  default_prompt: "Use $go-code-quality-review after High-risk or substantial Go implementation and apply the complete canonical Substantial Go Review Method."

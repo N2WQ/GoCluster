@@ -5,6 +5,14 @@ description: "Perform language and framework specific security best-practice rev
 
 # Security Best Practices
 
+## Artifact Authority
+
+Repository writes require both a user request for the artifact and current
+authorization under `AGENTS.md`. A read-only review returns its findings in the
+response. When both requirements are met, create the requested artifact at the
+authorized path; otherwise do not write it. This skill does not authorize
+implementation or extra files.
+
 ## Overview
 
 This skill provides a description of how to identify the language and frameworks used by the current context, and then to load information from this skill's references directory about the security best practices for this language and or frameworks.
@@ -43,7 +51,10 @@ While these references contain the security best practices for languages and fra
 
 # Report Format
 
-When producing a report, you should write the report as a markdown file in `security_best_practices_report.md` or some other location if provided by the user. You can ask the user where they would like the report to be written to.
+Deliver a read-only report in the response. If the user requests a file and the
+applicable change route authorizes it, write `security_best_practices_report.md`
+or the requested authorized path. Ask about a location only if it materially
+affects delivery and cannot be inferred from the request.
 
 The report should have a short executive summary at the top.
 
@@ -51,13 +62,12 @@ The report should be clearly delineated into multiple sections based on severity
 
 For critical findings include a one sentence impact statement.
 
-Once the report is written, also report it to the user directly, although you may be less verbose. You can offer to explain any of the findings or the reasons behind the security best practices guidance if the user wants more info on any findings.
+When an authorized file is written, also summarize it in the response. You can
+offer to explain findings or their security rationale.
 
 Important: When referencing code in the report, make sure to find and include line numbers for the code you are referencing.
 
-After you write the report file, summarize the findings to the user.
-
-Also tell the user where the final report was written to
+If a report file was written, identify its actual path alongside the summary.
 
 # Fixes
 

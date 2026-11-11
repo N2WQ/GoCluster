@@ -15,13 +15,17 @@ Use this skill before implementing or approving changes that add or modify long-
    - Treat soft optimization structures as real retained resources.
 
 2. Prove the bound.
-   - For each retained structure, name exactly one primary bound:
-     - hard cardinality cap
-     - time/window expiry
-     - ownership-coupled deletion
-     - reference-counted reclamation
-     - bounded by another explicitly bounded owner
-   - If the bound depends on another structure, name the owner and the code path that keeps them coupled.
+   - Apply `docs/code-quality.md` `Bounded Retained State`: prove simultaneous
+     entries and retained bytes, including backing storage and secondary state.
+   - Combine enforced caps, a fixed key universe, bounded admission, maximum
+     entry/backing size, expiry, ownership deletion, reference counting or a
+     bounded owner as needed. A reclamation label alone is not a size proof.
+   - Account for admission bursts, cleanup delay, stale derived entries and
+     transient overlap relevant to the claimed maximum. A count or length does
+     not bound variable payloads or retained capacity by itself.
+   - If the bound depends on another structure, name the bounded owner and the
+     enforcing code paths that keep them coupled. Separate proven limits,
+     estimates and assumptions; do not infer a process memory ceiling.
    - Reject process-lifetime growth based only on "low expected cardinality."
 
 3. Audit deletion and eviction coupling.
@@ -30,7 +34,9 @@ Use this skill before implementing or approving changes that add or modify long-
    - If secondary state intentionally outlives the primary object, it must have its own independent bound.
 
 4. Define tests before code.
-   - Add or update tests that insert beyond the cap/window and assert retained cardinality stays bounded.
+   - Add or update tests that challenge the enforcing constraints, including
+     cap/window boundaries, cleanup delay and retained backing or secondary
+     state when material. Cardinality assertions alone do not prove a byte bound.
    - Add churn tests: insert, evict/delete, insert new unique values, then assert side structures do not grow with total historical input.
    - Add stale-index tests where heap/index entries are updated repeatedly before cleanup.
    - Add restart/load tests when the retained state is rebuilt from disk.

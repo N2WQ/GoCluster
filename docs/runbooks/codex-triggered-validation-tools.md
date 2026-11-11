@@ -12,8 +12,11 @@ this file supplies commands, not validation policy.
 - `rg <symbol-or-contract>` and `yq <expression> <yaml-file>`
 - optional `goda`/Graphviz views when text and semantic search are insufficient
 
-Report inspected targets and summarize large graphs. Put durable support-agent
-conclusions in Markdown code maps, not generated images alone.
+Report inspected targets and summarize large graphs in the response. Repository
+writes require a requested artifact and current authorization under `AGENTS.md`.
+When both requirements are met, put durable support-agent conclusions in the
+authorized Markdown code map, not generated images alone. A read-only source
+walk does not itself authorize an artifact.
 
 ## Lifecycle and leak evidence
 

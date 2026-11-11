@@ -1,5 +1,11 @@
 # ADR-0156: Expanded Repo-Managed Audit Skills
 
+[ADR-0336](ADR-0336-codex-method-ownership-and-retained-bounds.md) selectively
+replaces the separate `decision-memory-audit` identity with the canonical
+discovery and record-handling method in `docs/decision-memory.md`. Its discovery,
+history, record-choice and closeout obligations remain; the original decision
+below is preserved as history.
+
 - Status: Accepted
 - Date: 2026-06-08
 - Decision Origin: Design

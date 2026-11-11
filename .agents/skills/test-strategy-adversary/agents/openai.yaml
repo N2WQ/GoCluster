@@ -1,4 +1,4 @@
 interface:
   display_name: "Test Strategy Adversary"
   short_description: "Challenge whether tests can falsify design"
-  default_prompt: "Use this skill only when the approved design or checker has a concrete false-green or unclear-oracle risk."
+  default_prompt: "Use $test-strategy-adversary for a pre-approval falsifiability probe when evidence could affect scope or design, and for the triggered detailed review after approval before implementation."

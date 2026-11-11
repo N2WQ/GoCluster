@@ -5,6 +5,14 @@ description: "Use when Codex needs to understand unfamiliar or cross-package Go 
 
 # Go Code Walk
 
+## Artifact Authority
+
+Repository writes require both a user request for the artifact and current
+authorization under `AGENTS.md`. A read-only review returns its findings in the
+response. When both requirements are met, create the requested artifact at the
+authorized path; otherwise do not write it. This skill does not authorize
+implementation or extra files.
+
 ## Overview
 
 Use this skill to build current-state understanding from the repository before
@@ -37,7 +45,7 @@ facts and call paths, not for implementation.
    - Optional tools such as Graphviz `dot`, `goda`, or `go-callvis` can improve
      package or graph visualization when installed, but their absence is not a
      blocker for ordinary code walking.
-   - If the custom GPT support agent will need the result later, put the stable
+   - When an authorized code-map artifact is requested for support reuse, put the stable
      package edges, inspected files, and limits in a Markdown code map under
      `docs/code-maps/`; do not rely on a rendered graph alone.
 
@@ -59,7 +67,7 @@ facts and call paths, not for implementation.
 - Report inspected paths, established behavior, and unresolved unknowns without
   requiring a fixed heading.
 - Keep command output summarized; do not paste large call graphs.
-- For support-agent reuse, summarize durable graph conclusions in Markdown that
+- For authorized support-agent artifacts, summarize durable graph conclusions in Markdown that
   points to source files and tests the support agent can retrieve.
 - Do not propose changes until current behavior and unknowns are clear enough
   to support a Scope Ledger or an explanation.

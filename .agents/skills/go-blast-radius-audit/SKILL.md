@@ -5,6 +5,14 @@ description: "Use before planning, approving, reviewing, or implementing Go chan
 
 # Go Blast Radius Audit
 
+## Artifact Authority
+
+Repository writes require both a user request for the artifact and current
+authorization under `AGENTS.md`. A read-only review returns its findings in the
+response. When both requirements are met, create the requested artifact at the
+authorized path; otherwise do not write it. This skill does not authorize
+implementation or extra files.
+
 ## Overview
 
 Use this skill to map what a proposed Go change can affect before scope is
@@ -50,7 +58,7 @@ approved or implementation continues. It complements dependency rigor in
      validation from `docs/dev-runbook.md`.
    - If optional Graphviz `dot` and `goda` are installed, use them for rendered
      reverse-import or graph views when package impact remains unclear.
-   - When graph evidence should be useful to the custom GPT support agent,
+   - When an authorized code-map artifact is requested for support reuse,
      write a small Markdown code map under `docs/code-maps/` that names the
      command, important edges, inspected source/tests, and limits.
 

@@ -26,6 +26,32 @@ TSR when troubleshooting produces durable evidence, root cause, or operational
 learning. When neither applies, record the disposition in the closeout without
 creating a file solely to document the task.
 
+## Codex Discovery And Record Handling
+
+Use this method during discovery when a durable architecture, operations,
+scientific or workflow decision may change, the task originates in
+troubleshooting, or ADR/TSR records or indexes are being edited. Do not trigger
+record creation merely because work is Non-trivial.
+
+1. Search `docs/decision-log.md` and `docs/troubleshooting-log.md` for the
+   affected component or decision chain and open relevant records.
+2. Classify the origin as design, follow-up implementation, troubleshooting,
+   incident analysis or read-only review. A read-only finding is not authority
+   to write a record.
+3. Choose an ADR only for a durable decision change and a TSR for durable
+   troubleshooting evidence, hypotheses, root cause or operational learning.
+   Apply the detailed triggers below.
+4. Preserve accepted history. Reverse or replace an accepted decision through a
+   new superseding ADR and link both directions; retain disproved hypotheses
+   and their evidence in troubleshooting history.
+5. Maintain applicable indexes and cross-links when a record changes.
+6. At closeout, state the records inspected, record choice, relevant index/link
+   updates and any missing durable evidence. If no durable decision changed,
+   do not create a file solely to say so. Link records to approved items only
+   when applicable, without requiring a fixed heading or empty field.
+
+This method owns Codex handling; the Fable requirements below remain separate.
+
 ## Fable Application
 
 Fable continues to follow `CLAUDE.md`: every Non-trivial Fable task uses a new

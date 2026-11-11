@@ -12,6 +12,10 @@ recommendations inspect current evidence without mutation or change-closeout
 ceremony. Findings are evidence, not latent approval. If the user later asks for
 changes, enter the Small or Non-trivial route before editing.
 
+Use the repo-managed `explain-code` skill for code understanding, from a quick
+orientation to a thorough investigation; use any more specific triggered
+specialist for its engineering method.
+
 ## Change Classification
 
 Small work is localized, low blast radius, and does not change protocol,
@@ -68,6 +72,11 @@ semantics from engineering choices, batch related questions already known to
 be necessary, and do not reopen answered questions without material new
 evidence. Explain that evidence and its consequences if a decision reopens.
 
+When a durable decision may change or the task originates in troubleshooting,
+follow [Codex discovery and record handling](decision-memory.md#codex-discovery-and-record-handling)
+before selecting scope. ADR/TSR edits use that same method; Non-trivial work
+alone does not require a new record.
+
 ### Scope
 
 A Proposed Scope Ledger identifies its version, objective, agreed items,
@@ -105,6 +114,48 @@ is required.
 Only exact `Approved vN` for the current ledger authorizes Non-trivial mutation.
 Stop and obtain revised approval when required work exceeds the approved scope.
 
+### Scope Challenge Method
+
+Every Non-trivial scope receives the initial and material-revision challenges
+required above. Use this deeper method when scope is High-risk, uncertain,
+disputed, difficult to reverse, or leaves material residual uncertainty; do not
+make every detailed prompt mandatory for every ledger.
+
+Run before presenting the approval token. Inspect the proposed ledger and
+relevant current approval, discovery, code, tests, validation, documentation
+and decision evidence. Verify material conclusions from generated maps, prior
+summaries and other agents instead of treating them as proof.
+
+Ask: `What edge case would make this scope unsafe or incomplete?`
+
+Check the applicable failure surfaces:
+
+- lifecycle, shutdown, cancellation, goroutines, timers and sockets;
+- backpressure, queues, drops, disconnects and overload;
+- retained state, caches, maps, indexes, bounds and cleanup;
+- zero, nil, empty, malformed and boundary inputs;
+- YAML, config, schema, defaults and sentinel values;
+- parsers, protocols, compatibility and user-visible behavior;
+- metrics, logs, latency, p99 and performance claims;
+- tests, race checks, fuzzing, benchmarks and profiling;
+- documentation, support routing and ADR/TSR obligations; and
+- shared interfaces, semantic callers and dependency impact.
+
+Classify each material issue as covered, explicitly out of scope and safe to
+defer, requiring a revised ledger before approval, or a validation,
+documentation, support or decision follow-up. The lead must disposition every
+material finding. Apply the Scope section's material-revision challenge and
+unresolved-decision gates after revisions, focusing on affected areas unless
+wider assumptions changed.
+
+Use a separate non-steered read-only reviewer when credible challenge evidence
+depends on reasoning outside the lead's accumulated assumptions; otherwise the
+method may remain lead-owned. A separate reviewer supplies findings only and
+never transfers approval or scope authority. State inspected evidence, unknowns,
+material findings and disposition without a fixed result envelope. Disclose
+unavailable or failed required independent review; a fresh lead pass is not
+independent evidence.
+
 ## Risk Routing
 
 Standard and High-risk are internal routes. Mention the route only when it helps
@@ -127,8 +178,8 @@ Load a specialist only for its concrete positive trigger:
 | Scientific/model oracle | Correctness or claims depend on scientific/model definitions, units, boundaries, interpolation, classifications, or normative evidence | Domain terminology appears without changing semantics or claims |
 | Design challenge | Two or more viable architectures materially differ in ownership, lifecycle, state, compatibility, or operability | One safe design follows from settled constraints |
 | Test-strategy adversary | The planned evidence may not falsify a broken design or checker | The accepted checks directly prove a mechanical change |
-| Scope adversary | Scope is High-risk, uncertain, disputed, difficult to reverse, or leaves material residual uncertainty | Every Non-trivial ledger exists |
-| Go code-quality review | Go work is High-risk or substantial | Every Non-trivial Go edit exists |
+| Scope adversary | Use the [Scope Challenge Method](#scope-challenge-method) for High-risk, uncertain, disputed, difficult-to-reverse scope or material residual uncertainty | Every Non-trivial ledger exists |
+| Go code-quality review | Use [Substantial Go Review Method](review-checklist.md#substantial-go-review-method) when Go work is High-risk or substantial; the repo skill is its discovery entry point | Every Non-trivial Go edit exists |
 | Code walk | Current behavior is unfamiliar or crosses packages and cannot be established locally | A known localized path is already understood |
 | Blast-radius audit | Shared or semantic impact remains uncertain | Text search already establishes a local bounded impact |
 | Config, lifecycle, leaks, retained state, hot path | The touched surface matches the skill's engineering risk | The task is generally important |
@@ -284,6 +335,9 @@ update an ADR only when a durable architecture, operations, scientific, or
 workflow decision changes. Create or update a TSR when durable troubleshooting
 learning exists. Otherwise state the decision disposition in the closeout; do
 not create a no-change ADR.
+
+Use [Codex discovery and record handling](decision-memory.md#codex-discovery-and-record-handling)
+for the record choice, preserved history, indexes and closeout disposition.
 
 Closeout contains only what is material:
 

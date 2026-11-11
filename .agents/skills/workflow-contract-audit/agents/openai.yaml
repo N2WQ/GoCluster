@@ -1,4 +1,4 @@
 interface:
   display_name: "Workflow Contract Audit"
-  short_description: "Check Codex workflow and skill contract drift"
-  default_prompt: "Use this skill only when Codex workflow authority, routing, skills, or enforcing scripts change."
+  short_description: "Review Codex workflow consistency or effectiveness"
+  default_prompt: "Use $workflow-contract-audit to check conformance to accepted workflow policy or evaluate whether its rules, skills and mechanisms should be improved in effectiveness mode."

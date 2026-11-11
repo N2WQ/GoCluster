@@ -53,6 +53,44 @@ independent context is required because same-context reasoning would compromise
 evidence credibility, the reviewer is read-only and findings-only. The lead
 owns evidence verification, fixes, reruns, integration, and final claims.
 
+## Substantial Go Review Method
+
+Use after Go implementation and before final closeout when the Go Review
+Method Trigger above applies. The repo-managed `go-code-quality-review` skill
+is a Codex discovery entry point to this complete method. Documentation-only
+changes do not trigger it unless they also change Go code or a runtime/code
+contract.
+
+1. Compare the approved Scope Ledger and meaningful implementation units to the
+   actual diff. Check for hidden expansion, speculative cleanup, compatibility
+   shims, fallbacks, future-proof hooks and broad refactors. Name every changed
+   Go file and materially touched test or document.
+2. Apply the final-diff review above and applicable `docs/code-quality.md`
+   sections. Check correctness, reviewability, error paths, placeholders and
+   comment intent. For retained state, check cardinality and retained-byte
+   bounds plus deletion/eviction coupling. For lifecycle work, check ownership
+   of goroutines, timers, channels, sockets, queues, cancellation, deadlines,
+   shutdown and file handles. Check parser, protocol, config/YAML, operator and
+   support-agent contracts when relevant.
+3. Verify the lane from `docs/dev-runbook.md` matches the touched surface.
+   Review required targeted tests, Go tests, vet, Staticcheck, lint, race,
+   fuzzing, benchmarks and profiles as applicable. Evaluate allocation, CPU,
+   lock and p99 claims against actual measurements. Apply Command Evidence
+   below; a bare PASS/FAIL does not establish a high-risk command-backed claim.
+4. Report findings by severity with inspected file references and evidence.
+   Separate material findings, non-blocking observations and unknowns; report
+   missing, stale, skipped, failed, timed-out, partial or waived evidence
+   accurately. No fixed heading, taxonomy or result envelope is required.
+
+Use a separate non-steered reviewer when credible review evidence depends on
+reasoning outside the implementation context; otherwise the method may remain
+lead-owned. A separate reviewer is read-only and findings-only: do not generate
+transcript evidence or run final validation for the lead. The lead retains its
+own validation responsibility, dispositions findings, makes approved fixes,
+reruns affected checks and owns integration, traceability and final claims.
+Apply Fresh Verification And Invalidation below; lead-owned review is not
+independent review.
+
 ## Fresh Verification And Invalidation
 
 High-risk work receives a fresh final pass over the approved scope, final diff,

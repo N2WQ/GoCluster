@@ -211,7 +211,7 @@ The design challenger asks:
 > What materially different design or ownership model could satisfy the same
 > requirements, and which is best supported by the evidence?
 
-The later `scope-ledger-adversarial-review` asks:
+The later [Scope Challenge Method](../../../docs/change-workflow.md#scope-challenge-method) asks:
 
 > Does the selected Scope Ledger safely and completely authorize the chosen
 > work?

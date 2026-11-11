@@ -1,4 +1,4 @@
 interface:
   display_name: "Design Challenger"
   short_description: "Challenge designs before scope commitment"
-  default_prompt: "Use this skill only when a genuine consequential design fork remains after discovery."
+  default_prompt: "Use $design-challenger after discovery for consequential design uncertainty; begin with a lightweight probe when a materially different safe approach may exist, and compare viable approaches when warranted."

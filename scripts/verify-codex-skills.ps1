@@ -44,14 +44,18 @@ $specialistInvariants = @{
   "requirements-ambiguity-review" = @("Do not trigger merely", "ambiguity register", "do not choose product policy", "lead agent")
   "scientific-model-oracle" = @("Do not trigger", "source hierarchy", "independent golden vectors", "Do not choose architecture", "lead agent")
   "design-challenger" = @("Do not trigger", "at least two viable approaches", "Do not approve scope", "lead")
-  "scope-ledger-adversarial-review" = @("Do not trigger for every", "What edge case would make this scope unsafe or incomplete?", "approval, discovery, scope", "Requires revised Scope Ledger", "lead agent")
   "test-strategy-adversary" = @("Do not trigger", "design detailed enough to derive falsifiable checks", "Build the Contract-to-Test Matrix", "False-green risk", "Do not", "lead")
-  "go-code-quality-review" = @("Do not trigger for every", "multiple production packages with shared impact", "Review GoCluster code-quality standards", "Command Evidence", "Do not run final validation", "lead")
+  "go-code-quality-review" = @("Do not trigger for every", "multiple production packages with shared impact", "../../../docs/review-checklist.md#substantial-go-review-method", "lead")
+  "explain-code" = @("brief", "thorough", "specialist", "Unknown from inspected code", "read-only")
   "go-leak-detection" = @("Command Evidence", 'Do not claim "no leak"')
   "go-code-walk" = @("unfamiliar or cross-package", "Walk one material level up and down", "Unknown from inspected code")
   "go-blast-radius-audit" = @("uncertain blast radius", "Map semantic callers and callees", "not concrete runtime proof")
-  "decision-memory-audit" = @("Do not trigger merely", "durable decision changes", "Preserve accepted history")
   "workflow-contract-audit" = @("Do not trigger", "Preserve accepted authority routes", "Static checks may establish")
+}
+$promptInvariants = @{
+  'design-challenger' = @('lightweight probe', 'compare viable approaches')
+  'test-strategy-adversary' = @('pre-approval falsifiability probe', 'after approval before implementation')
+  'workflow-contract-audit' = @('conformance', 'effectiveness mode')
 }
 
 function Add-Failure([string]$Message) {
@@ -102,6 +106,13 @@ foreach ($skill in $Skills) {
 
   $agentFile = Join-Path $skillDir "agents\openai.yaml"
   if (Test-Path -LiteralPath $agentFile -PathType Leaf) {
+    if ($promptInvariants.ContainsKey($skill)) {
+      $agentText = Get-Content -LiteralPath $agentFile -Raw
+      $prompt = [regex]::Match($agentText, '(?m)^\s*default_prompt:\s*(.+)$').Groups[1].Value
+      foreach ($required in $promptInvariants[$skill]) {
+        if (-not $prompt.Contains($required)) { Add-Failure "[$skill] UI prompt scope missing: $required" }
+      }
+    }
     foreach ($line in Get-Content -LiteralPath $agentFile) {
       $match = [regex]::Match($line, "^\s*icon_(small|large):\s*['`"]?(.+?)['`"]?\s*$")
       if ($match.Success) {

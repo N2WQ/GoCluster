@@ -1,5 +1,10 @@
 # ADR-0331: Repeat Material Scope Challenges
 
+[ADR-0336](ADR-0336-codex-method-ownership-and-retained-bounds.md) moves the
+scope-skill method to `docs/change-workflow.md#scope-challenge-method`. Initial
+challenge, material rechallenge, disposition and risk-based independence remain
+required. The historical skill reference below records the original location.
+
 - Status: Accepted
 - Date: 2026-11-01
 - Decision Origin: Workflow review

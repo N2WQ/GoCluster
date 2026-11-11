@@ -31,7 +31,7 @@ try {
   git -C $root config user.name test
 
   $core=@('AGENTS.md','docs/change-workflow.md','docs/templates/non-trivial-change-template.md','docs/code-quality.md','docs/review-checklist.md','VALIDATION.md','docs/dev-runbook.md','.agents/skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
-  $skills=@('decision-memory-audit','workflow-contract-audit','requirements-ambiguity-review','scientific-model-oracle','design-challenger','scope-ledger-adversarial-review','test-strategy-adversary','go-code-quality-review','go-code-walk','go-blast-radius-audit','go-config-contract-audit','go-connection-lifecycle-audit','go-leak-detection','go-retained-state-audit','pprof-impact-review')
+  $skills=@('workflow-contract-audit','requirements-ambiguity-review','scientific-model-oracle','design-challenger','test-strategy-adversary','go-code-quality-review','go-code-walk','go-blast-radius-audit','go-config-contract-audit','go-connection-lifecycle-audit','go-leak-detection','go-retained-state-audit','pprof-impact-review')
   $paths=$core + @($skills | ForEach-Object { ".agents/skills/$_/SKILL.md" })
 
   $weight=1
@@ -63,6 +63,10 @@ try {
   foreach($skill in $skills) {
     if ($rows.Scenario -notcontains "specialist-$skill") { throw "missing specialist scenario $skill" }
   }
+  foreach($retired in @('decision-memory-audit','scope-ledger-adversarial-review')) {
+    if ($rows.Scenario -contains "specialist-$retired") { throw "retired scenario still emitted: $retired" }
+  }
+  if ($rows.Count -ne 5 + $skills.Count) { throw 'unexpected measurement scenario set' }
   foreach($row in $rows) {
     if ($row.CandidateWords -ne 2 * $row.BaselineWords) { throw "incorrect word total for $($row.Scenario)" }
     if ($row.WordDelta -ne $row.BaselineWords) { throw "incorrect word delta for $($row.Scenario)" }
@@ -71,7 +75,9 @@ try {
   Write-Host 'PASS exact per-scenario totals'
 
   Set-Content -LiteralPath (Join-Path $root 'AGENTS.md') -Value ('dirty ' * 1000) -NoNewline
-  Assert-Result (Invoke-Measurement $baseline $growth) 0 'informational' 'dirty worktree cannot affect pinned revisions'
+  $dirtyResult=Invoke-Measurement $baseline $growth
+  Assert-Result $dirtyResult 0 'informational' 'dirty worktree cannot affect pinned revisions'
+  Assert-Result $dirtyResult 0 'retired.*routes are excluded.*do not establish total consolidation savings' 'retired-route limitation stays explicit'
 
   git -C $root reset --hard -q $growth
   git -C $root rm -q AGENTS.md; git -C $root commit -qm missing

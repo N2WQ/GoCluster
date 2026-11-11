@@ -1,9 +1,17 @@
 ---
 name: "security-threat-model"
-description: "Repository-grounded threat modeling that enumerates trust boundaries, assets, attacker capabilities, abuse paths, and mitigations, and writes a concise Markdown threat model. Trigger only when the user explicitly asks to threat model a codebase or path, enumerate threats/abuse paths, or perform AppSec threat modeling. Do not trigger for general architecture summaries, code review, or non-security design work."
+description: "Repository-grounded threat modeling that enumerates trust boundaries, assets, attacker capabilities, abuse paths, and mitigations, and produces a concise threat model. Trigger only when the user explicitly asks to threat model a codebase or path, enumerate threats/abuse paths, or perform AppSec threat modeling. Do not trigger for general architecture summaries, code review, or non-security design work."
 ---
 
 # Threat Model Source Code Repo
+
+## Artifact Authority
+
+Repository writes require both a user request for the artifact and current
+authorization under `AGENTS.md`. A read-only review returns its findings in the
+response. When both requirements are met, create the requested artifact at the
+authorized path; otherwise do not write it. This skill does not authorize
+implementation or extra files.
 
 Deliver an actionable AppSec-grade threat model that is specific to the repository or a project path, not a generic checklist. Anchor every architectural claim to evidence in the repo and keep assumptions explicit. Prioritizing realistic attacker goals and concrete impacts over generic checklists.
 
@@ -65,7 +73,10 @@ Deliver an actionable AppSec-grade threat model that is specific to the reposito
 - Confirm user clarifications (or explicit non-responses) are reflected.
 - Confirm assumptions and open questions are explicit.
 - Confirm that the format of the report matches closely the required output format defined in prompt template: `references/prompt-template.md`
-- Write the final Markdown to a file named `<repo-or-dir-name>-threat-model.md` (use the basename of the repo root, or the in-scope directory if you were asked to model a subpath).
+- Return a read-only threat model in the response. If the user requests a file
+  and the applicable change route authorizes it, write
+  `<repo-or-dir-name>-threat-model.md` or the requested authorized path (use the
+  repo or in-scope directory basename for the default filename).
 
 
 ## Risk prioritization guidance (illustrative, not exhaustive)

@@ -283,6 +283,86 @@ foreach ($required in @(
 )) { Require-Text "docs/change-workflow.md#High-risk" $highRisk $required "positive specialist trigger missing: $required" }
 Require-Pattern "docs/change-workflow.md#High-risk" $highRisk '(?s)multiple production\s+packages.*shared behavior.*ownership.*interfaces.*contracts.*cross-package uncertainty' "shared-impact multiple-package review trigger missing"
 
+# These guards check the new canonical owners and their phase-specific routes.
+# They deliberately do not infer agent behavior from matching documentation.
+$discovery = Normalize-RelationshipText (Get-MarkdownSection $workflow "### Discovery")
+$closeout = Normalize-RelationshipText (Get-MarkdownSection $workflow "## Documentation, Decisions, And Closeout")
+$scopeMethod = Normalize-RelationshipText (Get-MarkdownSection $workflow "### Scope Challenge Method")
+$goMethod = Normalize-RelationshipText (Get-MarkdownSection $text["docs/review-checklist.md"] "## Substantial Go Review Method")
+$decisionMethod = Normalize-RelationshipText (Get-MarkdownSection $decisionMemory "## Codex Discovery And Record Handling")
+$goWrapperPath = '.agents/skills/go-code-quality-review/SKILL.md'
+$goWrapper = Normalize-RelationshipText (Get-RepoText $goWrapperPath)
+$movedGuards = @(
+  @{ Path='docs/change-workflow.md#Discovery'; Text=$discovery; Label='decision discovery route';
+     Required='(?s)When a durable decision may change or the task originates in troubleshooting, follow \[Codex discovery and record handling\]\(decision-memory\.md#codex-discovery-and-record-handling\) before selecting scope\.';
+     Forbidden='(?i)Decision discovery (?:may|can) wait until closeout' },
+  @{ Path='docs/change-workflow.md#Closeout'; Text=$closeout; Label='decision closeout route';
+     Required='decision-memory\.md#codex-discovery-and-record-handling';
+     Forbidden='(?i)Closeout (?:may|can) omit the decision disposition' },
+  @{ Path='docs/decision-memory.md#Codex Discovery'; Text=$decisionMethod; Label='canonical decision method';
+     Required='(?s)Search `docs/decision-log\.md` and `docs/troubleshooting-log\.md`.*Classify the origin.*Preserve accepted history.*new superseding ADR and link both directions.*Maintain applicable indexes and cross-links.*At closeout';
+     Forbidden='(?i)Accepted history (?:may|can) be overwritten' },
+  @{ Path='docs/change-workflow.md#Scope Challenge'; Text=$scopeMethod; Label='scope challenge phase';
+     Required='Run before presenting the approval token\.';
+     Forbidden='(?i)Scope challenge (?:may|can) run after (?:exact )?approval' },
+  @{ Path='docs/change-workflow.md#Scope Challenge'; Text=$scopeMethod; Label='scope challenge depth';
+     Required='(?s)Every Non-trivial scope receives the initial and material-revision challenges.*Use this deeper method when scope is High-risk.*do not make every detailed prompt mandatory for every ledger';
+     Forbidden='(?i)The deeper method is mandatory for every ledger' },
+  @{ Path='docs/change-workflow.md#Scope Challenge'; Text=$scopeMethod; Label='scope challenge method';
+     Required='(?s)What edge case would make this scope unsafe or incomplete\?.*lifecycle.*backpressure.*retained state.*boundary inputs.*sentinel values.*protocols.*performance claims.*fuzzing.*support routing.*semantic callers';
+     Forbidden='(?i)Checking for the approval token alone completes scope challenge' },
+  @{ Path='docs/change-workflow.md#Scope Challenge'; Text=$scopeMethod; Label='scope challenge disposition';
+     Required='(?s)Classify each material issue.*The lead must disposition every material finding.*material-revision challenge and unresolved-decision gates';
+     Forbidden='(?i)Material scope findings (?:may|can) remain undispositioned' },
+  @{ Path='docs/change-workflow.md#Scope Challenge'; Text=$scopeMethod; Label='scope challenge independence';
+     Required='(?s)Use a separate non-steered read-only reviewer when credible challenge evidence depends on reasoning outside.*otherwise the method may remain lead-owned.*A separate reviewer supplies findings only.*fresh lead pass is not independent evidence';
+     Forbidden='(?i)Every scope challenge requires independent review' },
+  @{ Path='docs/change-workflow.md#High-risk'; Text=$highRisk; Label='scope method routing';
+     Required='\[Scope Challenge Method\]\(#scope-challenge-method\)';
+     Forbidden='(?i)High-risk scope (?:may|can) bypass scope challenge' },
+  @{ Path='docs/change-workflow.md#High-risk'; Text=$highRisk; Label='Go method routing';
+     Required='review-checklist\.md#substantial-go-review-method';
+     Forbidden='(?i)Substantial Go work (?:may|can) bypass code review' },
+  @{ Path='docs/review-checklist.md#Substantial Go'; Text=$goMethod; Label='canonical Go review method';
+     Required='(?s)Use after Go implementation and before final closeout.*Compare the approved Scope Ledger.*actual diff.*cardinality and retained-byte bounds.*deletion/eviction coupling.*goroutines.*shutdown.*file handles.*Command Evidence.*Report findings by severity';
+     Forbidden='(?i)A test pass alone completes substantial Go review' },
+  @{ Path='docs/review-checklist.md#Substantial Go'; Text=$goMethod; Label='Go reviewer responsibility';
+     Required='(?s)A separate reviewer is read-only and findings-only: do not generate transcript evidence or run final validation for the lead\. The lead retains its own validation responsibility';
+     Forbidden='(?i)(?:A separate reviewer (?:may|can) replace lead-owned final validation|The lead must not run final validation)' },
+  @{ Path=$goWrapperPath; Text=$goWrapper; Label='Go review skill destination';
+     Required='\[Substantial Go Review Method\]\(\.\./\.\./\.\./docs/review-checklist\.md#substantial-go-review-method\)';
+     Forbidden='(?i)The checklist method is optional' }
+)
+foreach ($guard in $movedGuards) {
+  Require-Pattern $guard.Path $guard.Text $guard.Required "$($guard.Label) missing"
+  Forbid-Pattern $guard.Path $guard.Text $guard.Forbidden "$($guard.Label) contains contradictory permission"
+}
+
+$artifactPaths = @(
+  '.agents/skills/go-code-walk/SKILL.md',
+  '.agents/skills/go-blast-radius-audit/SKILL.md',
+  '.agents/skills/security-best-practices/SKILL.md',
+  '.agents/skills/security-threat-model/SKILL.md'
+)
+foreach ($path in $artifactPaths) {
+  $artifact = Normalize-RelationshipText (Get-MarkdownSection (Get-RepoText $path) '## Artifact Authority')
+  Require-Pattern $path $artifact 'Repository writes require both a user request for the artifact and current authorization under `AGENTS\.md`\.' 'artifact request and authority boundary missing'
+  Require-Pattern $path $artifact 'A read-only review returns its findings in the response\.' 'read-only artifact boundary missing'
+  Require-Pattern $path $artifact 'When both requirements are met, create the requested artifact at the authorized path; otherwise do not write it\.' 'authorized artifact delivery missing'
+  Forbid-Pattern $path $artifact '(?i)(?:A read-only review (?:may|can) write repository files|User-requested and currently authorized artifacts must never be written)' 'artifact boundary contains contradictory permission'
+}
+
+$retained = Normalize-RelationshipText (Get-MarkdownSection $codeQuality '## Bounded Retained State')
+Require-Pattern 'docs/code-quality.md#Retained State' $retained 'simultaneous entries and retained bytes.*retained backing storage and secondary state' 'simultaneous retained-size proof missing'
+Require-Pattern 'docs/code-quality.md#Retained State' $retained 'A proof may combine a hard cap, a fixed key universe, bounded admission, maximum entry/backing size' 'combined retained-bound proof missing'
+Require-Pattern 'docs/code-quality.md#Retained State' $retained 'Account for admission bursts, cleanup delay, stale derived entries and transient overlap' 'retained cleanup and overlap proof missing'
+Require-Pattern 'docs/code-quality.md#Retained State' $retained 'A cardinality cap alone does not bound variable payloads or retained slice capacity' 'retained backing-size boundary missing'
+Require-Pattern 'docs/code-quality.md#Retained State' $retained 'Expiry, ownership-coupled deletion and reference counting alone are not proof of simultaneous size bounds' 'reclamation-only proof boundary missing'
+Require-Pattern 'docs/code-quality.md#Retained State' $retained 'primary reclamation mechanism, but that classification does not replace the simultaneous-size proof' 'primary-mechanism compatibility boundary missing'
+Forbid-Pattern 'docs/code-quality.md#Retained State' $retained '(?i)Expiry alone proves a simultaneous memory bound' 'retained-bound rule contains contradictory permission'
+$retainedSkill = Normalize-RelationshipText (Get-RepoText '.agents/skills/go-retained-state-audit/SKILL.md')
+Require-Pattern '.agents/skills/go-retained-state-audit/SKILL.md' $retainedSkill 'Apply `docs/code-quality\.md` `Bounded Retained State`: prove simultaneous entries and retained bytes' 'retained audit canonical route missing'
+
 $subagents = Get-MarkdownSection $workflow "## Subagents When Used"
 Require-Pattern "docs/change-workflow.md#Subagents" $subagents '(?s)standing authorization.*active platform policy permits' "detailed standing authorization missing"
 $workflowAuthorizationLimits = Get-PatternGroup "docs/change-workflow.md#Subagents" $subagents '(?is)Standing authorization\s+(?:does not|must not)(?<limits>.*?)(?:\.\s|$)' "limits" "detailed standing authorization negation relationship missing"
@@ -449,7 +529,7 @@ Require-Pattern "docs/decision-log.md" $decisionLog '(?m)^\| ADR-0228 \| Correct
 $networkQuality = Get-MarkdownSection $codeQuality "## Network And Lifecycle"
 Require-Pattern "docs/code-quality.md#Network" $networkQuality '(?s)context cancellation.*deadlines.*idle/stall timeouts' "shared network/lifecycle obligation changed"
 $retainedQuality = Get-MarkdownSection $codeQuality "## Bounded Retained State"
-foreach ($concept in @('cardinality cap','expiry','ownership-coupled deletion','reference-counted reclamation','bounded by another structure')) {
+foreach ($concept in @('cardinality cap','expiry','ownership-coupled deletion','reference(?:-counted reclamation|\s+counting)','(?:bounded by another structure|another explicitly bounded owner)')) {
   Require-Pattern "docs/code-quality.md#Bounded Retained State" $retainedQuality $concept "shared retained-state obligation missing: $concept"
 }
 $hotQuality = Get-MarkdownSection $codeQuality "## Hot Paths And Performance"

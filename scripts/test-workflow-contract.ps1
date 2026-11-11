@@ -136,8 +136,67 @@ try {
   Invoke-MutationFixture "docs/change-workflow.md" { Replace-Once "docs/change-workflow.md" "revision, challenge the revised scope again before requesting approval." "revision, challenge the revised scope again before requesting approval. The revised scope needs no challenge." } { Invoke-Fixture 1 "revised scope challenge contradiction" "revised scope rejects contradictory exemption" }
   Invoke-MutationFixture "docs/change-workflow.md" { Replace-Once "docs/change-workflow.md" "Repeat until every material finding is resolved or explicitly accepted as a" "Findings may remain unresolved without acceptance as a" } { Invoke-Fixture 1 "scope challenge disposition gate missing" "material findings require disposition" }
   Invoke-SkillFixture 0 "PASS all requested repo skills verified." "positive skill methods"
-  $frontmatterPath = '.agents/skills/initial-review/SKILL.md'
-  Invoke-MutationFixture $frontmatterPath { Replace-Once $frontmatterPath "`n---`n" "`n----------`n" } { Invoke-SkillFixture 1 "[initial-review] missing SKILL.md front matter" "skill rejects nonexact frontmatter delimiter" }
+  $frontmatterPath = '.agents/skills/explain-code/SKILL.md'
+  Invoke-MutationFixture $frontmatterPath { Replace-Once $frontmatterPath "`n---`n" "`n----------`n" } { Invoke-SkillFixture 1 "[explain-code] missing SKILL.md front matter" "skill rejects nonexact frontmatter delimiter" }
+
+  # A surviving method without its phase-specific route is not sufficient.
+  # Named failures keep an unrelated checker error from satisfying a fixture.
+  foreach ($case in @(
+    @{ Path='docs/change-workflow.md'; Label='decision discovery route'; From="When a durable decision may change or the task originates in troubleshooting,`nfollow [Codex discovery and record handling](decision-memory.md#codex-discovery-and-record-handling)`nbefore selecting scope." },
+    @{ Path='docs/change-workflow.md'; Label='decision closeout route'; From="Use [Codex discovery and record handling](decision-memory.md#codex-discovery-and-record-handling)`nfor the record choice, preserved history, indexes and closeout disposition." },
+    @{ Path='docs/decision-memory.md'; Label='canonical decision method'; From='4. Preserve accepted history. Reverse or replace an accepted decision through a' },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge phase'; From='Run before presenting the approval token.' },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge depth'; From='required above. Use this deeper method when scope is High-risk, uncertain,' },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge method'; From='What edge case would make this scope unsafe or incomplete?' },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge disposition'; From="The lead must disposition every`nmaterial finding." },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge independence'; From='A separate reviewer supplies findings only and' },
+    @{ Path='docs/change-workflow.md'; Label='scope method routing'; From='[Scope Challenge Method](#scope-challenge-method)' },
+    @{ Path='docs/change-workflow.md'; Label='Go method routing'; From='[Substantial Go Review Method](review-checklist.md#substantial-go-review-method)' },
+    @{ Path='docs/review-checklist.md'; Label='canonical Go review method'; From='1. Compare the approved Scope Ledger and meaningful implementation units to the' },
+    @{ Path='docs/review-checklist.md'; Label='Go reviewer responsibility'; From="The lead retains its`nown validation responsibility" },
+    @{ Path='.agents/skills/go-code-quality-review/SKILL.md'; Label='Go review skill destination'; From='../../../docs/review-checklist.md#substantial-go-review-method' }
+  )) {
+    Invoke-MutationFixture $case.Path { Replace-Once $case.Path $case.From 'Method or route omitted.' } { Invoke-Fixture 1 "$($case.Label) missing" "$($case.Label) remains required" }
+  }
+  foreach ($case in @(
+    @{ Path='docs/change-workflow.md'; Label='scope challenge phase'; Anchor='Run before presenting the approval token.'; Contrary='Scope challenge may run after approval.' },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge depth'; Anchor='Ask: `What edge case would make this scope unsafe or incomplete?`'; Contrary='The deeper method is mandatory for every ledger.' },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge disposition'; Anchor='Ask: `What edge case would make this scope unsafe or incomplete?`'; Contrary='Material scope findings may remain undispositioned.' },
+    @{ Path='docs/change-workflow.md'; Label='scope challenge independence'; Anchor='Ask: `What edge case would make this scope unsafe or incomplete?`'; Contrary='Every scope challenge requires independent review.' },
+    @{ Path='docs/review-checklist.md'; Label='Go reviewer responsibility'; Anchor='Apply Fresh Verification And Invalidation below; lead-owned review is not'; Contrary='A separate reviewer may replace lead-owned final validation.' }
+  )) {
+    Invoke-MutationFixture $case.Path { Replace-Once $case.Path $case.Anchor ($case.Anchor + ' ' + $case.Contrary) } { Invoke-Fixture 1 "$($case.Label) contains contradictory permission" "$($case.Label) rejects retained keywords with contrary permission" }
+  }
+  foreach ($case in @(
+    @{ Path='docs/code-quality.md'; Label='simultaneous retained-size proof'; From="simultaneous entries and`nretained bytes" },
+    @{ Path='docs/code-quality.md'; Label='combined retained-bound proof'; From='A proof may combine a hard cap, a fixed key universe, bounded admission,' },
+    @{ Path='docs/code-quality.md'; Label='retained cleanup and overlap proof'; From="Account for admission bursts,`ncleanup delay, stale derived entries and transient overlap" },
+    @{ Path='docs/code-quality.md'; Label='retained backing-size boundary'; From="A cardinality cap alone does not bound variable payloads`nor retained slice capacity." },
+    @{ Path='docs/code-quality.md'; Label='reclamation-only proof boundary'; From="Expiry, ownership-coupled deletion and reference counting alone are not proof`nof simultaneous size bounds." },
+    @{ Path='docs/code-quality.md'; Label='primary-mechanism compatibility boundary'; From="primary reclamation mechanism, but that`nclassification does not replace the simultaneous-size proof" },
+    @{ Path='.agents/skills/go-retained-state-audit/SKILL.md'; Label='retained audit canonical route'; From='Apply `docs/code-quality.md` `Bounded Retained State`: prove simultaneous' }
+  )) {
+    Invoke-MutationFixture $case.Path { Replace-Once $case.Path $case.From 'Bound requirement omitted.' } { Invoke-Fixture 1 "$($case.Label) missing" "$($case.Label) remains required" }
+  }
+  Invoke-MutationFixture 'docs/code-quality.md' { Replace-Once 'docs/code-quality.md' 'A proof may combine a hard cap' 'Expiry alone proves a simultaneous memory bound. A proof may combine a hard cap' } { Invoke-Fixture 1 'retained-bound rule contains contradictory permission' 'retained proof rejects expiry-only claim alongside correct requirements' }
+
+  foreach ($artifactPath in @(
+    '.agents/skills/go-code-walk/SKILL.md', '.agents/skills/go-blast-radius-audit/SKILL.md',
+    '.agents/skills/security-best-practices/SKILL.md', '.agents/skills/security-threat-model/SKILL.md'
+  )) {
+    Invoke-MutationFixture $artifactPath { Replace-Once $artifactPath "Repository writes require both a user request for the artifact and current`nauthorization under ``AGENTS.md``." 'Repository write authority omitted.' } { Invoke-Fixture 1 'artifact request and authority boundary missing' "$artifactPath requires request and current authority" }
+    $artifactAnchor="This skill does not authorize`nimplementation or extra files."
+    Invoke-MutationFixture $artifactPath { Replace-Once $artifactPath $artifactAnchor ($artifactAnchor + ' A read-only review may write repository files.') } { Invoke-Fixture 1 'artifact boundary contains contradictory permission' "$artifactPath rejects read-only writes" }
+    Invoke-MutationFixture $artifactPath { Replace-Once $artifactPath $artifactAnchor ($artifactAnchor + ' An explicitly requested and currently authorized artifact can be written.') } { Invoke-Fixture 0 'PASS Codex workflow static invariants passed.' "$artifactPath permits requested authorized artifacts" }
+  }
+  foreach ($case in @(
+    @{ Skill='design-challenger'; From='lightweight probe' },
+    @{ Skill='test-strategy-adversary'; From='pre-approval falsifiability probe' },
+    @{ Skill='workflow-contract-audit'; From='effectiveness mode' }
+  )) {
+    $promptPath=".agents/skills/$($case.Skill)/agents/openai.yaml"
+    Invoke-MutationFixture $promptPath { Replace-Once $promptPath $case.From 'scope omitted' } { Invoke-SkillFixture 1 "[$($case.Skill)] UI prompt scope missing: $($case.From)" "$($case.Skill) UI prompt retains its scope" }
+  }
   Write-Host "PASS CRLF fixture source accepted"
   Invoke-MutationFixture "go.mod" { Replace-Once "go.mod" "go 1.27.1" "go 1.26.0" } { Invoke-Fixture 1 "Go 1.27.1 module requirement missing" "module rejects obsolete Go requirement" }
   Invoke-MutationFixture ".golangci.yaml" { Replace-Once ".golangci.yaml" 'go: "1.27"' 'go: "1.26"' } { Invoke-Fixture 1 "Go 1.27 lint target missing" "lint rejects obsolete Go target" }
@@ -379,11 +438,6 @@ try {
   Set-Content -LiteralPath $oracleFullPath -Value $original.Replace("independent golden vectors","implementation-derived vectors") -NoNewline
   Invoke-SkillFixture 1 "missing preserved trigger or method invariant: independent golden vectors" "scientific method cannot disappear"
   Set-Content -LiteralPath $oracleFullPath -Value $original -NoNewline
-
-  $scopeSkillPath=".agents/skills/scope-ledger-adversarial-review/SKILL.md"
-  $original=Replace-Once $scopeSkillPath "Do not trigger for every Non-trivial ledger." "Trigger for every Non-trivial ledger."
-  Invoke-SkillFixture 1 "missing preserved trigger or method invariant: Do not trigger for every" "scope specialist cannot become default"
-  Set-Content -LiteralPath (Join-Path $fixtureRoot $scopeSkillPath) -Value $original -NoNewline
 
   $leakSkillPath = Join-Path $fixtureRoot ".agents/skills/go-leak-detection/SKILL.md"
   $original = Get-Content -LiteralPath $leakSkillPath -Raw

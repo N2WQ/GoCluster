@@ -5,6 +5,9 @@
   Reads strict UTF-8 Git blobs from immutable revisions and reports each
   declared scenario independently. Results are informational context-footprint
   proxies, not adoption gates, billed tokens, reasoning usage, or quality proof.
+  Standalone decision-memory and scope-review scenarios were retired when their
+  methods moved to canonical documents. Remaining scenarios exclude those
+  retired routes and cannot establish total consolidation savings.
 .PARAMETER BaselineRevision
   Immutable baseline Git revision.
 .PARAMETER CandidateRevision
@@ -66,9 +69,9 @@ $standardExecution = @('AGENTS.md','docs/change-workflow.md','docs/code-quality.
 $highRiskPlanning = $standardPlanning + @('.agents/skills/README.md')
 $highRiskExecution = $standardExecution + @('.agents/skills/README.md','docs/runbooks/codex-triggered-validation-tools.md')
 $skillNames = @(
-  'decision-memory-audit','workflow-contract-audit',
+  'workflow-contract-audit',
   'requirements-ambiguity-review','scientific-model-oracle',
-  'design-challenger','scope-ledger-adversarial-review',
+  'design-challenger',
   'test-strategy-adversary','go-code-quality-review','go-code-walk',
   'go-blast-radius-audit','go-config-contract-audit',
   'go-connection-lifecycle-audit','go-leak-detection',
@@ -108,5 +111,6 @@ if ($AsJson) {
 } else {
   $rows | Format-Table -AutoSize
   Write-Host "INFO context-footprint results are informational; growth or reduction does not decide whether a rule is useful."
+  Write-Host "INFO retired decision-memory and scope-review routes are excluded; these scenarios do not establish total consolidation savings."
 }
 exit 0

@@ -72,13 +72,30 @@ connection-state, recovery, diagnostic, and leak methods.
 
 Bounded retained state is mandatory. Any new or modified server-lifetime map,
 `sync.Map`, heap/index, cache, pool, interner, retained slice, or side table
-must explicitly document and validate one of:
+must document and validate a defensible bound on simultaneous entries and
+retained bytes. Include retained backing storage and secondary state, not just
+visible lengths or primary counters. State the enforcing paths, assumptions
+and evidence; distinguish a proven bound from an estimate or sampled trend.
 
-- a hard cardinality cap;
-- a time/window expiry rule;
-- ownership-coupled deletion;
-- reference-counted reclamation; or
-- a clear proof that lifetime and cardinality are bounded by another structure.
+A proof may combine a hard cap, a fixed key universe, bounded admission,
+maximum entry/backing size, expiry, ownership-coupled deletion, reference
+counting or another explicitly bounded owner. Account for admission bursts,
+cleanup delay, stale derived entries and transient overlap when they affect
+the claimed maximum. A cardinality cap alone does not bound variable payloads
+or retained slice capacity.
+
+Expiry, ownership-coupled deletion and reference counting alone are not proof
+of simultaneous size bounds. Expiry limits retention age only when cleanup
+timing is enforced; its peak size also depends on admission or a bounded key
+universe and entry size. Reclamation requires a bound on simultaneously live
+owners/references and their retained state.
+
+Executor audits may name a primary reclamation mechanism, but that
+classification does not replace the simultaneous-size proof. Use supplementary
+or combined constraints where needed; do not require a new capacity setting
+when existing enforced limits establish the bound. A bound on retained data
+does not by itself establish a process RSS or working-set ceiling; label
+allocator/runtime overhead estimates and unproved assumptions honestly.
 
 Soft optimization caches are still resources. Interners, dedupe helpers,
 scratch caches, and memoization maps may not grow for process lifetime unless

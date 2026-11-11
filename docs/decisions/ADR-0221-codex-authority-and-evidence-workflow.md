@@ -1,5 +1,10 @@
 # ADR-0221: Codex Authority And Evidence Workflow
 
+[ADR-0336](ADR-0336-codex-method-ownership-and-retained-bounds.md) refines method
+ownership and Codex discovery routes, with complete scope challenge and Go
+review methods in their canonical documents. It preserves the obligations and
+all [ADR-0335](ADR-0335-complete-proportionate-codex-delivery.md) safeguards.
+
 [ADR-0242](ADR-0242-release-preparation-safety.md) replaces only the checker's
 release-script changed-path exclusion. The normal exact approval gate and all
 Fable ownership protections remain.
