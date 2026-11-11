@@ -1,0 +1,106 @@
+# CTY and grid repair execution — approved v5
+
+## Authority and window
+
+- Owner authorization: exact `Approved v5` in this conversation.
+- Checkout: `C:\src\gocluster`, branch `cty-to-grid-fix`.
+- Starting revision: `28e5c24542e3b97d533ff6486227ebbb282a9690`.
+- Start: 2026-11-11 01:37:11 America/New_York (06:37:11 UTC).
+- Deadline: 2026-11-11 07:37:11 America/New_York (12:37:11 UTC).
+- Reserve final validation from 10:37:11 UTC; start no slice that cannot be
+  completed and checked within the remaining implementation window. Finish early
+  if complete. At the deadline, checkpoint and pause unfinished work.
+- Preserve and never stage the pre-existing `data/bulletins/history.json` edit.
+- No elevation, installation, machine security/firewall/power changes, production
+  access, reset/import, deployment, merge, push, or release.
+
+## Approved implementation queue
+
+| Slice | Contract | Status |
+| --- | --- | --- |
+| S0 | Baseline source/tool/test identity and comparable benchmarks | Passed targeted baseline |
+| S1 | Exact-only entries remain full-key matches, never prefix fallback; preserve portable precedence and inventory | Pending |
+| S2 | One CTY conversion negates west-positive longitude once in grid backfill and SHOW PROP; new estimates remain persisted | Pending |
+| S3 | Disk supplies grid/provenance, never CTY authority; positive/negative classification cache belongs to its CTY snapshot with bounded identity metadata | Pending |
+| S4 | Integrated/disposable backup, empty-start, recovery-isolation, restart/rollback and protected-input rehearsal; operator/support and decision records | Pending |
+| S5 | Final ordinary/race/analyzer/fuzz/benchmark/connected-regression/code-map/source review | Pending |
+
+The inherited pending merge (`grid_writer.go`) and complete grid retirement
+(ADR-0338) are retained and regression-tested, not reimplemented. S1 and S2 are
+independently useful; integrated S3/S4 results require their retained dependencies.
+Only one implementation slice writes at a time; reviewers remain read-only.
+
+## Engineering and evidence gates
+
+- Follow the current AGENTS.md, code-quality standard, validation runbook and
+  final review checklist. Source completeness precedes dependent implementation.
+- Fixed real-file expectations and an independent longest-eligible-prefix oracle
+  must expose the wrong CTY convention and exact-only fallback. Include actual
+  country filtering and license-jurisdiction consumers.
+- Retain raw PrefixInfo coordinates, the generic geographic converter,
+  persisted encoding, reported-locator paths, portable/beacon normalization,
+  queue limits, drops, timeout and grid shutdown ownership.
+- Classification snapshot identity cannot reference a whole historical database
+  or use an unbounded registry. Contradictory disk CTY fields must lose to active
+  positive and negative results in both grid lookup paths.
+- Force same-pending-batch persistence and barrier-controlled old/new snapshot
+  interleavings. Verify durable results after actual store close/reopen.
+- Compare matched baseline/candidate cold and warm measurements, allocations and
+  bounds. No production performance or process-memory-ceiling claim follows.
+- Rehearsal must reopen the backup and verify literal reported/derived rows,
+  prove zero legacy rows, and exercise actual recovery selection. Protected-input
+  evidence must force changed-content publication, prove permission-specific
+  replacement denial and unchanged checksum, then verify startup consumption.
+- After targeted ordinary/race gates, checkpoint a passing slice. Diagnose and
+  repair failures only within scope. Defer a blocked slice and dependents;
+  continue independent approved work. Restore only demonstrably owned unfinished
+  edits to a recorded checkpoint. Never weaken assertions or waive a required
+  check. Full-lane failure leaves overall qualification incomplete.
+- Final state requires full native ordinary/race, vet, Staticcheck, lint,
+  relevant connected CustomSCP ordinary/race, matching fuzz and performance
+  evidence, affected docs/ADR/TSR/index checks, generated maps and direct review.
+
+## Boundaries and review disposition
+
+New CTY estimates are saved in Pebble with derived provenance and reported grids
+win. There is no on-demand-only change. Persisted estimates can remain stale
+after CTY refresh; clearing the combined cache can temporarily hide a pending
+reported grid. Those freshness changes, portable policy, location-quality
+learning, generic poles/antimeridian handling and all legacy-row imports remain
+outside this scope. Locator length alone does not prove report authenticity.
+
+The first stop of a live legacy build is not qualified by a new build's stop
+tests. Actual production stop, backup and cutover evidence remains separate.
+Existing overload drops and storage-error behavior remain; synchronous storage
+and callbacks are owned until return, not subject to a new runtime deadline.
+
+Preapproval lead analysis and a separate read-only challenge dispositioned:
+already implemented merge/shutdown repairs, dependency-aware partial results,
+comparable baseline measurements, contradictory disk oracles, old-snapshot
+completion, actual recovery selection, and real replacement-denial evidence.
+The earlier coordinate oracle was separately non-steered: supplied format/data,
+not the handoff, preferred implementation or implementation-derived answers.
+The shipped file is still SHA256
+`5d9602e15886a5f16afd6282ad6a220d62d8dcd3e24665dca86e939b2bd34488`.
+
+## Execution evidence
+
+- S0: branch/starting revision and unrelated edit verified. Installed native
+  tools: Go 1.27.1, Staticcheck 2026.2.1, golangci-lint 2.14.0 and GCC 16.2.0.
+  No machine settings were changed. Windows firewall notifications are enabled;
+  a denied operation remains a recorded gap rather than elevation authority.
+- Raw logs and frozen benchmark artifacts: `.tmp/cty-grid-v5/`.
+- S0 ordinary and race selections each passed 51 cases with zero skips across
+  CTY, gridstore, cluster and telnet (`s0-baseline-{ordinary,race}.log`).
+  Frozen CTY/cache binaries and five-sample baseline measurements are retained.
+  Warm CTY positive/negative hits allocate zero; cold churn is three allocations
+  and 240 bytes per lookup. The first negative benchmark used `ZZ9ABC`, which is
+  actually Brazil in this dataset; its guard failed and the invalid fixture log
+  is preserved. Verified miss `QZ9ABC` replaces it; corrected benchmark passes.
+- One shell launch transiently failed to find `pwsh.dll`. A read-only fallback
+  confirmed the installed files still exist; no provisioning or security change
+  was attempted. Subsequent native execution must establish tool availability.
+
+## Final result
+
+Pending implementation and final relevant-state validation.
