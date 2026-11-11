@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0339 | Stable Ordinary Broadcast Session Affinity | Accepted | 2026-11-11 | telnet workers, ordering, session membership | none | none | [ADR-0339](decisions/ADR-0339-stable-broadcast-affinity.md) |
 | ADR-0338 | Complete Grid Store Retirement | Accepted | 2026-11-11 | grid lifecycle, maintenance, recovery, storage ownership | none; refines ADR-0275 | none | [ADR-0338](decisions/ADR-0338-grid-store-retirement.md) |
 | ADR-0337 | Short HELP And Task Guides | Accepted | 2026-11-10 | commands, HELP, operator documentation | ADR-0264 landing-page presentation | none | [ADR-0337](decisions/ADR-0337-short-help-and-task-guides.md) |
 | ADR-0336 | Codex Method Ownership And Retained Bounds | Accepted | 2026-11-10 | Codex workflow, skills, retained-state proof | ADR-0156 decision-skill identity; ADR-0331 method location; refines ADR-0221 ownership | none | [ADR-0336](decisions/ADR-0336-codex-method-ownership-and-retained-bounds.md) |

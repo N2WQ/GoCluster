@@ -404,6 +404,7 @@ type Client struct {
 	writeMu                 sync.Mutex             // Guards writer/deadline usage for echo + writer loop
 	callsign                string                 // Client's amateur radio callsign
 	peerSessionID           uint64                 // Assigned once under clientsMutex when this session becomes current
+	broadcastShard          int                    // One-based worker affinity for this session; guarded by clientsMutex
 	connected               time.Time              // Timestamp when client connected
 	server                  *Server                // Back-reference to server for formatting/helpers
 	address                 string                 // Client's IP address
@@ -2907,11 +2908,27 @@ func (s *Server) cachedClientShards() [][]*Client {
 		workers = 1
 	}
 	shards := make([][]*Client, workers)
-	idx := 0
+	// A surviving session must stay on its existing ordered worker queue even
+	// when old immutable snapshots still have jobs outstanding. Departures can
+	// leave skew; only new sessions are balanced into the shortest current shard.
 	for _, client := range s.clients {
-		shard := idx % workers
+		if client != nil && client.broadcastShard > 0 {
+			shard := client.broadcastShard - 1
+			shards[shard] = append(shards[shard], client)
+		}
+	}
+	for _, client := range s.clients {
+		if client == nil || client.broadcastShard != 0 {
+			continue
+		}
+		shard := 0
+		for i := 1; i < workers; i++ {
+			if len(shards[i]) < len(shards[shard]) {
+				shard = i
+			}
+		}
+		client.broadcastShard = shard + 1
 		shards[shard] = append(shards[shard], client)
-		idx++
 	}
 	s.clientShardCache.Store(&clientShardSnapshot{shards: shards})
 	s.shardsDirty.Store(false)

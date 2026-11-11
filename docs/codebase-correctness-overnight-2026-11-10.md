@@ -30,7 +30,7 @@ records execution; it does not authorize additional work.
 | S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Targeted validated; final lane pending |
 | S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Targeted validated; final lane pending |
 | S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Targeted validated; final lane pending |
-| S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Queued |
+| S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Targeted validated; final lane pending |
 | S8 | Optional measured DX normalization once per worker job and SELF match once per recipient using existing exact helpers, without new retained state | Queued, conditional |
 | S9 | Optional temporal no-due return before allocation, with unchanged deadlines, force, order and model decisions | Queued, conditional |
 
@@ -211,6 +211,31 @@ validity change or claim is part of this work.
   (`s6-hook-*-final.txt`, `s6-hook-benchstat.txt`). These isolate the correctness
   fence, not full-pipeline/p99 cost. An earlier overlapping exploratory run is
   retained but is not the matched result. No production latency claim is made.
+
+- S7 red: removing only worker 0's client forced the surviving worker-1 session
+  onto worker 0 on the original rebuild. Actual workers then delivered literal
+  newer before older in immediate and batched modes (`s7-red.log`). Exact batch
+  fillers and sentinel completion establish causality without an arbitrary tick.
+- S7 ordinary/race selection each passed 29 cases, zero skips (`s7-complete.log`,
+  `s7-race.log`), including concurrent cached access, 128 session replacements,
+  SELF, dedupe, worker batching and overflow. Review added a trailing worker-1
+  sentinel before no-extra/drop assertions; three affected cases passed ordinary/
+  race (`s7-order-final*.log`). Source review found no production blocker.
+- S7 retention: one fixed-size integer per already-owned Client object; no new
+  references, historical keys, timers, queues, counters or side maps. Existing
+  membership/snapshot/job owners control lifetime; active client count already
+  observes the primary population. This does not establish a process byte cap.
+  Frozen-binary verbose benchmark setup reports Client 912 to 920 bytes on amd64
+  (`s7-size-{baseline,candidate}.txt`), an eight-byte per-object increase.
+- S7 local cost (eight 300ms samples, matched environment): 100-client rebuild
+  3.238 to 3.446 microseconds; 1,000-client rebuild 26.70 to 35.91 microseconds.
+  Cached paths remained about 2.25–2.45ns; their source is unchanged. Bytes and
+  allocations are unchanged in all four shapes, cached zero/zero. The deliberate
+  second map pass costs rebuild CPU; it prevents reordering without per-spot
+  synchronization. No production throughput/p99 claim. Evidence:
+  `s7-affinity-{baseline,candidate}.txt`, `s7-affinity-benchstat.txt`.
+- S7 ADR-0339/TSR-0125/operator/support routing record stable ordinary affinity,
+  possible departure skew and the separate immediate SELF lane.
 
 ## Closeout
 

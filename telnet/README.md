@@ -361,6 +361,12 @@ still honor TOXIC. Command/history self matches retain their exception
 independently of SELF, also honoring TOXIC. Explicit history BAND/MODE/COMMENT
 clauses are mandatory even for self-spots.
 
+Ordinary live broadcasts keep each active session on one worker, preserving its
+queue order when other clients connect or leave. Departures can leave worker
+load uneven; new sessions fill the shorter shards. Direct SELF delivery remains
+a separate immediate path and can overtake ordinary broadcasts. Filtering,
+pause and bounded-queue drops still apply. See [ADR-0339](../docs/decisions/ADR-0339-stable-broadcast-affinity.md).
+
 Rule limits apply before publication:
 
 | Boundary | Limit |
