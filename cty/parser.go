@@ -35,9 +35,9 @@ type PrefixInfo struct {
 type CTYDatabase struct {
 	Data map[string]PrefixInfo
 	Keys []string
-	// trie stores all CTY keys (exact calls and prefixes) in a read-only prefix trie
-	// so longest-prefix matches can be resolved in O(L) time where L is the callsign
-	// length (typically < 15 bytes).
+	// trie stores ordinary prefix keys only. Full-key lookup uses Data, retaining
+	// exact calls without allowing them to classify longer, unrelated calls.
+	// Prefix matches remain O(L) in callsign length (typically < 15 bytes).
 	trie ctyTrie
 	// metrics track lookup/caching behavior for stats reporting. Cache metrics are
 	// retained for compatibility but remain zero because the LRU is disabled.
@@ -66,14 +66,14 @@ type ctyTrieNode struct {
 	terminalKey string
 }
 
-// Purpose: Build a read-only trie over CTY keys for longest-prefix lookups.
-// Key aspects: Stores nodes in a slice with integer child indexes for compactness.
+// Purpose: Build a read-only trie over keys eligible for prefix fallback.
+// Key aspects: Exact-only keys stay in Data/Keys, never in the prefix trie.
 // Upstream: LoadCTYDatabaseFromReader.
 // Downstream: ctyTrie.longestPrefixKey.
-func buildCTYTrie(keys []string) ctyTrie {
+func buildCTYTrie(keys []string, data map[string]PrefixInfo) ctyTrie {
 	tr := ctyTrie{nodes: []ctyTrieNode{{next: make(map[byte]int)}}}
 	for _, key := range keys {
-		if key == "" {
+		if key == "" || data[key].ExactCallsign {
 			continue
 		}
 		state := 0
@@ -168,7 +168,7 @@ func LoadCTYDatabaseFromReader(r io.ReadSeeker) (*CTYDatabase, error) {
 		}
 		return len(keys[i]) > len(keys[j])
 	})
-	trie := buildCTYTrie(keys)
+	trie := buildCTYTrie(keys, data)
 	return &CTYDatabase{
 		Data: data,
 		Keys: keys,

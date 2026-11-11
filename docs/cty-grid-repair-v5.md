@@ -19,7 +19,7 @@
 | Slice | Contract | Status |
 | --- | --- | --- |
 | S0 | Baseline source/tool/test identity and comparable benchmarks | Passed targeted baseline |
-| S1 | Exact-only entries remain full-key matches, never prefix fallback; preserve portable precedence and inventory | Pending |
+| S1 | Exact-only entries remain full-key matches, never prefix fallback; preserve portable precedence and inventory | Targeted ordinary/race/fuzz passed |
 | S2 | One CTY conversion negates west-positive longitude once in grid backfill and SHOW PROP; new estimates remain persisted | Pending |
 | S3 | Disk supplies grid/provenance, never CTY authority; positive/negative classification cache belongs to its CTY snapshot with bounded identity metadata | Pending |
 | S4 | Integrated/disposable backup, empty-start, recovery-isolation, restart/rollback and protected-input rehearsal; operator/support and decision records | Pending |
@@ -100,6 +100,15 @@ The shipped file is still SHA256
 - One shell launch transiently failed to find `pwsh.dll`. A read-only fallback
   confirmed the installed files still exist; no provisioning or security change
   was attempted. Subsequent native execution must establish tool availability.
+- S1 red evidence: shipped exact-only regressions, synthetic best ordinary
+  ancestor, actual country-rule evaluation and real login license routing all
+  failed on the inherited implementation (`s1-red*.log`). Trie construction now
+  excludes exact-only entries while Data/Keys and full-key matching are intact.
+  Selected ordinary/race runs each passed 68 cases, zero skips
+  (`s1-{green,race}.log`). The independent dictionary-scan fuzz oracle passed
+  1,718,289 executions in 30 seconds (`s1-fuzz.log`). A separate read-only
+  source/test reviewer found no material issue; no reviewer test execution is
+  claimed. Native PowerShell subsequently ran successfully without provisioning.
 
 ## Final result
 
