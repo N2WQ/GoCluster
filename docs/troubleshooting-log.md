@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0119 | Grid Batch Provenance | Monitoring | 2026-11-10 | grid metadata batching and persistence | none | `docs/troubleshooting/TSR-0119-grid-batch-provenance.md` |
 | TSR-0118 | Workflow Fixture Git Line Endings | Monitoring | 2026-11-10 | Windows PowerShell, workflow fixture, Git | none | `docs/troubleshooting/TSR-0118-workflow-fixture-git-line-endings.md` |
 | TSR-0117 | CI Fixtures and Shadow Run Identity | Monitoring | 2026-11-10 | executable fixture, secondary-dedupe shadow reporting | none | `docs/troubleshooting/TSR-0117-ci-fixtures-and-shadow-run-identity.md` |
 | TSR-0116 | RBN CW Display Projection Cleanup | Monitoring | 2026-11-01 | RBN parsing, CW display, archive history | none | `docs/troubleshooting/TSR-0116-rbn-cw-display-projection-cleanup.md` |

@@ -3105,38 +3105,6 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		syncLookupQueue = make(chan gridLookupRequest, gridSyncLookupQueueDepth)
 	}
 
-	mergePending := func(existing, incoming gridstore.Record) gridstore.Record {
-		merged := existing
-		if incoming.Grid.Valid {
-			merged.Grid = incoming.Grid
-		}
-		if incoming.CTYValid {
-			merged.CTYValid = true
-			merged.CTYADIF = incoming.CTYADIF
-			merged.CTYCQZone = incoming.CTYCQZone
-			merged.CTYITUZone = incoming.CTYITUZone
-			merged.CTYContinent = incoming.CTYContinent
-			merged.CTYCountry = incoming.CTYCountry
-		}
-		if incoming.Observations > 0 {
-			merged.Observations += incoming.Observations
-		}
-		if !incoming.FirstSeen.IsZero() {
-			if merged.FirstSeen.IsZero() || incoming.FirstSeen.Before(merged.FirstSeen) {
-				merged.FirstSeen = incoming.FirstSeen
-			}
-		}
-		if !incoming.UpdatedAt.IsZero() {
-			if merged.UpdatedAt.IsZero() || incoming.UpdatedAt.After(merged.UpdatedAt) {
-				merged.UpdatedAt = incoming.UpdatedAt
-			}
-		}
-		if incoming.ExpiresAt != nil {
-			merged.ExpiresAt = incoming.ExpiresAt
-		}
-		return merged
-	}
-
 	lookupRecord := func(baseCall, rawCall string) (*gridstore.Record, error) {
 		var baseRec *gridstore.Record
 		if baseCall == "" {
@@ -3213,101 +3181,7 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		return &derivedRec, nil
 	}
 
-	// Purpose: Background writer loop to batch metadata updates and periodic TTL purges.
-	// Key aspects: Flushes on size/interval and closes done on exit.
-	// Upstream: startGridWriter.
-	// Downstream: store.UpsertBatch, store.PurgeOlderThan, and metrics updates.
-	go func() {
-		defer close(done)
-		ticker := time.NewTicker(flushInterval)
-		defer ticker.Stop()
-		var ttlTicker *time.Ticker
-		var ttlCh <-chan time.Time
-		if ttl > 0 {
-			ttlTicker = time.NewTicker(ttl)
-			defer ttlTicker.Stop()
-			ttlCh = ttlTicker.C
-		}
-
-		pending := make(map[string]gridstore.Record)
-		// Purpose: Flush pending updates to the database in a batch.
-		// Key aspects: Retains batch on busy errors; clears on success.
-		// Upstream: update loop and ticker ticks.
-		// Downstream: store.UpsertBatch, metrics.learnedTotal.
-		flush := func() {
-			if len(pending) == 0 {
-				return
-			}
-			store := getStore()
-			if store == nil {
-				clear(pending)
-				return
-			}
-			batch := make([]gridstore.Record, 0, len(pending))
-			gridUpdates := 0
-			for call := range pending {
-				rec := pending[call]
-				if rec.Grid.Valid {
-					gridUpdates++
-				}
-				batch = append(batch, rec)
-			}
-			start := time.Now().UTC()
-			if err := store.UpsertBatch(batch); err != nil {
-				if gridstore.IsBusyError(err) {
-					// Keep the batch in-memory so a later flush can retry after the lock clears.
-					log.Printf("Warning: gridstore batch upsert busy (retaining %d pending): %v", len(batch), err)
-					return
-				}
-				log.Printf("Warning: gridstore batch upsert failed (dropping %d pending): %v", len(batch), err)
-				clear(pending)
-				return
-			}
-			if elapsed := time.Since(start); elapsed > time.Second {
-				log.Printf("Gridstore: batch upsert %d records in %s", len(batch), elapsed)
-			}
-			if gridUpdates > 0 {
-				metrics.learnedTotal.Add(uint64(gridUpdates))
-			}
-			clear(pending)
-		}
-
-		for {
-			select {
-			case rec, ok := <-updates:
-				if !ok {
-					flush()
-					return
-				}
-				call := normalizeCallForMetadata(rec.Call)
-				if call == "" {
-					continue
-				}
-				rec.Call = call
-				if existing, exists := pending[call]; exists {
-					pending[call] = mergePending(existing, rec)
-				} else {
-					pending[call] = rec
-				}
-				if len(pending) >= 500 {
-					flush()
-				}
-			case <-ticker.C:
-				flush()
-			case <-ttlCh:
-				store := getStore()
-				if store == nil {
-					continue
-				}
-				cutoff := time.Now().UTC().Add(-ttl)
-				if removed, err := store.PurgeOlderThan(cutoff); err != nil {
-					log.Printf("Warning: gridstore TTL purge failed: %v", err)
-				} else if removed > 0 {
-					log.Printf("Gridstore: purged %d entries older than %v", removed, ttl)
-				}
-			}
-		}
-	}()
+	go runGridWriter(storeHandle, updates, done, flushInterval, ttl, metrics)
 
 	// Purpose: Enqueue a grid update without blocking the output pipeline.
 	// Key aspects: Normalizes call/grid, uses cache to suppress duplicates.
