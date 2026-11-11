@@ -4,6 +4,11 @@
 - Date: 2026-11-11
 - Decision Origin: Troubleshooting chat; exact Approved v2
 
+The grid retention/provenance portion below is historical and superseded by
+[ADR-0343](ADR-0343-corrected-grid-precedence.md). Confidence, budgets, age,
+learning and the original counters retain this decision. Current grid behavior
+requires completed replacement lookup and clears unknown location.
+
 ## Context
 
 Fresh rechecks could downgrade a held P to S or ?, while output location and age
@@ -94,3 +99,5 @@ empirical RF/correction accuracy remain separate work.
   `output_location.go`, `output_age.go`, `output_pipeline_delivery.go` and their
   targeted tests; `stats/tracker.go`, `ui/stabilizer_matrix_test.go`.
 - Supersedes: none; earlier decisions retain their historical scope.
+- Superseded in part by [ADR-0343](ADR-0343-corrected-grid-precedence.md): grid
+  retention/provenance only, plus one additional missing-grid output counter.

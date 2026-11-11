@@ -74,7 +74,19 @@ aborts, C/B and percentage-only decreases. A later final age drop does not undo
 terminal accounting or accepted learning, but cannot create an output/family
 witness. Both counters reset with statistics reset/restart.
 
-The default Pipeline Quality pane is now 13 rows, including borders. It expands
+`Corrected output: no grid=…` counts locally accepted literal call corrections
+admitted to at least one ordinary output lane with an empty final DX grid, after
+the final age check and sealing. It counts once per spot, not per sink or client.
+Immediate and delayed paths share this boundary. Later family hiding, recipient
+filters or queue refusal still count. Unchanged calls (including B), holding,
+timeout suppression, age drops, all-ordinary-lanes thinning and SELF-only output
+do not count. It accumulates until statistics reset/restart, with no daily reset.
+Watch its increase over time to measure this output condition; it is not a count
+of lookup attempts/failures or a claim that any recipient received those spots.
+Cold delayed lookups and timed-out immediate lookups can leave location unknown;
+see [grid precedence](../spot/README.md#live-stabilizer-output).
+
+The default Pipeline Quality pane is now 14 rows, including borders. It expands
 or scrolls with content. Legacy Held counts admission/retry events, and legacy
 release/suppression counters retain their existing reset behavior; they are not
 a conservation equation for unique spots. A retained letter can accompany a

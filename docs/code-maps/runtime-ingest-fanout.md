@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `c8329b3e2140ec31`
+- Source fingerprint: `9ce88efe5bd497af`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 13 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 55 | 192 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 55 | 194 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 39 | 68 |
 | `dxcluster/telnet` | `telnet` | 80 | 168 |
@@ -218,6 +218,8 @@ Test files:
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
 - `internal/cluster/confidence_attribution_delivery_test.go`
+- `internal/cluster/corrected_grid_bench_test.go`
+- `internal/cluster/corrected_grid_counter_test.go`
 - `internal/cluster/corrected_grid_delivery_test.go`
 - `internal/cluster/correction_ambiguity_delivery_test.go`
 - `internal/cluster/correction_decision_cost_summary_test.go`

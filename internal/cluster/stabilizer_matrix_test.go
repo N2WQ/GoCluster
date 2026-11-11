@@ -49,7 +49,7 @@ func TestStabilizerMatrixReplacesOverviewGlyphLine(t *testing.T) {
 	joined := strings.Join(lines, "\n")
 	if strings.Contains(joined, "Stabilizer Glyph") ||
 		!strings.Contains(joined, "Stabilizer: average turns per call (entered → ended)") ||
-		!strings.Contains(joined, "Stabilizer: age drops=0\nStabilizer: retained letter=0") ||
+		!strings.Contains(joined, "Stabilizer: age drops=0\nStabilizer: retained letter=0\nCorrected output: no grid=0") ||
 		strings.Count(joined, "—") < 18 {
 		t.Fatalf("overview did not replace old glyph summary with empty matrix: %s", joined)
 	}
@@ -63,13 +63,31 @@ func TestStabilizerOutputSummaryCountersAndReset(t *testing.T) {
 	for range 56 {
 		tr.IncrementStabilizerRetainedAboveFresh()
 	}
-	if got := strings.Join(formatStabilizerOutputSummary(tr), "\n"); got != "Stabilizer: age drops=1,234\nStabilizer: retained letter=56" {
+	for range 12345 {
+		tr.IncrementCorrectedOutputWithoutGrid()
+	}
+	if got := strings.Join(formatStabilizerOutputSummary(tr), "\n"); got != "Stabilizer: age drops=1,234\nStabilizer: retained letter=56\nCorrected output: no grid=12,345" {
 		t.Fatal(got)
 	}
 	tr.Reset()
 	for _, tracker := range []*stats.Tracker{tr, nil} {
-		if got := strings.Join(formatStabilizerOutputSummary(tracker), "\n"); got != "Stabilizer: age drops=0\nStabilizer: retained letter=0" {
+		if got := strings.Join(formatStabilizerOutputSummary(tracker), "\n"); got != "Stabilizer: age drops=0\nStabilizer: retained letter=0\nCorrected output: no grid=0" {
 			t.Fatal(got)
+		}
+	}
+}
+
+func TestCorrectedOutputWithoutGridUnsignedFormatting(t *testing.T) {
+	for _, tc := range []struct {
+		total uint64
+		want  string
+	}{
+		{0, "0"}, {999, "999"}, {1000, "1,000"}, {1234567, "1,234,567"},
+		{1 << 63, "9,223,372,036,854,775,808"},
+		{1<<64 - 1, "18,446,744,073,709,551,615"},
+	} {
+		if got := formatCorrectedOutputWithoutGrid(tc.total); got != "Corrected output: no grid="+tc.want {
+			t.Fatalf("total=%d formatted %q", tc.total, got)
 		}
 	}
 }

@@ -6,7 +6,7 @@ Date Resolved: n/a
 Owner: Repository owner / Codex
 Technical Area: live stabilizer, output location, acceptance and telemetry
 Trigger Source: Operator report
-Led To ADR(s): ADR-0341
+Led To ADR(s): ADR-0341, ADR-0343
 Tags: stabilizer, confidence, grid, age, bounded-state
 
 ## RCA Summary
@@ -25,8 +25,10 @@ Tags: stabilizer, confidence, grid, age, bounded-state
   Deployment and empirical accuracy are not established by these checks.
 - Operator/support answer: A retained P means P was reached during that hold.
   DIAG CONF remains current and can be weaker/unavailable. Read `retained letter`
-  and `age drops` alongside the matrix; a grid lookup miss retains the attached
-  grid without teaching it to the new call's cache.
+  and `age drops` alongside the matrix. Under the later v5 amendment, a corrected
+  call requires a completed lookup: reported grids win, derived positives use
+  current captured CTY, and incomplete lookups leave the DX grid unknown. Watch
+  `Corrected output: no grid` for ordinary output admissions with that condition.
 
 ## Triggering Request
 
@@ -50,6 +52,10 @@ inside the age limit could be offered after it expired.
    budgets, and same/missing-target grid retention; approved v2 repair.
 3. 2026-11-11 - Sequential confidence, location and age slices validated locally;
    telemetry/docs and final-lane evidence tracked in the execution record.
+4. 2026-11-11 - Owner clarified reported-versus-derived precedence and required
+   completed lookup before CTY, clearing the old grid otherwise. Approved v5
+   authorizes the bounded grid amendment and one missing-grid admission counter;
+   see [v5 execution evidence](../stabilizer-grid-repair-v5.md).
 
 ## Hypotheses and Tests
 
@@ -71,13 +77,23 @@ inside the age limit could be offered after it expired.
 
 Decision counters count evaluations,
 not unique spots; repeated evaluations are not an inflation defect. Original
-source grids exist for PSKReporter CW/RTTY, so unconditional clearing would lose
-valid source information. Lookup provenance and writeback ownership must remain
-separate from the attached output location.
+source grids exist for PSKReporter CW/RTTY. The initial v2 policy retained them
+on missing/equal replacement lookups. The owner later selected corrected-call
+lookup authority: an old identity's attached grid must not survive an incomplete
+lookup. Stored reported grids beat CTY estimates, while stored derived positives
+permit recomputation from the correction's CTY snapshot. Lookup provenance and
+writeback ownership remain separate from attached output location.
+
+Cold cache is not proof of store absence. Existing synchronous main lookup can
+time out; delayed lookup never waits. An unsuccessful result does not authorize
+direct CTY fallback. Real blocked-worker tests deliver unknown location before
+unblocking, then verify late backfill cannot mutate sealed output. Equal locator
+tests also inspect provenance; text alone would miss a reported/derived mistake.
 
 ## Decision Linkage
 
 - ADR created: [ADR-0341](../decisions/ADR-0341-stabilizer-live-output.md).
+- Grid/counter amendment: [ADR-0343](../decisions/ADR-0343-corrected-grid-precedence.md).
 - Contract changes: retained output letter, corrected-grid ownership, age
   admission boundaries and fixed counters. Fresh algorithm/scoring inputs,
   dynamic reason budgets and completed-check counts remain unchanged.
@@ -91,7 +107,10 @@ release/suppression, retry overflow, B/C/V, current percentage, real source-grid
 ingest and reopened grid provenance, no worker wait/repeated path learning,
 strict age boundaries, accepted occurrence counts and final output/witness
 exclusion. Review [execution evidence](../stabilizer-live-repair-v2.md) for exact
-counts, commands and final-lane results. Monitor fixed counters and reason counts;
+counts, commands and final-lane results, and [v5 evidence](../stabilizer-grid-repair-v5.md)
+for corrected-grid precedence/clearing and once-only missing-grid output counts.
+The counter excludes pre-admission drops and counts later queue refusal; do not
+read it as client receipt or a count of storage errors. Monitor fixed counters and reason counts;
 legacy Held includes retries and is not a unique-spot conservation measure.
 Unexpected lower ordinary terminal transitions, stale final offers or target
 grid corruption warrant stopping rollout and preserving exact revision/evidence.

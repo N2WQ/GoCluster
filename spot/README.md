@@ -238,15 +238,31 @@ budget, so a low-P hold can extend to the longer unknown/ambiguity allowance
 when evidence weakens. A successful `C` correction ends the hold. Check counts
 exclude queueing time and do not promise a wall-clock deadline.
 
-An attached DX grid changes only after accepted call correction and a lookup
-that supplies a different complete normalized locator. Same/missing lookups keep
-the attached grid and its provenance; normal empty-grid backfill remains.
+After an accepted literal call correction, a completed lookup for the new call
+selects location. A reported grid wins at its full locator precision. A stored
+CTY-derived grid does not win: recompute from the same CTY snapshot used for that
+correction. Update provenance even when the grid text is equal. An incomplete,
+failed or timed-out lookup clears the old grid without direct CTY fallback;
+unusable CTY also clears it. When the call is unchanged, keep its nonempty grid;
+normal empty-grid backfill remains. Clear/rebuild normalized grids, prefixes and both
+geographic cell sizes together; DE facts remain intact.
+
 Country/zones/license classification refresh independently. Corrected fanout
-never stores an inherited DX grid under the replacement call; lookup ownership
-handles its own persistence. DE writeback remains active. Retained grids still
-feed location filters/path consumers. Earlier path learning is not relocated or
-repeated. Delayed lookup uses the existing cache-first asynchronous owner without
-waiting for disk/worker replies; ordinary locks can still contend.
+never writes the replacement's DX grid; lookup ownership handles persistence,
+and recomputing output does not rewrite an older stored estimate. DE writeback
+remains active. Earlier path learning is not relocated or repeated. Delayed
+lookup uses the existing cache-first asynchronous owner without waiting for
+disk/worker replies; ordinary locks can still contend. A successful cache hit
+counts as a completed lookup, without requiring a fresh disk read. Store/cache
+provenance distinguishes reported from derived, not the individual input feed;
+existing cache freshness limits and legacy stored provenance still apply.
+
+A delayed cold-cache correction can therefore leave with no grid, as can an
+immediate correction whose bounded lookup times out. Later backfill does not
+change that immutable output. Missing DX location cannot match positive DX-grid
+predicates and cannot supply a DX path prediction; it does not drop every spot
+or prevent NEARBY from matching the DE endpoint. See the corrected-output counter
+below in the [metrics guide](../ui/README.md#stabilizer-matrix).
 
 The live age limit applies before core acceptance and again before final output
 offers. Age equal to the limit is permitted; older work is discarded. Pre-core
@@ -257,7 +273,8 @@ This boundary is pipeline admission, not eventual client receipt. Existing
 disabled/zero/future timestamp handling remains at each original admission gate.
 
 See [matrix and counters](../ui/README.md#stabilizer-matrix) and
-[ADR-0341](../docs/decisions/ADR-0341-stabilizer-live-output.md). These changes
+[ADR-0341](../docs/decisions/ADR-0341-stabilizer-live-output.md) and its grid amendment
+[ADR-0343](../docs/decisions/ADR-0343-corrected-grid-precedence.md). These changes
 apply to live output; replay fidelity and RF accuracy qualification are separate.
 
 ### FT2, FT4, And FT8

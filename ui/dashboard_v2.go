@@ -39,7 +39,8 @@ const (
 		"S                        —     —     —     —     —     —\n" +
 		"P                        —     —     —     —     —     —\n" +
 		"Stabilizer: age drops=--\n" +
-		"Stabilizer: retained letter=--"
+		"Stabilizer: retained letter=--\n" +
+		"Corrected output: no grid=--"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
 		"\n" +
 		"[lightgray]Custom SCP[-]: -- (R) / -- (S)\n" +
@@ -55,7 +56,7 @@ const (
 	placeholderHarmonics          = "Harmonics: --"
 	placeholderEvents             = "No events yet."
 	streamPanelMaxLines           = 200
-	overviewPipelineDefaultHeight = 13
+	overviewPipelineDefaultHeight = 14
 	overviewPipelineMinHeight     = 4
 	overviewCachesDefaultHeight   = 9
 	overviewCachesMinHeight       = 3
@@ -1314,6 +1315,8 @@ PIPELINE METRICS (PLAIN ENGLISH)
     Ordinary letters keep the strongest level reached for the unchanged call.
   Age drops: held spots discarded because they became too old.
   Retained letter: terminal letter kept above fresh evidence; not retries.
+  Corrected output: no grid means a changed call reached an ordinary output
+    lane without a DX grid. Counts spots, not recipients; reset clears it.
 `, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset, accentTag, accentReset)))
 	help.SetBorder(true).SetTitle("Help")
 	help.SetBorderColor(uiBorderColor)

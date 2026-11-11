@@ -18,6 +18,11 @@ not infer meanings from other cluster software.
   use the retained letter; fresh holding/accepted learning remain separate. C/B
   are correction outcomes. See [live contract](../../spot/README.md#live-stabilizer-output)
   and [TSR-0127](../../docs/troubleshooting/TSR-0127-stabilizer-live-output.md).
+- If a corrected call has no grid, consult the same live contract and
+  [counter guide](../../ui/README.md#stabilizer-matrix). An incomplete replacement
+  lookup clears the old grid without CTY fallback. `Corrected output: no grid`
+  counts ordinary output admissions once, including later queue refusal; it does
+  not establish client receipt or the number of failed lookups.
 - For `P`, say it is a confidence glyph, not an external-cluster field or a
   probability.
 - If the user asks about current HELP output, retrieve `commands/README.md`.

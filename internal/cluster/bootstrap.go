@@ -518,7 +518,24 @@ func formatStabilizerOutputSummary(tracker *stats.Tracker) []string {
 	return []string{
 		fmt.Sprintf("Stabilizer: age drops=%s", humanize.Comma(int64(tracker.StabilizerAgeDropped()))),
 		fmt.Sprintf("Stabilizer: retained letter=%s", humanize.Comma(int64(tracker.StabilizerRetainedAboveFresh()))),
+		formatCorrectedOutputWithoutGrid(tracker.CorrectedOutputWithoutGrid()),
 	}
+}
+
+// formatCorrectedOutputWithoutGrid keeps the complete unsigned counter range
+// in console/headless output without signed conversion or floating-point loss.
+func formatCorrectedOutputWithoutGrid(total uint64) string {
+	digits := strconv.FormatUint(total, 10)
+	var row strings.Builder
+	row.Grow(len("Corrected output: no grid=") + len(digits) + (len(digits)-1)/3)
+	row.WriteString("Corrected output: no grid=")
+	for i := range len(digits) {
+		if i > 0 && (len(digits)-i)%3 == 0 {
+			row.WriteByte(',')
+		}
+		row.WriteByte(digits[i])
+	}
+	return row.String()
 }
 
 func formatFloodSummary(tracker *stats.Tracker) string {

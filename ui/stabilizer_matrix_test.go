@@ -23,8 +23,8 @@ func TestStabilizerMatrixRefreshAndPaneLayout(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer screen.Fini()
-	screen.SetSize(60, 13)
-	for _, counts := range []string{"1,234,567", "9,223,372,036,854,775,807", "0"} {
+	screen.SetSize(60, 14)
+	for _, counts := range []string{"1,234,567", "9,223,372,036,854,775,808", "18,446,744,073,709,551,615", "0"} {
 		average := "8.4"
 		lines := []string{
 			"Cluster: test", "MEMORY / GC", "Heap: ok", "INGEST RATES (per min)", "RBN: ok",
@@ -36,34 +36,35 @@ func TestStabilizerMatrixRefreshAndPaneLayout(t *testing.T) {
 			fmt.Sprintf("%-20s%6s%6s%6s%6s%6s%6s", "P", "—", "—", "—", "—", "—", "—"),
 			"Stabilizer: age drops=" + counts,
 			"Stabilizer: retained letter=" + counts,
+			"Corrected output: no grid=" + counts,
 			"CACHES & DATA FRESHNESS", "Grid: ok", "PATH PREDICTIONS", "Path: ok", "NETWORK", "Telnet: ok",
 		}
 		d.SetSnapshot(Snapshot{GeneratedAt: time.Now(), OverviewLines: lines})
 		snap := d.overviewSnapshot()
-		if snap.PipelineHeight != 13 || strings.Contains(snap.Pipeline, "Stabilizer Glyph") {
+		if snap.PipelineHeight != 14 || strings.Contains(snap.Pipeline, "Stabilizer Glyph") {
 			t.Fatalf("wrong matrix pane size/content: %+v", snap)
 		}
 		d.updateOverviewSnapshot(snap)
 		d.updatePipelineSnapshot(snap)
 		d.updateEventsOverviewSnapshot(snap)
 		for _, pane := range []*tview.TextView{d.overviewPipeline, d.pipelineQuality, d.eventsPipeline} {
-			if got := pane.GetText(true); !strings.Contains(got, "Stabilizer: average turns per call") || !strings.Contains(got, "retained letter="+counts) {
+			if got := pane.GetText(true); !strings.Contains(got, "Stabilizer: average turns per call") || !strings.Contains(got, "Corrected output: no grid="+counts) {
 				t.Fatalf("pane did not refresh matrix: %q", got)
 			}
-			pane.SetRect(0, 0, 60, 13)
+			pane.SetRect(0, 0, 60, 14)
 			screen.Clear()
 			pane.Draw(screen)
 			screen.Show()
 			var rendered strings.Builder
-			for y := 0; y < 13; y++ {
+			for y := 0; y < 14; y++ {
 				for x := 0; x < 60; x++ {
 					ch, _, _, _ := screen.GetContent(x, y)
 					rendered.WriteRune(ch)
 				}
 				rendered.WriteByte('\n')
 			}
-			if text := rendered.String(); !strings.Contains(text, "retained letter="+counts) || !strings.Contains(text, "age drops="+counts) || !strings.Contains(text, "entered → ended") || strings.Count(text, "—") != 17 {
-				t.Fatalf("matrix/counters clipped in 60x13 pane:\n%s", text)
+			if text := rendered.String(); !strings.Contains(text, "Corrected output: no grid="+counts) || !strings.Contains(text, "retained letter="+counts) || !strings.Contains(text, "age drops="+counts) || !strings.Contains(text, "entered → ended") || strings.Count(text, "—") != 17 {
+				t.Fatalf("matrix/counters clipped in 60x14 pane:\n%s", text)
 			}
 		}
 	}

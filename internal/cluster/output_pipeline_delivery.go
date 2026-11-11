@@ -56,6 +56,7 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	bestConfidence := max(envelope.bestConfidence, priorConfidence)
 	checksCompleted := envelope.checksCompleted + 1
 	ctyDB := p.ctyLookup()
+	releaseCtx.ctyDB = ctyDB
 	now := time.Now().UTC()
 	resolverEvidence := spot.ResolverEvidence{Key: envelope.resolverKey}
 	hasResolverEvidence := envelope.hasResolverKey
@@ -357,8 +358,8 @@ func (p *outputPipeline) updateGridCache(ctx *outputSpotContext) {
 		return
 	}
 	s := ctx.spot
-	// Target lookups own their persistence. Retained old values, including a
-	// same-grid reported flag, cannot promote target cache provenance.
+	// Corrected output is not a new observation, whether reported or recomputed.
+	// Target lookups own persistence and cannot be promoted by fanout writeback.
 	if dxGrid := strings.TrimSpace(s.DXMetadata.Grid); !ctx.dxIdentityChanged && dxGrid != "" && !s.DXMetadata.GridDerived {
 		dxCall := s.DXCallNorm
 		if dxCall == "" {
@@ -388,6 +389,9 @@ func (p *outputPipeline) emitSpot(ctx *outputSpotContext, plan outputDeliveryPla
 	shared := ctx.spot.SealForAsync()
 	if shared == nil {
 		return false
+	}
+	if ctx.dxIdentityChanged && strings.TrimSpace(shared.DXMetadata.Grid) == "" && plan.normalFanoutAllowed() {
+		p.tracker.IncrementCorrectedOutputWithoutGrid()
 	}
 	if p.buf != nil && plan.normalFanoutAllowed() && shouldBufferSpot(shared) {
 		ctx.temporalResult.observeHandoff()

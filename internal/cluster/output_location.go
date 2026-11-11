@@ -1,19 +1,20 @@
 // File role: Prepares output location without observing or replaying path data.
-// A corrected call can retain an attached grid on a lookup miss, but that
-// inherited value must not become a reported cache observation for the new call.
-// Related docs: spot/README.md#live-stabilizer-output, docs/decisions/ADR-0341-stabilizer-live-output.md.
+// A corrected call requires a completed lookup before selecting its own grid;
+// inherited grids never become observations for the replacement identity.
+// Related docs: spot/README.md#live-stabilizer-output, docs/decisions/ADR-0343-corrected-grid-precedence.md.
 // Related tests: internal/cluster/corrected_grid_delivery_test.go.
 package cluster
 
 import (
 	"strings"
 
+	"dxcluster/cty"
 	"dxcluster/spot"
 )
 
 // resetCorrectedDXClassification drops facts belonging to the replaced call.
-// Grid retention follows the owner-selected lookup rule independently of CTY
-// classification. DE facts remain intact; cached cells are rebuilt before use.
+// Location selection follows separately using the captured CTY image. The old
+// grid remains only until that stage; DE facts and cells are rebuilt before use.
 func resetCorrectedDXClassification(s *spot.Spot) {
 	grid, derived := s.DXMetadata.Grid, s.DXMetadata.GridDerived
 	s.DXMetadata = spot.CallMetadata{Grid: grid, GridDerived: derived}
@@ -32,7 +33,24 @@ func (p *outputPipeline) prepareOutputLocation(ctx *outputSpotContext, delayed b
 		syncLookup = nil
 	}
 	changed := false
-	if ctx.dxIdentityChanged || strings.TrimSpace(s.DXMetadata.Grid) == "" {
+	if ctx.dxIdentityChanged {
+		call := normalizeCallForMetadata(normalizedDXCall(s))
+		grid, derived, ok := lookupGridUnified(call, syncLookup, p.gridLookup)
+		if !ok {
+			// Pending/failed lookups cannot establish whether a reported grid
+			// exists. Neither the old identity's grid nor CTY may substitute.
+			grid, derived = "", false
+		} else if derived {
+			// Stored estimates are not reported evidence. Recompute from the
+			// immutable CTY image that validated this correction, not a reload.
+			grid, ok = cty.Grid4FromPrefixInfo(effectivePrefixInfo(ctx.ctyDB, p.metaCache, call))
+			derived = ok
+		}
+		if s.DXMetadata.Grid != grid || s.DXMetadata.GridDerived != derived {
+			s.DXMetadata.Grid, s.DXMetadata.GridDerived = grid, derived
+			changed = true
+		}
+	} else if strings.TrimSpace(s.DXMetadata.Grid) == "" {
 		call := normalizeCallForMetadata(normalizedDXCall(s))
 		if grid, derived, ok := lookupGridUnified(call, syncLookup, p.gridLookup); ok &&
 			!strings.EqualFold(strings.TrimSpace(s.DXMetadata.Grid), strings.TrimSpace(grid)) {

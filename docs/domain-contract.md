@@ -23,11 +23,14 @@ pressure.
 - Preserve dynamic reason budgets and the accumulated completed-check count.
   Correction does not reset it; accepted C ends the hold. No hard elapsed-time
   guarantee follows from checks because queueing and ordinary locks can delay.
-- Preserve an attached DX grid unless accepted replacement lookup gives a
-  different full normalized locator. Same/missing lookups retain provenance.
-  Corrected fanout cannot persist inherited DX location under the replacement;
-  DE updates remain unchanged. Refresh country/zones/license and geographic
-  caches separately. Earlier path observations are not replayed or relocated.
+- For accepted literal correction, use a completed reported target-grid lookup
+  at full precision; derived positives permit recomputation from the correction's
+  captured CTY image. Missing/pending/failed lookups clear the old grid without
+  direct CTY fallback; unusable CTY clears too. Equal text must acquire the new
+  provenance. Uncorrected grids/backfill retain their existing behavior.
+  Corrected fanout cannot write DX location; lookup owns persistence. Preserve
+  DE facts and rebuild normalized prefixes and fine/coarse cells together.
+  Earlier path observations are not replayed or relocated.
 - Release-path location preparation uses existing cache-first asynchronous
   lookup only: no worker/disk response wait, new queue, timer or goroutine.
 - Apply strict `age > limit` before core acceptance and final output offers,
@@ -36,7 +39,11 @@ pressure.
   once-only accepted learning/terminal metrics and offers nothing to ring,
   archive, telnet, peer or family-witness history. This is admission, not receipt.
 - Count held age drops and terminal retained-above-fresh letters with fixed,
-  resettable counters. See [live contract](../spot/README.md#live-stabilizer-output)
+  resettable counters. Also count corrected missing-grid output once after final
+  age admission/seal with an ordinary lane, before family or destination gates.
+  Exclude unchanged/B, held/suppressed/expired and all-lanes-thinned/SELF-only
+  work; later queue refusal/filtering still counts. This measures admissions,
+  not receipts. See [live contract](../spot/README.md#live-stabilizer-output)
   and [metric boundaries](../ui/README.md#stabilizer-matrix).
 
 ## Protocol scope and telnet byte policy
