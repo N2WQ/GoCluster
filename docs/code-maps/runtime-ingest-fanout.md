@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `abb0b65d75887e7f`
+- Source fingerprint: `9965d421c94c6f0d`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 13 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 52 | 183 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 52 | 189 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 39 | 68 |
-| `dxcluster/telnet` | `telnet` | 80 | 166 |
+| `dxcluster/telnet` | `telnet` | 80 | 168 |
 
 ## In-Scope Package Edges
 
@@ -226,6 +226,12 @@ Test files:
 - `internal/cluster/correction_snr_delivery_test.go`
 - `internal/cluster/correction_stabilizer_loss_bench_test.go`
 - `internal/cluster/correction_stabilizer_loss_test.go`
+- `internal/cluster/cty_cache_bench_test.go`
+- `internal/cluster/cty_cache_test.go`
+- `internal/cluster/cty_classification_test.go`
+- `internal/cluster/cty_grid_persistence_test.go`
+- `internal/cluster/cty_grid_rollout_test.go`
+- `internal/cluster/cty_protected_input_windows_test.go`
 - `internal/cluster/custom_scp_capacity_delivery_test.go`
 - `internal/cluster/custom_scp_consumer_delivery_test.go`
 - `internal/cluster/custom_scp_delivery_regression_test.go`
@@ -818,6 +824,8 @@ Test files:
 - `telnet/configuration_transfer_writer_test.go`
 - `telnet/configuration_upgrade_test.go`
 - `telnet/configuration_v7_integration_test.go`
+- `telnet/cty_grid_test.go`
+- `telnet/cty_jurisdiction_test.go`
 - `telnet/cwspeed_test.go`
 - `telnet/dedupe_collision_test.go`
 - `telnet/dedupe_policy_test.go`

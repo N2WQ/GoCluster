@@ -23,7 +23,7 @@
 | S2 | One CTY conversion negates west-positive longitude once in grid backfill and SHOW PROP; new estimates remain persisted | Targeted ordinary/race passed |
 | S3 | Disk supplies grid/provenance, never CTY authority; positive/negative classification cache belongs to its CTY snapshot with bounded identity metadata | Targeted ordinary/race passed |
 | S4 | Integrated/disposable backup, empty-start, recovery-isolation, restart/rollback and protected-input rehearsal; operator/support and decision records | Targeted ordinary/race and documentation checks passed |
-| S5 | Final ordinary/race/analyzer/fuzz/benchmark/connected-regression/code-map/source review | Pending |
+| S5 | Final ordinary/race/analyzer/fuzz/benchmark/connected-regression/code-map/source review | Passed selected lane; existing skips audited |
 
 The inherited pending merge (`grid_writer.go`) and complete grid retirement
 (ADR-0338) are retained and regression-tested, not reimplemented. S1 and S2 are
@@ -83,6 +83,17 @@ not the handoff, preferred implementation or implementation-derived answers.
 The shipped file is still SHA256
 `5d9602e15886a5f16afd6282ad6a220d62d8dcd3e24665dca86e939b2bd34488`.
 
+## Approved item trace
+
+| Behavior | Implementation | Falsifying evidence |
+| --- | --- | --- |
+| Exact-only keys cannot classify longer calls | `cty/parser.go` trie construction | Shipped/synthetic prefix contracts, independent dictionary-scan fuzz oracle, actual country filtering and license routing |
+| CTY longitude converts once; new estimates persist | `cty/maidenhead.go`, cluster `bootstrap.go`, telnet `show_prop.go` | Literal eastern/western/boundary vectors, real synchronous/asynchronous backfill, flush/reopen, cold restart, direct SHOW PROP |
+| Disk supplies grids/provenance only | Cluster `call_meta_cache.go` ApplyRecord | Contradictory disk fields over warm/cold active hits/misses, both workers, hydrate/expire/purge/relookup |
+| Classification belongs to one bounded snapshot | `cty/snapshot.go`, cluster `call_meta_cache.go` LookupCTY/publication | Concurrent identity initialization, distinct databases, controlled late old publication with/without Clear, bounded churn and warm allocation checks |
+| Retain pending merge and complete retirement | Inherited cluster `grid_writer.go` and runtime retirement owners; unchanged here | `TestGridWriterPendingProvenancePersistence` forces one pending batch then reopens; `grid_retirement_test.go` covers admitted hooks, workers, overflow, recovery, maintenance and terminal hooks |
+| Prepare separately authorized empty rebuild | `cty_grid_rollout_test.go`, `cty_protected_input_windows_test.go`, operator runbook, ADR-0340, TSR-0126 and support routes | Actual disposable backup/readback, zero-row startup, recovery selection/isolation, cold restart/rollback and changed-content permission denial/restoration |
+
 ## Execution evidence
 
 - S0: branch/starting revision and unrelated edit verified. Installed native
@@ -93,8 +104,8 @@ The shipped file is still SHA256
 - S0 ordinary and race selections each passed 51 cases with zero skips across
   CTY, gridstore, cluster and telnet (`s0-baseline-{ordinary,race}.log`).
   Frozen CTY/cache binaries and five-sample baseline measurements are retained.
-  Warm CTY positive/negative hits allocate zero; cold churn is three allocations
-  and 240 bytes per lookup. The first negative benchmark used `ZZ9ABC`, which is
+  Warm classification-cache positive/negative hits allocate zero; cold churn is
+  three allocations and 240 bytes per lookup. The first negative benchmark used `ZZ9ABC`, which is
   actually Brazil in this dataset; its guard failed and the invalid fixture log
   is preserved. Verified miss `QZ9ABC` replaces it; corrected benchmark passes.
 - One shell launch transiently failed to find `pwsh.dll`. A read-only fallback
@@ -166,6 +177,90 @@ The shipped file is still SHA256
   restored all original search assertions without changing worker/checker code
   or weakening any check (`s4-support-search-final.log`).
 
+## S5 final verification
+
+Production/test implementation revision: `5f630a1bc2d9beed31f3f7b7c629f043fb0a9b8a`.
+Subsequent closeout changes are this evidence record and generated maps only.
+Native tool availability was re-established; every required command below exited
+zero without elevation, installation or machine-policy changes.
+
+| Check | Observed result | Evidence under `.tmp/cty-grid-v5/` |
+| --- | --- | --- |
+| `scripts/test-windows.ps1 -Timeout 10m`, GOMAXPROCS=4 | 12,432 passing cases, 59 executed + 15 build-only packages, 93 skips | `final-native-ordinary.log` |
+| Same runner with `-Race` | Same counts; no race reports | `final-native-race.log` |
+| `go vet -p4 ./...`, `staticcheck ./...`, checked-in golangci-lint configuration; GOMAXPROCS=4 | All passed; lint reported zero issues | `final-vet.log`, `final-staticcheck.log`, `final-lint.log` |
+| `scripts/test-customscp-regression.ps1`, ordinary then `-Race` | Connected producer/consumer, preserved delivery and missing-observation hold passed, exact TCP output read back | `final-connected-customscp-{ordinary,race}.log` |
+| `go test ./cty -run '^$' -fuzz '^FuzzCTYPrefixEligibility$' -fuzztime 30s -parallel 2`, GOMAXPROCS=2 | 1,821,109 executions passed | `final-fuzz.log` |
+| Frozen baseline/candidate benchmarks | Five paired alternating samples per variant/workload; all workload guards passed | `final-paired-*.txt`, `final-paired-summary.{json,csv}` |
+| Troubleshooting records, support-critical comments, support-agent bundle/search | All passed without changing checker/worker assertions | `final-tsr-check.log`, `final-crawler.log`, `final-support-agent.log` |
+| `go run ./cmd/codemap generate -all` then `check -all` | Both maps regenerated; runtime map content updated; freshness passed | `final-codemap-*.log` |
+
+The two complete native lanes' 93 skip identities and reasons match exactly:
+12 helper entry points, 56 external DXSpider evidence cases, 24 optional
+live/profile/controlled-input campaigns, and one existing platform H3 mapping
+limitation. Audit records are `ordinary-skip-audit.json` and
+`race-skip-audit.json`. No new CTY/grid regression skipped; no check was waived.
+These results do not establish the skipped external/live campaigns.
+
+Connected fixture roots are `.tmp/customscp-regression/bdf4f3fe7b9f4fa884f963efa88db14d`
+(ordinary) and `.tmp/customscp-regression/74da4b20241d41d3b0b65015ec0c6ad3`
+(race). They retain producer/consumer readback evidence, not production data.
+
+### Local performance and resource result
+
+Intel Core i9-10900, native Windows amd64, Go 1.27.1, GOMAXPROCS=2,
+300 ms per benchmark sample. Baseline production source is starting `28e5c245`;
+candidate is `5f630a1b`. Benchmark scaffolding is unchanged from `d313040c`.
+Saved binaries were compiled from those observed source states and reused for
+the final comparison. SHA256, Go Build ID and build info are retained in
+`benchmark-binary-identities.json` and `*.exe.buildinfo.txt`; Go test binaries
+do not embed VCS settings, so revision provenance is the observed build context.
+No heavy suite or reviewer ran concurrently with these paired measurements.
+
+| Workload | Baseline median ns/op | Candidate median ns/op | Baseline -> candidate bytes / allocations |
+| --- | ---: | ---: | --- |
+| CTY K1ABC | 152.20 | 133.20 | 112 / 1 -> 112 / 1 |
+| CTY K1DG | 153.30 | 139.90 | 112 / 1 -> 112 / 1 |
+| CTY K1DW | 79.48 | 80.70 | 112 / 1 -> 112 / 1 |
+| CTY JA1ABC | 157.10 | 157.30 | 112 / 1 -> 112 / 1 |
+| CTY N2WQ/VE3 | 291.00 | 261.80 | 256 / 3 -> 256 / 3 |
+| Cache warm hit | 33.79 | 33.37 | 0 / 0 -> 0 / 0 |
+| Cache warm miss | 30.63 | 30.95 | 0 / 0 -> 0 / 0 |
+| Cache cold churn | 651.50 | 673.50 | 240 / 3 -> 256 / 3 |
+
+Warm classification remains allocation-free. Cold churn's measured median cost
+increases 22 ns (3.38%) and 16 bytes, with unchanged allocation count. Baseline
+cold samples span 635.2–754.1 ns and candidate 664.5–719.0 ns; warm timing ranges
+also overlap. These are descriptive local samples, not a statistical speedup,
+live p99, sustained throughput or process-memory-ceiling claim. The bounded
+identity field/token is the accepted correctness cost. Cardinality/churn and
+late-publication tests passed; no optimization beyond approved repairs was added.
+
+### Final review and checkpoints
+
+A fresh separate-context read-only Go quality reviewer inspected all six
+production Go files, changed tests/docs, unchanged writer/retirement/recovery
+owners, and S4 execution logs. No material final findings remained; that reviewer
+ran no tests. The lead verified the actual production diff, selected-lane results,
+skip audit, fixed workload allocation/timing evidence and approved-item trace.
+The final caller search finds both production grid consumers using the shared
+CTY boundary and no remaining direct consumer of the generic converter. The
+shipped CTY checksum remains the pinned value above. Final map diff and whitespace
+review complete the lead-owned fresh verification; this is not represented as
+independent scientific review. The earlier coordinate oracle was separately
+non-steered as described above.
+
+Passing implementation checkpoints: `d313040c` (S0), `0eb7217d` (S1),
+`6c5435a5` (S2), `15975496` (S3), `5f630a1b` (S4). The evidence/map closeout is
+committed after those checkpoints. Raw local logs/binaries remain ignored and
+available for inspection; none are deployment artifacts.
+
 ## Final result
 
-Pending implementation and final relevant-state validation.
+All approved behavior and required selected checks passed, with existing skips
+and residual limits recorded above. New CTY estimates remain persisted as derived;
+reported locators retain precedence. The inherited merge and complete-retirement
+repairs remain intact. No production store, service, backup, reset, import or
+rollout was operated; no merge, push or release occurred. The unrelated bulletin
+history edit remains unstaged. Persisted-estimate freshness and last-known-good
+CTY publication remain follow-ups under the owner's chosen persistence policy.
