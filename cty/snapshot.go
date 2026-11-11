@@ -1,3 +1,4 @@
+// File role: Supplies CTY snapshot identity without retaining database images.
 package cty
 
 // SnapshotIdentity identifies one immutable CTY database publication. It contains

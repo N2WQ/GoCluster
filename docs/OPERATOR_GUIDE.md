@@ -853,6 +853,11 @@ started, so `SHOW PROP` reports that VOACAP fallback is disabled.
 The target can be an explicit Maidenhead grid, a callsign found in the grid
 store, or a CTY-derived prefix/callsign center. With no band, the command
 queries all configured VOACAP fallback bands. With no mode, it uses `CW`.
+CTY estimates describe representative coordinates, not verified station locations.
+New estimates remain persisted with derived provenance; reported locators take
+precedence. See the [CTY/grid rebuild procedure](runbooks/cty-grid-rebuild.md)
+for coordinates, active-file classification and the separately authorized
+backup/empty-store cutover.
 Rows run from the current UTC hour through the configured
 `voacap_fallback.forecast_hours` cache horizon, but only rows whose `REL`
 prediction is `HIGH`, `MEDIUM`, or `LOW` are displayed.

@@ -136,3 +136,13 @@ Recent path-support failures use decay-adjusted usable/admitted report units,
 not lifetime `n` diagnostics. See [ADR-0309](../docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md)
 and [the path support card](support-cards/path-reliability.md) for `/u` and
 receiver qualification. CLOSED precedence is unchanged.
+
+## CTY grids and classification
+
+For mirrored CTY estimates, wrong country exceptions, accidental JJ00 after
+expiry/purge, or grid-store rebuild questions, route to
+[TSR-0126](../docs/troubleshooting/TSR-0126-cty-grid-classification.md) and the
+[operator procedure](../docs/runbooks/cty-grid-rebuild.md). Distinguish a cold
+representative estimate from a reported/stored locator. Preserve estimate
+persistence; do not infer source from length, delete all JJ00 rows, or treat a
+local rehearsal as production stop/backup/cutover evidence.

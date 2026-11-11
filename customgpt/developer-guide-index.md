@@ -33,6 +33,7 @@ workflow rules.
 
 | Area | Start here |
 | --- | --- |
+| CTY exact matching, representative grids and classification ownership | `cty/parser.go`, `cty/maidenhead.go`, `cty/snapshot.go`, `internal/cluster/call_meta_cache.go`; [ADR-0340](../docs/decisions/ADR-0340-cty-grid-authority.md), [operator cutover](../docs/runbooks/cty-grid-rebuild.md) |
 | Live runtime | `internal/cluster/`, [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | Telnet sessions, filters, and queues | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), `telnet/` |
 | GO Boolean rules, native CC banks and immutable matching | [current contracts and owners](#boolean-personal-rules), [CC manual](../docs/cc-dialect.md), [normative domain contract](../docs/domain-contract.md#boolean-personal-rules) |

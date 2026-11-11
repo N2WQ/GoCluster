@@ -187,3 +187,12 @@ validation claims. Use current contracts before superseded decisions.
 - For symptom reports, route to [customgpt/troubleshooting-index.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/customgpt/troubleshooting-index.md) before
   using broad docs or historical TSRs.
 - For decision history, route to the ADR/TSR indexes before summarizing.
+
+## CTY grids and classification
+
+For mirrored CTY grids, wrong country exceptions, accidental JJ00, persisted
+estimates or an empty-store rollout, start at the
+[CTY/grid runbook](../docs/runbooks/cty-grid-rebuild.md) and
+[TSR-0126](../docs/troubleshooting/TSR-0126-cty-grid-classification.md).
+Code owners are `cty/parser.go`, `cty/maidenhead.go`, `cty/snapshot.go`,
+`internal/cluster/call_meta_cache.go`, and `telnet/show_prop.go`.

@@ -22,7 +22,7 @@
 | S1 | Exact-only entries remain full-key matches, never prefix fallback; preserve portable precedence and inventory | Targeted ordinary/race/fuzz passed |
 | S2 | One CTY conversion negates west-positive longitude once in grid backfill and SHOW PROP; new estimates remain persisted | Targeted ordinary/race passed |
 | S3 | Disk supplies grid/provenance, never CTY authority; positive/negative classification cache belongs to its CTY snapshot with bounded identity metadata | Targeted ordinary/race passed |
-| S4 | Integrated/disposable backup, empty-start, recovery-isolation, restart/rollback and protected-input rehearsal; operator/support and decision records | Pending |
+| S4 | Integrated/disposable backup, empty-start, recovery-isolation, restart/rollback and protected-input rehearsal; operator/support and decision records | Targeted ordinary/race and documentation checks passed |
 | S5 | Final ordinary/race/analyzer/fuzz/benchmark/connected-regression/code-map/source review | Pending |
 
 The inherited pending merge (`grid_writer.go`) and complete grid retirement
@@ -135,6 +135,36 @@ The shipped file is still SHA256
   Initial matched-workload benchmark allocation counts stay zero warm and three
   cold; cold bytes increase from 240 to 256 due to the entry's identity field
   and allocator size class. Timing is provisional until final paired measurements.
+
+- S4 ordinary rehearsal verifies exact reported/derived rows in a copied verified
+  backup, zero-row production grid startup, actual recovery rejection of a newer
+  external legacy tree, active-only selection, corrected fallback/new report,
+  cold restart and legacy storage rollback. An initial missing copy destination
+  was a fixture error and was fixed without changing production copy behavior.
+  Review identified possible hourly checkpoint interference; final selection now
+  occurs after all background owners join and the controlled final checkpoint is
+  strictly newer than all retained active candidates. No wall-clock scheduling
+  assumption determines the selected path.
+- The Windows input rehearsal allows temp-file creation, denies owned destination
+  write/delete and parent delete-child, forces changed HTTP 200 content through
+  real refresh/removal, verifies ErrPermission and unchanged checksum, loads that
+  copy into grid startup, restores/compares original DACL/protection and proves
+  subsequent publication succeeds. No machine policy, production permission or
+  elevation changed. Initial fixture build typing error is retained separately.
+- Support-agent docs impact: Required. Operator procedure, routing/source maps,
+  developer index, ADR-0340, TSR-0126 and their indexes cover corrected authority,
+  persistence, empty rebuild and unchanged limitations. TSR index checker passed
+  after adding its required explicit root-cause bullet; original failure retained.
+- Final S4 ordinary/race each passed both rehearsal cases without skips
+  (`s4-final-{ordinary,race}.log`). Separate review found only the hourly-candidate
+  test ordering issue, now dispositioned above; ACL restoration/resource handling
+  and real publication positive/negative controls had no material findings.
+  The initial support search fixture failed its common-query response-budget
+  assertion after introductory routing text changed corpus region layout. A
+  read-only baseline-content override passed, establishing the documentation
+  interaction. Moving the focused CTY routes into their own appended sections
+  restored all original search assertions without changing worker/checker code
+  or weakening any check (`s4-support-search-final.log`).
 
 ## Final result
 

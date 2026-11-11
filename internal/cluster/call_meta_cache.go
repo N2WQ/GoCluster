@@ -1,3 +1,6 @@
+// File role: Owns bounded call metadata caching with separate grid/CTY authority.
+// Crawler notes: Grid age/provenance comes from reports or disk; classification
+// belongs to one CTY snapshot token. See ADR-0340 and cty_cache_test.go.
 package cluster
 
 import (
