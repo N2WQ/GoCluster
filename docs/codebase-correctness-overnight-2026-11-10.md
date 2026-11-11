@@ -24,15 +24,15 @@ records execution; it does not authorize additional work.
 
 | Slice | Bounded behavior | Status |
 |---|---|---|
-| S1 | Grid pending merge keeps locator/provenance coherent; actual overrides derived; preserve CTY, observation, timestamp and expiry rules | Targeted validated; final lane pending |
-| S2 | Flood cleanup preserves threshold-plus-one live history and existing configured actions, modes, partitions, expiry and overflow behavior | Targeted validated; final lane pending |
-| S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Targeted validated; final lane pending |
-| S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Targeted validated; final lane pending |
-| S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Targeted validated; final lane pending |
-| S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Targeted validated; final lane pending |
-| S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Targeted validated; final lane pending |
+| S1 | Grid pending merge keeps locator/provenance coherent; actual overrides derived; preserve CTY, observation, timestamp and expiry rules | Validated on final lane |
+| S2 | Flood cleanup preserves threshold-plus-one live history and existing configured actions, modes, partitions, expiry and overflow behavior | Validated on final lane |
+| S3 | Cymru pending reservations follow admitted queue/worker ownership; failed admission retains no new identity; old completion cannot remove newer ownership | Validated on final lane |
+| S4 | Documented propagation retention zero inherits the parent through the existing loader/normalizer and consumer | Validated on final lane |
+| S5 | Periodic server keepalive emits exact CRLF through bounded raw control, outside membership locks; generic whitespace and blank-command behavior unchanged | Validated on final lane |
+| S6 | Following S1, terminal grid-hook admission, lookup-before-writer joins, grid-only background cancellation/completion and store closure after all grid owners retire | Validated on final lane |
+| S7 | Stable session worker affinity preserves ordinary broadcast order across membership churn; direct SELF remains separate and immediate | Validated on final lane |
 | S8 | Optional measured DX normalization once per worker job and SELF match once per recipient using existing exact helpers, without new retained state | Deferred after measurement; candidate restored |
-| S9 | Optional temporal no-due return before allocation, with unchanged deadlines, force, order and model decisions | Targeted validated; final lane pending |
+| S9 | Optional temporal no-due return before allocation, with unchanged deadlines, force, order and model decisions | Validated on final lane |
 
 S8–S9 require all feasible correctness work to pass and sufficient final-validation
 reserve. S6 requires S1 to pass. One implementation slice writes at a time;
@@ -319,6 +319,67 @@ validity change or claim is part of this work.
 
 ## Closeout
 
-Pending. No implementation or validation pass is claimed by this initial record.
+Final relevant production checkpoint: `3074a80c` (startup repair). On that state,
+the complete native ordinary root-module lane passed at 05:54 UTC: 74 packages,
+59 executed and 15 build-only, 12,355 passed cases and 93 skipped rows. Skips were
+audited: 12 subprocess helper entries, 21 opt-in controlled/profile/resource/soak
+campaigns, 56 external DXSpider cases, one live CC session, two optional dataset
+cases and one platform-unavailable H3 mapper. No retained repair regression was
+skipped. Exact inventory/categories are in `final-ordinary-skips.json` and
+`final-ordinary-skip-categories.json`; the full log is
+`final-native-ordinary.log`. This is root-module coverage, not nested dependency
+or opt-in live/long-duration qualification.
+
+Vet, Staticcheck and golangci-lint were rerun on the repaired production state;
+all exited zero and lint again reported zero issues. Frozen benchmark binaries
+have Go Build IDs and SHA-256 identities recorded in
+`benchmark-binary-identities.json`. Local profiles measure controlled workloads
+and cumulative allocation churn, not production memory ceilings or p99 latency.
+
+The complete native race root-module lane passed at 06:18 UTC: the same 74
+packages, 59 executed / 15 build-only, 12,355 passed cases and 93 skips. Skip
+identities exactly match ordinary execution; no race report occurred. Evidence:
+`final-native-race.log`, `final-race-skip-identities.json`.
+
+Connected CustomSCP ordinary and race runs both passed, each with a fresh shared
+producer/consumer database, exact TCP output, ring/archive assertions and an
+independent insufficient-support hold control. Run identities:
+`dad7e943c03142fc8015266740c82c54` (ordinary) and
+`1f9acbfbaef54c3fa6e96faceb5dc26b` (race). Logs are
+`final-connected-customscp{,-race}.log`; full fixtures are under
+`.tmp/customscp-regression/<run-id>/`.
+
+Generated maps were refreshed and their freshness check passed. Final source,
+scope, failure/review dispositions, validation selection and claims received a
+fresh lead pass; the three bounded read-only reviews supplied additional source
+evidence. No material issue remains within the retained scope. The initial
+full-run failure was repaired and the required lane rerun without a waiver.
+The final documentation update is followed by another generate/check and direct
+diff review before the handoff commit.
+
+Completed the feasible approved queue early: S1–S7 and S9 retained; S8 deferred
+after its acceptance measurements failed conservatively. No further owner policy
+was selected. Production services, data and firewall policy were not intentionally
+changed; nothing was merged, pushed or deployed. Original `C:\src\gocluster`
+remains on `main` at `b21528357ba7`; its observed bulletin-history modification
+is preserved. Delivery is local branch `Nov-11` in
+`C:\src\gocluster-overnight`. Residual boundaries remain the explicit opt-in /
+external / platform skips, unmeasured production load/p99 and existing synchronous
+disk/callback ownership. The ledger's per-slice costs and limits remain applicable.
+
+| Approved item | Implementation owner | Distinct validation witness |
+|---|---|---|
+| S1 | `internal/cluster/grid_writer.go`; bootstrap writer wiring | Literal merge vectors; same-batch actual writer, reopened store and cache hydration |
+| S2 | `floodcontrol/controller.go` cleanup | Fixed-clock real process/cleanup decisions, source/mode/action/cutoff/expiry cases |
+| S3 | `reputation/cymru.go` admission and worker ownership | Queue saturation, zero-allocation refusal, literal TTL, ABA completion, concurrent churn/drain |
+| S4 | `config/config_files.go` allowed zero | Complete-directory enabled/disabled loads and real log destination consumer, literal retention 13 |
+| S5 | `telnet/server.go` periodic control emitter | Native/ziutek literal CRLF, virtual timer retirement, queue/callback/pause/writer failure |
+| S6 | `internal/cluster/bootstrap.go`, `main_runtime.go` | Real admitted hooks, queued derived persistence, overflow drain, maintenance/recovery/warning joins, failed startup and concrete close |
+| S7 | `telnet/server.go` session shard ownership | Actual two-worker order in both modes, trailing sentinels, replacement churn and concurrent cache access |
+| S8 | No retained implementation | Candidate semantics and matched/interleaved measurements; rejected patch/tests archived locally |
+| S9 | `internal/cluster/temporal_runtime.go` no-due guard | Real controller zero-allocation assertion, literal due/force/order boundaries, existing model/retirement controls and local profiles |
+
 Support-agent documentation impact: Required for implemented operator/config/
-connection behavior; exact routing changes and ADR/TSR disposition follow slices.
+connection behavior and completed in `customgpt/source-map.md`, configuration/
+telnet guides, TSR-0119–0125 and ADR-0338–0339. S8 is unretained and S9 preserves
+operator/model behavior; their evidence and limits are documented here.

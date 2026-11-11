@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `33a8e97fa26d3323`
+- Source fingerprint: `abb0b65d75887e7f`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 13 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 51 | 179 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 52 | 183 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 39 | 68 |
-| `dxcluster/telnet` | `telnet` | 80 | 164 |
+| `dxcluster/telnet` | `telnet` | 80 | 166 |
 
 ## In-Scope Package Edges
 
@@ -160,6 +160,7 @@ Source files:
 - `internal/cluster/ft_confidence_runtime.go`
 - `internal/cluster/gc_window.go`
 - `internal/cluster/go_runtime_tuning.go`
+- `internal/cluster/grid_writer.go`
 - `internal/cluster/ingest_health.go`
 - `internal/cluster/ingest_validation.go`
 - `internal/cluster/log_link_linux.go`
@@ -256,7 +257,10 @@ Test files:
 - `internal/cluster/ft_expiry_observe_test.go`
 - `internal/cluster/gc_window_test.go`
 - `internal/cluster/go_runtime_tuning_test.go`
+- `internal/cluster/grid_hook_bench_test.go`
 - `internal/cluster/grid_lookup_test.go`
+- `internal/cluster/grid_retirement_test.go`
+- `internal/cluster/grid_writer_test.go`
 - `internal/cluster/human_telnet_runtime_test.go`
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/legacy_history_runtime_test.go`
@@ -355,6 +359,7 @@ Test files:
 - `internal/cluster/telnet_family_suppressor_test.go`
 - `internal/cluster/telnet_ip_session_config_test.go`
 - `internal/cluster/temporal_acceptance_delivery_test.go`
+- `internal/cluster/temporal_due_bench_test.go`
 - `internal/cluster/temporal_fresh_delivery_test.go`
 - `internal/cluster/temporal_overflow_delivery_test.go`
 - `internal/cluster/temporal_reclaim_delivery_test.go`
@@ -787,6 +792,7 @@ Test files:
 - `telnet/boolean_rule_commands_fuzz_test.go`
 - `telnet/boolean_rule_commands_test.go`
 - `telnet/boolean_rule_readback_test.go`
+- `telnet/broadcast_affinity_test.go`
 - `telnet/bulletin_dedupe_test.go`
 - `telnet/bulletin_history_test.go`
 - `telnet/canadian_login_test.go`
@@ -847,6 +853,7 @@ Test files:
 - `telnet/ip_session_quota_test.go`
 - `telnet/ip_session_quota_wait_departure_test.go`
 - `telnet/ip_session_quota_wire_test.go`
+- `telnet/keepalive_test.go`
 - `telnet/latency_test.go`
 - `telnet/login_ssid_test.go`
 - `telnet/login_startup_test.go`
@@ -946,6 +953,8 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0339 | Accepted | 2026-11-11 | telnet workers, ordering, session membership | `area:telnet` |
+| ADR-0338 | Accepted | 2026-11-11 | cluster runtime, grid lifecycle, maintenance, recovery, storage ownership | `area:internal/cluster` |
 | ADR-0337 | Accepted | 2026-11-10 | commands, HELP, operator documentation | `area:commands` |
 | ADR-0333 | Accepted | 2026-11-02 | logging, peer diagnostics, shutdown, operations | `area:peer` |
 | ADR-0332 | Accepted | 2026-11-01 | RBN ingest, archive, telnet, user preferences | `area:telnet` |
