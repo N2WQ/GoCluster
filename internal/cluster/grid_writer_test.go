@@ -87,11 +87,6 @@ func TestGridWriterPendingProvenancePersistence(t *testing.T) {
 		derived("K1BBB", "EM12"), actual("K1BBB", "FN31"),
 		ctyOnly, derived("K1CCC", "FN20"),
 	}
-	updates := make(chan gridstore.Record, len(records))
-	for _, rec := range records {
-		updates <- rec
-	}
-	close(updates)
 	dir := t.TempDir()
 	opts := gridstore.Options{CacheSizeBytes: 1 << 20, MemTableSizeBytes: 1 << 20,
 		L0CompactionThreshold: 2, L0StopWritesThreshold: 4, WriteQueueDepth: 4}
@@ -108,7 +103,17 @@ func TestGridWriterPendingProvenancePersistence(t *testing.T) {
 	})
 	metrics := &gridMetrics{}
 	done := make(chan struct{})
-	runGridWriter(newGridStoreHandle(store), updates, done, time.Hour, 0, metrics)
+	coord := bindGridCoordinator(newGridStoreHandle(store), nil)
+	updates := make(chan gridWriteRequest, len(records))
+	for _, rec := range records {
+		if rec.Grid.Valid && !rec.GridDerived {
+			coord.enqueueReport(rec, updates)
+		} else {
+			coord.enqueueMetadata(rec, nil, updates)
+		}
+	}
+	close(updates)
+	runGridWriter(coord, updates, done, time.Hour, 0, metrics, gridWriterOps{})
 	select {
 	case <-done:
 	default:

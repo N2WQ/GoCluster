@@ -1,6 +1,11 @@
 # H3 Table Generation (Linux/Ubuntu)
 
-This directory holds the precomputed H3 resolution tables used by the Windows build.
+This directory holds the precomputed shared geography tables required by live
+startup on every platform, including with path prediction disabled. Replay
+requires them when CustomSCP is enabled. Startup loads these files without
+generation or writes; use the explicit generator below to prepare them.
+`h3_table_path` resolves relative to the process working directory, not the
+configuration directory. See [ADR-0344](../../docs/decisions/ADR-0344-required-shared-geography.md).
 Files:
 - res1.bin (842 entries)
 - res2.bin (5882 entries)
@@ -14,7 +19,7 @@ cgo H3 generator.
 
 ## Prerequisites
 - Linux host with internet access (Ubuntu recommended)
-- Go 1.25 installed
+- Go 1.27.1 installed (the module's required toolchain)
 - build-essential and git
 
 ## Step-by-step
@@ -25,10 +30,10 @@ cgo H3 generator.
 2) Install Go, build tools, git
    sudo apt-get install -y golang-go build-essential git
 
-3) Install Go 1.25 (required by this repo)
-   curl -fsSL https://go.dev/dl/go1.25.0.linux-amd64.tar.gz -o /tmp/go1.25.0.tar.gz
+3) Install Go 1.27.1 (required by this repo)
+   curl -fsSL https://go.dev/dl/go1.27.1.linux-amd64.tar.gz -o /tmp/go1.27.1.tar.gz
    sudo rm -rf /usr/local/go
-   sudo tar -C /usr/local -xzf /tmp/go1.25.0.tar.gz
+   sudo tar -C /usr/local -xzf /tmp/go1.27.1.tar.gz
    export PATH=/usr/local/go/bin:$PATH
    go version
 
@@ -56,7 +61,7 @@ cgo H3 generator.
      h3_table_path: "data/h3"
 
 ## Troubleshooting
-- If go mod download tries to fetch a newer toolchain and fails, verify Go 1.25
+- If go mod download tries to fetch a newer toolchain and fails, verify Go 1.27.1
   is installed and on PATH.
 - If res1.bin/res2.bin sizes differ, rerun the generator and ensure no old
   files remain in data/h3.

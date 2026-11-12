@@ -42,6 +42,10 @@ const (
 		"Stabilizer: retained letter=--\n" +
 		"Corrected output: no grid=--"
 	placeholderCaches = "[lightgray]Grid cache[-]:  [[white:white]   [black:white]326,629[-:-]   [-:-]░░░░] 98.5%  |  [lightgray]Meta[-]: [[white:white]  [black:white] 5,479[-:-]  [-:-]] 99.5%\n" +
+		"Grid work: active keys=--\n" +
+		"Grid work: copied bytes=--\n" +
+		"Grid work: pending reports=--\n" +
+		"Grid work: superseded=--\n" +
 		"\n" +
 		"[lightgray]Custom SCP[-]: -- (R) / -- (S)\n" +
 		"[lightgray]160m[-]: --  [lightgray]80m[-]: --  [lightgray]40m[-]: --  [lightgray]20m[-]: --\n" +
@@ -58,7 +62,7 @@ const (
 	streamPanelMaxLines           = 200
 	overviewPipelineDefaultHeight = 14
 	overviewPipelineMinHeight     = 4
-	overviewCachesDefaultHeight   = 9
+	overviewCachesDefaultHeight   = 13
 	overviewCachesMinHeight       = 3
 	overviewPathMinHeight         = 3
 	overviewSourcesDefaultHeight  = 5

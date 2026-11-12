@@ -8,6 +8,21 @@ start. See [diagnostic meanings](../docs/decisions/ADR-0293-correction-decision-
 
 The V2 console dashboard accepts uppercase and lowercase navigation letters.
 
+The **Caches & Data Freshness** pane and headless statistics include four
+`Grid work:` rows:
+
+- `active keys`: calls retained by current lookup or report-write owners.
+- `copied bytes`: compact keys and temporary stored-report locator copies.
+- `pending reports`: owned queued/pending reported updates, including retiring
+  old-store work; CTY-only and derived updates do not count.
+- `superseded`: candidates blocked or replaced by grid authority since startup.
+
+The first three converge to zero after complete drain. Copied bytes exclude
+ordinary cache contents, map bookkeeping and total process memory. Superseded
+does not count client delivery or prove a production failure. The cache pane's
+default height is 13 rows including borders; its four diagnostic rows fit a
+60-column pane. See [grid authority](../docs/decisions/ADR-0345-grid-active-work-authority.md).
+
 | Key | Action |
 |---|---|
 | H, h or ? | Open or close keyboard help |

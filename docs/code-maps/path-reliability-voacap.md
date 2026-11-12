@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `412ce4b2f4cda8aa`
+- Source fingerprint: `49c6670823cf5c56`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 30 | 71 |
+| `dxcluster/pathreliability` | `pathreliability` | 31 | 72 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -82,6 +82,7 @@ Source files:
 - `pathreliability/grid.go`
 - `pathreliability/h3map.go`
 - `pathreliability/h3map_stub.go`
+- `pathreliability/h3required.go`
 - `pathreliability/h3tables.go`
 - `pathreliability/keys.go`
 - `pathreliability/maidenhead.go`
@@ -120,6 +121,7 @@ Test files:
 - `pathreliability/config_test.go`
 - `pathreliability/grid_test.go`
 - `pathreliability/h3map_test.go`
+- `pathreliability/h3required_test.go`
 - `pathreliability/median_speed_corpus_test.go`
 - `pathreliability/native160_fallback_test.go`
 - `pathreliability/native160_solar_bench_test.go`

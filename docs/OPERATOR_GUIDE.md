@@ -921,9 +921,13 @@ Common startup failures are usually config-path or config-content issues:
 - Required startup YAML files, YAML-owned settings, and reference tables must
   be present. The loader reports all missing required files and settings it can
   find before aborting startup.
-- When path reliability is enabled, `data.h3_table_path` must contain valid
-  `res1.bin` and `res2.bin` H3 tables. Missing or malformed H3 tables fail
-  startup because path predictions depend on those cells.
+- Every live startup requires valid `res1.bin` and `res2.bin` H3 tables at
+  `h3_table_path` in `data.yaml`, even with path reliability disabled. GRID,
+  NEARBY and CustomSCP share these cells. Missing, unreadable, malformed or
+  wrong-sized tables fail startup with all detected errors reported. Runtime never
+  generates or rewrites them. Relative paths use the process working directory.
+  Replay requires the same tables when CustomSCP is enabled. See
+  [ADR-0344](decisions/ADR-0344-required-shared-geography.md).
 - On Linux and other non-Windows builds, `voacap_fallback.enabled: true` does
   not fail startup only because the Windows VOACAP engine is unavailable.
   Startup logs that the VOACAP fallback is disabled and continues without the

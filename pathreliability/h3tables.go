@@ -30,6 +30,10 @@ func loadH3Table(dir string, res int, wantCount int) ([]uint64, error) {
 	if err != nil {
 		return nil, err
 	}
+	return decodeH3Table(path, data, wantCount)
+}
+
+func decodeH3Table(path string, data []byte, wantCount int) ([]uint64, error) {
 	if len(data)%8 != 0 {
 		return nil, fmt.Errorf("h3 table %s has invalid length %d", path, len(data))
 	}

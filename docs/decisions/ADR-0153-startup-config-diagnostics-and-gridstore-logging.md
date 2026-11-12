@@ -25,6 +25,11 @@ open failure.
 
 ## Decision
 
+The H3 enable-dependent requirement below is superseded by
+[ADR-0344](ADR-0344-required-shared-geography.md): shared geography is required
+for all live startups and enabled replay CustomSCP, independently of prediction.
+The remaining diagnostic and gridstore decisions continue to apply.
+
 Startup config loading now accumulates diagnostics across the required server
 startup config set:
 

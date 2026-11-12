@@ -34,6 +34,7 @@ workflow rules.
 | Area | Start here |
 | --- | --- |
 | CTY exact matching, representative grids and classification ownership | `cty/parser.go`, `cty/maidenhead.go`, `cty/snapshot.go`, `internal/cluster/call_meta_cache.go`; [ADR-0340](../docs/decisions/ADR-0340-cty-grid-authority.md), [operator cutover](../docs/runbooks/cty-grid-rebuild.md) |
+| Grid cache/worker/commit authority and bounded active ownership | `internal/cluster/grid_authority.go`, `grid_writer.go`, `call_meta_cache.go`; [ADR-0345](../docs/decisions/ADR-0345-grid-active-work-authority.md), [TSR-0129](../docs/troubleshooting/TSR-0129-grid-cache-authority.md) |
 | Live runtime | `internal/cluster/`, [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |
 | Telnet sessions, filters, and queues | [telnet/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/telnet/README.md), `telnet/` |
 | GO Boolean rules, native CC banks and immutable matching | [current contracts and owners](#boolean-personal-rules), [CC manual](../docs/cc-dialect.md), [normative domain contract](../docs/domain-contract.md#boolean-personal-rules) |
@@ -53,6 +54,7 @@ workflow rules.
 | Stabilizer transition matrix and terminal accounting | [ui matrix guide](https://raw.githubusercontent.com/N2WQ/GoCluster/main/ui/README.md#stabilizer-matrix), `stats/stabilizer_transitions.go`, `internal/cluster/stabilizer_matrix.go`, `internal/cluster/output_pipeline_delivery.go` |
 | Build, release, local profiling controller and helper scripts | [scripts/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/scripts/README.md), `scripts/` |
 | Public example config, reference inputs, and runtime/local data | [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md), [data/h3/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/h3/README.md), `data/` |
+| Required shared geography, prediction-off GRID/NEARBY and replay CustomSCP | `pathreliability/h3required.go`, `internal/cluster/main_runtime.go`, `cmd/rbn_replay/runner.go`, [ADR-0344](../docs/decisions/ADR-0344-required-shared-geography.md) |
 
 ## Workflow
 

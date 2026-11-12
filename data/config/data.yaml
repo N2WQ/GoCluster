@@ -35,12 +35,12 @@ ised:
 
 # Grid/call metadata database (Pebble directory).
 grid_db: "data/grids/pebble"
-# H3 table directory for path reliability (res1.bin/res2.bin).
+# Required shared geography tables (res1.bin/res2.bin), also with prediction off.
 h3_table_path: "data/h3"
 grid_flush_seconds: 90                 # Batch DB writes at most once per this many seconds
 grid_cache_size: 40960                 # Max in-memory grid cache entries (lazy LRU; falls back to Pebble on miss)
 grid_cache_ttl_seconds: 3600           # >0 expires cache entries after this many seconds (0=never expires)
-grid_db_check_on_miss: true            # When true, schedule async Pebble backfill on cache miss (no synchronous reads)
+grid_db_check_on_miss: true            # Enable async backfill and caller-opted bounded sync lookup on cache miss
 grid_ttl_days: 90                      # >0 prunes grid records older than this many days (0=keep forever)
 grid_preflight_timeout_ms: 3000        # Ignored for Pebble grid store (retained for compatibility)
 grid_block_cache_mb: 64                # Block cache shared across SSTables for repeated grid lookups

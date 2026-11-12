@@ -20,9 +20,10 @@ const callMetaCacheShardCount = 16
 // Grid lookups normalize to a base identity (uppercase, trimmed, hyphen suffix stripped)
 // to avoid duplicate entries across source variants.
 type callMetaCache struct {
-	shards   []callMetaCacheShard
-	gridTTL  time.Duration
-	capacity int
+	shards    []callMetaCacheShard
+	gridTTL   time.Duration
+	capacity  int
+	authority *gridCoordinator // stable before CTY scheduling or recovery
 
 	ctyLookups atomic.Uint64
 	ctyHits    atomic.Uint64
@@ -77,11 +78,13 @@ func newCallMetaCache(capacity int, gridTTL time.Duration) *callMetaCache {
 			entries: make(map[string]*list.Element, perShard),
 		}
 	}
-	return &callMetaCache{
+	c := &callMetaCache{
 		shards:   shards,
 		gridTTL:  gridTTL,
 		capacity: capacity,
 	}
+	c.authority = newGridCoordinator(c)
+	return c
 }
 
 // Clear clears all cached entries (used on CTY reload).
@@ -92,6 +95,11 @@ func (c *callMetaCache) Clear() {
 	if c == nil {
 		return
 	}
+	c.authority.invalidateCache()
+}
+
+// clearEntries is called only by the authority owner, before shard locks.
+func (c *callMetaCache) clearEntries() {
 	for i := range c.shards {
 		shard := &c.shards[i]
 		shard.mu.Lock()
@@ -292,18 +300,53 @@ func (c *callMetaCache) UpdateGrid(call, grid string, derived bool) bool {
 	return true
 }
 
+// unchangedReported is a shard-only fast path. Failed checks change no grid
+// state; the authority path rechecks. Equal updates still refresh LRU recency.
+func (c *callMetaCache) unchangedReported(call, grid string) bool {
+	if c == nil {
+		return false
+	}
+	shard := c.shardFor(call)
+	shard.mu.Lock()
+	defer shard.mu.Unlock()
+	elem := shard.entries[call]
+	if elem == nil {
+		return false
+	}
+	entry, ok := elem.Value.(*callMetaEntry)
+	if !ok || entry == nil || !entry.gridValid || entry.gridDerived || entry.grid != grid {
+		return false
+	}
+	if c.gridTTL > 0 && !entry.gridUpdatedAt.IsZero() && time.Since(entry.gridUpdatedAt) > c.gridTTL {
+		return false
+	}
+	shard.order.MoveToFront(elem)
+	return true
+}
+
 // ApplyRecord hydrates a persisted grid and provenance, never classification.
 // Legacy disk CTY fields lack coordinates and file identity; only LookupCTY
 // using the caller's active snapshot may establish a checked CTY hit or miss.
 // Upstream: grid lookup backfill.
 // Downstream: per-shard LRU mutation.
 func (c *callMetaCache) ApplyRecord(rec gridstore.Record) {
+	c.selectGridRecord(rec)
+}
+
+// selectGridRecord returns the exact selected tuple, including rejection of a
+// stale candidate. It does not reset disk age or apply cache TTL to that reply.
+func (c *callMetaCache) selectGridRecord(rec gridstore.Record) gridLookupResult {
+	result, _ := c.selectGridRecordSource(rec)
+	return result
+}
+
+func (c *callMetaCache) selectGridRecordSource(rec gridstore.Record) (gridLookupResult, bool) {
 	if c == nil {
-		return
+		return recordGridResult(&rec), true
 	}
 	call := normalizeCallForMetadata(rec.Call)
 	if call == "" {
-		return
+		return gridLookupResult{}, false
 	}
 	shard := c.shardFor(call)
 	shard.mu.Lock()
@@ -324,6 +367,9 @@ func (c *callMetaCache) ApplyRecord(rec gridstore.Record) {
 			}
 		}
 	}
+	selected := gridLookupResult{grid: entry.grid, derived: entry.gridDerived, ok: entry.gridValid}
+	incoming := recordGridResult(&rec)
+	return selected, selected == incoming && entry.gridUpdatedAt.Equal(rec.UpdatedAt)
 }
 
 func (c *callMetaCache) shardFor(key string) *callMetaCacheShard {

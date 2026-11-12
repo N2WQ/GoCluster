@@ -24,6 +24,7 @@ import (
 	"dxcluster/cty"
 	"dxcluster/download"
 	"dxcluster/internal/correctionflow"
+	"dxcluster/pathreliability"
 	rbnfeed "dxcluster/rbn"
 	"dxcluster/spot"
 	"dxcluster/stats"
@@ -201,6 +202,13 @@ func (r *replayRunner) loadClusterConfig() error {
 	}
 	if !cfg.CallCorrection.Enabled {
 		return fmt.Errorf("call_correction.enabled must be true for replay (config=%s)", cfg.LoadedFrom)
+	}
+	// Required geography precedes output directories, downloads and history
+	// scratch replacement. Prediction's switch does not own CustomSCP evidence.
+	if cfg.CallCorrection.CustomSCP.Enabled {
+		if err := pathreliability.InitRequiredH3Mappings(cfg.H3TablePath); err != nil {
+			return fmt.Errorf("replay shared geography initialization failed (h3_table_path=%q): %w", cfg.H3TablePath, err)
+		}
 	}
 	r.cfg = cfg
 	return nil

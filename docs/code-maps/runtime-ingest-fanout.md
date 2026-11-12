@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `9ce88efe5bd497af`
+- Source fingerprint: `cf93fac64e69c659`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 13 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 55 | 194 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 200 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 39 | 68 |
 | `dxcluster/telnet` | `telnet` | 80 | 168 |
@@ -160,6 +160,8 @@ Source files:
 - `internal/cluster/ft_confidence_runtime.go`
 - `internal/cluster/gc_window.go`
 - `internal/cluster/go_runtime_tuning.go`
+- `internal/cluster/grid_authority.go`
+- `internal/cluster/grid_authority_stats.go`
 - `internal/cluster/grid_writer.go`
 - `internal/cluster/ingest_health.go`
 - `internal/cluster/ingest_validation.go`
@@ -268,7 +270,13 @@ Test files:
 - `internal/cluster/ft_expiry_delivery_test.go`
 - `internal/cluster/ft_expiry_observe_test.go`
 - `internal/cluster/gc_window_test.go`
+- `internal/cluster/geography_startup_test.go`
 - `internal/cluster/go_runtime_tuning_test.go`
+- `internal/cluster/grid_authority_bench_test.go`
+- `internal/cluster/grid_authority_ordering_test.go`
+- `internal/cluster/grid_authority_ownership_test.go`
+- `internal/cluster/grid_authority_resources_test.go`
+- `internal/cluster/grid_authority_test.go`
 - `internal/cluster/grid_hook_bench_test.go`
 - `internal/cluster/grid_lookup_test.go`
 - `internal/cluster/grid_retirement_test.go`

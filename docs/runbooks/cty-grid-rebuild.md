@@ -104,8 +104,10 @@ the production service or a particular prior executable.
   estimates and reduced empirical path coverage. In-memory path buckets rebuild
   at restart. Recovery depends on traffic; learning admission/weights are unchanged.
 - Persisted estimates are not regenerated automatically on every CTY refresh.
-  Row age does not guarantee location freshness. Combined-cache clearing may
-  temporarily hide a pending reported grid; merge precedence protects its commit.
+  Row age does not guarantee location freshness. Active lookup/report ownership
+  now protects cache authority across Clear and successful report commits; see
+  [ADR-0345](../decisions/ADR-0345-grid-active-work-authority.md). Contested output
+  can still be unknown, and dropped/unavailable/failed updates remain best effort.
   Future freshness work must preserve the chosen persistence policy.
 - A six-character row was not emitted by this four-character generator, but its
   length cannot establish source, syntax, freshness or station association. Any

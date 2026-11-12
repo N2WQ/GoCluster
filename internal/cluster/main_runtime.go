@@ -264,6 +264,9 @@ func (r *clusterRuntime) setupLoggingAndUI() bool {
 	if err := spot.SetDXClusterLineLength(r.cfg.Telnet.OutputLineLength); err != nil {
 		return r.failStartup("Invalid telnet output line length: %v", err)
 	}
+	if err := pathreliability.InitRequiredH3Mappings(r.cfg.H3TablePath); err != nil {
+		return r.failStartup("Shared geography H3 mapping initialization failed (h3_table_path=%q): %v", r.cfg.H3TablePath, err)
+	}
 	if !r.loadPathReliabilityConfig() {
 		return false
 	}
@@ -288,18 +291,6 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 	pathCfg := r.cfg.PathReliability
 	allowedBands, allowedBandSet := normalizeAllowedBands(pathCfg.AllowedBands)
 	pathPredictor := pathreliability.NewPredictor(pathCfg, allowedBands)
-	if pathCfg.Enabled {
-		if errs := pathreliability.ValidateH3Tables(r.cfg.H3TablePath); len(errs) > 0 {
-			messages := make([]string, 0, len(errs))
-			for _, err := range errs {
-				messages = append(messages, err.Error())
-			}
-			return r.failStartup("Path reliability H3 table validation failed: %s", strings.Join(messages, "; "))
-		}
-		if err := pathreliability.InitH3MappingsFromDir(r.cfg.H3TablePath); err != nil {
-			return r.failStartup("Path reliability H3 mapping init failed: %v", err)
-		}
-	}
 	r.pathCfg = pathCfg
 	r.allowedBandSet = allowedBandSet
 	r.pathPredictor = pathPredictor
@@ -473,6 +464,7 @@ func (r *clusterRuntime) initializeCallCacheAndMeta() {
 	}
 
 	r.metaCache = newCallMetaCache(r.cfg.GridCacheSize, time.Duration(r.cfg.GridCacheTTLSec)*time.Second)
+	bindGridCoordinator(r.gridStoreHandle, r.metaCache)
 	if r.surface == nil {
 		r.cfg.PrintTo(&sharedProcessLogRouter)
 		return
@@ -809,6 +801,7 @@ func (r *clusterRuntime) initializeWhoSpotsMeStore() {
 }
 
 func (r *clusterRuntime) initializeGridStore() bool {
+	bindGridCoordinator(r.gridStoreHandle, r.metaCache)
 	gridOpts := gridstore.Options{
 		CacheSizeBytes:        int64(r.cfg.GridBlockCacheMB) << 20,
 		BloomFilterBitsPerKey: r.cfg.GridBloomFilterBits,

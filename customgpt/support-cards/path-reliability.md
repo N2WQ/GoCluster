@@ -21,6 +21,12 @@ inspect user-visible diagnostics:
 
 ## Must Include
 
+- Shared H3 geography initializes independently of prediction. Both tables are
+  required at live startup and for enabled replay CustomSCP. Prediction off
+  still disables learning and display; GRID/NEARBY and geographic evidence remain
+  available. Existing persisted zero-cell observations are not repaired. See
+  ADR-0344 and TSR-0128.
+
 - PATHSAMPLES and the configured 21/11 floors use recent report units, before
   display weights: usable raw reports in off/shadow, cap-admitted fractions in
   enforce. 21 fresh unit reports meet 21; after one half-life 10.5 do not. Lifetime

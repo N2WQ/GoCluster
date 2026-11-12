@@ -33,6 +33,12 @@ pressure.
   Earlier path observations are not replayed or relocated.
 - Release-path location preparation uses existing cache-first asynchronous
   lookup only: no worker/disk response wait, new queue, timer or goroutine.
+- Grid worker replies and cache admission share the same authority selection.
+  Active reported writes survive ordinary cache loss through commit/drop;
+  retired-store work cannot publish into replacement-store authority. Cached
+  hits still complete lookups. Contested work can return unknown; updates remain
+  best effort. Temporary stored-report copies arbitrate already-positive reads
+  only, never MISS/derived/error. See [ADR-0345](decisions/ADR-0345-grid-active-work-authority.md).
 - Apply strict `age > limit` before core acceptance and final output offers,
   including work delayed by lookup/admission locks or final grid writeback.
   Pre-core expiry learns/counts no terminal transition. Post-core expiry keeps
@@ -694,6 +700,11 @@ machine or stored-document limits. Any parse, domain, slot or budget refusal
 leaves the previous complete rule set intact.
 
 ### NEARBY Predicate And Recovery
+
+Live startup requires both configured shared H3 tables independently of the path
+prediction switch. Replay requires them for its enabled CustomSCP owner. Loading
+is bounded, read-only and fails startup for invalid inputs; it preserves existing
+geometry and once-owned IDs. See [ADR-0344](decisions/ADR-0344-required-shared-geography.md).
 
 Support exactly the case-insensitive bare predicate NEARBY, including NOT and
 ordinary AND/OR/parentheses. It has zero operand values and consumes one atom

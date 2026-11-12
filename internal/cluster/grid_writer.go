@@ -10,6 +10,15 @@ import (
 	"dxcluster/gridstore"
 )
 
+// Private per-instance fault witnesses run outside authority/storage locks.
+// Production supplies the zero value; tests observe actual worker responses and
+// the real write boundary without replacing either implementation.
+type gridWriterOps struct {
+	afterRead   func(gridLookupRequest, *gridstore.Record)
+	beforeWrite func([]gridstore.Record)
+	afterWrite  func([]gridstore.Record, error)
+}
+
 // mergePendingGridRecord coalesces one call without changing its batch lifetime.
 // A locator and its provenance are one value: approximate CTY-derived grids
 // cannot replace an observed grid, but their other metadata still contributes.
@@ -48,7 +57,7 @@ func mergePendingGridRecord(existing, incoming gridstore.Record) gridstore.Recor
 
 // runGridWriter is the production writer loop. Its pending map flushes at 500
 // distinct calls or the configured interval; producers never wait on storage.
-func runGridWriter(storeHandle *gridStoreHandle, updates <-chan gridstore.Record, done chan<- struct{}, flushInterval, ttl time.Duration, metrics *gridMetrics) {
+func runGridWriter(coord *gridCoordinator, updates <-chan gridWriteRequest, done chan<- struct{}, flushInterval, ttl time.Duration, metrics *gridMetrics, ops gridWriterOps) {
 	defer close(done)
 	ticker := time.NewTicker(flushInterval)
 	defer ticker.Stop()
@@ -60,7 +69,7 @@ func runGridWriter(storeHandle *gridStoreHandle, updates <-chan gridstore.Record
 		ttlCh = ttlTicker.C
 	}
 
-	pending := make(map[string]gridstore.Record)
+	pending := make(map[string]gridWriteRequest)
 	// Purpose: Flush pending updates to the database in a batch.
 	// Key aspects: Retains batch on busy errors; clears on success.
 	// Upstream: update loop and ticker ticks.
@@ -69,29 +78,32 @@ func runGridWriter(storeHandle *gridStoreHandle, updates <-chan gridstore.Record
 		if len(pending) == 0 {
 			return
 		}
-		store := storeHandle.Store()
-		if store == nil {
-			clear(pending)
+		batch, store := coord.prepareBatch(pending)
+		if store == nil || len(batch) == 0 {
 			return
 		}
-		batch := make([]gridstore.Record, 0, len(pending))
 		gridUpdates := 0
-		for call := range pending {
-			rec := pending[call]
-			if rec.Grid.Valid {
+		for i := range batch {
+			if batch[i].Grid.Valid {
 				gridUpdates++
 			}
-			batch = append(batch, rec)
 		}
 		start := time.Now().UTC()
-		if err := store.UpsertBatch(batch); err != nil {
+		if ops.beforeWrite != nil {
+			ops.beforeWrite(batch)
+		}
+		err := store.UpsertBatch(batch)
+		if ops.afterWrite != nil {
+			ops.afterWrite(batch, err)
+		}
+		if err != nil {
 			if gridstore.IsBusyError(err) {
 				// Keep the batch in-memory so a later flush can retry after the lock clears.
 				log.Printf("Warning: gridstore batch upsert busy (retaining %d pending): %v", len(batch), err)
 				return
 			}
 			log.Printf("Warning: gridstore batch upsert failed (dropping %d pending): %v", len(batch), err)
-			clear(pending)
+			coord.finishBatch(pending, err)
 			return
 		}
 		if elapsed := time.Since(start); elapsed > time.Second {
@@ -100,33 +112,29 @@ func runGridWriter(storeHandle *gridStoreHandle, updates <-chan gridstore.Record
 		if gridUpdates > 0 {
 			metrics.learnedTotal.Add(uint64(gridUpdates))
 		}
-		clear(pending)
+		coord.finishBatch(pending, nil)
 	}
 
 	for {
 		select {
-		case rec, ok := <-updates:
+		case req, ok := <-updates:
 			if !ok {
 				flush()
 				return
 			}
-			call := normalizeCallForMetadata(rec.Call)
+			call := normalizeCallForMetadata(req.record.Call)
 			if call == "" {
 				continue
 			}
-			rec.Call = call
-			if existing, exists := pending[call]; exists {
-				pending[call] = mergePendingGridRecord(existing, rec)
-			} else {
-				pending[call] = rec
-			}
+			req.record.Call = call
+			coord.coalesce(pending, req)
 			if len(pending) >= 500 {
 				flush()
 			}
 		case <-ticker.C:
 			flush()
 		case <-ttlCh:
-			store := storeHandle.Store()
+			store := coord.handle.Store()
 			if store == nil {
 				continue
 			}

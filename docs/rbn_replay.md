@@ -87,11 +87,22 @@ RBN history CSV mode fields are intentionally distinct:
 - `BEACON` and `NCDXF B` rows are accepted from the CSV parser but tagged as beacons and excluded from call-correction evidence.
 
 All other dependencies are local snapshots and must already exist when enabled:
+- `h3_table_path` containing `res1.bin` and `res2.bin` when CustomSCP is enabled;
+  these shared geography inputs are required even with path prediction off
 - `cty.file`
 - `fcc_uls.allowlist_path`
 - `fcc_uls.db_path`
 - `ised.db_path` when enabled
 - optional confusion model and spotter-reliability files
+
+Required H3 tables are validated before output-directory creation, RBN download
+or history scratch replacement. Missing, unreadable, malformed and wrong-sized
+files fail startup with all detected errors reported. Each read is bounded to expected
+bytes plus one; runtime never generates or rewrites tables. Paths inside the
+cluster config retain process-working-directory meaning; `-config` does not
+rebase them. The PowerShell replay wrapper starts from `RepoRoot`. Geography
+initialization does not enable path prediction or establish full live/replay
+stabilizer parity. See [ADR-0344](decisions/ADR-0344-required-shared-geography.md).
 
 Each run stream-copies configured present FCC/ISED databases and allowlist into
 owned frozen inputs before lookup. Manifest and run history `license_inputs`

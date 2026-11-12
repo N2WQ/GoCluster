@@ -30,6 +30,11 @@ capture that OS error separately from YAML/config diagnostics. See
 
 ## Must Include
 
+- Both configured H3 tables are required even when prediction is off. Search
+  for `Shared geography H3 mapping initialization failed` and `h3_table_path`;
+  resolve relative paths from the launch directory. Runtime never regenerates
+  tables. See ADR-0344 and TSR-0128.
+
 - Use exact diagnostic phrases when the user asks what to search for:
   `required config file`, `required YAML setting`, `Config diagnostics`, and
   `Config warning`.

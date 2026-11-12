@@ -257,6 +257,13 @@ counts as a completed lookup, without requiring a fresh disk read. Store/cache
 provenance distinguishes reported from derived, not the individual input feed;
 existing cache freshness limits and legacy stored provenance still apply.
 
+Active lookup and report-write ownership now keeps cache selection, worker
+replies and successful commits in one order. A late estimate cannot replace a
+reported winner just because Clear, eviction or TTL removed its cached entry.
+Conflicting pending reports can still yield unknown until authority is resolved;
+queue overflow and failed/unavailable persistence remain best effort. See
+[ADR-0345](../docs/decisions/ADR-0345-grid-active-work-authority.md).
+
 A delayed cold-cache correction can therefore leave with no grid, as can an
 immediate correction whose bounded lookup times out. Later backfill does not
 change that immutable output. Missing DX location cannot match positive DX-grid

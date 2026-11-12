@@ -104,4 +104,7 @@ Confidence, percentages, budgets, age/learning rules and replay remain unchanged
 - Supersedes the grid-retention/provenance portion of
   [ADR-0341](ADR-0341-stabilizer-live-output.md); its remaining decisions continue.
 - Uses unchanged [ADR-0340 CTY authority](ADR-0340-cty-grid-authority.md).
-- Superseded by: none.
+- Superseded by ADR-0345 for the late-hydration limitation only.
+- Follow-up: [ADR-0345](ADR-0345-grid-active-work-authority.md) replaces the known
+  late-hydration window with bounded active-work authority. The v5 correction
+  selection, delayed-release, output accounting and persistence rules remain.

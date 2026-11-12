@@ -6,14 +6,30 @@ then cite the underlying repo docs or TSRs.
 
 ## Stabilizer output
 
+For valid GRID refused or CustomSCP missing geographic diversity when prediction
+is off, inspect shared geography startup and `h3_table_path` in `data.yaml`.
+Both tables are required for live startup; enabled replay CustomSCP also needs
+them. Relative paths use the launch working directory; runtime never regenerates
+tables. See [TSR-0128](../docs/troubleshooting/TSR-0128-shared-geography-startup.md)
+and [ADR-0344](../docs/decisions/ADR-0344-required-shared-geography.md).
+
 For lower ordinary terminal letters, a retained P with weaker/missing DIAG CONF,
 corrected-call grids, or stale held output, use the
 [live contract](../spot/README.md#live-stabilizer-output) and
 [TSR-0127](../docs/troubleshooting/TSR-0127-stabilizer-live-output.md).
 The matrix uses retained letters; `retained letter` counts terminal weakening
 and `age drops` counts held expiry. Neither proves RF accuracy or client receipt.
-Same/missing replacement lookups retain the attached grid without teaching it
-to the target cache. No old-database repair or replay parity is implied.
+Missing/incomplete replacement lookups clear the old call's grid without direct
+CTY fallback or teaching that inherited location to the target cache. No
+old-database repair or replay parity is implied.
+
+For cache disagreement with a reported row, stale worker replies, or nonzero
+`Grid work:` gauges after drain, use
+[TSR-0129](../docs/troubleshooting/TSR-0129-grid-cache-authority.md) and
+[ADR-0345](../docs/decisions/ADR-0345-grid-active-work-authority.md). Active work
+protects reported precedence through cache loss and successful commits; a
+contested correction can still leave with unknown grid. Do not infer a new
+durability guarantee or repair historical provenance from these counters.
 
 ## Replay deadlines
 

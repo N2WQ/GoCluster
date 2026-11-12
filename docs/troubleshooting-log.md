@@ -14,6 +14,8 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0129 | Grid Cache and Worker Authority | Monitoring | 2026-11-11 | cache, worker replies, report commits and epochs | ADR-0345 | `docs/troubleshooting/TSR-0129-grid-cache-authority.md` |
+| TSR-0128 | Shared Geography Startup | Monitoring | 2026-11-11 | H3 startup, GRID, NEARBY, CustomSCP, replay | ADR-0344 | `docs/troubleshooting/TSR-0128-shared-geography-startup.md` |
 | TSR-0127 | Stabilizer Confidence Downgrades and Late Output | Monitoring | 2026-11-11 | stabilizer confidence, corrected grid, age and accounting | ADR-0341, ADR-0343 | `docs/troubleshooting/TSR-0127-stabilizer-live-output.md` |
 | TSR-0126 | CTY Grids and Classification | Monitoring | 2026-11-11 | CTY longitude, exact calls, snapshot cache, grid rebuild | ADR-0340 | `docs/troubleshooting/TSR-0126-cty-grid-classification.md` |
 | TSR-0125 | Broadcast Order During Membership Churn | Monitoring | 2026-11-11 | telnet worker shard membership | ADR-0339 | `docs/troubleshooting/TSR-0125-broadcast-order-churn.md` |

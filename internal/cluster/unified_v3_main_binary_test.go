@@ -57,6 +57,21 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 	if err := os.Mkdir(cfgDir, 0700); err != nil {
 		t.Fatal(err)
 	}
+	// Shared geography is required even with prediction off. Keep this real
+	// executable fixture isolated from repository/default working-directory data.
+	h3Dir := filepath.Join(work, "h3")
+	if err := os.Mkdir(h3Dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"res1.bin", "res2.bin"} {
+		data, err := os.ReadFile(filepath.Join(repo, "data", "h3", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(h3Dir, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	// Configured reliability tables are validated even with correction off.
 	// Keep this executable fixture independent of ignored operator data/rbn.
 	reliabilityFile := filepath.Join(work, "spotter-reliability.txt")
@@ -97,6 +112,7 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 		case "archive.yaml":
 			section("archive")["enabled"] = false
 		case "data.yaml":
+			doc["h3_table_path"] = h3Dir
 			cty := section("cty")
 			cty["enabled"] = false
 			cty["url"] = reference.URL

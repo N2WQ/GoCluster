@@ -76,4 +76,6 @@ verified backup and isolated recovery remain deployment obligations.
   `cty/snapshot_test.go`, cluster `cty_*_test.go`, telnet `cty_*_test.go`.
 - Normative: [Country Files](https://www.country-files.com/cty-dat-format/),
   [IARU-R1 Handbook 10.03 pp.107–109](https://www.iaru-r1.org/wp-content/uploads/2026/02/VHF_Handbook_V10_03_final.pdf).
-- Supersedes / superseded by: none.
+- Supersedes: none. Superseded by ADR-0345 for the late-hydration limitation only.
+- Follow-up: [ADR-0345](ADR-0345-grid-active-work-authority.md) repairs the known
+  late cache-hydration limitation; its CTY science and persistence decisions remain.

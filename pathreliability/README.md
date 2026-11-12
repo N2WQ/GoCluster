@@ -70,10 +70,17 @@ That point is mapped into:
 
 The runtime uses stable `uint16` proxy IDs built from the precomputed H3
 tables in [`../data/h3`](../data/h3). If a spot's grid is invalid, the cell
-becomes invalid and prediction can fall back to insufficient. When path
-reliability is enabled, missing, malformed, or wrong-sized H3 mapping tables
-are startup failures reported in the system log because all path predictions
-depend on those cells.
+becomes invalid and prediction can fall back to insufficient. Every live startup
+requires both tables, including when prediction is disabled, because GRID,
+NEARBY and CustomSCP also use these mappings. Replay requires them when its
+CustomSCP owner is enabled. Missing, unreadable, malformed or wrong-sized tables
+fail startup with all detected table errors reported. Startup reads each input once,
+bounded to its expected bytes plus one, and builds from those captured cells;
+it never generates or rewrites tables. Relative paths use the process working
+directory. Validation runs on every invocation; process mappings initialize
+once and cannot reload from a second directory. Prediction disabled still
+disables ingestion, maintenance, display and SHOW PROP. See
+[ADR-0344](../docs/decisions/ADR-0344-required-shared-geography.md).
 
 ## FT8-Equivalent Conversion
 

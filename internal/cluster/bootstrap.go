@@ -99,11 +99,15 @@ var currentBuildInfo = BuildInfo{
 }
 
 type gridMetrics struct {
-	learnedTotal atomic.Uint64
-	cacheLookups atomic.Uint64
-	cacheHits    atomic.Uint64
-	asyncDrops   atomic.Uint64
-	syncDrops    atomic.Uint64
+	learnedTotal         atomic.Uint64
+	cacheLookups         atomic.Uint64
+	cacheHits            atomic.Uint64
+	asyncDrops           atomic.Uint64
+	syncDrops            atomic.Uint64
+	activeKeys           atomic.Uint64
+	copiedTextBytes      atomic.Uint64
+	pendingReports       atomic.Uint64
+	supersededCandidates atomic.Uint64
 
 	rateMu          sync.Mutex
 	lastLookupCount uint64
@@ -128,7 +132,9 @@ const (
 )
 
 type gridStoreHandle struct {
-	store atomic.Pointer[gridstore.Store]
+	store     atomic.Pointer[gridstore.Store]
+	bindMu    sync.Mutex
+	authority *gridCoordinator
 }
 
 func newGridStoreHandle(store *gridstore.Store) *gridStoreHandle {
@@ -154,7 +160,13 @@ func (h *gridStoreHandle) Set(store *gridstore.Store) {
 	if h == nil {
 		return
 	}
-	h.store.Store(store)
+	h.bindMu.Lock()
+	defer h.bindMu.Unlock()
+	if h.authority != nil {
+		h.authority.replaceStore(store)
+	} else {
+		h.store.Store(store)
+	}
 }
 
 func (h *gridStoreHandle) Close() error {
@@ -938,6 +950,7 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 			fmt.Sprintf("%s: %s TOTAL", withIngestStatusLabel("P92", p92Live), humanize.Comma(int64(p92Total))), // 6
 		)
 		lines[4] += fmt.Sprintf(" / %s PSK", humanize.Comma(int64(psk31_63)))
+		lines = append(lines, formatGridAuthorityLines(gridStats)...)
 		lines = append(lines, pathOnlyLine)
 		lines = append(lines,
 			fmt.Sprintf("Calls: %d (C) / %d (U) / %d (F) / %d (H) / %d (R)", totalCorrections, totalUnlicensed, totalFreqCorrections, totalHarmonics, reputationTotal), // 6
@@ -3106,6 +3119,10 @@ func formatGridLineOrPlaceholder(metrics *gridMetrics, store *gridStoreHandle, p
 // Upstream: main grid store setup.
 // Downstream: gridstore.Store and callMetaCache methods.
 func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, cache *callMetaCache, ttl time.Duration, dbCheckOnMiss bool, ctyLookup func() *cty.CTYDatabase) (func(call, grid string), func(call string, info *cty.PrefixInfo), *gridMetrics, func(), func(call string) (string, bool, bool), func(call string) (string, bool, bool)) {
+	return startGridWriterWithOps(storeHandle, flushInterval, cache, ttl, dbCheckOnMiss, ctyLookup, gridWriterOps{})
+}
+
+func startGridWriterWithOps(storeHandle *gridStoreHandle, flushInterval time.Duration, cache *callMetaCache, ttl time.Duration, dbCheckOnMiss bool, ctyLookup func() *cty.CTYDatabase, ops gridWriterOps) (func(call, grid string), func(call string, info *cty.PrefixInfo), *gridMetrics, func(), func(call string) (string, bool, bool), func(call string) (string, bool, bool)) {
 	if storeHandle == nil {
 		noop := func(string, string) {}
 		noopCTY := func(string, *cty.PrefixInfo) {}
@@ -3116,17 +3133,19 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		flushInterval = 60 * time.Second
 	}
 	metrics := &gridMetrics{}
+	coord := bindGridCoordinator(storeHandle, cache)
+	coord.mu.Lock()
+	coord.metrics = metrics
+	coord.gaugesLocked()
+	coord.mu.Unlock()
 	// dbCheckOnMiss gates async cache backfill and tight-timeout sync lookups.
 	// Sync lookups are opt-in per caller so the main hot path stays non-blocking.
 	asyncLookupEnabled := dbCheckOnMiss
 	syncLookupEnabled := dbCheckOnMiss && gridSyncLookupWorkers > 0 && gridSyncLookupQueueDepth > 0 && gridSyncLookupTimeout > 0
-	getStore := func() *gridstore.Store {
-		return storeHandle.Store()
-	}
 	storeAvailable := func() bool {
 		return storeHandle.Available()
 	}
-	updates := make(chan gridstore.Record, 8192)
+	updates := make(chan gridWriteRequest, 8192)
 	done := make(chan struct{})
 	// External hooks retain read admission through their complete cache/enqueue
 	// operation. Stop fences them before closing producer-owned lookup queues.
@@ -3143,31 +3162,30 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		syncLookupQueue = make(chan gridLookupRequest, gridSyncLookupQueueDepth)
 	}
 
-	lookupRecord := func(baseCall, rawCall string) (*gridstore.Record, error) {
+	lookupRecord := func(store *gridstore.Store, baseCall, rawCall string) (*gridstore.Record, error, bool) {
 		var baseRec *gridstore.Record
 		if baseCall == "" {
-			return baseRec, nil
+			return baseRec, nil, false
 		}
-		store := getStore()
 		if store != nil {
 			rec, err := store.Get(baseCall)
 			if err != nil {
-				return nil, err
+				return nil, err, false
 			}
 			if rec != nil {
 				if rec.Grid.Valid {
-					return rec, nil
+					return rec, nil, false
 				}
 				baseRec = rec
 			}
 			if rawCall != "" && rawCall != baseCall {
 				rec, err = store.Get(rawCall)
 				if err != nil {
-					return nil, err
+					return nil, err, false
 				}
 				if rec != nil {
 					if rec.Grid.Valid {
-						return rec, nil
+						return rec, nil, false
 					}
 					if baseRec == nil {
 						baseRec = rec
@@ -3176,19 +3194,19 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 			}
 		}
 		if ctyLookup == nil {
-			return baseRec, nil
+			return baseRec, nil, false
 		}
 		ctyDB := ctyLookup()
 		if ctyDB == nil {
-			return baseRec, nil
+			return baseRec, nil, false
 		}
 		info := effectivePrefixInfo(ctyDB, cache, baseCall)
 		if info == nil {
-			return baseRec, nil
+			return baseRec, nil, false
 		}
 		derivedGrid, ok := cty.Grid4FromPrefixInfo(info)
 		if !ok {
-			return baseRec, nil
+			return baseRec, nil, false
 		}
 		now := time.Now().UTC()
 		derivedRec := gridstore.Record{
@@ -3209,17 +3227,10 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 				derivedRec.CTYCountry = baseRec.CTYCountry
 			}
 		}
-		if storeAvailable() {
-			select {
-			case updates <- derivedRec:
-			default:
-				// Drop silently to avoid backpressure on the lookup pipeline.
-			}
-		}
-		return &derivedRec, nil
+		return &derivedRec, nil, true
 	}
 
-	go runGridWriter(storeHandle, updates, done, flushInterval, ttl, metrics)
+	go runGridWriter(coord, updates, done, flushInterval, ttl, metrics, ops)
 
 	// Purpose: Enqueue a grid update without blocking the output pipeline.
 	// Key aspects: Normalizes call/grid, uses cache to suppress duplicates.
@@ -3236,25 +3247,11 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		if call == "" || len(grid) < 4 {
 			return
 		}
-		if cache != nil && !cache.UpdateGrid(call, grid, false) {
-			return
-		}
-		if !storeAvailable() {
+		if cache != nil && cache.unchangedReported(call, grid) {
 			return
 		}
 		now := time.Now().UTC()
-		rec := gridstore.Record{
-			Call:         call,
-			Grid:         sqlNullString(grid),
-			Observations: 1,
-			FirstSeen:    now,
-			UpdatedAt:    now,
-		}
-		select {
-		case updates <- rec:
-		default:
-			// Drop silently to avoid backpressure on the spot pipeline.
-		}
+		coord.enqueueReport(gridstore.Record{Call: call, Grid: sqlNullString(grid), Observations: 1, FirstSeen: now, UpdatedAt: now}, updates)
 	}
 
 	// Purpose: Enqueue CTY metadata updates without blocking ingest.
@@ -3289,11 +3286,7 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 			FirstSeen:    now,
 			UpdatedAt:    now,
 		}
-		select {
-		case updates <- rec:
-		default:
-			// Drop silently to avoid backpressure on the ingest pipeline.
-		}
+		coord.enqueueMetadata(rec, nil, updates)
 	}
 
 	// Purpose: Retire external admission, then every lookup producer and writer.
@@ -3358,6 +3351,29 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		return "", false, false
 	}
 
+	processLookup := func(req gridLookupRequest) {
+		token, store := coord.beginLookup(req.baseCall)
+		defer coord.endLookup(token)
+		rec, err, synthesized := lookupRecord(store, req.baseCall, req.rawCall)
+		if ops.afterRead != nil {
+			ops.afterRead(req, rec)
+		}
+		result, persist := coord.finishLookup(token, rec, err)
+		if synthesized && persist {
+			coord.enqueueMetadata(*rec, token.store, updates)
+		}
+		if err != nil && !gridstore.IsBusyError(err) {
+			kind := "async"
+			if req.resp != nil {
+				kind = "sync"
+			}
+			log.Printf("Warning: gridstore %s lookup failed for %s: %v", kind, req.baseCall, err)
+		}
+		if req.resp != nil {
+			req.resp <- result
+		}
+	}
+
 	if asyncLookupEnabled {
 		// Purpose: Background cache backfill for grid lookups.
 		// Key aspects: Reads from lookupQueue and populates cache entries.
@@ -3366,14 +3382,7 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		go func() {
 			defer close(lookupDone)
 			for req := range lookupQueue {
-				rec, err := lookupRecord(req.baseCall, req.rawCall)
-				if err == nil && rec != nil {
-					if cache != nil {
-						cache.ApplyRecord(*rec)
-					}
-				} else if err != nil && !gridstore.IsBusyError(err) {
-					log.Printf("Warning: gridstore async lookup failed for %s: %v", req.baseCall, err)
-				}
+				processLookup(req)
 				lookupPendingMu.Lock()
 				delete(lookupPending, req.baseCall)
 				lookupPendingMu.Unlock()
@@ -3381,17 +3390,6 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 		}()
 	} else {
 		close(lookupDone)
-	}
-
-	resolveGrid := func(rec *gridstore.Record) (string, bool, bool) {
-		if rec == nil || !rec.Grid.Valid {
-			return "", false, false
-		}
-		grid := strings.TrimSpace(strings.ToUpper(rec.Grid.String))
-		if grid == "" {
-			return "", false, false
-		}
-		return grid, rec.GridDerived, true
 	}
 
 	if syncLookupEnabled {
@@ -3404,23 +3402,7 @@ func startGridWriter(storeHandle *gridStoreHandle, flushInterval time.Duration, 
 			go func() {
 				defer syncLookupWG.Done()
 				for req := range syncLookupQueue {
-					rec, err := lookupRecord(req.baseCall, req.rawCall)
-					if err == nil && rec != nil {
-						if cache != nil {
-							cache.ApplyRecord(*rec)
-						}
-						if req.resp != nil {
-							grid, derived, ok := resolveGrid(rec)
-							req.resp <- gridLookupResult{grid: grid, derived: derived, ok: ok}
-						}
-						continue
-					}
-					if err != nil && !gridstore.IsBusyError(err) {
-						log.Printf("Warning: gridstore sync lookup failed for %s: %v", req.baseCall, err)
-					}
-					if req.resp != nil {
-						req.resp <- gridLookupResult{}
-					}
+					processLookup(req)
 				}
 			}()
 		}
@@ -3617,6 +3599,7 @@ func startGridStoreRecoveryWithOps(ctx context.Context, storeHandle *gridStoreHa
 		close(done)
 		return done
 	}
+	bindGridCoordinator(storeHandle, metaCache)
 	storeHandle.Set(nil)
 	log.Printf("Gridstore: running without persistence during checkpoint restore (updates dropped)")
 	go func() {
@@ -3651,9 +3634,6 @@ func startGridStoreRecoveryWithOps(ctx context.Context, storeHandle *gridStoreHa
 		storeHandle.Set(store)
 		elapsed := time.Since(start)
 		log.Printf("Gridstore: restored from %s in %s", checkpointPath, elapsed)
-		if metaCache != nil {
-			metaCache.Clear()
-		}
 	}()
 	return done
 }
@@ -4221,6 +4201,7 @@ func buildOverviewLines(
 			formatPercentBarWithLabel(metaHitPct, 20, metaSizeLabel), formatPercentString(metaHitPct)),
 		formatModeCacheLine(modeAssigner),
 	)
+	cacheBars = append(cacheBars, formatGridAuthorityLines(gridStats)...)
 	cacheBars = append(cacheBars, "")
 	cacheBars = append(cacheBars, recentSupportLines...)
 	cacheBars = append(cacheBars, "")
