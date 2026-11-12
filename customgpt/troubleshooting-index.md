@@ -24,7 +24,8 @@ CTY fallback or teaching that inherited location to the target cache. No
 old-database repair or replay parity is implied.
 
 For cache disagreement with a reported row, stale worker replies, or nonzero
-`Grid work:` gauges after drain, use
+`Grid work:` gauges after drain, `grid report owner missing`, or a grid-writer
+batch acknowledgement panic, use
 [TSR-0129](../docs/troubleshooting/TSR-0129-grid-cache-authority.md) and
 [ADR-0345](../docs/decisions/ADR-0345-grid-active-work-authority.md). Active work
 protects reported precedence through cache loss and successful commits; a

@@ -19,6 +19,12 @@ before reading one captured concrete store. Existing hook signatures, queues,
 workers, timers and the eight-millisecond synchronous deadline remain unchanged.
 Only a synthesized candidate that actually wins selection may be queued for
 persistence; a newer selected cache estimate does not authorize writing the old one.
+Implementation clarification (2026-11-12, Approved v8): report and metadata
+enqueue boundaries finalize a nonempty canonical call before cache mutation or
+ownership registration. Metadata cleanup is idempotent, including whitespace
+exposed by suffix removal. The queued call stays unchanged through coalescing,
+storage, acknowledgement and release; the writer must not normalize it again.
+This does not change raw/base database read fallback or source admission rules.
 Warm cache hits keep their shard-lock read; unchanged reported updates preserve
 LRU recency without entering the coordinator. Changed work rechecks under
 coordinator then shard. Storage and callbacks run outside these locks.

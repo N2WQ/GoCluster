@@ -306,7 +306,9 @@ func TestGridAuthorityEpochs(t *testing.T) {
 				close(release)
 			}
 		})
-		f.update("K1ABC", "EM12AA")
+		// A malformed source spelling must keep its canonical owner even when
+		// the store retires between the physical write and acknowledgement.
+		f.update(" k1abc \t-1 ", "EM12AA")
 		waitGridRetirement(t, entered)
 		f.handle.Set(nil)
 		if grid, _, ok := f.lookup("K1ABC"); !ok || grid != "EM12AA" {

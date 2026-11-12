@@ -1,6 +1,7 @@
 package cluster
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -8,6 +9,50 @@ import (
 
 	"dxcluster/gridstore"
 )
+
+// Exercise changed admissions rather than warm hits or a full queue's drop path.
+// One pending owner coalesces every accepted report; storage is outside timing.
+func BenchmarkGridMetadataKeyAdmission(b *testing.B) {
+	for _, cached := range []bool{false, true} {
+		b.Run(fmt.Sprintf("cache=%t", cached), func(b *testing.B) {
+			store, err := gridstore.Open(b.TempDir(), gridRetirementStoreOptions())
+			if err != nil {
+				b.Fatal(err)
+			}
+			b.Cleanup(func() { _ = store.Close() })
+			var cache *callMetaCache
+			if cached {
+				cache = newCallMetaCache(64, 0)
+			}
+			g := bindGridCoordinator(newGridStoreHandle(store), cache)
+			g.metrics = &gridMetrics{}
+			queue := make(chan gridWriteRequest, 1)
+			pending := make(map[string]gridWriteRequest)
+			rec := authorityRecord("FN31AB", false, time.Now())
+			grids := [...]string{"FN31AB", "DM04AA"}
+			b.ReportAllocs()
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				rec.Grid = sqlNullString(grids[i%len(grids)])
+				g.enqueueReport(rec, queue)
+				select {
+				case req := <-queue:
+					g.coalesce(pending, req)
+				default:
+					b.Fatal("changed admission dropped or suppressed")
+				}
+			}
+			b.StopTimer()
+			if len(pending) != 1 || g.pending != 1 || len(g.entries) != 1 || pending["K1ABC"].record.Grid.String != grids[(b.N-1)%len(grids)] {
+				b.Fatal("admitted work did not coalesce under one owner")
+			}
+			g.finishBatch(pending, errors.New("benchmark drain without storage"))
+			if g.entries != nil || g.pending != 0 || g.keyBytes != 0 {
+				b.Fatal("benchmark retained report ownership")
+			}
+		})
+	}
+}
 
 // Four concurrent cold workers plus one held owner match the five-worker bound.
 // This exercises real authority contention while map compaction is unavoidable.

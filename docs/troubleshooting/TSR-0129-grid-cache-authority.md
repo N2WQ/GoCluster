@@ -56,9 +56,28 @@ Tags: grid, provenance, cache, epochs, bounded state
    - Evidence: duplicates can coalesce indefinitely into one pending record.
    - Outcome: Rejected; ownership transfers on coalescing and anchored churn
      forces backing compaction without waiting for an empty map.
+5. Repeated metadata cleanup cannot change a report owner's key.
+   - Evidence (2026-11-12): `W1ABC -1` became `W1ABC ` before ownership, then
+     `W1ABC` in the writer. A production update-hook/writer regression reproduced
+     a nil-pointer panic in successful batch acknowledgement on `d727746c`.
+     Direct enqueue tests also found distinct alias owners; explicit cleanup
+     vectors failed. This is an internal reproducer, not a confirmed feed trigger.
+   - Outcome: Rejected; trim whitespace exposed by suffix extraction, finalize
+     report/metadata keys before cache or ownership admission, and carry those
+     keys unchanged through release. Empty keys are refused before state changes.
+     Logging and abandoning a missing owner would strand its accounting and would
+     not prevent the earlier nil-pointer panic.
+   - Protection: `TestMetadataKeyNormalization`, `FuzzMetadataKeyNormalization`,
+     `TestGridMetadataKeyAdmission`, `TestGridMetadataKeyHook`, and
+     `TestGridMetadataKeyCoalescing`. The coalesced commit restores a cleared
+     cache, so a warm report cannot conceal a wrong surviving revision. Existing
+     retired-store coverage also exercises the malformed source spelling.
 
 ## Findings
 - Root cause: no complete authority boundary across reports, reads and commits.
+- Follow-up key invariant: canonicalization finishes before authority begins;
+  the writer cannot change a registered identity. Approved v8 repairs this
+  implementation defect without changing ADR-0345's owner model or failure policy.
 - Contributing factors: rejected candidates still escaped through replies;
   aggregate UpdatedAt does not identify the reported locator selected in a batch.
 - A durable decision was required for cross-owner ordering and bounded diagnostics.

@@ -122,11 +122,8 @@ func runGridWriter(coord *gridCoordinator, updates <-chan gridWriteRequest, done
 				flush()
 				return
 			}
-			call := normalizeCallForMetadata(req.record.Call)
-			if call == "" {
-				continue
-			}
-			req.record.Call = call
+			// Admission finalized this key before registering its owner. Re-keying
+			// here would separate the request from its cache and release identity.
 			coord.coalesce(pending, req)
 			if len(pending) >= 500 {
 				flush()

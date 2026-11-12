@@ -1756,12 +1756,13 @@ func stripTrailingHyphenSuffix(call string) string {
 
 // normalizeCallForMetadata strips skimmer and hyphen suffixes before metadata lookups.
 // It preserves portable segments (e.g., "/P") and does not mutate canonical calls.
+// Trim again after extraction so repeated cleanup cannot change an ownership key.
 func normalizeCallForMetadata(call string) string {
 	call = strutil.NormalizeUpper(call)
 	if call == "" {
 		return call
 	}
-	return stripTrailingHyphenSuffix(call)
+	return strings.TrimSpace(stripTrailingHyphenSuffix(call))
 }
 
 // Purpose: Run the shared grid backfill routine (sync first, async fallback).

@@ -16,6 +16,7 @@ import (
 type gridIdentity struct{ _ byte }
 
 type gridWriteRequest struct {
+	// Call is canonical before admission and stays unchanged through release.
 	record           gridstore.Record
 	storeEpoch       *gridIdentity
 	reportedRevision *gridIdentity
@@ -287,6 +288,10 @@ func (g *gridCoordinator) finishLookup(t gridLookupToken, rec *gridstore.Record,
 // successful nonblocking sends add owners; the writer takes this same mutex
 // before transfer, so registration after the send is visible before processing.
 func (g *gridCoordinator) enqueueReport(rec gridstore.Record, updates chan<- gridWriteRequest) {
+	rec.Call = normalizeCallForMetadata(rec.Call)
+	if rec.Call == "" {
+		return
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if g.cache != nil && !g.cache.UpdateGrid(rec.Call, rec.Grid.String, false) {
@@ -315,6 +320,10 @@ func (g *gridCoordinator) enqueueReport(rec gridstore.Record, updates chan<- gri
 }
 
 func (g *gridCoordinator) enqueueMetadata(rec gridstore.Record, epoch *gridIdentity, updates chan<- gridWriteRequest) {
+	rec.Call = normalizeCallForMetadata(rec.Call)
+	if rec.Call == "" {
+		return
+	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if epoch == nil {
