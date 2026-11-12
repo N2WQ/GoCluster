@@ -2,13 +2,14 @@ package cluster
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,23 +25,9 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 		t.Fatal(err)
 	}
 	work := t.TempDir()
-	exeName := "gocluster"
-	if runtime.GOOS == "windows" {
-		exeName += ".exe"
-	}
-	exe := filepath.Join(work, exeName)
-	buildCtx, cancelBuild := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancelBuild()
-	build := exec.CommandContext(buildCtx, "go", "build", "-o", exe, ".")
-	build.Dir = repo
-	if output, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build main executable: %v\n%s", err, output)
-	}
-	if _, err := os.Stat(filepath.Join(work, "peerdiag.exe")); !os.IsNotExist(err) {
-		t.Fatalf("unexpected helper: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(work, "peerdiag")); !os.IsNotExist(err) {
-		t.Fatalf("unexpected helper: %v", err)
+	exe := mainExecutableForFixture(t, repo, work)
+	if err := mainFixtureCompanionError(work, filepath.Dir(exe)); err != nil {
+		t.Fatal(err)
 	}
 
 	var listen net.ListenConfig
@@ -181,7 +168,7 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 	for _, item := range os.Environ() {
 		key, _, _ := strings.Cut(item, "=")
 		upper := strings.ToUpper(key)
-		if strings.HasPrefix(upper, "DXC_") || upper == "PATH" || upper == "HTTP_PROXY" || upper == "HTTPS_PROXY" || upper == "ALL_PROXY" || upper == "NO_PROXY" {
+		if strings.HasPrefix(upper, "DXC_") || upper == "GOCLUSTER_TEST_MAIN_EXECUTABLE" || upper == "GOCLUSTER_MAIN_TEST_FORCE_FAILURE" || upper == "PATH" || upper == "HTTP_PROXY" || upper == "HTTPS_PROXY" || upper == "ALL_PROXY" || upper == "NO_PROXY" {
 			continue
 		}
 		child.Env = append(child.Env, item)
@@ -194,16 +181,24 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 	go func() { finished <- child.Wait() }()
 	exited := false
 	defer func() {
-		if exited {
-			return
+		if !exited {
+			if err := child.Process.Kill(); err != nil && !errors.Is(err, os.ErrProcessDone) {
+				t.Errorf("terminate main child: %v", err)
+			}
+			select {
+			case <-finished:
+			case <-time.After(5 * time.Second):
+				t.Error("child did not exit after termination")
+				// Keep ownership (and the runner lock) until the OS wait ends.
+				<-finished
+			}
 		}
-		_ = child.Process.Kill()
-		select {
-		case <-finished:
-		case <-time.After(5 * time.Second):
-			t.Error("child did not exit after termination")
-		}
+		t.Logf("MAIN-CHILD retired pid=%d", child.Process.Pid)
 	}()
+	observeMainFixtureImage(t, child.Process, exe)
+	if os.Getenv("GOCLUSTER_MAIN_TEST_FORCE_FAILURE") == "1" {
+		t.Fatal("controlled main fixture failure after child startup")
+	}
 	accepted := make(chan net.Conn, 1)
 	acceptErr := make(chan error, 1)
 	go func() {
@@ -249,4 +244,20 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 		case <-ticker.C:
 		}
 	}
+}
+
+// The image directory and runtime directory differ on Windows. Neither may
+// supply a companion, even if one was left beside an earlier saved image.
+func mainFixtureCompanionError(directories ...string) error {
+	for _, directory := range directories {
+		for _, name := range []string{"peerdiag.exe", "peerdiag"} {
+			path := filepath.Join(directory, name)
+			if _, err := os.Lstat(path); err == nil {
+				return fmt.Errorf("unexpected main fixture companion %s", path)
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("inspect main fixture companion %s: %w", path, err)
+			}
+		}
+	}
+	return nil
 }

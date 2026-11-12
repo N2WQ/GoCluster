@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e9ce2785ae16462d`
+- Source fingerprint: `3eabf70f72e93e5f`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 13 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 201 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 205 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 39 | 68 |
 | `dxcluster/telnet` | `telnet` | 80 | 168 |
@@ -290,6 +290,10 @@ Test files:
 - `internal/cluster/logging_close_owner_test.go`
 - `internal/cluster/logging_root_test.go`
 - `internal/cluster/logging_test.go`
+- `internal/cluster/main_executable_fixture_test.go`
+- `internal/cluster/main_executable_handoff_windows_test.go`
+- `internal/cluster/main_executable_other_test.go`
+- `internal/cluster/main_executable_windows_test.go`
 - `internal/cluster/main_runtime_output_retirement_test.go`
 - `internal/cluster/main_runtime_test.go`
 - `internal/cluster/main_stats_test.go`

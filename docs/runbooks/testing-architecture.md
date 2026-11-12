@@ -65,6 +65,13 @@ selected. Firewall policy remains user-managed. The summary separates executed
 packages, build-only packages, passed cases and skipped cases. A filtered lane
 with no passing cases fails; exact required identities protect the intended set.
 
+The first-party cluster selection includes a separately built plain main image
+at `.tmp/windows-tests/dxcluster/internal/cluster/main/gocluster.exe`. Preparation
+never launches it. Its private handoff, current-build requirement, no-companion
+witness and retirement are covered by the existing runner/real-main fixtures;
+see [ADR-0346](../decisions/ADR-0346-stable-real-main-test-image.md). This does not
+change non-Windows execution or make the child a race-instrumented application.
+
 Ordinary executable guards and lifecycle artifacts are anchored to the current
 checkout. They do not relax the opt-in controlled qualification paths, workloads
 or historical evidence. New ordinary guards discover the checkout from the

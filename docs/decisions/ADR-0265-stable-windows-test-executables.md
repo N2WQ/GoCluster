@@ -4,6 +4,9 @@
 - Date: 2026-10-09
 - Decision Origin: Design
 
+[ADR-0346](ADR-0346-stable-real-main-test-image.md) extends preparation to the
+separately compiled real-main child. Remaining decisions below are preserved.
+
 ## Context
 
 Native Windows tests include network listeners and child processes that relaunch
