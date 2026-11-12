@@ -37,6 +37,211 @@ function Read-Observations {
     @(Get-Content -LiteralPath $env:WINDOWS_TEST_FIXTURE_LOG | ForEach-Object { $_ | ConvertFrom-Json })
 }
 
+# This is a separately built main image, not a relaunch of package.test.exe.
+# It never listens; its own os.Executable report distinguishes child placement
+# from the parent's desired command line and keeps preparation network-free.
+function Invoke-MainExecutableFixtures([string]$Root, [string]$RunnerSource) {
+    $mainRoot = Join-Path $Root 'main-child'
+    $null = [IO.Directory]::CreateDirectory((Join-Path $mainRoot 'scripts'))
+    $null = [IO.Directory]::CreateDirectory((Join-Path $mainRoot 'internal/cluster'))
+    $mainRunner = Join-Path $mainRoot 'scripts/test-windows.ps1'
+    Copy-Item -LiteralPath $RunnerSource -Destination $mainRunner
+    Set-Content -LiteralPath (Join-Path $mainRoot 'go.mod') "module dxcluster`n`ngo 1.27.1"
+    $mainSource = @'
+package main
+import (
+    "encoding/json"
+    "os"
+    "os/exec"
+    "runtime/debug"
+    "time"
+)
+func main() {
+    image, err := os.Executable(); if err != nil { panic(err) }
+    directory, err := os.Getwd(); if err != nil { panic(err) }
+    race := "false"
+    if info, ok := debug.ReadBuildInfo(); ok { for _, setting := range info.Settings { if setting.Key == "-race" { race = setting.Value } } }
+    file, err := os.OpenFile(os.Getenv("WINDOWS_MAIN_FIXTURE_LOG"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); if err != nil { panic(err) }
+    err = json.NewEncoder(file).Encode(map[string]any{"Role":"child", "Executable":image, "Directory":directory, "Race":race, "PID":os.Getpid()})
+    closeErr := file.Close(); if err != nil { panic(err) }; if closeErr != nil { panic(closeErr) }
+    switch os.Getenv("WINDOWS_MAIN_FIXTURE_MODE") {
+    case "sleep": time.Sleep(time.Hour)
+    case "fail": os.Exit(17)
+    case "hold-output":
+        child := exec.Command(image)
+        for _, item := range os.Environ() { if len(item) < len("WINDOWS_MAIN_FIXTURE_MODE=") || item[:len("WINDOWS_MAIN_FIXTURE_MODE=")] != "WINDOWS_MAIN_FIXTURE_MODE=" { child.Env = append(child.Env, item) } }
+        child.Env = append(child.Env, "WINDOWS_MAIN_FIXTURE_MODE=sleep")
+        child.Stdout, child.Stderr = os.Stdout, os.Stderr
+        if err := child.Start(); err != nil { panic(err) }
+    }
+}
+'@
+    $mainSourcePath = Join-Path $mainRoot 'main.go'
+    Set-Content -LiteralPath $mainSourcePath $mainSource
+    $mainTest = @'
+package cluster
+import (
+    "encoding/json"
+    "os"
+    "os/exec"
+    "path/filepath"
+    "testing"
+)
+func TestPreparedMain(t *testing.T) {
+    image := os.Getenv("GOCLUSTER_TEST_MAIN_EXECUTABLE")
+    if !filepath.IsAbs(image) { t.Fatalf("missing prepared main image: %q", image) }
+    file, err := os.OpenFile(os.Getenv("WINDOWS_MAIN_FIXTURE_LOG"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); if err != nil { t.Fatal(err) }
+    err = json.NewEncoder(file).Encode(map[string]any{"Role":"parent", "Race":fixtureRace})
+    closeErr := file.Close(); if err != nil { t.Fatal(err) }; if closeErr != nil { t.Fatal(closeErr) }
+    if os.Getenv("WINDOWS_MAIN_FIXTURE_FAIL") == "1" { t.Fatal("requested main fixture test failure") }
+    child := exec.CommandContext(t.Context(), image)
+    child.Dir = t.TempDir()
+    if output, err := child.CombinedOutput(); err != nil { t.Fatalf("main child: %v %s", err, output) }
+}
+'@
+    Set-Content -LiteralPath (Join-Path $mainRoot 'internal/cluster/main_test.go') $mainTest
+    Set-Content -LiteralPath (Join-Path $mainRoot 'internal/cluster/race_enabled.go') "//go:build race`n`npackage cluster`nconst fixtureRace = `"true`""
+    Set-Content -LiteralPath (Join-Path $mainRoot 'internal/cluster/race_disabled.go') "//go:build !race`n`npackage cluster`nconst fixtureRace = `"false`""
+    $mainKeys = @('GOCLUSTER_TEST_MAIN_EXECUTABLE', 'WINDOWS_MAIN_FIXTURE_LOG', 'WINDOWS_MAIN_FIXTURE_MODE', 'WINDOWS_MAIN_FIXTURE_FAIL')
+    $mainSaved = @{}
+    foreach ($key in $mainKeys) { $mainSaved[$key] = [pscustomobject]@{ Present=([Environment]::GetEnvironmentVariables('Process').Keys -icontains $key); Value=[Environment]::GetEnvironmentVariable($key, 'Process') } }
+    $mainLog = Join-Path $mainRoot 'observations.jsonl'
+    $mainImage = Join-Path $mainRoot '.tmp/windows-tests/dxcluster/internal/cluster/main/gocluster.exe'
+    try {
+        $env:WINDOWS_MAIN_FIXTURE_LOG = $mainLog
+        [Environment]::SetEnvironmentVariable('WINDOWS_MAIN_FIXTURE_MODE', [NullString]::Value, 'Process')
+        $env:WINDOWS_MAIN_FIXTURE_FAIL = '0'
+        $preparation = (& $mainRunner -Packages ./internal/cluster -PrepareOnly 6>&1 | Out-String)
+        Assert (Test-Path -LiteralPath $mainImage -PathType Leaf) 'Preparation omitted separately compiled main image.'
+        Assert ($preparation.Contains($mainImage)) 'Preparation did not print the full main image path.'
+        Assert (-not (Test-Path -LiteralPath $mainLog)) 'Preparation launched a test or main image.'
+        foreach ($race in @($false, $false, $true)) {
+            & $mainRunner -Packages ./internal/cluster -Run '^TestPreparedMain$' -RequireCases 'dxcluster/internal/cluster::TestPreparedMain' -Race:$race
+        }
+        $mainRows = @(Get-Content -LiteralPath $mainLog | ForEach-Object { $_ | ConvertFrom-Json })
+        $children = @($mainRows | Where-Object Role -EQ 'child')
+        Assert ($children.Count -eq 3) 'Separate main child did not execute in every ordinary/race-parent run.'
+        foreach ($row in $children) {
+            Assert ($row.Executable -eq $mainImage) "Separate main child changed image path: $($row.Executable)"
+            Assert ($row.Directory -ne (Split-Path -Parent $mainImage)) 'Runtime working directory is not isolated from the stable image.'
+            Assert ($row.Race -ceq 'false') 'Path repair changed plain main build mode.'
+        }
+        Assert (@($mainRows | Where-Object Role -EQ 'parent')[-1].Race -ceq 'true') 'Race-parent fixture did not actually run a race build.'
+        $before = $mainRows.Count
+        Add-Content -LiteralPath $mainSourcePath 'this is not valid Go source'
+        try {
+            try { & $mainRunner -Packages ./internal/cluster; throw 'Broken main build unexpectedly passed.' } catch {
+                Assert ($_.Exception.Message.Contains('Main test build failed')) "Wrong main-build failure: $_"
+            }
+        } finally { Set-Content -LiteralPath $mainSourcePath $mainSource }
+        Assert (@(Get-Content -LiteralPath $mainLog).Count -eq $before) 'Failed main build launched stale main or package image.'
+        foreach ($prior in @(
+            [pscustomobject]@{ Name='absent'; Present=$false; Value=$null },
+            [pscustomobject]@{ Name='empty'; Present=$true; Value='' },
+            [pscustomobject]@{ Name='poisoned'; Present=$true; Value='C:\unrelated\gocluster.exe' }
+        )) {
+            foreach ($outcome in @('prepare', 'success', 'build-failure', 'test-failure')) {
+                [Environment]::SetEnvironmentVariable('GOCLUSTER_TEST_MAIN_EXECUTABLE', $(if ($prior.Present) { $prior.Value } else { [NullString]::Value }), 'Process')
+                $env:WINDOWS_MAIN_FIXTURE_FAIL = if ($outcome -eq 'test-failure') { '1' } else { '0' }
+                if ($outcome -eq 'build-failure') { Add-Content -LiteralPath $mainSourcePath 'invalid Go source' }
+                try {
+                    switch ($outcome) {
+                        'prepare' { & $mainRunner -Packages ./internal/cluster -PrepareOnly }
+                        'success' { & $mainRunner -Packages ./internal/cluster -Run '^TestPreparedMain$' }
+                        default {
+                            $expected = if ($outcome -eq 'build-failure') { 'Main test build failed' } else { 'Tests failed' }
+                            try { & $mainRunner -Packages ./internal/cluster -Run '^TestPreparedMain$'; throw 'Expected failure was not raised.' } catch {
+                                Assert ($_.Exception.Message.Contains($expected)) "Wrong $outcome failure: $_"
+                            }
+                        }
+                    }
+                } finally { if ($outcome -eq 'build-failure') { Set-Content -LiteralPath $mainSourcePath $mainSource } }
+                $present = [Environment]::GetEnvironmentVariables('Process').Keys -icontains 'GOCLUSTER_TEST_MAIN_EXECUTABLE'
+                $value = [Environment]::GetEnvironmentVariable('GOCLUSTER_TEST_MAIN_EXECUTABLE', 'Process')
+                Assert ($present -eq $prior.Present -and $value -ceq $prior.Value) "Main handoff leaked after $($prior.Name)/$outcome."
+            }
+        }
+        $env:WINDOWS_MAIN_FIXTURE_FAIL = '0'
+        $before = @(Get-Content -LiteralPath $mainLog).Count
+        $mainLock = [IO.File]::Open((Join-Path $mainRoot '.tmp/windows-tests/runner.lock'), [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::None)
+        try {
+            try { & $mainRunner -Packages ./internal/cluster -PrepareOnly; throw 'Held main runner lock was ignored.' } catch {
+                Assert ($_.Exception.Message.Contains('Cannot acquire Windows test runner lock')) "Wrong shared-lock failure: $_"
+            }
+        } finally { $mainLock.Dispose() }
+        Assert (@(Get-Content -LiteralPath $mainLog).Count -eq $before) 'Locked preparation launched a child.'
+        foreach ($leaf in @($false, $true)) {
+            & $mainRunner -Packages ./internal/cluster -PrepareOnly
+            $outside = Join-Path $mainRoot "external-$leaf"
+            $null = [IO.Directory]::CreateDirectory($outside)
+            $sentinel = Join-Path $outside 'gocluster.exe'
+            Set-Content -LiteralPath $sentinel 'KEEP' -NoNewline
+            Remove-Item -LiteralPath $mainImage
+            $link = if ($leaf) { $mainImage } else { Split-Path -Parent $mainImage }
+            if (-not $leaf) { [IO.Directory]::Delete($link) }
+            & cmd /c mklink /J $link $outside | Out-Null
+            Assert ($LASTEXITCODE -eq 0) 'Could not create controlled main output junction.'
+            try {
+                try { & $mainRunner -Packages ./internal/cluster -PrepareOnly; throw 'Main output junction was accepted.' } catch {
+                    Assert ($_.Exception.Message.Contains('junction or symlink')) "Wrong output-junction failure: $_"
+                }
+                Assert ((Get-Content -LiteralPath $sentinel -Raw) -ceq 'KEEP') 'Main build changed the external sentinel.'
+                Assert (@(Get-Content -LiteralPath $mainLog).Count -eq $before) 'Redirected preparation launched a child.'
+            } finally { [IO.Directory]::Delete($link) }
+        }
+        & $mainRunner -Packages ./internal/cluster -PrepareOnly
+        # Invoke the actual private build function with a short deadline and a
+        # real network-free native image standing in for a stalled compiler.
+        $buildAst = [Management.Automation.Language.Parser]::ParseFile($mainRunner, [ref]$null, [ref]$null)
+        $buildDefinition = $buildAst.Find({ param($node) $node -is [Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq 'Invoke-MainTestBuild' }, $true)
+        Assert ($null -ne $buildDefinition) 'Missing bounded main-build owner.'
+        Assert ($buildDefinition.Parameters[-1].DefaultValue.Value -eq 120000) 'Main build no longer defaults to two minutes.'
+        . ([scriptblock]::Create($buildDefinition.Extent.Text))
+        foreach ($mode in @('sleep', 'fail', 'success')) {
+            $env:WINDOWS_MAIN_FIXTURE_MODE = $mode
+            if ($mode -eq 'success') {
+                Invoke-MainTestBuild $mainImage $mainRoot (Join-Path $mainRoot 'unused-image')
+            } else {
+                $expected = if ($mode -eq 'sleep') { 'Main test build timed out' } else { 'Main test build failed (exit 17)' }
+                try { Invoke-MainTestBuild $mainImage $mainRoot (Join-Path $mainRoot 'unused-image') 1500; throw 'Expected build-owner failure was not raised.' } catch {
+                    Assert ($_.Exception.Message.Contains($expected)) "Wrong $mode build-owner failure: $_"
+                }
+            }
+            $lastChild = Get-Content -LiteralPath $mainLog -Tail 1 | ConvertFrom-Json
+            Assert (-not (Get-Process -Id $lastChild.PID -ErrorAction SilentlyContinue)) 'Owned compiler image remained live after build return.'
+        }
+        $beforeHold = @(Get-Content -LiteralPath $mainLog).Count
+        $env:WINDOWS_MAIN_FIXTURE_MODE = 'hold-output'
+        try {
+            try { Invoke-MainTestBuild $mainImage $mainRoot (Join-Path $mainRoot 'unused-image') 1500; throw 'Inherited output handles bypassed the build deadline.' } catch {
+                Assert ($_.Exception.Message.Contains('Main test build timed out')) "Wrong inherited-output timeout: $_"
+            }
+            $heldRows = @(Get-Content -LiteralPath $mainLog | Select-Object -Skip $beforeHold | ForEach-Object { $_ | ConvertFrom-Json })
+            Assert ($heldRows.Count -eq 2) 'Output-holding counterexample did not actually launch its root and descendant.'
+            Assert (-not (Get-Process -Id $heldRows[0].PID -ErrorAction SilentlyContinue)) 'Output-holding root did not exit.'
+            Assert ($null -ne (Get-Process -Id $heldRows[1].PID -ErrorAction SilentlyContinue)) 'Output-holding descendant was not live across cancellation.'
+        } finally {
+            # The intentionally malformed compiler abandons this process. Its
+            # fault fixture owns it and retires it before deleting any artifacts.
+            foreach ($row in @(Get-Content -LiteralPath $mainLog | Select-Object -Skip $beforeHold | ForEach-Object { $_ | ConvertFrom-Json })) {
+                $ownedProcess = Get-Process -Id $row.PID -ErrorAction SilentlyContinue
+                if ($null -ne $ownedProcess) {
+                    Assert ($ownedProcess.Path -eq $mainImage) 'Refusing to terminate a mismatched fault-fixture process.'
+                    $ownedProcess.Kill($true)
+                    $ownedProcess.WaitForExit()
+                    $ownedProcess.Dispose()
+                }
+            }
+        }
+        Write-Host 'PASS: separately compiled main preparation, repeated images, plain child/race parent, stale build refusal, handoff restoration, lock/reparse refusal and build-owner retirement.'
+    } finally {
+        foreach ($key in $mainKeys) {
+            $prior = $mainSaved[$key]
+            [Environment]::SetEnvironmentVariable($key, $(if ($prior.Present) { $prior.Value } else { [NullString]::Value }), 'Process')
+        }
+    }
+}
+
 try {
     $null = [IO.Directory]::CreateDirectory((Join-Path $fixtureRoot 'scripts'))
     $runner = Join-Path $fixtureRoot 'scripts/test-windows.ps1'
@@ -318,6 +523,8 @@ func TestSpoofChild(t *testing.T) {
             $passed++
         }
     }
+    Invoke-MainExecutableFixtures $fixtureRoot (Join-Path $PSScriptRoot 'test-windows.ps1')
+    $passed++
 } finally {
     foreach ($name in $savedEnvironment.Keys) {
         [Environment]::SetEnvironmentVariable($name, $(if ($null -eq $savedEnvironment[$name]) { [NullString]::Value } else { $savedEnvironment[$name] }), 'Process')

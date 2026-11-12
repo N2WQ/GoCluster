@@ -80,6 +80,14 @@ the runner does not modify firewall settings. See the
 [script guide](../scripts/README.md#windows-tests-with-stable-firewall-paths)
 for paths, prerequisites, helper binaries, locking, and policy limitations.
 
+When first-party `internal/cluster` is selected, preparation also builds and
+prints its separately compiled real-main child. The child keeps a plain build
+under ordinary and race parents. Its fixed image directory is separate from
+temporary fixture configuration/data. Windows execution requires this runner;
+a missing prepared child fails before fixture listeners, without a temporary
+image fallback. A new checkout or newly prepared path can require initial
+machine-local approval. See [TSR-0130](troubleshooting/TSR-0130-main-test-firewall-path.md).
+
 The native runner forwards its actual PowerShell image privately to diagnostic
 fixtures and restores the caller's prior variable state. Do not set a substitute
 image to hide a failed native launch. PowerShell's Windows-host architecture

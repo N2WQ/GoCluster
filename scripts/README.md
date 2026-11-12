@@ -85,6 +85,7 @@ paths. Preparation prints their actual absolute paths:
 ```text
 .tmp\windows-tests\dxcluster\peer\package.test.exe
 .tmp\windows-tests\dxcluster\internal\cluster\package.test.exe
+.tmp\windows-tests\dxcluster\internal\cluster\main\gocluster.exe
 ```
 
 Windows Firewall application rules use the **full executable path**. Approve
@@ -94,10 +95,24 @@ policy and successful tests must still be verified on the machine after setup;
 stable paths do not resolve Windows Application Control denials. See
 [Microsoft's application-rule guidance](https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/rules).
 
-Ordinary and race builds replace the binaries at the same paths, so they share
-firewall approvals. Relaunched test children retain those paths too. Temporary VOACAP fixture executables
+Ordinary and race builds replace the package binaries at the same paths, so they
+share approvals for those paths. Selecting the first-party cluster package also
+builds its separate real-main child, including during `-PrepareOnly` and filtered
+runs. That child keeps its existing plain `go build` mode even under a race parent.
+The existing runner lock covers preparation through child retirement. A failed
+or two-minute-timed-out child build cannot launch an older saved image. Preparation
+prints the absolute child path without starting its listeners. The Windows fixture
+requires the runner's prepared-image handoff; direct unmanaged execution fails
+instead of creating another temporary listening executable. Config/data/cwd stay
+temporary, and both image/cwd must remain companion-free.
+
+Relaunched test children retain their package paths too. Temporary VOACAP fixture executables
 remain isolated; the inspected fixtures do not listen on network sockets.
 Moving the checkout changes the paths and requires corresponding rule updates.
+See [TSR-0130](../docs/troubleshooting/TSR-0130-main-test-firewall-path.md) for the
+separate real-main path diagnosis and initial-approval boundary. Private
+`GOCLUSTER_TEST_MAIN_EXECUTABLE` metadata is computed and restored by the runner;
+it is not a server setting or a supported arbitrary-image override.
 
 Ordinary cluster fixtures require the exact saved executable in the current
 checkout, not a historical developer path. Their artifact paths stay under

@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0346 | Stable Real-Main Test Image | Accepted | 2026-11-12 | Windows tests, child preparation, firewall path and ownership | Refines ADR-0265 separate main child | none | [ADR-0346](decisions/ADR-0346-stable-real-main-test-image.md) |
 | ADR-0345 | Grid Active Work Authority | Accepted | 2026-11-11 | cache, worker replies, report commits, bounded ownership | ADR-0340/0343 late-hydration limitation only | none | [ADR-0345](decisions/ADR-0345-grid-active-work-authority.md) |
 | ADR-0344 | Required Shared Geography | Accepted | 2026-11-11 | H3 startup, GRID, NEARBY, CustomSCP, replay | ADR-0153 H3 enable-dependent requirement only | none | [ADR-0344](decisions/ADR-0344-required-shared-geography.md) |
 | ADR-0343 | Corrected Grid Precedence and Missing-Grid Output | Accepted | 2026-11-11 | corrected location, reported/derived authority, bounded output accounting | ADR-0341 grid retention/provenance only | ADR-0345 late-hydration limitation only | [ADR-0343](decisions/ADR-0343-corrected-grid-precedence.md) |
