@@ -1,4 +1,7 @@
-# ADR-0332: Per-User RBN CW Speed Display
+---
+title: "ADR-0332: Per-User RBN CW Speed Display"
+description: Saved ordinary-text RBN CW speed display with the later native CC11 exception.
+---
 
 - Status: Accepted
 - Date: 2026-11-01
@@ -23,6 +26,11 @@ source order, and source text supplies the display for unusual input.
 Keep schema-six readback frozen and preserve the preference through schema-six
 writes. Existing profiles and presets missing the setting select OFF. Speed
 metadata survives owned snapshots, including beacon archive snapshots.
+
+[ADR-0351](ADR-0351-native-cc11-output-port.md) adds an explicit native-output
+exception: these display controls apply to ordinary text. Native CC11 keeps the
+canonical stored comment regardless of CWSPEED/DIAG. The native port does not
+repeat the historical archive reset described below.
 
 ## Alternatives considered
 

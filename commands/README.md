@@ -132,6 +132,20 @@ GO. PC93 remains an ANNOUNCE control alias. Historical discovery wording in
 [TSR-0066](../docs/troubleshooting/TSR-0066-command-discovery-wording.md)
 does not define the current mutation surface.
 
+## Session-Only Native Spot Output
+
+`SET/VE7CC` and `UNSET/VE7CC` select CC11 or ordinary-text live spots and DX
+history after login, in either dialect. They take no arguments and never save
+configuration or select a filter dialect. New connections always start in text.
+Use `HELP SET/VE7CC` for the output and compatibility contract.
+
+Native comments use canonical stored text, not CWSPEED/DIAG display projections.
+History keeps its existing query/filter/continuation rules and automatic pauses.
+Complete native replies are bounded to 65,536 bytes, including CRLF and status/
+pause text; failed pages are not truncated or partially published. Native
+history shares the existing configuration-output admission budget and may
+return busy. See [native output](../telnet/README.md#ve7cc-native-spot-output).
+
 ## Manual DX Admission
 
 Comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _ +`.

@@ -227,12 +227,14 @@ Blank `NCDXF B` source-class beacon comments display `NCDXF BEACON`.
 
 ### RBN CW speed
 
-Use `SET CWSPEED ON` to display available CW speeds on RBN spots and stored
-history. Use `SET CWSPEED OFF` to hide them. The saved preference defaults to
+Use `SET CWSPEED ON` to display available CW speeds on ordinary-text RBN spots
+and stored history. Use `SET CWSPEED OFF` to hide them. The saved preference defaults to
 OFF and applies in both GO and CC. `SHOW SETTINGS` shows the current choice.
 Diagnostic mode hides speed. If a complete speed cannot fit on a spot line,
 it is omitted. Comment filters and searches use the existing stored comment,
 so they can match speed text that the setting hides from the displayed line.
+Native CC11 uses the canonical raw comment instead; CWSPEED and diagnostic
+display settings do not alter its comment.
 
 The spot archive stores new speeds as spots arrive. For this upgrade, stop the
 server and remove only the configured `archive.db_path` spot database before
@@ -245,6 +247,73 @@ New spots use the corrected display. Older records keep their saved display,
 including any affected by the earlier parsing defect, until they expire. To
 remove those records sooner, stop the server and reset the configured spot
 archive; this deletes all history in that archive.
+
+## VE7CC Native Spot Output
+
+After login, `SET/VE7CC` selects CC11-structured live spots and DX history.
+`UNSET/VE7CC` restores ordinary text. Both commands are case-insensitive,
+take no arguments, and work in GO and CC. They do not select a dialect or
+save preferences. Every new or replacement connection starts in text, including
+a connection whose saved dialect is CC. DIALECT, preset LOAD and YAML changes
+preserve the current connection's native selection.
+
+```text
+SET/VE7CC
+SHOW DX 10
+UNSET/VE7CC
+```
+
+The existing writer applies the format transition at the acknowledgement's FIFO
+position. Previously prepared output precedes it; subsequently formatted spots
+use the new layout. Queued, unsent spots may therefore use the new layout.
+Switching does not flush or discard backlog. Existing read pauses still suppress
+spots without replay. Filters, query grammar and matching remain unchanged.
+
+Records have 20 fields separated by 19 carets, one-decimal kHz, padded UTC dates,
+`HHMMZ`, and one CRLF:
+
+```text
+CC11^frequency^DX^date^time^comment^DE^DX_ADIF^DE_ADIF^origin^DX_ITU^DX_CQ^DE_ITU^DE_CQ^DX_state^DE_state^DX_country^DE_country^DX_grid^DE_grid
+```
+
+The comment combines mode, a present report (including zero), and the canonical
+stored comment, with the existing blank-beacon fallback. It does not use CWSPEED
+display projections, diagnostic replacements or path glyphs. "Raw" does not mean
+unvalidated wire input: native output replaces carets with tildes and
+nonprintable/non-ASCII runes with spaces. Canonical spots, peer payloads and
+archive data are not changed.
+
+Stored ADIF remains authoritative. Missing positive ADIF stays blank; rendering
+does not classify it again. Only missing Country/ITU descriptions may be
+supplemented from current CTY when its positive ADIF matches stored positive
+ADIF. Other stored metadata remains authoritative. Valid grids use the first
+four characters, uppercase for reported and lowercase for derived locations.
+Peer origins use the known source node; live manual spots may use this node.
+Old manual-history origins and feed-label origins are not invented.
+
+Each live record and each complete native history response is limited to
+65,536 final bytes. History includes headings, warnings, continuation/status
+lines and any automatic-pause footer. Conservative footer headroom may refuse a
+large page; request fewer spots. Invalid/oversized live records are explicitly
+omitted with bounded notices and diagnostics, never text-spot fallback. Native
+history fails as a whole. A failed continuation keeps its prior token/position;
+a valid fresh query has already replaced the old search. Format switches alone
+do not invalidate continuation; existing settings/generation rules still apply.
+
+Native history shares the configuration-output admission budget: 8 MiB
+process-wide, a 1 MiB charge per owner and one large output owner per client.
+History and configuration preparation/readbacks may return busy while slots
+are held. Retry the request. The owner remains charged through writer flush
+or discard; dequeue alone does not release it. This accounting is not an RSS
+limit and does not cover every decoded archive-page/filter/runtime allocation.
+Live spot delivery does not acquire a history-response reservation.
+
+Stored GoCluster ADIF is not DXSpider WPXLOC numbering. A native client expecting
+that table may misidentify countries, and may treat derived grids as actual.
+CC12, other native event protocols, native settings readbacks, automatic client
+detection and full CC User/HRD interoperability are not provided or qualified.
+This port needs no archive reset or profile migration. See
+[ADR-0351](../docs/decisions/ADR-0351-native-cc11-output-port.md).
 
 ## Filters
 

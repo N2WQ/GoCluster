@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `fa9f68e43c0c5f4c`
+- Source fingerprint: `23658f2916014b80`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 13 | 22 |
+| `dxcluster/commands` | `commands` | 13 | 23 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 57 | 208 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 40 | 70 |
-| `dxcluster/telnet` | `telnet` | 80 | 170 |
+| `dxcluster/telnet` | `telnet` | 83 | 176 |
 
 ## In-Scope Package Edges
 
@@ -129,6 +129,7 @@ Test files:
 - `commands/help_overview_test.go`
 - `commands/help_routing_contract_test.go`
 - `commands/help_wording_contract_test.go`
+- `commands/history_append_test.go`
 - `commands/history_archive_test.go`
 - `commands/history_comment_alias_test.go`
 - `commands/history_selection_taxonomy_test.go`
@@ -813,6 +814,9 @@ Source files:
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
 - `telnet/show_prop.go`
+- `telnet/ve7cc_format.go`
+- `telnet/ve7cc_history.go`
+- `telnet/ve7cc_session.go`
 - `telnet/writer_normalize.go`
 
 Test files:
@@ -981,6 +985,12 @@ Test files:
 - `telnet/state_machine_test.go`
 - `telnet/station_diagnostic_contention_test.go`
 - `telnet/taxonomy_input_test.go`
+- `telnet/ve7cc_format_test.go`
+- `telnet/ve7cc_history_test.go`
+- `telnet/ve7cc_session_test.go`
+- `telnet/ve7cc_transport_test.go`
+- `telnet/ve7cc_writer_bench_test.go`
+- `telnet/ve7cc_writer_test.go`
 - `telnet/writer_v15_append_test.go`
 - `telnet/writer_v15_bench_test.go`
 - `telnet/writer_v15_fixture_test.go`
