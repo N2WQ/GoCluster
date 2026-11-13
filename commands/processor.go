@@ -601,7 +601,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	add("SET CWSPEED", "SET CWSPEED - Show or hide RBN CW speed.", helpEntryLines(
 		"SET CWSPEED - Show or hide RBN CW speed.",
 		[]string{"SET CWSPEED <ON|OFF>"}, nil,
-		[]string{"The saved setting applies to live spots and stored history.", "Diagnostic mode hides speed. Comment matching is unchanged."},
+		[]string{"The saved setting applies to ordinary-text live spots and stored history.", "Diagnostic mode hides speed. Comment matching is unchanged.", "Native CC11 keeps raw comments regardless of CWSPEED or DIAG."},
 	))
 
 	presetNotes := []string{
@@ -633,9 +633,28 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		nil,
 		[]string{
 			"Dialect selection is persisted per callsign.",
+			"Dialect selection does not change session-only VE7CC spot output.",
 		},
 	)
 	add("DIALECT", "DIALECT - Show or switch dialect.", dialectLines)
+	for _, entry := range []struct{ command, summary string }{
+		{"SET/VE7CC", "Enable session-only CC11 spot output."},
+		{"UNSET/VE7CC", "Restore ordinary-text spot output."},
+	} {
+		add(entry.command, entry.command+" - "+entry.summary, helpEntryLines(
+			entry.command+" - "+entry.summary, []string{entry.command}, nil,
+			[]string{
+				"Works after login in GO and CC; no arguments.",
+				"Every new connection starts in text. This selection is not saved.",
+				"DIALECT, preset LOAD and YAML changes preserve native selection.",
+				"Live spots and DX history use CC11; other replies keep their current format.",
+				"Native raw comments ignore CWSPEED and DIAG display settings.",
+				"Complete native records and history replies are limited to 65,536 bytes.",
+				"Invalid/oversized live records are omitted; history fails as a whole.",
+				"Native history shares configuration output capacity; retry busy replies.",
+				"Stored GoCluster ADIF is not WPXLOC. CC User/HRD compatibility is unqualified.",
+			}))
+	}
 
 	byeLines := helpEntryLines(
 		"BYE - Disconnect from the cluster.",
@@ -786,6 +805,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SET/SELF",
 			"SET/NOSELF",
 			"DIALECT",
+			"SET/VE7CC",
+			"UNSET/VE7CC",
 			"BYE",
 		}
 	} else {
@@ -882,6 +903,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"LOAD PRESET",
 			"DELETE PRESET",
 			"DIALECT",
+			"SET/VE7CC",
+			"UNSET/VE7CC",
 			"BYE",
 		}
 	}

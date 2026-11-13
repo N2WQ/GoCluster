@@ -144,6 +144,23 @@ For custom GPT responses:
 - Do not summarize old ADRs as current behavior without checking the current
   doc/code path.
 
+## Native CC11 Output
+
+Use the [native output contract](../telnet/README.md#ve7cc-native-spot-output)
+and [ADR-0351](../docs/decisions/ADR-0351-native-cc11-output-port.md) for
+`SET/VE7CC`, raw comments, frame limits and shared configuration-output
+admission. Native output selection is connection-local and independent of GO/CC
+filter banks. It is not complete CC User/HRD interoperability.
+
+Current local source owners are `telnet/ve7cc_format.go` (pure encoder),
+`telnet/ve7cc_session.go` (selectors/diagnostics), `telnet/server.go` (FIFO
+writer transition), `telnet/ve7cc_history.go` and `telnet/history.go`
+(publication/cursor/owner transfer), `commands/history.go` (bounded byte
+appender), and `telnet/configuration_transfer.go` (shared reservation).
+Verify actual wire output and backing retirement, not requested flags or
+reservation counters alone. Source routing does not establish publication,
+deployment, validation or installed-client compatibility.
+
 ## Boolean Personal Rules
 
 GO owns the [Boolean rule contract](../telnet/README.md#filters) and

@@ -438,6 +438,8 @@ type Client struct {
 	skipNextEOL             bool                   // Consume a single LF/NUL after CR (RFC 854 compliance)
 	dedupePolicy            atomic.Uint32          // Secondary dedupe policy (fast/med/slow)
 	diagMode                atomic.Uint32          // Diagnostic comment override mode
+	ve7ccEnabled            bool                   // Requested mode belongs to the configuration lease, not saved settings.
+	ve7ccDiagnostics        ve7ccDiagnostics
 	// solarMu guards solar summary settings shared across goroutines.
 	solarMu             sync.Mutex
 	solarSummaryMinutes int
@@ -675,6 +677,7 @@ type spotEnvelope struct {
 }
 
 type controlMessage struct {
+	spotFormat               spotFormatAction // Writer applies this only at the acknowledgement's FIFO position.
 	line                     string
 	raw                      []byte
 	closeAfter               bool
@@ -4135,6 +4138,13 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			continue
 		}
 
+		if handled, proceed := s.handleVE7CCCommand(client, line); handled {
+			if !proceed {
+				return
+			}
+			continue
+		}
+
 		// Dialect selection is handled before filter commands.
 		if resp, handled := s.handleDialectCommand(client, line); handled {
 			if resp != "" {
@@ -5855,20 +5865,22 @@ func (s *Server) maybeApplyAutoReadPause(client *Client, message string) string 
 	if !s.autoReadPauseEnabled() || client == nil {
 		return message
 	}
-	rows := renderedOutputRows(message)
-	if rows < s.autoReadPauseMinRows {
-		return message
+	return appendReadPauseFooter(message, s.autoReadPauseFooter(client, renderedOutputRows(message)))
+}
+
+func (s *Server) autoReadPauseFooter(client *Client, rows int) string {
+	if !s.autoReadPauseEnabled() || client == nil || rows < s.autoReadPauseMinRows {
+		return ""
 	}
 	now := s.now()
 	// Compute extension under the same authority as manual controls and response
 	// completion so a concurrent longer pause cannot be overwritten.
 	duration := client.extendReadPause(now, s.autoReadPauseDuration)
-	footer := fmt.Sprintf(
+	return fmt.Sprintf(
 		"Live spots paused for %ds after %d output rows. Type RESUME to resume now.\nMissed spots are not replayed.\n",
 		durationCeilSeconds(duration),
 		rows,
 	)
-	return appendReadPauseFooter(message, footer)
 }
 
 func (s *Server) sendCommandResponse(client *Client, message string, purpose string) bool {
@@ -5956,6 +5968,7 @@ func (c *Client) writerLoop() {
 	var resetNotice *v7ResetNoticeReceipt
 	var closeReason string
 	var writerFailure error
+	nativeSpots := false // Effective wire mode is owned only by this writer.
 	defer func() {
 		// Discard the enlarged batch before returning its process-wide charge.
 		batch = nil
@@ -6000,6 +6013,12 @@ func (c *Client) writerLoop() {
 		if msg.closeAfter {
 			*closeAfter = true
 		}
+		switch msg.spotFormat {
+		case spotFormatVE7CC:
+			nativeSpots = true
+		case spotFormatText:
+			nativeSpots = false
+		}
 	}
 
 	appendSpot := func(env *spotEnvelope) {
@@ -6011,6 +6030,22 @@ func (c *Client) writerLoop() {
 			now = c.server.now()
 		}
 		if c.suppressSpotForReadPause(env, now) {
+			return
+		}
+		if nativeSpots {
+			encoded, notes, err := appendVE7CCRecord(batch, env.spot, c.server.ve7ccContext(false), maxVE7CCRecordBytes-2)
+			c.reportVE7CC(notes, err != nil)
+			if err != nil {
+				if c.allowVE7CCRefusalNotice(now) {
+					batch = append(batch, ve7ccLiveFailure...)
+				}
+				return
+			}
+			batch = encoded
+			batch = append(batch, '\r', '\n')
+			if !env.enqueueAt.IsZero() {
+				spotEnqueueTimes = append(spotEnqueueTimes, env.enqueueAt)
+			}
 			return
 		}
 		// Prime the base cache even when diagnostics use an alternate comment.

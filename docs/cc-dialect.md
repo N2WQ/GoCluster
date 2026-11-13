@@ -1,4 +1,7 @@
-# Using the CC dialect
+---
+title: Using the CC dialect
+description: Independent CC filter banks, configuration ownership and session-only native spot output.
+---
 
 GO and CC remember separate filters and separate BEACON, SELF, TOXIC, ANNOUNCE,
 WWV and WCY choices. `DIALECT CC` restores your CC selection; `DIALECT GO`
@@ -68,6 +71,22 @@ login call require SELF and TOXIC, then bypass personal criteria. History's
 own-call exception is independent of SELF, still obeys TOXIC and explicit search
 selectors. SELF does not mean spots you reported about another station.
 
+## Native CC11 output is independent
+
+After login, send `SET/VE7CC` to select native live spots and DX history;
+`UNSET/VE7CC` restores ordinary text. These exact, argument-free commands also
+work in GO. They do not change the selected bank, save state or activate an
+old CC conversation profile. Reconnecting always starts in text. DIALECT,
+preset LOAD and YAML publication preserve the current connection's selection.
+
+Native comments keep canonical stored text regardless of CWSPEED or DIAG.
+Native history shares configuration-output admission capacity, so either may
+temporarily return busy. Its complete wire limit is 65,536 bytes, not the
+larger schema-seven limit. Ordinary history grammar, filtering and pause
+behavior remain. See [native output](../telnet/README.md#ve7cc-native-spot-output)
+for framing, refusal and stored-ADIF/WPXLOC limitations. This does not establish
+full CC User interoperability or change the unverified native filtering claims.
+
 ## YAML and backups
 
 Use `GET YAML CONFIG SCHEMA 7` for a complete writable configuration backup.
@@ -76,7 +95,7 @@ It includes `configuration.filters.go`, `configuration.filters.cc` and shared
 not writable backup fields. Restore the writable `configuration` in a new
 request envelope with the current revision; do not upload the GET status.
 
-Shared setting `cw_speed` is a boolean controlling RBN CW speed display. Old
+Shared setting `cw_speed` is a boolean controlling ordinary-text RBN CW speed display. Old
 profiles, presets, and complete restores without it use false; PATCH leaves an
 omitted value unchanged. Schema six does not expose it and schema-six writes
 preserve the current choice. Older strict schema-seven clients or executables

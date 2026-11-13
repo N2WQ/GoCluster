@@ -29,3 +29,23 @@ func TestConfigurationCommandHelp(t *testing.T) {
 		}
 	}
 }
+
+func TestNativeCC11CommandHelp(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	for _, dialect := range []string{"go", "cc"} {
+		index := p.ProcessCommandForClient("HELP COMMANDS", "W1ABC-1", "", nil, dialect)
+		for _, topic := range []string{"SET/VE7CC", "UNSET/VE7CC"} {
+			response := p.ProcessCommandForClient("HELP "+topic, "W1ABC-1", "", nil, dialect)
+			if !strings.HasPrefix(response, topic+" - ") || !strings.Contains(index, topic) {
+				t.Fatalf("%s native selector help is not reachable: %s", dialect, response)
+			}
+			flat := strings.Join(strings.Fields(response), " ")
+			for _, want := range []string{"after login", "new connection", "not saved", "raw comments", "CWSPEED", "DIAG", "65,536", "busy", "ADIF", "WPXLOC", "unqualified"} {
+				if !strings.Contains(flat, want) {
+					t.Fatalf("%s %s help omits %q: %s", dialect, topic, want, response)
+				}
+			}
+			assertHelpWidth(t, response)
+		}
+	}
+}

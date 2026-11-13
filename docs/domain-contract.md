@@ -61,6 +61,46 @@ pressure.
 - Negotiation and escaped IAC bytes never reach business handlers. Newlines
   inside Telnet subnegotiation do not end application lines.
 
+## Session-only CC11 spot output
+
+After login, exact case-insensitive, argument-free `SET/VE7CC` and
+`UNSET/VE7CC` choose native or ordinary-text live spots and DX history in GO
+and CC. Every new/replacement connection starts in text. Selection belongs to
+the connection, never saved dialect, YAML, profiles or presets. Current
+configuration publication preserves it without altering bank ownership.
+
+The existing control FIFO carries a typed acknowledgement; requested state is
+published only after accepted enqueue. Only the writer applies effective mode,
+at that acknowledgement's position. No backlog flush, new worker or queue is
+introduced. Ordinary text behavior and all other event protocols remain.
+
+Native records retain the reference 20-field CC11 structure and stored identity.
+Canonical raw comments ignore CWSPEED/DIAG projections and glyphs; sanitization
+is output-only. Stored ADIF is emitted directly, not translated to WPXLOC.
+Only missing Country/ITU descriptions may use matching-positive-ADIF CTY data.
+Valid first-four grids preserve reported/derived provenance. No scientific,
+geographic, ingestion, peer or archive semantics change.
+
+Enforce 65,536 final bytes per live record and complete native history frame,
+including CRLF, statuses and possible automatic-pause footer. Invalid/oversized
+live output is explicitly omitted, never text-fallback spots. History is
+whole-frame only; failed continuation retains its prior cursor, while a valid
+fresh search has already replaced its predecessor. Keep existing filters,
+generation rules and generic automatic history pauses.
+
+Native history reserves from the existing 8 MiB process-wide configuration
+output budget before encoding, at 1 MiB per owner and one large owner per
+client. Shared busy contention is intentional. Select format under the
+configuration lease at publication, encode outside close/history guards, then
+validate/enqueue/commit under close fence followed by history lock. Unqueued
+owners die before lease release; queued owners retire through current writer
+flush/discard and the composed drain. Accounting is not heap/RSS proof; decoded
+pages/filter state and existing writer baselines are separate.
+
+No automatic native detection or complete CC User/HRD qualification is claimed.
+The [native output guide](../telnet/README.md#ve7cc-native-spot-output) and
+[ADR-0351](decisions/ADR-0351-native-cc11-output-port.md) define the limitations.
+
 ## Input parsing
 
 - After existing login callsign normalization, local user admission permits at

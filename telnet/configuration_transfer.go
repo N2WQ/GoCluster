@@ -1,4 +1,5 @@
-// File role: Process-wide, nonblocking reservations for configuration transport.
+// File role: Process-wide, nonblocking reservations for configuration transport
+// and native DX-history output, sharing one large response owner per client.
 // Input owners retain their charge through reception and AST decoding until all
 // request bytes/nodes are detached. Output owners reserve before rendering, then
 // transfer exactly one charge per client to the writer through its final flush.
@@ -31,7 +32,7 @@ func configurationTransferBudgetStats() (inputBytes, outputBytes int64) {
 }
 
 // ConfigurationTransferStats reports live process-wide byte reservations,
-// including other Server instances. These charges are not exact heap usage.
+// including native DX history and other Server instances. Charges are not heap usage.
 func (s *Server) ConfigurationTransferStats() (inputBytes, outputBytes int64) {
 	return configurationTransferBudgetStats()
 }

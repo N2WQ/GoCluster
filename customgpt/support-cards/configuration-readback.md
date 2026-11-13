@@ -1,13 +1,13 @@
 ---
 title: "Support Card: Configuration Readbacks And Client YAML"
-description: Independent GO/CC banks, schema 7 and limited schema-6 access.
+description: Independent GO/CC banks, client YAML and session-only native CC11 output.
 ---
 
 ## Match
 
 Use for filter/settings inspection, dialect switching, YAML configuration,
 revision conflicts, upload errors, upgrade notices, protected records and preset
-partial results, plus human comment report/search behavior. Retrieve with `getDoc` when source-map routing applies; this
+partial results, native CC11 output and human comment report/search behavior. Retrieve with `getDoc` when source-map routing applies; this
 card does not add an automatic Worker route.
 
 ## First Safe Check
@@ -26,13 +26,20 @@ Local source behavior does not establish publication, deployment or validation.
   noise, dedupe, PATHSAMPLES, SOLAR and CWSPEED are shared. GO Boolean mutations require
   GO; CC uses native mode/source, geography and DXBM commands. Retrieve compiled
   HELP for exact aliases; do not translate arbitrary GO rules into CC.
-- `SET CWSPEED ON|OFF` controls available RBN CW speed on live and historical
-  spots, defaults to OFF, and is suppressed by diagnostics. Comment matching
+- `SET CWSPEED ON|OFF` controls available RBN CW speed on ordinary-text live and
+  historical spots, defaults to OFF, and is suppressed by diagnostics. Comment matching
   retains the stored comment even when speed is hidden. The initial CW speed
   upgrade needs a fresh spot archive; it accumulates only new records afterward.
   The later display correction needs no reset, but cannot repair projections
   already stored by the earlier binary. Those records expire normally; an
   optional spot-archive reset deletes them and all other spot history.
+- `SET/VE7CC` selects session-only CC11 live spots and DX history in GO or CC;
+  `UNSET/VE7CC` restores ordinary text. Every connection starts in text, without
+  changing saved banks or dialect. Native comments keep canonical stored text
+  regardless of CWSPEED/DIAG, with output-only sanitization. The port needs no
+  archive/profile reset. Retrieve [native output](../../telnet/README.md#ve7cc-native-spot-output)
+  for acknowledgement ordering, refusal and stored-ADIF/WPXLOC limitations;
+  full CC User/HRD interoperability remains unqualified.
 - CC mode choices apply to HUMAN and SKIMMER. Source choices do not change modes
   or start feeds. Geography lists use OR within a category and AND across enabled
   categories; missing/invalid metadata fails PASS and survives REJECT. Global
@@ -52,7 +59,9 @@ Local source behavior does not establish publication, deployment or validation.
 - Human readbacks suppress spots through preparation, queueing and successful
   delivery, then for the reading interval. `RESUME` ends the pause; missed spots
   are not replayed. Machine GET and `SHOW HOLD` status/usage do not create pauses.
-  Acknowledgements are not strict barriers for already admitted spots. See
+  Filter-edit acknowledgements are not strict barriers for already admitted
+  spots. Native-format acknowledgements order the writer's output layout;
+  queued, unsent spots may use the newly selected format. See
   [read pause](../../telnet/README.md#read-pause).
 - Live own-call spots require SELF and TOXIC, then bypass personal criteria.
   History's exception is independent of SELF, still obeying TOXIC and explicit
@@ -115,16 +124,22 @@ upload headers retain no schema suffix and bodies require `schema_version: 6`.
 
 | Boundary | Limit |
 | --- | --- |
-| Native CC canonical state | 128 KiB |
+| Native CC filter canonical state | 128 KiB |
 | Complete CONFIG or tagged preset | 192 KiB |
 | Schema-seven upload/final frame and native CC human filter output | 256 KiB |
 | GO human readback and schema-six upload/final frame | 65,536 bytes |
+| CC11 live record or complete DX-history reply including CRLF/status/footer | 65,536 bytes |
 | Physical profile | 1 MiB |
 | Shared preset library | 8 MiB and 20 names |
 
 Complete encoding, metadata, both baselines and shared decode-work limits also
 apply; maximal lists need not fit together. Input/output reservations can return
-busy before preparation. Human lines retain their configured limit, 128 bytes
+busy before preparation. Native DX history shares the existing 8 MiB process
+output budget, 1 MiB per owner and one large owner per connection. Slow native
+history can make configuration reads/preparation/saves return busy; retry rather
+than assuming a schema error. Owners retire after flush/discard, not dequeue.
+This accounting is not RSS, and live spots do not reserve history-response slots.
+Human lines retain their configured limit, 128 bytes
 by default. Use YAML for long replacements; never split a replacing list.
 
 Uploads use standalone `---`/`...` markers and a 30-second absolute reception

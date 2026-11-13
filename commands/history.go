@@ -5,7 +5,6 @@ package commands
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -237,30 +236,135 @@ func RenderHistoryPage(page archive.HistoryPage, token string, older, unreadable
 func RenderHistoryPageWithFormatter(page archive.HistoryPage, token string, older, unreadable, hadMatches bool, format func(*spot.Spot) string) string {
 	var result strings.Builder
 	if older {
-		result.WriteString("Older retained history page:\n")
+		result.WriteString(historyOlderHeading)
+		result.WriteByte('\n')
 	}
 	for i := len(page.Spots) - 1; i >= 0; i-- {
 		result.WriteString(format(page.Spots[i]))
 		result.WriteString("\r\n")
 	}
-	if unreadable || page.Unreadable > 0 {
-		result.WriteString("Warning: unreadable archive records were skipped; matching history may be incomplete.\n")
-	}
-	if page.End == archive.HistoryExhausted {
-		if len(page.Spots) == 0 && !hadMatches && !older && !unreadable && page.Unreadable == 0 {
-			result.WriteString("No matching retained spots.\n")
-		} else {
-			result.WriteString("End of retained history search.\n")
-		}
-	} else {
-		if page.End == archive.HistoryBudgetReached {
-			result.WriteString("Search work limit reached; this page is incomplete.\n")
-		}
-		if token != "" {
-			fmt.Fprintf(&result, "Continue older history: SHOW DX NEXT %s\n", token)
-		} else {
-			result.WriteString("Older history remains; continuation requires a connected client.\n")
+	for _, line := range historyPageStatus(page, token, older, unreadable, hadMatches) {
+		if line.text != "" {
+			result.WriteString(line.text)
+			result.WriteString(line.token)
+			result.WriteByte('\n')
 		}
 	}
 	return result.String()
+}
+
+const historyOlderHeading = "Older retained history page:"
+
+// ErrHistoryResponseTooLarge refuses a complete page that cannot fit the
+// caller's total byte budget, including any existing destination prefix.
+var ErrHistoryResponseTooLarge = errors.New("history response exceeds byte budget")
+
+// AppendHistoryPage appends a complete page with CRLF for records and fixed
+// text. maxBytes caps the total returned length, including dst's existing prefix.
+// appendSpot must preserve its prefix and append one record WITHOUT CRLF within
+// the supplied additional-byte budget. Fixed text and every record's CRLF are
+// reserved first. Caller backing is reused; maxBytes is not a preallocation size.
+//
+// On any error the original dst is returned, never a successful partial page.
+// Unlike a single-record appender's stronger refusal guarantee, unused private
+// backing may already hold unpublished records; the caller must discard it.
+func AppendHistoryPage(dst []byte, page archive.HistoryPage, token string, older, unreadable, hadMatches bool, maxBytes int, appendSpot func([]byte, *spot.Spot, int) ([]byte, error)) ([]byte, error) {
+	if appendSpot == nil {
+		return dst, errors.New("history record appender is nil")
+	}
+	if maxBytes < len(dst) {
+		return dst, ErrHistoryResponseTooLarge
+	}
+	status := historyPageStatus(page, token, older, unreadable, hadMatches)
+	remaining := maxBytes - len(dst)
+	// Subtract each fragment separately: even a very large token or caller
+	// budget cannot overflow a sum of mandatory text and line endings.
+	if older {
+		if len(historyOlderHeading) > remaining {
+			return dst, ErrHistoryResponseTooLarge
+		}
+		remaining -= len(historyOlderHeading)
+		if remaining < 2 {
+			return dst, ErrHistoryResponseTooLarge
+		}
+		remaining -= 2
+	}
+	for _, line := range status {
+		if line.text == "" {
+			continue
+		}
+		for _, text := range [...]string{line.text, line.token, "\r\n"} {
+			if len(text) > remaining {
+				return dst, ErrHistoryResponseTooLarge
+			}
+			remaining -= len(text)
+		}
+	}
+	for range page.Spots {
+		if remaining < 2 {
+			return dst, ErrHistoryResponseTooLarge
+		}
+		remaining -= 2
+	}
+	result := dst
+	if older {
+		result = append(result, historyOlderHeading...)
+		result = append(result, '\r', '\n')
+	}
+	for i := len(page.Spots) - 1; i >= 0; i-- {
+		before := len(result)
+		next, err := appendSpot(result, page.Spots[i], remaining)
+		if err != nil {
+			return dst, err
+		}
+		if len(next) < before {
+			return dst, errors.New("history record appender shortened output")
+		}
+		added := len(next) - before
+		if added > remaining {
+			return dst, ErrHistoryResponseTooLarge
+		}
+		remaining -= added
+		result = next
+		result = append(result, '\r', '\n')
+	}
+	for _, line := range status {
+		if line.text != "" {
+			result = append(result, line.text...)
+			result = append(result, line.token...)
+			result = append(result, '\r', '\n')
+		}
+	}
+	return result, nil
+}
+
+type historyStatusLine struct {
+	text  string
+	token string
+}
+
+// Completion and cumulative-warning choices are shared, not record formatting
+// or line endings. A separate token fragment avoids an unbounded concatenation.
+func historyPageStatus(page archive.HistoryPage, token string, older, unreadable, hadMatches bool) [3]historyStatusLine {
+	var status [3]historyStatusLine
+	if unreadable || page.Unreadable > 0 {
+		status[0].text = "Warning: unreadable archive records were skipped; matching history may be incomplete."
+	}
+	if page.End == archive.HistoryExhausted {
+		if len(page.Spots) == 0 && !hadMatches && !older && !unreadable && page.Unreadable == 0 {
+			status[1].text = "No matching retained spots."
+		} else {
+			status[1].text = "End of retained history search."
+		}
+	} else {
+		if page.End == archive.HistoryBudgetReached {
+			status[1].text = "Search work limit reached; this page is incomplete."
+		}
+		if token != "" {
+			status[2] = historyStatusLine{text: "Continue older history: SHOW DX NEXT ", token: token}
+		} else {
+			status[2].text = "Older history remains; continuation requires a connected client."
+		}
+	}
+	return status
 }

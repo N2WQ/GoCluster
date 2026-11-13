@@ -1,4 +1,4 @@
-// History owns one small cursor per connection. Configuration stripes serialize
+// File role: One small DX-history cursor per connection. Configuration stripes serialize
 // coherent capture and publication with settings transactions; historyMu orders
 // publication against close and competing search generations. Neither is held
 // while Pebble scans. Only accepted control messages advance continuation.
@@ -28,12 +28,20 @@ type historySearch struct {
 }
 
 type historyRequest struct {
-	search     historySearch
-	filter     historyFilterSnapshot
-	generation uint64
-	older      bool
-	cwSpeed    bool
-	diag       diagMode
+	search       historySearch
+	filter       historyFilterSnapshot
+	generation   uint64
+	older        bool
+	cwSpeed      bool
+	diag         diagMode
+	presentation *historyPagePresentation // Request-local only; never retained by cursor or queue.
+}
+
+type historyPagePresentation struct {
+	page       archive.HistoryPage
+	token      string
+	unreadable bool
+	hadMatches bool
 }
 
 // observeHistoryDigest runs inside the configuration transaction. A change
@@ -143,9 +151,10 @@ func (s *Server) handleHistoryCommand(c *Client, line string) (bool, bool) {
 			}
 		}
 		if readErr == nil {
-			response = commands.RenderHistoryPageWithFormatter(page, state.token, request.older, state.unreadable, request.search.hadMatches, func(sp *spot.Spot) string {
-				return sp.FormatDXClusterCW(request.cwSpeed && request.diag == diagModeOff)
-			})
+			request.presentation = &historyPagePresentation{
+				page: page, token: state.token, unreadable: state.unreadable,
+				hadMatches: request.search.hadMatches,
+			}
 		}
 	}
 	if readErr != nil {
@@ -154,40 +163,16 @@ func (s *Server) handleHistoryCommand(c *Client, line string) (bool, bool) {
 	return true, s.publishHistory(c, request, next, response, readErr == nil)
 }
 
-// publishHistory linearizes settings validation, queue acceptance and advancement.
-// A full queue retains the existing disconnect policy outside all guards, since
-// close takes historyMu. No network write or archive work runs in this section.
+// publishHistory retains the configuration lease through format preparation and
+// atomic queue/cursor publication. Cleanup precedes lease release and reporting;
+// no network write or archive work runs under the publication guards.
 func (s *Server) publishHistory(c *Client, request historyRequest, next *historySearch, response string, success bool) bool {
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
 		return false
 	}
-	c.refreshConfigurationRevision()
-	c.historyMu.Lock()
-	if c.historyClosed {
-		c.historyMu.Unlock()
-		release()
-		return false
-	}
-	valid := c.historyGeneration == request.generation
-	if request.older {
-		valid = valid && c.historySearch != nil && c.historySearch.token == request.search.token
-	}
-	if !valid {
-		response, success = historyRestart, false
-	}
-	response = s.maybeApplyAutoReadPause(c, response)
-	select {
-	case c.controlChan <- controlMessage{line: response}:
-		if success {
-			c.historySearch = next
-		}
-		c.historyMu.Unlock()
-		release()
-		return true
-	default:
-		c.historyMu.Unlock()
-		release()
-		return c.controlQueueFull() == nil
-	}
+	notes, refused, err := s.publishHistoryOwned(c, request, next, response, success)
+	release()
+	c.reportVE7CC(notes, refused)
+	return s.finishVE7CCSend(c, err, "history publication")
 }

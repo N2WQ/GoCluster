@@ -109,11 +109,17 @@ will hear the station or make a contact.
 | Pause live spots for 60 seconds | `PAUSE 60` |
 | Check or end a pause | `SHOW HOLD` or `RESUME` |
 | Inspect or change repeated-spot suppression | `SHOW DEDUPE` or `SET DEDUPE FAST` |
-| Show or hide RBN CW speed | `SET CWSPEED ON` or `SET CWSPEED OFF` |
+| Show or hide RBN CW speed in ordinary text | `SET CWSPEED ON` or `SET CWSPEED OFF` |
+| Select session-only CC11 spot output | `SET/VE7CC`; `UNSET/VE7CC` restores ordinary text |
 | See countries reporting your own call | `WHOSPOTSME 20M` |
 | Request a propagation outlook | `SHOW PROP IT9 20m FT8` (set your own grid first) |
 | Receive active solar summaries | `SET SOLAR 30` (every 30 minutes while active, on enabled nodes); `SET SOLAR OFF` to stop |
 | Disconnect | `BYE` |
+
+Native CC11 applies to live spots and DX history in either dialect. It starts
+off on every connection and is not saved. Native comments keep the canonical
+stored text, including any speed text, regardless of CWSPEED or diagnostics.
+See [native output and compatibility limits](telnet/README.md#ve7cc-native-spot-output).
 
 To post a station you have heard, use `DX <frequency_kHz> <callsign> [comment]`.
 For example:

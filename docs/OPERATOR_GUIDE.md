@@ -309,6 +309,25 @@ A new `PAUSE` sets a fresh duration; automatic pauses can extend an active pause
 but cannot shorten it. `SHOW HOLD` reports either kind of pause. Replies to
 `PAUSE`, `SHOW HOLD`, and `RESUME` do not trigger another automatic pause.
 
+### Select CC11 Spot Output
+
+Send `SET/VE7CC` after login for CC11 live spots and DX-history replies.
+Send `UNSET/VE7CC` for ordinary text again. Both commands work in GO and CC,
+take no arguments and are not saved. Reconnecting starts in text even with
+saved CC filters; scripts must select native output again after login.
+
+Native output uses the canonical stored comment, including any speed text,
+regardless of CWSPEED or diagnostic display settings. Stored country numbers
+remain GoCluster ADIF, not DXSpider WPXLOC. Native clients may misinterpret
+country numbers or derived grids; full CC User/HRD compatibility is unqualified.
+
+Native history pages share temporary response capacity with configuration
+operations. A busy reply means retry; a size refusal means request fewer rows.
+Pages are never silently truncated, and failed continuation retains its prior
+position. Existing automatic pauses and no-replay behavior still apply. This
+feature needs no archive reset or saved-profile migration. See the
+[native protocol and bounds](../telnet/README.md#ve7cc-native-spot-output).
+
 ### Read Your Filters And Settings
 
 Login shows actual settings and numbered Boolean rules. New users see
