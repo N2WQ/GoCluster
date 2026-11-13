@@ -117,16 +117,23 @@ inspect user-visible diagnostics:
   or usable VOACAP that was not closed.
 - `vssn` means the VOACAP fallback had no current rounded SSN generation. Check
   effective `voacap_fallback.ssn_state_path`, startup warnings about SSN state
-  restore, and NOAA flux fetch errors before changing path thresholds. Zero is
+  restore, and NOAA observation-fetch errors before changing path thresholds. Zero is
   valid SSN; unknown input is separate. The state file is per-node runtime state;
-  do not share it between running processes. The runtime uses 2800 MHz `Noon`
-  F10.7, a default two-day recent flux EWMA, and an equal blend with the latest
-  published 90-day mean before conversion and final rounding. Old observatory
-  state and its validators are discarded; cold start replays the feed oldest
-  first. A missing new mean keeps the last accepted mean while valid new flux
-  advances. Known contributing components warn separately after 48 hours;
-  unchanged or failed polls do not reset their age. The last good input remains
-  usable. Never-observed components are missing without an invented age.
+  do not share it between running processes. The runtime polls NOAA sunspot
+  reports every 30 minutes and smooths the validated local `10 * groups + spots`
+  index with a default 48-hour exponential half-life. There is no blend or
+  percentage hold; only final SSN is rounded. Do not call this official smoothed
+  International SSN or claim improved glyph accuracy. Remove retired
+  `ssn_recent_flux_weight`. Old flux-v2 and Wolf-v1 state and validators are
+  discarded; version-3 continuity requires a matching source and smoothing
+  identity. Cold start replays usable reports oldest first. Missing or ambiguous
+  reports do not mean zero. After 48 hours without a newer observation, warn
+  and keep the last good compatible input; failed or unchanged polls do not
+  reset its age. Never-observed input is missing without an invented age.
+  On a first-upgrade NOAA outage, existing valid forecasts can serve until
+  original expiry but new jobs wait for count input. Legacy flux forecasts retain
+  their actual SSN and SFU provenance. See
+  [ADR-0350](../../docs/decisions/ADR-0350-voacap-observation-count-input.md).
   The local Overview page shows `VOACAP SSN: <integer|n/a>` for that rounded
   generation when `tview-v2` is enabled. Its Path Predictions panel also shows
   `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)`

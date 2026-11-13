@@ -13,57 +13,27 @@ import (
 	"time"
 )
 
-func TestSunspotMonitorReplayCatchupAndRoundedGenerations(t *testing.T) {
-	var body atomic.Value
-	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "140", "123.17362") + "," +
-		noonFluxJSON("2026-06-08T20:00:00", "100", "100") + "]")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, body.Load()) }))
-	defer server.Close()
-	monitor := newTestSunspotMonitor(t, server)
-	firstNow := mustTime(t, "2026-06-10T21:00:00Z")
-	if err := monitor.Poll(context.Background(), firstNow); err != nil {
-		t.Fatal(err)
+func testSolarMonitorConfig(server *httptest.Server) SunspotMonitorConfig {
+	cfg := SunspotMonitorConfig{URL: "http://example.invalid/count.json", FetchInterval: time.Hour, RequestTimeout: time.Second, EWMAHalfLife: 48 * time.Hour, StaleAfter: 48 * time.Hour}
+	if server != nil {
+		cfg.URL = server.URL
+		cfg.HTTPClient = server.Client()
 	}
-	s := monitor.Snapshot()
-	if s.RecentFluxEWMA != 120 || s.ForecastSSN != 73 || !s.ForecastInitialized ||
-		s.Input.Provenance.BlendedFluxSFU != 121.58681 {
-		t.Fatalf("cold chronological replay: %+v", s)
-	}
-	// A one-SSN change below the retired 12% hold advances immediately.
-	body.Store("[" + noonFluxJSON("2026-06-14T20:00:00", "123", "121.89128") + "," +
-		noonFluxJSON("2026-06-12T20:00:00", "126", "121.89128") + "," +
-		noonFluxJSON("2026-06-10T20:00:00", "140", "123.17362") + "]")
-	secondNow := mustTime(t, "2026-06-14T21:00:00Z")
-	if err := monitor.Poll(context.Background(), secondNow); err != nil {
-		t.Fatal(err)
-	}
-	s = monitor.Snapshot()
-	if s.RecentFluxEWMA != 123 || s.ForecastSSN != 74 || !s.LastObservedAtUTC.Equal(mustTime(t, "2026-06-14T20:00:00Z")) {
-		t.Fatalf("missed observations not replayed: %+v", s)
-	}
-	before, _ := monitor.CurrentSolarInput(secondNow)
-	if err := monitor.Poll(context.Background(), secondNow.Add(time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	after, _ := monitor.CurrentSolarInput(secondNow)
-	if before != after {
-		t.Fatalf("repeated feed changed accepted input: before=%+v after=%+v", before, after)
-	}
-	// Same integer SSN still captures its new actual input provenance.
-	body.Store("[" + noonFluxJSON("2026-06-16T20:00:00", "123", "121.89128") + "]")
-	if err := monitor.Poll(context.Background(), secondNow.Add(48*time.Hour)); err != nil {
-		t.Fatal(err)
-	}
-	s = monitor.Snapshot()
-	if s.ForecastSSN != 74 || !s.LastForecastAtUTC.Equal(secondNow) || s.Input.Provenance.RecentObservedUnix != mustTime(t, "2026-06-16T20:00:00Z").Unix() {
-		t.Fatalf("same-SSN provenance/generation mismatch: %+v", s)
-	}
+	return cfg
 }
-
-func TestSunspotMonitorLateMeanAndIndependentWatermark(t *testing.T) {
+func newTestSunspotMonitor(t *testing.T, server *httptest.Server) *SunspotMonitor {
+	t.Helper()
+	m, err := NewSunspotMonitor(testSolarMonitorConfig(server))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+func TestSunspotMonitorReplayPrecisionAndNoReweighting(t *testing.T) {
 	var body atomic.Value
-	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "140", "null") + "," +
-		noonFluxJSON("2026-06-08T20:00:00", "100", "null") + "]")
+	a := countRow("2026-06-08T20:00:00", "1", "1", "90", "2")
+	b := countRow("2026-06-10T20:00:00", "1", "1", "92", "3")
+	body.Store("[" + b + "," + a + "]")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, body.Load()) }))
 	defer server.Close()
 	m := newTestSunspotMonitor(t, server)
@@ -71,141 +41,87 @@ func TestSunspotMonitorLateMeanAndIndependentWatermark(t *testing.T) {
 	if err := m.Poll(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := m.CurrentSSN(now); ok || !m.Snapshot().MeanMissing || m.Snapshot().RecentFluxEWMA != 120 {
-		t.Fatalf("partial first input must remain unavailable: %+v", m.Snapshot())
-	}
-	// An earlier mean can arrive after newer flux: its independent watermark
-	// advances without reprocessing either accepted Noon flux observation.
-	body.Store("[" + noonFluxJSON("2026-06-08T20:00:00", "900", "80") + "]")
-	if err := m.Poll(context.Background(), now.Add(time.Minute)); err != nil {
-		t.Fatal(err)
-	}
-	s := m.Snapshot()
-	if s.RecentFluxEWMA != 120 || s.PublishedMeanSFU != 80 || s.ForecastSSN != 47 {
-		t.Fatalf("late earlier mean/watermark: %+v", s)
-	}
-	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "900", "123.17362") + "]")
-	if err := m.Poll(context.Background(), now.Add(2*time.Minute)); err != nil {
-		t.Fatal(err)
-	}
 	accepted, ok := m.CurrentSolarInput(now)
-	if !ok || accepted.SSN != 73 || accepted.Provenance.RecentEWMAFluxSFU != 120 {
-		t.Fatalf("late current mean double-smoothed flux: %+v", accepted)
+	if !ok || accepted.SSN != 101 || accepted.Provenance.SmoothedValue != 101 || accepted.Provenance.LatestValue != 102 || accepted.Provenance.SourceID != SolarSourceNOAASunspotReport {
+		t.Fatalf("input: %+v", accepted)
 	}
-	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "900", "900") + "]")
-	if err := m.Poll(context.Background(), now.Add(3*time.Minute)); err != nil {
+	// An accepted timestamp's correction is deliberately deferred, even when the
+	// body changes. Neither repeated polls nor fetch times advance smoothing.
+	body.Store("[" + strings.Replace(b, `"Numspot":92`, `"Numspot":999`, 1) + "," + a + "]")
+	for i := 0; i < 3; i++ {
+		if err := m.Poll(context.Background(), now.Add(time.Duration(i)*time.Hour)); err != nil {
+			t.Fatal(err)
+		}
+		got, _ := m.CurrentSolarInput(now)
+		if got != accepted {
+			t.Fatalf("accepted sample reweighted: %+v", got)
+		}
+	}
+	seed := newTestSunspotMonitor(t, nil)
+	at := now.Add(-time.Hour)
+	if err := seed.applyCountSeries([]countReportSample{{at, 27}}, now); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := m.CurrentSolarInput(now); got != accepted {
-		t.Fatalf("accepted equal-timestamp correction changed input: %+v", got)
+	if got, _ := seed.CurrentSSN(now); got != 27 {
+		t.Fatalf("first sample=%d", got)
 	}
-	body.Store("[" + noonFluxJSON("2026-06-12T20:00:00", "140", "\"invalid\"") + "]")
-	if err := m.Poll(context.Background(), now.Add(48*time.Hour)); err != nil {
+	// A fractional oracle checks the monitor boundary, so rounding the stored
+	// EWMA (while leaving its arithmetic helper correct) cannot pass unnoticed.
+	precision := newTestSunspotMonitor(t, nil)
+	if err := precision.applyCountSeries([]countReportSample{{at.Add(-24 * time.Hour), 100}, {at, 200}}, now); err != nil {
 		t.Fatal(err)
 	}
-	s = m.Snapshot()
-	if s.RecentFluxEWMA != 130 || s.PublishedMeanSFU != 123.17362 ||
-		!s.MeanObservedAtUTC.Equal(mustTime(t, "2026-06-10T20:00:00Z")) ||
-		s.Input.Provenance.MeanObservedUnix != accepted.Provenance.MeanObservedUnix {
-		t.Fatalf("invalid mean rejected flux or refreshed carried mean age: %+v", s)
+	if got, ready := precision.CurrentSolarInput(now); !ready || got.SSN != 129 || math.Abs(got.Provenance.SmoothedValue-129.28932188134524) > 1e-12 {
+		t.Fatalf("monitor rounded the intermediate EWMA: %+v", got)
 	}
 }
-
-func TestSunspotMonitorWeightEndpointsAndZero(t *testing.T) {
-	for _, tc := range []struct {
-		name, flux, mean string
-		weight           float64
-		wantSSN          int
-		wantFlags        uint16
-	}{
-		{"recent_only", "121.58681", "null", 1, 73, SolarInputRecentPresent | SolarInputBlendPresent},
-		{"mean_only", "null", "122.44564", 0, 74, SolarInputMeanPresent | SolarInputBlendPresent},
-		{"valid_zero", "0", "0", .5, 0, SolarInputRecentPresent | SolarInputMeanPresent | SolarInputBlendPresent},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				fmt.Fprint(w, "["+noonFluxJSON("2026-06-08T20:00:00", tc.flux, tc.mean)+"]")
-			}))
-			defer server.Close()
-			cfg := testSolarMonitorConfig(server)
-			cfg.RecentWeight = tc.weight
-			m, err := NewSunspotMonitor(cfg)
-			if err != nil {
-				t.Fatal(err)
-			}
-			now := mustTime(t, "2026-06-12T20:00:00Z")
-			if err := m.Poll(context.Background(), now); err != nil {
-				t.Fatal(err)
-			}
-			input, ok := m.CurrentSolarInput(now)
-			ssn, ssnOK := m.CurrentSSN(now)
-			if !ok || !ssnOK || input.SSN != tc.wantSSN || ssn != tc.wantSSN || input.Provenance.Flags != tc.wantFlags {
-				t.Fatalf("weight/zero lost: %+v ok=%v ssn=%d/%v", input, ok, ssn, ssnOK)
-			}
-			s := m.Snapshot()
-			if (tc.weight == 1 && s.MeanStale) || (tc.weight == 0 && s.RecentStale) {
-				t.Fatalf("noncontributor marked stale: %+v", s)
-			}
-		})
-	}
-}
-
 func TestSunspotMonitorValidatorsAndFailureRetainInput(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch calls.Add(1) {
 		case 1:
-			w.Header().Set("ETag", "\"bad\"")
+			w.Header().Set("ETag", `"bad"`)
 			fmt.Fprint(w, "not-json")
 		case 2:
 			if r.Header.Get("If-None-Match") != "" {
-				t.Error("parse-failure validator was retained")
+				t.Error("bad validator retained")
 			}
-			w.Header().Set("ETag", "\"good\"")
-			fmt.Fprint(w, "["+noonFluxJSON("2026-06-08T20:00:00", "121.58681", "121.58681")+"]")
+			w.Header().Set("ETag", `"good"`)
+			fmt.Fprint(w, "["+countRow("2026-06-08T20:00:00", "1", "1", "90", "2")+"]")
 		case 3:
-			if r.Header.Get("If-None-Match") != "\"good\"" {
-				t.Error("usable validator missing")
+			if r.Header.Get("If-None-Match") != `"good"` {
+				t.Error("good validator missing")
 			}
 			w.WriteHeader(http.StatusNotModified)
-		case 4:
-			w.WriteHeader(http.StatusServiceUnavailable)
 		default:
-			fmt.Fprint(w, "["+noonFluxJSON("2026-06-10T20:00:00", "1e308", "1e308")+"]")
+			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
 	defer server.Close()
 	m := newTestSunspotMonitor(t, server)
 	now := mustTime(t, "2026-06-08T21:00:00Z")
-	if err := m.Poll(context.Background(), now); err == nil || m.Snapshot().LastError == "" {
-		t.Fatal("parse failure not exposed")
+	if err := m.Poll(context.Background(), now); err == nil {
+		t.Fatal("invalid representation accepted")
 	}
 	if err := m.Poll(context.Background(), now); err != nil {
 		t.Fatal(err)
 	}
 	accepted, _ := m.CurrentSolarInput(now)
-	for _, advance := range []time.Duration{time.Hour, 49 * time.Hour, 50 * time.Hour} {
-		err := m.Poll(context.Background(), now.Add(advance))
-		if (advance == time.Hour && err != nil) || (advance != time.Hour && err == nil) {
-			t.Fatalf("unexpected fetch/arithmetic outcome after %s: %v", advance, err)
-		}
-		if got, _ := m.CurrentSolarInput(now); got != accepted {
-			t.Fatalf("304/failure changed accepted input: %+v", got)
-		}
-	}
-	if m.Snapshot().LastObservedAtUTC.Unix() != accepted.Provenance.RecentObservedUnix {
-		t.Fatal("failed arithmetic partly advanced the ingestion batch")
-	}
-}
-
-func TestSunspotMonitorAtomicConcurrentInput(t *testing.T) {
-	m, err := NewSunspotMonitor(testSolarMonitorConfig(nil))
-	if err != nil {
+	if err := m.Poll(context.Background(), now.Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
+	if err := m.Poll(context.Background(), now.Add(49*time.Hour)); err == nil {
+		t.Fatal("fetch failure hidden")
+	}
+	if got, _ := m.CurrentSolarInput(now); got != accepted || !m.Snapshot().RecentStale {
+		t.Fatalf("failure lost accepted input/health: %+v", m.Snapshot())
+	}
+}
+func TestSunspotMonitorAtomicConcurrentInput(t *testing.T) {
+	m := newTestSunspotMonitor(t, nil)
 	start := mustTime(t, "2026-01-01T20:00:00Z")
-	var readers sync.WaitGroup
 	done := make(chan struct{})
+	var readers sync.WaitGroup
 	readers.Add(1)
 	go func() {
 		defer readers.Done()
@@ -218,10 +134,9 @@ func TestSunspotMonitorAtomicConcurrentInput(t *testing.T) {
 				if !ok {
 					continue
 				}
-				p := input.Provenance
-				want, err := ssnFromSolarFlux(p.BlendedFluxSFU)
-				if err != nil || want != input.SSN || p.BlendedFluxSFU != .5*p.RecentEWMAFluxSFU+.5*p.PublishedMeanFluxSFU {
-					t.Errorf("incoherent input: %+v", input)
+				want, err := roundedCountSSN(input.Provenance.SmoothedValue)
+				if err != nil || want != input.SSN || !input.Provenance.Valid() {
+					t.Errorf("incoherent %+v", input)
 					return
 				}
 			}
@@ -229,54 +144,106 @@ func TestSunspotMonitorAtomicConcurrentInput(t *testing.T) {
 	}()
 	for i := 0; i < 200; i++ {
 		at := start.Add(time.Duration(i) * 24 * time.Hour)
-		if err := m.applyFluxSeries([]solarFluxObservation{{at: at, flux: float64(90 + i), mean: 110, hasFlux: true, hasMean: true}}, at); err != nil {
+		if err := m.applyCountSeries([]countReportSample{{at, float64(90 + i)}}, at); err != nil {
 			t.Fatal(err)
 		}
 	}
 	close(done)
 	readers.Wait()
+	if got := testing.AllocsPerRun(1000, func() { _, _ = m.CurrentSolarInput(start) }); got != 0 {
+		t.Fatalf("snapshot allocations=%g", got)
+	}
 }
-
 func TestSunspotMonitorRejectsInvalidPolicy(t *testing.T) {
-	for _, mutate := range []func(*SunspotMonitorConfig){
-		func(c *SunspotMonitorConfig) { c.FetchInterval = 0 },
-		func(c *SunspotMonitorConfig) { c.RequestTimeout = 0 },
-		func(c *SunspotMonitorConfig) { c.EWMAHalfLife = 0 },
-		func(c *SunspotMonitorConfig) { c.EWMAHalfLife = time.Millisecond },
-		func(c *SunspotMonitorConfig) { c.RecentWeight = -.01 },
-		func(c *SunspotMonitorConfig) { c.RecentWeight = 1.01 },
-		func(c *SunspotMonitorConfig) { c.RecentWeight = math.NaN() },
-		func(c *SunspotMonitorConfig) { c.StaleAfter = 0 },
-		func(c *SunspotMonitorConfig) { c.URL = strings.Repeat("x", maxSolarSourceURLBytes+1) },
-	} {
+	for _, mutate := range []func(*SunspotMonitorConfig){func(c *SunspotMonitorConfig) { c.FetchInterval = 0 }, func(c *SunspotMonitorConfig) { c.RequestTimeout = 0 }, func(c *SunspotMonitorConfig) { c.EWMAHalfLife = 0 }, func(c *SunspotMonitorConfig) { c.EWMAHalfLife = time.Millisecond }, func(c *SunspotMonitorConfig) { c.StaleAfter = 0 }, func(c *SunspotMonitorConfig) { c.MaxResponseBytes = math.MaxInt64 }, func(c *SunspotMonitorConfig) { c.URL = strings.Repeat("x", maxSolarSourceURLBytes+1) }} {
 		cfg := testSolarMonitorConfig(nil)
 		mutate(&cfg)
 		if _, err := NewSunspotMonitor(cfg); err == nil {
-			t.Fatalf("invalid policy accepted: %+v", cfg)
+			t.Fatal("invalid policy accepted")
 		}
 	}
+	cfg := testSolarMonitorConfig(nil)
+	cfg.URL = ""
+	m, err := NewSunspotMonitor(cfg)
+	if err != nil || m.cfg.URL != NOAASunspotReportURL {
+		t.Fatalf("source default %+v %v", m, err)
+	}
+}
+func TestSunspotMonitorStartCancellationJoinsFetch(t *testing.T) {
+	entered := make(chan struct{})
+	finished := make(chan struct{})
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		close(entered)
+		<-r.Context().Done()
+		close(finished)
+	}))
+	defer server.Close()
+	m := newTestSunspotMonitor(t, server)
+	ctx, cancel := context.WithCancel(context.Background())
+	m.Start(ctx)
+	m.Start(ctx)
+	<-entered
+	cancel()
+	m.Wait()
+	<-finished
+	if calls.Load() != 1 {
+		t.Fatalf("poll loops=%d", calls.Load())
+	}
+}
+func TestSunspotMonitorTransportBounds(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, validator string
+		limit                 int64
+	}{{"body", strings.Repeat("x", 33), "", 32}, {"validator", "[]", strings.Repeat("x", maxSolarValidatorBytes+1), 100}} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("ETag", tc.validator)
+				fmt.Fprint(w, tc.body)
+			}))
+			defer server.Close()
+			cfg := testSolarMonitorConfig(server)
+			cfg.MaxResponseBytes = tc.limit
+			m, err := NewSunspotMonitor(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = m.Poll(context.Background(), time.Now()); err == nil {
+				t.Fatal("transport bound not enforced")
+			}
+			if _, ok := m.CurrentSSN(time.Now()); ok {
+				t.Fatal("invalid transport published input")
+			}
+		})
+	}
 }
 
-func testSolarMonitorConfig(server *httptest.Server) SunspotMonitorConfig {
-	cfg := SunspotMonitorConfig{
-		URL: "http://example.invalid/flux.json", FetchInterval: time.Hour,
-		RequestTimeout: time.Second, EWMAHalfLife: 48 * time.Hour, RecentWeight: .5, StaleAfter: 48 * time.Hour,
-	}
-	if server != nil {
-		cfg.URL, cfg.HTTPClient = server.URL, server.Client()
-	}
-	return cfg
-}
+type solarTestHTTPClient func(*http.Request) (*http.Response, error)
 
-func newTestSunspotMonitor(t *testing.T, server *httptest.Server) *SunspotMonitor {
-	t.Helper()
-	m, err := NewSunspotMonitor(testSolarMonitorConfig(server))
+func (f solarTestHTTPClient) Do(req *http.Request) (*http.Response, error) { return f(req) }
+
+type solarFailingBody struct{ closed bool }
+
+func (*solarFailingBody) Read([]byte) (int, error) { return 0, fmt.Errorf("body read failed") }
+func (b *solarFailingBody) Close() error           { b.closed = true; return nil }
+
+// Preserve the transport cleanup regression independently of the solar source:
+// a failed read must close the response and cannot publish incomplete input.
+func TestSunspotMonitorReadFailureClosesBody(t *testing.T) {
+	body := &solarFailingBody{}
+	cfg := testSolarMonitorConfig(nil)
+	cfg.HTTPClient = solarTestHTTPClient(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: body}, nil
+	})
+	m, err := NewSunspotMonitor(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return m
-}
-
-func noonFluxJSON(at, flux, mean string) string {
-	return fmt.Sprintf("{\"time_tag\":%q,\"frequency\":2800,\"reporting_schedule\":\"Noon\",\"flux\":%s,\"ninety_day_mean\":%s}", at, flux, mean)
+	if err := m.Poll(context.Background(), time.Now()); err == nil || !body.closed || !strings.Contains(err.Error(), "body read failed") {
+		t.Fatalf("read failure/closure absent: %v closed=%v", err, body.closed)
+	}
+	if _, ready := m.CurrentSolarInput(time.Now()); ready {
+		t.Fatal("failed body read published solar input")
+	}
 }

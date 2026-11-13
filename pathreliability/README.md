@@ -395,32 +395,36 @@ cell, missing SSN, no current-hour cache record, queue full, worker not running,
 disabled, unavailable, REL/tier guard failure, or usable VOACAP that did not
 classify the candidate closed.
 
-The runtime solar input comes from NOAA SWPC `f107_cm_flux.json`, accepting only
-2800 MHz `Noon` records. The recent flux average is a floating-point EWMA with
-the configured half-life, default two days, using actual elapsed observation
-time. The default input blends that average equally with the latest published
-90-day mean, then inverts `F = 63.7 + 0.728R + 0.00089R²` and rounds the final
-SSN once. Valid nonnegative blended flux at or below 63.7 SFU produces SSN zero.
-This daily input is a model surrogate, not an official smoothed sunspot count.
+The runtime solar input comes from NOAA SWPC `sunspot_report.json`, polled every
+30 minutes by default. Within each validated observation report, the local index
+is `10 * groups + spots`. Reports retain their timestamp, observatory and station
+identity. Exact duplicate groups count once; competing stations at the same
+timestamp and ambiguous/conflicting rows are refused. Region identifiers do not
+identify unique groups. This is an interpretation of reported rows, not a promise
+of a complete solar-disk count or official smoothed International SSN.
 
-`ssn_recent_flux_weight` controls the recent share (default `0.5`); zero and one
-select the published mean and recent average respectively. A valid new Noon
-reading advances the recent average even if its mean is absent, using the last
-accepted mean. The first late mean for an already accepted Noon date can update
-the blend without counting that flux twice. Corrections to already accepted
-component timestamps are deferred. Cold start replays the feed oldest first.
+The floating-point EWMA uses actual elapsed observation time and the configured
+half-life, default 48 hours. It retains full precision and rounds only the final
+forecast SSN. There is no blend or flux conversion. Both `ssn_recent_flux_weight`
+and the former `recompute_delta_percent` are retired and rejected. Cold start
+replays usable observations oldest first. Repeated polls do not count observations
+again. Corrections to already accepted timestamps remain deferred. Missing rows
+are unavailable input, not SSN zero; explicit spotless encoding is not established.
 
-The versioned state at `voacap_fallback.ssn_state_path` preserves flux continuity,
-independent component timestamps, the last accepted complete input, and NOAA
-validators. Its source, URL, units, conversion, and smoothing parameters must
-match. Old observatory-count state and its validators are discarded; missing,
-incompatible, or malformed state starts fresh after the applicable warning.
+Version-3 state at `voacap_fallback.ssn_state_path` preserves compatible count
+continuity, the observation timestamp, EWMA and NOAA validators. Source, URL,
+units, estimator/reduction policy and half-life identity must match. Old flux-v2
+and old Wolf-v1 state, including their HTTP validators, are discarded. Missing,
+incompatible or malformed state starts fresh after the applicable warning.
 The state is bounded to 64 KiB. Do not share it between running processes.
-Known contributing inputs warn separately when their observation age reaches
+The last accepted observation warns when its age reaches
 `ssn_stale_after_seconds` (default 48 hours), including on unchanged or failed
 polls. Poll success does not reset observation age. Warnings and recovery are
-transition-based; the last good solar input remains usable. A never-observed
-component is missing immediately, with no invented age or startup timer.
+transition-based; the last good compatible solar input remains usable. Never-
+observed input is missing immediately, with no invented age or startup timer.
+On the first upgrade, a NOAA outage prevents new jobs until valid count input
+arrives; existing valid forecasts can still serve through their original expiry.
+See [ADR-0350](../docs/decisions/ADR-0350-voacap-observation-count-input.md).
 
 Every change in rounded SSN makes requested forecasts eligible for replacement;
 there is no percentage hold. Cache identity is the user cell, DX cell, band,
@@ -432,6 +436,9 @@ has not changed; ordinary failure cooldown still applies. Outside that final
 hour, an SSN-driven ordinary refresh follows the normal delay. Cold ordinary
 paths retain the configured delay (shipped default 600 seconds). Idle paths
 create no jobs. Queue delays or failures can still leave a gap after expiry.
+Valid generation-2 flux forecasts keep their original SFU provenance and expiry.
+New count forecasts store explicit raw and smoothed count provenance. Changing
+source without changing rounded SSN does not alone request replacement.
 
 The local Overview page displays the current rounded input as
 `VOACAP SSN: <integer|n/a>` when the interactive console is enabled.

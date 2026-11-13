@@ -258,7 +258,7 @@ func validateCurrentForecastCacheRecord(dbKey []byte, record voacapForecastCache
 		return voacapCacheKey{}, voacapForecastCacheRejectInvalid
 	}
 	m := record.Metadata
-	if len(record.Records) < 1 || len(record.Records) > 24 || record.StoredAtUnixNS <= 0 || record.WindowUnixNS <= 0 || m.Flags != voacapMetadataInitialized || m.SolarInput.SSN < 0 || m.OriginUnixNS < record.WindowUnixNS || m.OriginUnixNS > record.StoredAtUnixNS || m.ExpiresUnixNS < record.StoredAtUnixNS {
+	if len(record.Records) < 1 || len(record.Records) > 24 || record.StoredAtUnixNS <= 0 || record.WindowUnixNS <= 0 || m.Flags != voacapMetadataInitialized || !m.SolarInput.Valid() || m.OriginUnixNS < record.WindowUnixNS || m.OriginUnixNS > record.StoredAtUnixNS || m.ExpiresUnixNS < record.StoredAtUnixNS {
 		return voacapCacheKey{}, voacapForecastCacheRejectInvalid
 	}
 	start := time.Unix(0, record.WindowUnixNS).UTC()

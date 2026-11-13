@@ -162,11 +162,11 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    cluster default. Five-minute propagation logs report this as `low_count`.
 
 Optional VOACAP fallback needs a known rounded solar-derived SSN before it can
-run; zero is valid. The runtime monitor stores compatible flux continuity,
-component observation times, the last accepted complete input, and NOAA
-validators in `voacap_fallback.ssn_state_path`. Old observatory-count state and
-its validators are discarded. Cold start replays the Noon flux feed oldest
-first. Completed forecast-window records persist
+run; zero is valid but is never inferred from missing reports. The runtime
+monitor stores compatible version-3 count continuity, observation time, EWMA,
+and NOAA validators in `voacap_fallback.ssn_state_path`. Old flux-v2 and Wolf-v1
+state and validators are discarded. Cold start replays usable observation
+reports oldest first. Completed forecast-window records persist
 separately in the per-node Pebble cache at
 `voacap_fallback.forecast_cache_db_path`. On restart, records that still match
 the current schema/model and retain original coverage, expiry, and a current-hour
@@ -218,17 +218,20 @@ The displayed tag follows a simple precedence order:
    `LOW`, or `UNLIKELY`.
 4. **Everything else**: Leave the tag blank as insufficient data.
 
-The solar input uses only NOAA 2800 MHz `Noon` F10.7 records. A floating-point
-recent EWMA (default two-day half-life, actual elapsed time) is blended with the
-latest published 90-day mean (default equal shares), converted to SSN, and
-rounded once at the end. This is a daily model input, not an official smoothed
-sunspot count. A missing new mean keeps the last accepted mean while valid new
-Noon flux advances the recent average. The first late mean for an accepted date
-does not count that flux twice. Known contributing components warn separately
-after 48 hours without a newer observation; the last good input remains usable.
-Missing components have no invented age. These defaults are controlled by
-`ssn_ewma_half_life_seconds`, `ssn_recent_flux_weight`, and
-`ssn_stale_after_seconds`.
+The solar input polls NOAA `sunspot_report.json` every 30 minutes by default.
+Validated report groups yield a local `10 * groups + spots` index, smoothed by
+a floating-point EWMA with a 48-hour half-life and actual elapsed observation
+time. Round only the final SSN; no blend or flux conversion is used. This is
+not official smoothed International SSN, a solar-disk completeness guarantee,
+or evidence of improved glyph accuracy. Repeated observations do not advance
+the average or observation age. Ambiguous/conflicting reports are refused;
+corrections to already accepted timestamps are deferred. Missing reports do not
+mean zero. After 48 hours without a newer observation, warn and continue using
+the last good compatible input. Never-observed input is missing without an
+invented age. Defaults are controlled by `ssn_fetch_interval_seconds`,
+`ssn_ewma_half_life_seconds`, and `ssn_stale_after_seconds`. Remove retired
+`ssn_recent_flux_weight`; configuration rejects it. See
+[ADR-0350](../../docs/decisions/ADR-0350-voacap-observation-count-input.md).
 
 Every rounded SSN change makes requested forecasts eligible for replacement;
 the old percentage hold is removed. A valid current-model forecast remains

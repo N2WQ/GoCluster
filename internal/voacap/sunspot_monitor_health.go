@@ -8,7 +8,7 @@ import (
 
 // finishPoll runs on success, unchanged input and every fetch/parse/save error.
 // Observation timestamps, rather than fetch activity, determine stale entry and
-// recovery. Two scalar alarm states bound noise to one entry and recovery each;
+// recovery. One scalar alarm state bounds noise to one entry and recovery;
 // missing components have no invented age and no startup timer.
 func (m *SunspotMonitor) finishPoll(now time.Time, err error) {
 	m.mu.Lock()
@@ -21,20 +21,13 @@ func (m *SunspotMonitor) finishPoll(now time.Time, err error) {
 		}
 		m.lastError = strings.Clone(message)
 	}
-	recentStale := m.cfg.RecentWeight > 0 && m.state.EWMAInitialized && now.Sub(m.state.LastObservedAtUTC) >= m.cfg.StaleAfter
-	meanStale := m.cfg.RecentWeight < 1 && m.state.MeanInitialized && now.Sub(m.state.MeanObservedAtUTC) >= m.cfg.StaleAfter
-	var messages [2]string
-	messages[0] = solarHealthTransition("Noon flux", now, m.state.LastObservedAtUTC, recentStale, m.recentStale, &m.recentWarningAtUTC, &m.recentRecoveryAtUTC)
-	messages[1] = solarHealthTransition("published 90-day mean", now, m.state.MeanObservedAtUTC, meanStale, m.meanStale, &m.meanWarningAtUTC, &m.meanRecoveryAtUTC)
-	m.recentStale, m.meanStale = recentStale, meanStale
+	recentStale := m.state.EWMAInitialized && now.Sub(m.state.LastObservedAtUTC) >= m.cfg.StaleAfter
+	message := solarHealthTransition("reported-group index", now, m.state.LastObservedAtUTC, recentStale, m.recentStale, &m.recentWarningAtUTC, &m.recentRecoveryAtUTC)
+	m.recentStale = recentStale
 	m.mu.Unlock()
 	// A logger may block; keep it outside the state mutex used by forecasts.
-	if m.cfg.Logger != nil {
-		for _, message := range messages {
-			if message != "" {
-				m.cfg.Logger.Printf("%s", message)
-			}
-		}
+	if m.cfg.Logger != nil && message != "" {
+		m.cfg.Logger.Printf("%s", message)
 	}
 }
 

@@ -4,6 +4,11 @@
 - Date: 2026-11-12
 - Decision Origin: Design and troubleshooting; exact Approved v4
 
+Current-contract note: [ADR-0350](ADR-0350-voacap-observation-count-input.md)
+supersedes only the solar-input and monitor-continuity clauses below. Forecast
+lifetime, renewal, geometry, migration, resource and glyph decisions remain
+accepted. This record preserves the original flux experiment and its evidence.
+
 ## Context
 
 The former runtime input used observatory counts, an eight-hour EWMA and a 12%

@@ -73,7 +73,6 @@ var requiredConfigPaths = []yamlconfig.Path{
 	{"voacap_fallback", "ssn_state_path"},
 	{"voacap_fallback", "forecast_cache_db_path"},
 	{"voacap_fallback", "ssn_ewma_half_life_seconds"},
-	{"voacap_fallback", "ssn_recent_flux_weight"},
 	{"voacap_fallback", "ssn_stale_after_seconds"},
 	{"voacap_fallback", "voacap_home"},
 	{"voacap_fallback", "voacap_timeout_seconds"},
@@ -279,7 +278,6 @@ type VOACAPFallbackConfig struct {
 	SSNStatePath                           string    `yaml:"ssn_state_path"`
 	ForecastCacheDBPath                    string    `yaml:"forecast_cache_db_path"`
 	SSNEWMAHalfLifeSeconds                 int       `yaml:"ssn_ewma_half_life_seconds"`
-	SSNRecentFluxWeight                    float64   `yaml:"ssn_recent_flux_weight"`
 	SSNStaleAfterSeconds                   int       `yaml:"ssn_stale_after_seconds"`
 	VOACAPHome                             string    `yaml:"voacap_home"`
 	VOACAPTimeoutSeconds                   int       `yaml:"voacap_timeout_seconds"`
@@ -570,7 +568,6 @@ func defaultVOACAPFallbackConfig() VOACAPFallbackConfig {
 		SSNStatePath:                           "data/voacap/ssn_state.json",
 		ForecastCacheDBPath:                    "data/voacap/forecast_cache.pebble",
 		SSNEWMAHalfLifeSeconds:                 172800,
-		SSNRecentFluxWeight:                    0.5,
 		SSNStaleAfterSeconds:                   172800,
 		VOACAPHome:                             `C:\itshfbc`,
 		VOACAPTimeoutSeconds:                   30,
@@ -614,9 +611,6 @@ func (c *VOACAPFallbackConfig) finalize() error {
 	}
 	if c.SSNEWMAHalfLifeSeconds <= 0 {
 		return fmt.Errorf("voacap_fallback.ssn_ewma_half_life_seconds must be > 0")
-	}
-	if math.IsNaN(c.SSNRecentFluxWeight) || math.IsInf(c.SSNRecentFluxWeight, 0) || c.SSNRecentFluxWeight < 0 || c.SSNRecentFluxWeight > 1 {
-		return fmt.Errorf("voacap_fallback.ssn_recent_flux_weight must be finite and between 0 and 1")
 	}
 	if c.SSNStaleAfterSeconds <= 0 {
 		return fmt.Errorf("voacap_fallback.ssn_stale_after_seconds must be > 0")
@@ -872,6 +866,8 @@ func rejectRemovedVOACAPFallbackKeys(node *yaml.Node) error {
 		switch key {
 		case "closed_base_ft8_snr_db", "closed_safety_margin_db":
 			return fmt.Errorf("voacap_fallback.%s is no longer supported; configure mode_thresholds.<mode>.closed instead", key)
+		case "ssn_recent_flux_weight":
+			return fmt.Errorf("voacap_fallback.ssn_recent_flux_weight is no longer supported; remove it: reported-group SSN uses only its configured EWMA, without a flux blend")
 		case "recompute_delta_percent":
 			return fmt.Errorf("voacap_fallback.recompute_delta_percent is no longer supported; forecasts update when rounded SSN changes")
 		}

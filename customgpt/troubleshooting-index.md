@@ -32,7 +32,9 @@ For stale-input warnings, upgrade rebuild gaps, `ssn=mixed`, or forecasts using
 a different SSN from Overview, start with the
 [path-reliability support card](support-cards/path-reliability.md),
 [operator guide](../docs/OPERATOR_GUIDE.md), and
-[ADR-0347](../docs/decisions/ADR-0347-voacap-flux-and-daily-forecast.md).
+[ADR-0350](../docs/decisions/ADR-0350-voacap-observation-count-input.md)
+for count-source input and migration; [ADR-0347](../docs/decisions/ADR-0347-voacap-flux-and-daily-forecast.md)
+continues to own forecast lifetime and renewal.
 Different-SSN inventory is not queued backlog; zero SSN is valid. Requested
 paths renew in the final hour, while failure and queueing can still leave an
 expiry gap. For generation-1 retirement and wrong receiver geometry, use

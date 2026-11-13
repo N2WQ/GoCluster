@@ -686,16 +686,20 @@ prefixes.
   selected UTC forecast hour, and `<ssn>` is the rounded solar-derived SSN
   used for the run. `PASS/REJECT PATH CLOSED` targets these VOACAP closed
   fallback spots; `UNLIKELY` PATH filters still include them for compatibility.
-  The runtime uses NOAA 2800 MHz `Noon` F10.7 readings. By default it blends a
-  two-day-half-life recent flux EWMA equally with the latest published 90-day
-  mean, converts the blend to SSN, and rounds once. Every rounded SSN change
-  can refresh requested paths. Compatible continuity and NOAA validators persist
-  at `voacap_fallback.ssn_state_path`. Old observatory-count state is discarded,
-  including its validators; cold start replays the feed oldest first. A missing
-  new mean keeps the last accepted mean while valid new flux advances. Known
-  contributing components warn separately after 48 hours without a newer
-  observation, including during failed or unchanged polls. The last good input
-  remains usable. Never-observed components are missing without an age.
+  The runtime polls NOAA `sunspot_report.json` every 30 minutes by default.
+  Validated reports give a local `10 * groups + spots` index, smoothed with a
+  48-hour exponential half-life using actual observation time. Only the final
+  forecast SSN is rounded. There is no blend or percentage hold. This is not
+  official smoothed International SSN or a proven improvement in glyph accuracy.
+  Every rounded SSN change can refresh requested paths. Version-3 compatible
+  continuity and NOAA validators persist at `voacap_fallback.ssn_state_path`.
+  Old flux-v2 and Wolf-v1 state and validators are discarded; cold start replays
+  usable observations oldest first. Remove retired `ssn_recent_flux_weight`
+  from configuration. Missing/ambiguous reports do not mean SSN zero. At 48 hours
+  without a newer observation, warn and keep the last good compatible input,
+  including during failed or unchanged polls. Never-observed input is missing
+  without an age. A first-upgrade NOAA outage blocks new jobs while existing
+  valid forecasts can serve. See [ADR-0350](decisions/ADR-0350-voacap-observation-count-input.md).
   Completed VOACAP hourly forecast windows persist
   in the per-node Pebble cache at `voacap_fallback.forecast_cache_db_path`.
   Valid current-model records restore with their original coverage and expiry,

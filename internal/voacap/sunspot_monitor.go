@@ -31,16 +31,14 @@ type sunspotMonitorLogger interface {
 	Printf(format string, args ...any)
 }
 
-// SunspotMonitorConfig owns production NOAA flux polling and solar-input policy.
-// RecentWeight explicitly supports zero and one; none of the policy values is
-// defaulted here. URL, client and response-byte limit are transport/test seams.
+// SunspotMonitorConfig owns reported-group polling and local EWMA policy.
+// URL, client and response-byte limit are transport/test seams.
 type SunspotMonitorConfig struct {
 	URL              string
 	FetchInterval    time.Duration
 	RequestTimeout   time.Duration
 	StatePath        string
 	EWMAHalfLife     time.Duration
-	RecentWeight     float64
 	StaleAfter       time.Duration
 	MaxResponseBytes int64
 	HTTPClient       sunspotHTTPClient
@@ -50,36 +48,29 @@ type SunspotMonitorConfig struct {
 // SunspotMonitorSnapshot separates latest accepted source components from the
 // last complete input. Missing flags do not invent an observation age. Stale
 // flags and warning/recovery times reflect the most recent poll, even if that
-// poll failed or returned 304. Warnings apply only to contributing components.
+// poll failed or returned 304. Warnings use the accepted observation age.
 type SunspotMonitorSnapshot struct {
 	LastAttemptAtUTC    time.Time
 	LastFetchAtUTC      time.Time
 	LastObservedAtUTC   time.Time
-	LastNoonFluxSFU     float64
-	RecentFluxEWMA      float64
+	LastRawCountIndex   float64
+	SmoothedCountIndex  float64
 	EWMAInitialized     bool
-	MeanObservedAtUTC   time.Time
-	PublishedMeanSFU    float64
-	MeanInitialized     bool
 	ForecastSSN         int
 	ForecastInitialized bool
 	LastForecastAtUTC   time.Time
 	LastForecastReason  string
 	Input               SolarInputSnapshot
 	RecentMissing       bool
-	MeanMissing         bool
 	RecentStale         bool
-	MeanStale           bool
 	RecentWarningAtUTC  time.Time
-	MeanWarningAtUTC    time.Time
 	RecentRecoveryAtUTC time.Time
-	MeanRecoveryAtUTC   time.Time
 	LastError           string
 	ETag                string
 	LastModified        string
 }
 
-// SunspotMonitor exposes a daily flux-derived integer SSN, not an official SSN.
+// SunspotMonitor exposes a reported-group local integer index, not an official SSN.
 // pollMu serializes polling/restoration and their disk saves; mu protects only
 // short state publication/read sections. There is no retained observation list.
 type SunspotMonitor struct {
@@ -92,11 +83,8 @@ type SunspotMonitor struct {
 	lastAttemptAtUTC    time.Time
 	lastError           string
 	recentStale         bool
-	meanStale           bool
 	recentWarningAtUTC  time.Time
-	meanWarningAtUTC    time.Time
 	recentRecoveryAtUTC time.Time
-	meanRecoveryAtUTC   time.Time
 
 	startOnce sync.Once
 	wg        sync.WaitGroup
@@ -104,7 +92,7 @@ type SunspotMonitor struct {
 
 func NewSunspotMonitor(cfg SunspotMonitorConfig) (*SunspotMonitor, error) {
 	if cfg.URL == "" {
-		cfg.URL = NOAANoonF107URL
+		cfg.URL = NOAASunspotReportURL
 	}
 	if len(cfg.URL) > maxSolarSourceURLBytes {
 		return nil, errors.New("solar source URL exceeds its byte limit")
@@ -114,9 +102,6 @@ func NewSunspotMonitor(cfg SunspotMonitorConfig) (*SunspotMonitor, error) {
 	}
 	if cfg.EWMAHalfLife <= 0 || cfg.EWMAHalfLife%time.Second != 0 {
 		return nil, errors.New("solar EWMA half-life must be a positive whole number of seconds")
-	}
-	if !validRecentWeight(cfg.RecentWeight) {
-		return nil, errors.New("solar recent weight must be finite and between 0 and 1")
 	}
 	if cfg.StaleAfter <= 0 {
 		return nil, errors.New("solar stale warning age must be positive")
@@ -134,10 +119,6 @@ func NewSunspotMonitor(cfg SunspotMonitorConfig) (*SunspotMonitor, error) {
 	m := &SunspotMonitor{cfg: cfg}
 	m.state = sunspotMonitorState{Version: sunspotMonitorStateVersion, Identity: solarStateIdentity(cfg)}
 	return m, nil
-}
-
-func validRecentWeight(weight float64) bool {
-	return !math.IsNaN(weight) && !math.IsInf(weight, 0) && weight >= 0 && weight <= 1
 }
 
 // Start owns exactly one cancellable polling goroutine. Its request context,
@@ -177,9 +158,8 @@ func (m *SunspotMonitor) pollWithTimeout(parent context.Context, now time.Time) 
 	_ = m.Poll(ctx, now) //nolint:errcheck // Poll publishes errors and component health; this owned loop retries on cadence.
 }
 
-// Poll replays all newer available observations, retaining independent component
-// watermarks. It never revises accepted values, invents samples across gaps, or
-// smooths an already accepted Noon again when its first mean arrives later.
+// Poll replays newer observations chronologically. Already accepted timestamps
+// are never revised or smoothed again, including later correction records.
 func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) (err error) {
 	if m == nil {
 		return errors.New("nil sunspot monitor")
@@ -203,14 +183,14 @@ func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) (err error) {
 		return err
 	}
 	if !result.notModified {
-		series, parseErr := parseNOAANoonFlux(result.body, now)
+		series, parseErr := parseRuntimeSunspotReport(result.body, now)
 		if parseErr != nil {
 			return parseErr
 		}
 		if len(series) == 0 {
-			return errors.New("no usable NOAA Noon solar flux components")
+			return errors.New("no usable NOAA reported-group observations")
 		}
-		if err := m.applyFluxSeries(series, now); err != nil {
+		if err := m.applyCountSeries(series, now); err != nil {
 			return err
 		}
 	}
@@ -228,37 +208,34 @@ func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) (err error) {
 	return m.saveState()
 }
 
-func (m *SunspotMonitor) applyFluxSeries(series []solarFluxObservation, now time.Time) error {
+func (m *SunspotMonitor) applyCountSeries(series []countReportSample, now time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	next := m.state
 	changed := false
 	for _, row := range series {
-		if row.hasFlux && (!next.EWMAInitialized || row.at.After(next.LastObservedAtUTC)) {
-			if next.EWMAInitialized {
-				next.RecentFluxEWMA = advanceFluxEWMA(next.RecentFluxEWMA, row.flux, row.at.Sub(next.LastObservedAtUTC), m.cfg.EWMAHalfLife)
-			} else {
-				next.RecentFluxEWMA = row.flux
-			}
-			next.EWMAInitialized, next.LastObservedAtUTC, next.LastNoonFluxSFU = true, row.at, row.flux
-			changed = true
+		if next.EWMAInitialized && !row.at.After(next.LastObservedAtUTC) {
+			continue
 		}
-		if row.hasMean && (!next.MeanInitialized || row.at.After(next.MeanObservedAtUTC)) {
-			next.MeanInitialized, next.MeanObservedAtUTC, next.PublishedMeanSFU = true, row.at, row.mean
-			changed = true
+		if next.EWMAInitialized {
+			next.SmoothedCountIndex = advanceCountEWMA(next.SmoothedCountIndex, row.raw, row.at.Sub(next.LastObservedAtUTC), m.cfg.EWMAHalfLife)
+		} else {
+			next.SmoothedCountIndex = row.raw
 		}
+		next.EWMAInitialized, next.LastObservedAtUTC, next.LastRawCountIndex = true, row.at, row.raw
+		changed = true
 	}
 	if changed {
 		input, ready, err := solarInputFromState(next, now)
 		if err != nil {
-			return err // Publish no partially advanced batch after arithmetic failure.
+			return err
 		}
 		if ready {
 			if !next.InputInitialized || input.SSN != next.Input.SSN {
 				next.LastForecastAtUTC = now
-				next.LastForecastReason = "rounded solar flux SSN changed"
+				next.LastForecastReason = "rounded local sunspot index changed"
 				if !next.InputInitialized {
-					next.LastForecastReason = "initial solar flux SSN"
+					next.LastForecastReason = "initial local sunspot index"
 				}
 			}
 			next.Input, next.InputInitialized = input, true
@@ -293,17 +270,16 @@ func (m *SunspotMonitor) Snapshot() SunspotMonitorSnapshot {
 	s := m.state
 	return SunspotMonitorSnapshot{
 		LastAttemptAtUTC: m.lastAttemptAtUTC, LastFetchAtUTC: s.LastFetchAtUTC,
-		LastObservedAtUTC: s.LastObservedAtUTC, LastNoonFluxSFU: s.LastNoonFluxSFU,
-		RecentFluxEWMA: s.RecentFluxEWMA, EWMAInitialized: s.EWMAInitialized,
-		MeanObservedAtUTC: s.MeanObservedAtUTC, PublishedMeanSFU: s.PublishedMeanSFU,
-		MeanInitialized: s.MeanInitialized, ForecastSSN: s.Input.SSN,
+		LastObservedAtUTC: s.LastObservedAtUTC, LastRawCountIndex: s.LastRawCountIndex,
+		SmoothedCountIndex: s.SmoothedCountIndex, EWMAInitialized: s.EWMAInitialized,
+		ForecastSSN:         s.Input.SSN,
 		ForecastInitialized: s.InputInitialized, Input: s.Input,
 		LastForecastAtUTC: s.LastForecastAtUTC, LastForecastReason: s.LastForecastReason,
-		RecentMissing: !s.EWMAInitialized, MeanMissing: !s.MeanInitialized,
-		RecentStale: m.recentStale, MeanStale: m.meanStale,
-		RecentWarningAtUTC: m.recentWarningAtUTC, MeanWarningAtUTC: m.meanWarningAtUTC,
-		RecentRecoveryAtUTC: m.recentRecoveryAtUTC, MeanRecoveryAtUTC: m.meanRecoveryAtUTC,
-		LastError: m.lastError, ETag: s.ETag, LastModified: s.LastModified,
+		RecentMissing:       !s.EWMAInitialized,
+		RecentStale:         m.recentStale,
+		RecentWarningAtUTC:  m.recentWarningAtUTC,
+		RecentRecoveryAtUTC: m.recentRecoveryAtUTC,
+		LastError:           m.lastError, ETag: s.ETag, LastModified: s.LastModified,
 	}
 }
 

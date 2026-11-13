@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `3e09ebd8fc9749a5`
+- Source fingerprint: `f5a4ecc1d6fb065e`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -12,8 +12,8 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
-| `dxcluster/internal/voacap` | `internal/voacap` | 13 | 10 |
-| `dxcluster/pathreliability` | `pathreliability` | 32 | 78 |
+| `dxcluster/internal/voacap` | `internal/voacap` | 13 | 11 |
+| `dxcluster/pathreliability` | `pathreliability` | 32 | 79 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -60,7 +60,7 @@ Source files:
 - `internal/voacap/forecast_state.go`
 - `internal/voacap/output.go`
 - `internal/voacap/runner.go`
-- `internal/voacap/solar_flux.go`
+- `internal/voacap/solar_count.go`
 - `internal/voacap/solar_input.go`
 - `internal/voacap/sunspot.go`
 - `internal/voacap/sunspot_monitor.go`
@@ -73,7 +73,8 @@ Test files:
 - `internal/voacap/forecast_state_test.go`
 - `internal/voacap/output_test.go`
 - `internal/voacap/runner_test.go`
-- `internal/voacap/solar_flux_test.go`
+- `internal/voacap/solar_count_test.go`
+- `internal/voacap/solar_input_test.go`
 - `internal/voacap/sunspot_monitor_health_test.go`
 - `internal/voacap/sunspot_monitor_state_test.go`
 - `internal/voacap/sunspot_monitor_test.go`
@@ -192,6 +193,7 @@ Test files:
 - `pathreliability/voacap_persistence_heap_test.go`
 - `pathreliability/voacap_retention_test.go`
 - `pathreliability/voacap_row_growth_heap_test.go`
+- `pathreliability/voacap_sunspot_source_test.go`
 - `pathreliability/voacap_v4_state_test.go`
 - `pathreliability/voacap_worker_qualification_test.go`
 

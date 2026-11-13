@@ -55,8 +55,9 @@ current source/tests.
 
 ## Active VOACAP Chain
 
-- Start with [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md) for current
-  Noon-flux input, daily forecast identity/lifetime, requested final-hour
+- Start with [ADR-0350](ADR-0350-voacap-observation-count-input.md) for current
+  NOAA observation counts, 48-hour EWMA, validated reduction and state migration.
+  [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md) still owns daily forecast identity/lifetime, requested final-hour
   renewal, geometry-driven old-model retirement and coherent diagnostics.
   [TSR-0131](../troubleshooting/TSR-0131-voacap-receiver-longitude-columns.md)
   explains the native receiver-longitude column error and why echoed inputs

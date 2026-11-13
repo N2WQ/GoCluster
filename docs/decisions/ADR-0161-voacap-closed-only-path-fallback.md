@@ -6,9 +6,10 @@
 
 ## Context
 
-Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
-supersedes this record's runtime solar-input, forecast identity and lifetime
-clauses. This record remains historical context for the fallback chain.
+Current-contract note: [ADR-0350](ADR-0350-voacap-observation-count-input.md)
+owns runtime solar input; [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+owns forecast identity and lifetime. These supersede the affected clauses below.
+This record remains historical context for the fallback chain.
 
 The path-reliability method predicts FT8-equivalent p50 SNR from recent bucketed
 cluster evidence. When the buckets have insufficient data, the display currently

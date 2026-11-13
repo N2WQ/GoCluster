@@ -307,7 +307,6 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 			RequestTimeout: time.Duration(pathCfg.VOACAPFallback.SSNRequestTimeoutSeconds) * time.Second,
 			StatePath:      pathCfg.VOACAPFallback.SSNStatePath,
 			EWMAHalfLife:   time.Duration(pathCfg.VOACAPFallback.SSNEWMAHalfLifeSeconds) * time.Second,
-			RecentWeight:   pathCfg.VOACAPFallback.SSNRecentFluxWeight,
 			StaleAfter:     time.Duration(pathCfg.VOACAPFallback.SSNStaleAfterSeconds) * time.Second,
 			Logger:         log.Default(),
 		})

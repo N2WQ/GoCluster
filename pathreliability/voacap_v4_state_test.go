@@ -28,7 +28,7 @@ func (p *v4SolarProvider) set(ssn int, known bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.known = known
-	p.input = voacap.SolarInputSnapshot{SSN: ssn, Provenance: voacap.SolarInputProvenance{LatestNoonFluxSFU: float64(ssn), BlendedFluxSFU: float64(ssn), SourceID: voacap.SolarSourceNOAANoonF107, Flags: voacap.SolarInputBlendPresent}}
+	p.input = voacap.SolarInputSnapshot{SSN: ssn, Provenance: voacap.SolarInputProvenance{LatestValue: float64(ssn), EffectiveValue: float64(ssn), SourceID: voacap.SolarSourceNOAANoonF107, UnitsID: voacap.SolarUnitsSFU, ConversionID: voacap.SolarConversionITU, Flags: voacap.SolarInputBlendPresent}}
 }
 
 func (p *v4SolarProvider) CurrentSolarInput(time.Time) (voacap.SolarInputSnapshot, bool) {
@@ -105,7 +105,7 @@ func TestVOACAPV4DequeueCapturesCoherentLatestInput(t *testing.T) {
 	releaseOnce.Do(func() { close(release) })
 	waitUntil(t, func() bool { return f.Snapshot().WorkerDurationCount == 2 })
 	first, second := <-jobs, <-jobs
-	if first.SSN != 112 || first.SolarInput.SSN != 112 || first.SolarInput.Provenance.BlendedFluxSFU != 112 || second.SSN != 113 || second.SolarInput.SSN != 113 || second.SolarInput.Provenance.BlendedFluxSFU != 113 {
+	if first.SSN != 112 || first.SolarInput.SSN != 112 || first.SolarInput.Provenance.EffectiveValue != 112 || second.SSN != 113 || second.SolarInput.SSN != 113 || second.SolarInput.Provenance.EffectiveValue != 113 {
 		t.Fatalf("mixed/deferred snapshots: first=%+v second=%+v", first, second)
 	}
 	for _, request := range []VOACAPClosedRequest{req, other} {
@@ -147,7 +147,7 @@ func TestVOACAPV4IncompleteReplacementPreservesOriginalOwner(t *testing.T) {
 			provider.set(112, true)
 			if failure == "nan_solar" {
 				provider.mu.Lock()
-				provider.input.Provenance.BlendedFluxSFU = math.NaN()
+				provider.input.Provenance.EffectiveValue = math.NaN()
 				provider.mu.Unlock()
 			}
 			startV4Fixture(t, f)

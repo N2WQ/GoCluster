@@ -73,17 +73,15 @@ voacap_fallback:
   enabled: true
   ssn_fetch_interval_seconds: 1800
   ssn_request_timeout_seconds: 30
-  # Per-node flux continuity state. Old observatory-count state is not reused.
+  # Per-node v3 count continuity. Old Wolf/flux states are not reused.
   ssn_state_path: "data/voacap/ssn_state.json"
   # Pebble cache for completed VOACAP forecast windows. This per-node cache lets
   # current predictions survive restarts without re-entering the warm-up delay.
   forecast_cache_db_path: "data/voacap/forecast_cache.pebble"
-  # Recent Noon F10.7 flux EWMA, blended with the published 90-day mean before
-  # conversion to SSN. Round only the final SSN; every integer change can refresh.
+  # Local reported-group index (10 * groups + spots), using observation-time
+  # EWMA. Round only final SSN; every integer change can refresh.
   ssn_ewma_half_life_seconds: 172800
-  # Recent flux share in [0,1]: 0 uses only the mean; 1 uses only recent flux.
-  ssn_recent_flux_weight: 0.5
-  # Warn at this observation age independently for each contributing component.
+  # Warn at this accepted observation age, including on failed fetches.
   # Warnings do not expire the last-good solar input or refresh its timestamp.
   ssn_stale_after_seconds: 172800
   voacap_home: "C:\\itshfbc"

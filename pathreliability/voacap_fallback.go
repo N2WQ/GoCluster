@@ -1188,8 +1188,7 @@ func (f *VOACAPClosedFallback) validateCompletedForecast(job VOACAPClosedJob, fo
 		}
 		actual |= 1 << uint(row.HourUTC)
 	}
-	p := job.SolarInput.Provenance
-	if job.SSN < 0 || job.SolarInput.SSN != job.SSN || !finiteVOACAPValue(p.LatestNoonFluxSFU) || !finiteVOACAPValue(p.RecentEWMAFluxSFU) || !finiteVOACAPValue(p.PublishedMeanFluxSFU) || !finiteVOACAPValue(p.BlendedFluxSFU) || !finiteVOACAPValue(p.RecentWeight) {
+	if job.SSN < 0 || job.SolarInput.SSN != job.SSN || !job.SolarInput.Valid() {
 		return fmt.Errorf("VOACAP replacement contains malformed solar input")
 	}
 	end := job.WindowStartUTC.Add(time.Duration(hours) * time.Hour)

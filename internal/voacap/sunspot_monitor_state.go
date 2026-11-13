@@ -11,32 +11,30 @@ import (
 )
 
 const (
-	sunspotMonitorStateVersion  = 2
+	sunspotMonitorStateVersion  = 3
 	maxSunspotMonitorStateBytes = 64 * 1024
-	solarFluxStateSource        = "NOAA SWPC observed 2800 MHz Noon F10.7"
-	solarFluxStateUnits         = "sfu"
-	solarFluxStateConversion    = "ITU-R P.371 quadratic inverse v1"
+	solarCountStateSource       = "NOAA SWPC sunspot_report.json reported groups"
+	solarCountStateUnits        = "local reported-group index"
+	solarCountStateConversion   = "coherent station+observatory+Obsid 10G+S; elapsed-time EWMA v1"
 )
 
 type solarMonitorStateIdentity struct {
-	Source              string  `json:"source"`
-	URL                 string  `json:"url"`
-	Units               string  `json:"units"`
-	Conversion          string  `json:"conversion"`
-	EWMAHalfLifeSeconds int64   `json:"ewma_half_life_seconds"`
-	RecentWeight        float64 `json:"recent_weight"`
+	Source              string `json:"source"`
+	URL                 string `json:"url"`
+	Units               string `json:"units"`
+	Conversion          string `json:"conversion"`
+	EWMAHalfLifeSeconds int64  `json:"ewma_half_life_seconds"`
 }
 
 func solarStateIdentity(cfg SunspotMonitorConfig) solarMonitorStateIdentity {
 	return solarMonitorStateIdentity{
-		Source: solarFluxStateSource, URL: cfg.URL, Units: solarFluxStateUnits,
-		Conversion: solarFluxStateConversion, EWMAHalfLifeSeconds: int64(cfg.EWMAHalfLife / time.Second),
-		RecentWeight: cfg.RecentWeight,
+		Source: solarCountStateSource, URL: cfg.URL, Units: solarCountStateUnits,
+		Conversion: solarCountStateConversion, EWMAHalfLifeSeconds: int64(cfg.EWMAHalfLife / time.Second),
 	}
 }
 
 // sunspotMonitorState is one bounded restart-continuity record, not a history.
-// Its two watermarks permit a delayed first mean without smoothing Noon twice.
+// Its watermark prevents replaying an accepted observation, including corrections.
 // Identity mismatches reject all data and validators. Errors and alarm entry/
 // recovery state remain live diagnostics, so a restart rechecks source health.
 type sunspotMonitorState struct {
@@ -46,12 +44,9 @@ type sunspotMonitorState struct {
 	LastModified       string                    `json:"last_modified,omitempty"`
 	LastFetchAtUTC     time.Time                 `json:"last_fetch_at_utc,omitempty"`
 	LastObservedAtUTC  time.Time                 `json:"last_observed_at_utc,omitempty"`
-	LastNoonFluxSFU    float64                   `json:"last_noon_flux_sfu,omitempty"`
-	RecentFluxEWMA     float64                   `json:"recent_flux_ewma,omitempty"`
+	LastRawCountIndex  float64                   `json:"last_raw_count_index,omitempty"`
+	SmoothedCountIndex float64                   `json:"smoothed_count_index,omitempty"`
 	EWMAInitialized    bool                      `json:"ewma_initialized,omitempty"`
-	MeanObservedAtUTC  time.Time                 `json:"mean_observed_at_utc,omitempty"`
-	PublishedMeanSFU   float64                   `json:"published_mean_sfu,omitempty"`
-	MeanInitialized    bool                      `json:"mean_initialized,omitempty"`
 	Input              SolarInputSnapshot        `json:"input"`
 	InputInitialized   bool                      `json:"input_initialized,omitempty"`
 	LastForecastAtUTC  time.Time                 `json:"last_forecast_at_utc,omitempty"`
@@ -141,20 +136,20 @@ func validateSunspotMonitorState(s sunspotMonitorState) error {
 		return fmt.Errorf("unsupported VOACAP SSN state version %d", s.Version)
 	}
 	id := s.Identity
-	if id.Source != solarFluxStateSource || id.Units != solarFluxStateUnits || id.Conversion != solarFluxStateConversion ||
-		id.URL == "" || len(id.URL) > maxSolarSourceURLBytes || id.EWMAHalfLifeSeconds <= 0 || !validRecentWeight(id.RecentWeight) {
+	if id.Source != solarCountStateSource || id.Units != solarCountStateUnits || id.Conversion != solarCountStateConversion ||
+		id.URL == "" || len(id.URL) > maxSolarSourceURLBytes || id.EWMAHalfLifeSeconds <= 0 {
 		return errors.New("invalid VOACAP solar state identity")
 	}
 	if len(s.ETag) > maxSolarValidatorBytes || len(s.LastModified) > maxSolarValidatorBytes {
 		return errors.New("VOACAP solar state HTTP validator exceeds its byte limit")
 	}
-	if !finiteNonnegativeFlux(s.LastNoonFluxSFU) || !finiteNonnegativeFlux(s.RecentFluxEWMA) || !finiteNonnegativeFlux(s.PublishedMeanSFU) {
-		return errors.New("VOACAP solar state flux must be finite and >= 0")
+	if !finiteNonnegativeCount(s.LastRawCountIndex) || !finiteNonnegativeCount(s.SmoothedCountIndex) || (s.EWMAInitialized && (!validRawCount(s.LastRawCountIndex) || s.SmoothedCountIndex < 10)) {
+		return errors.New("VOACAP solar state count index must be finite and >= 0")
 	}
-	if s.EWMAInitialized == s.LastObservedAtUTC.IsZero() || s.MeanInitialized == s.MeanObservedAtUTC.IsZero() {
+	if s.EWMAInitialized == s.LastObservedAtUTC.IsZero() {
 		return errors.New("VOACAP solar state component timestamp and initialization disagree")
 	}
-	if (!s.EWMAInitialized && (s.RecentFluxEWMA != 0 || s.LastNoonFluxSFU != 0)) || (!s.MeanInitialized && s.PublishedMeanSFU != 0) {
+	if !s.EWMAInitialized && (s.SmoothedCountIndex != 0 || s.LastRawCountIndex != 0) {
 		return errors.New("VOACAP solar state has an uninitialized component value")
 	}
 	if !s.InputInitialized {
@@ -167,7 +162,10 @@ func validateSunspotMonitorState(s sunspotMonitorState) error {
 		}
 		return nil
 	}
-	if s.LastForecastAtUTC.IsZero() || (s.LastForecastReason != "initial solar flux SSN" && s.LastForecastReason != "rounded solar flux SSN changed") {
+	if s.LastObservedAtUTC.Unix() > s.Input.Provenance.InputUpdatedUnix || (!s.LastFetchAtUTC.IsZero() && s.LastObservedAtUTC.After(s.LastFetchAtUTC)) || s.LastForecastAtUTC.Unix() > s.Input.Provenance.InputUpdatedUnix {
+		return errors.New("VOACAP solar state violates observation/acceptance ordering")
+	}
+	if s.LastForecastAtUTC.IsZero() || (s.LastForecastReason != "initial local sunspot index" && s.LastForecastReason != "rounded local sunspot index changed") {
 		return errors.New("VOACAP solar state forecast metadata is invalid")
 	}
 	expected, ready, err := solarInputFromState(s, time.Unix(s.Input.Provenance.InputUpdatedUnix, 0).UTC())
