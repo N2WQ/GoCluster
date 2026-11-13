@@ -17,9 +17,7 @@ archive data/
 data/archive
 data/cty/
 data/grids
-data/fcc
 data/ised
-data/rbn
 data/reports
 data/ipinfo
 data/reputation
@@ -46,3 +44,4 @@ data/config/openai.yaml
 NUL
 data/cty/cty.plist.status.json
 data/skm_correction/rbnskew.json
+data/bulletins/history.json
