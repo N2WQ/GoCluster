@@ -66,7 +66,10 @@ source and obtain one complete source spot line. Retrieve
 [TSR-0132](../../docs/troubleshooting/TSR-0132-human-comment-report-and-time-parsing.md).
 New human comments retain meaningful times, `CWT`, split numbers and speed-like
 text. Only adjacent signed FT8/FT4 shorthand within -30 through +30, permitted
-by taxonomy, becomes a bare report; explicit `dB` handling remains available.
+by taxonomy, becomes a bare report. Explicit reports require whole adjacent
+integers within -200..+200: `UP 2 -12 dB` reports -12 and keeps `UP 2`.
+S9/59 readings, embedded `label=+31dB` and out-of-range values remain text.
+See [ADR-0349](../../docs/decisions/ADR-0349-human-explicit-report-and-rejection-diagnostics.md).
 SNR filtering and existing learning checks use the same accepted value.
 
 Manual DX comments admit `+` only after both arguments; do not recommend
@@ -75,6 +78,11 @@ standalone final uppercase wire time. Missing/malformed times or fields after
 the time reject the spot, with no fallback to an earlier comment clock. Use
 [wire-time framing](../../rbn/README.md#human-telnet-wire-time) for the accepted
 terminal-prose ambiguity and unchanged UTC-date/future-skew conversion.
+Look for `unusable_wire_time` sample logs and the source's `wire_time` health
+count. Samples are quoted, may be truncated, and are attempted at most once per
+30 seconds per source after the initial sample. Counting is independent of log
+delivery and queue-overflow drops. Reconnects keep the total; new clients/processes
+reset it. A missing sample alone does not prove there were no rejections.
 
 The shorthand range is a product guardrail, not a claim that a report came
 from a decoder or describes a verified receive path. Do not recommend an

@@ -43,6 +43,7 @@ type ingestHealthSnapshot struct {
 	PayloadDrops         uint64
 	PayloadTooLarge      uint64
 	SpotDrops            uint64
+	HumanWireTimeRejects uint64
 	PathOnlyDrops        uint64
 	ParseErrors          uint64
 	MQTTDropsQoS0        uint64
@@ -186,6 +187,9 @@ func formatIngestHealthLine(name string, snap ingestHealthSnapshot, idle bool, n
 	if snap.SpotDrops > 0 {
 		dropParts = append(dropParts, fmt.Sprintf("spot=%d", snap.SpotDrops))
 	}
+	if snap.HumanWireTimeRejects > 0 {
+		dropParts = append(dropParts, fmt.Sprintf("wire_time=%d", snap.HumanWireTimeRejects))
+	}
 	if snap.PathOnlyDrops > 0 {
 		dropParts = append(dropParts, fmt.Sprintf("path_only=%d", snap.PathOnlyDrops))
 	}
@@ -223,12 +227,13 @@ func rbnHealthSourceWithID(id, name string, client *rbn.Client) ingestHealthSour
 			}
 			snap := client.HealthSnapshot()
 			return ingestHealthSnapshot{
-				Connected:     snap.Connected,
-				LastMessageAt: snap.LastLineAt,
-				LastSpotAt:    snap.LastSpotAt,
-				SpotQueueLen:  snap.SpotQueueLen,
-				SpotQueueCap:  snap.SpotQueueCap,
-				SpotDrops:     snap.SpotDrops,
+				Connected:            snap.Connected,
+				LastMessageAt:        snap.LastLineAt,
+				LastSpotAt:           snap.LastSpotAt,
+				SpotQueueLen:         snap.SpotQueueLen,
+				SpotQueueCap:         snap.SpotQueueCap,
+				SpotDrops:            snap.SpotDrops,
+				HumanWireTimeRejects: snap.HumanWireTimeRejects,
 			}
 		},
 	}

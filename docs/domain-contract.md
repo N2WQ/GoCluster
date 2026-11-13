@@ -92,8 +92,12 @@ pressure.
 - Human shorthand reports require the first selected normalized mode to be FT8
   or FT4, its taxonomy `bare_numeric_report` permission, and an immediately
   adjacent source token containing an ASCII-signed integer from -30 through +30
-  inclusive. Preserve configured aliases and first-mode precedence. Explicit
-  `dB` recognition and priority retain their existing behavior.
+  inclusive. Preserve configured aliases and first-mode precedence.
+- Human explicit reports require a whole ASCII integer in -200..+200 and
+  case-insensitive `dB` in the same token or immediately following token.
+  The first valid explicit report precedes shorthand. S9/59 strength forms,
+  embedded readings and invalid candidates remain text. Remove only the chosen
+  report's number/unit; preserve time prefixes and actual selected-mode ownership.
 - Preserve meaningful human times, fused time text, `CWT`, unrelated numbers and
   speed-like text in source order, subject to existing whitespace/punctuation
   normalization. `CWT` may still select CW metadata. Extracted mode/report
@@ -115,9 +119,16 @@ pressure.
   wire-clock extraction, including arrival-time conversion for clocks more than
   two minutes ahead. No midnight rollover policy changes. Peer date/time fields
   and DXSummit API timestamps retain their separate ownership.
-- No new runtime settings, archive schema, retained state, worker or source-class
+- Human terminal-time rejection has a separate client-owned counter and a
+  rate-limited quoted sample attempt (first immediately, then at most once per
+  30 seconds). Health snapshots/log formatting expose `wire_time`. Counters
+  survive reconnects of the same client and reset for replacement/process exit.
+  Samples retain bounded head/tail evidence and may be dropped by bounded logging;
+  counting is independent. Existing health labels/cadence remain unchanged.
+- No new runtime settings, archive schema, growing retained state, worker or source-class
   inference is introduced. Peer and DXSummit source classification is unchanged.
-  See [ADR-0348](decisions/ADR-0348-human-spot-comment-integrity.md) and
+  See [ADR-0348](decisions/ADR-0348-human-spot-comment-integrity.md),
+  [ADR-0349](decisions/ADR-0349-human-explicit-report-and-rejection-diagnostics.md) and
   [TSR-0132](troubleshooting/TSR-0132-human-comment-report-and-time-parsing.md).
 
 ## Telnet command pacing

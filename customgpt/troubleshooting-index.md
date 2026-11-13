@@ -19,6 +19,12 @@ a fallback. The terminal-prose ambiguity and existing UTC/skew conversion are
 documented limitations. Old archive text is not repaired. RBN cleanup and
 human/skimmer source classification remain separate; do not infer a new source
 class or a calibrated measurement from the accepted report syntax.
+For `UP 2 -12 dB`, S9/59 strength readings, embedded numeric suffixes or silent
+upstream timestamp loss, use
+[ADR-0349](../docs/decisions/ADR-0349-human-explicit-report-and-rejection-diagnostics.md).
+Check the per-source `wire_time` total and rate-limited `unusable_wire_time`
+sample attempts. Do not conflate them with queue overflow or promise every
+rejected line will be logged.
 
 ## VOACAP solar input and forecast renewal
 

@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ec9d31467c88fb66`
+- Source fingerprint: `ad62cb4a8cb43d2b`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 13 | 22 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 207 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 208 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
-| `dxcluster/spot` | `spot` | 40 | 69 |
+| `dxcluster/spot` | `spot` | 40 | 70 |
 | `dxcluster/telnet` | `telnet` | 80 | 170 |
 
 ## In-Scope Package Edges
@@ -284,6 +284,7 @@ Test files:
 - `internal/cluster/grid_writer_test.go`
 - `internal/cluster/human_comment_delivery_test.go`
 - `internal/cluster/human_telnet_runtime_test.go`
+- `internal/cluster/human_wire_diagnostics_test.go`
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/legacy_history_runtime_test.go`
 - `internal/cluster/license_replacement_delivery_test.go`
@@ -693,6 +694,7 @@ Test files:
 - `spot/harmonics_v16_test.go`
 - `spot/history_v16_bench_test.go`
 - `spot/human_comment_parser_test.go`
+- `spot/human_explicit_report_test.go`
 - `spot/iaru_region_test.go`
 - `spot/mode_infer_test.go`
 - `spot/mode_region_test.go`

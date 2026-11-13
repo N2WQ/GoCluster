@@ -101,6 +101,18 @@ uses an earlier time mentioned in the comment as a fallback. Wrapped times,
 fused forms such as `2100ZIO87`, lowercase `z`, and fields after the time do not
 satisfy this wire convention.
 
+Each rejection at this final-time gate increments the client's separate
+`HumanWireTimeRejects` count. Health-log drop details expose it as `wire_time`;
+queue overflow remains `spot`. A sample attempt is logged immediately, then at
+most once per 30 seconds per source, with reason `unusable_wire_time`, cumulative
+total and quoted line evidence. Long samples retain bounded head/tail fragments
+and say `truncated=true`; obtain an upstream capture for a complete long line.
+The counter advances even if bounded logging drops the sample. Totals survive
+reconnects of the same client and reset with a new client/process. This counts
+only the final-time gate, not every malformed line. Health-label rules and
+transition cadence remain unchanged. See
+[ADR-0349](../docs/decisions/ADR-0349-human-explicit-report-and-rejection-diagnostics.md).
+
 For example, `QRT 1800Z 2100Z` retains `QRT 1800Z` as comment text and uses
 the terminal `2100Z` for timestamp conversion. If an upstream omits its actual
 timestamp and its prose ends in `1800Z`, the identical bytes cannot be

@@ -58,10 +58,35 @@ func humanCommentCases() []humanCommentCase {
 		{"explicit_outside_bare_range", "FT8 +31 dB", CommentParseResult{Mode: "FT8", Report: 31, HasReport: true}},
 		{"explicit_before_bare", "+12dB FT8 -14", CommentParseResult{Mode: "FT8", Report: 12, HasReport: true, Comment: "-14"}},
 		{"explicit_after_bare", "FT8 -14 +31dB", CommentParseResult{Mode: "FT8", Report: 31, HasReport: true, Comment: "-14"}},
-		{"explicit_fallback", "FT8 -14 label=+31dB", CommentParseResult{Mode: "FT8", Report: 31, HasReport: true, Comment: "-14 label=+31dB"}},
+		{"embedded_report_is_text", "FT8 -14 label=+31dB", CommentParseResult{Mode: "FT8", Report: -14, HasReport: true, Comment: "label=+31dB"}},
 		{"speed_report_state", "20 WPM -12 dB", CommentParseResult{Report: -12, HasReport: true, Comment: "20 WPM"}},
-		{"first_time_report_state", "20 1200Z -12 dB", CommentParseResult{Report: 20, HasReport: true, Comment: "1200Z -12"}},
+		{"first_time_report_state", "20 1200Z -12 dB", CommentParseResult{Report: -12, HasReport: true, Comment: "20 1200Z"}},
 		{"second_time_report_state", "1000Z 20 1200Z -12 dB", CommentParseResult{Report: -12, HasReport: true, Comment: "1000Z 20 1200Z"}},
+		{"nearest_number", "UP 2 -12 dB", CommentParseResult{Report: -12, HasReport: true, Comment: "UP 2"}},
+		{"interrupted_db", "-12 PLS dB", CommentParseResult{Comment: "-12 PLS dB"}},
+		{"punctuation_interrupts_db", "-12 ... dB", CommentParseResult{Comment: "-12 dB"}},
+		{"orphan_db", "dB CQ", CommentParseResult{Comment: "dB CQ"}},
+		{"unsigned_explicit", "12 DB", CommentParseResult{Report: 12, HasReport: true}},
+		{"explicit_zero", "-0dB", CommentParseResult{HasReport: true}},
+		{"explicit_minimum", "-200dB", CommentParseResult{Report: -200, HasReport: true}},
+		{"explicit_maximum", "+200 dB", CommentParseResult{Report: 200, HasReport: true}},
+		{"explicit_below_minimum", "-201dB", CommentParseResult{Comment: "-201dB"}},
+		{"explicit_above_maximum", "+201 dB", CommentParseResult{Comment: "+201 dB"}},
+		{"no_numeric_suffix", "1000dB", CommentParseResult{Comment: "1000dB"}},
+		{"explicit_overflow", "+999999999999999999999999dB", CommentParseResult{Comment: "+999999999999999999999999dB"}},
+		{"explicit_decimal", "-12.5 dB", CommentParseResult{Comment: "-12.5 dB"}},
+		{"explicit_unit_suffix", "-12dBm", CommentParseResult{Comment: "-12dBm"}},
+		{"s9_separate", "S9 +10 dB", CommentParseResult{Comment: "S9 +10 dB"}},
+		{"s9_compact", "S9+10dB", CommentParseResult{Comment: "S9+10dB"}},
+		{"s9_case_punctuation", "s9: +10DB", CommentParseResult{Comment: "s9 +10DB"}},
+		{"59_compact", "59+20dB", CommentParseResult{Comment: "59+20dB"}},
+		{"59_separate", "59 +20 dB", CommentParseResult{Comment: "59 +20 dB"}},
+		{"strength_in_ft8", "FT8 S9 +10 dB", CommentParseResult{Mode: "FT8", Comment: "S9 +10 dB"}},
+		{"strength_then_valid", "S9 +10 dB -12dB", CommentParseResult{Report: -12, HasReport: true, Comment: "S9 +10 dB"}},
+		{"first_explicit_wins", "-12dB -8 dB", CommentParseResult{Report: -12, HasReport: true, Comment: "-8 dB"}},
+		{"speed_after_report", "-12 dB WPM", CommentParseResult{Report: -12, HasReport: true, Comment: "WPM"}},
+		{"fused_after_other_time", "1000Z 1200Z-14dB", CommentParseResult{Report: -14, HasReport: true, Comment: "1000Z 1200Z"}},
+		{"invalid_then_shorthand", "FT8 -14 +201dB", CommentParseResult{Mode: "FT8", Report: -14, HasReport: true, Comment: "+201dB"}},
 		{"normalization", " \tCW \tUP 2., 2200Z\t ", CommentParseResult{Mode: "CW", Comment: "UP 2 2200Z"}},
 		{"events", "FT8 -14 POTA-1234 SOTA-ABC", CommentParseResult{Mode: "FT8", Report: -14, HasReport: true, Comment: "POTA-1234 SOTA-ABC", Events: EventPOTA | EventSOTA}},
 	}
@@ -119,7 +144,7 @@ func TestHumanCommentExplicitDBCompatibility(t *testing.T) {
 	useCommentTaxonomy(t, commentParserTaxonomies(t)[0].taxonomy)
 	for _, input := range []string{
 		"CW +5 dB CQ", "FT8 -14dB POTA", "RTTY 45 BPS -12 dB TEST", "20 WPM -12 dB",
-		"20 1200Z -12 dB", "1000Z 20 1200Z -12 dB", "FT8 +31 dB", "1200Z-14dB CQ",
+		"1000Z 20 1200Z -12 dB", "FT8 +31 dB", "1200Z-14dB CQ",
 	} {
 		want := legacyCommentParse(input, 14074)
 		got := ParseHumanSpotComment(input, 14074)
@@ -191,7 +216,7 @@ func FuzzHumanCommentRawInvariants(f *testing.F) {
 			return
 		}
 		got := ParseHumanSpotComment(raw, 14074)
-		if got.TimeToken != "" || len(got.Comment) > len(raw) {
+		if got.TimeToken != "" || len(got.Comment) > len(raw) || got.HasReport && (got.Report < -200 || got.Report > 200) {
 			t.Fatalf("human parser invented a timestamp or grew source text: %+v", got)
 		}
 		if got.HasReport && !strings.Contains(strings.ToUpper(raw), "DB") &&

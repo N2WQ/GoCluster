@@ -76,6 +76,13 @@ func TestMinimalParserWireTimestamp(t *testing.T) {
 			if !tc.valid && c.lastSpotAt.Load() != 0 {
 				t.Fatal("rejected timestamp updated accepted-spot liveness")
 			}
+			wantRejects := uint64(0)
+			if !tc.valid {
+				wantRejects = 1
+			}
+			if got := c.HealthSnapshot(); got.HumanWireTimeRejects != wantRejects || got.SpotDrops != 0 {
+				t.Fatalf("terminal-time rejection counters: %+v", got)
+			}
 		})
 	}
 }
@@ -92,6 +99,21 @@ func TestMinimalParserHumanCommentRouting(t *testing.T) {
 	got = mustReadSpot(t, c)
 	if got.HasReport || got.Comment != "-14" || got.Mode != "FT8" {
 		t.Fatalf("structural cleanup manufactured report adjacency: %+v", got)
+	}
+	for _, tc := range []struct {
+		input, remaining string
+		report           int
+		present          bool
+	}{
+		{"FT8 UP 2 -12 dB", "UP 2", -12, true},
+		{"FT8 S9 +10 dB", "S9 +10 dB", 0, false},
+		{"FT8 -14 label=+31dB", "label=+31dB", -14, true},
+	} {
+		c.parseSpot("DX de W1AW: 14074 K1ABC " + tc.input + " 0000Z")
+		got = mustReadSpot(t, c)
+		if got.Mode != "FT8" || got.Comment != tc.remaining || got.Report != tc.report || got.HasReport != tc.present || got.Time.UTC().Format("1504Z") != "0000Z" {
+			t.Fatalf("human explicit routing %q: %+v", tc.input, got)
+		}
 	}
 }
 

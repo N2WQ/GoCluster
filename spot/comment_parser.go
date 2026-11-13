@@ -411,9 +411,8 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 
 	tokens := tokenizeComment(comment)
 	consumed := make([]bool, len(tokens))
-	// Recognition still consumes legacy time/speed tokens internally: those
-	// transitions affect explicit dB selection. Only human output restores their
-	// original text. Legacy callers retain their existing allocation shape.
+	// Human output restores time/speed text and owns report recognition from
+	// original tokens. Legacy callers retain their recognition/allocation shape.
 	var preserved []bool
 	if human {
 		preserved = make([]bool, len(tokens))
@@ -447,6 +446,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 		pendingNumIdx   = -1
 		pendingNumValue int
 		humanModeIdx    = -1
+		selectedModeIdx = -1
 	)
 
 	for idx := 0; idx < len(tokens); idx++ {
@@ -503,6 +503,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 					mode = NormalizeVoiceMode(pat.mode, freq)
 					consumed[idx] = true
 					if human {
+						selectedModeIdx = idx
 						// A mode revealed by peeling a fused time is not an
 						// original standalone mode token for report adjacency.
 						if clean == originalClean {
@@ -514,6 +515,11 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 					continue
 				}
 			case acTokenDB:
+				if human {
+					// Only a selected human report owns its unit; rejected
+					// candidates and orphan units remain ordinary text.
+					continue
+				}
 				if !hasReport && pendingNumIdx >= 0 {
 					report = pendingNumValue
 					hasReport = true
@@ -547,7 +553,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 			}
 		}
 
-		if !hasReport {
+		if !human && !hasReport {
 			if v, ok := parseInlineSNR(clean); ok {
 				report = v
 				hasReport = true
@@ -579,14 +585,10 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 
 	var cleaned string
 	if human {
-		// Preserve the old explicit-dB fallback's view, before applying human
-		// shorthand. Most inputs need no fallback or second comment build.
-		if !hasReport && strings.Contains(cursor.text, "DB") {
-			if m := snrPattern.FindStringSubmatch(buildComment(tokens, consumed)); len(m) == 2 {
-				if v, err := strconv.Atoi(m[1]); err == nil {
-					report = v
-					hasReport = true
-				}
+		if first, last, value, ok := humanExplicitReport(tokens, selectedModeIdx); ok {
+			report, hasReport = value, true
+			for index := first; index <= last; index++ {
+				consumed[index], preserved[index] = true, false
 			}
 		}
 		if !hasReport {

@@ -75,6 +75,8 @@ func TestDXSummitHumanCommentRouting(t *testing.T) {
 	}{
 		{"CW UP 2 QRT 1800Z CWT", "CW", "UP 2 QRT 1800Z CWT", 0, false},
 		{"FT8 -14 POTA", "FT8", "POTA", -14, true},
+		{"FT8 UP 2 -12 dB", "FT8", "UP 2", -12, true},
+		{"FT8 S9 +10 dB", "FT8", "S9 +10 dB", 0, false},
 	} {
 		info := tc.comment
 		got, err := parseRecord(rawSpot{ID: 1, DECall: "W1AW", DXCall: "K1ABC", Frequency: 14074, Info: &info, Time: "2026-04-21T19:59:09"})

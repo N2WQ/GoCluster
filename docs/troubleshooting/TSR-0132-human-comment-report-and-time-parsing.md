@@ -6,7 +6,7 @@ Date Resolved: n/a
 Owner: Repository maintainer
 Technical Area: Human spot parsing, telnet ingress, stored comments and report consumers
 Trigger Source: Chat request
-Led To ADR(s): ADR-0348
+Led To ADR(s): ADR-0348, ADR-0349
 Tags: human comments, SNR, split, CWT, wire timestamp, manual DX
 
 ## RCA Summary
@@ -17,7 +17,7 @@ Tags: human comments, SNR, split, CWT, wire timestamp, manual DX
 - Why: human and skimmer sources used the same destructive comment cleanup.
   Bare-number recognition did not require a sign or adjacency, and human telnet
   structural parsing left its wire time inside the comment-parser input.
-- What fixed it: the approved repair introduces human-specific preservation and
+- What fixed it: the v1 repair introduces human-specific preservation and
   narrow signed FT8/FT4 shorthand, separates the terminal human wire time, and
   permits `+` only in the manual DX comment portion. The complete local Windows
   lane, targeted race checks, fuzz campaigns and static analysis passed.
@@ -26,6 +26,10 @@ Tags: human comments, SNR, split, CWT, wire timestamp, manual DX
   comment consumers and the path-learning entry point. Caller review also found
   that the telnet input whitelist would still reject manual positive reports
   unless that boundary changed too. Runtime incidence was not measured.
+- Follow-up v2: bind human explicit dB reports to whole adjacent integers,
+  preserve S9/59 and embedded readings as text, enforce the selected integer
+  bound, and count/sample terminal-time rejection independently of queue loss.
+  The decision and v2 qualification are recorded below.
 - Operator/support answer: inspect the input source and complete incoming line.
   New human comments retain meaningful times and `CWT`; human telnet now needs a
   standalone final uppercase wire clock. Existing stripped archive text cannot
@@ -116,6 +120,9 @@ independent of comment times.
 
 ## Decision Linkage
 
+This section records the original v1 decision. The v2 follow-up below partially
+supersedes its explicit-dB compatibility clause through ADR-0349.
+
 - ADR created: [ADR-0348](../decisions/ADR-0348-human-spot-comment-integrity.md).
 - Human reports without `dB` require signed adjacent FT8/FT4 shorthand within
   the chosen range and taxonomy permission. Explicit-dB behavior is preserved.
@@ -125,7 +132,97 @@ independent of comment times.
   arrival-time clamp for a syntactically valid future clock. No archive rewrite,
   new setting, learning algorithm or RBN cleanup change is part of the repair.
 
-## Verification and Monitoring
+## Follow-up: Explicit Reports And Rejection Diagnostics (v2)
+
+The external follow-up review was checked against `e0904f5` in the existing
+`C:\src\gocluster` checkout. Legacy explicit-dB recognition, deliberately
+preserved in v1, bound a separate `dB` to the first pending number instead of
+its immediate neighbor. `UP 2 -12 dB` therefore reported 2 and lost the split.
+The fallback extracted embedded numeric suffixes, retained their displayed text
+and bypassed the ordinary -200..+200 integer bound. S9/59 strength forms could
+also become report metadata. These were retained behaviors, not v1 regressions.
+
+Human final-time rejection returned without a reason-specific counter or log.
+The existing `SpotDrops` counted queue overflow only. Before any accepted spot,
+recent incoming lines could still keep health marked active. Changing the idle
+classification was not selected; the new independent rejection diagnostics make
+the parse failure visible while retaining that existing label contract.
+
+The owner selected both slices, whole-token explicit syntax, embedded readings
+as text, and consistent inclusive -200..+200 explicit bounds, then authorized
+`Approved v2 for unattended execution`. No new worktree was created.
+[ADR-0349](../decisions/ADR-0349-human-explicit-report-and-rejection-diagnostics.md)
+partially supersedes the v1 explicit-dB and retained-state clauses.
+
+Human reports now bind only whole adjacent integers and units. Preserve S9/59
+readings, invalid candidates, orphan units and embedded strings; keep the first
+valid explicit report before shorthand and remove only its number/unit.
+Retain fused time text and actual selected-mode ownership. RBN recognition and
+traces remain separate and unchanged. This applies to new rows, not past rows.
+
+At the existing wire-time gate, a fixed client-owned counter advances once per
+rejection, independent of sampled logging and queue loss. A quoted, bounded
+head/tail sample is attempted first immediately and at most once per 30 seconds
+per client thereafter. `unusable_wire_time` samples include the current total;
+health snapshots/log formatting expose `wire_time`. Reconnects keep the total,
+replacement clients/processes reset it, and bounded logging can discard samples.
+Use an upstream capture when the sample is truncated or unavailable.
+
+The separate non-steered primary-source review established differing S9 and
+WSJT SNR references, not the provenance of arbitrary human comments. The bounds
+are product guardrails. No production incidence, calibration or prediction
+accuracy claim follows from these changes.
+
+### v2 qualification
+
+The final Go state was qualified locally on native Windows/amd64 with Go
+1.27.1, Staticcheck 2026.2.1 and golangci-lint 2.14.0. The checkout remained
+`C:\src\gocluster`, branch `human-comment-integrity`, based on `e0904f5` plus
+the approved local diff. Go source/test hashes stayed unchanged through final
+qualification. These are local results, not deployment, production-feed,
+external-interoperability, calibration or p99 evidence.
+
+- Complete ordinary and race lanes each passed 13,032 cases across 74
+  first-party packages (59 executed, 15 build-only), with 96 skips and no race
+  report. Both used `scripts/test-windows.ps1 -Timeout 10m`, adding `-Race`
+  for the second run. Skips include 56 external DXSpider cases, separately
+  invoked subprocess helpers and optional data/live/profile/soak qualifications.
+  No required human-comment, explicit-report or wire-time case was skipped.
+- `go vet ./...`, `staticcheck ./...` and
+  `golangci-lint run ./... --config=.golangci.yaml` passed, with zero lint issues.
+- Four 20-second two-worker fuzz campaigns passed: raw human invariants
+  (1,920,999 executions), shorthand (1,463,692), constructed explicit-report
+  forms (2,061,266) and frozen legacy differential (1,182,150), totaling
+  6,628,107 executions. The human expectations use literal or independently
+  constructed declared forms, not the legacy parser's superseded behavior.
+- Guarded allocation benchmarks kept ordinary legacy parsing at 1000 B/op,
+  13 allocations/op, and Unicode at 1032 B/op, 17 allocations/op. Human bare
+  parsing changed from 408 B/op, five allocations to 392 B/op, three allocations;
+  explicit parsing from 480 B/op, six allocations to 416 B/op, four allocations.
+  Dense-input guards passed. CPU timings varied; no production speed claim is made.
+- The new counter/log regression failed before implementation. New human
+  literal cases also reproduced the old number-binding and substring errors
+  before the report fix. An initial consumer-display assertion incorrectly
+  required text beyond the established wire width; only that test oracle was
+  corrected. Complete source text remains checked before formatting, through
+  fanout and after a real archive reopen/search. One separate missing-DX fixture
+  was corrected because its `1200Z` token matched the existing callsign scanner;
+  production structural parsing was not changed for that unrelated behavior.
+- Separate Go source review found no material issue. That reviewer inherited
+  design context; the review is not described as independent scientific or
+  performance evidence. The lead's fresh final pass checked actual source,
+  approved boundaries and qualification hashes. Local logs/checkpoints are in
+  the ignored `.tmp/human-comment-v2/` directory; this record retains the durable
+  result independently of those machine-local artifacts.
+
+| Approved v2 item | Implementation | Distinguishing validation |
+| --- | --- | --- |
+| Per-source terminal-time diagnostics | `rbn/client.go`, `rbn/human_wire_time.go`, `internal/cluster/ingest_health.go` | Actual gate rejects/valid recovery, two-client burst isolation, real reconnect retention, concurrent snapshots, queue-loss separation and bounded logger admission/drop witnesses; full ordinary/race |
+| Whole adjacent human explicit reports | `spot/comment_parser.go`, `spot/human_comment_parser.go` | Literal range/adjacency/strength/time/alias cases, structured and raw fuzzing, actual manual/peer/DXSummit/telnet adapters, archive reopen/search, display/filter/model-capable FT8 consumer witnesses, frozen RBN differential/trace checks and guarded benchmarks |
+
+The v1 evidence below is historical and is not substituted for v2 results.
+
+## v1 Verification and Monitoring
 
 The lead ran validation in the isolated `human-comment-integrity` worktree,
 based on `91b3740d`, with Go 1.27.1, Staticcheck 2026.2.1 and golangci-lint

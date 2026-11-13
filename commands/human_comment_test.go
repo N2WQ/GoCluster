@@ -29,6 +29,8 @@ func TestManualHumanCommentRoutingAndArchiveSearch(t *testing.T) {
 	}{
 		{"DX 14025 K1ABC CW UP 2 QRT 1800Z CWT POTA", "CW", "UP 2 QRT 1800Z CWT POTA", 0, false},
 		{"DX K1ABC 14074 FT8 -14 POTA", "FT8", "POTA", -14, true},
+		{"DX 14074 K1ABC FT8 UP 2 -12 dB POTA", "FT8", "UP 2 POTA", -12, true},
+		{"DX 14074 K1ABC FT8 S9 +10 dB POTA", "FT8", "S9 +10 dB POTA", 0, false},
 	} {
 		if response := p.ProcessCommandForClient(tc.line, "W1AW", "", nil, "go"); response != "Spot queued.\n" {
 			t.Fatalf("manual DX refused: %q", response)
@@ -54,7 +56,7 @@ func TestManualHumanCommentRoutingAndArchiveSearch(t *testing.T) {
 	db := historyCanonicalCTY(t)
 	p.ctyLookup = func() *cty.CTYDatabase { return db }
 	for _, phrase := range []string{"UP 2", "1800Z", "CWT"} {
-		command, handled, text := p.ParseHistoryCommand("SHOW DX K1ABC COMMENT "+phrase, "go")
+		command, handled, text := p.ParseHistoryCommand("SHOW DX K1ABC MODE CW COMMENT "+phrase, "go")
 		if !handled || text != "" {
 			t.Fatalf("history phrase %q: handled=%v text=%q", phrase, handled, text)
 		}
@@ -68,7 +70,15 @@ func TestManualHumanCommentRoutingAndArchiveSearch(t *testing.T) {
 		t.Fatalf("FT8 history parse: %v %q", handled, text)
 	}
 	page, err := p.ReadHistoryPage(command.Query, nil, func(*spot.Spot) bool { return true }, time.Now().UTC(), nil)
-	if err != nil || len(page.Spots) != 1 || !page.Spots[0].HasReport || page.Spots[0].Report != -14 || page.Spots[0].Comment != "POTA" {
-		t.Fatalf("persisted human shorthand report: %+v error=%v", page, err)
+	if err != nil || len(page.Spots) != 3 {
+		t.Fatalf("persisted human reports: %+v error=%v", page, err)
+	}
+	want := map[string]int{"POTA": -14, "UP 2 POTA": -12, "S9 +10 dB POTA": 0}
+	for _, got := range page.Spots {
+		report, ok := want[got.Comment]
+		if !ok || got.Report != report || got.HasReport != (got.Comment != "S9 +10 dB POTA") {
+			t.Fatalf("stored report/comment mismatch: %+v", got)
+		}
+		delete(want, got.Comment)
 	}
 }

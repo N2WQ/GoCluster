@@ -35,6 +35,8 @@ func TestPeerHumanCommentRouting(t *testing.T) {
 		}{
 			{"CW UP 2 QRT 1800Z CWT", "CW", "UP 2 QRT 1800Z CWT", 0, false},
 			{"FT8 -14 POTA", "FT8", "POTA", -14, true},
+			{"FT8 UP 2 -12 dB", "FT8", "UP 2", -12, true},
+			{"FT8 S9 +10 dB", "FT8", "S9 +10 dB", 0, false},
 		} {
 			extra := ""
 			if family == "PC61" {

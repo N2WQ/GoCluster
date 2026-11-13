@@ -26,6 +26,9 @@ func TestHumanCommentConsumerPropagation(t *testing.T) {
 		{"FT4 +00 QRT 1800Z", "QRT 1800Z", 0, true},
 		{"FT8 +31 QRT 1800Z", "+31 QRT 1800Z", 0, false},
 		{"FT8 +31 dB QRT 1800Z", "QRT 1800Z", 31, true},
+		{"FT8 UP 2 -12 dB QRT 1800Z", "UP 2 QRT 1800Z", -12, true},
+		{"FT8 S9 +10 dB QRT 1800Z", "S9 +10 dB QRT 1800Z", 0, false},
+		{"FT8 59+20dB QRT 1800Z", "59+20dB QRT 1800Z", 0, false},
 	} {
 		t.Run(tc.comment, func(t *testing.T) {
 			input := make(chan *spot.Spot, 1)
@@ -43,9 +46,16 @@ func TestHumanCommentConsumerPropagation(t *testing.T) {
 			if !s.IsHuman || s.HasReport != tc.present || s.Report != tc.report || s.Comment != tc.remaining || s.Time.Before(before) || s.Time.After(time.Now().UTC()) {
 				t.Fatalf("incorrect source metadata before consumers: %+v", s)
 			}
-			// The display must not turn absent human reports into dB labels.
+			// Literal dB text can remain with no report. Assert metadata and
+			// the first literal word; the existing wire width can truncate
+			// later words, whose complete stored text is checked separately.
 			line := s.FormatDXCluster()
-			if strings.Contains(line, " dB") != tc.present || tc.present && !strings.Contains(line, fmt.Sprintf("%s %+d dB", s.Mode, tc.report)) {
+			payload := s.Mode
+			if tc.present {
+				payload += fmt.Sprintf(" %+d dB", tc.report)
+			}
+			payload += " " + strings.Fields(tc.remaining)[0]
+			if !strings.Contains(line, payload) {
 				t.Fatalf("display disagrees with parsed report: %q", line)
 			}
 			rules, err := filter.PrepareRuleSet([]filter.RuleDefinition{{Slot: 0, Action: filter.RuleReject, Expr: "SNR<10"}})

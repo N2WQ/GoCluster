@@ -4,6 +4,12 @@
 - Date: 2026-11-12
 - Decision Origin: Troubleshooting chat
 
+The explicit-dB compatibility clause and prohibition on new retained state are
+partially superseded by [ADR-0349](ADR-0349-human-explicit-report-and-rejection-diagnostics.md):
+human explicit reports now have a bounded adjacent-token grammar, and each
+client has one fixed rejection counter. The original decision below is retained
+as history; its other boundaries remain in force.
+
 ## Context
 
 Human prose used the same comment cleanup as skimmer output. A comment such as

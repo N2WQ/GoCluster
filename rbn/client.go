@@ -18,6 +18,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dxcluster/internal/ratelimit"
 	"dxcluster/skew"
 	"dxcluster/spot"
 	"dxcluster/strutil"
@@ -80,6 +81,9 @@ type Client struct {
 	lastSpotAt atomic.Int64
 	spotDrops  atomic.Uint64
 	keepSSID   bool
+	// Client-owned diagnostics survive reconnect generations. Samples are
+	// throttled independently per source; counting never depends on logging.
+	humanWireTimeRejects ratelimit.Counter
 
 	bufferSize int
 
@@ -225,18 +229,19 @@ func NewClient(host string, port int, callsign string, name string, skewStore *s
 		bufferSize = 100 // legacy default; callers should override via config
 	}
 	return &Client{
-		host:       host,
-		port:       port,
-		callsign:   callsign,
-		name:       name,
-		spotChan:   make(chan *spot.Spot, bufferSize),
-		skewStore:  skewStore,
-		keepSSID:   keepSSID,
-		bufferSize: bufferSize,
-		dial:       defaultRBNDial,
-		loginDelay: rbnLoginDelay,
-		ctx:        context.Background(),
-		cancel:     func() {},
+		host:                 host,
+		port:                 port,
+		callsign:             callsign,
+		name:                 name,
+		spotChan:             make(chan *spot.Spot, bufferSize),
+		skewStore:            skewStore,
+		keepSSID:             keepSSID,
+		bufferSize:           bufferSize,
+		humanWireTimeRejects: ratelimit.NewCounter(humanWireTimeRejectLogInterval),
+		dial:                 defaultRBNDial,
+		loginDelay:           rbnLoginDelay,
+		ctx:                  context.Background(),
+		cancel:               func() {},
 	}
 }
 
@@ -1016,6 +1021,7 @@ func (c *Client) parseSpot(line string) {
 		var ok bool
 		humanWireTime, ok = consumeHumanWireTime(tokens, consumed)
 		if !ok {
+			c.reportHumanWireTimeReject(line)
 			return
 		}
 	}
@@ -1150,12 +1156,13 @@ func (c *Client) IsConnected() bool {
 
 // HealthSnapshot reports recent activity and queue state for diagnostics.
 type HealthSnapshot struct {
-	Connected    bool
-	LastLineAt   time.Time
-	LastSpotAt   time.Time
-	SpotQueueLen int
-	SpotQueueCap int
-	SpotDrops    uint64
+	Connected            bool
+	LastLineAt           time.Time
+	LastSpotAt           time.Time
+	SpotQueueLen         int
+	SpotQueueCap         int
+	SpotDrops            uint64
+	HumanWireTimeRejects uint64
 }
 
 // HealthSnapshot provides a consistent ingest health snapshot.
@@ -1167,10 +1174,11 @@ func (c *Client) HealthSnapshot() HealthSnapshot {
 		return HealthSnapshot{}
 	}
 	snap := HealthSnapshot{
-		Connected:    c.connected.Load(),
-		SpotQueueLen: len(c.spotChan),
-		SpotQueueCap: cap(c.spotChan),
-		SpotDrops:    c.spotDrops.Load(),
+		Connected:            c.connected.Load(),
+		SpotQueueLen:         len(c.spotChan),
+		SpotQueueCap:         cap(c.spotChan),
+		SpotDrops:            c.spotDrops.Load(),
+		HumanWireTimeRejects: c.humanWireTimeRejects.Total(),
 	}
 	if ns := c.lastLineAt.Load(); ns > 0 {
 		snap.LastLineAt = time.Unix(0, ns)
