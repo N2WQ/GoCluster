@@ -1,6 +1,7 @@
-// File role: Broaden only an explicitly introduced COMMENT argument to printable
-// ASCII. The ordinary command/login whitelist, byte ceiling and editing remain
-// owned by the input reader; backspacing a prefix immediately restores that list.
+// File role: Broaden an explicitly introduced COMMENT argument to printable
+// ASCII and admit '+' only within a manual DX comment. The ordinary command/login
+// whitelist, byte ceiling and editing remain owned by the input reader;
+// backspacing a prefix immediately restores that list.
 package telnet
 
 import "dxcluster/commands"
@@ -14,6 +15,24 @@ func nextCommentInputWord(line []byte, start int) (word []byte, end int) {
 		end++
 	}
 	return line[start:end], end
+}
+
+// dxCommentArgumentsStarted recognizes the comment boundary in both DX argument
+// orders. Argument validity belongs to command dispatch. Borrowing the edited
+// buffer avoids retained permission after an erase, and allocates no per-byte
+// state while reading the line.
+func dxCommentArgumentsStarted(line []byte) bool {
+	word, pos := nextCommentInputWord(line, 0)
+	if !asciiWordEqual(word, "DX") {
+		return false
+	}
+	for range 2 {
+		word, pos = nextCommentInputWord(line, pos)
+		if len(word) == 0 || pos == len(line) {
+			return false
+		}
+	}
+	return true
 }
 
 // The COMMENT keyword must be followed by a space before arbitrary punctuation

@@ -429,9 +429,11 @@ Double a literal quote as `""` inside a quoted value; backslash is literal,
 not an escape. Case, punctuation and all spaces inside the value are preserved.
 `*` and `?` have no wildcard meaning in COMMENT. Matching is a literal
 substring, not a regex, glob or word match. Only the stored cleaned comment is
-searched, not removed mode/report/time tokens, synthetic beacon fallbacks or
+searched, not removed metadata tokens, synthetic beacon fallbacks or
 per-user diagnostics. Unknown/empty comments follow ordinary unknown comparison
 semantics. Rules combine as described under [Filters](#filters).
+New human comments retain meaningful times and `CWT`; legacy skimmer time
+cleanup remains unchanged. Existing archive rows are not repaired or re-parsed.
 
 The human RULE reader preserves expression bytes, including literal case and
 spaces; compilation normalizes syntax and non-COMMENT operands. The configured
@@ -439,10 +441,18 @@ whole-command ceiling still applies (128 bytes by default). Use schema 6 YAML
 for longer expressions. The [rule budgets](#filters) replace old per-list limits.
 There are no COMMENT move/remove/list-reset commands.
 
-Manual DX comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _`.
+Manual DX comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _ +`.
 Other punctuation and non-ASCII characters are rejected before posting. The
 whole edited DX command uses the node's command-byte limit (128 by default),
 excluding its line ending. Mode/report tokens may be parsed from the comment.
+The `+` exception applies only to the comment after both DX arguments; it does
+not broaden login, frequency/callsign arguments or other command grammars.
+
+Human shorthand reports require an immediately adjacent signed integer after
+the first selected FT8 or FT4 mode, within -30 through +30 and allowed by the
+taxonomy. For example, `FT8 +02` is a report, while `CW UP 2` and
+`FT8 CQing +2 in NC` retain their numbers as text. Explicit `dB` reports keep
+their existing behavior. See [human spot comments](../spot/README.md#human-spot-comments).
 
 Human filter and settings edits are prepared before publication; a rejected edit
 leaves live preferences and saved bytes unchanged. Accepted edits retain existing

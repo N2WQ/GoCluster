@@ -240,8 +240,9 @@ func NewClient(host string, port int, callsign string, name string, skewStore *s
 	}
 }
 
-// UseMinimalParser enables the permissive parser for non-RBN telnet feeds.
-// Key aspects: Extracts DE/DX/freq with optional mode/report/time tokens.
+// UseMinimalParser enables human comments and a required terminal wire time
+// for non-RBN telnet feeds. Mode and report remain optional.
+// Key aspects: Extracts DE/DX/frequency and terminal time; mode/report are optional.
 // Upstream: main.go for human/relay telnet clients.
 // Downstream: parseSpot minimal parsing path.
 func (c *Client) UseMinimalParser() {
@@ -714,10 +715,10 @@ func parseTimeFromRBNAt(timeStr string, now time.Time) time.Time {
 }
 
 // Purpose: Build a comment string from unconsumed tokens.
-// Key aspects: Preserves token order and trims empty parts.
+// Key aspects: Human input retains raw token barriers; legacy RBN uses cleaned parts.
 // Upstream: parseSpot minimal parsing.
 // Downstream: None.
-func buildComment(tokens []spotToken, consumed []bool) string {
+func buildComment(tokens []spotToken, consumed []bool, preserveSource bool) string {
 	if len(tokens) == 0 || len(consumed) == 0 {
 		return ""
 	}
@@ -727,13 +728,17 @@ func buildComment(tokens []spotToken, consumed []bool) string {
 		if consumed[i] {
 			continue
 		}
-		if tok.clean == "" {
+		text := tok.clean
+		if preserveSource {
+			text = tok.raw
+		}
+		if text == "" {
 			continue
 		}
 		if count > 0 {
 			totalLen++
 		}
-		totalLen += len(tok.clean)
+		totalLen += len(text)
 		count++
 	}
 	if count == 0 {
@@ -743,13 +748,17 @@ func buildComment(tokens []spotToken, consumed []bool) string {
 	b.Grow(totalLen)
 	written := 0
 	for i, tok := range tokens {
-		if consumed[i] || tok.clean == "" {
+		text := tok.clean
+		if preserveSource {
+			text = tok.raw
+		}
+		if consumed[i] || text == "" {
 			continue
 		}
 		if written > 0 {
 			_ = b.WriteByte(' ')
 		}
-		_, _ = b.WriteString(tok.clean)
+		_, _ = b.WriteString(text)
 		written++
 	}
 	return b.String()
@@ -932,12 +941,12 @@ func nextUnconsumedCleanToken(tokens []spotToken, consumed []bool, start int) in
 // Purpose: Parse a DX line into a canonical Spot.
 // Key aspects: Extracts DE/DX/freq/time locally and delegates comment parsing.
 // Upstream: readLoop for RBN/minimal feeds.
-// Downstream: spot.ParseSpotComment, skew.ApplyCorrection.
+// Downstream: spot.ParseHumanSpotComment, spot.ParseSpotComment, skew.ApplyCorrection.
 // parseSpot converts a DX cluster-style telnet line into a canonical Spot.
-// Structural fields (DE/DX/freq/time) are parsed locally; comment parsing
-// (explicit mode/report/time token handling) is delegated to spot.ParseSpotComment
-// so RBN/human/peer inputs stay consistent. Only minimal-parse/human feeds may
-// continue without an explicit mode; RBN skimmer feeds require one at ingest.
+// Human wire time belongs to the final raw field, never to comment metadata.
+// RBN retains its legacy mode/report/time cleanup and speed projection.
+// Minimal-parse/human feeds may continue without an explicit mode; RBN skimmer
+// feeds require one at ingest.
 func (c *Client) parseSpot(line string) {
 	line = strings.TrimSpace(line)
 	if line == "" {
@@ -971,7 +980,11 @@ func (c *Client) parseSpot(line string) {
 		tok := tokens[idx]
 		clean := tok.clean
 		if clean == "" {
-			consumed[idx] = true
+			// A punctuation-only human token still interrupts shorthand
+			// adjacency. Let the human parser own its later text cleanup.
+			if !c.minimalParse {
+				consumed[idx] = true
+			}
 			continue
 		}
 		if !hasFreq {
@@ -998,6 +1011,14 @@ func (c *Client) parseSpot(line string) {
 		c.reportBadCall("DX", "no_valid_dx", "", deCall, "", "")
 		return
 	}
+	var humanWireTime string
+	if c.minimalParse {
+		var ok bool
+		humanWireTime, ok = consumeHumanWireTime(tokens, consumed)
+		if !ok {
+			return
+		}
+	}
 
 	var spotClass SpotClass
 	if !c.minimalParse {
@@ -1008,10 +1029,12 @@ func (c *Client) parseSpot(line string) {
 		spotClass = class
 	}
 
-	commentInput := buildComment(tokens, consumed)
+	commentInput := buildComment(tokens, consumed, c.minimalParse)
 	var parsed spot.CommentParseResult
 	var displayTrace []spot.CommentDisplayToken
-	if !c.minimalParse && hasRBNWPM(tokens, consumed) {
+	if c.minimalParse {
+		parsed = spot.ParseHumanSpotComment(commentInput, freq)
+	} else if hasRBNWPM(tokens, consumed) {
 		parsed, displayTrace = spot.ParseSpotCommentWithDisplayTrace(commentInput, freq)
 	} else {
 		parsed = spot.ParseSpotComment(commentInput, freq)
@@ -1051,7 +1074,9 @@ func (c *Client) parseSpot(line string) {
 	if mode != "" {
 		s.ModeProvenance = spot.ModeProvenanceCommentExplicit
 	}
-	if parsed.TimeToken != "" {
+	if c.minimalParse {
+		s.Time = parseTimeFromRBN(humanWireTime)
+	} else if parsed.TimeToken != "" {
 		s.Time = parseTimeFromRBN(parsed.TimeToken)
 	}
 	if hasReport {

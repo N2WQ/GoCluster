@@ -24,6 +24,7 @@
 # - quiet_gap_seconds_key/hard_cap_seconds_key: keys into pipeline.yaml FT burst timing.
 # - report_format: archive report parsing.
 # - bare_numeric_report: allow signed numeric report parsing without explicit dB token.
+#   Human inputs also require FT8/FT4, an adjacent signed integer, and -30..+30.
 # - confidence_filter_exempt: bypass confidence filters for modes where confidence is not meaningful.
 # - call_correction_profile/frequency_averaging/source_skew_correction:
 #   correction-pipeline capability flags.

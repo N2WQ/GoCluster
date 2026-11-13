@@ -1,3 +1,6 @@
+// File role: Share mode/report recognition across legacy and human comments.
+// Legacy entry points retain skimmer cleanup; ParseHumanSpotComment separates
+// recognition state from source-text preservation and never owns wire time.
 package spot
 
 import (
@@ -368,20 +371,27 @@ func buildComment(tokens []commentToken, consumed []bool) string {
 
 // ParseSpotComment parses mode/report/time tokens and return a cleaned comment.
 // Key aspects: Uses keyword scanner, numeric parsing, and greeting guards (73/88).
-// Upstream: All spot parsers (RBN, peer, PSKReporter).
+// Upstream: Legacy RBN ingest; the human entry point shares private recognition.
 // Downstream: tokenization helpers and NormalizeVoiceMode.
 // ParseSpotComment extracts explicit mode tokens, report/time/speed tags, and a cleaned comment.
 // When no explicit mode token is present, Mode is left empty so downstream mode
 // assignment can apply history and allocation logic.
 func ParseSpotComment(comment string, freq float64) CommentParseResult {
-	return parseSpotComment(comment, freq, true, nil)
+	return parseSpotComment(comment, freq, true, nil, false)
+}
+
+// ParseHumanSpotComment preserves meaningful human text while extracting mode,
+// explicit dB reports and narrowly adjacent signed FT8/FT4 shorthand. Source
+// adapters own timestamps; a time mentioned here never supplies TimeToken.
+func ParseHumanSpotComment(comment string, freq float64) CommentParseResult {
+	return parseSpotComment(comment, freq, true, nil, true)
 }
 
 // ParseSpotCommentWithDisplayTrace returns cleanup decisions made by the same
 // canonical parse. The trace is transient and belongs to the caller.
 func ParseSpotCommentWithDisplayTrace(comment string, freq float64) (CommentParseResult, []CommentDisplayToken) {
 	var trace []CommentDisplayToken
-	result := parseSpotComment(comment, freq, true, &trace)
+	result := parseSpotComment(comment, freq, true, &trace, false)
 	return result, trace
 }
 
@@ -389,10 +399,10 @@ func ParseSpotCommentWithDisplayTrace(comment string, freq float64) (CommentPars
 // words while applying mode, report and time cleanup without speed handling.
 // Its cleanup decisions can differ from those of the canonical parser.
 func ParseSpotCommentWithoutSpeedReordering(comment string, freq float64) CommentParseResult {
-	return parseSpotComment(comment, freq, false, nil)
+	return parseSpotComment(comment, freq, false, nil, false)
 }
 
-func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]CommentDisplayToken) CommentParseResult {
+func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]CommentDisplayToken, human bool) CommentParseResult {
 	originalComment := comment
 	comment = strings.TrimSpace(comment)
 	if comment == "" {
@@ -401,6 +411,13 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 
 	tokens := tokenizeComment(comment)
 	consumed := make([]bool, len(tokens))
+	// Recognition still consumes legacy time/speed tokens internally: those
+	// transitions affect explicit dB selection. Only human output restores their
+	// original text. Legacy callers retain their existing allocation shape.
+	var preserved []bool
+	if human {
+		preserved = make([]bool, len(tokens))
+	}
 	var display []CommentDisplayToken
 	var traceOffset int
 	if trace != nil {
@@ -429,6 +446,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 		events          EventMask
 		pendingNumIdx   = -1
 		pendingNumValue int
+		humanModeIdx    = -1
 	)
 
 	for idx := 0; idx < len(tokens); idx++ {
@@ -458,6 +476,9 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 		}
 		if clean == "" {
 			consumed[idx] = true
+			if human {
+				preserved[idx] = true
+			}
 			markRemoved(idx)
 			continue
 		}
@@ -467,6 +488,9 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 				timeToken = clean
 			}
 			consumed[idx] = true
+			if human {
+				preserved[idx] = true
+			}
 			markRemoved(idx)
 			pendingNumIdx = -1
 			continue
@@ -478,6 +502,14 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 				if mode == "" {
 					mode = NormalizeVoiceMode(pat.mode, freq)
 					consumed[idx] = true
+					if human {
+						// A mode revealed by peeling a fused time is not an
+						// original standalone mode token for report adjacency.
+						if clean == originalClean {
+							humanModeIdx = idx
+						}
+						preserved[idx] = clean != originalClean || tok.upper == "CWT"
+					}
 					markRemoved(idx)
 					continue
 				}
@@ -505,6 +537,10 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 					}
 					consumed[idx] = true
 					consumed[pendingNumIdx] = true
+					if human {
+						preserved[idx] = true
+						preserved[pendingNumIdx] = true
+					}
 					pendingNumIdx = -1
 					continue
 				}
@@ -531,7 +567,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 	}
 
 	explicitMode := NormalizeVoiceMode(mode, freq)
-	if !hasReport && pendingNumIdx >= 0 && explicitMode != "" && modeWantsBareReport(explicitMode) {
+	if !human && !hasReport && pendingNumIdx >= 0 && explicitMode != "" && modeWantsBareReport(explicitMode) {
 		// Treat bare 73/88 as greetings, not SNR, unless explicitly tagged with dB.
 		if pendingNumValue != 73 && pendingNumValue != 88 {
 			report = pendingNumValue
@@ -542,7 +578,27 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 	}
 
 	var cleaned string
-	if reorderSpeed {
+	if human {
+		// Preserve the old explicit-dB fallback's view, before applying human
+		// shorthand. Most inputs need no fallback or second comment build.
+		if !hasReport && strings.Contains(cursor.text, "DB") {
+			if m := snrPattern.FindStringSubmatch(buildComment(tokens, consumed)); len(m) == 2 {
+				if v, err := strconv.Atoi(m[1]); err == nil {
+					report = v
+					hasReport = true
+				}
+			}
+		}
+		if !hasReport {
+			if index, value, ok := humanBareReport(tokens, explicitMode, humanModeIdx); ok {
+				report, hasReport = value, true
+				consumed[index] = true
+				preserved[index] = false
+			}
+		}
+		cleaned = buildHumanComment(tokens, consumed, preserved)
+		timeToken = ""
+	} else if reorderSpeed {
 		cleaned = buildComment(tokens, consumed)
 	} else {
 		parts := make([]string, 0, len(tokens))
@@ -553,7 +609,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 		}
 		cleaned = strings.Join(parts, " ")
 	}
-	if !hasReport && cleaned != "" {
+	if !human && !hasReport && cleaned != "" {
 		if m := snrPattern.FindStringSubmatch(cleaned); len(m) == 2 {
 			if v, err := strconv.Atoi(m[1]); err == nil {
 				report = v
@@ -561,7 +617,7 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 			}
 		}
 	}
-	if speedValue != "" && speedUnit != "" {
+	if !human && speedValue != "" && speedUnit != "" {
 		speedLabel := speedValue + " " + speedUnit
 		if cleaned != "" {
 			cleaned = speedLabel + " " + cleaned

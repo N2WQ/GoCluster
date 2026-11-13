@@ -1336,13 +1336,13 @@ func manualDXMode(fields []string, freq float64) string {
 	if comment == "" {
 		return ""
 	}
-	return spot.ParseSpotComment(comment, freq).Mode
+	return spot.ParseHumanSpotComment(comment, freq).Mode
 }
 
 // Purpose: Handle the DX command and enqueue a human spot.
 // Key aspects: Validates callsign/frequency; parses comment for mode/report.
 // Upstream: ProcessCommandForClient (DX).
-// Downstream: spot.ParseSpotComment, spot.NewSpot, spotInput channel.
+// Downstream: spot.ParseHumanSpotComment, spot.NewSpot, spotInput channel.
 func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) string {
 	spotterRaw := strings.TrimSpace(spotter)
 	if spotterRaw == "" {
@@ -1426,7 +1426,7 @@ func (p *Processor) handleDX(fields []string, spotter string, spotterIP string) 
 	if len(fields) > 3 {
 		comment = strings.TrimSpace(strings.Join(fields[3:], " "))
 	}
-	parsed := spot.ParseSpotComment(comment, freq)
+	parsed := spot.ParseHumanSpotComment(comment, freq)
 	s := spot.NewSpotNormalized(dx, spotterNorm, freq, parsed.Mode)
 	if parsed.Mode != "" {
 		s.ModeProvenance = spot.ModeProvenanceCommentExplicit

@@ -68,13 +68,15 @@ The parser is intentionally split into two stages.
 - supports `CALL:freq` glued forms
 - finds the first plausible dial frequency
 - finds the first valid DX call after that frequency
+- for human telnet input, requires and removes the terminal wire timestamp
 - passes the remaining unconsumed text to the shared comment parser
 
 This stage is responsible for the left-to-right structure of a `DX de ...` line.
 
 ### Stage 2: shared comment parsing
 
-The remainder goes to [`../spot/comment_parser.go`](../spot/comment_parser.go), which:
+RBN/skimmer input uses the legacy entry points in
+[`../spot/comment_parser.go`](../spot/comment_parser.go), which:
 
 - finds explicit mode tokens
 - parses reports such as `+5 dB` and `-13dB`
@@ -82,6 +84,33 @@ The remainder goes to [`../spot/comment_parser.go`](../spot/comment_parser.go), 
 - returns a cleaned comment string
 
 The shared comment parser uses an Aho-Corasick keyword scanner so the runtime can recognize mode/report/time markers consistently across inputs.
+
+Human telnet input uses `ParseHumanSpotComment` with the same recognition
+machinery. It preserves comment times, `CWT`, unrelated numbers and speed-like
+text. Bare reports require an adjacent signed integer after FT8 or FT4, within
+-30 through +30 and permitted by taxonomy. Explicit `dB` handling remains
+available. See the [human comment contract](../spot/README.md#human-spot-comments).
+
+### Human telnet wire time
+
+Every human telnet spot must end with a standalone uppercase `HHMMZ`, with
+hours 00 through 23 and minutes 00 through 59. Flexible spacing remains valid.
+The reader removes only that final raw token before parsing the comment.
+Missing or malformed times reject the spot before queue admission; it never
+uses an earlier time mentioned in the comment as a fallback. Wrapped times,
+fused forms such as `2100ZIO87`, lowercase `z`, and fields after the time do not
+satisfy this wire convention.
+
+For example, `QRT 1800Z 2100Z` retains `QRT 1800Z` as comment text and uses
+the terminal `2100Z` for timestamp conversion. If an upstream omits its actual
+timestamp and its prose ends in `1800Z`, the identical bytes cannot be
+distinguished from a wire field; that terminal-time ambiguity is accepted.
+
+Existing UTC-date assignment and future-skew conversion remain unchanged.
+In particular, a lexically valid clock more than two minutes in the future
+still converts to arrival time. This change does not add midnight rollover
+inference or alter RBN/skimmer time parsing. See
+[ADR-0348](../docs/decisions/ADR-0348-human-spot-comment-integrity.md).
 
 ## Ingest Rules
 

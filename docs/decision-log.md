@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0348 | Human Spot Comment Integrity | Accepted | 2026-11-12 | human comments, signed FT shorthand, manual DX input and wire timestamp ownership | none; preserves ADR-0069/0091/0284/0332 boundaries | none | [ADR-0348](decisions/ADR-0348-human-spot-comment-integrity.md) |
 | ADR-0347 | VOACAP Flux Input and Daily Forecast Lifetime | Accepted | 2026-11-12 | solar input, native geometry, cache lifetime, renewal, migration and diagnostics | Affected clauses of ADR-0161/0162/0164/0182/0184/0190/0191/0304 | none | [ADR-0347](decisions/ADR-0347-voacap-flux-and-daily-forecast.md) |
 | ADR-0346 | Stable Real-Main Test Image | Accepted | 2026-11-12 | Windows tests, child preparation, firewall path and ownership | Refines ADR-0265 separate main child | none | [ADR-0346](decisions/ADR-0346-stable-real-main-test-image.md) |
 | ADR-0345 | Grid Active Work Authority | Accepted | 2026-11-11 | cache, worker replies, report commits, bounded ownership | ADR-0340/0343 late-hydration limitation only | none | [ADR-0345](decisions/ADR-0345-grid-active-work-authority.md) |

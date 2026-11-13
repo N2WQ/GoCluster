@@ -85,6 +85,41 @@ pressure.
 - Do not retain subslices of shared read buffers when data must outlive the read
   cycle.
 
+## Human spot comments and wire times
+
+- Manual DX, peer PC11/PC61/PC26, DXSummit and human telnet input use
+  `ParseHumanSpotComment`; legacy RBN/skimmer parsing remains unchanged.
+- Human shorthand reports require the first selected normalized mode to be FT8
+  or FT4, its taxonomy `bare_numeric_report` permission, and an immediately
+  adjacent source token containing an ASCII-signed integer from -30 through +30
+  inclusive. Preserve configured aliases and first-mode precedence. Explicit
+  `dB` recognition and priority retain their existing behavior.
+- Preserve meaningful human times, fused time text, `CWT`, unrelated numbers and
+  speed-like text in source order, subject to existing whitespace/punctuation
+  normalization. `CWT` may still select CW metadata. Extracted mode/report
+  fields remain separate from stored comment text; legacy rows are not rewritten.
+- Display, SNR filters and existing path-learning checks consume the same
+  accepted report value. The shorthand range is product policy, not evidence of
+  decoder provenance, receive direction, calibration or prediction accuracy.
+- Admit `+` only after the manual DX verb, its two complete argument words and
+  a separating space. Recompute the boundary from the current edited buffer.
+  Do not broaden login, header/argument, other-command or machine grammars;
+  preserve whole-line limits, control-byte rejection and physical-line recovery.
+- Human telnet spots require a standalone final raw uppercase `HHMMZ`, with a
+  valid 00:00 through 23:59 clock. Remove only that wire token before comment
+  parsing; missing, malformed, wrapped or fused terminal times and suffix fields
+  reject before queue admission. Do not fall back to an earlier comment time.
+  A terminal prose time is indistinguishable when the actual wire field is
+  omitted; this accepted convention does not claim provenance from syntax.
+- Keep existing today-UTC assignment and future-skew conversion after valid
+  wire-clock extraction, including arrival-time conversion for clocks more than
+  two minutes ahead. No midnight rollover policy changes. Peer date/time fields
+  and DXSummit API timestamps retain their separate ownership.
+- No new runtime settings, archive schema, retained state, worker or source-class
+  inference is introduced. Peer and DXSummit source classification is unchanged.
+  See [ADR-0348](decisions/ADR-0348-human-spot-comment-integrity.md) and
+  [TSR-0132](troubleshooting/TSR-0132-human-comment-report-and-time-parsing.md).
+
 ## Telnet command pacing
 
 - Pace post-login command attempts per session with an initially full token

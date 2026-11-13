@@ -56,6 +56,16 @@ decrement, canonical sentence framing and PC61-to-PC11 conversion for a legacy
 destination. Original PC11 stays PC11 even for a modern destination; converting
 it to PC61 would require an IP field that was not received.
 
+Local PC11/PC61/PC26 spots use the
+[human comment parser](../spot/README.md#human-spot-comments). Split numbers,
+meaningful comment times and `CWT` remain searchable in newly stored comments;
+recognized report metadata follows the narrow human shorthand rule. The frame's
+separate date/time fields remain authoritative for local timestamp handling.
+Original-frame relay continues to use its separately validated fields.
+Peer source classification remains human, including relayed spotters whose
+terminal `-#` marker is stripped; this parser change does not infer skimmer
+provenance from the marker.
+
 ### Original field rules
 
 The caret is a field delimiter. In PC11, PC61 and PC26, a `~` inside the

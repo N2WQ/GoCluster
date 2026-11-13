@@ -432,7 +432,7 @@ func parseRecordWithReporter(record rawSpot, badCallReporter BadCallReporter) (*
 	if record.Info != nil {
 		info = *record.Info
 	}
-	parsedComment := spot.ParseSpotComment(info, freq)
+	parsedComment := spot.ParseHumanSpotComment(info, freq)
 	sp := spot.NewSpotNormalized(dxCall, deCall, freq, parsedComment.Mode)
 	sp.Time = sourceTime
 	sp.Comment = parsedComment.Comment
@@ -463,7 +463,7 @@ func parseRecordMode(info *string, freq float64) string {
 	if info == nil {
 		return ""
 	}
-	return spot.ParseSpotComment(*info, freq).Mode
+	return spot.ParseHumanSpotComment(*info, freq).Mode
 }
 
 func reportDXSummitBadCall(reporter BadCallReporter, role, reason, call, deCall, dxCall, mode string) {

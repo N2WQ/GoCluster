@@ -10,7 +10,7 @@ import (
 // The literal alphabet is independent of the production ingress predicate and
 // HELP renderer. Both actual codecs must agree with the operator's contract.
 func TestDXInputCommentAlphabet(t *testing.T) {
-	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 /#@-.,*?_"
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 /#@-.,*?_+"
 	for _, ziutek := range []bool{false, true} {
 		for _, prefix := range []string{"DX 14030 W6ABC CW ", "DX W6ABC 14030 CW "} {
 			for b := byte(32); b <= 126; b++ {

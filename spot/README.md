@@ -8,6 +8,37 @@ on beacon spots display as `BEACON` in telnet and newly archived rows while
 leaving the original peer-forwarded comment unchanged. `NCDXF B` source-class
 spots use `NCDXF BEACON` as that blank-comment display/archive fallback.
 
+## Human Spot Comments
+
+`ParseHumanSpotComment` shares mode, report and EVENT recognition with the
+legacy parser, but preserves meaningful human text. Manual DX commands, peer
+PC11/PC61/PC26 spots, DXSummit and human telnet feeds use this entry point.
+RBN/skimmer parsing keeps the legacy entry points and cleanup behavior.
+
+A report without `dB` is recognized only when the first selected mode is FT8
+or FT4 and its taxonomy permits bare reports. The next source token must be an
+integer with an ASCII `+` or `-` sign, in the inclusive range -30 through +30.
+Configured mode aliases, such as `FT-8`, retain their normal meaning. Explicit
+`dB` reports retain their existing recognition and priority; `FT8 +31 dB` is
+therefore distinct from the shorthand `FT8 +31`.
+
+`CW UP 2`, `CW UP -2` and `FT8 CQing +2 in NC` do not acquire a report from
+those numbers. Human times, fused time text, `CWT` and speed-like text remain
+in source order, subject to existing whitespace and punctuation normalization.
+`CWT` can still select CW metadata without disappearing from the comment.
+Extracted mode and report fields are separate from the remaining comment.
+
+Display, SNR filters and existing path-learning checks use the same accepted
+report value. The shorthand limit is a conservative product rule, not proof of
+decoder provenance, receive direction, calibration or model accuracy. Existing
+mode, location, band and time learning requirements still apply.
+
+The human comment parser does not supply a timestamp. Human telnet structural
+parsing requires a terminal wire time; peer frames and DXSummit retain their
+separate timestamp fields. See [human telnet framing](../rbn/README.md#human-telnet-wire-time).
+Only newly ingested comments benefit; existing archive rows are not rewritten.
+See [ADR-0348](../docs/decisions/ADR-0348-human-spot-comment-integrity.md).
+
 ## Confidence Paths
 
 The runtime has two separate confidence paths.

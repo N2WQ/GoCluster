@@ -33,7 +33,7 @@ func parseSpotFromFrame(frame *Frame, fallbackOrigin string) (*spot.Spot, error)
 // Purpose: Parse a PC11 frame into a Spot.
 // Key aspects: Treats PC11 timestamps as authoritative; applies hop TTL.
 // Upstream: parseSpotFromFrame.
-// Downstream: parsePCDateTime, spot.ParseSpotComment.
+// Downstream: parsePCDateTime, spot.ParseHumanSpotComment.
 func parsePC11(fields []string, hop int, fallbackOrigin string) (*spot.Spot, error) {
 	if len(fields) < 7 {
 		return nil, fmt.Errorf("pc11: insufficient fields")
@@ -60,7 +60,7 @@ func parsePC11(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 		return nil, fmt.Errorf("pc11: invalid DE callsign")
 	}
 	ts := parsePCDateTime(date, timeStr)
-	parsed := spot.ParseSpotComment(comment, freq)
+	parsed := spot.ParseHumanSpotComment(comment, freq)
 	// PC11 timestamps are authoritative; ignore any comment time tokens.
 	s := spot.NewSpotNormalized(dx, spotter, freq, parsed.Mode)
 	if parsed.Mode != "" {
@@ -84,7 +84,7 @@ func parsePC11(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 // Purpose: Parse a PC61 frame into a Spot.
 // Key aspects: Includes spotter IP; treats timestamps as authoritative.
 // Upstream: parseSpotFromFrame.
-// Downstream: parsePCDateTime, spot.ParseSpotComment.
+// Downstream: parsePCDateTime, spot.ParseHumanSpotComment.
 func parsePC61(fields []string, hop int, fallbackOrigin string) (*spot.Spot, error) {
 	if len(fields) < 8 {
 		return nil, fmt.Errorf("pc61: insufficient fields")
@@ -112,7 +112,7 @@ func parsePC61(fields []string, hop int, fallbackOrigin string) (*spot.Spot, err
 	}
 	spotterIP := strings.TrimSpace(fields[7])
 	ts := parsePCDateTime(date, timeStr)
-	parsed := spot.ParseSpotComment(comment, freq)
+	parsed := spot.ParseHumanSpotComment(comment, freq)
 	// PC61 timestamps are authoritative; ignore any comment time tokens.
 	s := spot.NewSpotNormalized(dx, spotter, freq, parsed.Mode)
 	if parsed.Mode != "" {
@@ -169,4 +169,4 @@ func parsePCDateTime(dateStr, timeStr string) time.Time {
 	return time.Now().UTC()
 }
 
-// Comment parsing is centralized in spot.ParseSpotComment.
+// Comment parsing is centralized in spot.ParseHumanSpotComment.

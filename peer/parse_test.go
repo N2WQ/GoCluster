@@ -18,11 +18,41 @@ func TestParsePC11IgnoresCommentTimeToken(t *testing.T) {
 	if got := spot.Time.UTC().Format("1504Z"); got != "2001Z" {
 		t.Fatalf("expected PC11 time 2001Z, got %q", got)
 	}
-	if strings.Contains(spot.Comment, "1800Z") {
-		t.Fatalf("expected comment time token stripped, got %q", spot.Comment)
+	if !strings.Contains(spot.Comment, "1800Z") {
+		t.Fatalf("expected meaningful comment time preserved, got %q", spot.Comment)
 	}
-	if spot.Comment != "CQ TEST" {
-		t.Fatalf("expected cleaned comment 'CQ TEST', got %q", spot.Comment)
+	if spot.Comment != "CQ 1800Z TEST" {
+		t.Fatalf("expected preserved comment, got %q", spot.Comment)
+	}
+}
+
+func TestPeerHumanCommentRouting(t *testing.T) {
+	for _, family := range []string{"PC11", "PC61", "PC26"} {
+		for _, tc := range []struct {
+			comment, mode, remaining string
+			report                   int
+			present                  bool
+		}{
+			{"CW UP 2 QRT 1800Z CWT", "CW", "UP 2 QRT 1800Z CWT", 0, false},
+			{"FT8 -14 POTA", "FT8", "POTA", -14, true},
+		} {
+			extra := ""
+			if family == "PC61" {
+				extra = "203.0.113.1^"
+			}
+			line := family + "^14074.0^K1ABC^23-Dec-2025^2001Z^" + tc.comment + "^W1XYZ^N1ORIG^" + extra + "H3^"
+			frame, err := ParseFrame(line)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := parseSpotFromFrame(frame, "FALLBACK")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Mode != tc.mode || got.Comment != tc.remaining || got.HasReport != tc.present || got.Report != tc.report || !got.IsHuman || got.Time.UTC().Format("1504Z") != "2001Z" {
+				t.Fatalf("%s %q: %+v", family, tc.comment, got)
+			}
+		}
 	}
 }
 

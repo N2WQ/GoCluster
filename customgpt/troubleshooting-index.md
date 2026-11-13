@@ -4,6 +4,22 @@ Use this file when a user reports a problem or asks why GoCluster behaved a
 certain way. This is a routing layer, not the source of truth. Cite this file,
 then cite the underlying repo docs or TSRs.
 
+## Human spot comments and upstream wire times
+
+For split numbers displayed as dB reports, missing `CWT` or time phrases in
+COMMENT searches, refused manual `FT8 +02`, or human upstream spots missing
+after an upgrade, start with
+[human spot comments](../spot/README.md#human-spot-comments),
+[human wire time](../rbn/README.md#human-telnet-wire-time), and
+[TSR-0132](../docs/troubleshooting/TSR-0132-human-comment-report-and-time-parsing.md).
+Check the source and the complete incoming line. Human shorthand has narrow
+signed FT8/FT4 rules; human telnet requires a valid standalone final uppercase
+time and rejects missing/malformed fields. An earlier time in a comment is not
+a fallback. The terminal-prose ambiguity and existing UTC/skew conversion are
+documented limitations. Old archive text is not repaired. RBN cleanup and
+human/skimmer source classification remain separate; do not infer a new source
+class or a calibrated measurement from the accepted report syntax.
+
 ## VOACAP solar input and forecast renewal
 
 For stale-input warnings, upgrade rebuild gaps, `ssn=mixed`, or forecasts using

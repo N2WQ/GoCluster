@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0132 | Human Comment Report and Time Parsing | Monitoring | 2026-11-12 | human comments, manual DX admission, reports and terminal wire times | ADR-0348 | `docs/troubleshooting/TSR-0132-human-comment-report-and-time-parsing.md` |
 | TSR-0131 | VOACAP Receiver Longitude Column Shift | Monitoring | 2026-11-12 | fixed-column CIRCUIT serialization, native geometry and legacy predictions | ADR-0347 | `docs/troubleshooting/TSR-0131-voacap-receiver-longitude-columns.md` |
 | TSR-0130 | Repeated Firewall Prompts for the Real-Main Test | Monitoring | 2026-11-11 | Windows test runner, child image path and ownership | ADR-0346 | `docs/troubleshooting/TSR-0130-main-test-firewall-path.md` |
 | TSR-0129 | Grid Cache and Worker Authority | Monitoring | 2026-11-11 | cache, worker replies, report commits and epochs | ADR-0345 | `docs/troubleshooting/TSR-0129-grid-cache-authority.md` |

@@ -134,11 +134,19 @@ does not define the current mutation surface.
 
 ## Manual DX Admission
 
-Comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _`.
+Comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _ +`.
 Other punctuation and non-ASCII characters are rejected before DX dispatch.
+`+` is admitted only after the DX frequency/callsign arguments, not in those
+arguments, login callsigns or unrelated commands.
 The node's command byte limit applies to the whole edited command, excluding
 its line ending; the default is 128 bytes. Mode/report tokens may be parsed
 from the comment. See `HELP DX` for both supported argument orders.
+
+`DX 14025 K1ABC CW UP 2` preserves the split information without inventing a
+report. `DX 14074 K1ABC FT8 +02` recognizes a +2 dB report. Meaningful comment
+times and `CWT` remain in newly stored text. See the
+[human comment contract](../spot/README.md#human-spot-comments) for the signed
+shorthand limits, configured aliases and explicit-dB behavior.
 
 Plain decimal frequencies are in kHz. Before admission, the effective value is
 rounded to the nearest 10 Hz (0.01 kHz), using the same rounding as Spot
@@ -439,8 +447,9 @@ Append `COMMENT <phrase>` after the optional selector/count to require a
 case-insensitive literal substring of the stored spot comment. Selector/count
 retain either existing order. The trimmed phrase must contain 1-64 printable
 ASCII bytes; interior spaces, commas, quotes, `*`, `?`, `ALL` and `NONE` remain
-literal text. Mode/report/time tokens removed during ingestion and diagnostics
-added during display are not searched. This explicit selection is mandatory even
+literal text. Removed metadata tokens and diagnostics added during display are
+not searched. New human comments retain meaningful times and `CWT`; legacy
+skimmer time cleanup remains unchanged. This explicit selection is mandatory even
 for self-spots; saved filters retain their existing self-spot exception. Searches
 do not change saved rules. NEXT retains the original phrase and grammar.
 

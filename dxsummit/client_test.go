@@ -67,6 +67,26 @@ func TestParseRecordPreservesDXSummitMarkerAndCommentFields(t *testing.T) {
 	}
 }
 
+func TestDXSummitHumanCommentRouting(t *testing.T) {
+	for _, tc := range []struct {
+		comment, mode, remaining string
+		report                   int
+		present                  bool
+	}{
+		{"CW UP 2 QRT 1800Z CWT", "CW", "UP 2 QRT 1800Z CWT", 0, false},
+		{"FT8 -14 POTA", "FT8", "POTA", -14, true},
+	} {
+		info := tc.comment
+		got, err := parseRecord(rawSpot{ID: 1, DECall: "W1AW", DXCall: "K1ABC", Frequency: 14074, Info: &info, Time: "2026-04-21T19:59:09"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Mode != tc.mode || got.Comment != tc.remaining || got.HasReport != tc.present || got.Report != tc.report || !got.IsHuman || got.Time.UTC().Format("1504Z") != "1959Z" || parseRecordMode(&info, 14074) != tc.mode {
+			t.Fatalf("DXSummit human route %q: %+v", info, got)
+		}
+	}
+}
+
 func TestParseRecordCanonicalizesDXNumericSSID(t *testing.T) {
 	sp, err := parseRecord(rawSpot{
 		ID:        66711549,

@@ -34,8 +34,8 @@ func (c *Client) readCommandLine(maxLen int) (string, error) {
 
 // readInputLine preserves the established human/login editing and echo rules.
 // Only recognized machine headers retain their original case. Human commands
-// admit taxonomy underscores after login; login and recognized machine headers
-// retain their existing character restrictions.
+// admit taxonomy underscores after login and '+' within manual DX comments;
+// login and recognized machine headers retain their character restrictions.
 func (c *Client) readInputLine(maxLen int, context string, allowComma, allowWildcard, allowConfidence, allowDot, machineAware bool) (string, error) {
 	return c.readInputLineWithRuleSyntax(maxLen, context, allowComma, allowWildcard, allowConfidence, allowDot, machineAware, false)
 }
@@ -121,10 +121,14 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 		}
 		ruleByte := ruleArguments && b >= 32 && b <= 126
 		humanUnderscore := machineAware && b == '_' && machineIntent(line) == ""
-		if len(line) >= maxLen || (!commentByte && !ruleByte && !humanUnderscore && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
+		dxCommentPlus := machineAware && b == '+' && dxCommentArgumentsStarted(line)
+		if len(line) >= maxLen || (!commentByte && !ruleByte && !humanUnderscore && !dxCommentPlus && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
 			allowed = allowedCharacterList(allowComma, allowWildcard, allowConfidence, allowDot)
 			if machineAware && machineIntent(line) == "" {
 				allowed += ", '_'"
+				if dxCommentArgumentsStarted(line) {
+					allowed += ", '+'"
+				}
 			}
 			if ruleArguments {
 				allowed = "printable ASCII within a RULE expression"

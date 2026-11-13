@@ -41,6 +41,14 @@ DXSummit coordinates are intentionally not used to populate `DXMetadata.Grid` or
 
 DXSummit spots are not skimmer spots. They do not seed skimmer-only mode evidence and remain in the existing `UPSTREAM` source class for broad path-report buckets. Source stats use the fixed label `DXSUMMIT`.
 
+Comments use the [human comment parser](../spot/README.md#human-spot-comments).
+It preserves split numbers, meaningful times, `CWT` and speed-like text while
+recognizing explicit reports and the narrow signed FT8/FT4 shorthand. The API
+record's timestamp remains authoritative; comment times never replace it.
+Accepted report values reach the existing display, SNR and learning paths with
+their normal eligibility checks. This does not change source classification,
+including rows whose terminal `-#` spotter marker is stripped.
+
 ## Band Scope
 
 The feed requests `HF,VHF,UHF`. UHF includes observed 13cm rows around 2.4 GHz, so the shared band table supports both 13cm segments:

@@ -7,7 +7,7 @@ description: Independent GO/CC banks, schema 7 and limited schema-6 access.
 
 Use for filter/settings inspection, dialect switching, YAML configuration,
 revision conflicts, upload errors, upgrade notices, protected records and preset
-partial results. Retrieve with `getDoc` when source-map routing applies; this
+partial results, plus human comment report/search behavior. Retrieve with `getDoc` when source-map routing applies; this
 card does not add an automatic Worker route.
 
 ## First Safe Check
@@ -57,6 +57,30 @@ Local source behavior does not establish publication, deployment or validation.
 - Live own-call spots require SELF and TOXIC, then bypass personal criteria.
   History's exception is independent of SELF, still obeying TOXIC and explicit
   query selectors. SELF does not mean reports the user submitted about others.
+
+## Human Comment Reports
+
+For an unexpected SNR result or missing COMMENT search text, identify the input
+source and obtain one complete source spot line. Retrieve
+[human spot comments](../../spot/README.md#human-spot-comments) and
+[TSR-0132](../../docs/troubleshooting/TSR-0132-human-comment-report-and-time-parsing.md).
+New human comments retain meaningful times, `CWT`, split numbers and speed-like
+text. Only adjacent signed FT8/FT4 shorthand within -30 through +30, permitted
+by taxonomy, becomes a bare report; explicit `dB` handling remains available.
+SNR filtering and existing learning checks use the same accepted value.
+
+Manual DX comments admit `+` only after both arguments; do not recommend
+broadening the login or command alphabet. Human telnet spots require a valid
+standalone final uppercase wire time. Missing/malformed times or fields after
+the time reject the spot, with no fallback to an earlier comment clock. Use
+[wire-time framing](../../rbn/README.md#human-telnet-wire-time) for the accepted
+terminal-prose ambiguity and unchanged UTC-date/future-skew conversion.
+
+The shorthand range is a product guardrail, not a claim that a report came
+from a decoder or describes a verified receive path. Do not recommend an
+archive reset as a repair: old stripped text cannot be recovered, and new
+behavior applies only to newly ingested rows. RBN cleanup and source
+classification are unchanged.
 
 ## YAML Ownership And Limits
 

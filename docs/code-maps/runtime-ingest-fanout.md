@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `20b0f39daea02441`
+- Source fingerprint: `ec9d31467c88fb66`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 13 | 21 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 206 |
+| `dxcluster/commands` | `commands` | 13 | 22 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 207 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
-| `dxcluster/spot` | `spot` | 39 | 68 |
-| `dxcluster/telnet` | `telnet` | 80 | 169 |
+| `dxcluster/spot` | `spot` | 40 | 69 |
+| `dxcluster/telnet` | `telnet` | 80 | 170 |
 
 ## In-Scope Package Edges
 
@@ -134,6 +134,7 @@ Test files:
 - `commands/history_selection_taxonomy_test.go`
 - `commands/history_selection_test.go`
 - `commands/history_test.go`
+- `commands/human_comment_test.go`
 - `commands/manual_dx_frequency_test.go`
 - `commands/manual_dx_reputation_test.go`
 - `commands/preset_help_test.go`
@@ -281,6 +282,7 @@ Test files:
 - `internal/cluster/grid_lookup_test.go`
 - `internal/cluster/grid_retirement_test.go`
 - `internal/cluster/grid_writer_test.go`
+- `internal/cluster/human_comment_delivery_test.go`
 - `internal/cluster/human_telnet_runtime_test.go`
 - `internal/cluster/ingest_validation_test.go`
 - `internal/cluster/legacy_history_runtime_test.go`
@@ -632,6 +634,7 @@ Source files:
 - `spot/frequency_averager.go`
 - `spot/ft_frequency.go`
 - `spot/harmonics.go`
+- `spot/human_comment_parser.go`
 - `spot/iaru_region.go`
 - `spot/mode_alloc.go`
 - `spot/mode_infer.go`
@@ -689,6 +692,7 @@ Test files:
 - `spot/harmonics_v16_reference_test.go`
 - `spot/harmonics_v16_test.go`
 - `spot/history_v16_bench_test.go`
+- `spot/human_comment_parser_test.go`
 - `spot/iaru_region_test.go`
 - `spot/mode_infer_test.go`
 - `spot/mode_region_test.go`
@@ -854,6 +858,7 @@ Test files:
 - `telnet/dedupe_readback_test.go`
 - `telnet/diag_command_test.go`
 - `telnet/dx_input_contract_test.go`
+- `telnet/dx_plus_input_test.go`
 - `telnet/dxcc_commands_test.go`
 - `telnet/event_reporter_test.go`
 - `telnet/filter_argument_admission_test.go`
