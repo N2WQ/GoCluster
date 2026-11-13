@@ -19,7 +19,7 @@ func TestVOACAPCacheIndexFiftyThousandHourCertificateSkipsDescendants(t *testing
 	if keys := incrementalRawCacheKeys(t, store); len(keys) != 50000 {
 		t.Fatalf("raw population=%d, want 50,000 before hydration", len(keys))
 	}
-	loaded, stats, err := store.loadCurrent(start, 112, cfg)
+	loaded, stats, err := store.loadCurrent(start, cfg)
 	if err != nil || len(loaded) != 50000 || stats.Loaded != 50000 || stats.Pruned != 0 {
 		t.Fatalf("50,000-owner hydration: loaded=%d stats=%+v error=%v", len(loaded), stats, err)
 	}
@@ -47,7 +47,7 @@ func TestVOACAPCacheIndexFiftyThousandHourCertificateSkipsDescendants(t *testing
 	incrementalSetFaults(store, &voacapForecastCacheFaults{newIter: func(*pebble.DB, *pebble.IterOptions) (*pebble.Iterator, error) {
 		return nil, errors.New("50,000-owner direct hour jump attempted DB traversal")
 	}})
-	if err := store.storeForecast(testVOACAPForecastCacheKey(at, 1), incrementalCacheEntry(start, at, 20, 22), cfg, at); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(at, 1), testCacheEntryWithConfig(incrementalCacheEntry(start, at, 20, 22), cfg), cfg, at); err != nil {
 		t.Fatalf("ordinary direct 20-to-22 refresh: %v", err)
 	}
 	assertIncrementalIndexReady(t, store, 50000)
@@ -66,8 +66,8 @@ func TestVOACAPCacheIndexMixedInvalidSkipsCertifiedSubtrees(t *testing.T) {
 		cell CellID
 		key  string
 	}{
-		{"left_only_bad16", 16, "voacapfc/v1/e/0001/0010/20m/014100/2026/06/0112/bidirectional"},
-		{"right_only_bad31", 31, "voacapfc/v1/e/0001/001f/20m/014100/2026/06/0112/bidirectional"},
+		{"left_only_bad16", 16, "voacapfc/v2/e/0001/0010/20m/014100/bidirectional"},
+		{"right_only_bad31", 31, "voacapfc/v2/e/0001/001f/20m/014100/bidirectional"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			store := openTestVOACAPForecastCacheStore(t)
@@ -77,7 +77,11 @@ func TestVOACAPCacheIndexMixedInvalidSkipsCertifiedSubtrees(t *testing.T) {
 				if cell == test.cell {
 					hours = []int{20}
 				}
-				if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), incrementalCacheEntry(start, start, hours...), cfg, start); err != nil {
+				entry := testCacheEntryWithConfig(incrementalCacheEntry(start, start, hours...), cfg)
+				if cell == test.cell {
+					entry.expiresNS = start.Add(time.Hour).UnixNano()
+				}
+				if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), entry, cfg, start); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -88,7 +92,7 @@ func TestVOACAPCacheIndexMixedInvalidSkipsCertifiedSubtrees(t *testing.T) {
 				defer store.mu.Unlock()
 				bad := store.index[test.key]
 				if bad == nil || bad.hourMask != 0x00100000 || store.eligibility[0].subtreeHourMask != 0x00100000 {
-					t.Fatal("unique actual-hour victim and uncertified root were not established")
+					t.Fatal("unique expired owner and uncertified temporal root were not established")
 				}
 				path := make(map[int]bool)
 				for position := bad.eligibilityIndex; ; position = (position - 1) / 2 {
@@ -106,8 +110,8 @@ func TestVOACAPCacheIndexMixedInvalidSkipsCertifiedSubtrees(t *testing.T) {
 					for _, child := range []int{2*position + 1, 2*position + 2} {
 						if child < len(store.eligibility) {
 							keep[child] = true
-							if !path[child] && store.eligibility[child].subtreeHourMask != 0x00500000 {
-								t.Fatalf("sibling root %d is not certified for actual hour 22", child)
+							if !path[child] && (store.eligibility[child].subtreeMinExpiry <= at.UnixNano() || store.eligibility[child].subtreeMinEnd <= at.UnixNano()) {
+								t.Fatalf("sibling root %d is not temporally certified", child)
 							}
 						}
 					}
@@ -125,13 +129,13 @@ func TestVOACAPCacheIndexMixedInvalidSkipsCertifiedSubtrees(t *testing.T) {
 					t.Fatal("fixture did not poison certified sibling descendants")
 				}
 				if victim := store.eligibility.findInvalid(at, 4); victim != bad {
-					t.Fatalf("indexed search returned %v, want the sole exact missing-hour owner", victim)
+					t.Fatalf("indexed search returned %v, want the sole expired owner", victim)
 				}
 			}()
 			incrementalSetFaults(store, &voacapForecastCacheFaults{newIter: func(*pebble.DB, *pebble.IterOptions) (*pebble.Iterator, error) {
 				return nil, errors.New("one invalid owner required a full DB scan")
 			}})
-			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 32), incrementalCacheEntry(at, at, 22), cfg, at); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 32), testCacheEntryWithConfig(incrementalCacheEntry(at, at, 22), cfg), cfg, at); err != nil {
 				t.Fatalf("prune sole invalid owner: %v", err)
 			}
 			want := make([]uint16, 0, 31)
@@ -156,7 +160,7 @@ func TestVOACAPCacheIndexVariedWindowSiftsMaintainAggregates(t *testing.T) {
 	hourSets := [][]int{{20}, {20, 21, 22}, {20, 23}, {20, 21}, {20, 22, 23}}
 	for cell := CellID(1); cell <= 31; cell++ {
 		window := start.Add(-time.Duration(int(cell)%3) * time.Hour)
-		if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), incrementalCacheEntry(window, start, hourSets[int(cell)%5]...), cfg, start); err != nil {
+		if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), testCacheEntryWithConfig(incrementalCacheEntry(window, start, hourSets[int(cell)%5]...), cfg), cfg, start); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -165,18 +169,29 @@ func TestVOACAPCacheIndexVariedWindowSiftsMaintainAggregates(t *testing.T) {
 		cell := CellID(1 + iteration*11%31)
 		at := start.Add(time.Duration(iteration) * time.Millisecond)
 		window := start.Add(-time.Duration(iteration*7%3) * time.Hour)
-		if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), incrementalCacheEntry(window, at, hourSets[iteration%5]...), cfg, at); err != nil {
+		entry := testCacheEntryWithConfig(incrementalCacheEntry(window, at, hourSets[iteration%5]...), cfg)
+		// A later real job may have an earlier represented window. Its actual
+		// origin advances, so this exercises sifts rather than stale rejection.
+		entry.metadata.originNS = at.UnixNano()
+		if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), entry, cfg, at); err != nil {
 			t.Fatalf("varied-window refresh %d: %v", iteration, err)
 		}
 		assertVOACAPCacheIndexBijection(t, store, 32)
+		raw := readRawVOACAPRetentionRecords(t, store)
+		record := raw[string(voacapForecastCacheKeyBytes(testVOACAPForecastCacheKey(start, cell)))]
+		if record.WindowUnixNS != window.UnixNano() || record.Metadata.OriginUnixNS != at.UnixNano() {
+			t.Fatalf("sift fixture was not admitted at iteration%d: %+v", iteration, record.Metadata)
+		}
 		store.mu.Lock()
 		currentVictim := store.eligibility.findInvalid(at, 6)
 		futureVictim := store.eligibility.findInvalid(start.Add(time.Hour), 6)
 		currentOK := currentVictim == nil
-		futureOK := futureVictim != nil && futureVictim.hourMask&0x00200000 == 0
+		futureOK := futureVictim == nil
+		lateVictim := store.eligibility.findInvalid(start.Add(6*time.Hour), 6)
+		lateOK := lateVictim != nil
 		store.mu.Unlock()
-		if !currentOK || !futureOK {
-			t.Fatalf("actual-hour search after sift %d: current-valid=%t future-missing-hour-victim=%t", iteration, currentOK, futureOK)
+		if !currentOK || !futureOK || !lateOK {
+			t.Fatalf("temporal search after sift %d: current-valid=%t future-hour-hole-retained=%t", iteration, currentOK, futureOK)
 		}
 	}
 }
@@ -188,8 +203,8 @@ func writeVOACAPCacheIndexRawPopulation(t *testing.T, store *VOACAPForecastCache
 	batch := store.db.NewBatch()
 	defer func() { _ = batch.Close() }()
 	for cell := 1; cell <= count; cell++ {
-		key := fmt.Sprintf("voacapfc/v1/e/0001/%04x/20m/014100/2026/06/0112/bidirectional", cell)
-		value := fmt.Sprintf(`{"schema_version":1,"model_generation":1,"key":{"user_cell":1,"dx_cell":%d,"band":"20m","frequency_khz":14100,"year":2026,"month":6,"ssn":112,"direction":"bidirectional"},"stored_at_unix_ns":%d,"window_unix_ns":%d,"records":[{"HourUTC":20,"FrequencyMHz":14.1,"FT8SNRDB":-14},{"HourUTC":22,"FrequencyMHz":14.1,"FT8SNRDB":-14}]}`, cell, now.UnixNano(), now.UnixNano())
+		key := fmt.Sprintf("voacapfc/v2/e/0001/%04x/20m/014100/bidirectional", cell)
+		value := fmt.Sprintf(`{"schema_version":2,"model_generation":2,"key":{"user_cell":1,"dx_cell":%d,"band":"20m","frequency_khz":14100,"direction":"bidirectional"},"stored_at_unix_ns":%d,"window_unix_ns":%d,"metadata":{"solar_input":{"SSN":112},"window_end_unix_ns":%d,"expires_unix_ns":%d,"origin_unix_ns":%d,"flags":1},"records":[{"HourUTC":20,"FrequencyMHz":14.1,"FT8SNRDB":-14},{"HourUTC":22,"FrequencyMHz":14.1,"FT8SNRDB":-14}]}`, cell, now.UnixNano(), now.UnixNano(), now.Add(4*time.Hour).UnixNano(), now.Add(6*time.Hour).UnixNano(), now.UnixNano())
 		if err := batch.Set([]byte(key), []byte(value), nil); err != nil {
 			t.Fatalf("raw population cell %d: %v", cell, err)
 		}

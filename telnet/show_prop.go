@@ -284,9 +284,14 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 	}
 	b.WriteString(" noise=")
 	b.WriteString(noiseClass)
-	if ssn, ok := showPropFirstSSN(rows); ok {
+	ssn, hasSSN, mixedSSN := showPropSSNState(rows)
+	if hasSSN {
 		b.WriteString(" ssn=")
-		b.WriteString(strconv.Itoa(ssn))
+		if mixedSSN {
+			b.WriteString("mixed")
+		} else {
+			b.WriteString(strconv.Itoa(ssn))
+		}
 	}
 	if hours > 0 {
 		b.WriteString(" hours=")
@@ -343,6 +348,14 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 				fmt.Fprintf(&b, "%-5s %s\n", row.band, message)
 			}
 			continue
+		}
+		if mixedSSN {
+			bandSSN, _, bandMixed := showPropSSNState([]showPropBandRows{row})
+			label := strconv.Itoa(bandSSN)
+			if bandMixed {
+				label = "mixed"
+			}
+			fmt.Fprintf(&b, "%s ssn=%s\n", row.band, label)
 		}
 		openRecords := 0
 		for i := range row.records {
@@ -431,14 +444,18 @@ func showPropStatusMessage(status pathreliability.VOACAPForecastWindowStatus, ha
 	}
 }
 
-func showPropFirstSSN(rows []showPropBandRows) (int, bool) {
+// SSN belongs to the returned forecast, including valid zero. Bands can finish
+// replacement at different times, so one response-wide first value can lie.
+func showPropSSNState(rows []showPropBandRows) (ssn int, known, mixed bool) {
 	for _, row := range rows {
 		for i := range row.records {
-			forecast := row.records[i]
-			if forecast.SSN > 0 {
-				return forecast.SSN, true
+			actualSSN := row.records[i].SSN
+			if !known {
+				ssn, known = actualSSN, true
+			} else if actualSSN != ssn {
+				mixed = true
 			}
 		}
 	}
-	return 0, false
+	return ssn, known, mixed
 }

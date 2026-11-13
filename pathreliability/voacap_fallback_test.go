@@ -4,30 +4,26 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"dxcluster/internal/voacap"
 )
 
 func TestVOACAPClosedFallbackDelaysEnqueuesAndReturnsCachedClosed(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -39,6 +35,7 @@ func TestVOACAPClosedFallbackDelaysEnqueuesAndReturnsCachedClosed(t *testing.T) 
 	}()
 
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	req := testClosedRequest()
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("first insufficient lookup should only start the delay window")
@@ -68,17 +65,18 @@ func TestVOACAPClosedFallbackDelaysEnqueuesAndReturnsCachedClosed(t *testing.T) 
 
 func TestVOACAPClosedFallbackCachesOpenVerdictWithoutReturningGlyph(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.DelaySeconds = 0
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -91,6 +89,7 @@ func TestVOACAPClosedFallbackCachesOpenVerdictWithoutReturningGlyph(t *testing.T
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("open enqueue should not synchronously return a result")
 	}
@@ -136,8 +135,8 @@ func TestVOACAPClosedFallbackCheckCachedForecastDoesNotMutateOnMiss(t *testing.T
 		t.Fatalf("cache-only miss mutated fallback stats: %+v", stats)
 	}
 
-	key := fallback.cacheKey(req, 112, now)
-	fallback.cache[key] = voacapCacheEntry{
+	key := fallback.cacheKey(req)
+	fallback.cache[key] = testCacheEntryWithConfig(voacapCacheEntry{
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: forecastWindowStart(now),
 			Records: []VOACAPHourlyForecast{
@@ -145,7 +144,7 @@ func TestVOACAPClosedFallbackCheckCachedForecastDoesNotMutateOnMiss(t *testing.T
 			},
 		},
 		storedAt: now.Add(-time.Minute),
-	}
+	}, cfg)
 	forecast, ok := fallback.CheckCachedForecast(req, now)
 	if !ok {
 		t.Fatalf("expected existing current-hour cache hit")
@@ -157,7 +156,7 @@ func TestVOACAPClosedFallbackCheckCachedForecastDoesNotMutateOnMiss(t *testing.T
 		t.Fatalf("cache-only hit mutated fallback stats: %+v", stats)
 	}
 
-	fallback.cache[key] = voacapCacheEntry{
+	fallback.cache[key] = testCacheEntryWithConfig(voacapCacheEntry{
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: forecastWindowStart(now),
 			Records: []VOACAPHourlyForecast{
@@ -165,7 +164,7 @@ func TestVOACAPClosedFallbackCheckCachedForecastDoesNotMutateOnMiss(t *testing.T
 			},
 		},
 		storedAt: now.Add(-2 * time.Hour),
-	}
+	}, cfg)
 	if _, ok := fallback.CheckCachedForecast(req, now); ok {
 		t.Fatalf("expired cache entry should not return a forecast")
 	}
@@ -185,9 +184,9 @@ func TestVOACAPClosedFallbackCheckForecastWindowReturnsRemainingDirectionalRows(
 	req := testClosedRequest()
 	req.ReceiveNoisePenaltyDB = 5
 	windowStart := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
-	key := fallback.cacheKey(req, 112, windowStart)
+	key := fallback.cacheKey(req)
 	fallback.mu.Lock()
-	fallback.addCacheLocked(key, voacapCacheEntry{
+	fallback.addCacheLocked(key, testCacheEntryWithConfig(voacapCacheEntry{
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: windowStart,
 			Records: []VOACAPHourlyForecast{
@@ -198,7 +197,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowReturnsRemainingDirectionalRows(
 			},
 		},
 		storedAt: windowStart.Add(-time.Minute),
-	})
+	}, cfg))
 	fallback.mu.Unlock()
 
 	window, ok := fallback.CheckForecastWindow(req, windowStart.Add(90*time.Minute))
@@ -235,18 +234,20 @@ func TestVOACAPClosedFallbackCheckForecastWindowReturnsRemainingDirectionalRows(
 
 func TestVOACAPClosedFallbackCheckForecastWindowDelaysAndEnqueues(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
+	cfg.VOACAPFallback.ForecastHours = 2
 	cfg.VOACAPFallback.DelaySeconds = 0
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -259,6 +260,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowDelaysAndEnqueues(t *testing.T) 
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	if _, ok := fallback.CheckForecastWindow(req, now); ok {
 		t.Fatalf("enqueue lookup should not synchronously return a window")
 	}
@@ -281,7 +283,7 @@ func TestVOACAPClosedFallbackRestoresPersistedCurrentForecastAndBypassesDelay(t 
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	store := openTestVOACAPForecastCacheStore(t)
 	key := testVOACAPForecastCacheKey(now, 2)
-	if err := store.storeForecast(key, testVOACAPForecastCacheEntry(now, -31, 20), cfg.VOACAPFallback, now); err != nil {
+	if err := store.storeForecast(key, testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now, -31, 20), cfg.VOACAPFallback), cfg.VOACAPFallback, now); err != nil {
 		t.Fatalf("storeForecast() error: %v", err)
 	}
 
@@ -322,13 +324,13 @@ func TestVOACAPClosedFallbackRestoresPersistedCurrentForecastAndBypassesDelay(t 
 	}
 }
 
-func TestVOACAPClosedFallbackSkipsStalePersistedForecastAndUsesDelay(t *testing.T) {
+func TestVOACAPClosedFallbackRetainsFuturePersistedRowsAndUsesDelay(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.VOACAPFallback.DelaySeconds = 900
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	store := openTestVOACAPForecastCacheStore(t)
 	stale := testVOACAPForecastCacheEntry(now, -31, 21)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), stale, nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(stale, cfg), nil)
 
 	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
 	defer func() {
@@ -340,24 +342,24 @@ func TestVOACAPClosedFallbackSkipsStalePersistedForecastAndUsesDelay(t *testing.
 	if err != nil {
 		t.Fatalf("AttachForecastCacheStore() error: %v", err)
 	}
-	if stats.Loaded != 0 || stats.StaleWindow != 1 || stats.Pruned != 1 {
-		t.Fatalf("stale restored record should be pruned, stats=%+v", stats)
+	if stats.Loaded != 1 || stats.StaleWindow != 0 || stats.Pruned != 0 {
+		t.Fatalf("temporally current rows should survive a current-hour hole, stats=%+v", stats)
 	}
 
 	got := fallback.CheckForecastDetailed(testClosedRequest(), now)
 	if got.Status != VOACAPForecastCheckDelayWait || !got.CacheMiss {
 		t.Fatalf("stale restored record should fall back to delay, got %+v", got)
 	}
-	if snap := fallback.Snapshot(); snap.DelayEntries != 1 || snap.CacheEntries != 0 {
+	if snap := fallback.Snapshot(); snap.DelayEntries != 1 || snap.CacheEntries != 1 {
 		t.Fatalf("delay state after stale restore mismatch: %+v", snap)
 	}
 }
 
-func TestVOACAPClosedFallbackRestoreRequiresCurrentSSN(t *testing.T) {
+func TestVOACAPClosedFallbackRestoresWithoutCurrentSSN(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	store := openTestVOACAPForecastCacheStore(t)
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), testVOACAPForecastCacheEntry(now, -31, 20), cfg.VOACAPFallback, now); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now, -31, 20), cfg.VOACAPFallback), cfg.VOACAPFallback, now); err != nil {
 		t.Fatalf("storeForecast() error: %v", err)
 	}
 
@@ -371,17 +373,18 @@ func TestVOACAPClosedFallbackRestoreRequiresCurrentSSN(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AttachForecastCacheStore() error: %v", err)
 	}
-	if !stats.SSNUnavailable || stats.Loaded != 0 || fallback.Snapshot().CacheEntries != 0 {
-		t.Fatalf("restore without SSN should not hydrate forecasts, stats=%+v snapshot=%+v", stats, fallback.Snapshot())
+	if stats.SSNUnavailable || stats.Loaded != 1 || fallback.Snapshot().CacheEntries != 1 {
+		t.Fatalf("restore must not depend on current SSN, stats=%+v snapshot=%+v", stats, fallback.Snapshot())
 	}
 	got := fallback.CheckForecastDetailed(testClosedRequest(), now)
-	if got.Status != VOACAPForecastCheckSSNUnavailable {
-		t.Fatalf("persisted forecast must not mask missing SSN, got %+v", got)
+	if got.Status != VOACAPForecastCheckReady || got.Forecast.SSN != 112 {
+		t.Fatalf("restored actual input should remain usable without current SSN, got %+v", got)
 	}
 }
 
 func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.DelaySeconds = 0
 	cfg.VOACAPFallback.ForecastHours = 2
 	now := time.Now().UTC()
@@ -392,7 +395,7 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
 			windowStart := job.WindowStartUTC
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: windowStart,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -20, HourUTC: windowStart.Hour(), FrequencyMHz: job.FrequencyMHz},
@@ -400,10 +403,11 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 				},
 				OutputPath: "runtime-output-should-not-persist.out",
 				Elapsed:    time.Second,
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
+	fallback.now = func() time.Time { return now }
 	stats, err := fallback.AttachForecastCacheStore(store, now)
 	if err != nil {
 		t.Fatalf("AttachForecastCacheStore() error: %v", err)
@@ -429,7 +433,7 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 	cancel()
 	fallback.Wait()
 	records := readRawVOACAPRetentionRecords(t, store)
-	key := fallback.cacheKey(testClosedRequest(), 112, now)
+	key := fallback.cacheKey(testClosedRequest())
 	record, ok := records[string(voacapForecastCacheKeyBytes(key))]
 	if !ok || len(records) != 1 || record.StoredAtUnixNS <= 0 || record.WindowUnixNS != forecastWindowStart(now).UnixNano() || len(record.Records) != 2 {
 		t.Fatalf("raw persisted worker forecast missing or invalid before hydration: %+v", records)
@@ -438,7 +442,7 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 		t.Fatalf("raw persisted worker rows = %+v, want requested two-hour forecast", record.Records)
 	}
 
-	loaded, loadStats, err := store.loadCurrent(time.Now().UTC(), 112, cfg.VOACAPFallback)
+	loaded, loadStats, err := store.loadCurrent(time.Now().UTC(), cfg.VOACAPFallback)
 	if err != nil {
 		t.Fatalf("loadCurrent() error: %v", err)
 	}
@@ -452,19 +456,20 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 
 func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesEmptyCache(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.ForecastHours = 2
 	cfg.VOACAPFallback.DelaySeconds = 900
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -477,6 +482,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesEmptyCache(t *testi
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	window, status := fallback.CheckForecastWindowWait(req, now, time.Second)
 	if status != VOACAPForecastWindowReady {
 		t.Fatalf("status = %v, want ready", status)
@@ -487,6 +493,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesEmptyCache(t *testi
 	if calls.Load() != 1 {
 		t.Fatalf("calls = %d, want 1", calls.Load())
 	}
+	waitUntil(t, func() bool { return fallback.Snapshot().WorkerDurationCount == 1 })
 	if snap := fallback.Snapshot(); snap.DelayEntries != 0 || snap.InflightEntries != 0 || snap.CacheEntries != 1 {
 		t.Fatalf("unexpected snapshot after refresh: %+v", snap)
 	}
@@ -494,6 +501,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesEmptyCache(t *testi
 
 func TestVOACAPClosedFallbackCheckForecastWindowWaitTimeoutContinuesWorker(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.ForecastHours = 2
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -507,13 +515,13 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitTimeoutContinuesWorker(t *te
 				return VOACAPClosedForecast{}, ctx.Err()
 			case <-release:
 			}
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -527,6 +535,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitTimeoutContinuesWorker(t *te
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	window, status := fallback.CheckForecastWindowWait(req, now, 10*time.Millisecond)
 	if status != VOACAPForecastWindowRefreshing {
 		t.Fatalf("status = %v, want refreshing", status)
@@ -545,19 +554,20 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitTimeoutContinuesWorker(t *te
 
 func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesPartialCache(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.ForecastHours = 2
 	cfg.VOACAPFallback.DelaySeconds = 900
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -20, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -18, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -570,10 +580,11 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesPartialCache(t *tes
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	oldWindowStart := now.Add(-time.Hour)
-	key := fallback.cacheKey(req, 112, oldWindowStart)
+	key := fallback.cacheKey(req)
 	fallback.mu.Lock()
-	fallback.addCacheLocked(key, voacapCacheEntry{
+	fallback.addCacheLocked(key, testCacheEntryWithConfig(voacapCacheEntry{
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: oldWindowStart,
 			Records: []VOACAPHourlyForecast{
@@ -581,7 +592,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitRefreshesPartialCache(t *tes
 			},
 		},
 		storedAt: now.Add(-time.Minute),
-	})
+	}, cfg))
 	fallback.mu.Unlock()
 
 	window, status := fallback.CheckForecastWindowWait(req, now, 0)
@@ -615,6 +626,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitFailureClearsInflight(t *tes
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	window, status := fallback.CheckForecastWindowWait(req, now, time.Second)
 	if status != VOACAPForecastWindowFailed {
 		t.Fatalf("status = %v, want failed", status)
@@ -622,6 +634,7 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitFailureClearsInflight(t *tes
 	if len(window.Records) != 0 {
 		t.Fatalf("failure should not return records, got %+v", window.Records)
 	}
+	waitUntil(t, func() bool { return fallback.Snapshot().WorkerDurationCount == 1 })
 	if snap := fallback.Snapshot(); snap.InflightEntries != 0 || snap.DelayEntries != 1 {
 		t.Fatalf("failure should clear inflight and add delay, snapshot=%+v", snap)
 	}
@@ -629,17 +642,18 @@ func TestVOACAPClosedFallbackCheckForecastWindowWaitFailureClearsInflight(t *tes
 
 func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.DelaySeconds = 0
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -14, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -652,6 +666,7 @@ func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("FT8 enqueue should not synchronously return a result")
 	}
@@ -674,18 +689,19 @@ func TestVOACAPClosedFallbackReevaluatesCachedForecastPerMode(t *testing.T) {
 
 func TestVOACAPClosedFallbackReusesForecastWindowAcrossHours(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.DelaySeconds = 0
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -31, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -698,6 +714,7 @@ func TestVOACAPClosedFallbackReusesForecastWindowAcrossHours(t *testing.T) {
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("enqueue should not synchronously return a result")
 	}
@@ -718,18 +735,19 @@ func TestVOACAPClosedFallbackReusesForecastWindowAcrossHours(t *testing.T) {
 
 func TestVOACAPClosedFallbackReusesForecastWindowAcrossMidnight(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.DelaySeconds = 0
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -34, HourUTC: 23, FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -33, HourUTC: 0, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -742,6 +760,7 @@ func TestVOACAPClosedFallbackReusesForecastWindowAcrossMidnight(t *testing.T) {
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 23, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("enqueue should not synchronously return a result")
 	}
@@ -765,13 +784,13 @@ func TestVOACAPClosedFallbackDoesNotReuseForecastOutsideHorizon(t *testing.T) {
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -33, HourUTC: 21, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -784,6 +803,7 @@ func TestVOACAPClosedFallbackDoesNotReuseForecastOutsideHorizon(t *testing.T) {
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	if _, ok := fallback.CheckClosed(req, now); ok {
 		t.Fatalf("enqueue should not synchronously return a result")
 	}
@@ -799,17 +819,18 @@ func TestVOACAPClosedFallbackDoesNotReuseForecastOutsideHorizon(t *testing.T) {
 
 func TestVOACAPClosedFallbackStatsExplainCacheLifecycle(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
+	cfg.VOACAPFallback.CacheTTLSeconds = 8 * 3600
 	cfg.VOACAPFallback.DelaySeconds = 0
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -34, HourUTC: 20, FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -822,6 +843,7 @@ func TestVOACAPClosedFallbackStatsExplainCacheLifecycle(t *testing.T) {
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
+	fallback.now = func() time.Time { return now }
 	if _, ok := fallback.CheckForecast(req, now); ok {
 		t.Fatalf("enqueue lookup should not synchronously return a forecast")
 	}
@@ -849,9 +871,9 @@ func TestVOACAPClosedFallbackStatsReportNoCurrentHour(t *testing.T) {
 
 	req := testClosedRequest()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
-	key := fallback.cacheKey(req, 112, now)
+	key := fallback.cacheKey(req)
 	fallback.mu.Lock()
-	fallback.addCacheLocked(key, voacapCacheEntry{
+	fallback.addCacheLocked(key, testCacheEntryWithConfig(voacapCacheEntry{
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: now,
 			Records: []VOACAPHourlyForecast{
@@ -859,7 +881,7 @@ func TestVOACAPClosedFallbackStatsReportNoCurrentHour(t *testing.T) {
 			},
 		},
 		storedAt: now,
-	})
+	}, cfg))
 	fallback.mu.Unlock()
 
 	if _, ok := fallback.CheckForecast(req, now); ok {
@@ -1037,9 +1059,9 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 		cfg := testVOACAPFallbackConfig()
 		cfg.VOACAPFallback.DelaySeconds = 0
 		fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
-		key := fallback.cacheKey(req, 112, now)
+		key := fallback.cacheKey(req)
 		fallback.mu.Lock()
-		fallback.inflight[key] = struct{}{}
+		fallback.inflight[key] = &voacapPendingWork{key: key, published: make(chan struct{})}
 		fallback.mu.Unlock()
 		got := fallback.CheckForecastDetailed(req, now)
 		if got.Status != VOACAPForecastCheckInflight || !got.CacheMiss {
@@ -1053,7 +1075,7 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 		cfg.VOACAPFallback.MaxQueueDepth = 1
 		fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
 		fallback.running.Store(true)
-		fallback.queue <- VOACAPClosedJob{}
+		fallback.queue <- &voacapPendingWork{published: make(chan struct{})}
 		got := fallback.CheckForecastDetailed(req, now)
 		if got.Status != VOACAPForecastCheckQueueFull || !got.CacheMiss {
 			t.Fatalf("unexpected queue-full status: %+v", got)
@@ -1074,9 +1096,9 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 	t.Run("cache hit", func(t *testing.T) {
 		cfg := testVOACAPFallbackConfig()
 		fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
-		key := fallback.cacheKey(req, 112, now)
+		key := fallback.cacheKey(req)
 		fallback.mu.Lock()
-		fallback.addCacheLocked(key, voacapCacheEntry{
+		fallback.addCacheLocked(key, testCacheEntryWithConfig(voacapCacheEntry{
 			forecast: VOACAPClosedForecast{
 				WindowStartUTC: now,
 				Records: []VOACAPHourlyForecast{
@@ -1084,7 +1106,7 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 				},
 			},
 			storedAt: now,
-		})
+		}, cfg))
 		fallback.mu.Unlock()
 		got := fallback.CheckForecastDetailed(req, now)
 		if got.Status != VOACAPForecastCheckReady || got.CacheMiss || got.Forecast.Record.FT8SNRDB != -19 {
@@ -1096,9 +1118,9 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 		cfg := testVOACAPFallbackConfig()
 		cfg.VOACAPFallback.DelaySeconds = 0
 		fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
-		key := fallback.cacheKey(req, 112, now)
+		key := fallback.cacheKey(req)
 		fallback.mu.Lock()
-		fallback.addCacheLocked(key, voacapCacheEntry{
+		fallback.addCacheLocked(key, testCacheEntryWithConfig(voacapCacheEntry{
 			forecast: VOACAPClosedForecast{
 				WindowStartUTC: now,
 				Records: []VOACAPHourlyForecast{
@@ -1106,7 +1128,7 @@ func TestVOACAPClosedFallbackDetailedStatuses(t *testing.T) {
 				},
 			},
 			storedAt: now,
-		})
+		}, cfg))
 		fallback.mu.Unlock()
 		got := fallback.CheckForecastDetailed(req, now)
 		if got.Status != VOACAPForecastCheckNotRunning || !got.CacheMiss || !got.NoCurrentHour {
@@ -1168,195 +1190,14 @@ func TestVOACAPClosedFallbackBoundsDelayMap(t *testing.T) {
 	}
 }
 
-func TestClosedForecastFromRecordsBuildsHourlyWindow(t *testing.T) {
-	records := []voacapPredictionRecordForTest{
-		{HourUTC: 1, FrequencyMHz: 14.1, FT8SNRDB: -35, VOACAPSNRDBHz: 5, Reliability: 0.72, HasReliability: true},
-		{HourUTC: 1, FrequencyMHz: 14.2, FT8SNRDB: -32, VOACAPSNRDBHz: 8, Reliability: 0.81, HasReliability: true},
-		{HourUTC: 2, FrequencyMHz: 14.1, FT8SNRDB: -30},
-		{HourUTC: 1, FrequencyMHz: 7.1, FT8SNRDB: -10},
-	}
-	forecast, err := closedForecastFromRecords(testPredictionRecords(records), "20m")
-	if err != nil {
-		t.Fatalf("closedForecastFromRecords() error: %v", err)
-	}
-	if len(forecast.Records) != 2 {
-		t.Fatalf("forecast records = %d, want 2: %+v", len(forecast.Records), forecast)
-	}
-	if forecast.Records[0].HourUTC != 1 || forecast.Records[0].FT8SNRDB != -32 || forecast.Records[0].VOACAPSNRDBHz != 8 {
-		t.Fatalf("hour 1 should keep the strongest same-hour SNR, got %+v", forecast.Records[0])
-	}
-	if !forecast.Records[0].HasReqSNRReliability || forecast.Records[0].ReqSNRReliability != 0.81 {
-		t.Fatalf("hour 1 should keep REL from the strongest same-hour SNR, got %+v", forecast.Records[0])
-	}
-	if forecast.Records[1].HourUTC != 2 || forecast.Records[1].FT8SNRDB != -30 {
-		t.Fatalf("hour 2 should be retained, got %+v", forecast.Records[1])
-	}
-}
-
-func TestVOACAPRunnerClosedForecasterDeckUsesSafeLabels(t *testing.T) {
-	cfg := testVOACAPFallbackConfig().VOACAPFallback
-	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
-	deck, err := forecaster.buildDeck(VOACAPClosedJob{
-		Request: VOACAPClosedRequest{
-			UserGrid: "FN05",
-			DXGrid:   "DM81XX",
-			Band:     "20m",
-		},
-		SSN:            147,
-		WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
-	}, voacapDeckTransmit)
-	if err != nil {
-		t.Fatalf("buildDeck() error: %v", err)
-	}
-	text := string(deck)
-	if !strings.Contains(text, "LABEL     TRANSMITTER") || !strings.Contains(text, " RECEIVER") {
-		t.Fatalf("fallback deck should use safe alphabetic labels:\n%s", text)
-	}
-	if strings.Contains(text, "LABEL     FN05") || strings.Contains(text, "DM81XX") {
-		t.Fatalf("fallback deck label must not contain grid strings:\n%s", text)
-	}
-	if !strings.Contains(text, "CIRCUIT   45.50N   079.00W    31.98N    102.04W") {
-		t.Fatalf("fallback deck should preserve grid-center coordinates:\n%s", text)
-	}
-	if !strings.Contains(text, "TIME          3   10    1    1") {
-		t.Fatalf("fallback deck should start at the job window hour:\n%s", text)
-	}
-}
-
-func TestVOACAPRunnerClosedForecasterDeckSelectsMethodByDistance(t *testing.T) {
-	cfg := testVOACAPFallbackConfig().VOACAPFallback
-	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
-	tests := []struct {
-		name     string
-		userGrid string
-		dxGrid   string
-		want     string
-	}{
-		{name: "short path", userGrid: "FN31", dxGrid: "FN32", want: "METHOD       20    0"},
-		{name: "long path", userGrid: "FN31", dxGrid: "QF56", want: "METHOD       30    0"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			deck, err := forecaster.buildDeck(VOACAPClosedJob{
-				Request: VOACAPClosedRequest{
-					UserGrid: tt.userGrid,
-					DXGrid:   tt.dxGrid,
-					Band:     "20m",
-				},
-				SSN:            147,
-				WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
-			}, voacapDeckTransmit)
-			if err != nil {
-				t.Fatalf("buildDeck() error: %v", err)
-			}
-			if text := string(deck); !strings.Contains(text, tt.want) {
-				t.Fatalf("fallback deck method mismatch, want %q:\n%s", tt.want, text)
-			}
-		})
-	}
-}
-
-func TestVOACAPRunnerClosedForecasterDeckUsesWindowStartHour(t *testing.T) {
-	cfg := testVOACAPFallbackConfig().VOACAPFallback
-	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
-	deck, err := forecaster.buildDeck(VOACAPClosedJob{
-		Request: VOACAPClosedRequest{
-			UserGrid: "FN05",
-			DXGrid:   "DM81XX",
-			Band:     "20m",
-		},
-		SSN:            147,
-		WindowStartUTC: time.Date(2026, time.June, 9, 17, 0, 0, 0, time.UTC),
-	}, voacapDeckTransmit)
-	if err != nil {
-		t.Fatalf("buildDeck() error: %v", err)
-	}
-	if text := string(deck); !strings.Contains(text, "TIME         17   24    1    1") {
-		t.Fatalf("fallback deck should cover the current UTC hour:\n%s", text)
-	}
-}
-
-func TestVOACAPRunnerClosedForecasterDeckSupportsReceiveDirection(t *testing.T) {
-	cfg := testVOACAPFallbackConfig().VOACAPFallback
-	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
-	deck, err := forecaster.buildDeck(VOACAPClosedJob{
-		Request: VOACAPClosedRequest{
-			UserGrid: "FN05",
-			DXGrid:   "DM81XX",
-			Band:     "20m",
-		},
-		SSN:            147,
-		WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
-	}, voacapDeckReceive)
-	if err != nil {
-		t.Fatalf("buildDeck() error: %v", err)
-	}
-	if text := string(deck); !strings.Contains(text, "CIRCUIT   31.98N   102.04W    45.50N    079.00W") {
-		t.Fatalf("receive-direction deck should reverse circuit coordinates:\n%s", text)
-	}
-}
-
-func TestVOACAPRunnerClosedForecasterRemovesDirectionalOutputAfterRead(t *testing.T) {
-	home := t.TempDir()
-	binDir := filepath.Join(home, "bin_win")
-	runDir := filepath.Join(home, "run")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatalf("mkdir bin: %v", err)
-	}
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
-		t.Fatalf("mkdir run: %v", err)
-	}
-	source := filepath.Join(home, "fake_voacap.go")
-	engine := filepath.Join(binDir, "Voacapw.exe")
-	if err := os.WriteFile(source, []byte(fakeCleanupVOACAPEngineSource), 0o644); err != nil {
-		t.Fatalf("write fake engine source: %v", err)
-	}
-	buildCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(buildCtx, "go", "build", "-o", engine, source)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("build fake engine: %v\n%s", err, out)
-	}
-
-	cfg := testVOACAPFallbackConfig().VOACAPFallback
-	cfg.VOACAPHome = home
-	cfg.VOACAPTimeoutSeconds = 5
-	cfg.ForecastHours = 2
-	cfg.OutputNamePrefix = "gocluster_cleanup"
-	cfg.CenterFrequenciesMHz = []float64{14.1}
-	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
-	forecast, result, err := forecaster.runDirectionalForecast(context.Background(), VOACAPClosedJob{
-		Request: VOACAPClosedRequest{
-			UserGrid: "FN31",
-			DXGrid:   "FN32",
-			Band:     "20m",
-		},
-		SSN:            112,
-		WindowStartUTC: time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC),
-		FrequencyMHz:   14.1,
-	}, voacapDeckTransmit)
-	if err != nil {
-		t.Fatalf("runDirectionalForecast() error: %v", err)
-	}
-	if len(result.Output) == 0 {
-		t.Fatalf("expected in-memory VOACAP output bytes")
-	}
-	if len(forecast.Records) != 1 || forecast.Records[0].HourUTC != 20 || forecast.Records[0].FrequencyMHz != 14.1 {
-		t.Fatalf("unexpected parsed forecast: %+v", forecast)
-	}
-	if _, err := os.Stat(result.OutputPath); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("runtime fallback output should be removed after read, stat err=%v", err)
-	}
-}
-
 func TestVOACAPClosedFallbackAppliesNoiseToReceiveDirection(t *testing.T) {
 	cfg := testVOACAPFallbackConfig()
 	cfg.MergeReceiveWeight = 0.6
 	cfg.MergeTransmitWeight = 0.4
 	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, fixedSSNProvider{ssn: 112})
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
-	key := fallback.cacheKey(testClosedRequest(), 112, now)
-	fallback.addCacheLocked(key, voacapCacheEntry{
+	key := fallback.cacheKey(testClosedRequest())
+	fallback.addCacheLocked(key, testCacheEntryWithConfig(voacapCacheEntry{
 		storedAt: now,
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: now,
@@ -1370,7 +1211,7 @@ func TestVOACAPClosedFallbackAppliesNoiseToReceiveDirection(t *testing.T) {
 				},
 			},
 		},
-	})
+	}, cfg))
 
 	req := testClosedRequest()
 	req.ReceiveNoisePenaltyDB = 5
@@ -1403,74 +1244,6 @@ func TestVOACAPFallbackBandsUseConfiguredCenterFrequencies(t *testing.T) {
 	}
 }
 
-func TestCombineDirectionalForecastsRequiresCommonHours(t *testing.T) {
-	receive := VOACAPClosedForecast{Records: []VOACAPHourlyForecast{
-		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -10, VOACAPSNRDBHz: 24, ReqSNRReliability: 0.91, HasReqSNRReliability: true},
-		{HourUTC: 21, FrequencyMHz: 14.1, FT8SNRDB: -12, VOACAPSNRDBHz: 22},
-	}}
-	transmit := VOACAPClosedForecast{Records: []VOACAPHourlyForecast{
-		{HourUTC: 20, FrequencyMHz: 14.1, FT8SNRDB: -20, VOACAPSNRDBHz: 14, ReqSNRReliability: 0.84, HasReqSNRReliability: true},
-	}}
-	combined, err := combineDirectionalForecasts(receive, transmit, "20m")
-	if err != nil {
-		t.Fatalf("combineDirectionalForecasts() error: %v", err)
-	}
-	if len(combined.Records) != 1 {
-		t.Fatalf("expected one common-hour record, got %d", len(combined.Records))
-	}
-	record := combined.Records[0]
-	if !record.HasDirectionalSNR || record.ReceiveFT8SNRDB != -10 || record.TransmitFT8SNRDB != -20 {
-		t.Fatalf("unexpected combined record: %+v", record)
-	}
-	if !record.HasDirectionalReqSNRReliability || record.ReceiveReqSNRReliability != 0.91 || record.TransmitReqSNRReliability != 0.84 {
-		t.Fatalf("unexpected directional REL fields: %+v", record)
-	}
-	if rel, ok := (VOACAPCachedForecast{Record: record}).ReqSNRReliability(); !ok || rel != 0.84 {
-		t.Fatalf("effective REL = %v ok=%v, want 0.84 true", rel, ok)
-	}
-
-	_, err = combineDirectionalForecasts(receive, VOACAPClosedForecast{}, "20m")
-	if err == nil {
-		t.Fatalf("expected error with no common bidirectional hours")
-	}
-}
-
-func TestVOACAPRunnerClosedForecasterLiveSafeLabelDeck(t *testing.T) {
-	if os.Getenv("GOCLUSTER_RUN_LIVE_VOACAP") != "1" {
-		t.Skip("set GOCLUSTER_RUN_LIVE_VOACAP=1 to run against local VOACAP")
-	}
-	cfg := defaultVOACAPFallbackConfig()
-	cfg.VOACAPHome = voacap.DefaultVOACAPHome
-	cfg.VOACAPTimeoutSeconds = 120
-	cfg.OutputNamePrefix = "gocluster_voacap_v9_live"
-	forecaster := NewVOACAPRunnerClosedForecaster(cfg)
-	forecast, err := forecaster.ForecastClosed(context.Background(), VOACAPClosedJob{
-		Request: VOACAPClosedRequest{
-			UserCell: CellID(1020),
-			DXCell:   CellID(1476),
-			UserGrid: "FN05",
-			DXGrid:   "DM81XX",
-			Band:     "40m",
-			Mode:     "FT8",
-		},
-		SSN:            147,
-		WindowStartUTC: time.Date(2026, time.June, 9, 3, 0, 0, 0, time.UTC),
-		FrequencyMHz:   7.1,
-	})
-	if err != nil {
-		t.Fatalf("ForecastClosed() live error: %v", err)
-	}
-	if len(forecast.Records) == 0 {
-		t.Fatalf("live forecast missing hourly records: %+v", forecast)
-	}
-	if forecast.Records[0].FrequencyMHz <= 0 {
-		t.Fatalf("live forecast missing frequency: %+v", forecast)
-	}
-	if forecast.OutputPath == "" {
-		t.Fatalf("live forecast missing output path: %+v", forecast)
-	}
-}
-
 func BenchmarkVOACAPClosedFallbackCheckForecastDetailedCacheHit(b *testing.B) {
 	cfg := testVOACAPFallbackConfig()
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
@@ -1491,8 +1264,8 @@ func BenchmarkVOACAPClosedFallbackCheckForecastDetailedCacheHit(b *testing.B) {
 		b.Fatalf("AttachForecastCacheStore() error: %v", err)
 	}
 	req := testClosedRequest()
-	key := fallback.cacheKey(req, 112, now)
-	fallback.addCacheLocked(key, voacapCacheEntry{
+	key := fallback.cacheKey(req)
+	fallback.addCacheLocked(key, testCacheEntryWithConfig(voacapCacheEntry{
 		storedAt: now,
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: forecastWindowStart(now),
@@ -1500,7 +1273,7 @@ func BenchmarkVOACAPClosedFallbackCheckForecastDetailedCacheHit(b *testing.B) {
 				{FT8SNRDB: -19, HourUTC: 20, FrequencyMHz: 14.1},
 			},
 		},
-	})
+	}, cfg))
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -1552,6 +1325,7 @@ func testVOACAPFallbackConfig() Config {
 	cfg.GlyphSymbols.Closed = "!"
 	cfg.VOACAPFallback = defaultVOACAPFallbackConfig()
 	cfg.VOACAPFallback.Enabled = true
+	cfg.VOACAPFallback.ForecastHours = 8
 	cfg.VOACAPFallback.DelaySeconds = 900
 	cfg.VOACAPFallback.CacheTTLSeconds = 3600
 	cfg.VOACAPFallback.MaxCacheEntries = 8
@@ -1582,51 +1356,4 @@ func waitUntil(t *testing.T, fn func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("condition was not met before deadline")
-}
-
-const fakeCleanupVOACAPEngineSource = `package main
-
-import (
-	"fmt"
-	"os"
-	"path/filepath"
-)
-
-func main() {
-	if len(os.Args) != 5 {
-		fmt.Fprintf(os.Stderr, "unexpected args: %v", os.Args)
-		os.Exit(3)
-	}
-	home := os.Args[2]
-	outputName := os.Args[4]
-	output := " 20.0 0.0 14.1 FREQ\n 0.0 10.0 SNR\n 0.0 0.80 REL\n"
-	if err := os.WriteFile(filepath.Join(home, "run", outputName), []byte(output), 0o644); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(5)
-	}
-}
-`
-
-type voacapPredictionRecordForTest struct {
-	HourUTC        int
-	FrequencyMHz   float64
-	FT8SNRDB       int
-	VOACAPSNRDBHz  int
-	Reliability    float64
-	HasReliability bool
-}
-
-func testPredictionRecords(in []voacapPredictionRecordForTest) []voacap.PredictionRecord {
-	out := make([]voacap.PredictionRecord, 0, len(in))
-	for _, record := range in {
-		out = append(out, voacap.PredictionRecord{
-			HourUTC:        record.HourUTC,
-			FrequencyMHz:   record.FrequencyMHz,
-			FT8SNRDB:       record.FT8SNRDB,
-			VOACAPSNRDBHz:  record.VOACAPSNRDBHz,
-			Reliability:    record.Reliability,
-			HasReliability: record.HasReliability,
-		})
-	}
-	return out
 }

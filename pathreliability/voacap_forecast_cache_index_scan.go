@@ -122,7 +122,7 @@ func (s *VOACAPForecastCacheStore) retainScannedEntryLocked(dbKey string, key vo
 		delete(s.index, victim.dbKey)
 		delete(payloads, victim.dbKey)
 	}
-	e := forecastCacheIndexEntry(dbKey, entry.storedAt.UnixNano(), entry.forecast.WindowStartUTC.UnixNano(), entry.forecast.Records)
+	e := forecastCacheIndexEntry(dbKey, entry.storedAt.UnixNano(), entry.forecast.WindowStartUTC.UnixNano(), entry.windowEndNS, entry.expiresNS, entry.metadata.originNS, entry.forecast.Records)
 	s.index[dbKey] = e
 	heap.Push(&s.retention, e)
 	if payloads != nil {

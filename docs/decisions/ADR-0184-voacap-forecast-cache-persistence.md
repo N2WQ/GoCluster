@@ -6,6 +6,11 @@
 
 ## Context
 
+Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+supersedes affected forecast identity, lifetime and restore-compatibility
+clauses, including retirement of generation-1 predictions. The original
+persistence decision below is preserved as history.
+
 ADR-0162 intentionally made the runtime VOACAP forecast-window cache memory-only.
 That kept the first implementation simple, but it meant a restart discarded
 otherwise-current forecast windows. After ADR-0182 added durable runtime SSN

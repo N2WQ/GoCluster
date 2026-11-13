@@ -176,7 +176,7 @@ func TestBuildExperimentDeckUsesConfiguredHoursAndFrequencies(t *testing.T) {
 		"TIME          1    4    1    1",
 		"MONTH      2026 6.00",
 		"SUNSPOT    112.",
-		"CIRCUIT   42.36N   071.06W    52.23N    021.01E  S     0",
+		"CIRCUIT   42.36N   071.06W    52.23N   021.01E  S     0",
 		"SYSTEM       1. 153. 3.00  50. 10.0 3.00 0.10",
 		"FREQUENCY  3.50 7.00 0.00 0.00",
 	} {
@@ -356,7 +356,7 @@ func TestBuildPathDeckUsesDirectedEndpoints(t *testing.T) {
 		"COMMENT    directed path",
 		"SUNSPOT    147.",
 		"LABEL     FN31",
-		"CIRCUIT   41.50N   073.00W    50.50N    019.00E  S     0",
+		"CIRCUIT   41.50N   073.00W    50.50N   019.00E  S     0",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("directed deck missing %q:\n%s", want, body)

@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `49c6670823cf5c56`
+- Source fingerprint: `3e09ebd8fc9749a5`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -12,8 +12,8 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
-| `dxcluster/internal/voacap` | `internal/voacap` | 10 | 6 |
-| `dxcluster/pathreliability` | `pathreliability` | 31 | 72 |
+| `dxcluster/internal/voacap` | `internal/voacap` | 13 | 10 |
+| `dxcluster/pathreliability` | `pathreliability` | 32 | 78 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -60,15 +60,22 @@ Source files:
 - `internal/voacap/forecast_state.go`
 - `internal/voacap/output.go`
 - `internal/voacap/runner.go`
+- `internal/voacap/solar_flux.go`
+- `internal/voacap/solar_input.go`
 - `internal/voacap/sunspot.go`
 - `internal/voacap/sunspot_monitor.go`
+- `internal/voacap/sunspot_monitor_health.go`
 - `internal/voacap/sunspot_monitor_state.go`
 
 Test files:
 - `internal/voacap/config_test.go`
+- `internal/voacap/deck_circuit_test.go`
 - `internal/voacap/forecast_state_test.go`
 - `internal/voacap/output_test.go`
 - `internal/voacap/runner_test.go`
+- `internal/voacap/solar_flux_test.go`
+- `internal/voacap/sunspot_monitor_health_test.go`
+- `internal/voacap/sunspot_monitor_state_test.go`
 - `internal/voacap/sunspot_monitor_test.go`
 - `internal/voacap/sunspot_test.go`
 
@@ -105,6 +112,7 @@ Source files:
 - `pathreliability/voacap_forecast_cache_index_heap.go`
 - `pathreliability/voacap_forecast_cache_index_scan.go`
 - `pathreliability/voacap_forecast_cache_store.go`
+- `pathreliability/voacap_forecaster.go`
 - `pathreliability/voacap_live_cache_order.go`
 
 Test files:
@@ -166,9 +174,12 @@ Test files:
 - `pathreliability/timestamp_admission_bench_test.go`
 - `pathreliability/voacap_cache_index_test.go`
 - `pathreliability/voacap_cache_index_work_test.go`
+- `pathreliability/voacap_coherent_input_test.go`
 - `pathreliability/voacap_daily_retention_heap_test.go`
 - `pathreliability/voacap_fallback_test.go`
 - `pathreliability/voacap_forecast_cache_store_test.go`
+- `pathreliability/voacap_forecaster_calendar_test.go`
+- `pathreliability/voacap_forecaster_test.go`
 - `pathreliability/voacap_incremental_cache_lifecycle_test.go`
 - `pathreliability/voacap_incremental_cache_test.go`
 - `pathreliability/voacap_live_cache_policy_alloc_test.go`
@@ -180,6 +191,9 @@ Test files:
 - `pathreliability/voacap_persistence_bench_test.go`
 - `pathreliability/voacap_persistence_heap_test.go`
 - `pathreliability/voacap_retention_test.go`
+- `pathreliability/voacap_row_growth_heap_test.go`
+- `pathreliability/voacap_v4_state_test.go`
+- `pathreliability/voacap_worker_qualification_test.go`
 
 ### `dxcluster/solarweather`
 

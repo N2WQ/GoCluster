@@ -140,9 +140,13 @@ func (p fixedOverviewVOACAPFallbackProvider) Snapshot() pathreliability.VOACAPCl
 	return p.snapshot
 }
 
-func buildOverviewLinesForStatsTest(voacapSSN fixedOverviewSSNProvider) []string {
+func buildOverviewLinesForStatsTest(voacapSSN pathreliability.VOACAPSSNProvider, caches ...voacapFallbackSnapshotProvider) []string {
+	var cache voacapFallbackSnapshotProvider
+	if len(caches) > 0 {
+		cache = caches[0]
+	}
 	return buildOverviewLines(
-		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, voacapSSN, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, voacapSSN, cache, nil, nil,
 		"N2WQ-2",
 		false, false, false,
 		nil,
@@ -166,7 +170,7 @@ func TestFormatPathLinesIncludesVOACAPCacheSnapshot(t *testing.T) {
 			QueueDepth:      8,
 		},
 	}
-	lines := formatPathLines(nil, provider, time.Now().UTC())
+	lines := formatPathLines(nil, provider, time.Now().UTC(), 112, true)
 	joined := strings.Join(lines, "\n")
 	want := "[yellow]VOACAP cache[-]: 1,234 (C) / 56 (D) / 7 (I) / 8 (Q)"
 	if !strings.Contains(joined, want) {
@@ -176,7 +180,7 @@ func TestFormatPathLinesIncludesVOACAPCacheSnapshot(t *testing.T) {
 		t.Fatalf("expected H3 path pairs fallback, got %v", lines)
 	}
 
-	lines = formatPathLines(nil, nil, time.Now().UTC())
+	lines = formatPathLines(nil, nil, time.Now().UTC(), 0, false)
 	joined = strings.Join(lines, "\n")
 	if !strings.Contains(joined, "[yellow]VOACAP cache[-]: n/a") {
 		t.Fatalf("expected nil VOACAP fallback to render n/a, got %v", lines)

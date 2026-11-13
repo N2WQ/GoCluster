@@ -6,6 +6,10 @@
 
 ## Context
 
+Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+refines validity metadata and legacy retirement. Memory-first publication,
+bounded indexes, atomic replacement and warning-only persistence remain.
+
 ADR-0184 persisted each completed forecast, then decoded and sorted the whole
 database to prune it. That work grows with unrelated forecasts. ADR-0303 gives
 the persisted cache an exact deterministic retention policy.

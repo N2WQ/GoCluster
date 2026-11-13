@@ -104,6 +104,8 @@ func seedVOACAPDailyRetentionFixture(t *testing.T, store *VOACAPForecastCacheSto
 		storedAt: now.Add(-time.Minute),
 		forecast: VOACAPClosedForecast{WindowStartUTC: now, Records: voacapDailyRetentionRecords(now)},
 	}
+	entry.storedAt = now
+	entry = testFrozenCacheEntry(entry, 24, 3600)
 	// Bound setup scratch as well: a full-day JSON corpus is much larger than
 	// the one-row fixture, and one giant batch would confound retained memory.
 	const chunk = 256

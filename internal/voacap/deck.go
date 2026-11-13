@@ -64,9 +64,9 @@ func BuildExperimentDeck(cfg ExperimentConfig, smoothedSSN float64, now time.Tim
 }
 
 // BuildPathDeck builds a fixed-format VOACAP deck for a directed path. The
-// CIRCUIT card mirrors the working PowerShell deck generator:
-// coordinates are formatted before interpolation, then written without extra
-// field-width padding because the Windows VOACAP engine is column-sensitive.
+// CIRCUIT follows the native reader's F5.2,A1,3(F9.2,A1) coordinate layout.
+// In particular, the receiver E/W character must occupy column 46; shifting it
+// one column can silently turn a west longitude into an east longitude.
 func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 	if req.SSN < 0 {
 		return nil, fmt.Errorf("SSN must be >= 0")
@@ -123,7 +123,7 @@ func BuildPathDeck(req PathDeckRequest) ([]byte, error) {
 	fmt.Fprintf(&buf, "MONTH      %04d %d.00\n", now.Year(), int(now.Month()))
 	fmt.Fprintf(&buf, "SUNSPOT    %d.\n", req.SSN)
 	fmt.Fprintf(&buf, "LABEL     %-18s %-18s\n", voacapLabel(req.Transmit.Label), voacapLabel(req.Receive.Label))
-	fmt.Fprintf(&buf, "CIRCUIT   %s   %s    %s    %s  S     0\n",
+	fmt.Fprintf(&buf, "CIRCUIT   %s   %s    %s   %s  S     0\n",
 		formatVOACAPLatitude(req.Transmit.Latitude),
 		formatVOACAPLongitude(req.Transmit.Longitude),
 		formatVOACAPLatitude(req.Receive.Latitude),

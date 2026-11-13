@@ -12,25 +12,25 @@ import (
 	"github.com/cockroachdb/pebble"
 )
 
-func TestVOACAPIncrementalCacheMissingSSNThenCompletion(t *testing.T) {
+func TestVOACAPIncrementalCacheHydrationIndependentOfCurrentSSN(t *testing.T) {
 	now := time.Date(2026, time.June, 8, 20, 0, 0, 0, time.UTC)
 	cfg := testVOACAPFallbackConfig()
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), incrementalCacheEntry(now, now.Add(-2*time.Hour), 20), nil)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), incrementalCacheEntry(now, now, 20), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(incrementalCacheEntry(now, now.Add(-2*time.Hour), 20), cfg), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), nil)
 	provider := &incrementalSSNProvider{}
 	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{}, provider)
 	stats, err := fallback.AttachForecastCacheStore(store, now)
-	if err != nil || !stats.SSNUnavailable || fallback.Snapshot().CacheEntries != 0 {
+	if err != nil || stats.SSNUnavailable || fallback.Snapshot().CacheEntries != 1 {
 		t.Fatalf("SSN-unavailable attach: stats=%+v snapshot=%+v error=%v", stats, fallback.Snapshot(), err)
 	}
-	if snap := store.IndexSnapshot(); !snap.Attached || snap.Ready || snap.Entries != 0 {
+	if snap := store.IndexSnapshot(); !snap.Attached || !snap.Ready || snap.Entries != 1 {
 		t.Fatalf("unavailable SSN cannot publish trusted metadata: %+v", snap)
 	}
-	assertIncrementalRawCells(t, store, []uint16{1, 2})
+	assertIncrementalRawCells(t, store, []uint16{2})
 	provider.ssn.Store(112)
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 3), incrementalCacheEntry(now, now, 20), cfg.VOACAPFallback, now); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 3), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg.VOACAPFallback), cfg.VOACAPFallback, now); err != nil {
 		t.Fatalf("completion after SSN becomes available: %v", err)
 	}
 	assertIncrementalRawCells(t, store, []uint16{2, 3})
@@ -40,15 +40,15 @@ func TestVOACAPIncrementalCacheMissingSSNThenCompletion(t *testing.T) {
 	}
 	provider.ssn.Store(0)
 	stats, err = fallback.AttachForecastCacheStore(store, now)
-	if err != nil || !stats.SSNUnavailable {
+	if err != nil || stats.SSNUnavailable {
 		t.Fatalf("unknown-SSN reattach: stats=%+v error=%v", stats, err)
 	}
-	if snap := store.IndexSnapshot(); !snap.Attached || snap.Ready || snap.Dirty || snap.Entries != 0 || snap.RetentionEntries != 0 || snap.EligibilityEntries != 0 {
+	if snap := store.IndexSnapshot(); !snap.Attached || !snap.Ready || snap.Dirty || snap.Entries != 2 || snap.RetentionEntries != 2 || snap.EligibilityEntries != 2 {
 		t.Fatalf("skipped rehydration retained previously trusted ownership: %+v", snap)
 	}
 	assertIncrementalRawCells(t, store, []uint16{2, 3})
 	provider.ssn.Store(112)
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 4), incrementalCacheEntry(now, now, 20), cfg.VOACAPFallback, now); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 4), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg.VOACAPFallback), cfg.VOACAPFallback, now); err != nil {
 		t.Fatalf("completion after skipped rehydration: %v", err)
 	}
 	assertIncrementalRawCells(t, store, []uint16{2, 3, 4})
@@ -63,7 +63,7 @@ func TestVOACAPIncrementalCacheFailedHydrationRecovery(t *testing.T) {
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
 			for cell := CellID(1); cell <= 3; cell++ {
-				writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, cell), incrementalCacheEntry(now, now, 20), nil)
+				writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), nil)
 			}
 			injected := errors.New("injected hydration failure")
 			faults := &voacapForecastCacheFaults{}
@@ -87,7 +87,7 @@ func TestVOACAPIncrementalCacheFailedHydrationRecovery(t *testing.T) {
 			}
 			assertIncrementalRawCells(t, store, []uint16{1, 2, 3})
 			incrementalSetFaults(store, nil)
-			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 4), incrementalCacheEntry(now, now, 20), cfg.VOACAPFallback, now); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 4), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg.VOACAPFallback), cfg.VOACAPFallback, now); err != nil {
 				t.Fatalf("completion repair after hydration failure: %v", err)
 			}
 			assertIncrementalRawCells(t, store, []uint16{1, 2, 3, 4})
@@ -96,7 +96,7 @@ func TestVOACAPIncrementalCacheFailedHydrationRecovery(t *testing.T) {
 	}
 }
 
-func TestVOACAPIncrementalCacheOlderCompletedJobSSNAuthoritative(t *testing.T) {
+func TestVOACAPIncrementalCacheOlderCompletedJobPreservesActualSSNAndOtherPaths(t *testing.T) {
 	// A completed job validates persistence with the generation it actually ran,
 	// even if the provider advances while that job is in flight.
 	now := time.Now().UTC()
@@ -106,28 +106,33 @@ func TestVOACAPIncrementalCacheOlderCompletedJobSSNAuthoritative(t *testing.T) {
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
 	newerKey := testVOACAPForecastCacheKey(now, 2)
-	newerKey.ssn = 113
-	if err := store.storeForecast(newerKey, incrementalCacheEntry(now.Truncate(time.Hour), now, now.Hour()), cfg.VOACAPFallback, now); err != nil {
+	newerEntry := testCacheEntryWithConfig(incrementalCacheEntry(now.Truncate(time.Hour), now, now.Hour()), cfg.VOACAPFallback)
+	newerEntry.metadata.solar.SSN = 113
+	if err := store.storeForecast(newerKey, newerEntry, cfg.VOACAPFallback, now); err != nil {
 		t.Fatal(err)
 	}
 	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{fn: func(_ context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 		if job.SSN != 112 {
 			return VOACAPClosedForecast{}, fmt.Errorf("job generation=%d, want 112", job.SSN)
 		}
-		return incrementalCacheEntry(job.WindowStartUTC, now, job.WindowStartUTC.Hour(), job.WindowStartUTC.Add(time.Hour).Hour()).forecast, nil
+		return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, incrementalCacheEntry(job.WindowStartUTC, now, job.WindowStartUTC.Hour(), job.WindowStartUTC.Add(time.Hour).Hour()).forecast), nil
 	}}, provider)
 	if _, err := fallback.AttachForecastCacheStore(store, now); err != nil {
 		t.Fatal(err)
 	}
 	oldKey := testVOACAPForecastCacheKey(now, 1)
 	fallback.runJob(context.Background(), VOACAPClosedJob{SSN: 112, WindowStartUTC: now.Truncate(time.Hour), Request: testClosedRequest(), key: oldKey})
-	records := assertIncrementalRawCells(t, store, []uint16{1})
+	records := assertIncrementalRawCells(t, store, []uint16{1, 2})
 	for _, record := range records {
-		if record.Key.SSN != 112 {
-			t.Fatalf("completed job resampled provider SSN: %+v", record.Key)
+		want := 112
+		if record.Key.DXCell == 2 {
+			want = 113
+		}
+		if record.Metadata.SolarInput.SSN != want {
+			t.Fatalf("completion changed actual input: %+v", record.Metadata)
 		}
 	}
-	assertIncrementalIndexReady(t, store, 1)
+	assertIncrementalIndexReady(t, store, 2)
 }
 
 func TestVOACAPIncrementalCacheSnapshotWaitAndCloseFence(t *testing.T) {
@@ -137,7 +142,7 @@ func TestVOACAPIncrementalCacheSnapshotWaitAndCloseFence(t *testing.T) {
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
 	fallback := newTestClosedFallback(t, cfg, fakeClosedForecaster{fn: func(_ context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
-		return incrementalCacheEntry(job.WindowStartUTC, now, job.WindowStartUTC.Hour(), job.WindowStartUTC.Add(time.Hour).Hour()).forecast, nil
+		return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, incrementalCacheEntry(job.WindowStartUTC, now, job.WindowStartUTC.Hour(), job.WindowStartUTC.Add(time.Hour).Hour()).forecast), nil
 	}}, fixedSSNProvider{ssn: 112})
 	if _, err := fallback.AttachForecastCacheStore(store, now); err != nil {
 		t.Fatal(err)

@@ -31,7 +31,7 @@ func BenchmarkVOACAPCompletePersistence(b *testing.B) {
 						b.Error(err)
 					}
 				})
-				entry := testVOACAPForecastCacheEntry(now, -14, 20)
+				entry := testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now, -14, 20), cfg)
 				batch := store.db.NewBatch()
 				for i := 1; i <= size; i++ {
 					key := testVOACAPForecastCacheKey(now, CellID(i))
@@ -49,7 +49,7 @@ func BenchmarkVOACAPCompletePersistence(b *testing.B) {
 				if err := batch.Close(); err != nil {
 					b.Fatal(err)
 				}
-				loaded, stats, err := store.loadCurrent(now, 112, cfg)
+				loaded, stats, err := store.loadCurrent(now, cfg)
 				if err != nil || len(loaded) != size || stats.Pruned != 0 {
 					b.Fatalf("seed hydration: loaded=%d stats=%+v error=%v", len(loaded), stats, err)
 				}
@@ -59,6 +59,7 @@ func BenchmarkVOACAPCompletePersistence(b *testing.B) {
 				for i := 0; i < b.N; i++ {
 					at := now.Add(time.Duration(i+1) * time.Nanosecond)
 					entry.storedAt = at
+					entry.expiresNS = at.Add(time.Duration(cfg.CacheTTLSeconds) * time.Second).UnixNano()
 					if operation == "insert" {
 						key.dxCell = CellID(size + i + 1)
 					}

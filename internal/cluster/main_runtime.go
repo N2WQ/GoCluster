@@ -303,12 +303,13 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 			return r.failStartup("VOACAP fallback validation failed: %v", err)
 		}
 		ssnMonitor, err := voacap.NewSunspotMonitor(voacap.SunspotMonitorConfig{
-			FetchInterval:      time.Duration(pathCfg.VOACAPFallback.SSNFetchIntervalSeconds) * time.Second,
-			RequestTimeout:     time.Duration(pathCfg.VOACAPFallback.SSNRequestTimeoutSeconds) * time.Second,
-			StatePath:          pathCfg.VOACAPFallback.SSNStatePath,
-			EWMAHalfLife:       time.Duration(pathCfg.VOACAPFallback.SSNEWMAHalfLifeSeconds) * time.Second,
-			RecomputeThreshold: pathCfg.VOACAPFallback.RecomputeDeltaPercent / 100,
-			Logger:             log.Default(),
+			FetchInterval:  time.Duration(pathCfg.VOACAPFallback.SSNFetchIntervalSeconds) * time.Second,
+			RequestTimeout: time.Duration(pathCfg.VOACAPFallback.SSNRequestTimeoutSeconds) * time.Second,
+			StatePath:      pathCfg.VOACAPFallback.SSNStatePath,
+			EWMAHalfLife:   time.Duration(pathCfg.VOACAPFallback.SSNEWMAHalfLifeSeconds) * time.Second,
+			RecentWeight:   pathCfg.VOACAPFallback.SSNRecentFluxWeight,
+			StaleAfter:     time.Duration(pathCfg.VOACAPFallback.SSNStaleAfterSeconds) * time.Second,
+			Logger:         log.Default(),
 		})
 		if err != nil {
 			return r.failStartup("VOACAP SSN monitor config failed: %v", err)

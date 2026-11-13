@@ -161,17 +161,22 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    their own view stricter with `SET PATHSAMPLES <count>`, but cannot lower the
    cluster default. Five-minute propagation logs report this as `low_count`.
 
-Optional VOACAP fallback needs a rounded SSN generation before it can run. The
-runtime SSN monitor stores NOAA validators, the latest observation, EWMA, and
-the current rounded SSN generation in `voacap_fallback.ssn_state_path`, so a
-restart can reuse the SSN baseline. Completed forecast-window records persist
+Optional VOACAP fallback needs a known rounded solar-derived SSN before it can
+run; zero is valid. The runtime monitor stores compatible flux continuity,
+component observation times, the last accepted complete input, and NOAA
+validators in `voacap_fallback.ssn_state_path`. Old observatory-count state and
+its validators are discarded. Cold start replays the Noon flux feed oldest
+first. Completed forecast-window records persist
 separately in the per-node Pebble cache at
 `voacap_fallback.forecast_cache_db_path`. On restart, records that still match
-the current cache schema, model generation, rounded SSN generation, forecast
-month, TTL, and current UTC hour hydrate the memory cache before VOACAP workers
-start. Those restored predictions are ordinary cache hits and do not wait for
-the warm-up delay; stale or malformed records are pruned and a
-missing/unavailable cache cold-starts normal delay/queue behavior.
+the current schema/model and retain original coverage, expiry, and a current-hour
+row hydrate memory before workers start. A different current SSN does not reject
+an otherwise usable forecast. Its lifetime is never reset by restore. Old
+model-generation-1 predictions are retired because the native receiver
+longitude could have been wrong. Their valid unexpired recognized keys can
+receive one-time immediate admission when requested, within the existing delay
+map bound; no old predictions are served and startup queues no work. Other
+cold paths use the normal delay. Rebuild gaps can still occur.
 Persisted capacity pruning keeps newest storage timestamps and lowest canonical
 cache keys for ties. An identical-time refresh does not gain priority. This
 ordering applies to disk retention, not live-memory eviction.
@@ -213,9 +218,25 @@ The displayed tag follows a simple precedence order:
    `LOW`, or `UNLIKELY`.
 4. **Everything else**: Leave the tag blank as insufficient data.
 
-VOACAP forecast work is keyed by the rounded EWMA SSN generation. The checked-in
-default recomputes forecasts when the EWMA SSN changes by more than
-`voacap_fallback.recompute_delta_percent`, currently `12`.
+The solar input uses only NOAA 2800 MHz `Noon` F10.7 records. A floating-point
+recent EWMA (default two-day half-life, actual elapsed time) is blended with the
+latest published 90-day mean (default equal shares), converted to SSN, and
+rounded once at the end. This is a daily model input, not an official smoothed
+sunspot count. A missing new mean keeps the last accepted mean while valid new
+Noon flux advances the recent average. The first late mean for an accepted date
+does not count that flux twice. Known contributing components warn separately
+after 48 hours without a newer observation; the last good input remains usable.
+Missing components have no invented age. These defaults are controlled by
+`ssn_ewma_half_life_seconds`, `ssn_recent_flux_weight`, and
+`ssn_stale_after_seconds`.
+
+Every rounded SSN change makes requested forecasts eligible for replacement;
+the old percentage hold is removed. A valid current-model forecast remains
+usable until its original expiry while replacement runs. Ordinary requests in
+the final hour start renewal without the initial delay, even with unchanged
+SSN; failure cooldown still applies. Idle paths create no work. A late or failed
+replacement can leave a gap after expiry. Cold ordinary paths use the configured
+warm-up (default ten minutes).
 
 If the selected bucket evidence is insufficient and the optional
 `voacap_fallback.enabled` setting is true, the cluster can start a delayed
@@ -230,8 +251,12 @@ normal no-p50 VOACAP open glyph, or upgrade sparse p50 by one class, only when
 the cached VOACAP class is open and the configured request-SNR REL gate passes.
 Closed fallback still uses the SNR50 closed threshold and does not require REL.
 Cached VOACAP output retains the parsed hourly records for the requested band.
-Runtime fallback decks start at the current rolling UTC window, and parsed
-VOACAP hour `24` is stored as UTC hour `0`. Runtime decks select Method 20
+The default forecast covers 24 hours from the worker's starting UTC hour and
+expires exactly 24 hours after that hour. Reads and restarts never extend it.
+The native engine runs `TIME 1..24` for each needed month in both directions,
+then the worker selects the requested absolute hours; a month/year crossing
+uses four runs rather than two. Parsed VOACAP hour `24` is UTC hour `0`.
+Runtime decks select Method 20
 below 7000 km and Method 30 at and above 7000 km using the same Maidenhead
 grid-center endpoints written to the VOACAP circuit. Cached records reuse the
 existing fine path-cell granularity, so near-threshold method reuse follows the
@@ -305,6 +330,8 @@ up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests return
 cached rows while refreshing missing or partial bands in the background. The row
 count follows `voacap_fallback.forecast_hours`, but rows whose `REL` prediction
 is `UNLIKELY` or `CLOSED` are hidden.
+The header identifies the actual cached SSN. If bands differ, it shows
+`ssn=mixed` and gives each band's SSN. This can occur while replacements run.
 
 ## How to Use This Information
 

@@ -6,6 +6,10 @@
 
 ## Context
 
+Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+adds a dedicated bounded inventory scan and worker/queue-age diagnostics while
+retaining the cheap snapshot. The original counter decision remains.
+
 The interactive Overview page already shows H3 path-pair counts and the current
 rounded VOACAP SSN generation. Operators also need a quick way to distinguish a
 cold VOACAP fallback cache from delayed, inflight, or queued work without

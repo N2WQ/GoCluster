@@ -6,6 +6,11 @@
 
 ## Context
 
+Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+supersedes the observatory-count input and saved-state identity/contents with
+bounded flux continuity. Old state and validators are incompatible. The
+original per-node persistence decision below is preserved as history.
+
 The production VOACAP fallback uses `SunspotMonitor` to fetch NOAA SWPC
 `sunspot_report.json`, maintain an 8-hour EWMA SSN, and expose the rounded SSN
 generation used in VOACAP cache keys and deck generation.

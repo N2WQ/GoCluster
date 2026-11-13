@@ -1,6 +1,7 @@
 // File role: Opt-in controlled profiles of actual VOACAP fallback-worker
-// completions after a 50,000-entry restart hydration. The same fixture runs in
-// the S1 baseline and S2 candidate; it uses no incremental-index interfaces.
+// completions after a 50,000-entry restart hydration. The candidate wire setup
+// uses independent generation-2 structs and stable keys; the archived baseline
+// remains generation 1 without padding. Workload and profile boundaries match.
 package cluster
 
 import (
@@ -104,9 +105,6 @@ func TestVOACAPPersistenceWorkerProfile(t *testing.T) {
 	if snapshot.CacheEntries != voacapProfileSeedCount || snapshot.InflightEntries != 0 || snapshot.QueueDepth != 0 {
 		t.Fatalf("worker did not finish with bounded cache and empty work queues: %+v", snapshot)
 	}
-	if seedAt.Year() != finished.Year() || seedAt.Month() != finished.Month() {
-		t.Fatal("UTC month changed during fixture; validation-generation change confounds the controlled profile")
-	}
 	runtime.GC()
 	runtime.GC()
 	writeVOACAPPersistenceProfile(t, filepath.Join(runDir, "allocs-after.pprof"), "allocs")
@@ -120,7 +118,8 @@ func TestVOACAPPersistenceWorkerProfile(t *testing.T) {
 	verifyVOACAPPersistenceProfileDisk(t, dbPath, seedAt, finished)
 	report := voacapPersistenceProfileManifest{
 		Test: t.Name(), Executable: executable, GoVersion: runtime.Version(), GOOS: runtime.GOOS, GOARCH: runtime.GOARCH,
-		GOMAXPROCS: runtime.GOMAXPROCS(0), GOGC: os.Getenv("GOGC"), MemProfileRate: runtime.MemProfileRate,
+		WireSetupAdapter: "candidate generation-2 stable keys and frozen SSN112 unknown-provenance metadata; archived generation-1 baseline unchanged and unpadded",
+		GOMAXPROCS:       runtime.GOMAXPROCS(0), GOGC: os.Getenv("GOGC"), MemProfileRate: runtime.MemProfileRate,
 		SeedCount: voacapProfileSeedCount, Completions: voacapProfileCompletionCount, WorkerCount: 1, ForecastHours: 24,
 		SeedAtUTC: seedAt, StartedUTC: started, FinishedUTC: finished, CrossedUTCHour: !started.Truncate(time.Hour).Equal(finished.Truncate(time.Hour)),
 		ElapsedSeconds: finished.Sub(started).Seconds(), TotalAllocBytes: after.TotalAlloc - before.TotalAlloc, AllocObjects: after.Mallocs - before.Mallocs,
@@ -181,10 +180,26 @@ func runVOACAPPersistenceProfileCompletions(t *testing.T, fallback *pathreliabil
 			UserGrid: "FN31", DXGrid: "FN32", Band: "20m", Mode: "FT8",
 		}
 		window, status := fallback.CheckForecastWindowWait(req, now, 2*time.Minute)
-		if status != pathreliability.VOACAPForecastWindowReady || len(window.Records) != 24 || !window.WindowStartUTC.Equal(now.Truncate(time.Hour)) {
+		completed := time.Now().UTC()
+		start := window.WindowStartUTC
+		firstReturned := start.Add(time.Duration(24-len(window.Records)) * time.Hour)
+		validStatus := status == pathreliability.VOACAPForecastWindowReady && len(window.Records) == 24 || status == pathreliability.VOACAPForecastWindowRefreshing && len(window.Records) > 0 && len(window.Records) < 24
+		if !validStatus || !start.Equal(start.Truncate(time.Hour)) || start.Before(now.Truncate(time.Hour)) || start.After(completed.Truncate(time.Hour)) || firstReturned.Before(now.Truncate(time.Hour)) || firstReturned.After(completed.Truncate(time.Hour)) {
 			t.Fatalf("completion %d: status=%v window=%+v", i, status, window)
 		}
-		cached, ok := fallback.CheckCachedForecast(req, now)
+		for hour, row := range window.Records {
+			want := pathreliability.VOACAPHourlyForecast{
+				HourUTC: firstReturned.Add(time.Duration(hour) * time.Hour).Hour(), FrequencyMHz: 14.1,
+				FT8SNRDB: -14, VOACAPSNRDBHz: 16, ReceiveFT8SNRDB: -14, TransmitFT8SNRDB: -15,
+				ReceiveVOACAPSNRDBHz: 16, TransmitVOACAPSNRDBHz: 15, HasDirectionalSNR: true,
+				ReqSNRReliability: 0.8, HasReqSNRReliability: true,
+				ReceiveReqSNRReliability: 0.8, TransmitReqSNRReliability: 0.7, HasDirectionalReqSNRReliability: true,
+			}
+			if row.SSN != 112 || row.Record != want {
+				t.Fatalf("completion %d: wrong remaining row %d: %+v", i, hour, row)
+			}
+		}
+		cached, ok := fallback.CheckCachedForecast(req, completed)
 		if !ok || cached.SSN != 112 || cached.Record.ReceiveFT8SNRDB != -14 || cached.Record.TransmitFT8SNRDB != -15 || math.Abs(cached.EffectiveDB()-(-14.4)) > 1e-12 {
 			t.Fatalf("completion %d: wrong published forecast ok=%v result=%+v", i, ok, cached)
 		}
@@ -212,10 +227,45 @@ type voacapPersistenceProfileDiskRecord struct {
 	StoredAtUnixNS  int64                                  `json:"stored_at_unix_ns"`
 	WindowUnixNS    int64                                  `json:"window_unix_ns"`
 	Records         []pathreliability.VOACAPHourlyForecast `json:"records"`
+	Metadata        voacapPersistenceProfileDiskMetadata   `json:"metadata"`
 }
 
-func voacapPersistenceProfileKey(cell int, now time.Time) []byte {
-	return []byte(fmt.Sprintf("voacapfc/v1/e/0001/%04x/20m/014100/%04d/%02d/0112/bidirectional", cell, now.Year(), int(now.Month())))
+// These wire structs intentionally do not reuse the production cache's private
+// metadata or solar types. Zero provenance explicitly means unknown, matching
+// the fixture's narrow CurrentSSN provider.
+type voacapPersistenceProfileDiskMetadata struct {
+	SolarInput      voacapPersistenceProfileSolarInput `json:"solar_input"`
+	WindowEndUnixNS int64                              `json:"window_end_unix_ns"`
+	ExpiresUnixNS   int64                              `json:"expires_unix_ns"`
+	OriginUnixNS    int64                              `json:"origin_unix_ns"`
+	Flags           uint32                             `json:"flags"`
+}
+
+type voacapPersistenceProfileSolarInput struct {
+	SSN        int                                     `json:"ssn"`
+	Provenance voacapPersistenceProfileSolarProvenance `json:"provenance"`
+}
+
+type voacapPersistenceProfileSolarProvenance struct {
+	RecentObservedUnix  int64 `json:"recent_observed_unix"`
+	MeanObservedUnix    int64 `json:"mean_observed_unix"`
+	InputUpdatedUnix    int64 `json:"input_updated_unix"`
+	EWMAHalfLifeSeconds int64 `json:"ewma_half_life_seconds"`
+
+	LatestNoonFluxSFU    float64 `json:"latest_noon_flux_sfu"`
+	RecentEWMAFluxSFU    float64 `json:"recent_ewma_flux_sfu"`
+	PublishedMeanFluxSFU float64 `json:"published_mean_flux_sfu"`
+	BlendedFluxSFU       float64 `json:"blended_flux_sfu"`
+	RecentWeight         float64 `json:"recent_weight"`
+
+	SourceID     uint16 `json:"source_id"`
+	UnitsID      uint16 `json:"units_id"`
+	ConversionID uint16 `json:"conversion_id"`
+	Flags        uint16 `json:"flags"`
+}
+
+func voacapPersistenceProfileKey(cell int) []byte {
+	return []byte(fmt.Sprintf("voacapfc/v2/e/0001/%04x/20m/014100/bidirectional", cell))
 }
 
 func seedVOACAPPersistenceProfile(t *testing.T, path string, now time.Time) {
@@ -230,10 +280,16 @@ func seedVOACAPPersistenceProfile(t *testing.T, path string, now time.Time) {
 		}
 	}()
 	record := voacapPersistenceProfileDiskRecord{
-		SchemaVersion: 1, ModelGeneration: 1,
-		Key:            voacapPersistenceProfileDiskKey{UserCell: 1, Band: "20m", FrequencyKHz: 14100, Year: now.Year(), Month: int(now.Month()), SSN: 112, Direction: "bidirectional"},
-		StoredAtUnixNS: now.Add(-time.Minute).UnixNano(), WindowUnixNS: now.Truncate(time.Hour).UnixNano(),
+		SchemaVersion: 2, ModelGeneration: 2,
+		Key:            voacapPersistenceProfileDiskKey{UserCell: 1, Band: "20m", FrequencyKHz: 14100, Direction: "bidirectional"},
+		StoredAtUnixNS: now.UnixNano(), WindowUnixNS: now.Truncate(time.Hour).UnixNano(),
 		Records: voacapPersistenceProfileRows(now.Truncate(time.Hour), 14.1),
+		Metadata: voacapPersistenceProfileDiskMetadata{
+			SolarInput:      voacapPersistenceProfileSolarInput{SSN: 112},
+			WindowEndUnixNS: now.Truncate(time.Hour).Add(24 * time.Hour).UnixNano(),
+			ExpiresUnixNS:   now.Truncate(time.Hour).Add(24 * time.Hour).UnixNano(),
+			OriginUnixNS:    now.UnixNano(), Flags: 1,
+		},
 	}
 	for first := 1; first <= voacapProfileSeedCount; first += 256 {
 		batch := db.NewBatch()
@@ -244,7 +300,7 @@ func seedVOACAPPersistenceProfile(t *testing.T, path string, now time.Time) {
 				_ = batch.Close()
 				t.Fatal(err)
 			}
-			if err := batch.Set(voacapPersistenceProfileKey(cell, now), value, nil); err != nil {
+			if err := batch.Set(voacapPersistenceProfileKey(cell), value, nil); err != nil {
 				_ = batch.Close()
 				t.Fatal(err)
 			}
@@ -258,7 +314,7 @@ func seedVOACAPPersistenceProfile(t *testing.T, path string, now time.Time) {
 	if err := db.Flush(); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Compact([]byte("voacapfc/v1/e/"), []byte("voacapfc/v1/e0"), true); err != nil {
+	if err := db.Compact([]byte("voacapfc/v2/e/"), []byte("voacapfc/v2/e0"), true); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -274,7 +330,7 @@ func verifyVOACAPPersistenceProfileDisk(t *testing.T, path string, seedAt, finis
 			t.Errorf("close verification database: %v", err)
 		}
 	}()
-	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: []byte("voacapfc/v1/e/"), UpperBound: []byte("voacapfc/v1/e0")})
+	iter, err := db.NewIter(&pebble.IterOptions{LowerBound: []byte("voacapfc/v2/e/"), UpperBound: []byte("voacapfc/v2/e0")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,16 +344,18 @@ func verifyVOACAPPersistenceProfileDisk(t *testing.T, path string, seedAt, finis
 		t.Fatalf("raw post-workload cardinality: count=%d scan=%v close=%v", count, scanErr, closeErr)
 	}
 	for cell := voacapProfileSeedCount + 1; cell <= voacapProfileSeedCount+voacapProfileCompletionCount; cell++ {
-		value, closer, err := db.Get(voacapPersistenceProfileKey(cell, seedAt))
+		value, closer, err := db.Get(voacapPersistenceProfileKey(cell))
 		if err != nil {
 			t.Fatalf("raw worker forecast cell=%d: %v", cell, err)
 		}
 		var record voacapPersistenceProfileDiskRecord
 		decodeErr := json.Unmarshal(value, &record)
 		closeErr := closer.Close()
-		wantKey := voacapPersistenceProfileDiskKey{UserCell: 1, DXCell: uint16(cell), Band: "20m", FrequencyKHz: 14100, Year: seedAt.Year(), Month: int(seedAt.Month()), SSN: 112, Direction: "bidirectional"}
+		wantKey := voacapPersistenceProfileDiskKey{UserCell: 1, DXCell: uint16(cell), Band: "20m", FrequencyKHz: 14100, Direction: "bidirectional"}
 		windowStart := time.Unix(0, record.WindowUnixNS).UTC()
-		if decodeErr != nil || closeErr != nil || record.SchemaVersion != 1 || record.ModelGeneration != 1 || record.Key != wantKey || record.StoredAtUnixNS < seedAt.UnixNano() || record.StoredAtUnixNS > finished.UnixNano() || windowStart.Before(seedAt.Truncate(time.Hour)) || windowStart.After(finished) || !slices.Equal(record.Records, voacapPersistenceProfileRows(windowStart, 14.1)) {
+		origin := time.Unix(0, record.Metadata.OriginUnixNS).UTC()
+		endNS := windowStart.Add(24 * time.Hour).UnixNano()
+		if decodeErr != nil || closeErr != nil || record.SchemaVersion != 2 || record.ModelGeneration != 2 || record.Key != wantKey || record.StoredAtUnixNS < seedAt.UnixNano() || record.StoredAtUnixNS > finished.UnixNano() || windowStart.Before(seedAt.Truncate(time.Hour)) || windowStart.After(finished.Truncate(time.Hour)) || !windowStart.Equal(origin.Truncate(time.Hour)) || record.Metadata.SolarInput != (voacapPersistenceProfileSolarInput{SSN: 112}) || record.Metadata.Flags != 1 || record.Metadata.WindowEndUnixNS != endNS || record.Metadata.ExpiresUnixNS != endNS || record.Metadata.OriginUnixNS < seedAt.UnixNano() || record.Metadata.OriginUnixNS > record.StoredAtUnixNS || record.Metadata.ExpiresUnixNS < record.StoredAtUnixNS || !slices.Equal(record.Records, voacapPersistenceProfileRows(windowStart, 14.1)) {
 			t.Fatalf("raw worker forecast cell=%d record=%+v decode=%v close=%v", cell, record, decodeErr, closeErr)
 		}
 	}
@@ -390,6 +448,7 @@ func writeVOACAPPersistenceProfile(t *testing.T, path, name string) {
 
 type voacapPersistenceProfileManifest struct {
 	Test, Executable, GoVersion, GOOS, GOARCH                              string
+	WireSetupAdapter                                                       string
 	GOMAXPROCS                                                             int
 	GOGC                                                                   string
 	MemProfileRate                                                         int

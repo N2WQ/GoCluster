@@ -6,6 +6,10 @@
 
 ## Context
 
+Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+supersedes the affected key, coverage, expiry and legacy-compatibility clauses.
+The original decision below is preserved as history.
+
 ADR-0161 introduced a conservative VOACAP closed-only fallback for paths where
 the bucket predictor has insufficient data. That first integration cached one
 best matching-band FT8-equivalent SNR across the whole configured forecast

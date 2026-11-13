@@ -55,6 +55,14 @@ current source/tests.
 
 ## Active VOACAP Chain
 
+- Start with [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md) for current
+  Noon-flux input, daily forecast identity/lifetime, requested final-hour
+  renewal, geometry-driven old-model retirement and coherent diagnostics.
+  [TSR-0131](../troubleshooting/TSR-0131-voacap-receiver-longitude-columns.md)
+  explains the native receiver-longitude column error and why echoed inputs
+  were insufficient qualification. These replace the affected earlier clauses
+  listed below; manual Wolf experiment policy remains separate.
+
 - Early VOACAP work starts with the experiment records
   [ADR-0157](ADR-0157-voacap-ssn-moving-average-experiment.md),
   [ADR-0158](ADR-0158-voacap-process-wrapper-experiment.md),

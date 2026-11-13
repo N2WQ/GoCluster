@@ -5,82 +5,92 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
 const (
-	sunspotMonitorStateVersion  = 1
+	sunspotMonitorStateVersion  = 2
 	maxSunspotMonitorStateBytes = 64 * 1024
+	solarFluxStateSource        = "NOAA SWPC observed 2800 MHz Noon F10.7"
+	solarFluxStateUnits         = "sfu"
+	solarFluxStateConversion    = "ITU-R P.371 quadratic inverse v1"
 )
 
-// sunspotMonitorState is the durable restart-continuity subset of
-// SunspotMonitorSnapshot. It deliberately excludes LastError because errors are
-// live diagnostics, not state that should survive a clean restart.
-type sunspotMonitorState struct {
-	Version             int       `json:"version"`
-	ETag                string    `json:"etag,omitempty"`
-	LastModified        string    `json:"last_modified,omitempty"`
-	LastFetchAtUTC      time.Time `json:"last_fetch_at_utc,omitempty"`
-	LastObservedAtUTC   time.Time `json:"last_observed_at_utc,omitempty"`
-	LastRawSSN          int       `json:"last_raw_ssn,omitempty"`
-	EWMA                float64   `json:"ewma,omitempty"`
-	EWMAInitialized     bool      `json:"ewma_initialized,omitempty"`
-	ForecastSSN         int       `json:"forecast_ssn,omitempty"`
-	ForecastInitialized bool      `json:"forecast_initialized,omitempty"`
-	LastRecomputeDelta  float64   `json:"last_recompute_delta,omitempty"`
-	LastForecastAtUTC   time.Time `json:"last_forecast_at_utc,omitempty"`
-	LastForecastReason  string    `json:"last_forecast_reason,omitempty"`
+type solarMonitorStateIdentity struct {
+	Source              string  `json:"source"`
+	URL                 string  `json:"url"`
+	Units               string  `json:"units"`
+	Conversion          string  `json:"conversion"`
+	EWMAHalfLifeSeconds int64   `json:"ewma_half_life_seconds"`
+	RecentWeight        float64 `json:"recent_weight"`
 }
 
-// LoadState restores persisted SSN monitor continuity state from the configured
-// StatePath. A missing file is a cold start, while malformed or unreadable state
-// returns an error so the runtime can warn and continue cold.
+func solarStateIdentity(cfg SunspotMonitorConfig) solarMonitorStateIdentity {
+	return solarMonitorStateIdentity{
+		Source: solarFluxStateSource, URL: cfg.URL, Units: solarFluxStateUnits,
+		Conversion: solarFluxStateConversion, EWMAHalfLifeSeconds: int64(cfg.EWMAHalfLife / time.Second),
+		RecentWeight: cfg.RecentWeight,
+	}
+}
+
+// sunspotMonitorState is one bounded restart-continuity record, not a history.
+// Its two watermarks permit a delayed first mean without smoothing Noon twice.
+// Identity mismatches reject all data and validators. Errors and alarm entry/
+// recovery state remain live diagnostics, so a restart rechecks source health.
+type sunspotMonitorState struct {
+	Version            int                       `json:"version"`
+	Identity           solarMonitorStateIdentity `json:"identity"`
+	ETag               string                    `json:"etag,omitempty"`
+	LastModified       string                    `json:"last_modified,omitempty"`
+	LastFetchAtUTC     time.Time                 `json:"last_fetch_at_utc,omitempty"`
+	LastObservedAtUTC  time.Time                 `json:"last_observed_at_utc,omitempty"`
+	LastNoonFluxSFU    float64                   `json:"last_noon_flux_sfu,omitempty"`
+	RecentFluxEWMA     float64                   `json:"recent_flux_ewma,omitempty"`
+	EWMAInitialized    bool                      `json:"ewma_initialized,omitempty"`
+	MeanObservedAtUTC  time.Time                 `json:"mean_observed_at_utc,omitempty"`
+	PublishedMeanSFU   float64                   `json:"published_mean_sfu,omitempty"`
+	MeanInitialized    bool                      `json:"mean_initialized,omitempty"`
+	Input              SolarInputSnapshot        `json:"input"`
+	InputInitialized   bool                      `json:"input_initialized,omitempty"`
+	LastForecastAtUTC  time.Time                 `json:"last_forecast_at_utc,omitempty"`
+	LastForecastReason string                    `json:"last_forecast_reason,omitempty"`
+}
+
+// LoadState is called before background polling. Missing state is a cold start;
+// malformed, old Wolf, or incompatible state returns a warning-worthy error and
+// leaves the monitor's current state untouched, including its HTTP validators.
 func (m *SunspotMonitor) LoadState() (bool, error) {
 	if m == nil {
 		return false, errors.New("nil sunspot monitor")
 	}
-	path := strings.TrimSpace(m.cfg.StatePath)
-	if path == "" {
+	if m.cfg.StatePath == "" {
 		return false, nil
 	}
-	state, found, err := loadSunspotMonitorState(path)
+	m.pollMu.Lock()
+	defer m.pollMu.Unlock()
+	state, found, err := loadSunspotMonitorState(m.cfg.StatePath)
 	if err != nil || !found {
 		return found, err
 	}
+	if state.Identity != solarStateIdentity(m.cfg) {
+		return true, errors.New("VOACAP solar state source, units or parameters differ from current configuration")
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.etag = state.ETag
-	m.lastModified = state.LastModified
-	m.lastFetchAtUTC = state.LastFetchAtUTC.UTC()
-	m.lastObservedAtUTC = state.LastObservedAtUTC.UTC()
-	m.lastRawSSN = state.LastRawSSN
-	m.ewma = state.EWMA
-	m.ewmaInitialized = state.EWMAInitialized
-	m.forecastSSN = state.ForecastSSN
-	m.forecastInitialized = state.ForecastInitialized
-	m.lastRecomputeDelta = state.LastRecomputeDelta
-	m.lastForecastAtUTC = state.LastForecastAtUTC.UTC()
-	m.lastForecastReason = state.LastForecastReason
+	m.state = state
 	m.lastError = ""
 	return true, nil
 }
 
 func (m *SunspotMonitor) saveState() error {
-	if m == nil {
+	if m.cfg.StatePath == "" {
 		return nil
 	}
-	path := strings.TrimSpace(m.cfg.StatePath)
-	if path == "" {
-		return nil
-	}
-	state := m.stateSnapshot()
-	if err := saveSunspotMonitorState(path, state); err != nil {
+	if err := saveSunspotMonitorState(m.cfg.StatePath, m.stateSnapshot()); err != nil {
 		if m.cfg.Logger != nil {
-			m.cfg.Logger.Printf("Warning: VOACAP SSN state save failed (%s): %v", path, err)
+			m.cfg.Logger.Printf("Warning: VOACAP SSN state save failed (%s): %v", m.cfg.StatePath, err)
 		}
 		return fmt.Errorf("persist VOACAP SSN state: %w", err)
 	}
@@ -90,21 +100,7 @@ func (m *SunspotMonitor) saveState() error {
 func (m *SunspotMonitor) stateSnapshot() sunspotMonitorState {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	return sunspotMonitorState{
-		Version:             sunspotMonitorStateVersion,
-		ETag:                m.etag,
-		LastModified:        m.lastModified,
-		LastFetchAtUTC:      m.lastFetchAtUTC,
-		LastObservedAtUTC:   m.lastObservedAtUTC,
-		LastRawSSN:          m.lastRawSSN,
-		EWMA:                m.ewma,
-		EWMAInitialized:     m.ewmaInitialized,
-		ForecastSSN:         m.forecastSSN,
-		ForecastInitialized: m.forecastInitialized,
-		LastRecomputeDelta:  m.lastRecomputeDelta,
-		LastForecastAtUTC:   m.lastForecastAtUTC,
-		LastForecastReason:  m.lastForecastReason,
-	}
+	return m.state
 }
 
 func loadSunspotMonitorState(path string) (sunspotMonitorState, bool, error) {
@@ -140,33 +136,43 @@ func saveSunspotMonitorState(path string, state sunspotMonitorState) error {
 	return writeFileAtomic(path, body, 0o644)
 }
 
-func validateSunspotMonitorState(state sunspotMonitorState) error {
-	if state.Version != sunspotMonitorStateVersion {
-		return fmt.Errorf("unsupported VOACAP SSN state version %d", state.Version)
+func validateSunspotMonitorState(s sunspotMonitorState) error {
+	if s.Version != sunspotMonitorStateVersion {
+		return fmt.Errorf("unsupported VOACAP SSN state version %d", s.Version)
 	}
-	if state.LastRawSSN < 0 {
-		return errors.New("VOACAP SSN state last_raw_ssn must be >= 0")
+	id := s.Identity
+	if id.Source != solarFluxStateSource || id.Units != solarFluxStateUnits || id.Conversion != solarFluxStateConversion ||
+		id.URL == "" || len(id.URL) > maxSolarSourceURLBytes || id.EWMAHalfLifeSeconds <= 0 || !validRecentWeight(id.RecentWeight) {
+		return errors.New("invalid VOACAP solar state identity")
 	}
-	if math.IsNaN(state.EWMA) || math.IsInf(state.EWMA, 0) || state.EWMA < 0 {
-		return errors.New("VOACAP SSN state ewma must be finite and >= 0")
+	if len(s.ETag) > maxSolarValidatorBytes || len(s.LastModified) > maxSolarValidatorBytes {
+		return errors.New("VOACAP solar state HTTP validator exceeds its byte limit")
 	}
-	if !state.EWMAInitialized && state.EWMA != 0 {
-		return errors.New("VOACAP SSN state ewma is set without ewma_initialized")
+	if !finiteNonnegativeFlux(s.LastNoonFluxSFU) || !finiteNonnegativeFlux(s.RecentFluxEWMA) || !finiteNonnegativeFlux(s.PublishedMeanSFU) {
+		return errors.New("VOACAP solar state flux must be finite and >= 0")
 	}
-	if state.EWMAInitialized && state.LastObservedAtUTC.IsZero() {
-		return errors.New("VOACAP SSN state last_observed_at_utc is required when ewma_initialized")
+	if s.EWMAInitialized == s.LastObservedAtUTC.IsZero() || s.MeanInitialized == s.MeanObservedAtUTC.IsZero() {
+		return errors.New("VOACAP solar state component timestamp and initialization disagree")
 	}
-	if state.ForecastSSN < 0 {
-		return errors.New("VOACAP SSN state forecast_ssn must be >= 0")
+	if (!s.EWMAInitialized && (s.RecentFluxEWMA != 0 || s.LastNoonFluxSFU != 0)) || (!s.MeanInitialized && s.PublishedMeanSFU != 0) {
+		return errors.New("VOACAP solar state has an uninitialized component value")
 	}
-	if state.ForecastInitialized && !state.EWMAInitialized {
-		return errors.New("VOACAP SSN state forecast is initialized without EWMA")
+	if !s.InputInitialized {
+		if s.Input != (SolarInputSnapshot{}) || !s.LastForecastAtUTC.IsZero() || s.LastForecastReason != "" {
+			return errors.New("VOACAP solar state has uninitialized forecast metadata")
+		}
+		_, ready, err := solarInputFromState(s, time.Time{})
+		if err != nil || ready {
+			return errors.New("VOACAP solar state omits an available complete input")
+		}
+		return nil
 	}
-	if state.ForecastInitialized && state.LastForecastAtUTC.IsZero() {
-		return errors.New("VOACAP SSN state last_forecast_at_utc is required when forecast_initialized")
+	if s.LastForecastAtUTC.IsZero() || (s.LastForecastReason != "initial solar flux SSN" && s.LastForecastReason != "rounded solar flux SSN changed") {
+		return errors.New("VOACAP solar state forecast metadata is invalid")
 	}
-	if math.IsNaN(state.LastRecomputeDelta) || math.IsInf(state.LastRecomputeDelta, 0) || state.LastRecomputeDelta < 0 {
-		return errors.New("VOACAP SSN state last_recompute_delta must be finite and >= 0")
+	expected, ready, err := solarInputFromState(s, time.Unix(s.Input.Provenance.InputUpdatedUnix, 0).UTC())
+	if err != nil || !ready || expected != s.Input {
+		return errors.New("VOACAP solar state accepted input does not match its components")
 	}
 	return nil
 }

@@ -77,7 +77,7 @@ func seedVOACAPHeapFixture(t *testing.T, store *VOACAPForecastCacheStore, now ti
 
 func hydrateVOACAPHeapFixture(t *testing.T, store *VOACAPForecastCacheStore, now time.Time, cfg VOACAPFallbackConfig) {
 	t.Helper()
-	loaded, stats, err := store.loadCurrent(now, 112, cfg)
+	loaded, stats, err := store.loadCurrent(now, cfg)
 	if err != nil || len(loaded) != 50000 || stats.Pruned != 0 {
 		t.Fatalf("heap fixture hydration: loaded=%d stats=%+v error=%v", len(loaded), stats, err)
 	}

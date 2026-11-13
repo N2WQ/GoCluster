@@ -352,8 +352,12 @@ requested band. Each cached hour carries both raw directions: DX-to-user receive
 and user-to-DX transmit. Lookup blends those directions with the same
 `merge_receive_weight` and `merge_transmit_weight` used by p50, then subtracts
 the request user's receive-side `SET NOISE` penalty from the receive leg.
-Runtime fallback decks start at the current rolling UTC forecast window, and
-VOACAP output hour `24` is normalized to UTC hour `0`. Runtime decks select
+The default forecast covers 24 UTC hours from the start of the hour in which
+the worker begins the job. Its coverage and expiry remain fixed across reads,
+failed replacements, and restarts. Each needed calendar month is run with the
+native `TIME 1..24` card in both directions; the worker then selects the owned
+absolute hours. A month or year crossing therefore uses four native runs rather
+than two. VOACAP output hour `24` is normalized to UTC hour `0`. Runtime decks select
 Method 20 below 7000 km and Method 30 at and above 7000 km from the same
 Maidenhead grid-center endpoints written to the VOACAP circuit. Cached records
 still reuse the existing fine path-cell granularity, so near-threshold method
@@ -391,12 +395,45 @@ cell, missing SSN, no current-hour cache record, queue full, worker not running,
 disabled, unavailable, REL/tier guard failure, or usable VOACAP that did not
 classify the candidate closed.
 
-The runtime SSN monitor persists only its continuity state at
-`voacap_fallback.ssn_state_path`: NOAA validators, last observed raw SSN, EWMA,
-and current rounded SSN generation. Missing state cold-starts the SSN monitor;
-malformed state is warned about and ignored so path reliability can still start.
-Do not share the same state file between two running cluster processes.
-The local Overview page displays that current rounded generation as
+The runtime solar input comes from NOAA SWPC `f107_cm_flux.json`, accepting only
+2800 MHz `Noon` records. The recent flux average is a floating-point EWMA with
+the configured half-life, default two days, using actual elapsed observation
+time. The default input blends that average equally with the latest published
+90-day mean, then inverts `F = 63.7 + 0.728R + 0.00089R²` and rounds the final
+SSN once. Valid nonnegative blended flux at or below 63.7 SFU produces SSN zero.
+This daily input is a model surrogate, not an official smoothed sunspot count.
+
+`ssn_recent_flux_weight` controls the recent share (default `0.5`); zero and one
+select the published mean and recent average respectively. A valid new Noon
+reading advances the recent average even if its mean is absent, using the last
+accepted mean. The first late mean for an already accepted Noon date can update
+the blend without counting that flux twice. Corrections to already accepted
+component timestamps are deferred. Cold start replays the feed oldest first.
+
+The versioned state at `voacap_fallback.ssn_state_path` preserves flux continuity,
+independent component timestamps, the last accepted complete input, and NOAA
+validators. Its source, URL, units, conversion, and smoothing parameters must
+match. Old observatory-count state and its validators are discarded; missing,
+incompatible, or malformed state starts fresh after the applicable warning.
+The state is bounded to 64 KiB. Do not share it between running processes.
+Known contributing inputs warn separately when their observation age reaches
+`ssn_stale_after_seconds` (default 48 hours), including on unchanged or failed
+polls. Poll success does not reset observation age. Warnings and recovery are
+transition-based; the last good solar input remains usable. A never-observed
+component is missing immediately, with no invented age or startup timer.
+
+Every change in rounded SSN makes requested forecasts eligible for replacement;
+there is no percentage hold. Cache identity is the user cell, DX cell, band,
+frequency, and direction. Each job freezes one coherent SSN/input snapshot at
+dequeue and stores it with the forecast. A valid current-model forecast remains
+usable while its replacement is prepared, even when its SSN differs. A request
+in its final hour queues renewal without the initial warm-up, including when SSN
+has not changed; ordinary failure cooldown still applies. Outside that final
+hour, an SSN-driven ordinary refresh follows the normal delay. Cold ordinary
+paths retain the configured delay (shipped default 600 seconds). Idle paths
+create no jobs. Queue delays or failures can still leave a gap after expiry.
+
+The local Overview page displays the current rounded input as
 `VOACAP SSN: <integer|n/a>` when the interactive console is enabled.
 The Overview Path Predictions panel also displays
 `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)` using
@@ -407,28 +444,39 @@ converge to the same value, bounded by `max_cache_entries`, after a successful
 operation. These are cached index counts, not a scan of disk or distinct paths.
 `ready=false` means the database has not been certified; zero counts then do not
 mean the database is empty. `dirty=true` means a failed or uncertain operation
-requires recovery. `VOACAP disk index: n/a` means no store is attached. Reading the overview
-does not wait for persistence.
+requires recovery. `VOACAP disk index: n/a` means no store is attached.
+`VOACAP input: SSN=<integer|n/a>; differs=<count|n/a>/<count> usable` compares
+usable current-hour forecasts with the same captured solar input. Zero is a
+valid SSN; `n/a` means unknown. The differing count is inventory, not queued work:
+idle entries can differ without a replacement being requested. Worker lines
+show current busy time, oldest waiting age, and completed cycle count/mean/max.
+Busy time includes persistence. One bounded memory scan supplies the detailed
+inventory per overview; these reads do not enqueue work or wait for disk I/O.
 On non-Windows builds those Overview VOACAP values stay `n/a` because the
 fallback provider is not started.
-The local V3 candidate below remains unaccepted: functional checks passed, but
-timing qualification was invalidated by short refresh batches. See proposed
-ADR-0310 and the live-cache execution record; no performance result is claimed.
-Its live forecast and delay maps replace an existing key without evicting another
-entry, including at capacity. A new key evicts the oldest existing storage or
-last-seen timestamp; equal times evict the greatest typed key described in
-ADR-0310. The incoming key is admitted even if its timestamp is older. Capacity
-selection and request-driven expiry retain the original map scans; there is no
-live age index or deferred maintenance. Cache limits, TTL and the one-minute
-cleanup throttle are unchanged. This correctness change does not provide the
-indexed insertion speedup investigated in the live-cache execution record.
+The separate live-cache campaign described in proposed
+[ADR-0310](../docs/decisions/ADR-0310-live-forecast-cache-retention.md)
+remains unaccepted: its later timing qualification was invalidated by short
+refresh batches. That historical campaign does not qualify the flux/daily-window
+change. See the [execution record](../docs/voacap-live-cache-execution.md);
+no performance pass follows from functional correctness alone.
 Completed VOACAP hourly forecast-window records persist separately in the
 per-node Pebble DB at `voacap_fallback.forecast_cache_db_path`. Startup hydrates
-only records that still match the current cache schema, model generation,
-rounded SSN generation, forecast month, TTL, and current UTC hour. Hydrated
-records become ordinary memory cache hits and bypass
-`voacap_fallback.delay_seconds`; stale or malformed records are pruned and a
-missing/unavailable cache cold-starts normal delay/queue behavior.
+only valid current-model records with their original coverage, expiry, and a
+represented current UTC hour. A different current SSN does not invalidate an
+otherwise usable restored record. Hydrated records become ordinary memory
+cache hits; they are not given a new lifetime. The default lifetime is 24 hours
+from the job's original starting hour (`cache_ttl_seconds: 86400`). Stale or
+malformed records are pruned.
+Model-generation-1 predictions are retired because the former native CIRCUIT
+layout could send the wrong receiver longitude. They are never served, even if
+deletion fails. Valid unexpired recognized legacy keys may seed one-time
+immediate ordinary admission in the existing bounded delay map. These markers
+are recognized using the confirmed original eight-hour window and eight-hour
+cache lifetime. They hold no old predictions and enqueue nothing at startup. Successful queue
+admission consumes the marker; queue-full leaves it available. Lost or evicted
+markers and missing caches use normal warm-up. Brief rebuild gaps remain
+possible. See ADR-0347 and TSR-0131.
 When the persisted cache exceeds its capacity, it retains the newest storage
 timestamps. Equal timestamps retain the lowest canonical cache keys; refreshing
 an entry at the same timestamp gives it no extra retention priority. This
@@ -449,13 +497,15 @@ Empty or partial single-band command
 lookups enqueue an immediate refresh through the existing fallback worker and
 wait up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests
 show cached rows immediately while refreshing missing or partial bands in the
-background. Rows run from the current UTC hour through
-`voacap_fallback.forecast_hours`, but only rows whose `REL` prediction is
+background. Rows start at the current UTC hour and cover the available part of
+the `voacap_fallback.forecast_hours` window. Only rows whose `REL` prediction is
 `HIGH`, `MEDIUM`, or `LOW` are displayed. The displayed `RX` glyph is
 DX-to-user after the requesting user's receive-noise penalty, `TX` is
 user-to-DX, `EFF` is the configured receive/transmit merge glyph, and `REL` is
 the configured path class for the requested mode and merged path. Bucket p50
 remains internal to the live glyph decision and is not shown in this command.
+The header reports the actual cached SSN, including valid zero. If returned
+bands use different SSNs, it reports `ssn=mixed` and identifies the SSN per band.
 
 The shipped config currently uses:
 

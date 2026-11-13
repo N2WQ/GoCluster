@@ -18,11 +18,11 @@ func TestVOACAPCacheIndexRefreshReusesOwnedNodes(t *testing.T) {
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
 	for cell := CellID(1); cell <= 4; cell++ {
-		if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), incrementalCacheEntry(now, now, 20, 22), cfg, now); err != nil {
+		if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20, 22), cfg), cfg, now); err != nil {
 			t.Fatal(err)
 		}
 	}
-	const refreshedKey = "voacapfc/v1/e/0001/0002/20m/014100/2026/06/0112/bidirectional"
+	const refreshedKey = "voacapfc/v2/e/0001/0002/20m/014100/bidirectional"
 	store.mu.Lock()
 	original := store.index[refreshedKey]
 	store.mu.Unlock()
@@ -31,7 +31,7 @@ func TestVOACAPCacheIndexRefreshReusesOwnedNodes(t *testing.T) {
 	}
 	for iteration := 1; iteration <= 128; iteration++ {
 		at := now.Add(time.Duration(iteration) * time.Millisecond)
-		if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), incrementalCacheEntry(now, at, 20, 21, 23), cfg, at); err != nil {
+		if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(incrementalCacheEntry(now, at, 20, 21, 23), cfg), cfg, at); err != nil {
 			t.Fatal(err)
 		}
 		store.mu.Lock()
@@ -42,17 +42,25 @@ func TestVOACAPCacheIndexRefreshReusesOwnedNodes(t *testing.T) {
 		}
 		assertVOACAPCacheIndexBijection(t, store, cfg.MaxCacheEntries)
 	}
-	bad := incrementalCacheEntry(now, now.Add(time.Second))
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), bad, cfg, now.Add(time.Second)); err != nil {
-		t.Fatal(err)
-	}
-	store.mu.Lock()
-	detached := original.retentionIndex == -1 && original.eligibilityIndex == -1 && store.index[refreshedKey] == nil
-	store.mu.Unlock()
-	if !detached {
-		t.Fatal("deleted owner left a node in a heap or map")
-	}
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), incrementalCacheEntry(now, now.Add(2*time.Second), 20), cfg, now.Add(2*time.Second)); err != nil {
+	// Exercise the coupled primary deletion directly; invalid replacement now
+	// preserves its old value and is covered by its separate admission oracle.
+	func() {
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		batch := store.db.NewBatch()
+		defer batch.Close()
+		if err := store.removeIndexEntryLocked(original, batch); err != nil {
+			t.Fatal(err)
+		}
+		if err := store.commitForecastCacheBatchLocked(batch); err != nil {
+			t.Fatal(err)
+		}
+		store.publishIndexStatsLocked()
+		if original.retentionIndex != -1 || original.eligibilityIndex != -1 || store.index[refreshedKey] != nil {
+			t.Fatal("deleted owner left a node in a heap or map")
+		}
+	}()
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(incrementalCacheEntry(now, now.Add(2*time.Second), 20), cfg), cfg, now.Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	store.mu.Lock()
@@ -79,27 +87,31 @@ func TestVOACAPCacheIndexCapacityTTLAndReinsertChurn(t *testing.T) {
 			cell = 2 // A popular key refreshes among genuinely new insertions.
 		}
 		storedAt := at.Add(-time.Duration(iteration%3) * time.Second)
-		entry := incrementalCacheEntry(now, storedAt, 20, 22)
+		entry := incrementalCacheEntry(now.Add(-time.Hour), storedAt, 20, 22)
 		if iteration%17 == 0 {
 			entry.forecast.Records = nil
 		}
-		if err := store.storeForecast(testVOACAPForecastCacheKey(now, CellID(cell)), entry, cfg, at); err != nil {
-			t.Fatalf("operation %d: %v", iteration, err)
+		invalid := len(entry.forecast.Records) == 0
+		err := store.storeForecast(testVOACAPForecastCacheKey(now, CellID(cell)), testCacheEntryWithConfig(entry, cfg), cfg, at)
+		if invalid && err == nil {
+			t.Fatalf("operation%d accepted empty replacement", iteration)
 		}
-		// Small independent brute-force model: expire all owners, replace the
-		// named key, then choose the seven newest (numeric cell order breaks
-		// equal timestamps because all other literal canonical fields agree).
-		for retained, timestamp := range want {
-			if at.Sub(timestamp) > 10*time.Second {
-				delete(want, retained)
+		if !invalid && err != nil {
+			t.Fatalf("operation%d: %v", iteration, err)
+		}
+		// A rejected transaction changes neither the named owner nor expiry
+		// state on raw disk. A later successful operation recovers and prunes.
+		if !invalid {
+			// Independent brute-force model: expire all owners, replace the
+			// named key, then keep seven newest. Numeric cell order breaks ties.
+			for retained, timestamp := range want {
+				if at.Sub(timestamp) > 10*time.Second {
+					delete(want, retained)
+				}
 			}
-		}
-		if len(entry.forecast.Records) == 0 {
-			delete(want, cell)
-		} else {
 			want[cell] = storedAt
 		}
-		if len(want) > 7 {
+		if !invalid && len(want) > 7 {
 			var victim uint16
 			var oldest time.Time
 			for candidate, timestamp := range want {
@@ -115,7 +127,13 @@ func TestVOACAPCacheIndexCapacityTTLAndReinsertChurn(t *testing.T) {
 		}
 		slices.Sort(cells)
 		assertIncrementalRawCells(t, store, cells)
-		assertVOACAPCacheIndexBijection(t, store, 7)
+		if invalid {
+			if snap := store.IndexSnapshot(); snap.Ready || !snap.Dirty {
+				t.Fatalf("failed operation%d published trusted partial maintenance: %+v", iteration, snap)
+			}
+		} else {
+			assertVOACAPCacheIndexBijection(t, store, 7)
+		}
 	}
 }
 
@@ -126,7 +144,7 @@ func TestVOACAPCacheIndexOrdinaryWriteDoesNotScan(t *testing.T) {
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
 	for cell := CellID(1); cell <= 64; cell++ {
-		if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), incrementalCacheEntry(now, now, 20, 21, 22), cfg, now); err != nil {
+		if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20, 21, 22), cfg), cfg, now); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -141,12 +159,12 @@ func TestVOACAPCacheIndexOrdinaryWriteDoesNotScan(t *testing.T) {
 	})
 	for iteration := 1; iteration <= 32; iteration++ {
 		at := now.Add(time.Duration(iteration) * time.Millisecond)
-		if err := store.storeForecast(testVOACAPForecastCacheKey(now, 32), incrementalCacheEntry(now, at, 20, 21, 22), cfg, at); err != nil {
+		if err := store.storeForecast(testVOACAPForecastCacheKey(now, 32), testCacheEntryWithConfig(incrementalCacheEntry(now, at, 20, 21, 22), cfg), cfg, at); err != nil {
 			t.Fatalf("ordinary refresh %d scanned unrelated records: %v", iteration, err)
 		}
 	}
 	at := now.Add(time.Second)
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 65), incrementalCacheEntry(now, at, 20, 21, 22), cfg, at); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 65), testCacheEntryWithConfig(incrementalCacheEntry(now, at, 20, 21, 22), cfg), cfg, at); err != nil {
 		t.Fatalf("ordinary capacity eviction scanned unrelated records: %v", err)
 	}
 	if iterations != 0 || scanSteps != 0 {
@@ -156,8 +174,8 @@ func TestVOACAPCacheIndexOrdinaryWriteDoesNotScan(t *testing.T) {
 	if records := readRawVOACAPRetentionRecords(t, store); len(records) != 64 {
 		t.Fatalf("capacity result before repair has %d entries", len(records))
 	} else {
-		const evicted = "voacapfc/v1/e/0001/0040/20m/014100/2026/06/0112/bidirectional"
-		const inserted = "voacapfc/v1/e/0001/0041/20m/014100/2026/06/0112/bidirectional"
+		const evicted = "voacapfc/v2/e/0001/0040/20m/014100/bidirectional"
+		const inserted = "voacapfc/v2/e/0001/0041/20m/014100/bidirectional"
 		if _, found := records[evicted]; found {
 			t.Fatal("equal-time largest canonical victim was retained")
 		}
@@ -174,7 +192,7 @@ func TestVOACAPCacheIndexWholePopulationHourCertificate(t *testing.T) {
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
 	for cell := CellID(1); cell <= 63; cell++ {
-		if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), incrementalCacheEntry(start, start, 20, 22), cfg, start); err != nil {
+		if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), testCacheEntryWithConfig(incrementalCacheEntry(start, start, 20, 22), cfg), cfg, start); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -190,7 +208,7 @@ func TestVOACAPCacheIndexWholePopulationHourCertificate(t *testing.T) {
 		return nil, errors.New("direct 20-to-22 operation must not scan DB")
 	}})
 	at := start.Add(2 * time.Hour)
-	if err := store.storeForecast(testVOACAPForecastCacheKey(at, 64), incrementalCacheEntry(at, at, 22), cfg, at); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(at, 64), testCacheEntryWithConfig(incrementalCacheEntry(at, at, 22), cfg), cfg, at); err != nil {
 		t.Fatal(err)
 	}
 	if records := readRawVOACAPRetentionRecords(t, store); len(records) != 64 {
@@ -210,7 +228,7 @@ func TestVOACAPCacheIndexBoundedHydrationAndPruneFailure(t *testing.T) {
 			// More than two prune chunks and far more candidates than capacity.
 			// Every entry is valid; lower canonical keys must survive equal times.
 			for cell := CellID(1); cell <= 600; cell++ {
-				writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, cell), incrementalCacheEntry(now, now, 20), nil)
+				writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), nil)
 			}
 			injected := errors.New("second bounded prune commit failed")
 			var commits, visited, candidatePeak int
@@ -239,7 +257,7 @@ func TestVOACAPCacheIndexBoundedHydrationAndPruneFailure(t *testing.T) {
 					return batch.Commit(opts)
 				},
 			})
-			loaded, _, err := store.loadCurrent(now, 112, cfg)
+			loaded, _, err := store.loadCurrent(now, cfg)
 			if !errors.Is(err, injected) || len(loaded) != 0 || commits != 2 || visited <= 256 || candidatePeak != 8 {
 				t.Fatalf("bounded failed hydration: loaded=%d commits=%d visited=%d peak=%d error=%v", len(loaded), commits, visited, candidatePeak, err)
 			}
@@ -256,7 +274,7 @@ func TestVOACAPCacheIndexBoundedHydrationAndPruneFailure(t *testing.T) {
 				t.Fatalf("raw partial-prune size=%d, want %d before recovery", len(keys), wantCount)
 			}
 			incrementalSetFaults(store, nil)
-			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 601), incrementalCacheEntry(now, now, 20), cfg, now); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 601), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), cfg, now); err != nil {
 				t.Fatalf("completion after failed prune must recover actual DB state: %v", err)
 			}
 			assertIncrementalRawCells(t, store, []uint16{1, 2, 3, 4, 5, 6, 7, 8})
@@ -273,7 +291,7 @@ func TestVOACAPCacheIndexConcurrentLoadWriteAndSnapshot(t *testing.T) {
 	cfg.MaxCacheEntries = 16
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
-	if _, _, err := store.loadCurrent(now, 112, cfg); err != nil {
+	if _, _, err := store.loadCurrent(now, cfg); err != nil {
 		t.Fatal(err)
 	}
 	start := make(chan struct{})
@@ -286,7 +304,7 @@ func TestVOACAPCacheIndexConcurrentLoadWriteAndSnapshot(t *testing.T) {
 			<-start
 			for iteration := 0; iteration < 32; iteration++ {
 				cell := CellID(writer*32 + iteration + 1)
-				if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), incrementalCacheEntry(now, now, 20, 22), cfg, now); err != nil {
+				if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20, 22), cfg), cfg, now); err != nil {
 					errorsSeen <- err
 					return
 				}
@@ -298,7 +316,7 @@ func TestVOACAPCacheIndexConcurrentLoadWriteAndSnapshot(t *testing.T) {
 		defer group.Done()
 		<-start
 		for iteration := 0; iteration < 32; iteration++ {
-			if _, _, err := store.loadCurrent(now, 112, cfg); err != nil {
+			if _, _, err := store.loadCurrent(now, cfg); err != nil {
 				errorsSeen <- err
 				return
 			}
@@ -331,7 +349,7 @@ func TestVOACAPCacheIndexConcurrentCloseIsSerialized(t *testing.T) {
 	cfg := testVOACAPFallbackConfig().VOACAPFallback
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 1), incrementalCacheEntry(now, now, 20), cfg, now); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), cfg, now); err != nil {
 		t.Fatal(err)
 	}
 	start, firstOperation := make(chan struct{}), make(chan struct{})
@@ -344,7 +362,7 @@ func TestVOACAPCacheIndexConcurrentCloseIsSerialized(t *testing.T) {
 		defer group.Done()
 		<-start
 		for iteration := 0; iteration < 64; iteration++ {
-			if err := store.storeForecast(testVOACAPForecastCacheKey(now, CellID(iteration%8+1)), incrementalCacheEntry(now, now, 20), cfg, now); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(now, CellID(iteration%8+1)), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), cfg, now); err != nil {
 				errorsSeen <- err
 				return
 			}
@@ -355,7 +373,7 @@ func TestVOACAPCacheIndexConcurrentCloseIsSerialized(t *testing.T) {
 		defer group.Done()
 		<-start
 		for iteration := 0; iteration < 64; iteration++ {
-			if _, _, err := store.loadCurrent(now, 112, cfg); err != nil {
+			if _, _, err := store.loadCurrent(now, cfg); err != nil {
 				errorsSeen <- err
 				return
 			}
@@ -421,6 +439,7 @@ func assertVOACAPCacheIndexBijection(t *testing.T, store *VOACAPForecastCacheSto
 		}
 		var mask uint32 = 0x00ffffff
 		minStart, maxStart := int64(1<<63-1), int64(-1<<63)
+		minEnd, minExpiry := int64(1<<63-1), int64(1<<63-1)
 		pending := []int{position}
 		for len(pending) > 0 {
 			at := pending[len(pending)-1]
@@ -429,19 +448,21 @@ func assertVOACAPCacheIndexBijection(t *testing.T, store *VOACAPForecastCacheSto
 			mask &= descendant.hourMask
 			minStart = min(minStart, descendant.windowStartNS)
 			maxStart = max(maxStart, descendant.windowStartNS)
+			minEnd = min(minEnd, descendant.windowEndNS)
+			minExpiry = min(minExpiry, descendant.expiresNS)
 			for _, child := range []int{2*at + 1, 2*at + 2} {
 				if child < len(store.eligibility) {
 					pending = append(pending, child)
 				}
 			}
 		}
-		if node.subtreeHourMask != mask || node.subtreeMinStart != minStart || node.subtreeMaxStart != maxStart {
+		if node.subtreeHourMask != mask || node.subtreeMinStart != minStart || node.subtreeMaxStart != maxStart || node.subtreeMinEnd != minEnd || node.subtreeMinExpiry != minExpiry {
 			t.Fatalf("eligibility subtree %d aggregate=(%08x,%d,%d), independently scanned=(%08x,%d,%d)", position, node.subtreeHourMask, node.subtreeMinStart, node.subtreeMaxStart, mask, minStart, maxStart)
 		}
 	}
 	for key, node := range store.index {
 		record, found := records[key]
-		if !found || node.dbKey != key || !seenRetention[node] || !seenEligibility[node] || node.storedAtNS != record.StoredAtUnixNS || node.windowStartNS != record.WindowUnixNS {
+		if !found || node.dbKey != key || !seenRetention[node] || !seenEligibility[node] || node.storedAtNS != record.StoredAtUnixNS || node.windowStartNS != record.WindowUnixNS || node.windowEndNS != record.Metadata.WindowEndUnixNS || node.expiresNS != record.Metadata.ExpiresUnixNS || node.originNS != record.Metadata.OriginUnixNS {
 			t.Fatalf("index owner %q does not have exact disk/map/heap metadata", key)
 		}
 		var wantMask uint32

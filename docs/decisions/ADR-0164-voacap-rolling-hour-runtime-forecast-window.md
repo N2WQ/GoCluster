@@ -6,6 +6,11 @@
 
 ## Context
 
+Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+supersedes the runtime TIME-card construction with canonical per-month native
+hours followed by absolute-hour selection. Rolling current-hour lookup and
+the stage-log distinction remain; the original decision below is preserved.
+
 ADR-0162 made the fallback cache select the current UTC hour from a successful
 VOACAP method-30 forecast window. Live troubleshooting later showed that runtime
 fallback decks still generated a fixed `TIME 1..forecast_hours` card. At 17:00

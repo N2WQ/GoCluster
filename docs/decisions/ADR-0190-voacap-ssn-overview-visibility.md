@@ -6,6 +6,10 @@
 
 ## Context
 
+Current-contract note: [ADR-0347](ADR-0347-voacap-flux-and-daily-forecast.md)
+refines this display with coherent solar-input capture, valid zero versus
+unknown input, and usable-cache SSN inventory. The original decision remains.
+
 Runtime VOACAP fallback uses `SunspotMonitor` to maintain an EWMA SSN and expose
 the rounded current SSN generation used for VOACAP forecast cache keys and deck
 generation. ADR-0182 made that state durable across restarts, but the

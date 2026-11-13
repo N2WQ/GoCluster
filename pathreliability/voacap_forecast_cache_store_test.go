@@ -19,11 +19,11 @@ func TestVOACAPForecastCacheStoreRoundTripCurrentForecast(t *testing.T) {
 
 	key := testVOACAPForecastCacheKey(now, 1)
 	entry := testVOACAPForecastCacheEntry(now, -14, 20)
-	if err := store.storeForecast(key, entry, cfg, now); err != nil {
+	if err := store.storeForecast(key, testCacheEntryWithConfig(entry, cfg), cfg, now); err != nil {
 		t.Fatalf("storeForecast() error: %v", err)
 	}
 
-	loaded, stats, err := store.loadCurrent(now, 112, cfg)
+	loaded, stats, err := store.loadCurrent(now, cfg)
 	if err != nil {
 		t.Fatalf("loadCurrent() error: %v", err)
 	}
@@ -51,30 +51,30 @@ func TestVOACAPForecastCacheStorePrunesNonCurrentRecords(t *testing.T) {
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
 
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), testVOACAPForecastCacheEntry(now, -14, 20), nil)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), testVOACAPForecastCacheEntry(now.Add(-2*time.Hour), -15, 20), nil)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 3), testVOACAPForecastCacheEntry(now, -16, 21), nil)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 4), testVOACAPForecastCacheEntry(now, -17, 20), func(record *voacapForecastCacheDiskRecord) {
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now, -14, 20), cfg), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now.Add(-2*time.Hour), -15, 20), cfg), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 3), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now, -16, 21), cfg), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 4), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now, -17, 20), cfg), func(record *voacapForecastCacheDiskRecord) {
 		record.ModelGeneration = 0
 	})
 	writeTestVOACAPForecastCacheRawValue(t, store, []byte(voacapForecastCacheEntryKeyPrefix+"bad"), []byte("{"))
 
-	loaded, stats, err := store.loadCurrent(now, 112, cfg)
+	loaded, stats, err := store.loadCurrent(now, cfg)
 	if err != nil {
 		t.Fatalf("loadCurrent() error: %v", err)
 	}
-	if len(loaded) != 1 || stats.Loaded != 1 {
-		t.Fatalf("loaded=%d stats=%+v, want one current record", len(loaded), stats)
+	if len(loaded) != 2 || stats.Loaded != 2 {
+		t.Fatalf("loaded=%d stats=%+v, want both temporally current records", len(loaded), stats)
 	}
-	if stats.Expired != 1 || stats.StaleWindow != 1 || stats.StaleGeneration != 1 || stats.Invalid != 1 || stats.Pruned != 4 {
+	if stats.Expired != 1 || stats.StaleWindow != 0 || stats.StaleGeneration != 1 || stats.Invalid != 1 || stats.Pruned != 3 {
 		t.Fatalf("unexpected prune stats: %+v", stats)
 	}
 
-	_, stats, err = store.loadCurrent(now, 112, cfg)
+	_, stats, err = store.loadCurrent(now, cfg)
 	if err != nil {
 		t.Fatalf("second loadCurrent() error: %v", err)
 	}
-	if stats.Pruned != 0 || stats.Loaded != 1 {
+	if stats.Pruned != 0 || stats.Loaded != 2 {
 		t.Fatalf("second load should see only the retained current record, stats=%+v", stats)
 	}
 }
@@ -86,11 +86,11 @@ func TestVOACAPForecastCacheStoreEnforcesMaxEntries(t *testing.T) {
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
 
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), testVOACAPForecastCacheEntry(now.Add(-3*time.Minute), -14, 20), nil)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), testVOACAPForecastCacheEntry(now.Add(-2*time.Minute), -15, 20), nil)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 3), testVOACAPForecastCacheEntry(now.Add(-time.Minute), -16, 20), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now.Add(-3*time.Minute), -14, 20), cfg), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now.Add(-2*time.Minute), -15, 20), cfg), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 3), testCacheEntryWithConfig(testVOACAPForecastCacheEntry(now.Add(-time.Minute), -16, 20), cfg), nil)
 
-	loaded, stats, err := store.loadCurrent(now, 112, cfg)
+	loaded, stats, err := store.loadCurrent(now, cfg)
 	if err != nil {
 		t.Fatalf("loadCurrent() error: %v", err)
 	}
@@ -145,23 +145,19 @@ func closeTestVOACAPForecastCacheStore(t *testing.T, store *VOACAPForecastCacheS
 	}
 }
 
-func testVOACAPForecastCacheKey(now time.Time, dxCell CellID) voacapCacheKey {
-	windowStart := forecastWindowStart(now)
+func testVOACAPForecastCacheKey(_ time.Time, dxCell CellID) voacapCacheKey {
 	return voacapCacheKey{
 		userCell:     1,
 		dxCell:       dxCell,
 		band:         "20m",
 		frequencyKHz: 14100,
-		year:         windowStart.Year(),
-		month:        int(windowStart.Month()),
-		ssn:          112,
-		direction:    voacapDirectionBidirectional,
+		direction:    voacapDirectionBidirectionalID,
 	}
 }
 
 func testVOACAPForecastCacheEntry(now time.Time, snr int, hour int) voacapCacheEntry {
-	windowStart := forecastWindowStart(now)
-	return voacapCacheEntry{
+	windowStart := forecastWindowStart(now.Add(-time.Minute))
+	return testFrozenCacheEntry(voacapCacheEntry{
 		storedAt: now.Add(-time.Minute).UTC(),
 		forecast: VOACAPClosedForecast{
 			WindowStartUTC: windowStart,
@@ -186,7 +182,7 @@ func testVOACAPForecastCacheEntry(now time.Time, snr int, hour int) voacapCacheE
 			OutputPath: "runtime-output-should-not-persist.out",
 			Elapsed:    2 * time.Second,
 		},
-	}
+	}, 8, 3600)
 }
 
 func writeTestVOACAPForecastCacheRecord(t *testing.T, store *VOACAPForecastCacheStore, key voacapCacheKey, entry voacapCacheEntry, mutate func(*voacapForecastCacheDiskRecord)) {
@@ -209,4 +205,62 @@ func writeTestVOACAPForecastCacheRawValue(t *testing.T, store *VOACAPForecastCac
 	if err := store.db.Set(key, value, pebble.NoSync); err != nil {
 		t.Fatalf("write raw cache record: %v", err)
 	}
+}
+
+// testFrozenCacheEntry explicitly freezes fixture validity at construction. The
+// low-level store permits represented holes; worker admission separately proves
+// a complete new replacement.
+func testFrozenCacheEntry(entry voacapCacheEntry, horizonHours, ttlSeconds int) voacapCacheEntry {
+	entry.metadata = new(voacapForecastMetadata)
+	entry.metadata.solar.SSN = 112
+	entry.windowEndNS = entry.forecast.WindowStartUTC.Add(time.Duration(horizonHours) * time.Hour).UnixNano()
+	entry.expiresNS = entry.storedAt.Add(time.Duration(ttlSeconds) * time.Second).UnixNano()
+	entry.metadata.originNS = entry.forecast.WindowStartUTC.UnixNano()
+	entry.hourMask = forecastCacheHourMask(entry.forecast.Records)
+	entry.flags = voacapMetadataInitialized
+	return entry
+}
+
+func testCacheEntryWithConfig(entry voacapCacheEntry, cfg any) voacapCacheEntry {
+	if entry.metadata != nil && entry.flags&voacapMetadataInitialized != 0 {
+		return entry
+	}
+	switch c := cfg.(type) {
+	case Config:
+		return testFrozenCacheEntry(entry, c.VOACAPFallback.ForecastHours, c.VOACAPFallback.CacheTTLSeconds)
+	case VOACAPFallbackConfig:
+		return testFrozenCacheEntry(entry, c.ForecastHours, c.CacheTTLSeconds)
+	default:
+		panic("unsupported test forecast config")
+	}
+}
+
+func testCompleteForecast(job VOACAPClosedJob, hours int, forecast VOACAPClosedForecast) VOACAPClosedForecast {
+	var overrides [24]VOACAPHourlyForecast
+	var present [24]bool
+	for _, row := range forecast.Records {
+		if row.HourUTC >= 0 && row.HourUTC < 24 {
+			overrides[row.HourUTC] = row
+			present[row.HourUTC] = true
+		}
+	}
+	prototype := VOACAPHourlyForecast{FrequencyMHz: job.FrequencyMHz}
+	if len(forecast.Records) > 0 {
+		prototype = forecast.Records[0]
+	}
+	forecast.WindowStartUTC = job.WindowStartUTC
+	forecast.Records = make([]VOACAPHourlyForecast, hours)
+	for i := range forecast.Records {
+		hour := job.WindowStartUTC.Add(time.Duration(i) * time.Hour).Hour()
+		row := prototype
+		if present[hour] {
+			row = overrides[hour]
+		}
+		row.HourUTC = hour
+		if row.FrequencyMHz == 0 {
+			row.FrequencyMHz = job.FrequencyMHz
+		}
+		forecast.Records[i] = row
+	}
+	return forecast
 }

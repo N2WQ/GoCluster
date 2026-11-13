@@ -126,12 +126,11 @@ func liveQualificationNow() time.Time {
 func liveQualificationKeys(id int) (voacapCacheKey, voacapDelayKey) {
 	key := voacapCacheKey{
 		userCell: CellID(1 + id/60000), dxCell: CellID(1 + id%60000),
-		band: "20m", frequencyKHz: 14100, year: 2026, month: 6,
-		ssn: 112, direction: voacapDirectionBidirectional,
+		band: "20m", frequencyKHz: 14100, direction: voacapDirectionBidirectionalID,
 	}
 	return key, voacapDelayKey{
 		userCell: key.userCell, dxCell: key.dxCell, band: key.band,
-		frequencyKHz: key.frequencyKHz, direction: key.direction,
+		frequencyKHz: key.frequencyKHz, direction: voacapDirectionBidirectionalID,
 	}
 }
 
@@ -143,9 +142,9 @@ func liveQualificationEntry(at time.Time, rows int) voacapCacheEntry {
 			VOACAPSNRDBHz: 24, ReqSNRReliability: 0.9, HasReqSNRReliability: true,
 		}
 	}
-	return voacapCacheEntry{storedAt: at, forecast: VOACAPClosedForecast{
+	return testFrozenCacheEntry(voacapCacheEntry{storedAt: at, forecast: VOACAPClosedForecast{
 		WindowStartUTC: liveQualificationNow(), Records: records,
-	}}
+	}}, 8, 28800)
 }
 
 // Every payload has its own compact backing array, including the 24-row case.

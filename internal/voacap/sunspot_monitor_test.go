@@ -2,343 +2,281 @@ package voacap
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func TestSunspotMonitorRoundsEWMAAndAdvancesForecastGeneration(t *testing.T) {
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		call := calls.Add(1)
-		switch call {
-		case 1:
-			fmt.Fprint(w, noaaSunspotBody("2026-06-08T12:00:00", 90))
-		default:
-			fmt.Fprint(w, noaaSunspotBody("2026-06-08T20:00:00", 114))
-		}
-	}))
+func TestSunspotMonitorReplayCatchupAndRoundedGenerations(t *testing.T) {
+	var body atomic.Value
+	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "140", "123.17362") + "," +
+		noonFluxJSON("2026-06-08T20:00:00", "100", "100") + "]")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, body.Load()) }))
 	defer server.Close()
-
 	monitor := newTestSunspotMonitor(t, server)
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T12:01:00Z")); err != nil {
-		t.Fatalf("first Poll() error: %v", err)
+	firstNow := mustTime(t, "2026-06-10T21:00:00Z")
+	if err := monitor.Poll(context.Background(), firstNow); err != nil {
+		t.Fatal(err)
 	}
-	if got, ok := monitor.CurrentSSN(time.Time{}); !ok || got != 100 {
-		t.Fatalf("first forecast SSN = %d ok=%v, want 100 true", got, ok)
+	s := monitor.Snapshot()
+	if s.RecentFluxEWMA != 120 || s.ForecastSSN != 73 || !s.ForecastInitialized ||
+		s.Input.Provenance.BlendedFluxSFU != 121.58681 {
+		t.Fatalf("cold chronological replay: %+v", s)
 	}
-
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T20:01:00Z")); err != nil {
-		t.Fatalf("second Poll() error: %v", err)
+	// A one-SSN change below the retired 12% hold advances immediately.
+	body.Store("[" + noonFluxJSON("2026-06-14T20:00:00", "123", "121.89128") + "," +
+		noonFluxJSON("2026-06-12T20:00:00", "126", "121.89128") + "," +
+		noonFluxJSON("2026-06-10T20:00:00", "140", "123.17362") + "]")
+	secondNow := mustTime(t, "2026-06-14T21:00:00Z")
+	if err := monitor.Poll(context.Background(), secondNow); err != nil {
+		t.Fatal(err)
 	}
-	snap := monitor.Snapshot()
-	if snap.EWMA != 112 {
-		t.Fatalf("EWMA = %.2f, want 112", snap.EWMA)
+	s = monitor.Snapshot()
+	if s.RecentFluxEWMA != 123 || s.ForecastSSN != 74 || !s.LastObservedAtUTC.Equal(mustTime(t, "2026-06-14T20:00:00Z")) {
+		t.Fatalf("missed observations not replayed: %+v", s)
 	}
-	if snap.ForecastSSN != 112 || !snap.ForecastInitialized {
-		t.Fatalf("forecast generation = %d initialized=%v, want 112 true", snap.ForecastSSN, snap.ForecastInitialized)
+	before, _ := monitor.CurrentSolarInput(secondNow)
+	if err := monitor.Poll(context.Background(), secondNow.Add(time.Hour)); err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(snap.LastForecastReason, "threshold") {
-		t.Fatalf("forecast reason = %q, want threshold", snap.LastForecastReason)
+	after, _ := monitor.CurrentSolarInput(secondNow)
+	if before != after {
+		t.Fatalf("repeated feed changed accepted input: before=%+v after=%+v", before, after)
+	}
+	// Same integer SSN still captures its new actual input provenance.
+	body.Store("[" + noonFluxJSON("2026-06-16T20:00:00", "123", "121.89128") + "]")
+	if err := monitor.Poll(context.Background(), secondNow.Add(48*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	s = monitor.Snapshot()
+	if s.ForecastSSN != 74 || !s.LastForecastAtUTC.Equal(secondNow) || s.Input.Provenance.RecentObservedUnix != mustTime(t, "2026-06-16T20:00:00Z").Unix() {
+		t.Fatalf("same-SSN provenance/generation mismatch: %+v", s)
 	}
 }
 
-func TestSunspotMonitorUsesValidatorsAndSkipsNotModified(t *testing.T) {
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if calls.Add(1) == 1 {
-			w.Header().Set("ETag", `"one"`)
-			fmt.Fprint(w, noaaSunspotBody("2026-06-08T12:00:00", 90))
-			return
-		}
-		if got := r.Header.Get("If-None-Match"); got != `"one"` {
-			t.Fatalf("If-None-Match = %q, want ETag", got)
-		}
-		w.WriteHeader(http.StatusNotModified)
-	}))
+func TestSunspotMonitorLateMeanAndIndependentWatermark(t *testing.T) {
+	var body atomic.Value
+	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "140", "null") + "," +
+		noonFluxJSON("2026-06-08T20:00:00", "100", "null") + "]")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, body.Load()) }))
 	defer server.Close()
-
-	monitor := newTestSunspotMonitor(t, server)
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T12:01:00Z")); err != nil {
-		t.Fatalf("first Poll() error: %v", err)
+	m := newTestSunspotMonitor(t, server)
+	now := mustTime(t, "2026-06-10T21:00:00Z")
+	if err := m.Poll(context.Background(), now); err != nil {
+		t.Fatal(err)
 	}
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T12:31:00Z")); err != nil {
-		t.Fatalf("second Poll() error: %v", err)
+	if _, ok := m.CurrentSSN(now); ok || !m.Snapshot().MeanMissing || m.Snapshot().RecentFluxEWMA != 120 {
+		t.Fatalf("partial first input must remain unavailable: %+v", m.Snapshot())
 	}
-	snap := monitor.Snapshot()
-	if snap.LastObservedAtUTC != mustTime(t, "2026-06-08T12:00:00Z") {
-		t.Fatalf("observation changed after 304: %s", snap.LastObservedAtUTC)
+	// An earlier mean can arrive after newer flux: its independent watermark
+	// advances without reprocessing either accepted Noon flux observation.
+	body.Store("[" + noonFluxJSON("2026-06-08T20:00:00", "900", "80") + "]")
+	if err := m.Poll(context.Background(), now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
 	}
-	if snap.LastFetchAtUTC != mustTime(t, "2026-06-08T12:31:00Z") {
-		t.Fatalf("fetch timestamp = %s, want second poll", snap.LastFetchAtUTC)
+	s := m.Snapshot()
+	if s.RecentFluxEWMA != 120 || s.PublishedMeanSFU != 80 || s.ForecastSSN != 47 {
+		t.Fatalf("late earlier mean/watermark: %+v", s)
+	}
+	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "900", "123.17362") + "]")
+	if err := m.Poll(context.Background(), now.Add(2*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	accepted, ok := m.CurrentSolarInput(now)
+	if !ok || accepted.SSN != 73 || accepted.Provenance.RecentEWMAFluxSFU != 120 {
+		t.Fatalf("late current mean double-smoothed flux: %+v", accepted)
+	}
+	body.Store("[" + noonFluxJSON("2026-06-10T20:00:00", "900", "900") + "]")
+	if err := m.Poll(context.Background(), now.Add(3*time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := m.CurrentSolarInput(now); got != accepted {
+		t.Fatalf("accepted equal-timestamp correction changed input: %+v", got)
+	}
+	body.Store("[" + noonFluxJSON("2026-06-12T20:00:00", "140", "\"invalid\"") + "]")
+	if err := m.Poll(context.Background(), now.Add(48*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	s = m.Snapshot()
+	if s.RecentFluxEWMA != 130 || s.PublishedMeanSFU != 123.17362 ||
+		!s.MeanObservedAtUTC.Equal(mustTime(t, "2026-06-10T20:00:00Z")) ||
+		s.Input.Provenance.MeanObservedUnix != accepted.Provenance.MeanObservedUnix {
+		t.Fatalf("invalid mean rejected flux or refreshed carried mean age: %+v", s)
 	}
 }
 
-func TestSunspotMonitorDoesNotStoreValidatorsAfterParseFailure(t *testing.T) {
-	var calls atomic.Int32
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch calls.Add(1) {
-		case 1:
-			w.Header().Set("ETag", `"bad"`)
-			fmt.Fprint(w, `not-json`)
-		default:
-			if got := r.Header.Get("If-None-Match"); got != "" {
-				t.Fatalf("If-None-Match = %q after parse failure, want empty", got)
+func TestSunspotMonitorWeightEndpointsAndZero(t *testing.T) {
+	for _, tc := range []struct {
+		name, flux, mean string
+		weight           float64
+		wantSSN          int
+		wantFlags        uint16
+	}{
+		{"recent_only", "121.58681", "null", 1, 73, SolarInputRecentPresent | SolarInputBlendPresent},
+		{"mean_only", "null", "122.44564", 0, 74, SolarInputMeanPresent | SolarInputBlendPresent},
+		{"valid_zero", "0", "0", .5, 0, SolarInputRecentPresent | SolarInputMeanPresent | SolarInputBlendPresent},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, "["+noonFluxJSON("2026-06-08T20:00:00", tc.flux, tc.mean)+"]")
+			}))
+			defer server.Close()
+			cfg := testSolarMonitorConfig(server)
+			cfg.RecentWeight = tc.weight
+			m, err := NewSunspotMonitor(cfg)
+			if err != nil {
+				t.Fatal(err)
 			}
-			w.Header().Set("ETag", `"good"`)
-			fmt.Fprint(w, noaaSunspotBody("2026-06-08T12:00:00", 90))
-		}
-	}))
-	defer server.Close()
-
-	monitor := newTestSunspotMonitor(t, server)
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T12:01:00Z")); err == nil {
-		t.Fatalf("first Poll() should fail on invalid JSON")
-	}
-	if got := monitor.Snapshot().ETag; got != "" {
-		t.Fatalf("ETag stored after parse failure: %q", got)
-	}
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T12:31:00Z")); err != nil {
-		t.Fatalf("second Poll() error: %v", err)
-	}
-	if got := monitor.Snapshot().ETag; got != `"good"` {
-		t.Fatalf("ETag after successful parse = %q, want good validator", got)
+			now := mustTime(t, "2026-06-12T20:00:00Z")
+			if err := m.Poll(context.Background(), now); err != nil {
+				t.Fatal(err)
+			}
+			input, ok := m.CurrentSolarInput(now)
+			ssn, ssnOK := m.CurrentSSN(now)
+			if !ok || !ssnOK || input.SSN != tc.wantSSN || ssn != tc.wantSSN || input.Provenance.Flags != tc.wantFlags {
+				t.Fatalf("weight/zero lost: %+v ok=%v ssn=%d/%v", input, ok, ssn, ssnOK)
+			}
+			s := m.Snapshot()
+			if (tc.weight == 1 && s.MeanStale) || (tc.weight == 0 && s.RecentStale) {
+				t.Fatalf("noncontributor marked stale: %+v", s)
+			}
+		})
 	}
 }
 
-func TestSunspotMonitorRestoresPersistedStateBeforePolling(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "ssn-state.json")
-	state := sunspotMonitorState{
-		Version:             sunspotMonitorStateVersion,
-		ETag:                `"persisted"`,
-		LastModified:        "Tue, 09 Jun 2026 12:00:00 GMT",
-		LastFetchAtUTC:      mustTime(t, "2026-06-09T12:31:00Z"),
-		LastObservedAtUTC:   mustTime(t, "2026-06-09T12:00:00Z"),
-		LastRawSSN:          100,
-		EWMA:                112,
-		EWMAInitialized:     true,
-		ForecastSSN:         112,
-		ForecastInitialized: true,
-		LastRecomputeDelta:  0.12,
-		LastForecastAtUTC:   mustTime(t, "2026-06-09T12:31:00Z"),
-		LastForecastReason:  "EWMA delta reached recompute threshold",
-	}
-	if err := saveSunspotMonitorState(statePath, state); err != nil {
-		t.Fatalf("save state fixture: %v", err)
-	}
-
-	monitor, err := NewSunspotMonitor(SunspotMonitorConfig{
-		URL:                "http://example.invalid/sunspot_report.json",
-		FetchInterval:      time.Hour,
-		RequestTimeout:     time.Second,
-		StatePath:          statePath,
-		EWMAHalfLife:       8 * time.Hour,
-		RecomputeThreshold: 0.12,
-	})
-	if err != nil {
-		t.Fatalf("NewSunspotMonitor() error: %v", err)
-	}
-	restored, err := monitor.LoadState()
-	if err != nil || !restored {
-		t.Fatalf("LoadState() restored=%v err=%v, want true nil", restored, err)
-	}
-	if got, ok := monitor.CurrentSSN(time.Time{}); !ok || got != 112 {
-		t.Fatalf("CurrentSSN after restore = %d ok=%v, want 112 true", got, ok)
-	}
-	snap := monitor.Snapshot()
-	if snap.ETag != `"persisted"` || snap.LastObservedAtUTC != state.LastObservedAtUTC {
-		t.Fatalf("unexpected restored snapshot: %+v", snap)
-	}
-}
-
-func TestSunspotMonitorLoadStateColdStartsForMissingFile(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "missing", "ssn-state.json")
-	monitor, err := NewSunspotMonitor(SunspotMonitorConfig{
-		URL:                "http://example.invalid/sunspot_report.json",
-		FetchInterval:      time.Hour,
-		RequestTimeout:     time.Second,
-		StatePath:          statePath,
-		EWMAHalfLife:       8 * time.Hour,
-		RecomputeThreshold: 0.12,
-	})
-	if err != nil {
-		t.Fatalf("NewSunspotMonitor() error: %v", err)
-	}
-	restored, err := monitor.LoadState()
-	if err != nil || restored {
-		t.Fatalf("LoadState() restored=%v err=%v, want false nil", restored, err)
-	}
-	if _, ok := monitor.CurrentSSN(time.Time{}); ok {
-		t.Fatalf("CurrentSSN should be unavailable after missing state cold start")
-	}
-}
-
-func TestSunspotMonitorLoadStateRejectsMalformedState(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "ssn-state.json")
-	if err := os.WriteFile(statePath, []byte(`{`), 0o644); err != nil {
-		t.Fatalf("write malformed state: %v", err)
-	}
-	monitor, err := NewSunspotMonitor(SunspotMonitorConfig{
-		URL:                "http://example.invalid/sunspot_report.json",
-		FetchInterval:      time.Hour,
-		RequestTimeout:     time.Second,
-		StatePath:          statePath,
-		EWMAHalfLife:       8 * time.Hour,
-		RecomputeThreshold: 0.12,
-	})
-	if err != nil {
-		t.Fatalf("NewSunspotMonitor() error: %v", err)
-	}
-	restored, err := monitor.LoadState()
-	if err == nil || !restored {
-		t.Fatalf("LoadState() restored=%v err=%v, want true error", restored, err)
-	}
-	if _, ok := monitor.CurrentSSN(time.Time{}); ok {
-		t.Fatalf("CurrentSSN should be unavailable after rejected state")
-	}
-}
-
-func TestSunspotMonitorPersistsStateAfterSuccessfulPoll(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "state", "ssn-state.json")
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("ETag", `"one"`)
-		w.Header().Set("Last-Modified", "Tue, 09 Jun 2026 12:00:00 GMT")
-		fmt.Fprint(w, noaaSunspotBody("2026-06-09T12:00:00", 90))
-	}))
-	defer server.Close()
-
-	monitor := newTestSunspotMonitorWithState(t, server, statePath)
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-09T12:31:00Z")); err != nil {
-		t.Fatalf("Poll() error: %v", err)
-	}
-	data, err := os.ReadFile(statePath)
-	if err != nil {
-		t.Fatalf("read persisted state: %v", err)
-	}
-	var state sunspotMonitorState
-	if err := json.Unmarshal(data, &state); err != nil {
-		t.Fatalf("unmarshal persisted state: %v", err)
-	}
-	if state.Version != sunspotMonitorStateVersion ||
-		state.ETag != `"one"` ||
-		state.LastModified != "Tue, 09 Jun 2026 12:00:00 GMT" ||
-		state.LastObservedAtUTC != mustTime(t, "2026-06-09T12:00:00Z") ||
-		state.EWMA != 100 ||
-		state.ForecastSSN != 100 ||
-		!state.ForecastInitialized {
-		t.Fatalf("unexpected persisted state: %+v", state)
-	}
-}
-
-func TestSunspotMonitorRestoredStateIgnoresStaleObservation(t *testing.T) {
-	statePath := filepath.Join(t.TempDir(), "ssn-state.json")
-	if err := saveSunspotMonitorState(statePath, sunspotMonitorState{
-		Version:             sunspotMonitorStateVersion,
-		LastObservedAtUTC:   mustTime(t, "2026-06-08T12:00:00Z"),
-		LastRawSSN:          100,
-		EWMA:                100,
-		EWMAInitialized:     true,
-		ForecastSSN:         100,
-		ForecastInitialized: true,
-		LastForecastAtUTC:   mustTime(t, "2026-06-08T12:01:00Z"),
-		LastForecastReason:  "initial forecast SSN generation",
-	}); err != nil {
-		t.Fatalf("save state fixture: %v", err)
-	}
-
+func TestSunspotMonitorValidatorsAndFailureRetainInput(t *testing.T) {
 	var calls atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch calls.Add(1) {
 		case 1:
-			fmt.Fprint(w, noaaSunspotBody("2026-06-08T12:00:00", 190))
+			w.Header().Set("ETag", "\"bad\"")
+			fmt.Fprint(w, "not-json")
+		case 2:
+			if r.Header.Get("If-None-Match") != "" {
+				t.Error("parse-failure validator was retained")
+			}
+			w.Header().Set("ETag", "\"good\"")
+			fmt.Fprint(w, "["+noonFluxJSON("2026-06-08T20:00:00", "121.58681", "121.58681")+"]")
+		case 3:
+			if r.Header.Get("If-None-Match") != "\"good\"" {
+				t.Error("usable validator missing")
+			}
+			w.WriteHeader(http.StatusNotModified)
+		case 4:
+			w.WriteHeader(http.StatusServiceUnavailable)
 		default:
-			fmt.Fprint(w, noaaSunspotBody("2026-06-08T20:00:00", 114))
+			fmt.Fprint(w, "["+noonFluxJSON("2026-06-10T20:00:00", "1e308", "1e308")+"]")
 		}
 	}))
 	defer server.Close()
-
-	monitor := newTestSunspotMonitorWithState(t, server, statePath)
-	restored, err := monitor.LoadState()
-	if err != nil || !restored {
-		t.Fatalf("LoadState() restored=%v err=%v, want true nil", restored, err)
+	m := newTestSunspotMonitor(t, server)
+	now := mustTime(t, "2026-06-08T21:00:00Z")
+	if err := m.Poll(context.Background(), now); err == nil || m.Snapshot().LastError == "" {
+		t.Fatal("parse failure not exposed")
 	}
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T12:31:00Z")); err != nil {
-		t.Fatalf("stale Poll() error: %v", err)
+	if err := m.Poll(context.Background(), now); err != nil {
+		t.Fatal(err)
 	}
-	if snap := monitor.Snapshot(); snap.EWMA != 100 || snap.LastRawSSN != 100 {
-		t.Fatalf("stale observation changed state: %+v", snap)
+	accepted, _ := m.CurrentSolarInput(now)
+	for _, advance := range []time.Duration{time.Hour, 49 * time.Hour, 50 * time.Hour} {
+		err := m.Poll(context.Background(), now.Add(advance))
+		if (advance == time.Hour && err != nil) || (advance != time.Hour && err == nil) {
+			t.Fatalf("unexpected fetch/arithmetic outcome after %s: %v", advance, err)
+		}
+		if got, _ := m.CurrentSolarInput(now); got != accepted {
+			t.Fatalf("304/failure changed accepted input: %+v", got)
+		}
 	}
-	if err := monitor.Poll(context.Background(), mustTime(t, "2026-06-08T20:01:00Z")); err != nil {
-		t.Fatalf("fresh Poll() error: %v", err)
-	}
-	snap := monitor.Snapshot()
-	if snap.EWMA != 112 || snap.ForecastSSN != 112 {
-		t.Fatalf("fresh observation did not decay from restored EWMA: %+v", snap)
-	}
-}
-
-func TestSunspotMonitorStartStopsOnContextCancellation(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, noaaSunspotBody("2026-06-08T12:00:00", 90))
-	}))
-	defer server.Close()
-
-	monitor := newTestSunspotMonitor(t, server)
-	ctx, cancel := context.WithCancel(context.Background())
-	monitor.Start(ctx)
-	cancel()
-	done := make(chan struct{})
-	go func() {
-		monitor.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("sunspot monitor did not stop after cancellation")
+	if m.Snapshot().LastObservedAtUTC.Unix() != accepted.Provenance.RecentObservedUnix {
+		t.Fatal("failed arithmetic partly advanced the ingestion batch")
 	}
 }
 
-func newTestSunspotMonitorWithState(t *testing.T, server *httptest.Server, statePath string) *SunspotMonitor {
-	t.Helper()
-	monitor, err := NewSunspotMonitor(SunspotMonitorConfig{
-		URL:                server.URL,
-		FetchInterval:      time.Hour,
-		RequestTimeout:     time.Second,
-		StatePath:          statePath,
-		EWMAHalfLife:       8 * time.Hour,
-		RecomputeThreshold: 0.12,
-		HTTPClient:         server.Client(),
-	})
+func TestSunspotMonitorAtomicConcurrentInput(t *testing.T) {
+	m, err := NewSunspotMonitor(testSolarMonitorConfig(nil))
 	if err != nil {
-		t.Fatalf("NewSunspotMonitor() error: %v", err)
+		t.Fatal(err)
 	}
-	return monitor
+	start := mustTime(t, "2026-01-01T20:00:00Z")
+	var readers sync.WaitGroup
+	done := make(chan struct{})
+	readers.Add(1)
+	go func() {
+		defer readers.Done()
+		for {
+			select {
+			case <-done:
+				return
+			default:
+				input, ok := m.CurrentSolarInput(start)
+				if !ok {
+					continue
+				}
+				p := input.Provenance
+				want, err := ssnFromSolarFlux(p.BlendedFluxSFU)
+				if err != nil || want != input.SSN || p.BlendedFluxSFU != .5*p.RecentEWMAFluxSFU+.5*p.PublishedMeanFluxSFU {
+					t.Errorf("incoherent input: %+v", input)
+					return
+				}
+			}
+		}
+	}()
+	for i := 0; i < 200; i++ {
+		at := start.Add(time.Duration(i) * 24 * time.Hour)
+		if err := m.applyFluxSeries([]solarFluxObservation{{at: at, flux: float64(90 + i), mean: 110, hasFlux: true, hasMean: true}}, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(done)
+	readers.Wait()
+}
+
+func TestSunspotMonitorRejectsInvalidPolicy(t *testing.T) {
+	for _, mutate := range []func(*SunspotMonitorConfig){
+		func(c *SunspotMonitorConfig) { c.FetchInterval = 0 },
+		func(c *SunspotMonitorConfig) { c.RequestTimeout = 0 },
+		func(c *SunspotMonitorConfig) { c.EWMAHalfLife = 0 },
+		func(c *SunspotMonitorConfig) { c.EWMAHalfLife = time.Millisecond },
+		func(c *SunspotMonitorConfig) { c.RecentWeight = -.01 },
+		func(c *SunspotMonitorConfig) { c.RecentWeight = 1.01 },
+		func(c *SunspotMonitorConfig) { c.RecentWeight = math.NaN() },
+		func(c *SunspotMonitorConfig) { c.StaleAfter = 0 },
+		func(c *SunspotMonitorConfig) { c.URL = strings.Repeat("x", maxSolarSourceURLBytes+1) },
+	} {
+		cfg := testSolarMonitorConfig(nil)
+		mutate(&cfg)
+		if _, err := NewSunspotMonitor(cfg); err == nil {
+			t.Fatalf("invalid policy accepted: %+v", cfg)
+		}
+	}
+}
+
+func testSolarMonitorConfig(server *httptest.Server) SunspotMonitorConfig {
+	cfg := SunspotMonitorConfig{
+		URL: "http://example.invalid/flux.json", FetchInterval: time.Hour,
+		RequestTimeout: time.Second, EWMAHalfLife: 48 * time.Hour, RecentWeight: .5, StaleAfter: 48 * time.Hour,
+	}
+	if server != nil {
+		cfg.URL, cfg.HTTPClient = server.URL, server.Client()
+	}
+	return cfg
 }
 
 func newTestSunspotMonitor(t *testing.T, server *httptest.Server) *SunspotMonitor {
 	t.Helper()
-	monitor, err := NewSunspotMonitor(SunspotMonitorConfig{
-		URL:                server.URL,
-		FetchInterval:      time.Hour,
-		RequestTimeout:     time.Second,
-		EWMAHalfLife:       8 * time.Hour,
-		RecomputeThreshold: 0.12,
-		HTTPClient:         server.Client(),
-	})
+	m, err := NewSunspotMonitor(testSolarMonitorConfig(server))
 	if err != nil {
-		t.Fatalf("NewSunspotMonitor() error: %v", err)
+		t.Fatal(err)
 	}
-	return monitor
+	return m
 }
 
-func noaaSunspotBody(observedAt string, numspot int) string {
-	return fmt.Sprintf(`[{"time_tag":%q,"Observatory":"TEST","Station":"T","Numspot":%d}]`, observedAt, numspot)
+func noonFluxJSON(at, flux, mean string) string {
+	return fmt.Sprintf("{\"time_tag\":%q,\"frequency\":2800,\"reporting_schedule\":\"Noon\",\"flux\":%s,\"ninety_day_mean\":%s}", at, flux, mean)
 }

@@ -117,8 +117,16 @@ inspect user-visible diagnostics:
   or usable VOACAP that was not closed.
 - `vssn` means the VOACAP fallback had no current rounded SSN generation. Check
   effective `voacap_fallback.ssn_state_path`, startup warnings about SSN state
-  restore, and NOAA fetch errors before changing path thresholds. The SSN state
-  file is per-node runtime state; do not share it between running processes.
+  restore, and NOAA flux fetch errors before changing path thresholds. Zero is
+  valid SSN; unknown input is separate. The state file is per-node runtime state;
+  do not share it between running processes. The runtime uses 2800 MHz `Noon`
+  F10.7, a default two-day recent flux EWMA, and an equal blend with the latest
+  published 90-day mean before conversion and final rounding. Old observatory
+  state and its validators are discarded; cold start replays the feed oldest
+  first. A missing new mean keeps the last accepted mean while valid new flux
+  advances. Known contributing components warn separately after 48 hours;
+  unchanged or failed polls do not reset their age. The last good input remains
+  usable. Never-observed components are missing without an invented age.
   The local Overview page shows `VOACAP SSN: <integer|n/a>` for that rounded
   generation when `tview-v2` is enabled. Its Path Predictions panel also shows
   `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)`
@@ -129,14 +137,17 @@ inspect user-visible diagnostics:
   means uncertified bookkeeping, so zero counts do not prove an empty database.
   `dirty=true` means a failed/uncertain disk operation needs recovery; inspect
   forecast-cache warnings. `VOACAP disk index: n/a` means no store is attached. Snapshot reads
-  do not wait behind disk I/O. See ADR-0304.
-- The unaccepted local V3 candidate makes existing live forecast/delay keys
-  refresh without evicting unrelated entries. Timing qualification is blocked
-  by short measurement batches; this is not shipped behavior (ADR-0310 Proposed).
-  New keys evict the oldest existing timestamp, with deterministic typed-key
-  ties (ADR-0310), and are always admitted. Live eviction and expiry retain map
-  scans; the indexed optimization was not accepted. TTL, limits, delay clocks
-  and diagnostics are unchanged. See the live-cache execution record.
+  do not wait behind disk I/O. `VOACAP input` reports differing SSN inventory
+  among usable current-hour forecasts; this is not queued backlog. `VOACAP worker`
+  shows current busy time and oldest waiting age, and `VOACAP jobs` shows
+  completed count/mean/max. Worker durations include persistence. One bounded
+  memory scan supplies the detailed inventory per overview; diagnostics never
+  enqueue work. See ADR-0304 and ADR-0347.
+- The separate historical live-cache campaign (ADR-0310 Proposed) remains
+  unaccepted after invalid short-batch timing evidence. It does not qualify
+  the current solar-input/daily-window change. See the
+  [execution record](../../docs/voacap-live-cache-execution.md); functional
+  correctness does not imply a performance pass or deployment recommendation.
 - Runtime VOACAP execution is Windows-only. On Linux and other non-Windows
   builds, startup logs that the VOACAP fallback is disabled; `SHOW PROP`
   reports that VOACAP fallback is disabled, sparse/no-p50 diagnostics can show
@@ -144,8 +155,18 @@ inspect user-visible diagnostics:
 - Completed VOACAP forecast windows persist separately in the per-node Pebble
   cache at `voacap_fallback.forecast_cache_db_path`. Current restored records
   become ordinary memory cache hits and bypass `voacap_fallback.delay_seconds`;
-  stale/malformed records are pruned and a missing/unavailable cache uses the
-  normal warm-up delay and queue path.
+  stale/malformed records are pruned. Valid current-model records retain original
+  coverage and expiry across restart, including when current SSN differs.
+  Model-generation-1 predictions are retired because the former CIRCUIT layout
+  could send the wrong receiver longitude. Valid unexpired recognized legacy
+  keys can seed one-time immediate ordinary admission in the bounded delay map;
+  no old predictions are served and no rebuilds are queued at startup. Lost or
+  evicted markers and other cold paths use normal warm-up. See TSR-0131.
+  The default forecast and lifetime are 24 hours from the worker's starting UTC
+  hour. Valid forecasts remain available during replacement. Every rounded SSN
+  change can refresh requested paths; ordinary final-hour requests renew without
+  initial warm-up even when SSN is unchanged. Failure cooldown remains. Idle
+  paths create no work, and queueing or failure can still leave expiry gaps.
   Persisted capacity pruning retains newest storage timestamps, then lowest
   canonical cache keys for ties. Equal-time refreshes have no recency advantage;
   this does not change live-memory eviction.
@@ -153,8 +174,7 @@ inspect user-visible diagnostics:
   it maintains bounded indexes without scanning unrelated forecasts. Startup or
   dirty-state recovery still scans disk with bounded candidates/prune batches.
   Memory publication and waiter notification precede warning-only persistence;
-  shutdown waits for persistence. No schema migration or firewall change is
-  required.
+  shutdown waits for persistence. No firewall change is required.
 - `brx` diagnostics mean the spot was marked as a beacon and path prediction
   used only the DX-to-user receive leg. Beacon VOACAP fallback diagnostics use
   `bvcap`, `bvaln`, `bvup`, or `bvop`; their SNR and REL fields are receive-leg
@@ -203,6 +223,9 @@ inspect user-visible diagnostics:
   through the existing VOACAP fallback worker and may wait briefly. All-band
   requests show cached rows while refreshing missing or partial bands in the
   background.
+- `SHOW PROP` shows the cached input SSN, including valid zero. `ssn=mixed`
+  means returned bands use different SSNs; each band then identifies its value.
+  This is expected while requested replacements progress.
 - Thresholds mix operator policy and algorithm calibration; do not retune them
   as the first normal troubleshooting step.
 - Effective YAML matters before suggesting config edits.

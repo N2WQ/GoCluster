@@ -20,7 +20,7 @@ func TestFormatVOACAPCacheIndexDiagnostics(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			provider := fixedOverviewVOACAPFallbackProvider{snapshot: pathreliability.VOACAPClosedFallbackSnapshot{ForecastCacheIndex: tc.index}}
 			want := "[yellow]VOACAP disk index[-]: " + tc.want
-			if got := formatVOACAPCacheIndexLine(provider); got != want {
+			if got := formatVOACAPCacheIndexLine(provider.snapshot, true); got != want {
 				t.Fatalf("cache diagnostics = %q, want %q", got, want)
 			}
 		})

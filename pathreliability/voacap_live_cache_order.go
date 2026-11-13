@@ -28,24 +28,6 @@ func compareLiveCacheKey(a, b *voacapCacheKey) int {
 		}
 		return 1
 	}
-	if a.year != b.year {
-		if a.year < b.year {
-			return -1
-		}
-		return 1
-	}
-	if a.month != b.month {
-		if a.month < b.month {
-			return -1
-		}
-		return 1
-	}
-	if a.ssn != b.ssn {
-		if a.ssn < b.ssn {
-			return -1
-		}
-		return 1
-	}
 	if a.direction != b.direction {
 		if a.direction < b.direction {
 			return -1

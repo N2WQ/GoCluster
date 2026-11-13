@@ -1,7 +1,6 @@
 package pathreliability
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -17,8 +16,8 @@ func TestVOACAPIncrementalCacheUninitializedPreseedRecovery(t *testing.T) {
 	cfg := testVOACAPFallbackConfig().VOACAPFallback
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), incrementalCacheEntry(now, now.Add(-2*time.Hour), 20), nil)
-	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), incrementalCacheEntry(now, now, 20), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(incrementalCacheEntry(now, now.Add(-2*time.Hour), 20), cfg), nil)
+	writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 2), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), nil)
 	writeTestVOACAPForecastCacheRawValue(t, store, []byte(voacapForecastCacheEntryKeyPrefix+"malformed"), []byte("{"))
 	if snap := store.IndexSnapshot(); !snap.Attached || snap.Ready || snap.Entries != 0 {
 		t.Fatalf("preseed must remain uninitialized: %+v", snap)
@@ -26,7 +25,7 @@ func TestVOACAPIncrementalCacheUninitializedPreseedRecovery(t *testing.T) {
 	if keys := incrementalRawCacheKeys(t, store); len(keys) != 3 {
 		t.Fatalf("raw preseed size=%d, want 3 before any repair", len(keys))
 	}
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 3), incrementalCacheEntry(now, now, 20), cfg, now); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 3), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), cfg, now); err != nil {
 		t.Fatalf("first completion recovery: %v", err)
 	}
 	assertIncrementalRawCells(t, store, []uint16{2, 3})
@@ -49,10 +48,12 @@ func TestVOACAPIncrementalCacheHydrationValidationMatrix(t *testing.T) {
 		{"dx_cell_zero", func(r *voacapForecastCacheDiskRecord) { r.Key.DXCell = 0 }, voacapForecastCacheRejectInvalid},
 		{"band_empty", func(r *voacapForecastCacheDiskRecord) { r.Key.Band = "" }, voacapForecastCacheRejectInvalid},
 		{"frequency_zero", func(r *voacapForecastCacheDiskRecord) { r.Key.FrequencyKHz = 0 }, voacapForecastCacheRejectInvalid},
-		{"year_zero", func(r *voacapForecastCacheDiskRecord) { r.Key.Year = 0 }, voacapForecastCacheRejectInvalid},
-		{"month_zero", func(r *voacapForecastCacheDiskRecord) { r.Key.Month = 0 }, voacapForecastCacheRejectInvalid},
-		{"month_thirteen", func(r *voacapForecastCacheDiskRecord) { r.Key.Month = 13 }, voacapForecastCacheRejectInvalid},
-		{"ssn_zero", func(r *voacapForecastCacheDiskRecord) { r.Key.SSN = 0 }, voacapForecastCacheRejectInvalid},
+		{"row_frequency_zero", func(r *voacapForecastCacheDiskRecord) { r.Records[0].FrequencyMHz = 0 }, voacapForecastCacheRejectInvalid},
+		{"row_wrong_band", func(r *voacapForecastCacheDiskRecord) { r.Records[0].FrequencyMHz = 7.1 }, voacapForecastCacheRejectInvalid},
+		{"metadata_missing", func(r *voacapForecastCacheDiskRecord) { r.Metadata.Flags = 0 }, voacapForecastCacheRejectInvalid},
+		{"end_zero", func(r *voacapForecastCacheDiskRecord) { r.Metadata.WindowEndUnixNS = 0 }, voacapForecastCacheRejectInvalid},
+		{"origin_before_window", func(r *voacapForecastCacheDiskRecord) { r.Metadata.OriginUnixNS = r.WindowUnixNS - 1 }, voacapForecastCacheRejectInvalid},
+		{"expiry_before_storage", func(r *voacapForecastCacheDiskRecord) { r.Metadata.ExpiresUnixNS = r.StoredAtUnixNS - 1 }, voacapForecastCacheRejectInvalid},
 		{"direction", func(r *voacapForecastCacheDiskRecord) { r.Key.Direction = "receive" }, voacapForecastCacheRejectInvalid},
 		{"key_value_mismatch", func(r *voacapForecastCacheDiskRecord) { r.Key.DXCell = 2 }, voacapForecastCacheRejectInvalid},
 		{"stored_time_zero", func(r *voacapForecastCacheDiskRecord) { r.StoredAtUnixNS = 0 }, voacapForecastCacheRejectInvalid},
@@ -62,12 +63,12 @@ func TestVOACAPIncrementalCacheHydrationValidationMatrix(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
-			writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), incrementalCacheEntry(now, now, 20), test.mutate)
-			writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 100), incrementalCacheEntry(now, now, 20), nil)
+			writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), test.mutate)
+			writeTestVOACAPForecastCacheRecord(t, store, testVOACAPForecastCacheKey(now, 100), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), nil)
 			if len(incrementalRawCacheKeys(t, store)) != 2 {
 				t.Fatal("malformed fixture missing before hydration")
 			}
-			loaded, stats, err := store.loadCurrent(now, 112, cfg)
+			loaded, stats, err := store.loadCurrent(now, cfg)
 			if err != nil || len(loaded) != 1 || stats.Loaded != 1 || stats.Pruned != 1 || stats.Expired != 0 || stats.StaleWindow != 0 || stats.Overflow != 0 {
 				t.Fatalf("validation result: loaded=%d stats=%+v error=%v", len(loaded), stats, err)
 			}
@@ -78,25 +79,20 @@ func TestVOACAPIncrementalCacheHydrationValidationMatrix(t *testing.T) {
 			assertIncrementalIndexReady(t, store, 1)
 		})
 	}
-	// A syntactically valid record with a different *valid* SSN must carry the
-	// matching physical key, rather than accidentally testing key corruption.
+	// A current SSN change does not invalidate a completed forecast's actual input.
 	t.Run("valid_other_ssn", func(t *testing.T) {
 		store := openTestVOACAPForecastCacheStore(t)
 		defer closeTestVOACAPForecastCacheStore(t, store)
 		key := testVOACAPForecastCacheKey(now, 1)
-		key.ssn = 113
-		record := diskRecordFromForecastCache(key, incrementalCacheEntry(now, now, 20))
-		value, err := json.Marshal(record)
-		if err != nil {
-			t.Fatal(err)
+		entry := testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg)
+		entry.metadata.solar.SSN = 113
+		writeTestVOACAPForecastCacheRecord(t, store, key, entry, nil)
+		loaded, stats, err := store.loadCurrent(now, cfg)
+		if err != nil || len(loaded) != 1 || stats.Pruned != 0 || loaded[0].entry.metadata.solar.SSN != 113 {
+			t.Fatalf("actual input must survive provider change: loaded=%+v stats=%+v err=%v", loaded, stats, err)
 		}
-		writeTestVOACAPForecastCacheRawValue(t, store, []byte("voacapfc/v1/e/0001/0001/20m/014100/2026/06/0113/bidirectional"), value)
-		_, stats, err := store.loadCurrent(now, 112, cfg)
-		if err != nil || stats.Pruned != 1 || stats.StaleWindow != 1 || stats.Invalid != 0 {
-			t.Fatalf("SSN generation classification: stats=%+v error=%v", stats, err)
-		}
-		assertIncrementalRawCells(t, store, nil)
-		assertIncrementalIndexReady(t, store, 0)
+		assertIncrementalRawCells(t, store, []uint16{1})
+		assertIncrementalIndexReady(t, store, 1)
 	})
 }
 
@@ -109,27 +105,27 @@ func TestVOACAPIncrementalCacheActualHourGap(t *testing.T) {
 		t.Run(fmt.Sprintf("operation_at_missing_21=%t", throughGap), func(t *testing.T) {
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
-			if err := store.storeForecast(testVOACAPForecastCacheKey(start, 1), incrementalCacheEntry(start, start, 20, 22), cfg, start); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(start, 1), testCacheEntryWithConfig(incrementalCacheEntry(start, start, 20, 22), cfg), cfg, start); err != nil {
 				t.Fatal(err)
 			}
 			if throughGap {
 				at := start.Add(time.Hour)
-				if err := store.storeForecast(testVOACAPForecastCacheKey(at, 2), incrementalCacheEntry(at, at, 21, 22), cfg, at); err != nil {
+				if err := store.storeForecast(testVOACAPForecastCacheKey(at, 2), testCacheEntryWithConfig(incrementalCacheEntry(at, at, 21, 22), cfg), cfg, at); err != nil {
 					t.Fatal(err)
 				}
-				assertIncrementalRawCells(t, store, []uint16{2})
+				assertIncrementalRawCells(t, store, []uint16{1, 2})
 			}
 			at := start.Add(2 * time.Hour)
-			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 3), incrementalCacheEntry(at, at, 22), cfg, at); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 3), testCacheEntryWithConfig(incrementalCacheEntry(at, at, 22), cfg), cfg, at); err != nil {
 				t.Fatal(err)
 			}
 			want := []uint16{1, 3}
 			if throughGap {
-				want = []uint16{2, 3}
+				want = []uint16{1, 2, 3}
 			}
 			// Read disk before a hydration pass can conceal intermediate-hour pruning.
 			assertIncrementalRawCells(t, store, want)
-			assertIncrementalIndexReady(t, store, 2)
+			assertIncrementalIndexReady(t, store, len(want))
 			reopened := reopenVOACAPRetentionStore(t, store)
 			assertIncrementalRawCells(t, reopened, want)
 		})
@@ -163,18 +159,22 @@ func TestVOACAPIncrementalCacheClockBoundaries(t *testing.T) {
 			cfg.CacheTTLSeconds, cfg.ForecastHours = tc.ttl, tc.horizon
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
-			entry := incrementalCacheEntry(start, tc.storedAt, 20, 21, 22, 23)
+			seedHours := make([]int, tc.horizon)
+			for offset := range seedHours {
+				seedHours[offset] = start.Add(time.Duration(offset) * time.Hour).Hour()
+			}
+			entry := incrementalCacheEntry(start, tc.storedAt, seedHours...)
 			// Seed at its storage time when that time is admissible; the operation
 			// below exercises a warmed index, including backward-clock repair.
 			seedAt := start
 			if tc.storedAt.After(start.Add(time.Minute)) && tc.storedAt.Before(start.Add(time.Hour)) {
 				seedAt = tc.storedAt
 			}
-			if err := store.storeForecast(testVOACAPForecastCacheKey(start, 1), entry, cfg, seedAt); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(start, 1), testCacheEntryWithConfig(entry, cfg), cfg, seedAt); err != nil {
 				t.Fatalf("seed: %v", err)
 			}
 			incoming := incrementalCacheEntry(tc.operation.Truncate(time.Hour), tc.operation, tc.operation.Hour())
-			if err := store.storeForecast(testVOACAPForecastCacheKey(tc.operation, 2), incoming, cfg, tc.operation); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(tc.operation, 2), testCacheEntryWithConfig(incoming, cfg), cfg, tc.operation); err != nil {
 				t.Fatalf("boundary operation: %v", err)
 			}
 			want := []uint16{2}
@@ -196,9 +196,9 @@ func TestVOACAPIncrementalCacheCalendarAndContextChanges(t *testing.T) {
 		wantSeed  bool
 	}{
 		{"midnight_same_month", time.Date(2026, 6, 8, 23, 0, 0, 0, time.UTC), time.Date(2026, 6, 9, 0, 0, 0, 0, time.UTC), 112, true},
-		{"month_boundary", time.Date(2026, 6, 30, 23, 0, 0, 0, time.UTC), time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), 112, false},
-		{"year_boundary", time.Date(2026, 12, 31, 23, 0, 0, 0, time.UTC), time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), 112, false},
-		{"ssn_change", time.Date(2026, 6, 8, 20, 0, 0, 0, time.UTC), time.Date(2026, 6, 8, 20, 1, 0, 0, time.UTC), 113, false},
+		{"month_boundary", time.Date(2026, 6, 30, 23, 0, 0, 0, time.UTC), time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC), 112, true},
+		{"year_boundary", time.Date(2026, 12, 31, 23, 0, 0, 0, time.UTC), time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC), 112, true},
+		{"ssn_change", time.Date(2026, 6, 8, 20, 0, 0, 0, time.UTC), time.Date(2026, 6, 8, 20, 1, 0, 0, time.UTC), 113, true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -206,12 +206,17 @@ func TestVOACAPIncrementalCacheCalendarAndContextChanges(t *testing.T) {
 			cfg.CacheTTLSeconds, cfg.ForecastHours = 6*3600, 4
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
-			if err := store.storeForecast(testVOACAPForecastCacheKey(tc.start, 1), incrementalCacheEntry(tc.start, tc.start, tc.start.Hour(), tc.operation.Hour()), cfg, tc.start); err != nil {
+			seedHours := []int{tc.start.Hour()}
+			if tc.operation.Hour() != tc.start.Hour() {
+				seedHours = append(seedHours, tc.operation.Hour())
+			}
+			if err := store.storeForecast(testVOACAPForecastCacheKey(tc.start, 1), testCacheEntryWithConfig(incrementalCacheEntry(tc.start, tc.start, seedHours...), cfg), cfg, tc.start); err != nil {
 				t.Fatal(err)
 			}
 			key := testVOACAPForecastCacheKey(tc.operation, 2)
-			key.ssn = tc.ssn
-			if err := store.storeForecast(key, incrementalCacheEntry(tc.operation.Truncate(time.Hour), tc.operation, tc.operation.Hour()), cfg, tc.operation); err != nil {
+			incoming := testCacheEntryWithConfig(incrementalCacheEntry(tc.operation.Truncate(time.Hour), tc.operation, tc.operation.Hour()), cfg)
+			incoming.metadata.solar.SSN = tc.ssn
+			if err := store.storeForecast(key, incoming, cfg, tc.operation); err != nil {
 				t.Fatal(err)
 			}
 			want := []uint16{2}
@@ -231,7 +236,7 @@ func TestVOACAPIncrementalCacheCalendarAndContextChanges(t *testing.T) {
 			defer closeTestVOACAPForecastCacheStore(t, store)
 			for cell := CellID(1); cell <= 4; cell++ {
 				entry := incrementalCacheEntry(start, start.Add(time.Duration(cell)*time.Second), 20, 21, 22, 23)
-				if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), entry, cfg, start); err != nil {
+				if err := store.storeForecast(testVOACAPForecastCacheKey(start, cell), testCacheEntryWithConfig(entry, cfg), cfg, start); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -244,10 +249,10 @@ func TestVOACAPIncrementalCacheCalendarAndContextChanges(t *testing.T) {
 			case "capacity":
 				cfg.MaxCacheEntries = 2
 			}
-			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 5), incrementalCacheEntry(at, at, 21), cfg, at); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 5), testCacheEntryWithConfig(incrementalCacheEntry(at, at, 21), cfg), cfg, at); err != nil {
 				t.Fatal(err)
 			}
-			want := []uint16{5}
+			want := []uint16{1, 2, 3, 4, 5}
 			if change == "capacity" {
 				want = []uint16{4, 5}
 			}
@@ -266,7 +271,7 @@ func TestVOACAPIncrementalCacheMarshalFailurePreservesOld(t *testing.T) {
 			defer closeTestVOACAPForecastCacheStore(t, store)
 			key := testVOACAPForecastCacheKey(now, 1)
 			old := incrementalCacheEntry(now, now, 20)
-			if err := store.storeForecast(key, old, cfg, now); err != nil {
+			if err := store.storeForecast(key, testCacheEntryWithConfig(old, cfg), cfg, now); err != nil {
 				t.Fatal(err)
 			}
 			var commits int
@@ -276,7 +281,7 @@ func TestVOACAPIncrementalCacheMarshalFailurePreservesOld(t *testing.T) {
 			}})
 			bad := incrementalCacheEntry(now, now.Add(time.Second), 20)
 			bad.forecast.Records[0].ReqSNRReliability = invalid
-			if err := store.storeForecast(key, bad, cfg, now); err == nil {
+			if err := store.storeForecast(key, testCacheEntryWithConfig(bad, cfg), cfg, now); err == nil {
 				t.Fatal("non-JSON numerical value must fail encoding")
 			}
 			if commits != 0 {
@@ -293,15 +298,15 @@ func TestVOACAPIncrementalCacheMarshalFailurePreservesOld(t *testing.T) {
 	}
 }
 
-func TestVOACAPIncrementalCacheEncodableInvalidReplacementDeletesOld(t *testing.T) {
+func TestVOACAPIncrementalCacheInvalidReplacementPreservesOld(t *testing.T) {
 	now := time.Date(2026, 6, 8, 20, 0, 0, 0, time.UTC)
 	cfg := testVOACAPFallbackConfig().VOACAPFallback
-	for _, failure := range []string{"empty_records", "missing_current_hour", "expired_storage", "future_storage", "future_window"} {
+	for _, failure := range []string{"empty_records", "duplicate_hour", "expired_storage", "future_storage", "future_window"} {
 		t.Run(failure, func(t *testing.T) {
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
 			for cell := CellID(1); cell <= 2; cell++ {
-				if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), incrementalCacheEntry(now, now, 20), cfg, now); err != nil {
+				if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), cfg, now); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -309,8 +314,8 @@ func TestVOACAPIncrementalCacheEncodableInvalidReplacementDeletesOld(t *testing.
 			switch failure {
 			case "empty_records":
 				bad.forecast.Records = nil
-			case "missing_current_hour":
-				bad.forecast.Records[0].HourUTC = 21
+			case "duplicate_hour":
+				bad.forecast.Records = append(bad.forecast.Records, bad.forecast.Records[0])
 			case "expired_storage":
 				bad.storedAt = now.Add(-time.Hour - time.Nanosecond)
 			case "future_storage":
@@ -318,36 +323,45 @@ func TestVOACAPIncrementalCacheEncodableInvalidReplacementDeletesOld(t *testing.
 			case "future_window":
 				bad.forecast.WindowStartUTC = now.Add(time.Hour)
 			}
-			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 1), bad, cfg, now); err != nil {
-				t.Fatalf("encodable invalid replacement: %v", err)
+			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(bad, cfg), cfg, now); err == nil {
+				t.Fatal("invalid replacement was accepted")
 			}
-			assertIncrementalRawCells(t, store, []uint16{2})
-			assertIncrementalIndexReady(t, store, 1)
+			records := assertIncrementalRawCells(t, store, []uint16{1, 2})
+			for _, record := range records {
+				if record.StoredAtUnixNS != now.UnixNano() || len(record.Records) != 1 || record.Records[0].HourUTC != 20 {
+					t.Fatalf("invalid replacement changed prior data: %+v", record)
+				}
+			}
+			if snapshot := store.IndexSnapshot(); snapshot.Ready {
+				assertIncrementalIndexReady(t, store, 2)
+			} else if !snapshot.Dirty {
+				t.Fatalf("failed replacement lost index trust without dirty state: %+v", snapshot)
+			}
 		})
 	}
 }
 
 func TestVOACAPIncrementalCachePreservesDecoderRecordPolicy(t *testing.T) {
-	// The restart cache validates representation, generation and hour eligibility.
+	// The restart cache validates representation, generation and frozen temporal validity.
 	// It must not introduce an unrelated RF-policy gate for record numbers.
 	now := time.Date(2026, 6, 8, 20, 0, 0, 0, time.UTC)
 	cfg := testVOACAPFallbackConfig().VOACAPFallback
 	store := openTestVOACAPForecastCacheStore(t)
 	defer closeTestVOACAPForecastCacheStore(t, store)
-	entry := incrementalCacheEntry(now, now, 20, 25)
-	entry.forecast.Records[0].FrequencyMHz = 0
+	entry := incrementalCacheEntry(now, now, 20, 21)
+	entry.forecast.Records[0].FrequencyMHz = 14.1
 	entry.forecast.Records[0].ReqSNRReliability = 2
 	entry.forecast.Records[0].FT8SNRDB = 300
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 1), entry, cfg, now); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, 1), testCacheEntryWithConfig(entry, cfg), cfg, now); err != nil {
 		t.Fatal(err)
 	}
 	records := assertIncrementalRawCells(t, store, []uint16{1})
 	for _, record := range records {
-		if len(record.Records) != 2 || record.Records[0].FrequencyMHz != 0 || record.Records[0].ReqSNRReliability != 2 || record.Records[0].FT8SNRDB != 300 || record.Records[1].HourUTC != 25 {
+		if len(record.Records) != 2 || record.Records[0].FrequencyMHz != 14.1 || record.Records[0].ReqSNRReliability != 2 || record.Records[0].FT8SNRDB != 300 || record.Records[1].HourUTC != 21 {
 			t.Fatalf("restart cache changed pre-existing record-admission semantics: %+v", record)
 		}
 	}
-	loaded, stats, err := store.loadCurrent(now, 112, cfg)
+	loaded, stats, err := store.loadCurrent(now, cfg)
 	if err != nil || len(loaded) != 1 || stats.Pruned != 0 {
 		t.Fatalf("decoder parity after hydration: loaded=%d stats=%+v error=%v", len(loaded), stats, err)
 	}
@@ -362,7 +376,7 @@ func TestVOACAPIncrementalCacheCommitFailureRecovery(t *testing.T) {
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
 			for cell := CellID(1); cell <= 2; cell++ {
-				if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), incrementalCacheEntry(now, now.Add(time.Duration(int(cell)-3)*time.Second), 20), cfg, now); err != nil {
+				if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(incrementalCacheEntry(now, now.Add(time.Duration(int(cell)-3)*time.Second), 20), cfg), cfg, now); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -377,7 +391,7 @@ func TestVOACAPIncrementalCacheCommitFailureRecovery(t *testing.T) {
 				}
 				return injected
 			}})
-			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 3), incrementalCacheEntry(now, now, 20), cfg, now); !errors.Is(err, injected) {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(now, 3), testCacheEntryWithConfig(incrementalCacheEntry(now, now, 20), cfg), cfg, now); !errors.Is(err, injected) {
 				t.Fatalf("commit error=%v, want injected failure", err)
 			}
 			if commits != 1 {
@@ -393,7 +407,7 @@ func TestVOACAPIncrementalCacheCommitFailureRecovery(t *testing.T) {
 			}
 			incrementalSetFaults(store, nil)
 			at := now.Add(time.Second)
-			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 4), incrementalCacheEntry(now, at, 20), cfg, at); err != nil {
+			if err := store.storeForecast(testVOACAPForecastCacheKey(at, 4), testCacheEntryWithConfig(incrementalCacheEntry(now, at, 20), cfg), cfg, at); err != nil {
 				t.Fatalf("next completion dirty recovery: %v", err)
 			}
 			want = []uint16{2, 4}
@@ -409,6 +423,9 @@ func TestVOACAPIncrementalCacheCommitFailureRecovery(t *testing.T) {
 }
 
 func incrementalCacheEntry(window, storedAt time.Time, hours ...int) voacapCacheEntry {
+	if storedAt.Before(window) {
+		window = storedAt.Truncate(time.Hour)
+	}
 	entry := voacapCacheEntry{storedAt: storedAt.UTC(), forecast: VOACAPClosedForecast{WindowStartUTC: window.UTC()}}
 	for _, hour := range hours {
 		entry.forecast.Records = append(entry.forecast.Records, VOACAPHourlyForecast{FT8SNRDB: -14, VOACAPSNRDBHz: 16, HourUTC: hour, FrequencyMHz: 14.1})

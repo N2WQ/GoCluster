@@ -61,25 +61,22 @@ var livePolicyCacheTies = []struct {
 	name          string
 	keep, discard voacapCacheKey
 }{
-	{"user", voacapCacheKey{2, 10, "z", 10, 10, 10, 10, "z"}, voacapCacheKey{10, 2, "a", 2, 2, 2, 2, "a"}},
-	{"dx", voacapCacheKey{1, 2, "z", 10, 10, 10, 10, "z"}, voacapCacheKey{1, 10, "a", 2, 2, 2, 2, "a"}},
-	{"band", voacapCacheKey{1, 1, "a", 10, 10, 10, 10, "z"}, voacapCacheKey{1, 1, "z", 2, 2, 2, 2, "a"}},
-	{"frequency", voacapCacheKey{1, 1, "a", 2, 10, 10, 10, "z"}, voacapCacheKey{1, 1, "a", 10, 2, 2, 2, "a"}},
-	{"year", voacapCacheKey{1, 1, "a", 1, 2, 10, 10, "z"}, voacapCacheKey{1, 1, "a", 1, 10, 2, 2, "a"}},
-	{"month", voacapCacheKey{1, 1, "a", 1, 1, 2, 10, "z"}, voacapCacheKey{1, 1, "a", 1, 1, 10, 2, "a"}},
-	{"ssn", voacapCacheKey{1, 1, "a", 1, 1, 1, 2, "z"}, voacapCacheKey{1, 1, "a", 1, 1, 1, 10, "a"}},
-	{"direction", voacapCacheKey{1, 1, "a", 1, 1, 1, 1, "a"}, voacapCacheKey{1, 1, "a", 1, 1, 1, 1, "z"}},
+	{"user", voacapCacheKey{2, 10, 2, "z", 10}, voacapCacheKey{10, 2, 1, "a", 2}},
+	{"dx", voacapCacheKey{1, 2, 2, "z", 10}, voacapCacheKey{1, 10, 1, "a", 2}},
+	{"band", voacapCacheKey{1, 1, 2, "a", 10}, voacapCacheKey{1, 1, 1, "z", 2}},
+	{"frequency", voacapCacheKey{1, 1, 2, "a", 2}, voacapCacheKey{1, 1, 1, "a", 10}},
+	{"direction", voacapCacheKey{1, 1, 1, "a", 1}, voacapCacheKey{1, 1, 2, "a", 1}},
 }
 
 var livePolicyDelayTies = []struct {
 	name          string
 	keep, discard voacapDelayKey
 }{
-	{"user", voacapDelayKey{2, 10, "z", 10, "z"}, voacapDelayKey{10, 2, "a", 2, "a"}},
-	{"dx", voacapDelayKey{1, 2, "z", 10, "z"}, voacapDelayKey{1, 10, "a", 2, "a"}},
-	{"band", voacapDelayKey{1, 1, "a", 10, "z"}, voacapDelayKey{1, 1, "z", 2, "a"}},
-	{"frequency", voacapDelayKey{1, 1, "a", 2, "z"}, voacapDelayKey{1, 1, "a", 10, "a"}},
-	{"direction", voacapDelayKey{1, 1, "a", 1, "a"}, voacapDelayKey{1, 1, "a", 1, "z"}},
+	{"user", voacapDelayKey{2, 10, 2, "z", 10}, voacapDelayKey{10, 2, 1, "a", 2}},
+	{"dx", voacapDelayKey{1, 2, 2, "z", 10}, voacapDelayKey{1, 10, 1, "a", 2}},
+	{"band", voacapDelayKey{1, 1, 2, "a", 10}, voacapDelayKey{1, 1, 1, "z", 2}},
+	{"frequency", voacapDelayKey{1, 1, 2, "a", 2}, voacapDelayKey{1, 1, 1, "a", 10}},
+	{"direction", voacapDelayKey{1, 1, 1, "a", 1}, voacapDelayKey{1, 1, 2, "a", 1}},
 }
 
 func TestVOACAPLiveCachePolicyTies(t *testing.T) {
@@ -172,7 +169,7 @@ func TestVOACAPLiveCachePolicyExpiry(t *testing.T) {
 		f, now := newLivePolicyFixture(t, 2)
 		f.fallback.CacheTTLSeconds, f.fallback.DelaySeconds = 60, 10
 		c, d := livePolicyKeys(1)
-		f.addCacheLocked(c, voacapCacheEntry{storedAt: now.Add(-time.Minute - delta)})
+		f.addCacheLocked(c, testFrozenCacheEntry(voacapCacheEntry{storedAt: now.Add(-time.Minute - delta), forecast: VOACAPClosedForecast{WindowStartUTC: now.Add(-time.Minute - delta).Truncate(time.Hour)}}, 24, 60))
 		f.addDelayLocked(d, voacapDelayEntry{firstSeen: now.Add(-24 * time.Hour), lastSeen: now.Add(-70*time.Second - delta)})
 		f.pruneLocked(now)
 		_, cachePresent := f.cache[c]
@@ -186,7 +183,7 @@ func TestVOACAPLiveCachePolicyExpiry(t *testing.T) {
 		f.fallback.CacheTTLSeconds, f.fallback.DelaySeconds = 60, 10
 		f.lastPrune = now
 		c, d := livePolicyKeys(1)
-		f.addCacheLocked(c, voacapCacheEntry{storedAt: now.Add(-24 * time.Hour)})
+		f.addCacheLocked(c, testFrozenCacheEntry(voacapCacheEntry{storedAt: now.Add(-24 * time.Hour), forecast: VOACAPClosedForecast{WindowStartUTC: now.Add(-24 * time.Hour).Truncate(time.Hour)}}, 24, 60))
 		f.addDelayLocked(d, voacapDelayEntry{lastSeen: now.Add(-24 * time.Hour)})
 		f.pruneLocked(now.Add(advance))
 		wantSweep := advance >= time.Minute
@@ -223,22 +220,18 @@ func TestVOACAPLiveCachePolicyDelayTouch(t *testing.T) {
 	}
 }
 
-func TestVOACAPLiveCachePolicyDurationArithmetic(t *testing.T) {
-	// Preserve the legacy expression, including duration overflow; replacing it
-	// with a deadline comparison would change these outcomes.
-	for _, seconds := range []int{60, int(^uint(0)>>1) / 2} {
-		for _, age := range []time.Duration{-time.Hour, 0, time.Hour} {
+func TestVOACAPLiveCachePolicyFrozenExpiryIgnoresLaterTTL(t *testing.T) {
+	for _, laterTTL := range []int{1, 3600, 86400} {
+		for _, delta := range []time.Duration{-time.Nanosecond, 0, time.Nanosecond} {
 			f, now := newLivePolicyFixture(t, 1)
-			f.fallback.CacheTTLSeconds, f.fallback.DelaySeconds = seconds, 10
-			c, d := livePolicyKeys(1)
-			at := now.Add(-age)
-			f.addCacheLocked(c, voacapCacheEntry{storedAt: at})
-			f.addDelayLocked(d, voacapDelayEntry{firstSeen: at, lastSeen: at})
-			cacheExpired := now.Sub(at) > time.Duration(seconds)*time.Second
-			delayExpired := now.Sub(at) > time.Duration(seconds+10)*time.Second
+			c, _ := livePolicyKeys(1)
+			stored := now.Add(-time.Minute - delta)
+			entry := testFrozenCacheEntry(voacapCacheEntry{storedAt: stored, forecast: VOACAPClosedForecast{WindowStartUTC: stored.Truncate(time.Hour)}}, 24, 60)
+			f.addCacheLocked(c, entry)
+			f.fallback.CacheTTLSeconds = laterTTL
 			f.pruneLocked(now)
-			if (len(f.cache) == 0) != cacheExpired || (len(f.delays) == 0) != delayExpired {
-				t.Fatalf("legacy duration arithmetic changed for seconds=%d age=%s", seconds, age)
+			if (len(f.cache) == 0) != (delta > 0) {
+				t.Fatalf("frozen expiry changed with runtimeTTL=%d delta=%s", laterTTL, delta)
 			}
 		}
 	}

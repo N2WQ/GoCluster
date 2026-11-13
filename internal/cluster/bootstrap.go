@@ -4225,7 +4225,11 @@ func buildOverviewLines(
 			skewTime = formatDateShortZ(info.ModTime())
 		}
 	}
-	voacapSSNLabel := formatVOACAPSSNLabel(voacapSSN, now)
+	currentVOACAPSSN, currentVOACAPSSNKnown := 0, false
+	if voacapSSN != nil {
+		currentVOACAPSSN, currentVOACAPSSNKnown = voacapSSN.CurrentSSN(now)
+	}
+	voacapSSNLabel := formatVOACAPSSNLabel(currentVOACAPSSN, currentVOACAPSSNKnown)
 
 	primaryDupPct := "n/a"
 	if dedup != nil {
@@ -4286,7 +4290,7 @@ func buildOverviewLines(
 		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s  [yellow]VOACAP SSN[-]: %s", ctyTime, fccTime, skewTime, voacapSSNLabel),
 		"PATH PREDICTIONS",
 	)
-	lines = append(lines, formatPathLines(pathPredictor, voacapFallback, now)...)
+	lines = append(lines, formatPathLines(pathPredictor, voacapFallback, now, currentVOACAPSSN, currentVOACAPSSNKnown)...)
 	lines = append(lines, "INGEST SOURCES")
 	lines = append(lines, formatIngestSourceLines(ingestSources)...)
 	lines = append(lines, "NETWORK")
@@ -4294,12 +4298,8 @@ func buildOverviewLines(
 	return lines
 }
 
-func formatVOACAPSSNLabel(provider pathreliability.VOACAPSSNProvider, now time.Time) string {
-	if provider == nil {
-		return "n/a"
-	}
-	ssn, ok := provider.CurrentSSN(now)
-	if !ok {
+func formatVOACAPSSNLabel(ssn int, known bool) string {
+	if !known {
 		return "n/a"
 	}
 	return fmt.Sprintf("%d", ssn)
@@ -4559,10 +4559,26 @@ type voacapFallbackSnapshotProvider interface {
 	Snapshot() pathreliability.VOACAPClosedFallbackSnapshot
 }
 
-func formatPathLines(predictor *pathreliability.Predictor, voacapFallback voacapFallbackSnapshotProvider, _ time.Time) []string {
-	lines := make([]string, 0, 3)
-	lines = append(lines, formatVOACAPCacheLine(voacapFallback))
-	lines = append(lines, formatVOACAPCacheIndexLine(voacapFallback))
+type voacapFallbackDiagnosticProvider interface {
+	DedicatedDiagnosticSnapshot(time.Time, int, bool) pathreliability.VOACAPClosedFallbackSnapshot
+}
+
+func formatPathLines(predictor *pathreliability.Predictor, provider voacapFallbackSnapshotProvider, now time.Time, ssn int, ssnKnown bool) []string {
+	var snapshot pathreliability.VOACAPClosedFallbackSnapshot
+	available := provider != nil
+	if detailed, ok := provider.(voacapFallbackDiagnosticProvider); ok {
+		// Exactly one inventory pass. Every label below shares this publication
+		// and the same SSN captured for the overview's solar-input label.
+		snapshot = detailed.DedicatedDiagnosticSnapshot(now, ssn, ssnKnown)
+	} else if available {
+		snapshot = provider.Snapshot()
+	}
+	lines := make([]string, 0, 6)
+	lines = append(lines, formatVOACAPCacheLine(snapshot, available))
+	lines = append(lines, formatVOACAPCacheIndexLine(snapshot, available))
+	if available {
+		lines = append(lines, formatVOACAPWorkLines(snapshot, ssn, ssnKnown)...)
+	}
 	if predictor == nil || !predictor.Config().Enabled {
 		lines = append(lines, "[yellow]H3 path pairs[-]: n/a")
 		return lines
@@ -4650,11 +4666,10 @@ func formatPathSnapshotLines(lines []string, snapshot pathreliability.PredictorS
 	return lines
 }
 
-func formatVOACAPCacheLine(provider voacapFallbackSnapshotProvider) string {
-	if provider == nil {
+func formatVOACAPCacheLine(snap pathreliability.VOACAPClosedFallbackSnapshot, available bool) string {
+	if !available {
 		return "[yellow]VOACAP cache[-]: n/a"
 	}
-	snap := provider.Snapshot()
 	return fmt.Sprintf("[yellow]VOACAP cache[-]: %s (C) / %s (D) / %s (I) / %s (Q)",
 		humanize.Comma(int64(snap.CacheEntries)),
 		humanize.Comma(int64(snap.DelayEntries)),
@@ -4664,11 +4679,10 @@ func formatVOACAPCacheLine(provider voacapFallbackSnapshotProvider) string {
 }
 
 // Keep index diagnostics on their own line: the overview does not wrap text.
-func formatVOACAPCacheIndexLine(provider voacapFallbackSnapshotProvider) string {
-	if provider == nil {
+func formatVOACAPCacheIndexLine(snap pathreliability.VOACAPClosedFallbackSnapshot, available bool) string {
+	if !available {
 		return "[yellow]VOACAP disk index[-]: n/a"
 	}
-	snap := provider.Snapshot()
 	index := snap.ForecastCacheIndex
 	if !index.Attached {
 		return "[yellow]VOACAP disk index[-]: n/a"
@@ -4678,6 +4692,31 @@ func formatVOACAPCacheIndexLine(provider voacapFallbackSnapshotProvider) string 
 		humanize.Comma(int64(index.RetentionEntries)),
 		humanize.Comma(int64(index.EligibilityEntries)),
 		index.Ready, index.Dirty)
+}
+
+func formatVOACAPWorkLines(snap pathreliability.VOACAPClosedFallbackSnapshot, ssn int, ssnKnown bool) []string {
+	different := "n/a"
+	if snap.SSNComparisonKnown {
+		different = humanize.Comma(int64(snap.DifferentSSNEntries))
+	}
+	oldest := "n/a"
+	if snap.QueueOldestAgeKnown {
+		oldest = snap.QueueOldestAge.Round(time.Second).String()
+	}
+	busy := "idle"
+	if snap.WorkerBusy {
+		busy = snap.WorkerBusyFor.Round(time.Millisecond).String()
+	}
+	mean, maximum := "n/a", "n/a"
+	if snap.WorkerDurationCount > 0 {
+		mean = time.Duration(uint64(snap.WorkerDurationSum) / snap.WorkerDurationCount).Round(time.Millisecond).String()
+		maximum = snap.WorkerDurationMax.Round(time.Millisecond).String()
+	}
+	return []string{
+		fmt.Sprintf("[yellow]VOACAP input[-]: SSN=%s; differs=%s/%s usable", formatVOACAPSSNLabel(ssn, ssnKnown), different, humanize.Comma(int64(snap.UsableCacheEntries))),
+		fmt.Sprintf("[yellow]VOACAP worker[-]: busy=%s; oldest waiting=%s", busy, oldest),
+		fmt.Sprintf("[yellow]VOACAP jobs[-]: %d completed; mean=%s; max=%s", snap.WorkerDurationCount, mean, maximum),
+	}
 }
 
 func formatRecentSupportByBandLines(store spot.RecentSupportStore, now time.Time, maxBands int) []string {

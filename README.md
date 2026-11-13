@@ -558,7 +558,7 @@ Omitted mode defaults to CW. Rows whose `REL` prediction is `UNLIKELY` or
 
 ```text
 > SHOW PROP IT9 20m FT8
-PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8
+PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=24
 UTC  EFF  RX  TX  REL
 18Z  <    -   <   LOW
 ```
@@ -569,6 +569,12 @@ penalty, `TX` is the you-to-target transmit leg, and `REL` is the configured
 class for the merged path. If all cached rows are `UNLIKELY` or `CLOSED`, the
 command reports that there are no `HIGH`/`MEDIUM`/`LOW` rows in the current
 forecast window.
+
+The default forecast lasts 24 hours from the worker's starting UTC hour. A valid
+forecast stays available while a replacement is prepared. Requested paths renew
+in the final hour; queue delays or failures can still leave a gap after expiry.
+`ssn=mixed` means displayed bands use different solar inputs; each band then
+shows its own SSN.
 
 Long command responses also append a short read-pause footer:
 

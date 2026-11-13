@@ -24,7 +24,7 @@ func TestVOACAPForecastCacheRetentionStartupCanonicalTies(t *testing.T) {
 				t.Fatalf("raw fixture has %d entries, want 24 before hydration", len(records))
 			}
 
-			loaded, stats, err := store.loadCurrent(now, 112, cfg)
+			loaded, stats, err := store.loadCurrent(now, cfg)
 			if err != nil {
 				t.Fatalf("loadCurrent() error: %v", err)
 			}
@@ -66,14 +66,14 @@ func TestVOACAPForecastCacheRetentionEqualTimestampOverflow(t *testing.T) {
 	cfg := testVOACAPFallbackConfig().VOACAPFallback
 	cfg.MaxCacheEntries = 8
 	wantKeys := []string{
-		"voacapfc/v1/e/0001/0001/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0002/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0003/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0004/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0005/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0006/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0007/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0008/20m/014100/2026/06/0112/bidirectional",
+		"voacapfc/v2/e/0001/0001/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0002/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0003/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0004/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0005/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0006/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0007/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0008/20m/014100/bidirectional",
 	}
 	for _, route := range []string{"startup", "completion"} {
 		t.Run(route, func(t *testing.T) {
@@ -85,15 +85,15 @@ func TestVOACAPForecastCacheRetentionEqualTimestampOverflow(t *testing.T) {
 						key := testVOACAPForecastCacheKey(now, cell)
 						entry := testVOACAPForecastCacheEntry(now, -int(cell), 20)
 						if route == "completion" {
-							if err := store.storeForecast(key, entry, cfg, now); err != nil {
+							if err := store.storeForecast(key, testCacheEntryWithConfig(entry, cfg), cfg, now); err != nil {
 								t.Fatalf("storeForecast(cell=%d) error: %v", cell, err)
 							}
 						} else {
-							writeTestVOACAPForecastCacheRecord(t, store, key, entry, nil)
+							writeTestVOACAPForecastCacheRecord(t, store, key, testCacheEntryWithConfig(entry, cfg), nil)
 						}
 					}
 					if route == "startup" {
-						loaded, stats, err := store.loadCurrent(now, 112, cfg)
+						loaded, stats, err := store.loadCurrent(now, cfg)
 						if err != nil || stats.Loaded != 8 || stats.Pruned != 16 || stats.Overflow != 16 {
 							t.Fatalf("initial hydration: stats=%+v error=%v", stats, err)
 						}
@@ -147,7 +147,7 @@ func TestVOACAPForecastCacheRetentionRefreshAndReinsert(t *testing.T) {
 			store := openTestVOACAPForecastCacheStore(t)
 			defer closeTestVOACAPForecastCacheStore(t, store)
 			writeVOACAPRetentionFixture(t, store, cfg, now, voacapRetentionInsertionOrders()["ascending"], false)
-			if _, _, err := store.loadCurrent(now, 112, cfg); err != nil {
+			if _, _, err := store.loadCurrent(now, cfg); err != nil {
 				t.Fatalf("initial loadCurrent() error: %v", err)
 			}
 			assertRawVOACAPRetentionKeys(t, store, voacapRetentionExpectedKeys())
@@ -156,7 +156,7 @@ func TestVOACAPForecastCacheRetentionRefreshAndReinsert(t *testing.T) {
 				deleteRawVOACAPRetentionKey(t, store, voacapRetentionElevenKey)
 				// Restart after the explicit deletion so no future index can be stale.
 				store = reopenVOACAPRetentionStore(t, store)
-				loaded, stats, err := store.loadCurrent(now, 112, cfg)
+				loaded, stats, err := store.loadCurrent(now, cfg)
 				if err != nil || len(loaded) != 11 || stats.Pruned != 0 {
 					t.Fatalf("hydrate deletion: loaded=%d stats=%+v error=%v", len(loaded), stats, err)
 				}
@@ -193,13 +193,13 @@ func TestVOACAPClosedFallbackWaitFencesBlockedPersistence(t *testing.T) {
 	defer closeTestVOACAPForecastCacheStore(t, store)
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
-			return VOACAPClosedForecast{
+			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: job.WindowStartUTC,
 				Records: []VOACAPHourlyForecast{
 					{FT8SNRDB: -20, HourUTC: job.WindowStartUTC.Hour(), FrequencyMHz: job.FrequencyMHz},
 					{FT8SNRDB: -18, HourUTC: job.WindowStartUTC.Add(time.Hour).Hour(), FrequencyMHz: job.FrequencyMHz},
 				},
-			}, nil
+			}), nil
 		},
 	}
 	fallback := newTestClosedFallback(t, cfg, forecaster, fixedSSNProvider{ssn: 112})
@@ -247,7 +247,7 @@ func TestVOACAPClosedFallbackWaitFencesBlockedPersistence(t *testing.T) {
 		t.Fatal("Wait did not return after forecast persistence was released")
 	}
 	records := readRawVOACAPRetentionRecords(t, store)
-	key := fallback.cacheKey(testClosedRequest(), 112, now)
+	key := fallback.cacheKey(testClosedRequest())
 	record, ok := records[string(voacapForecastCacheKeyBytes(key))]
 	if !ok || len(records) != 1 || len(record.Records) != 2 || record.Records[0].FT8SNRDB != -20 || record.Records[1].FT8SNRDB != -18 {
 		t.Fatalf("raw persisted forecast missing after Wait, before hydration: %+v", records)
@@ -255,26 +255,26 @@ func TestVOACAPClosedFallbackWaitFencesBlockedPersistence(t *testing.T) {
 }
 
 const (
-	voacapRetentionTenKey    = "voacapfc/v1/e/0001/000a/20m/014100/2026/06/0112/bidirectional"
-	voacapRetentionElevenKey = "voacapfc/v1/e/0001/000b/20m/014100/2026/06/0112/bidirectional"
+	voacapRetentionTenKey    = "voacapfc/v2/e/0001/000a/20m/014100/bidirectional"
+	voacapRetentionElevenKey = "voacapfc/v2/e/0001/000b/20m/014100/bidirectional"
 )
 
 // These literal key sets are an oracle for byte ordering, independent of the
 // production key formatter and retention comparator.
 func voacapRetentionExpectedKeys() []string {
 	return []string{
-		"voacapfc/v1/e/0001/0002/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0003/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0005/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0006/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0008/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0009/20m/014100/2026/06/0112/bidirectional",
+		"voacapfc/v2/e/0001/0002/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0003/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0005/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0006/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0008/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0009/20m/014100/bidirectional",
 		voacapRetentionElevenKey,
-		"voacapfc/v1/e/0001/000c/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/000f/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0012/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0015/20m/014100/2026/06/0112/bidirectional",
-		"voacapfc/v1/e/0001/0018/20m/014100/2026/06/0112/bidirectional",
+		"voacapfc/v2/e/0001/000c/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/000f/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0012/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0015/20m/014100/bidirectional",
+		"voacapfc/v2/e/0001/0018/20m/014100/bidirectional",
 	}
 }
 
@@ -306,11 +306,11 @@ func writeVOACAPRetentionFixture(t *testing.T, store *VOACAPForecastCacheStore, 
 		}
 		key := testVOACAPForecastCacheKey(now, cell)
 		if completion {
-			if err := store.storeForecast(key, entry, cfg, now); err != nil {
+			if err := store.storeForecast(key, testCacheEntryWithConfig(entry, cfg), cfg, now); err != nil {
 				t.Fatalf("storeForecast(cell=%d) error: %v", cell, err)
 			}
 		} else {
-			writeTestVOACAPForecastCacheRecord(t, store, key, entry, nil)
+			writeTestVOACAPForecastCacheRecord(t, store, key, testCacheEntryWithConfig(entry, cfg), nil)
 		}
 	}
 }
@@ -319,7 +319,7 @@ func storeVOACAPRetentionEntry(t *testing.T, store *VOACAPForecastCacheStore, cf
 	t.Helper()
 	entry := testVOACAPForecastCacheEntry(now, snr, 20)
 	entry.storedAt = storedAt
-	if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), entry, cfg, now); err != nil {
+	if err := store.storeForecast(testVOACAPForecastCacheKey(now, cell), testCacheEntryWithConfig(entry, cfg), cfg, now); err != nil {
 		t.Fatalf("storeForecast(cell=%d) error: %v", cell, err)
 	}
 }
@@ -385,7 +385,7 @@ func assertVOACAPRetentionLoadedCells(t *testing.T, loaded []voacapForecastCache
 
 func assertVOACAPRetentionHydration(t *testing.T, store *VOACAPForecastCacheStore, cfg VOACAPFallbackConfig, now time.Time, want []CellID) {
 	t.Helper()
-	loaded, stats, err := store.loadCurrent(now, 112, cfg)
+	loaded, stats, err := store.loadCurrent(now, cfg)
 	if err != nil {
 		t.Fatalf("loadCurrent() error: %v", err)
 	}

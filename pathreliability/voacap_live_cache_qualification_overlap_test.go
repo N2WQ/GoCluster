@@ -157,7 +157,7 @@ func liveQualificationConcurrentPass(ctx context.Context, t *testing.T, cancel c
 				f.mu.Lock()
 				defer f.mu.Unlock()
 				s.AcquiredNS = clock.NowNS()
-				_, s.Ready, _ = f.cachedForecastWindowLocked(key, req, liveQualificationNow())
+				_, s.Ready = f.cachedForecastWindowLocked(key, req, liveQualificationNow())
 			}()
 			s.EndNS = clock.NowNS()
 			samples[reader][seq] = s

@@ -1,5 +1,9 @@
 package voacap
 
+// The production monitor owns one polling loop and one bounded continuity
+// record. Spot/forecast consumers read immutable copies; they never fetch NOAA
+// or wait for persistence. Manual Wolf-estimate experiments remain in sunspot.go.
+
 import (
 	"context"
 	"errors"
@@ -7,11 +11,17 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
 
-const defaultMaxSunspotReportBytes = 1 << 20
+const (
+	defaultMaxSunspotReportBytes = 1 << 20
+	maxSolarValidatorBytes       = 4096
+	maxSolarErrorBytes           = 4096
+	maxSolarSourceURLBytes       = 4096
+)
 
 type sunspotHTTPClient interface {
 	Do(*http.Request) (*http.Response, error)
@@ -21,57 +31,72 @@ type sunspotMonitorLogger interface {
 	Printf(format string, args ...any)
 }
 
-// SunspotMonitorConfig owns the runtime NOAA SSN polling cadence and the EWMA
-// generation threshold used by path-reliability VOACAP fallback keys.
+// SunspotMonitorConfig owns production NOAA flux polling and solar-input policy.
+// RecentWeight explicitly supports zero and one; none of the policy values is
+// defaulted here. URL, client and response-byte limit are transport/test seams.
 type SunspotMonitorConfig struct {
-	URL                string
-	FetchInterval      time.Duration
-	RequestTimeout     time.Duration
-	StatePath          string
-	EWMAHalfLife       time.Duration
-	RecomputeThreshold float64
-	MaxResponseBytes   int64
-	HTTPClient         sunspotHTTPClient
-	Logger             sunspotMonitorLogger
+	URL              string
+	FetchInterval    time.Duration
+	RequestTimeout   time.Duration
+	StatePath        string
+	EWMAHalfLife     time.Duration
+	RecentWeight     float64
+	StaleAfter       time.Duration
+	MaxResponseBytes int64
+	HTTPClient       sunspotHTTPClient
+	Logger           sunspotMonitorLogger
 }
 
-// SunspotMonitorSnapshot is a point-in-time view of the monitor's retained
-// state for tests and operator diagnostics.
+// SunspotMonitorSnapshot separates latest accepted source components from the
+// last complete input. Missing flags do not invent an observation age. Stale
+// flags and warning/recovery times reflect the most recent poll, even if that
+// poll failed or returned 304. Warnings apply only to contributing components.
 type SunspotMonitorSnapshot struct {
+	LastAttemptAtUTC    time.Time
 	LastFetchAtUTC      time.Time
 	LastObservedAtUTC   time.Time
-	LastRawSSN          int
-	EWMA                float64
+	LastNoonFluxSFU     float64
+	RecentFluxEWMA      float64
 	EWMAInitialized     bool
+	MeanObservedAtUTC   time.Time
+	PublishedMeanSFU    float64
+	MeanInitialized     bool
 	ForecastSSN         int
 	ForecastInitialized bool
-	LastRecomputeDelta  float64
 	LastForecastAtUTC   time.Time
 	LastForecastReason  string
+	Input               SolarInputSnapshot
+	RecentMissing       bool
+	MeanMissing         bool
+	RecentStale         bool
+	MeanStale           bool
+	RecentWarningAtUTC  time.Time
+	MeanWarningAtUTC    time.Time
+	RecentRecoveryAtUTC time.Time
+	MeanRecoveryAtUTC   time.Time
 	LastError           string
 	ETag                string
 	LastModified        string
 }
 
-// SunspotMonitor polls NOAA SWPC sunspot_report.json and exposes a rounded
-// integer EWMA SSN generation. It does not invoke VOACAP itself.
+// SunspotMonitor exposes a daily flux-derived integer SSN, not an official SSN.
+// pollMu serializes polling/restoration and their disk saves; mu protects only
+// short state publication/read sections. There is no retained observation list.
 type SunspotMonitor struct {
 	cfg SunspotMonitorConfig
 
-	mu                  sync.RWMutex
-	etag                string
-	lastModified        string
-	lastFetchAtUTC      time.Time
-	lastObservedAtUTC   time.Time
-	lastRawSSN          int
-	ewma                float64
-	ewmaInitialized     bool
-	forecastSSN         int
-	forecastInitialized bool
-	lastRecomputeDelta  float64
-	lastForecastAtUTC   time.Time
-	lastForecastReason  string
+	pollMu sync.Mutex
+	mu     sync.RWMutex
+	state  sunspotMonitorState
+
+	lastAttemptAtUTC    time.Time
 	lastError           string
+	recentStale         bool
+	meanStale           bool
+	recentWarningAtUTC  time.Time
+	meanWarningAtUTC    time.Time
+	recentRecoveryAtUTC time.Time
+	meanRecoveryAtUTC   time.Time
 
 	startOnce sync.Once
 	wg        sync.WaitGroup
@@ -79,32 +104,44 @@ type SunspotMonitor struct {
 
 func NewSunspotMonitor(cfg SunspotMonitorConfig) (*SunspotMonitor, error) {
 	if cfg.URL == "" {
-		cfg.URL = NOAASunspotReportURL
+		cfg.URL = NOAANoonF107URL
 	}
-	if cfg.FetchInterval <= 0 {
-		return nil, errors.New("sunspot fetch interval must be positive")
+	if len(cfg.URL) > maxSolarSourceURLBytes {
+		return nil, errors.New("solar source URL exceeds its byte limit")
 	}
-	if cfg.RequestTimeout <= 0 {
-		return nil, errors.New("sunspot request timeout must be positive")
+	if cfg.FetchInterval <= 0 || cfg.RequestTimeout <= 0 {
+		return nil, errors.New("solar fetch interval and request timeout must be positive")
 	}
-	if cfg.EWMAHalfLife <= 0 {
-		return nil, errors.New("sunspot EWMA half-life must be positive")
+	if cfg.EWMAHalfLife <= 0 || cfg.EWMAHalfLife%time.Second != 0 {
+		return nil, errors.New("solar EWMA half-life must be a positive whole number of seconds")
 	}
-	if math.IsNaN(cfg.RecomputeThreshold) || math.IsInf(cfg.RecomputeThreshold, 0) || cfg.RecomputeThreshold <= 0 {
-		return nil, errors.New("sunspot recompute threshold must be finite and positive")
+	if !validRecentWeight(cfg.RecentWeight) {
+		return nil, errors.New("solar recent weight must be finite and between 0 and 1")
+	}
+	if cfg.StaleAfter <= 0 {
+		return nil, errors.New("solar stale warning age must be positive")
 	}
 	if cfg.MaxResponseBytes <= 0 {
 		cfg.MaxResponseBytes = defaultMaxSunspotReportBytes
 	}
+	if cfg.MaxResponseBytes == math.MaxInt64 {
+		return nil, errors.New("solar response-byte limit cannot equal MaxInt64")
+	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient
 	}
-	return &SunspotMonitor{cfg: cfg}, nil
+	cfg.StatePath = strings.TrimSpace(cfg.StatePath)
+	m := &SunspotMonitor{cfg: cfg}
+	m.state = sunspotMonitorState{Version: sunspotMonitorStateVersion, Identity: solarStateIdentity(cfg)}
+	return m, nil
 }
 
-// Start launches one cancellable polling goroutine. The first poll runs
-// immediately so an enabled VOACAP fallback gets a generation as soon as the
-// NOAA endpoint responds.
+func validRecentWeight(weight float64) bool {
+	return !math.IsNaN(weight) && !math.IsInf(weight, 0) && weight >= 0 && weight <= 1
+}
+
+// Start owns exactly one cancellable polling goroutine. Its request context,
+// stopped ticker and WaitGroup also cover cancellation during an active fetch.
 func (m *SunspotMonitor) Start(ctx context.Context) {
 	if m == nil || ctx == nil {
 		return
@@ -129,24 +166,21 @@ func (m *SunspotMonitor) Start(ctx context.Context) {
 }
 
 func (m *SunspotMonitor) Wait() {
-	if m == nil {
-		return
+	if m != nil {
+		m.wg.Wait()
 	}
-	m.wg.Wait()
 }
 
 func (m *SunspotMonitor) pollWithTimeout(parent context.Context, now time.Time) {
 	ctx, cancel := context.WithTimeout(parent, m.cfg.RequestTimeout)
 	defer cancel()
-	if err := m.Poll(ctx, now); err != nil {
-		m.setLastError(err)
-	}
+	_ = m.Poll(ctx, now) //nolint:errcheck // Poll publishes errors and component health; this owned loop retries on cadence.
 }
 
-// Poll performs one fetch and updates EWMA state only for fresh observation
-// timestamps. The forecast SSN generation advances only when the rounded EWMA
-// delta crosses the configured recompute threshold.
-func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) error {
+// Poll replays all newer available observations, retaining independent component
+// watermarks. It never revises accepted values, invents samples across gaps, or
+// smooths an already accepted Noon again when its first mean arrives later.
+func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) (err error) {
 	if m == nil {
 		return errors.New("nil sunspot monitor")
 	}
@@ -157,47 +191,97 @@ func (m *SunspotMonitor) Poll(ctx context.Context, now time.Time) error {
 		now = time.Now().UTC()
 	}
 	now = now.UTC()
+	m.pollMu.Lock()
+	defer m.pollMu.Unlock()
+	defer func() { m.finishPoll(now, err) }()
 
-	etag, lastModified := m.fetchValidators()
+	m.mu.RLock()
+	etag, lastModified := m.state.ETag, m.state.LastModified
+	m.mu.RUnlock()
 	result, err := fetchSunspotReport(ctx, m.cfg.HTTPClient, m.cfg.URL, etag, lastModified, m.cfg.MaxResponseBytes)
 	if err != nil {
 		return err
 	}
-	if result.notModified {
-		m.storeFetchHeaders(now, result)
-		if err := m.saveState(); err != nil {
+	if !result.notModified {
+		series, parseErr := parseNOAANoonFlux(result.body, now)
+		if parseErr != nil {
+			return parseErr
+		}
+		if len(series) == 0 {
+			return errors.New("no usable NOAA Noon solar flux components")
+		}
+		if err := m.applyFluxSeries(series, now); err != nil {
 			return err
 		}
-		m.clearLastError()
-		return nil
 	}
-	series, err := ParseNOAASunspotReport(result.body)
-	if err != nil {
-		return err
+	m.mu.Lock()
+	m.state.LastFetchAtUTC = now
+	// A new representation without validators must not retain validators from
+	// an older body. A 304 may omit them, so keep its existing validators.
+	if !result.notModified || result.etag != "" {
+		m.state.ETag = result.etag
 	}
-	if len(series) == 0 {
-		return errors.New("no usable NOAA sunspot observations")
+	if !result.notModified || result.lastModified != "" {
+		m.state.LastModified = result.lastModified
 	}
-	if err := m.applyObservation(series[len(series)-1], now); err != nil {
-		return err
+	m.mu.Unlock()
+	return m.saveState()
+}
+
+func (m *SunspotMonitor) applyFluxSeries(series []solarFluxObservation, now time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	next := m.state
+	changed := false
+	for _, row := range series {
+		if row.hasFlux && (!next.EWMAInitialized || row.at.After(next.LastObservedAtUTC)) {
+			if next.EWMAInitialized {
+				next.RecentFluxEWMA = advanceFluxEWMA(next.RecentFluxEWMA, row.flux, row.at.Sub(next.LastObservedAtUTC), m.cfg.EWMAHalfLife)
+			} else {
+				next.RecentFluxEWMA = row.flux
+			}
+			next.EWMAInitialized, next.LastObservedAtUTC, next.LastNoonFluxSFU = true, row.at, row.flux
+			changed = true
+		}
+		if row.hasMean && (!next.MeanInitialized || row.at.After(next.MeanObservedAtUTC)) {
+			next.MeanInitialized, next.MeanObservedAtUTC, next.PublishedMeanSFU = true, row.at, row.mean
+			changed = true
+		}
 	}
-	m.storeFetchHeaders(now, result)
-	if err := m.saveState(); err != nil {
-		return err
+	if changed {
+		input, ready, err := solarInputFromState(next, now)
+		if err != nil {
+			return err // Publish no partially advanced batch after arithmetic failure.
+		}
+		if ready {
+			if !next.InputInitialized || input.SSN != next.Input.SSN {
+				next.LastForecastAtUTC = now
+				next.LastForecastReason = "rounded solar flux SSN changed"
+				if !next.InputInitialized {
+					next.LastForecastReason = "initial solar flux SSN"
+				}
+			}
+			next.Input, next.InputInitialized = input, true
+		}
+		m.state = next
 	}
 	return nil
 }
 
-func (m *SunspotMonitor) CurrentSSN(time.Time) (int, bool) {
+// CurrentSolarInput returns SSN and its last accepted provenance in one read.
+// Fetch failure and component age never withdraw a previously valid input.
+func (m *SunspotMonitor) CurrentSolarInput(time.Time) (SolarInputSnapshot, bool) {
 	if m == nil {
-		return 0, false
+		return SolarInputSnapshot{}, false
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if !m.forecastInitialized {
-		return 0, false
-	}
-	return m.forecastSSN, true
+	return m.state.Input, m.state.InputInitialized
+}
+
+func (m *SunspotMonitor) CurrentSSN(now time.Time) (int, bool) {
+	input, ok := m.CurrentSolarInput(now)
+	return input.SSN, ok
 }
 
 func (m *SunspotMonitor) Snapshot() SunspotMonitorSnapshot {
@@ -206,99 +290,25 @@ func (m *SunspotMonitor) Snapshot() SunspotMonitorSnapshot {
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	s := m.state
 	return SunspotMonitorSnapshot{
-		LastFetchAtUTC:      m.lastFetchAtUTC,
-		LastObservedAtUTC:   m.lastObservedAtUTC,
-		LastRawSSN:          m.lastRawSSN,
-		EWMA:                m.ewma,
-		EWMAInitialized:     m.ewmaInitialized,
-		ForecastSSN:         m.forecastSSN,
-		ForecastInitialized: m.forecastInitialized,
-		LastRecomputeDelta:  m.lastRecomputeDelta,
-		LastForecastAtUTC:   m.lastForecastAtUTC,
-		LastForecastReason:  m.lastForecastReason,
-		LastError:           m.lastError,
-		ETag:                m.etag,
-		LastModified:        m.lastModified,
+		LastAttemptAtUTC: m.lastAttemptAtUTC, LastFetchAtUTC: s.LastFetchAtUTC,
+		LastObservedAtUTC: s.LastObservedAtUTC, LastNoonFluxSFU: s.LastNoonFluxSFU,
+		RecentFluxEWMA: s.RecentFluxEWMA, EWMAInitialized: s.EWMAInitialized,
+		MeanObservedAtUTC: s.MeanObservedAtUTC, PublishedMeanSFU: s.PublishedMeanSFU,
+		MeanInitialized: s.MeanInitialized, ForecastSSN: s.Input.SSN,
+		ForecastInitialized: s.InputInitialized, Input: s.Input,
+		LastForecastAtUTC: s.LastForecastAtUTC, LastForecastReason: s.LastForecastReason,
+		RecentMissing: !s.EWMAInitialized, MeanMissing: !s.MeanInitialized,
+		RecentStale: m.recentStale, MeanStale: m.meanStale,
+		RecentWarningAtUTC: m.recentWarningAtUTC, MeanWarningAtUTC: m.meanWarningAtUTC,
+		RecentRecoveryAtUTC: m.recentRecoveryAtUTC, MeanRecoveryAtUTC: m.meanRecoveryAtUTC,
+		LastError: m.lastError, ETag: s.ETag, LastModified: s.LastModified,
 	}
-}
-
-func (m *SunspotMonitor) applyObservation(observation SunspotObservation, now time.Time) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.ewmaInitialized && !observation.ObservedAtUTC.After(m.lastObservedAtUTC) {
-		m.lastError = ""
-		return nil
-	}
-	ewma, err := UpdateSunspotEWMA(m.ewma, m.lastObservedAtUTC, m.ewmaInitialized, observation, m.cfg.EWMAHalfLife)
-	if err != nil {
-		return err
-	}
-	rounded, err := RoundedSunspotSSN(ewma.Average)
-	if err != nil {
-		return err
-	}
-	trigger, delta, err := ShouldRecomputeVOACAP(float64(rounded), float64(m.forecastSSN), m.forecastInitialized, m.cfg.RecomputeThreshold)
-	if err != nil {
-		return err
-	}
-
-	m.lastObservedAtUTC = observation.ObservedAtUTC
-	m.lastRawSSN = observation.RawWolfEstimate
-	m.ewma = ewma.Average
-	m.ewmaInitialized = ewma.Initialized
-	m.lastRecomputeDelta = delta
-	if trigger {
-		m.forecastSSN = rounded
-		m.forecastInitialized = true
-		m.lastForecastAtUTC = now
-		m.lastForecastReason = "initial forecast SSN generation"
-		if delta > 0 {
-			m.lastForecastReason = "EWMA delta reached recompute threshold"
-		}
-	}
-	m.lastError = ""
-	return nil
-}
-
-func (m *SunspotMonitor) fetchValidators() (string, string) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	return m.etag, m.lastModified
-}
-
-func (m *SunspotMonitor) storeFetchHeaders(now time.Time, result sunspotFetchResult) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastFetchAtUTC = now
-	if result.etag != "" {
-		m.etag = result.etag
-	}
-	if result.lastModified != "" {
-		m.lastModified = result.lastModified
-	}
-}
-
-func (m *SunspotMonitor) setLastError(err error) {
-	if m == nil || err == nil {
-		return
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastError = err.Error()
-}
-
-func (m *SunspotMonitor) clearLastError() {
-	if m == nil {
-		return
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.lastError = ""
 }
 
 // RoundedSunspotSSN converts an EWMA SSN into the integer value used by VOACAP
-// deck generation and cache keys.
+// deck generation and cache keys. The manual Wolf experiment still uses it.
 func RoundedSunspotSSN(value float64) (int, error) {
 	if math.IsNaN(value) || math.IsInf(value, 0) || value < 0 {
 		return 0, errors.New("sunspot SSN must be finite and >= 0")
@@ -313,7 +323,7 @@ type sunspotFetchResult struct {
 	lastModified string
 }
 
-func fetchSunspotReport(ctx context.Context, client sunspotHTTPClient, url string, etag string, lastModified string, maxBytes int64) (sunspotFetchResult, error) {
+func fetchSunspotReport(ctx context.Context, client sunspotHTTPClient, url, etag, lastModified string, maxBytes int64) (sunspotFetchResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return sunspotFetchResult{}, err
@@ -329,11 +339,11 @@ func fetchSunspotReport(ctx context.Context, client sunspotHTTPClient, url strin
 		return sunspotFetchResult{}, err
 	}
 	defer resp.Body.Close()
-
-	result := sunspotFetchResult{
-		etag:         resp.Header.Get("ETag"),
-		lastModified: resp.Header.Get("Last-Modified"),
+	result := sunspotFetchResult{etag: resp.Header.Get("ETag"), lastModified: resp.Header.Get("Last-Modified")}
+	if len(result.etag) > maxSolarValidatorBytes || len(result.lastModified) > maxSolarValidatorBytes {
+		return sunspotFetchResult{}, errors.New("solar HTTP validator exceeds its byte limit")
 	}
+	result.etag, result.lastModified = strings.Clone(result.etag), strings.Clone(result.lastModified)
 	if resp.StatusCode == http.StatusNotModified {
 		result.notModified = true
 		return result, nil

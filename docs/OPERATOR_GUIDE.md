@@ -195,8 +195,9 @@ DXC_CONFIG_PATH=/opt/gocluster/data/config.local ./gocluster
 
 On the Overview page, the Caches & Data Freshness footer includes CTY, FCC, and
 skew dates plus `VOACAP SSN: <integer|n/a>`. The integer is the rounded current
-SSN generation used for VOACAP forecast cache keys and deck generation; `n/a`
-means the runtime has no initialized VOACAP SSN generation.
+solar-derived input used for VOACAP decks; zero is valid, while `n/a` means
+the runtime has no initialized input. SSN is recorded with each forecast rather
+than included in the path cache key.
 The Path Predictions panel also shows the same fallback snapshot as
 `VOACAP cache: <cache> (C) / <delay> (D) / <inflight> (I) / <queue> (Q)`
 before the H3 path-pair counts. These are the existing in-memory fallback cache
@@ -209,15 +210,20 @@ After successful maintenance these match and stay within `max_cache_entries`.
 not then establish an empty database. `dirty=true` marks failed or uncertain
 persistence awaiting repair; inspect cache warnings. `VOACAP disk index: n/a` means no store
 is attached. These diagnostics do not scan disk or wait behind its operations.
+`VOACAP input` compares usable current-hour forecasts with one captured current
+SSN and reports `differs=<count|n/a>/<count> usable`. This is inventory, not a
+queue backlog: idle paths can differ without having a pending job. The worker
+line shows current busy time and oldest waiting age; the jobs line shows
+completed cycle count, mean and maximum. Busy and completed durations include
+persistence. The detailed inventory uses one bounded memory scan per overview,
+and diagnostic reads never enqueue work.
 
-The unaccepted local V3 candidate described in proposed ADR-0310 is not a
-deployment recommendation: timing qualification is blocked by short measured
-batches. In that candidate, refreshing an existing live forecast or delay
-updates only that entry, even when its map is full. A new entry evicts the oldest
-existing timestamp; ties
-use the deterministic typed-key order in ADR-0310. New entries are always
-admitted. Live capacity selection and expiry still scan the original maps;
-there is no live index, new diagnostic, setting, or cleanup schedule.
+The separate live-cache campaign in proposed ADR-0310 remains unaccepted after
+invalid short-batch timing evidence. Its
+[execution record](voacap-live-cache-execution.md) is historical evidence,
+not qualification of the current solar-input and daily-window change. Neither
+functional tests nor the accepted ADR authorize deployment or establish a
+performance pass.
 
 VOACAP fallback is a Windows-only runtime feature because it launches the
 Windows VOACAP engine. Linux startup skips VOACAP validation and logs that the
@@ -677,19 +683,32 @@ prefixes.
 - `vcap|<snr>|h<hour>|s<ssn>` means the optional VOACAP closed fallback
   supplied the result. `<snr>` is the selected hour's rounded bidirectional
   FT8-equivalent SNR after receive-side noise penalty, `h<hour>` is the
-  selected UTC forecast hour, and `<ssn>` is the rounded EWMA SSN generation
+  selected UTC forecast hour, and `<ssn>` is the rounded solar-derived SSN
   used for the run. `PASS/REJECT PATH CLOSED` targets these VOACAP closed
   fallback spots; `UNLIKELY` PATH filters still include them for compatibility.
-  The runtime SSN monitor persists NOAA validators, the last observation, EWMA,
-  and the current rounded SSN generation at
-  `voacap_fallback.ssn_state_path`; a restart can reuse that SSN baseline when
-  the state file is present. Completed VOACAP hourly forecast windows persist
+  The runtime uses NOAA 2800 MHz `Noon` F10.7 readings. By default it blends a
+  two-day-half-life recent flux EWMA equally with the latest published 90-day
+  mean, converts the blend to SSN, and rounds once. Every rounded SSN change
+  can refresh requested paths. Compatible continuity and NOAA validators persist
+  at `voacap_fallback.ssn_state_path`. Old observatory-count state is discarded,
+  including its validators; cold start replays the feed oldest first. A missing
+  new mean keeps the last accepted mean while valid new flux advances. Known
+  contributing components warn separately after 48 hours without a newer
+  observation, including during failed or unchanged polls. The last good input
+  remains usable. Never-observed components are missing without an age.
+  Completed VOACAP hourly forecast windows persist
   in the per-node Pebble cache at `voacap_fallback.forecast_cache_db_path`.
-  On restart, records that still match the current cache schema, model
-  generation, rounded SSN generation, forecast month, TTL, and current UTC hour
-  hydrate the memory cache before workers start, so they bypass
-  `voacap_fallback.delay_seconds`. Stale or malformed cache records are pruned;
-  a missing/unavailable cache cold-starts normal delay/queue behavior.
+  Valid current-model records restore with their original coverage and expiry,
+  including on a different current SSN. The default window and lifetime are
+  24 hours from the worker's starting UTC hour; reads and restarts never extend
+  it. A valid forecast stays available during replacement. Ordinary requests in
+  the final hour renew without initial warm-up even when SSN is unchanged;
+  failure cooldown still applies. Idle paths create no jobs. Model-generation-1
+  predictions are retired because the former CIRCUIT layout could send the
+  wrong receiver longitude. Valid unexpired recognized legacy keys may receive
+  bounded one-time immediate ordinary admission when requested. No old
+  predictions are served and startup queues no rebuilds. Other cold paths use
+  the normal ten-minute delay. Queueing or failure can still leave gaps.
   Persisted capacity pruning retains newest storage timestamps, then lowest
   canonical cache keys for ties. An identical-time refresh has no priority;
   live-memory eviction keeps its separate policy.
@@ -863,7 +882,7 @@ Rows run from the current UTC hour through the configured
 prediction is `HIGH`, `MEDIUM`, or `LOW` are displayed.
 
 ```text
-PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=8
+PROP FN31 -> JM77 target=IT9 source=cty-derived mode=FT8 band=20m noise=SUBURBAN ssn=112 hours=24
 UTC  EFF  RX  TX  REL
 18Z  <    -   <   LOW
 ```
@@ -877,6 +896,8 @@ UTC  EFF  RX  TX  REL
   `HIGH`/`MEDIUM`/`LOW` rows in the current forecast window.
 - Bucket p50 is intentionally not shown; sufficient bucket p50 remains
   authoritative for live spot glyphs.
+- The header shows the forecast's actual SSN, including valid zero. If returned
+  bands use different SSNs it shows `ssn=mixed`, with each band's SSN beside it.
 
 ## Logs And Health
 

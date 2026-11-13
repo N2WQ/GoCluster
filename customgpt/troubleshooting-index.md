@@ -4,6 +4,21 @@ Use this file when a user reports a problem or asks why GoCluster behaved a
 certain way. This is a routing layer, not the source of truth. Cite this file,
 then cite the underlying repo docs or TSRs.
 
+## VOACAP solar input and forecast renewal
+
+For stale-input warnings, upgrade rebuild gaps, `ssn=mixed`, or forecasts using
+a different SSN from Overview, start with the
+[path-reliability support card](support-cards/path-reliability.md),
+[operator guide](../docs/OPERATOR_GUIDE.md), and
+[ADR-0347](../docs/decisions/ADR-0347-voacap-flux-and-daily-forecast.md).
+Different-SSN inventory is not queued backlog; zero SSN is valid. Requested
+paths renew in the final hour, while failure and queueing can still leave an
+expiry gap. For generation-1 retirement and wrong receiver geometry, use
+[TSR-0131](../docs/troubleshooting/TSR-0131-voacap-receiver-longitude-columns.md).
+Do not recommend restoring old predictions, extending their expiry, or changing
+classification thresholds to hide rebuild delays. Native qualification does
+not establish production capacity or physical forecast accuracy.
+
 ## Stabilizer output
 
 For valid GRID refused or CustomSCP missing geographic diversity when prediction

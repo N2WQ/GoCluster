@@ -32,10 +32,9 @@ func (h *voacapForecastCacheRetentionHeap) Pop() any {
 	return e
 }
 
-// Subtree aggregates certify actual current-hour eligibility without visiting
-// unrelated entries. All nodes share one indexed horizon. AND(hour masks),
-// maximum start and minimum start certify every node's hour and window bounds.
-// A skipped invalid hour is never an eviction deadline: {20,22} survives 20→22.
+// Subtree aggregates certify each owner's frozen start/end/expiry bounds.
+// A represented-hour hole never authorizes deletion; diagnostics count current
+// rows separately. Maximum start and minimum end/expiry certify a whole subtree.
 type voacapForecastCacheEligibilityHeap []*voacapForecastCacheIndexEntry
 
 func (h voacapForecastCacheEligibilityHeap) Len() int { return len(h) }
@@ -97,6 +96,8 @@ func (h voacapForecastCacheEligibilityHeap) recalculatePath(index int) {
 		e.subtreeHourMask = e.hourMask
 		e.subtreeMinStart = e.windowStartNS
 		e.subtreeMaxStart = e.windowStartNS
+		e.subtreeMinEnd = e.windowEndNS
+		e.subtreeMinExpiry = e.expiresNS
 		left := 2*index + 1
 		if left > index && left < len(h) {
 			h.combineSubtree(e, h[left])
@@ -115,26 +116,16 @@ func (h voacapForecastCacheEligibilityHeap) combineSubtree(parent, child *voacap
 	parent.subtreeHourMask &= child.subtreeHourMask
 	parent.subtreeMinStart = min(parent.subtreeMinStart, child.subtreeMinStart)
 	parent.subtreeMaxStart = max(parent.subtreeMaxStart, child.subtreeMaxStart)
+	parent.subtreeMinEnd = min(parent.subtreeMinEnd, child.subtreeMinEnd)
+	parent.subtreeMinExpiry = min(parent.subtreeMinExpiry, child.subtreeMinExpiry)
 }
 
-func forecastCacheWindowEligible(now time.Time, minimumStart, maximumStart int64, horizonHours int) bool {
-	if horizonHours <= 0 {
-		return true
-	}
-	// Add in time.Time rather than Unix nanoseconds so an otherwise valid window
-	// near the UnixNano upper boundary has the same end as forecastRecordForHour.
-	return !now.Before(time.Unix(0, maximumStart)) &&
-		now.Before(time.Unix(0, minimumStart).Add(time.Duration(horizonHours)*time.Hour))
+func forecastCacheSubtreeEligible(e *voacapForecastCacheIndexEntry, now time.Time, _ int) bool {
+	return now.UnixNano() >= e.subtreeMaxStart && now.UnixNano() < e.subtreeMinEnd && now.UnixNano() <= e.subtreeMinExpiry
 }
 
-func forecastCacheSubtreeEligible(e *voacapForecastCacheIndexEntry, now time.Time, horizonHours int) bool {
-	return e.subtreeHourMask&(uint32(1)<<uint(now.Hour())) != 0 &&
-		forecastCacheWindowEligible(now, e.subtreeMinStart, e.subtreeMaxStart, horizonHours)
-}
-
-func forecastCacheNodeEligible(e *voacapForecastCacheIndexEntry, now time.Time, horizonHours int) bool {
-	return e.hourMask&(uint32(1)<<uint(now.Hour())) != 0 &&
-		forecastCacheWindowEligible(now, e.windowStartNS, e.windowStartNS, horizonHours)
+func forecastCacheNodeEligible(e *voacapForecastCacheIndexEntry, now time.Time, _ int) bool {
+	return now.UnixNano() >= e.windowStartNS && now.UnixNano() < e.windowEndNS && now.UnixNano() <= e.expiresNS
 }
 
 func (h voacapForecastCacheEligibilityHeap) findInvalid(now time.Time, horizonHours int) *voacapForecastCacheIndexEntry {

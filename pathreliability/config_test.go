@@ -390,6 +390,8 @@ func TestLoadFileRejectsMissingRequiredYAMLSettings(t *testing.T) {
 		{name: "voacap enabled", path: []string{"voacap_fallback", "enabled"}, want: "voacap_fallback.enabled"},
 		{name: "voacap ssn state path", path: []string{"voacap_fallback", "ssn_state_path"}, want: "voacap_fallback.ssn_state_path"},
 		{name: "voacap forecast cache path", path: []string{"voacap_fallback", "forecast_cache_db_path"}, want: "voacap_fallback.forecast_cache_db_path"},
+		{name: "solar blend weight", path: []string{"voacap_fallback", "ssn_recent_flux_weight"}, want: "voacap_fallback.ssn_recent_flux_weight"},
+		{name: "solar age warning", path: []string{"voacap_fallback", "ssn_stale_after_seconds"}, want: "voacap_fallback.ssn_stale_after_seconds"},
 		{name: "show prop wait", path: []string{"voacap_fallback", "show_prop_wait_milliseconds"}, want: "voacap_fallback.show_prop_wait_milliseconds"},
 		{name: "voacap queue depth", path: []string{"voacap_fallback", "max_queue_depth"}, want: "voacap_fallback.max_queue_depth"},
 		{name: "voacap rel open enabled", path: []string{"voacap_fallback", "reliability_gated_open_enabled"}, want: "voacap_fallback.reliability_gated_open_enabled"},
@@ -532,6 +534,13 @@ func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
 		{name: "show prop wait too high", body: "voacap_fallback:\n  show_prop_wait_milliseconds: 2001\n", want: "voacap_fallback.show_prop_wait_milliseconds"},
 		{name: "empty ssn state path", body: "voacap_fallback:\n  ssn_state_path: \"\"\n", want: "voacap_fallback.ssn_state_path"},
 		{name: "empty forecast cache path", body: "voacap_fallback:\n  forecast_cache_db_path: \"\"\n", want: "voacap_fallback.forecast_cache_db_path"},
+		{name: "negative flux weight", body: "voacap_fallback:\n  ssn_recent_flux_weight: -0.1\n", want: "ssn_recent_flux_weight"},
+		{name: "excess flux weight", body: "voacap_fallback:\n  ssn_recent_flux_weight: 1.1\n", want: "ssn_recent_flux_weight"},
+		{name: "nonfinite flux weight", body: "voacap_fallback:\n  ssn_recent_flux_weight: .nan\n", want: "ssn_recent_flux_weight"},
+		{name: "null flux weight", body: "voacap_fallback:\n  ssn_recent_flux_weight: null\n", want: "ssn_recent_flux_weight"},
+		{name: "zero solar warning age", body: "voacap_fallback:\n  ssn_stale_after_seconds: 0\n", want: "ssn_stale_after_seconds"},
+		{name: "null solar warning age", body: "voacap_fallback:\n  ssn_stale_after_seconds: null\n", want: "ssn_stale_after_seconds"},
+		{name: "removed solar hold", body: "voacap_fallback:\n  recompute_delta_percent: 12\n", want: "recompute_delta_percent is no longer supported"},
 		{name: "long output prefix", body: "voacap_fallback:\n  output_name_prefix: gocluster_voacap_path_prefix_too_long\n", want: "voacap_fallback.output_name_prefix"},
 		{name: "too many frequencies", body: "voacap_fallback:\n  center_frequencies_mhz: [1,2,3,4,5,6,7,8,9,10,11]\n", want: "voacap_fallback.center_frequencies_mhz"},
 		{name: "invalid closed threshold ordering", body: "mode_thresholds:\n  ft8:\n    closed: -24\n", want: "mode_thresholds.ft8"},
@@ -627,5 +636,46 @@ voacap_fallback:
 	}
 	if cfg.VOACAPFallback.ShowPropWaitMilliseconds != 0 {
 		t.Fatalf("show prop wait = %d, want 0", cfg.VOACAPFallback.ShowPropWaitMilliseconds)
+	}
+}
+
+func TestLoadFileSolarBlendEndpointsRemainExplicit(t *testing.T) {
+	for _, weight := range []string{"0", "1"} {
+		t.Run(weight, func(t *testing.T) {
+			cfg, err := LoadFile(writeTempConfigOverlay(t, "voacap_fallback:\n  ssn_recent_flux_weight: "+weight+"\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := 0.0
+			if weight == "1" {
+				want = 1
+			}
+			if cfg.VOACAPFallback.SSNRecentFluxWeight != want {
+				t.Fatalf("weight=%g want%g", cfg.VOACAPFallback.SSNRecentFluxWeight, want)
+			}
+		})
+	}
+}
+
+func TestLoadFileRejectsMergedRetiredSolarSetting(t *testing.T) {
+	base, err := os.ReadFile(filepath.Join("..", "data", "config", "path_reliability.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ReplaceAll(string(base), "\r\n", "\n")
+	if strings.Count(text, "voacap_fallback:\n") != 1 {
+		t.Fatal("shipped fallback mapping not found exactly once")
+	}
+	for _, merge := range []string{
+		"  <<: {recompute_delta_percent: 12}\n",
+		"  <<: *retired\n",
+		"  <<: [{recompute_delta_percent: 12}]\n",
+	} {
+		// Preserve merge syntax: the overlay helper would resolve it before LoadFile.
+		raw := "retired: &retired {recompute_delta_percent: 12}\n" + strings.Replace(text, "voacap_fallback:\n", "voacap_fallback:\n"+merge, 1)
+		_, err := LoadFile(writeTempConfig(t, raw))
+		if err == nil || !strings.Contains(err.Error(), "recompute_delta_percent is no longer supported") {
+			t.Fatalf("merged retired setting %q: %v", merge, err)
+		}
 	}
 }
