@@ -118,12 +118,12 @@ func TestStabilizerRetentionFreshEvidenceAndReasonBudget(t *testing.T) {
 				if action == "retry_overflow" {
 					turns = 3
 				}
+				envelope := temporalDeliveryReceiveRetry(t, p.telnetStabilizer, key, 0)
 				var last *telnetStabilizerEnvelope
 				for check := 1; check <= turns; check++ {
 					if check == 3 {
 						expireRetentionPopulation(t, r, d, key)
 					}
-					envelope := temporalDeliveryReceiveRetry(t, p.telnetStabilizer, key, check-1)
 					if envelope.entryGlyph != "P" || envelope.bestConfidence != stabilizerConfidencePartial {
 						t.Fatalf("check %d lost entry or running maximum: %+v", check, envelope)
 					}
@@ -153,16 +153,34 @@ func TestStabilizerRetentionFreshEvidenceAndReasonBudget(t *testing.T) {
 								envelope.spot.Confidence, envelope.spot.ConfidencePercent, envelope.spot.ConfidencePercentOK)
 						}
 					}
-					if check < turns && (f.ring.GetCount() != 0 || p.tracker.StabilizerRetainedAboveFresh() != 0 || p.telnetStabilizer.Pending() != 1) {
-						t.Fatalf("check %d prematurely completed or lost its fresh twelve-check hold", check)
+					if check < turns {
+						fresh, percent, hasPercent := envelope.spot.Confidence, envelope.spot.ConfidencePercent, envelope.spot.ConfidencePercentOK
+						// Receipt proves the retry survived even when the 1 ns scheduler
+						// already released it. The test now owns this envelope and must
+						// expire evidence before handling its third recheck above.
+						next := temporalDeliveryReceiveRetry(t, p.telnetStabilizer, key, check)
+						if next.entryGlyph != "P" || next.bestConfidence != stabilizerConfidencePartial ||
+							next.spot.Confidence != fresh || next.spot.ConfidencePercent != percent || next.spot.ConfidencePercentOK != hasPercent {
+							t.Fatalf("check %d retry changed retained or fresh evidence: entry=%s best=%d fresh=%s/%d/%t; want P/%d and %s/%d/%t", check,
+								next.entryGlyph, next.bestConfidence, next.spot.Confidence, next.spot.ConfidencePercent, next.spot.ConfidencePercentOK,
+								stabilizerConfidencePartial, fresh, percent, hasPercent)
+						}
+						rows, retained, pending := f.ring.GetCount(), p.tracker.StabilizerRetainedAboveFresh(), p.telnetStabilizer.Pending()
+						if rows != 0 || retained != 0 || pending != 0 {
+							t.Fatalf("check %d released retry ownership: ring=%d retained=%d pending=%d; want 0/0/0 while the test owns the next retry", check,
+								rows, retained, pending)
+						}
+						envelope = next
 					}
 				}
 				pending := int64(0)
 				if action == "retry_overflow" {
 					pending = 1
 				}
-				if last.spot.Confidence != "P" || last.spot.ConfidencePercentOK || p.tracker.StabilizerRetainedAboveFresh() != 1 || p.telnetStabilizer.Pending() != pending {
-					t.Fatal("terminal projection retained stale support, lost P, or counted retries as terminal outcomes")
+				retained, actualPending := p.tracker.StabilizerRetainedAboveFresh(), p.telnetStabilizer.Pending()
+				if last.spot.Confidence != "P" || last.spot.ConfidencePercentOK || retained != 1 || actualPending != pending {
+					t.Fatalf("terminal projection: glyph=%s percent_available=%t retained=%d pending=%d; want P/false/1/%d",
+						last.spot.Confidence, last.spot.ConfidencePercentOK, retained, actualPending, pending)
 				}
 				assertStabilizerTransition(t, p.tracker, 2, 2, 1, float64(turns))
 				switch action {
