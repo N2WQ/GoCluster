@@ -4,10 +4,10 @@ Status: Monitoring
 Date Opened: 2026-11-11
 Date Resolved: n/a
 Owner: Repository owner / Codex
-Technical Area: live stabilizer, output location, acceptance and telemetry
+Technical Area: live stabilizer, output location, acceptance, telemetry and retry-test ownership
 Trigger Source: Operator report
 Led To ADR(s): ADR-0341, ADR-0343
-Tags: stabilizer, confidence, grid, age, bounded-state
+Tags: stabilizer, confidence, grid, age, bounded-state, test-ownership
 
 ## RCA Summary
 
@@ -29,6 +29,10 @@ Tags: stabilizer, confidence, grid, age, bounded-state
   call requires a completed lookup: reported grids win, derived positives use
   current captured CTY, and incomplete lookups leave the DX grid unknown. Watch
   `Corrected output: no grid` for ordinary output admissions with that condition.
+- Later qualification: the retention test also used an invalid pending-counter
+  oracle. The scheduler can transfer a correct retry to its release channel
+  before the assertion. The test now receives and validates the actual retry
+  before checking ownership; see the qualification finding below.
 
 ## Triggering Request
 
@@ -56,6 +60,9 @@ inside the age limit could be offered after it expired.
    completed lookup before CTY, clearing the old grid otherwise. Approved v5
    authorizes the bounded grid amendment and one missing-grid admission counter;
    see [v5 execution evidence](../stabilizer-grid-repair-v5.md).
+5. 2026-11-13 - CC11 qualification on `66405747` reproduced a baseline retention
+   test failure during a full Linux race run. Approved v1 authorizes a test-only
+   ownership repair and this troubleshooting amendment.
 
 ## Hypotheses and Tests
 
@@ -114,6 +121,65 @@ read it as client receipt or a count of storage errors. Monitor fixed counters a
 legacy Held includes retries and is not a unique-spot conservation measure.
 Unexpected lower ordinary terminal transitions, stale final offers or target
 grid corruption warrant stopping rollout and preserving exact revision/evidence.
+
+### Retention-test retry ownership qualification
+
+The full native Windows suite passed on `cc11` at `66405747`. A full Linux race
+run passed once, then a second full run failed in
+`TestStabilizerRetentionFreshEvidenceAndReasonBudget/floor_false/thinned` at
+check three with `prematurely completed or lost its fresh twelve-check hold`.
+The failing predicate combined ring rows, terminal-retention count and
+`Pending()!=1` without printing their values. This reproduces the checkpoint
+failure but does not establish which term failed in that run. The earlier
+ARM64 handoff failure has no retained failing assertion available for comparison.
+
+Source review established a distinct test defect: `Pending` counts reserved
+scheduler queue slots. The running one-nanosecond scheduler decrements it before
+putting a retry on the release channel. A valid released retry therefore need
+not leave `Pending()==1`. This legal interleaving needs no data race, and a
+passing isolated retry does not repair the oracle or prove production work loss.
+
+The repaired test receives each actual next retry with the existing bounded
+helper, validates its key, completed-check count, evidence flag, retained maximum
+and fresh confidence, then carries it into the next iteration. At that receipt
+boundary the test owns the retry and expects zero pending scheduler slots, zero
+ring rows and zero terminal-retention outcomes. Evidence still expires before
+handling the third recheck. Twelve-check reason budgets, the three-check overflow
+case, suppression, thinning, terminal accounting and the stopped replacement's
+filler reservation remain covered. Failure messages expose individual values.
+The intermediate-promotion companion test remains unchanged.
+
+This changes only the test's ownership observation. Runtime stabilizer, model,
+CC11, configuration and threshold behavior are unchanged; no ADR decision changes.
+Support routing already links this record, so no separate support-card change is
+needed. Production latency and installed-client interoperability remain separate
+qualification obligations.
+
+Post-repair validation used Go 1.27.1 on Windows amd64 and WSL Linux amd64 with
+CGO enabled:
+
+- Both retention tests passed ten repetitions on each platform: 100 passing
+  parent/subtest events per platform, with no skips. Windows used the stable
+  runner's prepared `internal/cluster` binary with
+  `-test.run='^TestStabilizerRetention(FreshEvidenceAndReasonBudget|KeepsIntermediatePromotion)$'`
+  and `-test.count=10`. Linux used the same selector with
+  `go test -race -count=10 -timeout=5m -json ./internal/cluster`.
+- `pwsh -NoProfile -File scripts/test-windows.ps1` passed 13,187 cases across
+  59 executed packages, with 15 build-only packages and 97 reported skips.
+- `go test -race -count=1 -timeout=20m -json ./...` passed 13,058 case events
+  across 59 test packages, with 16 packages without tests and 101 reported skips.
+  No data-race warnings occurred. All 149 CC11-related case/seed events passed
+  in each full lane without skips. The repaired thinning case and the unchanged
+  intermediate-promotion companion also passed both full lanes.
+- `go vet ./...`, `staticcheck ./...` and
+  `golangci-lint run ./... --config=.golangci.yaml` passed on the repaired source.
+
+Reported full-lane skips retain their existing helper, platform or opt-in gates;
+no assertion, threshold or selected case was waived for this repair. Full Linux
+race JSON and stderr were saved directly to persistent Windows storage after a
+prior WSL temporary log did not survive its process. These results validate the
+repaired ownership observation; they do not recover the unprinted values from
+the earlier combined assertion or establish production qualification.
 
 ## References
 
