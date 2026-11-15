@@ -98,10 +98,11 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 			assertHelpWidth(t, response)
 			flat := strings.Join(strings.Fields(response), " ")
 			for _, required := range []string{
-				"Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.",
-				"Any PASS can qualify; any matching REJECT vetoes it.",
-				"No active PASS means unrestricted except for matching REJECT rules.",
-				"Reset does not reinstall default slot 0.",
+				"A spot must match at least one PASS rule, if you have any.",
+				"Any matching REJECT rule blocks it.",
+				"With no PASS rules, only REJECT rules restrict your selection.",
+				"Adding another PASS rule can allow more spots.",
+				"HELP FILTER EXAMPLES",
 			} {
 				if !strings.Contains(flat, required) {
 					t.Fatalf("%s HELP %s omits Boolean qualification %q", dialect, topic, required)
@@ -118,9 +119,14 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 					t.Fatalf("%s HELP %s retains unsupported/generalized wording %q", dialect, topic, misleading)
 				}
 			}
-			if !strings.Contains(response, "  RESET FILTER RULE ALL\n  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN\n") {
-				t.Fatalf("%s HELP %s lost the full-replacement exclusive recipe", dialect, topic)
-			}
+		}
+		examples := p.ProcessCommandForClient("HELP FILTER EXAMPLES", "W1ABC-18", "", nil, dialect)
+		warning := "Removes all your GO rules. Your other settings stay unchanged."
+		reset := strings.Index(examples, "  RESET FILTER RULE ALL\n")
+		if !strings.Contains(examples, warning) || strings.Index(examples, warning) > reset ||
+			!strings.Contains(examples, "  RESET FILTER RULE ALL\n  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN\n  SHOW FILTER\n  RESUME\n") ||
+			!strings.Contains(examples, "This clears your rules. It does not restore the starting rule.") {
+			t.Fatal("GO examples lost the warning, complete recipe, reset boundary or resume")
 		}
 	}
 }

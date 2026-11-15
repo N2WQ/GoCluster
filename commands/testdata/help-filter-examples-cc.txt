@@ -1,0 +1,39 @@
+Select the 20m and 40m frequency ranges:
+  Replaces all band and frequency-range choices.
+  Keeps your mode, source and country selections.
+  To keep your current setup, see HELP PRESETS before changing it.
+  SET/FILTER DXBM/OFF
+  SET/FILTER DXBM/PASS 20,40
+  SHOW/FILTER
+  RESUME
+
+Select reports from K or VE spotters:
+  Replaces your spotter-country list, including choices
+  for individual bands. Other filter categories stay unchanged.
+  SET/FILTER DOC/PASS K,VE
+  SHOW/FILTER
+  RESUME
+
+Hide FT8 spots:
+  Turns off FT8. Keeps your other selections.
+  Requires the FT8 command to be enabled on this cluster.
+  SET/NOFT8
+  SHOW/FILTER
+  RESUME
+
+Restore this cluster's starting selections:
+  Restores the operator's starting modes and report sources.
+  Clears country, state and band restrictions.
+  Keeps your beacon, own-call and other delivery settings.
+  This does not necessarily allow every spot.
+  SET/NOFILTER
+  SHOW/FILTER
+  RESUME
+
+SHOW/FILTER pauses live spots while you read.
+RESUME restarts them. Missed spots are not replayed.
+Other filters and delivery settings still apply.
+With SELF on, spots of your own call can bypass these filters.
+
+Keep a setup you like:
+  HELP PRESETS

@@ -280,24 +280,29 @@ preferences. A numeric suffix such as `-1` is called an **SSID**.
 For login, use one or two digits from `0` to `99`. `-01` and `-1` have
 separate saved preferences. A longer or non-numeric SSID is rejected.
 
-A preset is a named snapshot of your filters and preferences:
+A preset saves your active GO or CC filters and shared settings.
+Type `HELP PRESETS` for save-and-switch examples.
+
+Saving an existing name replaces that preset. Deleting it leaves your current settings unchanged.
+Loading restores the saved command style, its filters and shared settings.
+It also saves those settings for future logins with your current callsign and SSID.
+Your other style's filters stay unchanged.
 
 | Action | Example |
 | --- | --- |
-| Save the current setup | `SAVE PRESET contest` |
+| Save the current setup | `SAVE PRESET DAY` |
+| Choose another setup | `HELP FILTER EXAMPLES` |
+| Save that setup after changing filters | `SAVE PRESET NIGHT` |
 | List saved setups | `LIST PRESET` |
-| Apply a saved setup | `LOAD PRESET contest` |
-| Delete a saved setup | `DELETE PRESET contest` |
+| Switch to a saved setup | `LOAD PRESET DAY` or `LOAD PRESET NIGHT` |
+| Delete a saved setup | `DELETE PRESET NIGHT` |
 
 Preset names are case-insensitive and display uppercase. Use 1-32 letters,
-digits, or hyphens, starting with a letter or digit. Saving an existing name
-replaces its snapshot. Deleting it leaves your current settings unchanged.
+digits, or hyphens, starting with a letter or digit.
 
-Your numeric SSIDs share the preset library. Loading a preset applies and
-saves it for the current login identity; other connected sessions keep their
-settings until they load it themselves. `(modified)` means your preferences
-have changed from the saved or loaded snapshot. Temporary pauses and diagnostics
-do not affect that marker and are not saved in presets.
+Your numeric SSIDs share the preset library. Other connected sessions keep their settings until they load a preset themselves.
+`(modified)` means your preferences have changed from the saved or loaded snapshot.
+Temporary pauses and diagnostics do not affect that marker and are not saved in presets.
 
 If a reply warns that saving failed or that temporary defaults are in use,
 do not assume your changes will survive reconnecting; contact the operator.
@@ -729,6 +734,9 @@ See the [client protocol details](telnet/README.md#client-yaml-configuration).
 ### HELP
 
 Use `HELP` for a short menu, call confidence tags and configured path symbols.
+Use `HELP FILTERS` to inspect filters and learn the few essential rules.
+Use `HELP FILTER EXAMPLES` for complete GO or CC setups, with replacement warnings before the commands.
+Use `HELP PRESETS` to save a setup, create another and switch between them.
 Use `HELP COMMANDS` for the complete command and help-topic index.
 
 <details>

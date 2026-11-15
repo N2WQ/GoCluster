@@ -246,12 +246,14 @@ Log in with your callsign. Useful first commands:
 - `HELP`: show starter commands, call confidence, path symbols and a short task menu.
 - `HELP SPOTS`: find spots or report a station.
 - `HELP SETTINGS`: change location and shared settings.
-- `HELP PRESETS`: save or load a setup, with replacement warnings.
+- `HELP PRESETS`: save a setup, create another and switch between them.
 - `HELP TROUBLE`: start with pause status and safe checks.
 - `HELP COMMANDS`: browse all installed command help topics.
 - `HELP <command>`: show command-specific help.
-- `HELP PASS` / `HELP REJECT`: show detailed filter syntax, values and examples.
-- `HELP FILTERS`: show full filter rules and supported values.
+- `HELP PASS` / `HELP REJECT`: show commands for separate delivery settings.
+- `HELP FILTERS`: inspect filters and learn how selections work.
+- `HELP FILTER EXAMPLES`: try complete GO or CC setups, with replacement warnings before commands.
+- `HELP RULE` in GO or `HELP SET/FILTER` in CC: read detailed filter syntax and supported values.
 - `HELP SYMBOLS`: explain confidence and configured path reliability symbols.
 
 - `SHOW MYDX` or `SHOW DX`: show filtered spot history.
@@ -293,6 +295,17 @@ and switches. Use `HELP UNSET/FILTER` for supported switch controls. Boolean
 rules, including COMMENT, SNR and NEARBY expressions, require GO. The landing
 screen uses CC spellings when CC is selected. YAML commands remain available
 through `HELP COMMANDS` and command-specific help.
+
+The filter guides use the commands for your selected style.
+Each example states which filters it replaces and which settings it keeps.
+GO reset removes rules; it does not restore the starting rule.
+CC `SET/NOFILTER` restores current operator modes and sources, clears geography and band choices, and keeps the six switches.
+After inspecting filters, type `RESUME` to restart live spots. Missed spots are not replayed.
+
+Saving an existing preset name replaces that saved setup.
+Loading restores the saved style's filters and shared settings, then selects that style.
+It saves the loaded settings for future logins with the current callsign and SSID.
+The other style's filters remain unchanged. Numeric SSIDs share the preset names.
 
 The top-level repository README contains the generated default `HELP` output.
 That block is checked against the command processor in tests.

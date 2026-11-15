@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `23658f2916014b80`
+- Source fingerprint: `922875605886e4d4`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,7 +11,7 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 13 | 23 |
+| `dxcluster/commands` | `commands` | 14 | 24 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 57 | 208 |
 | `dxcluster/peer` | `peer` | 62 | 135 |
 | `dxcluster/spot` | `spot` | 40 | 70 |
@@ -109,6 +109,7 @@ Source files:
 - `commands/cc_filter_help.go`
 - `commands/comment_help.go`
 - `commands/configuration_help.go`
+- `commands/help_filters.go`
 - `commands/help_overview.go`
 - `commands/help_routing.go`
 - `commands/help_tasks.go`
@@ -126,6 +127,7 @@ Test files:
 - `commands/comment_history_test.go`
 - `commands/configuration_help_test.go`
 - `commands/dxcc_history_test.go`
+- `commands/help_guides_test.go`
 - `commands/help_overview_test.go`
 - `commands/help_routing_contract_test.go`
 - `commands/help_wording_contract_test.go`

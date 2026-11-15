@@ -105,7 +105,7 @@ func TestBooleanRuleHelpCanonicalCatalog(t *testing.T) {
 func TestHelpNavigationNormalization(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
-		for _, topic := range []string{"spots", "filters", "settings", "presets", "symbols", "trouble", "commands", "pass", "reject"} {
+		for _, topic := range []string{"spots", "filters", "filter examples", "settings", "presets", "symbols", "trouble", "commands", "pass", "reject"} {
 			want := p.ProcessCommandForClient("HELP "+strings.ToUpper(topic), "N0CALL", "", nil, dialect)
 			got := p.ProcessCommandForClient("  hElP   "+topic+"  ", "N0CALL", "", nil, dialect)
 			if got != want || strings.HasPrefix(got, "Unknown help topic:") {
@@ -188,7 +188,7 @@ func TestHelpTaskNavigationAndIndex(t *testing.T) {
 				t.Fatalf("index lost required command %s", topic)
 			}
 		}
-		for _, topic := range []string{"SPOTS", "SETTINGS", "PRESETS", "TROUBLE"} {
+		for _, topic := range []string{"SPOTS", "FILTERS", "FILTER EXAMPLES", "SETTINGS", "PRESETS", "TROUBLE"} {
 			page := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, dialect)
 			assertHelpWidth(t, page)
 			// A stronger common limit keeps both descriptions and instructions short.
@@ -198,6 +198,10 @@ func TestHelpTaskNavigationAndIndex(t *testing.T) {
 				}
 				if strings.HasPrefix(line, "  HELP ") {
 					target := strings.TrimPrefix(line, "  ")
+					// Descriptions follow topic names on the new guide menu rows.
+					if before, _, ok := strings.Cut(target, "   "); ok {
+						target = strings.TrimSpace(before)
+					}
 					if strings.HasPrefix(p.ProcessCommandForClient(target, "N0CALL", "", nil, dialect), "Unknown help topic:") {
 						t.Fatalf("dead task link %s", target)
 					}

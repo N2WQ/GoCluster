@@ -1,0 +1,19 @@
+Choose which spots you receive:
+  SHOW/FILTER
+    Show your current filters.
+    This pauses live spots. Type RESUME when ready.
+
+How selections work:
+  Your band, mode, source and country selections all apply.
+  For example, selecting 20m does not turn on a disabled mode.
+  A country or state list replaces that category's old choices.
+  Band edits can keep earlier band choices.
+
+Other settings can still hide spots.
+With SELF on, spots of your own call can bypass your filters.
+
+What would you like to do?
+  HELP FILTER EXAMPLES   Try a complete filter setup.
+  HELP PRESETS           Save and switch between setups.
+  HELP SET/FILTER        See all filter options.
+  HELP SET/NOFILTER      Restore this cluster's starting selections.

@@ -1980,16 +1980,20 @@ def decode_cc_help(raw, query, minimum_rows, minimum_seconds):
     while body and body[0] == "":
         body.pop(0)
     topic = query.removeprefix("HELP ")
-    header = "Filter reference:" if topic == "FILTERS" else topic + " - "
-    matches = bool(body) and (body[0] == header if topic == "FILTERS" else body[0].startswith(header))
+    task = topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS")
+    header = harness.help_task_contract(topic, "cc")[0] if task else topic + " - "
+    matches = bool(body) and (body[0] == header if task else body[0].startswith(header))
     require(matches, "CC HELP has the wrong topic header")
     return body
 
 
 def require_cc_help_grammar(lines, topic):
+    if topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
+        harness.require_help_task(lines, topic, "cc")
+        return
     # Category/value expectations are independent of the generated catalog.
-    verbs = ("SET/FILTER", "UNSET/FILTER") if topic == "FILTERS" else (topic,)
-    for verb in verbs:
+    require(topic in ("SET/FILTER", "UNSET/FILTER"), "unsupported detailed CC HELP oracle")
+    for verb in (topic,):
         starts = [i for i, line in enumerate(lines) if line.startswith(verb + " - ")]
         require(len(starts) == 1, "CC HELP lost or duplicated a command entry")
         start = starts[0]
@@ -2140,7 +2144,7 @@ def cc_help_grammar_cases(suite, root, generation, saved_cc_grammar):
             before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
             before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds,
             "CC HELP requires the fixture's existing loaded automatic pause")
-    for topic in ("SET/FILTER", "UNSET/FILTER", "FILTERS"):
+    for topic in ("SET/FILTER", "UNSET/FILTER", "FILTERS", "FILTER EXAMPLES", "PRESETS"):
         saved = record.read_bytes()
         after = cc_help_readback(current, topic, minimum_rows, minimum_seconds)
         require_cc_unchanged(before, after, record, saved)
@@ -2235,7 +2239,8 @@ def help_route_contract(key, dialect):
     contracts = {
         "DX": ("DX - Post a spot (human entry).",
                ("DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]"), None, ()),
-        "FILTERS": ("Filter reference:", (), None, ()),
+        **{topic: (harness.help_task_contract(topic, dialect)[0], (), None, ())
+           for topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS")},
         "OVERVIEW": ("Try these commands:", (), None, ()),
         "HELP": ("HELP - Show command list or command-specific help.", ("HELP [command]",),
                  "  With a command, shows detailed usage.", ("H",)),
@@ -2414,12 +2419,7 @@ def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, rem
     if header.startswith("Unknown help topic: "):
         require(lines == [header, "Type HELP for available commands."], "unsupported HELP route was accepted or altered")
     else:
-        # FILTERS explains unknown mailing codes and prefixes in unindented
-        # prose. Only these exact educational rows are exempt from rejection
-        # detection; unknown-topic/error output must still fail the receipt.
-        explanations = {"Unknown state fails an explicit PASS list and passes a REJECT-only list.",
-                        "Unknown prefixes reject the whole list; canonical input requires CTY."} if header == "Filter reference:" else set()
-        require(not any(line.startswith(("Unknown ", "Usage: Invalid", "Invalid ")) and line not in explanations for line in lines),
+        require(not any(line.startswith(("Unknown ", "Usage: Invalid", "Invalid ")) for line in lines),
                 "supported HELP route contains rejection feedback")
         expected = [("Usage: " if index == 0 else "       ") + value for index, value in enumerate(usage)]
         require(lines[1:1 + len(expected)] == expected and
@@ -2725,11 +2725,9 @@ def require_discovery_help(lines, key, dialect):
         block, allow = ("REJECT MODE ALL", "PASS MODE CW,FT8") if dialect == "go" else ("UNSET/FILTER MODE ALL", "SET/FILTER MODE CW,FT8")
         require(any(lines[index:index + 2] == ["  " + block, "  " + allow] for index in range(len(lines) - 1)),
                 "HELP loses its executable block-before-pass MODE recipe")
-    elif key == "FILTERS":
-        required = ("DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code.",
-                    "PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
-                    "DXSTATE/DESTATE accept US/Canadian registered mailing codes.")
-        forbidden = ("RESET MODE", "show FCC mailing-address codes")
+    elif key in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
+        harness.require_help_task(lines, key, dialect)
+        required, forbidden = (), ("RESET MODE", "show FCC mailing-address codes")
     else:
         require(key in ("SHOW FILTER", "SHOW/FILTER"), "invalid HELP wording oracle")
         required = ("DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown.",)
@@ -2738,7 +2736,7 @@ def require_discovery_help(lines, key, dialect):
         require(phrase in flat, "HELP omits an intended admission/state/MODE contract: " + phrase)
     for phrase in forbidden:
         require(phrase.lower() not in flat.lower(), "HELP retains an unsupported admission/state/MODE claim: " + phrase)
-    if key in ("FILTERS", "PASS", "REJECT"):
+    if key in ("PASS", "REJECT"):
         heading = "US/Canada mailing codes (states, provinces, territories):"
         require(lines.count(heading) == 1, "HELP loses or duplicates the registered-mailing-code section")
         rows = []
@@ -2826,6 +2824,7 @@ def filter_discovery_cases(suite, root, generation, saved_discovery):
             require_discovery_owners(before, after, record, user_receipt, library, library_receipt)
         filter_topic = "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"
         for topic, key in (("DX", "DX"), ("", "OVERVIEW"), ("FILTERS", "FILTERS"),
+                           ("FILTER EXAMPLES", "FILTER EXAMPLES"), ("PRESETS", "PRESETS"),
                            ("PASS", "PASS"), ("REJECT", "REJECT"), (filter_topic, filter_topic)):
             before = current.get()
             user_receipt, library_receipt = discovery_file_receipt(record), discovery_file_receipt(library)

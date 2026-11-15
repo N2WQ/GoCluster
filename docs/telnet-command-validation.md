@@ -52,6 +52,12 @@ an edit took effect. Offline fixtures exercise malformed frames, echo, identity,
 two-bank restoration, cleanup errors and false-success responses. Observed
 live results and their limitations are in the output directory.
 
+Both dialects check `HELP FILTERS`, `HELP FILTER EXAMPLES` and `HELP PRESETS`.
+Checks require the right page, its commands, and its complete ending.
+Any pause footer must report the correct row count. HELP must preserve
+configuration and revision. Offline fixtures reject old headers, missing
+commands, partial replies, and hidden trailing text.
+
 ## Ownership, restoration and output
 
 The suite refuses incomplete schema 7 backups, temporary defaults, and a
@@ -218,9 +224,11 @@ and history-owner controls also cover absent/hidden aliases, editing and exact
 cursor/settings/disk preservation. This is local command evidence, not a
 production archive or model-quality qualification.
 
-CC profiles read complete HELP SET/FILTER, HELP UNSET/FILTER and HELP FILTERS
-responses through the automatic read-pause footer, then require a correlated
-configuration barrier. Independent category and grammar assertions reject
+CC profiles read complete HELP SET/FILTER and HELP UNSET/FILTER references,
+plus HELP FILTERS, HELP FILTER EXAMPLES and HELP PRESETS task guides.
+Responses include the automatic read-pause footer and a correlated
+configuration barrier. Task guides check their own commands and links.
+Detailed references retain independent category and grammar checks that reject
 unsupported COMMENT aliases and blanket inline flags. Advertised commands
 check intended live settings and immediate stored rules; refused forms preserve
 configuration, revision, preset and exact stored bytes. Fresh children restore
@@ -237,6 +245,9 @@ before a strict correlated CONFIG barrier. Live configuration, revision, preset
 association and exact stored bytes stay unchanged, with fresh children proving
 saved ownership. Isolated Go taxonomy controls own fixed-shortcut overlap and
 disabled-mode vectors; this does not qualify every deployment vocabulary.
+
+HELP fixture updates do not migrate the command-fix runner's older schema
+contracts or establish a new live run.
 
 Filter discovery cases check an independent 29-family inventory, action-aware
 bare/unknown replies, shared DXBM guidance and complete state usage in both

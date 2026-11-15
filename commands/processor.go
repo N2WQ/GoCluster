@@ -281,7 +281,7 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 	catalog := buildHelpCatalog(dialect, p.dedupeHelp, p.whoSpotsMeHelp)
 	normalized := catalog.normalizeTopic(dialect, topic)
 	if normalized == "FILTERS" {
-		return strings.Join(filterReferenceHelpLines(dialect), "\n") + "\n"
+		return strings.Join(filterGuideHelpLines(dialect), "\n") + "\n"
 	}
 	if normalized == "COMMANDS" {
 		return strings.Join(commandIndexHelpLines(catalog), "\n") + "\n"

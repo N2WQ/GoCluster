@@ -48,19 +48,8 @@ func installTaskHelp(catalog *helpCatalog, dialect string) {
 			"  HELP DIALECT", "  View or change your command style.",
 			"", "Reading settings pauses live spots. Use RESUME when ready.",
 		}},
-		{"PRESETS", "Save or load your settings.", []string{
-			"Save or load your settings:",
-			"  SAVE PRESET CONTEST", "  Save your current filters and settings as CONTEST.",
-			"  Saving with an existing name replaces that saved setup.",
-			"", "List saved setups:", "  LIST PRESET",
-			"", "Load a saved setup:", "  LOAD PRESET CONTEST",
-			"  Loading replaces your filters and shared settings with the saved setup.",
-			"  It selects the saved GO or CC style and saves this login's defaults.",
-			"  Your filters for the other style stay unchanged.",
-			"", "Delete a saved setup:", "  DELETE PRESET CONTEST",
-			"  This removes the saved setup. Your current settings stay unchanged.",
-			"", "More help:", "  HELP SAVE PRESET", "  HELP LOAD PRESET", "  HELP DELETE PRESET",
-		}},
+		{"FILTER EXAMPLES", "Try a complete filter setup.", filterExampleHelpLines(dialect)},
+		{"PRESETS", "Save or load your settings.", presetGuideHelpLines()},
 		{"TROUBLE", "Find help when something goes wrong.", []string{
 			"Find help when something goes wrong:",
 			"  SHOW HOLD", "  Check whether live spots are paused.",
@@ -84,6 +73,37 @@ func installTaskHelp(catalog *helpCatalog, dialect string) {
 	}
 	for _, page := range pages {
 		catalog.entries[page.topic] = helpEntry{summary: page.topic + " - " + page.summary, lines: page.lines}
+	}
+}
+
+func presetGuideHelpLines() []string {
+	return []string{
+		"Save your current setup:",
+		"  Saving an existing name replaces that saved preset.",
+		"  SAVE PRESET DAY",
+		"", "Create another setup:",
+		"  Use HELP FILTER EXAMPLES to choose different filters.",
+		"  Then save that setup with another name:",
+		"  SAVE PRESET NIGHT",
+		"", "See your saved setups:", "  LIST PRESET",
+		"", "Switch between setups:",
+		"  Loading replaces the saved style's filters and your shared",
+		"  settings. It also switches to that GO or CC command style.",
+		"  Your filters for the other style stay unchanged.",
+		"  The loaded settings are saved for future logins using",
+		"  your current callsign and SSID.",
+		"", "  Load the setup you want:",
+		"  LOAD PRESET DAY", "    Use your DAY setup.",
+		"  LOAD PRESET NIGHT", "    Use your NIGHT setup.",
+		"", "Delete a saved setup:",
+		"  This deletes the preset. Your current settings stay unchanged.",
+		"  DELETE PRESET NIGHT",
+		"", "A preset saves your current GO or CC filters and settings,",
+		"including your grid square and duplicate-spot settings.",
+		"Presets are shared across your callsign's numeric SSIDs.",
+		"For example, K1ABC-1 and K1ABC-2 can load the same presets.",
+		"", "More help:",
+		"  HELP SAVE PRESET", "  HELP LOAD PRESET", "  HELP DELETE PRESET",
 	}
 }
 

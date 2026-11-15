@@ -1,0 +1,21 @@
+Choose which spots you receive:
+  SHOW FILTER
+    Show your current filters.
+    This pauses live spots. Type RESUME when ready.
+
+How rules work:
+  PASS rules choose spots you want.
+  A spot must match at least one PASS rule, if you have any.
+  Any matching REJECT rule blocks it.
+  With no PASS rules, only REJECT rules restrict your selection.
+  Adding another PASS rule can allow more spots.
+  To narrow a selection, change the existing rule.
+
+Other settings can still hide spots.
+With SELF on, spots of your own call can bypass your rules.
+
+What would you like to do?
+  HELP FILTER EXAMPLES   Try a complete filter setup.
+  HELP PRESETS           Save and switch between setups.
+  HELP RULE              Write or change individual rules.
+  HELP PASS              Change separate delivery settings.

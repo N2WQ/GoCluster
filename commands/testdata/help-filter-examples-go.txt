@@ -1,0 +1,36 @@
+Human-reported CW and FT8 spots on 20m and 40m:
+  Removes all your GO rules. Your other settings stay unchanged.
+  To keep your current setup, see HELP PRESETS before changing it.
+  RESET FILTER RULE ALL
+  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN
+  SHOW FILTER
+  RESUME
+
+Skimmer CW spots on 20m and 40m:
+  Removes all your GO rules. Your other settings stay unchanged.
+  RESET FILTER RULE ALL
+  PASS RULE 0 BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER
+  SHOW FILTER
+  RESUME
+
+Allow any band, mode and source except FT8:
+  Removes all your GO rules. Your other settings stay unchanged.
+  RESET FILTER RULE ALL
+  REJECT RULE 0 MODE=FT8
+  SHOW FILTER
+  RESUME
+
+Remove all GO rule restrictions:
+  This clears your rules. It does not restore the starting rule.
+  Your other settings stay unchanged.
+  RESET FILTER
+  SHOW FILTER
+  RESUME
+
+SHOW FILTER pauses live spots while you read.
+RESUME restarts them. Missed spots are not replayed.
+Other filters and delivery settings still apply.
+With SELF on, spots of your own call can bypass these filters.
+
+Keep a setup you like:
+  HELP PRESETS

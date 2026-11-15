@@ -245,6 +245,54 @@ def check(condition, message):
         raise ValueError(message)
 
 
+def help_task_contract(topic, dialect):
+    """Independent task-page boundaries and executable examples, not catalog text."""
+    show = "SHOW FILTER" if dialect.lower() == "go" else "SHOW/FILTER"
+    if topic == "FILTERS":
+        return ("Choose which spots you receive:",
+                "HELP PASS" if dialect.lower() == "go" else "HELP SET/NOFILTER",
+                (show, "HELP FILTER EXAMPLES", "HELP PRESETS"))
+    if topic == "FILTER EXAMPLES":
+        commands = (("RESET FILTER RULE ALL",
+                     "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
+                     "PASS RULE 0 BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER",
+                     "REJECT RULE 0 MODE=FT8", "RESET FILTER") if dialect.lower() == "go" else
+                    ("SET/FILTER DXBM/OFF", "SET/FILTER DXBM/PASS 20,40",
+                     "SET/FILTER DOC/PASS K,VE", "SET/NOFT8", "SET/NOFILTER"))
+        header = ("Human-reported CW and FT8 spots on 20m and 40m:" if dialect.lower() == "go" else
+                  "Select the 20m and 40m frequency ranges:")
+        return header, "HELP PRESETS", (*commands, show, "RESUME", "HELP PRESETS")
+    check(topic == "PRESETS", "unsupported task HELP oracle")
+    return ("Save your current setup:", "HELP DELETE PRESET",
+            ("SAVE PRESET DAY", "SAVE PRESET NIGHT", "LIST PRESET", "LOAD PRESET DAY",
+             "LOAD PRESET NIGHT", "DELETE PRESET NIGHT", "HELP LOAD PRESET"))
+
+
+def require_help_task(lines, topic, dialect):
+    header, terminal, commands = help_task_contract(topic, dialect)
+    lines = list(lines)
+    check(all(len(line) <= 78 and all(32 <= ord(char) <= 126 for char in line) for line in lines),
+          "task HELP breaks width or printable ASCII")
+    # A correlated barrier supplies the whole reply. Validate any automatic
+    # pause footer without accepting a valid prefix followed by hidden content.
+    if lines and lines[-1] == "Missed spots are not replayed.":
+        check(len(lines) >= 3, "task HELP has an incomplete pause footer")
+        footer = re.fullmatch(r"Live spots paused for ([1-9][0-9]*)s after ([1-9][0-9]*) output rows\. "
+                              r"Type RESUME to resume now\.", lines[-2])
+        check(footer is not None and int(footer[2]) == len(lines) - 2,
+              "task HELP pause footer misstates its row count")
+        lines = lines[:-2]
+    check(lines and lines[0] == header and
+          (lines[-1].strip() == terminal or lines[-1].strip().startswith(terminal + "  ")),
+          "task HELP has the wrong topic or an incomplete ending")
+    check(not any(line.startswith(("Unknown ", "Invalid ", "Usage: Invalid", "Live spots paused for ")) or
+                  line == "Missed spots are not replayed." for line in lines),
+          "task HELP contains rejection feedback or a partial footer")
+    for command in commands:
+        check(any(line.strip() == command or line.strip().startswith(command + "  ") for line in lines),
+              "task HELP omits command or link: " + command)
+
+
 def remote_logout(session, verb):
     received, raw, farewell = 0, bytearray(), False
     try:
@@ -1529,8 +1577,12 @@ class V7Suite(Suite):
             self.case(dialect + " PC93 alias", pc93_alias)
 
             def help_discovery():
-                reference = "Native CC filter reference:" if dialect == "CC" else "Filter reference:"
-                a.human("HELP FILTERS", reference)
+                for topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
+                    before = a.get()
+                    response, after = a.human("HELP " + topic)
+                    require_help_task(response.splitlines(), topic, dialect)
+                    check(after["configuration"] == before["configuration"] and
+                          after["revision"] == before["revision"], "task HELP changed saved preferences")
                 a.human("HELP SYMBOLS", "Confidence glyphs:")
                 for topic, expected in (("SHOW HOLD", "Usage: SHOW HOLD"),
                                         ("SET SOLAR", "SET SOLAR <15|30|60|OFF>"),

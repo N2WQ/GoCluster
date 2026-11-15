@@ -30,42 +30,6 @@ func helpRowLines(rows ...helpRow) []string {
 	return lines
 }
 
-func helpSection(lines []string, title string, rows ...helpRow) []string {
-	lines = append(lines, "", title+":")
-	return append(lines, helpRowLines(rows...)...)
-}
-
-func filterRecipeLines(dialect string) []string {
-	show := "SHOW FILTER"
-	if dialect == "cc" {
-		show = "SHOW/FILTER"
-	}
-	return []string{
-		"", "A complete recipe: human-reported CW/FT8 on 20m/40m:",
-		"  RESET FILTER RULE ALL",
-		"  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
-		"  " + show,
-		"", "  This replaces all personal rules. Separate controls are unchanged.",
-		"  SELF ON can bypass personal rules; see HELP SHOW MYDX.",
-	}
-}
-
-func filterBasicsLines() []string {
-	return []string{
-		"", "Filter rules to remember:",
-		"  Slots 0..9 identify rules, not priorities. Each edit replaces a full rule.",
-		"  Any PASS can qualify; any matching REJECT vetoes it.",
-		"  No active PASS means unrestricted except for matching REJECT rules.",
-		"  No rules means no personal restriction.",
-		"  New users start with an ordinary editable default PASS rule in slot 0.",
-		"  PASS without SOURCE allows humans and skimmers.",
-		"  Add AND SOURCE=HUMAN to select human reports only.",
-		"  To narrow it, replace/remove slot 0; adding another PASS broadens it.",
-		"  RESET FILTER clears rules, preserving separate controls/preferences.",
-		"  Reset does not reinstall default slot 0. See HELP RULE for full details.",
-	}
-}
-
 // helpOverviewLines renders the reviewed landing page. Symbols come from the same
 // startup snapshot as HELP SYMBOLS; no configuration or model state is changed.
 func helpOverviewLines(dialect string, path PathGlyphHelpConfig) []string {
@@ -112,34 +76,4 @@ func briefPathHelpLines(cfg PathGlyphHelpConfig) []string {
 		return append(lines, "  A blank means no path rating is shown.")
 	}
 	return append(lines, wrapTextLines("  "+quoteHelpGlyph(cfg.Insufficient)+" means not enough recent reports.", "  ")...)
-}
-
-func featureOverviewLines(dialect string) []string {
-	if dialect == "cc" {
-		return helpSection(nil, "CC shortcuts",
-			helpRow{"SH/FILTER", "Short form of SHOW/FILTER."}, helpRow{"SET/ANN | SET/NOANN", "Allow or block announcements."},
-			helpRow{"SET/BEACON | SET/NOBEACON", "Allow or block beacon spots."}, helpRow{"SET/WWV | SET/NOWWV", "Allow or block WWV bulletins."},
-			helpRow{"SET/WCY | SET/NOWCY", "Allow or block WCY bulletins."}, helpRow{"SET/SELF | SET/NOSELF", "Allow or block your own spots."},
-			helpRow{"SET/FILTER", "Separate switches only; see HELP."},
-			helpRow{"UNSET/FILTER", "Separate switches only; see HELP."},
-			helpRow{"REJECT TOXIC", "Hide human spots already classified as toxic."},
-			helpRow{"PASS TOXIC", "Allow human spots already classified as toxic."})
-	}
-	lines := make([]string, 0, 16)
-	lines = append(lines, "", "Feature switches:", "  Use PASS to enable or REJECT to disable:")
-	lines = append(lines, helpRowLines(helpRow{"BEACON", "Beacon spots."}, helpRow{"WWV", "WWV bulletins."}, helpRow{"WCY", "WCY bulletins."},
-		helpRow{"ANNOUNCE", "Announcements."}, helpRow{"SELF", "Your own spots."}, helpRow{"TOXIC", "Human spots already classified as toxic."})...)
-	return helpSection(lines, "Examples", helpRow{"REJECT BEACON", "Hide beacon spots."}, helpRow{"PASS ANNOUNCE", "Allow announcements."}, helpRow{"REJECT TOXIC", "Hide spots already classified as toxic."})
-}
-
-func filterReferenceHelpLines(dialect string) []string {
-	if dialect == "cc" {
-		return nativeCCFilterReferenceLines()
-	}
-	lines := []string{"Filter reference:", "  HELP RULE is the canonical Boolean grammar, field and value reference."}
-	lines = append(lines, filterBasicsLines()...)
-	lines = append(lines, filterRecipeLines(dialect)...)
-	lines = append(lines, featureOverviewLines(dialect)...)
-	return append(lines, "", "  HELP SYMBOLS explains confidence and path reliability symbols.",
-		"  Old category edits and CC filter/mode shortcuts are not translated.")
 }

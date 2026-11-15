@@ -615,7 +615,7 @@ func TestHelpPerDialect(t *testing.T) {
 		}
 		reference := p.ProcessCommandForClient("HELP FILTERS", "N2WQ", "", nil, dialect)
 		if dialect == "cc" {
-			for _, want := range []string{"HELP SET/FILTER", "DOC|DOS|DXCTY|DXSTATE", "DXBM/PASS", "schema-seven YAML"} {
+			for _, want := range []string{"HELP SET/FILTER", "HELP FILTER EXAMPLES", "SHOW/FILTER", "Band edits can keep earlier band choices."} {
 				if !strings.Contains(reference, want) {
 					t.Fatalf("CC native reference missing %q", want)
 				}
@@ -626,7 +626,7 @@ func TestHelpPerDialect(t *testing.T) {
 			}
 			continue
 		}
-		for _, want := range []string{"HELP RULE", "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8", "separate controls"} {
+		for _, want := range []string{"HELP RULE", "HELP FILTER EXAMPLES", "PASS rules choose spots you want.", "Other settings can still hide spots."} {
 			if !strings.Contains(reference, want) {
 				t.Fatalf("%s reference missing %q", dialect, want)
 			}

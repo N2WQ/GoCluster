@@ -104,7 +104,3 @@ func installNativeCCHelpBoundary(catalog *helpCatalog) {
 		})}
 	}
 }
-
-func nativeCCFilterReferenceLines() []string {
-	return append([]string{"Native CC filter reference:", "  HELP SET/FILTER describes geography, frequency slots and six switches.", "  HELP SET/NOFILTER describes current operator defaults.", "  Boolean edits require DIALECT GO; switching preserves the other bank.", ""}, ccFilterHelpLines("SET/FILTER")...)
-}

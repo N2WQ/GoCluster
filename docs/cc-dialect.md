@@ -15,6 +15,10 @@ shared library reset survive later SSID upgrades and retries.
 
 ## Terminal commands
 
+Type `HELP FILTERS` to inspect your selections and learn how they combine.
+Type `HELP FILTER EXAMPLES` for complete CC recipes, with replacement warnings before commands.
+Type `HELP PRESETS` to save a setup, create another and switch between them.
+
 | Command | Effect |
 | --- | --- |
 | `SET/CW`, `SET/FT8`, other enabled mode shortcuts | Include that mode from both human and skimmer reports. |
@@ -142,6 +146,10 @@ without showing an empty or inactive GO filter as CC state. SETTINGS may switch
 banks. Schema six is not a complete backup and cannot edit the inactive bank.
 
 ## Presets, limits and recovery
+
+Use `HELP PRESETS` for DAY and NIGHT save-and-switch examples.
+Saving an existing name replaces that preset.
+Loading saves the applied settings for future logins with your current callsign and SSID.
 
 SAVE stores the active bank, its controls and shared preferences with a GO/CC
 tag. All numeric SSIDs share 20 names. LOAD restores that tagged bank and shared

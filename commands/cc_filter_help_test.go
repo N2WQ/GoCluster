@@ -59,7 +59,7 @@ func TestCCFilterHelpGrammar(t *testing.T) {
 	}
 	text := p.ProcessCommandForClient("HELP FILTERS", "W1ABC", "", nil, "cc")
 	assertHelpWidth(t, text)
-	if !strings.Contains(text, "HELP SET/FILTER") || !strings.Contains(text, "DOC|DOS|DXCTY|DXSTATE") || strings.Contains(text, "PASS RULE 0") {
+	if !strings.Contains(text, "HELP SET/FILTER") || !strings.Contains(text, "HELP FILTER EXAMPLES") || !strings.Contains(text, "Your band, mode, source and country selections all apply.") || strings.Contains(text, "PASS RULE 0") {
 		t.Fatal("FILTERS reference loses native guidance or advertises Boolean mutation")
 	}
 }

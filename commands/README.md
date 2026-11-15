@@ -24,7 +24,8 @@ HELP rendering and its detailed references are owned by:
 - `helpOverviewLines(...)` in [`help_overview.go`](help_overview.go)
 - `installTaskHelp(...)` and `commandIndexHelpLines(...)` in [`help_tasks.go`](help_tasks.go)
 - `buildHelpCatalog(...)`
-- `filterReferenceHelpLines(...)` in [`help_overview.go`](help_overview.go)
+- `filterGuideHelpLines(...)` and `filterExampleHelpLines(...)` in [`help_filters.go`](help_filters.go)
+- `presetGuideHelpLines(...)` in [`help_tasks.go`](help_tasks.go)
 - `BooleanRuleHelpLines()` in `commands/boolean_rule_help.go`, installed by
   `installBooleanRuleHelp(...)` in `commands/boolean_rule_catalog.go`
 - `pathGlyphHelpLines(...)`
@@ -35,20 +36,29 @@ HELP rendering and its detailed references are owned by:
 
 The landing screen shows three starter commands, call confidence, configured
 path symbols and seven help links. It has no title or disconnect command.
-`HELP SPOTS`, `HELP SETTINGS`, `HELP PRESETS` and `HELP TROUBLE` give short
-examples and next steps. `HELP COMMANDS` lists every installed command topic,
+`HELP FILTERS` starts with inspection and explains the few essential filter rules.
+`HELP FILTER EXAMPLES` gives complete GO or CC recipes, with replacement warnings before commands.
+`HELP PRESETS` shows saving DAY, creating NIGHT and switching between them.
+It explains overwrite and future-login effects before the affected commands.
+`HELP SPOTS`, `HELP SETTINGS` and `HELP TROUBLE` give short examples and next steps.
+`HELP COMMANDS` lists every installed command topic,
 including machine YAML help, in stable alphabetical order. Existing aliases
 remain in command-specific help. These help topics do not add executable commands.
 
 New landing and task-guide descriptions use fewer than 25 words. Instructions
-use fewer than 20 words. Existing detailed command and model references remain
+use fewer than 20 words. Start with useful commands or examples; keep any opening line short.
+Put replacement warnings directly before the affected commands. Place extra explanation and links afterward.
+Existing detailed command and model references remain
 available without rewriting their contracts.
 
 In GO, `HELP RULE` owns the
 Boolean expression, field, vocabulary, default/reset and bounds reference.
 PASS rules are ORed and matching REJECT vetoes them. In CC, `HELP SET/FILTER`
-owns native geography, frequency-slot and switch guidance; `HELP FILTERS`
-explains their composition. CC refuses Boolean mutations with native guidance.
+owns native geography, frequency-slot and switch guidance. `HELP FILTERS` explains how selections combine.
+`HELP FILTER EXAMPLES` names what each recipe replaces and keeps.
+GO reset clears rules without reinstalling the starting rule.
+CC `SET/NOFILTER` restores current operator mode/source defaults and clears geography and band choices, preserving the six switches.
+CC refuses Boolean mutations with native guidance.
 
 `buildHelpCatalog(...)` in `processor.go` installs configuration HELP, COMMENT
 HELP and then Boolean rule HELP before routing aliases. The registered
@@ -103,15 +113,15 @@ block for the default `go` dialect, with a processor-output comparison test.
 The block is synchronized with the shipped configuration; it is not the
 authority for the active bank's filter contract.
 
-Reviewed GO and CC overview fixtures live under [`testdata`](testdata).
+Reviewed GO and CC overview and guide fixtures live under [`testdata`](testdata).
 Tests also check command-index completeness, task navigation, short sentences,
 configured symbols, existing aliases and line widths.
-The emitted `filterRecipeLines` recipe begins with `RESET FILTER RULE ALL`;
-it deliberately removes every personal slot before installing its combined
-BAND/MODE rule. `telnet/help_recipe_test.go` instead exercises a combined
-slot-0 replacement retaining an independent REJECT. That different sequence
-does not prove the emitted reset recipe preserves unrelated rules. These
-tests cover different operator sequences. The earlier presentation in
+[`telnet/help_recipe_test.go`](../telnet/help_recipe_test.go) executes all eight
+rendered recipes in current GO and CC sessions. Conflicting starting filters
+prove replacement boundaries; literal spot outcomes prove the resulting selection.
+Checks also cover saved settings, inactive filters, RESUME and DAY/NIGHT preset switching.
+These are local handler checks, not a live client or writer qualification.
+The earlier presentation in
 [ADR-0264](../docs/decisions/ADR-0264-task-oriented-compiled-help.md) is superseded
 by [ADR-0337](../docs/decisions/ADR-0337-short-help-and-task-guides.md).
 

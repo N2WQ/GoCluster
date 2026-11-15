@@ -87,7 +87,45 @@ def discovery_literal_reply(verb, unknown=False):
             "NEARBY takes ON|OFF with either verb; PC93 aliases ANNOUNCE.\n" + ending)
 
 
+def task_help_literal(topic, dialect):
+    # Short, literal pages deliberately differ from the rendered layout.
+    # Their facts and commands are independent of the harness's task oracle.
+    if topic == "FILTERS":
+        lines = ["Choose which spots you receive:",
+                 "  SHOW FILTER" if dialect == "go" else "  SHOW/FILTER",
+                 "  This pauses live spots. Type RESUME when ready.",
+                 "  HELP FILTER EXAMPLES   Try a complete filter setup.",
+                 "  HELP PRESETS           Save and switch between setups."]
+        terminal = "  HELP PASS" if dialect == "go" else "  HELP SET/NOFILTER"
+    elif topic == "FILTER EXAMPLES":
+        if dialect == "go":
+            lines = ["Human-reported CW and FT8 spots on 20m and 40m:",
+                     "  Removes all current GO rules. Other settings stay unchanged.",
+                     "  RESET FILTER RULE ALL",
+                     "  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
+                     "  PASS RULE 0 BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER",
+                     "  REJECT RULE 0 MODE=FT8", "  RESET FILTER", "  SHOW FILTER", "  RESUME"]
+        else:
+            lines = ["Select the 20m and 40m frequency ranges:",
+                     "  Replaces all band choices. Other filters still apply.",
+                     "  SET/FILTER DXBM/OFF", "  SET/FILTER DXBM/PASS 20,40",
+                     "  SET/FILTER DOC/PASS K,VE", "  SET/NOFT8", "  SET/NOFILTER", "  SHOW/FILTER", "  RESUME"]
+        terminal = "  HELP PRESETS"
+    else:
+        assert topic == "PRESETS"
+        lines = ["Save your current setup:", "  Saving an existing name replaces that saved preset.",
+                 "  SAVE PRESET DAY", "  SAVE PRESET NIGHT", "  LIST PRESET",
+                 "  Loading also saves settings for future logins with this callsign and SSID.",
+                 "  LOAD PRESET DAY", "  LOAD PRESET NIGHT", "  DELETE PRESET NIGHT", "  HELP LOAD PRESET"]
+        terminal = "  HELP DELETE PRESET"
+    while len(lines) < 10:
+        lines.append("  Independent receipt filler.")
+    return [*lines, terminal]
+
+
 def discovery_help_literal(key, dialect):
+    if key in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
+        return task_help_literal(key, dialect)
     if key == "OVERVIEW":
         show, readback = ("SHOW DX", "SHOW FILTER") if dialect == "go" else ("SHOW/DX", "SHOW/FILTER")
         return ["Try these commands:", "  " + show + " 10", "  " + readback, "  SHOW SETTINGS",
@@ -118,25 +156,19 @@ def discovery_help_literal(key, dialect):
         lines += ["Aliases: " + aliases, "Notes:"]
         notes = ["DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown."]
     else:
-        if key == "FILTERS":
-            lines = ["Filter reference:"]
-        elif dialect == "cc":
+        if dialect == "cc":
             lines = cc_help_literal("SET/FILTER" if key == "PASS" else "UNSET/FILTER")
             lines[0] = ("SET/FILTER - Allow" if key == "PASS" else "UNSET/FILTER - Block") + " filter matches (CC dialect)."
         else:
             lines = [key + " - " + ("Allow" if key == "PASS" else "Block") + " filter matches.", "Usage: " + key + " <type> <list>"]
         notes = ["DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code."]
-        if key == "FILTERS":
-            notes += ["PASS/REJECT MODE <list> are deltas; modes not listed are unchanged.",
-                      "DXSTATE/DESTATE accept US/Canadian registered mailing codes."]
-        else:
-            notes += ["Filter categories have their own selection rules; see HELP PASS/REJECT.",
-                      "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name."]
-            lines += (["  REJECT MODE ALL", "  PASS MODE CW,FT8"] if dialect == "go" else
-                      ["  UNSET/FILTER MODE ALL", "  SET/FILTER MODE CW,FT8"])
+        notes += ["Filter categories have their own selection rules; see HELP PASS/REJECT.",
+                  "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name."]
+        lines += (["  REJECT MODE ALL", "  PASS MODE CW,FT8"] if dialect == "go" else
+                  ["  UNSET/FILTER MODE ALL", "  SET/FILTER MODE CW,FT8"])
     for note in notes:
         lines += textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  ")
-    if key in ("FILTERS", "PASS", "REJECT"):
+    if key in ("PASS", "REJECT"):
         lines += ["", "US/Canada mailing codes (states, provinces, territories):"]
         codes = ("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA "
                  "MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON "
@@ -441,13 +473,11 @@ class DriverControls(unittest.TestCase):
             self.assertTrue(current.suite.log.flushed)
             self.assertTrue(current.suite.log.getvalue().endswith(b"PENDING"))
 
-    def test_help_reference_unknown_value_explanations_are_not_rejection_replies(self):
+    def test_help_tasks_reject_error_feedback(self):
         query = "HELP FILTERS"
         contract = driver.help_route_contract("FILTERS", "go")
         lines = discovery_help_literal("FILTERS", "go")
-        explanations = ["Unknown state fails an explicit PASS list and passes a REJECT-only list.",
-                        "Unknown prefixes reject the whole list; canonical input requires CTY."]
-        body = [*lines, *explanations]
+        body = lines
         self.assertEqual(driver.decode_help_routing(routing_help_wire(body, query, pause=True), query,
                                                    contract, 10, 30, True), (body, True))
         for rejection in ("Unknown help topic: FILTERS", "Unknown state input", "Unknown prefixes", "Invalid configuration", "Usage: Invalid"):
@@ -456,7 +486,7 @@ class DriverControls(unittest.TestCase):
                                            contract, 10, 30, True)
         other = discovery_help_literal("DX", "go")
         with self.assertRaisesRegex(ValueError, "rejection feedback"):
-            driver.decode_help_routing(routing_help_wire([*other, explanations[0]], "HELP DX", pause=True), "HELP DX",
+            driver.decode_help_routing(routing_help_wire([*other, "Unknown state input"], "HELP DX", pause=True), "HELP DX",
                                        driver.help_route_contract("DX", "go"), 10, 30, True)
 
     def test_discovery_inventory_is_literal_complete_action_specific_and_alias_qualified(self):
@@ -597,7 +627,8 @@ class DriverControls(unittest.TestCase):
 
     def test_discovery_help_wording_requires_literals_mailing_population_and_executable_mode_recipe(self):
         for dialect in ("go", "cc"):
-            for key in ("DX", "OVERVIEW", "FILTERS", "PASS", "REJECT", "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"):
+            for key in ("DX", "OVERVIEW", "FILTERS", "FILTER EXAMPLES", "PRESETS", "PASS", "REJECT",
+                        "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"):
                 lines = discovery_help_literal(key, dialect)
                 topic = "" if key == "OVERVIEW" else key
                 query = ("HELP " + topic).rstrip()
@@ -613,7 +644,7 @@ class DriverControls(unittest.TestCase):
                 decoded, _ = driver.decode_help_routing(routing_help_wire(bad, query, pause=True), query, contract, 10, 30, True)
                 with self.assertRaises(ValueError):
                     driver.require_discovery_help(decoded, key, dialect)
-                if key in ("FILTERS", "PASS", "REJECT"):
+                if key in ("PASS", "REJECT"):
                     for fault in ("NT", "NU", "YT", "AA", "AE", "AP", "UM"):
                         bad = [line.replace(fault + ",", "ZZ,").replace(", " + fault, ", ZZ") for line in lines]
                         decoded, _ = driver.decode_help_routing(routing_help_wire(bad, query, pause=True), query, contract, 10, 30, True)
@@ -1056,10 +1087,19 @@ class DriverControls(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     decoded = driver.decode_cc_help(cc_help_wire(fault, "HELP " + verb), "HELP " + verb, 10, 30)
                     driver.require_cc_help_grammar(decoded, verb)
-        combined = ["Filter reference:"] + cc_help_literal("SET/FILTER") + cc_help_literal("UNSET/FILTER")
-        driver.require_cc_help_grammar(combined, "FILTERS")
-        raw = cc_help_wire(combined, "HELP FILTERS")
-        self.assertEqual(driver.decode_cc_help(raw, "HELP FILTERS", 10, 30), combined)
+
+    def test_cc_task_guides_have_their_own_oracle_not_detailed_grammar(self):
+        for topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
+            lines = task_help_literal(topic, "cc")
+            query = "HELP " + topic
+            driver.require_cc_help_grammar(lines, topic)
+            self.assertEqual(driver.decode_cc_help(cc_help_wire(lines, query), query, 10, 30), lines)
+            for changed in (["Filter reference:", *lines[1:]], lines[:-1],
+                            [line for line in lines if "SHOW/FILTER" not in line] if topic != "PRESETS" else
+                            [line for line in lines if "LOAD PRESET NIGHT" not in line]):
+                with self.assertRaises(ValueError):
+                    decoded = driver.decode_cc_help(cc_help_wire(changed, query), query, 10, 30)
+                    driver.require_cc_help_grammar(decoded, topic)
 
     def test_cc_help_receipt_precedes_barrier_and_rejects_hidden_suffix(self):
         query = "HELP SET/FILTER"

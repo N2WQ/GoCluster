@@ -398,6 +398,54 @@ class QualificationAccountingFixtures(unittest.TestCase):
             self.assertLessEqual(len(receipt), HARNESS.MAX_BUFFER + 100)
 
 
+class HelpTaskFixtures(unittest.TestCase):
+    def test_task_guides_require_the_right_topic_commands_and_complete_ending(self):
+        for dialect in ("GO", "CC"):
+            show = "SHOW FILTER" if dialect == "GO" else "SHOW/FILTER"
+            cases = {
+                "FILTERS": ("Choose which spots you receive:",
+                            "HELP PASS" if dialect == "GO" else "HELP SET/NOFILTER",
+                            [show, "HELP FILTER EXAMPLES", "HELP PRESETS"]),
+                "FILTER EXAMPLES": (
+                    "Human-reported CW and FT8 spots on 20m and 40m:" if dialect == "GO" else
+                    "Select the 20m and 40m frequency ranges:", "HELP PRESETS",
+                    (["RESET FILTER RULE ALL",
+                      "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
+                      "PASS RULE 0 BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER",
+                      "REJECT RULE 0 MODE=FT8", "RESET FILTER"] if dialect == "GO" else
+                     ["SET/FILTER DXBM/OFF", "SET/FILTER DXBM/PASS 20,40",
+                      "SET/FILTER DOC/PASS K,VE", "SET/NOFT8", "SET/NOFILTER"]) + [show, "RESUME"]),
+                "PRESETS": ("Save your current setup:", "HELP DELETE PRESET",
+                            ["SAVE PRESET DAY", "SAVE PRESET NIGHT", "LIST PRESET", "LOAD PRESET DAY",
+                             "LOAD PRESET NIGHT", "DELETE PRESET NIGHT", "HELP LOAD PRESET"]),
+            }
+            for topic, (header, terminal, commands) in cases.items():
+                with self.subTest(dialect=dialect, topic=topic):
+                    lines = [header, *("  " + command for command in commands), "  " + terminal]
+                    HARNESS.require_help_task(lines, topic, dialect)
+                    for fault in (lines[1:], lines[:-1], ["Filter reference:", *lines[1:]],
+                                  [*lines[:-1], "Unknown help topic: " + topic, lines[-1]],
+                                  [*lines[:-1], "X" * 79, lines[-1]],
+                                  [*lines[:-1], "  \x01", lines[-1]]):
+                        with self.assertRaises(ValueError):
+                            HARNESS.require_help_task(fault, topic, dialect)
+                    for command in commands:
+                        # Drop every occurrence: the final link can also be an
+                        # explicitly required command elsewhere in the page.
+                        fault = [line for line in lines if line.strip() != command]
+                        with self.assertRaises(ValueError):
+                            HARNESS.require_help_task(fault, topic, dialect)
+                    footer = (f"Live spots paused for 30s after {len(lines)} output rows. "
+                              "Type RESUME to resume now.")
+                    paused = [*lines, footer, "Missed spots are not replayed."]
+                    HARNESS.require_help_task(paused, topic, dialect)
+                    for fault in (paused[:-1], paused + ["hidden suffix"],
+                                  [*lines, footer.replace("30s", "0s"), paused[-1]],
+                                  [*lines, footer.replace(f"{len(lines)} output", "999 output"), paused[-1]]):
+                        with self.assertRaises(ValueError):
+                            HARNESS.require_help_task(fault, topic, dialect)
+
+
 class SyntheticHistorySession:
     """Literal fixture answers challenge the collector without a second parser.
 
