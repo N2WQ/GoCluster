@@ -74,7 +74,9 @@ reputation:
   prefix_ttl_seconds: 3600          # idle time before prefix buckets reset
   prefix_max_entries: 50000         # hard cap on tracked prefixes
   lookup_cache_ttl_seconds: 86400   # cache ASN/country lookups (applies to all sources)
-  lookup_cache_max_entries: 50000   # hard cap on lookup cache entries
+  # Combined main-enrichment and Cymru DNS records; the same IP can count twice.
+  # Fixed shard quotas may evict before the combined total reaches this cap.
+  lookup_cache_max_entries: 50000   # hard combined record cap; not concurrent users
 
   # ===== Prefix token buckets =====
   # Limits per /24 (IPv4) and /48 (IPv6) before per-call limits are checked.

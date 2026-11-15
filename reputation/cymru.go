@@ -39,7 +39,7 @@ type cymruRequest struct {
 	pending *cymruPending
 }
 
-func newCymruResolver(enabled bool, timeout, cacheTTL, negativeTTL time.Duration, maxEntries, workers int) *cymruResolver {
+func newCymruResolver(enabled bool, timeout, cacheTTL, negativeTTL time.Duration, store *lookupCacheStore, workers int) *cymruResolver {
 	if workers <= 0 {
 		workers = 2
 	}
@@ -55,7 +55,7 @@ func newCymruResolver(enabled bool, timeout, cacheTTL, negativeTTL time.Duration
 	return &cymruResolver{
 		enabled:    enabled,
 		timeout:    timeout,
-		cache:      newTTLCache(16, cacheTTL, negativeTTL, maxEntries),
+		cache:      &ttlCache{store: store, namespace: cacheCymru, ttl: cacheTTL, negativeTT: negativeTTL},
 		pendingTTL: 5 * time.Minute,
 		queue:      make(chan cymruRequest, workers*8),
 		workers:    workers,

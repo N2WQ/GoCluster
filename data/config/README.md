@@ -293,6 +293,23 @@ Loader behavior:
 - `peering.max_peers` is a required integer from 1 through 64, including when peering is disabled. The shipped value is 64; there is no omitted, null, zero, or unlimited fallback. Existing private configurations must add this key explicitly. When peering is enabled, the number of enabled direct peer identities must fit this cap; disabled rows do not count, and a `both` direction counts once. An over-cap dormant registry remains loadable while peering is disabled, but enabling it fails startup. Changes require a restart, and lowering the cap never silently selects a subset of peers. The cap bounds direct sessions and recovery identities; the pending-handshake limit remains 128, with at most `max_peers + 128` transport owners. It does not limit remote topology population or raise the existing memory budget.
 - `reputation.yaml` in the public example disables IPinfo download/API usage and uses a placeholder download token so the strict loader still sees the required key. Put real IPinfo tokens only in a private config directory.
 - Manual DX reputation uses the baseline station across numeric SSIDs. Reconnect preserves active spent counts and deadlines, with normal elapsed-window advancement and configured risk tightening. Baseline ASN/country history is reused; old SSID histories are untouched and unmerged. Counters are runtime-only and can be lost on restart or state eviction. Configuration remains full-SSID. See [ADR-0271](../../docs/decisions/ADR-0271-shared-station-reputation.md).
+- Reputation `lookup_cache_max_entries` is one hard combined record cap for main
+  enrichment and Cymru DNS results. The same IP in both caches counts twice.
+  This retains address lookup history, including reached prelogin lookups, rather
+  than counting concurrent users. Both sources share each fixed shard allowance;
+  concentrated addresses can cause eviction before the combined total reaches
+  the cap. A full shard removes its oldest-written record; writes refresh that
+  order and reads do not. Expiry remains lazy, with equality at expiry still a
+  hit. A record with more than 1,024 total bytes in its address key and five
+  metadata strings remains usable but is not cached; an oversized replacement
+  removes its old cached record. Retained strings own their backing, and their
+  combined size is at most `1024 * lookup_cache_max_entries` bytes, excluding
+  slots, maps, allocator overhead, time locations and upstream stores. This is
+  not an RSS limit. `Gate.LookupCacheStats()` supplies a diagnostic snapshot of
+  counts, shard allowances, allocated slots, owned string bytes and pressure
+  counters; it adds no dashboard or logging stream. See
+  [ADR-0355](../../docs/decisions/ADR-0355-shared-reputation-lookup-retention.md)
+  and [TSR-0134](../../docs/troubleshooting/TSR-0134-reputation-lookup-cap-and-overflow.md).
 - Use `rbnskewfetch -config <dir> -out <file>` to fetch the configured skew CSV
   and write JSON. Rows meet `abs(skew) >= skew.min_abs_skew`; factor-1 rows remain.
   Fetch, parse, empty-selection, JSON-write or success-report failure exits

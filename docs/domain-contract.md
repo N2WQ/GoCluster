@@ -917,6 +917,25 @@ SSID files are preserved and unmerged. Counters are runtime-only and may be lost
 on restart or state eviction. See
 [ADR-0271](decisions/ADR-0271-shared-station-reputation.md).
 
+Main enrichment and Cymru DNS lookup records have distinct namespaces in one
+Gate-owned cache. `lookup_cache_max_entries` bounds their combined record count;
+the same address in both namespaces consumes two records. Up to 32 fixed shard
+allowances sum exactly to the normalized cap, including caps below 32. Both
+namespaces share every shard. Full shards evict the oldest-written record before
+adding membership; reads do not refresh order and writes do. Shard skew can
+evict below the aggregate cap. Slots are allocated once per used shard and reused;
+there is no overflow record scan or added background cleanup.
+
+Expiry is lazy and strictly after its deadline; equality remains a hit. A live
+FIFO head can be evicted while another expired record remains unread. Cache
+admission permits at most 1,024 bytes total for the key and five result strings,
+owns their exact backing, and bypasses oversized payloads without truncating or
+rejecting their lookup result. Oversized updates remove the old cached record.
+This bounds retained string payload, not total process memory. Source order,
+negative-result handling, prelogin's no-network behavior and DNS request ownership
+remain unchanged. See
+[ADR-0355](decisions/ADR-0355-shared-reputation-lookup-retention.md).
+
 ## Stored Configuration Admission
 
 Current native profiles and libraries use version seven and independent GO/CC

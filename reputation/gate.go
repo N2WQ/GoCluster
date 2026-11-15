@@ -144,7 +144,7 @@ func NewGate(cfg config.ReputationConfig, ctyLookup func() *cty.CTYDatabase) (*G
 	}
 	store := NewStore(cfg.ReputationDir, gcfg.maxASNHistory, gcfg.maxCountryHistory)
 	lookupCache := newTTLCache(32, gcfg.lookupCacheTTL, 5*time.Minute, gcfg.lookupCacheMaxEntries)
-	cymru := newCymruResolver(gcfg.cymruEnabled, gcfg.cymruLookupTimeout, gcfg.cymruCacheTTL, gcfg.cymruNegativeTTL, gcfg.lookupCacheMaxEntries, gcfg.cymruWorkers)
+	cymru := newCymruResolver(gcfg.cymruEnabled, gcfg.cymruLookupTimeout, gcfg.cymruCacheTTL, gcfg.cymruNegativeTTL, lookupCache.store, gcfg.cymruWorkers)
 	ipinfoAPI := newIPInfoClient(gcfg.ipinfoAPIEnabled, gcfg.ipinfoAPIToken, gcfg.ipinfoAPIBaseURL, gcfg.ipinfoAPITimeout)
 
 	g := &Gate{

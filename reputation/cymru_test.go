@@ -19,7 +19,7 @@ func cymruPendingCount(c *cymruResolver) int {
 }
 
 func TestCymruPendingQueueAdmission(t *testing.T) {
-	c := newCymruResolver(true, time.Second, time.Minute, time.Second, 32, 2)
+	c := newCymruResolver(true, time.Second, time.Minute, time.Second, newLookupCacheStore(16, 32), 2)
 	now := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
 	for i := 0; i < cap(c.queue)+3000; i++ {
 		addr := cymruTestAddr(i)
@@ -36,7 +36,7 @@ func TestCymruPendingQueueAdmission(t *testing.T) {
 }
 
 func TestCymruPendingConcurrentDuplicate(t *testing.T) {
-	c := newCymruResolver(true, time.Second, time.Minute, time.Second, 32, 2)
+	c := newCymruResolver(true, time.Second, time.Minute, time.Second, newLookupCacheStore(16, 32), 2)
 	addr := cymruTestAddr(1)
 	now := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
 	start := make(chan struct{})
@@ -101,7 +101,7 @@ func (w *cymruTestWorker) finish(t *testing.T) {
 }
 
 func TestCymruPendingRejectedKeyRetriesImmediately(t *testing.T) {
-	c := newCymruResolver(true, time.Second, time.Minute, time.Second, 32, 2)
+	c := newCymruResolver(true, time.Second, time.Minute, time.Second, newLookupCacheStore(16, 32), 2)
 	now := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
 	for i := 0; i < cap(c.queue); i++ {
 		addr := cymruTestAddr(i)
@@ -126,7 +126,7 @@ func TestCymruPendingTTLBoundary(t *testing.T) {
 		wantQueued int
 	}{{5*time.Minute - time.Nanosecond, 1}, {5 * time.Minute, 2}, {5*time.Minute + time.Nanosecond, 2}} {
 		t.Run(tc.offset.String(), func(t *testing.T) {
-			c := newCymruResolver(true, time.Second, time.Minute, time.Second, 32, 2)
+			c := newCymruResolver(true, time.Second, time.Minute, time.Second, newLookupCacheStore(16, 32), 2)
 			addr := cymruTestAddr(1)
 			now := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
 			c.enqueue(addr, addr.String(), now)
@@ -143,7 +143,7 @@ func TestCymruPendingTTLBoundary(t *testing.T) {
 }
 
 func TestCymruPendingRejectedReplacement(t *testing.T) {
-	c := newCymruResolver(true, time.Second, time.Minute, time.Second, 32, 2)
+	c := newCymruResolver(true, time.Second, time.Minute, time.Second, newLookupCacheStore(16, 32), 2)
 	now := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
 	for i := 0; i < cap(c.queue); i++ {
 		addr := cymruTestAddr(i)
@@ -168,7 +168,7 @@ func TestCymruPendingCompletionOwnership(t *testing.T) {
 		newestShift time.Duration
 	}{{"old_first", true, 0}, {"new_first_with_timestamp_reuse", false, 0}, {"new_first_with_backwards_clock", false, -time.Hour}} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := newCymruResolver(true, time.Second, time.Minute, time.Second, 32, 3)
+			c := newCymruResolver(true, time.Second, time.Minute, time.Second, newLookupCacheStore(16, 32), 3)
 			addr := cymruTestAddr(1)
 			key := addr.String()
 			now := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
@@ -228,7 +228,7 @@ func TestCymruPendingCompletionOwnership(t *testing.T) {
 }
 
 func TestCymruPendingOwnershipBoundUnderChurn(t *testing.T) {
-	c := newCymruResolver(true, time.Second, time.Minute, time.Minute, 32, 2)
+	c := newCymruResolver(true, time.Second, time.Minute, time.Minute, newLookupCacheStore(16, 32), 2)
 	now := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
 	for round := 0; round < 3; round++ {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -298,7 +298,7 @@ func TestCymruWorkerCancellation(t *testing.T) {
 			name = "active"
 		}
 		t.Run(name, func(t *testing.T) {
-			c := newCymruResolver(true, time.Second, time.Minute, time.Minute, 32, 1)
+			c := newCymruResolver(true, time.Second, time.Minute, time.Minute, newLookupCacheStore(16, 32), 1)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			entered := make(chan struct{})
@@ -352,7 +352,7 @@ func TestCymruWorkerCache(t *testing.T) {
 			name = "positive"
 		}
 		t.Run(name, func(t *testing.T) {
-			c := newCymruResolver(true, time.Second, time.Minute, time.Minute, 32, 1)
+			c := newCymruResolver(true, time.Second, time.Minute, time.Minute, newLookupCacheStore(16, 32), 1)
 			addr := cymruTestAddr(1)
 			want := LookupResult{}
 			if success {
