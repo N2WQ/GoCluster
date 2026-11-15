@@ -37,6 +37,21 @@ func (r *LineReader) ReadLine(deadline time.Time) (string, error) {
 	return r.inner.ReadLine(deadline)
 }
 
+// PendingInput reports an unfinished sentence, discarded overflow or native
+// Telnet sequence. Inspect only after the read owner reaches EOF; it does not
+// expose payload or change framing. Offline capture import uses this to avoid
+// calling an incomplete transport tail a complete corpus.
+func (r *LineReader) PendingInput() bool {
+	if r == nil || r.inner == nil {
+		return false
+	}
+	pending := len(r.inner.buf) != 0 || r.inner.dropping
+	if parser, ok := r.inner.parser.(*telnetParser); ok {
+		pending = pending || parser.state != 0
+	}
+	return pending
+}
+
 type lineReader struct {
 	allocation     readerAllocationState
 	acquireScratch func(time.Time) (frameParseLease, error)

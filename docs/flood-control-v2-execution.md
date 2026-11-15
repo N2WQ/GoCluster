@@ -94,7 +94,39 @@ falsifiability gates precede each affected implementation slice.
 - Recorder relocated to `C:\src\gocluster-cc-user\scripts\telnet-recording-proxy.py`,
   same approved SHA-256. Concurrent work owns ADR-0352, so this branch's native
   record is now ADR-0353 to avoid an eventual merge collision; no behavior change.
-- Slices 4-5: pending implementation and final integrated qualification.
+- Slice 4 implemented in `internal/floodcorpus` and `cmd/flood_replay`; see the
+  [private evidence runbook](runbooks/flood-evidence-capture.md). Import uses the
+  existing native peer reader/parser/original-field admission without starting
+  networking. A minimal read-only `LineReader.PendingInput` reports incomplete
+  framing/Telnet tails. Capture and corpus bytes are bounded, privately retained,
+  hash-bound and rechecked before manifest-last publication. UTC/offset interval,
+  sent-prefix uncertainty, build revision/nullable dirty state and eligibility
+  exclusions remain explicit. Reports bind the exact event hash.
+- Actual loopback recorder-to-import-to-comparison ordinary/race checks initially
+  passed 46 cases each, zero skips. Final interval/generated-phase refinements
+  are included in the integrated rerun. The owned lab used no real credentials
+  or remote endpoint; 269 server-direction bytes produced four PC11/61/26
+  events, retained exact original byte copies and left duplicate harm unknown.
+- The generated 30-arrival example and independent arithmetic vectors cover
+  bursts, continued excess, exact cutoff and idle/slower recovery. Its labelled
+  counterfactual recovers one logical post lost through copy charging, while
+  distinct genuine equal-field posts demonstrate ambiguity. These fixtures
+  establish the tool's behavior, not production harm or algorithm suitability.
+- Shared-context Slice 4 source review found no blocking issue; its report-hash
+  reproducibility observation was implemented. Lead reviewed final native byte,
+  source partition, cap-oracle, timing, truth and arithmetic paths. This was
+  shared-context review, not independent review.
+- Qualification-tag compilation exposed a legacy test fixture's removed ingest
+  field; it now uses the same test-only typed FIFO consumer as ordinary peer
+  fixtures. No production fallback was added. Full lint identified an unused
+  private return value/fixture parameter and direct EOF comparison; removed the
+  unused values and used `errors.Is`, preserving behavior.
+- Slice 5: final integrated qualification in progress.
+
+Support documentation impact: operator and support behavior changed. Updated
+`data/config/README.md`, `peer/README.md`, `docs/domain-contract.md`, durable
+ADR-0353/0354, the private evidence runbook and `customgpt/source-map.md`.
+No support Worker/API or workflow policy changes are required.
 
 Raw evidence is private/ignored under `.tmp/flood-v2-validation/`. Prior v1
 evidence remains under `.tmp/flood-config-validation/`.

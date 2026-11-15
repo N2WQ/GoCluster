@@ -132,21 +132,20 @@ func (q *SpotIngress) reserve(m *Manager, f *Frame) *SpotAdmission {
 	panic("peer ingress credit/slot mismatch")
 }
 
-func (j *SpotAdmission) publish() bool {
+func (j *SpotAdmission) publish() {
 	q := j.owner
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.builders--
 	if q.closed {
 		q.releaseLocked(j)
-		return false
+		return
 	}
 	j.state = ingressQueued
 	q.order[(q.head+q.length)%peerIngressCount] = uint8(j.index)
 	q.length++
 	q.signalLocked()
 	q.changed.Broadcast()
-	return true
 }
 
 func (q *SpotIngress) signalLocked() {

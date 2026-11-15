@@ -35,8 +35,8 @@ func floodPeerConfig(t *testing.T, action string, enabled bool) *config.Config {
 	cfg.CTY.Enabled = true
 	return cfg
 }
-func floodPeerRuntime(t *testing.T, action string, enabled bool) (*clusterRuntime, *peerAdmissionSocket, *peerAdmissionSocket, *peerAdmissionSocket) {
-	return floodPeerRuntimeForward(t, action, enabled, true)
+func floodPeerRuntime(t *testing.T, action string) (*clusterRuntime, *peerAdmissionSocket, *peerAdmissionSocket, *peerAdmissionSocket) {
+	return floodPeerRuntimeForward(t, action, true, true)
 }
 func floodPeerRuntimeForward(t *testing.T, action string, enabled, forward bool) (*clusterRuntime, *peerAdmissionSocket, *peerAdmissionSocket, *peerAdmissionSocket) {
 	t.Helper()
@@ -126,7 +126,7 @@ func TestPeerFloodSingleVerdictActualRecipients(t *testing.T) {
 		for _, action := range []string{config.FloodActionSuppress, config.FloodActionDrop, config.FloodActionObserve} {
 			t.Run(kind+"/"+action, func(t *testing.T) {
 				temporalDeliveryDirectory(t)
-				r, source, modern, legacy := floodPeerRuntime(t, action, true)
+				r, source, modern, legacy := floodPeerRuntime(t, action)
 				at := time.Now().UTC().Truncate(time.Minute)
 				var input [][]string
 				for _, dx := range []string{"K1ONE", "K1TWO", "K1DONE", "K1BACK"} {
@@ -220,7 +220,7 @@ func TestPeerFloodValidationRejectTransitAndCancellation(t *testing.T) {
 			if reject == "license" {
 				r, source, modern, _ = consumerPeerRuntime(t, true, false)
 			} else {
-				r, source, modern, _ = floodPeerRuntime(t, config.FloodActionSuppress, true)
+				r, source, modern, _ = floodPeerRuntime(t, config.FloodActionSuppress)
 			}
 			at := time.Now().UTC().Truncate(time.Minute)
 			fields := peerAdmissionFields("PC11", "K1REJ", at)
@@ -293,7 +293,7 @@ func TestPeerIngressCancelableValidatorRetirement(t *testing.T) {
 }
 
 func TestPeerFloodActiveMissingCTYCancelsWithoutTransit(t *testing.T) {
-	r, source, modern, _ := floodPeerRuntime(t, config.FloodActionSuppress, true)
+	r, source, modern, _ := floodPeerRuntime(t, config.FloodActionSuppress)
 	r.ctyDB.Store(nil) // Atomic production publication, not a late callback write.
 	fields := peerAdmissionFields("PC11", "K1WAIT", time.Now().UTC().Truncate(time.Minute))
 	fields[5] = "DL1AAA"
@@ -403,7 +403,7 @@ func TestPeerFloodDisabledReceiveOnlyAndLocalHops(t *testing.T) {
 }
 
 func TestPeerIngressPressureKeepsControlAndRetiresBeforePrimary(t *testing.T) {
-	r, source, modern, _ := floodPeerRuntime(t, config.FloodActionSuppress, true)
+	r, source, modern, _ := floodPeerRuntime(t, config.FloodActionSuppress)
 	r.ctyDB.Store(nil)
 	for i := 0; i < 70; i++ {
 		fields := peerAdmissionFields("PC11", fmt.Sprintf("K1P%03d", i), time.Now().UTC().Truncate(time.Minute))

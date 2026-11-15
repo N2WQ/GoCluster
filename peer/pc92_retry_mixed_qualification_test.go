@@ -61,14 +61,14 @@ type retryMixedQualification struct {
 	minCBytes, maxCBytes                   int
 }
 
-// Install before Manager.Start. The buffered ingest sink is the ordinary
-// Manager ingestion boundary; all inputs below use its normal HandleFrame path.
-func newRetryMixedQualification(m *Manager, calls []string) *retryMixedQualification {
+// Install before Manager.Start. The ordinary typed FIFO reaches the buffered
+// sink through the shared test consumer; inputs use normal HandleFrame parsing.
+func newRetryMixedQualification(t testing.TB, m *Manager, calls []string) *retryMixedQualification {
 	q := &retryMixedQualification{m: m, input: make(chan *spot.Spot, 4096)}
 	for i, call := range calls {
 		q.recipients[i].call = call
 	}
-	m.ingest = q.input
+	m.ingress = newTestSpotIngress(t, q.input)
 	m.SetAnnouncementBroadcast(func(line string) { q.observeMessage(line, false, "") })
 	m.SetDirectMessage(func(call, line string) { q.observeMessage(line, true, call) })
 	m.SetWWVBroadcast(func(_, line string, _ time.Time) { q.observeBulletin(line) })

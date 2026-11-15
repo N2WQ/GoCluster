@@ -325,7 +325,7 @@ func runRetryWaveService(t *testing.T, blocked int, qualified, periodic bool) {
 	if err := m.SetBuildIdentity("v14-retry-wave", "", "local", "2026-10-02", "go1.26"); err != nil {
 		t.Fatal(err)
 	}
-	mixed := newRetryMixedQualification(m, calls)
+	mixed := newRetryMixedQualification(t, m, calls)
 	f := schedulerFullGraph(t, m.protocol, calls)
 	// Keep detached/message watermarks at their real admission UTC value.
 	// A synthetic zero can reject present traffic around midnight.
