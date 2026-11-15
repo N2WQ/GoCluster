@@ -3,6 +3,11 @@
 # Runtime behavior: Required merged runtime config loaded from the active config directory at startup.
 # Safe edits: Change thresholds, windows, and actions only with observed source-rate evidence and post-restart validation.
 # Source: data/config/README.md.
+# Startup validates all six source tables, including inactive/disabled settings.
+# Source keys ignore case/outer whitespace; canonical collisions fail startup.
+# Numeric fields require YAML integers: no null, float, quoted number or boolean.
+# Threshold 0 disables only that source; log/window seconds and actor caps stay positive.
+# Arithmetic limits and private suppress/drop restart impact: README.md#flood-configuration.
 
 flood_control:
   # Master switch for the shared-ingest flood controller.

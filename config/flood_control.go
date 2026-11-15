@@ -2,6 +2,8 @@ package config
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 )
 
@@ -121,7 +123,7 @@ func normalizeFloodControlConfig(cfg *Config, raw map[string]any) error {
 	if err := validateDXCallFloodRail(raw, cfg.FloodControl.Rails.DXCall); err != nil {
 		return err
 	}
-	return nil
+	return validateFloodActorCardinality(cfg.FloodControl)
 }
 
 func validateSimpleFloodRail(raw map[string]any, name string, rail FloodRailConfig) error {
@@ -132,7 +134,7 @@ func validateSimpleFloodRail(raw map[string]any, name string, rail FloodRailConf
 	if !yamlKeyPresent(raw, append(path, "thresholds_per_source_type")...) {
 		return fmt.Errorf("missing required %s.thresholds_per_source_type", strings.Join(path, "."))
 	}
-	if err := validateFloodThresholdMap(strings.Join(append(path, "thresholds_per_source_type"), "."), rail.ThresholdsPerSourceType); err != nil {
+	if err := normalizeFloodThresholdMap(strings.Join(append(path, "thresholds_per_source_type"), "."), rail.ThresholdsPerSourceType); err != nil {
 		return err
 	}
 	return nil
@@ -155,13 +157,13 @@ func validateDXCallFloodRail(raw map[string]any, rail FloodRailConfig) error {
 	default:
 		return fmt.Errorf("invalid %s.active_mode %q (must be conservative, moderate, or aggressive)", strings.Join(path, "."), rail.ActiveMode)
 	}
-	if err := validateFloodThresholdMap(strings.Join(append(path, "thresholds_by_mode", floodModeConservative), "."), rail.ThresholdsByMode.Conservative); err != nil {
+	if err := normalizeFloodThresholdMap(strings.Join(append(path, "thresholds_by_mode", floodModeConservative), "."), rail.ThresholdsByMode.Conservative); err != nil {
 		return err
 	}
-	if err := validateFloodThresholdMap(strings.Join(append(path, "thresholds_by_mode", floodModeModerate), "."), rail.ThresholdsByMode.Moderate); err != nil {
+	if err := normalizeFloodThresholdMap(strings.Join(append(path, "thresholds_by_mode", floodModeModerate), "."), rail.ThresholdsByMode.Moderate); err != nil {
 		return err
 	}
-	if err := validateFloodThresholdMap(strings.Join(append(path, "thresholds_by_mode", floodModeAggressive), "."), rail.ThresholdsByMode.Aggressive); err != nil {
+	if err := normalizeFloodThresholdMap(strings.Join(append(path, "thresholds_by_mode", floodModeAggressive), "."), rail.ThresholdsByMode.Aggressive); err != nil {
 		return err
 	}
 	return nil
@@ -189,12 +191,16 @@ func validateFloodRailCommon(raw map[string]any, path []string, rail FloodRailCo
 	return nil
 }
 
-func validateFloodThresholdMap(path string, values map[string]int) error {
+// normalizeFloodThresholdMap publishes the same canonical source names that
+// validation accepts. Check the entire map before mutation so collisions cannot
+// silently overwrite one another; ordinary exact-key file merges happen earlier.
+func normalizeFloodThresholdMap(path string, values map[string]int) error {
 	if len(values) != len(floodSupportedSourceTypes) {
 		return fmt.Errorf("invalid %s: expected thresholds for %s", path, strings.Join(floodSupportedSourceTypes, ", "))
 	}
-	seen := make(map[string]struct{}, len(values))
-	for rawKey, threshold := range values {
+	canonical := make(map[string]int, len(values))
+	for _, rawKey := range slices.Sorted(maps.Keys(values)) {
+		threshold := values[rawKey]
 		key := strings.ToUpper(strings.TrimSpace(rawKey))
 		if key == "" {
 			return fmt.Errorf("invalid %s: blank source type key", path)
@@ -202,19 +208,21 @@ func validateFloodThresholdMap(path string, values map[string]int) error {
 		if !floodSupportedSourceType(key) {
 			return fmt.Errorf("invalid %s.%s: unsupported source type", path, rawKey)
 		}
-		if _, exists := seen[key]; exists {
+		if _, exists := canonical[key]; exists {
 			return fmt.Errorf("invalid %s.%s: duplicate source type", path, rawKey)
 		}
-		seen[key] = struct{}{}
-		if threshold < 0 {
-			return fmt.Errorf("invalid %s.%s %d (must be >= 0)", path, key, threshold)
+		canonical[key] = threshold
+		if threshold < 0 || threshold > maxFloodThreshold {
+			return fmt.Errorf("invalid %s.%s %d (must be between 0 and %d)", path, key, threshold, maxFloodThreshold)
 		}
 	}
 	for _, sourceType := range floodSupportedSourceTypes {
-		if _, ok := seen[sourceType]; !ok {
+		if _, ok := canonical[sourceType]; !ok {
 			return fmt.Errorf("missing required %s.%s", path, sourceType)
 		}
 	}
+	clear(values)
+	maps.Copy(values, canonical)
 	return nil
 }
 

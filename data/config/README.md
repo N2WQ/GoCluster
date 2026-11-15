@@ -102,6 +102,7 @@ Configuration is split by concern so you only edit the relevant file:
 - `openai.yaml` - optional secret-bearing tool config for LLM report generation.
 - `dedupe.yaml` - operator policy settings for primary/secondary dedupe windows and the default telnet dedupe policy for new users.
 - `floodcontrol.yaml` - operator policy settings for shared-ingest flood rails, actions, windows, and per-source thresholds.
+- See [Flood configuration](#flood-configuration) for source-key normalization, numeric limits and the restart impact on private policies.
 - Flood cleanup preserves live events through the configured sliding window, including its exact cutoff. Cleanup does not reset an actor's count; actions and fail-open actor-cap behavior remain owned by `floodcontrol.yaml`. See [TSR-0120](../../docs/troubleshooting/TSR-0120-flood-cleanup-live-history.md).
 - `spot_taxonomy.yaml` - reference table plus limited operator policy for supported modes, events, and PSKReporter routing; YAML can only select behavior families already implemented by the binary.
 - `mode_seeds.yaml` - reference table / algorithm calibration for digital frequency hints.
@@ -113,6 +114,47 @@ Configuration is split by concern so you only edit the relevant file:
 - `toxicity.yaml` - optional deployment/runtime settings for the Cloudflare Worker human-comment toxicity classifier.
 - `toxicity_safe_gate.yaml` - optional reference table for routine ham-radio comments that may bypass the classifier when the Worker is enabled.
 - `voacap_experiment.yaml` - optional tool config for manual VOACAP SSN forecast experiments; ignored by server startup and loaded by `voacap_ssn_forecast_watch`.
+
+### Flood configuration
+
+`floodcontrol.yaml` is loaded with the merged runtime configuration at startup.
+Every threshold table must define `MANUAL`, `UPSTREAM`, `PEER`, `RBN`, `FT8`,
+`FT4` and `PSKREPORTER`. Source keys ignore case and surrounding whitespace:
+`peer` and `" PEER "` load as `PEER`. Normalization changes the loaded maps;
+it does not rewrite configuration files.
+
+Validation runs after the existing exact-key YAML merge. Differently spelled
+keys that become the same source, such as `PEER` and `peer`, are rejected rather
+than silently selecting one value. Existing exact-key overlay behavior remains
+unchanged. Missing, blank and unsupported source keys are also rejected.
+
+All six tables are validated: the three ordinary rail tables and all three DX
+profiles, including inactive profiles and disabled rails or controller settings.
+Numeric values must be YAML integers. Null, fractional or float-form values
+such as `8.0`, quoted numbers such as `"8"`, and booleans are rejected.
+
+| Setting | Valid values |
+| --- | --- |
+| Per-source threshold | Integer from `0` through the native maximum `int` minus two. `0` disables that source's threshold only. |
+| `log_interval_seconds` and each `window_seconds` | Positive integer seconds, at most the smaller of the native maximum `int` and `9,223,372,036`. |
+| Each `max_entries_per_partition` | Positive integer no greater than the native maximum `int`. |
+
+When the controller is enabled, the sum of actor capacities across enabled,
+positive-threshold source partitions must also fit in a native `int`. This uses
+the selected DX profile. Each rail's cap is multiplied by its active source
+partition count before those capacities are combined. These arithmetic limits
+prevent representation overflow; they do not establish practical CPU, memory
+or whole-process limits. Choose operational values from traffic and resource
+evidence. Existing `enabled: false` switches retain their meaning; disabling a
+component does not permit malformed numeric values or incomplete tables.
+
+Before upgrading, inspect the active private policy. A noncanonical key paired
+with `suppress` or `drop` could previously pass validation while failing to
+match runtime traffic. Its normalized threshold can enforce after restart with
+the repaired loader. The shipped uppercase keys, observe actions and numeric
+values are unchanged. Review private actions and thresholds before restarting;
+this repair does not activate a new policy or change the direct constructor
+API. See [TSR-0133](../../docs/troubleshooting/TSR-0133-flood-configuration-contract.md).
 
 ### Secondary frequency-change policy
 

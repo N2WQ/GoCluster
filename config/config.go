@@ -1619,6 +1619,9 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 	for _, err := range validateRawTelnetCommandRate(raw) {
 		diagnostics.addError(err.Error())
 	}
+	if err := validateRawFloodControl(raw); err != nil {
+		diagnostics.addError(err.Error())
+	}
 	for _, err := range validateRawSecondaryFrequencyChanges(raw) {
 		diagnostics.addError(err.Error())
 	}
