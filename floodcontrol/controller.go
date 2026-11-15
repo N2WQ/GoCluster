@@ -161,17 +161,25 @@ func (c *Controller) run() {
 	}
 }
 
-func (c *Controller) process(now time.Time, s *spot.Spot) {
+// Admit evaluates one validated arrival and attempts primary admission once.
+// Callers must not re-enqueue the same arrival through Input. Policy locks are
+// released before the admission sink; a false result forbids onward relay.
+func (c *Controller) Admit(now time.Time, s *spot.Spot) bool {
+	if c == nil || s == nil {
+		return false
+	}
+	return c.process(now, s)
+}
+
+func (c *Controller) process(now time.Time, s *spot.Spot) bool {
 	c.processed.Add(1)
 	if !c.enabled {
-		c.forward(s)
-		return
+		return c.forward(s)
 	}
 
 	sourceType := normalizeSourceType(s)
 	if sourceType == "" {
-		c.forward(s)
-		return
+		return c.forward(s)
 	}
 
 	bestRank := actionRankNone
@@ -207,17 +215,18 @@ func (c *Controller) process(now time.Time, s *spot.Spot) {
 	switch bestAction {
 	case config.FloodActionObserve:
 		c.recordDecision(bestAction, bestReason)
-		c.forward(s)
+		return c.forward(s)
 	case config.FloodActionSuppress, config.FloodActionDrop:
 		c.recordDecision(bestAction, bestReason)
+		return false
 	default:
-		c.forward(s)
+		return c.forward(s)
 	}
 }
 
-func (c *Controller) forward(s *spot.Spot) {
+func (c *Controller) forward(s *spot.Spot) bool {
 	if c.tryForward(s) {
-		return
+		return true
 	}
 	if count, ok := c.downstreamDrop.Inc(); ok {
 		line := fmt.Sprintf("Flood control: downstream full, dropping spot (total=%d)", count)
@@ -227,6 +236,7 @@ func (c *Controller) forward(s *spot.Spot) {
 			log.Print(line)
 		}
 	}
+	return false
 }
 
 func (c *Controller) tryForward(s *spot.Spot) bool {

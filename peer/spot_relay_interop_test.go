@@ -144,11 +144,11 @@ func captureSpotRelayWriter(t *testing.T, incoming string, pc9x bool) ([]byte, *
 	destination.id, destination.pc9x = "dst", pc9x
 	localQueue := make(chan *spot.Spot, 1)
 	manager := &Manager{
-		cfg: config.PeeringConfig{ForwardSpots: true}, ingest: localQueue, dedupe: newBoundedDedupe(time.Minute, 16, 4096),
+		cfg: config.PeeringConfig{ForwardSpots: true}, ingress: newTestSpotIngress(t, localQueue), dedupe: newBoundedDedupe(time.Minute, 16, 4096),
 		sessions: sessionTestIndex(map[string]*session{"src": source, "dst": destination}),
 	}
 	frame := readNativePeerSpotFrame(t, incoming)
-	manager.HandleFrame(frame, source)
+	handleTestPeerFrame(manager, frame, source)
 	var local *spot.Spot
 	select {
 	case local = <-localQueue:
@@ -268,10 +268,10 @@ func TestPeerSpotNativeEscapedIACRejected(t *testing.T) {
 				destination := &session{id: "dst", remoteCall: "N1DST", pc9x: true, ctx: context.Background(), writeCh: make(chan string, 1)}
 				ingest := make(chan *spot.Spot, 1)
 				manager := &Manager{
-					cfg: config.PeeringConfig{ForwardSpots: forward}, ingest: ingest, dedupe: newBoundedDedupe(time.Minute, 16, 4096),
+					cfg: config.PeeringConfig{ForwardSpots: forward}, ingress: newTestSpotIngress(t, ingest), dedupe: newBoundedDedupe(time.Minute, 16, 4096),
 					sessions: sessionTestIndex(map[string]*session{"src": source, "dst": destination}),
 				}
-				manager.HandleFrame(frame, source)
+				handleTestPeerFrame(manager, frame, source)
 				entries, keyBytes, refused := manager.dedupe.occupancy()
 				if len(ingest) != 0 || len(source.writeCh) != 0 || len(destination.writeCh) != 0 || entries != 0 || keyBytes != 0 || refused != 0 {
 					t.Fatal("decoded literal IAC entered ingestion, peer dedupe or relay")

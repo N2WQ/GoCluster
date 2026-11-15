@@ -168,7 +168,7 @@ func archiveFanoutPeer(t *testing.T) (*peer.Manager, *peerAdmissionSocket) {
 	cfg.Timeouts = config.PeeringTimeouts{LoginSeconds: 5, InitSeconds: 5, IdleSeconds: 30}
 	cfg.Peers = []config.PeeringPeer{{Enabled: true, Direction: config.PeeringPeerDirectionInbound,
 		Family: config.PeeringPeerFamilyDXSpider, RemoteCallsign: "N2DST", PreferPC9x: true}}
-	manager, err := peer.NewManager(cfg, cfg.LocalCallsign, make(chan *spot.Spot, 1), 0, nil)
+	manager, err := peer.NewManager(cfg, cfg.LocalCallsign, testPeerSpotIngress(t, make(chan *spot.Spot, 1)), 0, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

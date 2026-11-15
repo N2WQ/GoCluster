@@ -40,7 +40,7 @@ func TestCCLiveProductionSession(t *testing.T) {
 			RemoteCallsign: remote, PreferPC9x: true}},
 	}, local)
 	ingest := make(chan *spot.Spot, 128)
-	m, err := NewManager(cfg, local, ingest, 300, nil)
+	m, err := NewManager(cfg, local, newTestSpotIngress(t, ingest), 300, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -38,6 +38,7 @@ var (
 )
 
 type session struct {
+	identity             *sourceIdentity // Immutable before publication; jobs retain this token, not the session.
 	qualificationWriter  qualificationWriterState
 	pendingReserved      bool
 	ownerReserved        bool
@@ -129,6 +130,7 @@ func newSession(conn net.Conn, dir direction, manager *Manager, peer PeerEndpoin
 	}
 	writer := bufio.NewWriter(writerConn)
 	s := &session{
+		identity:        new(sourceIdentity),
 		id:              peer.ID(),
 		diagnosticLabel: diagnosticLabel,
 		conn:            conn,

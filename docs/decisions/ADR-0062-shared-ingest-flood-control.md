@@ -5,7 +5,7 @@
 - Decision Origin: Design
 
 Native automated-source DECALL applicability is superseded by
-[ADR-0352](ADR-0352-native-reporter-quota-exemption.md). Other rails and the
+[ADR-0353](ADR-0353-native-reporter-quota-exemption.md). Other rails and the
 required startup policy remain in force.
 
 ## Context

@@ -25,7 +25,7 @@ func TestHandleFramePC92QueueFailureClosesWithoutAuthority(t *testing.T) {
 		}
 	}
 	start := time.Now()
-	m.HandleFrame(frame, src)
+	handleTestPeerFrame(m, frame, src)
 	if time.Since(start) > time.Second {
 		t.Fatal("reader blocked on full control queue")
 	}
@@ -109,7 +109,7 @@ func TestHandleFrameRelaysInboundPC11AndPC61ToOtherPeers(t *testing.T) {
 			m := &Manager{
 				cfg:      config.PeeringConfig{ForwardSpots: true},
 				dedupe:   newDedupeCache(time.Minute),
-				ingest:   ingest,
+				ingress:  newTestSpotIngress(t, ingest),
 				sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 			}
 
@@ -118,7 +118,7 @@ func TestHandleFrameRelaysInboundPC11AndPC61ToOtherPeers(t *testing.T) {
 				t.Fatalf("ParseFrame: %v", err)
 			}
 
-			m.HandleFrame(frame, src)
+			handleTestPeerFrame(m, frame, src)
 
 			select {
 			case got := <-ingest:
@@ -169,7 +169,7 @@ func TestInboundSpotNotRelayedWhenLocalIngestQueueFull(t *testing.T) {
 	m := &Manager{
 		cfg:      config.PeeringConfig{ForwardSpots: true},
 		dedupe:   newDedupeCache(time.Minute),
-		ingest:   ingest,
+		ingress:  newTestSpotIngress(t, ingest),
 		sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 	}
 
@@ -178,7 +178,7 @@ func TestInboundSpotNotRelayedWhenLocalIngestQueueFull(t *testing.T) {
 		t.Fatalf("ParseFrame: %v", err)
 	}
 
-	m.HandleFrame(frame, src)
+	handleTestPeerFrame(m, frame, src)
 
 	if got := len(ingest); got != 1 {
 		t.Fatalf("expected ingest queue to stay full after local drop, got len=%d", got)
@@ -208,7 +208,7 @@ func TestInboundSpotRelayedWhenLocallyAccepted(t *testing.T) {
 	m := &Manager{
 		cfg:      config.PeeringConfig{ForwardSpots: true},
 		dedupe:   newDedupeCache(time.Minute),
-		ingest:   ingest,
+		ingress:  newTestSpotIngress(t, ingest),
 		sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 	}
 
@@ -217,7 +217,7 @@ func TestInboundSpotRelayedWhenLocallyAccepted(t *testing.T) {
 		t.Fatalf("ParseFrame: %v", err)
 	}
 
-	m.HandleFrame(frame, src)
+	handleTestPeerFrame(m, frame, src)
 
 	select {
 	case got := <-ingest:
@@ -274,8 +274,8 @@ func TestHandleFrameWWVDuplicateHopVariantSuppressed(t *testing.T) {
 		t.Fatalf("ParseFrame(second): %v", err)
 	}
 
-	m.HandleFrame(first, &session{remoteCall: "SRC"})
-	m.HandleFrame(second, &session{remoteCall: "SRC"})
+	handleTestPeerFrame(m, first, &session{remoteCall: "SRC"})
+	handleTestPeerFrame(m, second, &session{remoteCall: "SRC"})
 
 	if delivered != 1 {
 		t.Fatalf("expected one WWV delivery after duplicate suppression, got %d", delivered)
@@ -411,7 +411,7 @@ func TestHandleFrameSpotRelaySuppressedWhenForwardSpotsDisabled(t *testing.T) {
 			m := &Manager{
 				cfg:      config.PeeringConfig{ForwardSpots: false},
 				dedupe:   newDedupeCache(time.Minute),
-				ingest:   ingest,
+				ingress:  newTestSpotIngress(t, ingest),
 				sessions: sessionTestIndex(map[string]*session{"src": src, "dst": dst}),
 			}
 
@@ -420,7 +420,7 @@ func TestHandleFrameSpotRelaySuppressedWhenForwardSpotsDisabled(t *testing.T) {
 				t.Fatalf("ParseFrame: %v", err)
 			}
 
-			m.HandleFrame(frame, src)
+			handleTestPeerFrame(m, frame, src)
 
 			select {
 			case got := <-ingest:

@@ -160,7 +160,7 @@ func newInboundHarnessManager(t *testing.T, scenario inboundScenario) (*Manager,
 		},
 		Peers: scenario.peers,
 	}
-	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", ingest, 0, nil)
+	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", newTestSpotIngress(t, ingest), 0, nil)
 	if err != nil {
 		t.Fatalf("%s: NewManager() error: %v", scenario.name, err)
 	}

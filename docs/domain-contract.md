@@ -138,7 +138,7 @@ The [native output guide](../telnet/README.md#ve7cc-native-spot-output) and
   normal posting resumes without operator action. Shipped observe actions and
   numbers are not calibrated human-enforcement settings.
 - Native DECALL values remain required/validated but inactive. See
-  [ADR-0352](decisions/ADR-0352-native-reporter-quota-exemption.md).
+  [ADR-0353](decisions/ADR-0353-native-reporter-quota-exemption.md).
 
 ## Human spot comments and wire times
 
@@ -490,6 +490,11 @@ These rules must be explicit, deterministic, and testable.
   dropped it.
 - A node that is shedding inbound peer spots locally must not continue acting as
   a transit hop for those same frames.
+- Locally valid peer spots receive one flood charge/verdict and primary-input
+  admission attempt. Suppress/drop and queue pressure stop both paths. Completed
+  CTY/license rejection retains existing original transit without a flood charge;
+  cancellation/closure forbids relay. Retire peer FIFO work before primary/output.
+  See [ADR-0354](decisions/ADR-0354-peer-flood-verdict-and-retirement.md).
 
 ### Original-content local peer publication
 

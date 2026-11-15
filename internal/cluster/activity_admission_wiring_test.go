@@ -37,7 +37,7 @@ func activityWiringRuntimeConfig(t *testing.T, cfg *config.Config) *clusterRunti
 	// Invoke actual production construction, not a test-assigned admission hook.
 	r.initializePipelineCore()
 	t.Cleanup(func() {
-		close(r.ingestValidator.input)
+		r.ingestValidator.Stop()
 		if r.floodController != nil {
 			r.floodController.Stop()
 		}

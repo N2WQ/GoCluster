@@ -135,9 +135,10 @@ func runPeerSpotDateIdentity(t *testing.T, typeID string, forward bool) {
 }
 
 type peerAdmissionSocket struct {
-	conn   net.Conn
-	reader *bufio.Reader
-	call   string
+	conn    net.Conn
+	reader  *bufio.Reader
+	call    string
+	ingress *peer.SpotIngress
 }
 
 type peerAdmissionCase struct {
@@ -345,7 +346,8 @@ func newPeerAdmissionSockets(t *testing.T, ingest chan<- *spot.Spot, forward boo
 		{Enabled: true, Direction: config.PeeringPeerDirectionInbound, Family: config.PeeringPeerFamilyDXSpider, RemoteCallsign: "N1REM"},
 		{Enabled: true, Direction: config.PeeringPeerDirectionInbound, Family: config.PeeringPeerFamilyDXSpider, RemoteCallsign: "N2DST", PreferPC9x: true},
 	}
-	manager, err := peer.NewManager(cfg, cfg.LocalCallsign, ingest, maxAgeSeconds, nil)
+	ingress := testPeerSpotIngress(t, ingest)
+	manager, err := peer.NewManager(cfg, cfg.LocalCallsign, ingress, maxAgeSeconds, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -360,6 +362,7 @@ func newPeerAdmissionSockets(t *testing.T, ingest chan<- *spot.Spot, forward boo
 	address := fmt.Sprintf("127.0.0.1:%d", port)
 	source := peerAdmissionLogin(t, address, "N1REM", false)
 	destination := peerAdmissionLogin(t, address, "N2DST", true)
+	source.ingress, destination.ingress = ingress, ingress
 	// PC22 is written during the handshake. The following ping is handled
 	// only after registration, establishing the fixture without polling.
 	peerAdmissionSendAndAck(t, source, "")
@@ -408,6 +411,19 @@ func peerAdmissionSendAndAck(t *testing.T, socket *peerAdmissionSocket, sentence
 	for i := 0; i < 16; i++ {
 		got := peerAdmissionReadLine(t, socket)
 		if got == want {
+			if socket.ingress != nil {
+				deadline := time.Now().Add(3 * time.Second)
+				for {
+					n, _ := socket.ingress.Usage()
+					if n == 0 {
+						break
+					}
+					if time.Now().After(deadline) {
+						t.Fatal("test ingress completion timed out")
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
 			return
 		}
 		if strings.HasPrefix(got, "PC11^") || strings.HasPrefix(got, "PC61^") || strings.HasPrefix(got, "PC26^") {

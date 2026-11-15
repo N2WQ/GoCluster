@@ -122,6 +122,12 @@ func (p *outputPipeline) processToxicityResult(result toxicity.Result) bool {
 // that channel as a completion signal or close it from its consumer.
 func (r *clusterRuntime) retireOutputPipeline() {
 	r.outputRetirement.Do(func() {
+		// A stopped primary still has an open input buffer. Retire peer admission
+		// first so a successful late enqueue cannot authorize transit into a dead
+		// local pipeline. Control withdrawal remains owned by Manager.Stop.
+		if r.peerIngress != nil {
+			r.peerIngress.Close()
+		}
 		if r.deduplicator != nil {
 			r.deduplicator.Stop()
 		}

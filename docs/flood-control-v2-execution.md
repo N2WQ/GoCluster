@@ -77,7 +77,24 @@ falsifiability gates precede each affected implementation slice.
   handler benchmark three times per short/max-one-token/max-many-token shape,
   100 ms each. Raw baseline is `peer-baseline-bench.log`; it includes actual
   full handler work, not just enqueue. No production latency claim follows.
-- Slices 3-5: pending prerequisites and validation.
+- Slice 3 implemented; lead actual-source review and shared-context reviewers
+  dispositioned typed cancellation, charged builders, source tokens, FIFO wakeup,
+  actual recipients, complete-path measurement and retirement-before-primary.
+  Deferred relay workspace is charged inside the same 8 MiB budget. Selected
+  peer/flood ordinary: 1,736 passed / 60 optional reference skips; focused race:
+  496 passed / zero skips; final affected race: 39 passed / zero skips; final
+  ordinary units: 20 passed. Final integrated checks remain pending.
+- Plain full-path benchmark medians (baseline 100 ms / final one second, three
+  samples each): short 19.0 / 30.9 us; one-token 4.82 / 3.94 ms; many-token
+  13.78 / 12.73 ms. Short cost includes serial consumer completion. Large-shape
+  timings overlap baseline variability; allocations essentially unchanged.
+  The first final run included mutex/block profiling and is not comparable to
+  unprofiled timings. Separate profiles show runtime/channel/test-completion
+  waits; no production throughput or p99 verdict follows.
+- Recorder relocated to `C:\src\gocluster-cc-user\scripts\telnet-recording-proxy.py`,
+  same approved SHA-256. Concurrent work owns ADR-0352, so this branch's native
+  record is now ADR-0353 to avoid an eventual merge collision; no behavior change.
+- Slices 4-5: pending implementation and final integrated qualification.
 
 Raw evidence is private/ignored under `.tmp/flood-v2-validation/`. Prior v1
 evidence remains under `.tmp/flood-config-validation/`.

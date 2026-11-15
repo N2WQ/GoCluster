@@ -75,7 +75,7 @@ func TestCCOutboundCompletionExchange(t *testing.T) {
 			if got := readSessionWire(t, r, conn); got != "PC51^N1REM^N0CALL^0^" {
 				t.Fatalf("ping=%q", got)
 			}
-			if len(m.ingest) != 0 || m.ActiveSessionCount() != 0 {
+			if len(ingest) != 0 || m.ActiveSessionCount() != 0 {
 				t.Fatal("startup spot or ping granted establishment")
 			}
 			writeSessionWire(t, conn, "PC20^")

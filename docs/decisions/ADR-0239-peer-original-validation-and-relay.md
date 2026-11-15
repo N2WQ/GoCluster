@@ -4,6 +4,10 @@
 - Date: 2026-10-04
 - Decision Origin: Troubleshooting chat
 
+The initial-enqueue-only relay boundary is superseded by
+[ADR-0354](ADR-0354-peer-flood-verdict-and-retirement.md). Original content and
+encoding contracts remain in force.
+
 ## Context
 
 Peer sysops reported changed onward spots. Baseline PC11/PC61 relay reconstructed

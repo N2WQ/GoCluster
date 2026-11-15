@@ -80,8 +80,8 @@ func TestPeerSpotValidatedTimestampBeforeAdmission(t *testing.T) {
 			for _, hop := range []int{0, 1, 3} {
 				t.Run(fmt.Sprintf("%s/forward=%t/hop=%d", kind, forward, hop), func(t *testing.T) {
 					frame := peerSpotDateFrame(t, kind, " 4-Oct-2024", hop)
-					m, source, destination, ingest := peerSpotTestManager(forward, true)
-					m.HandleFrame(frame, source)
+					m, source, destination, ingest := peerSpotTestManager(t, forward, true)
+					handleTestPeerFrame(m, frame, source)
 					if len(ingest) != 1 {
 						t.Fatal("valid original did not enter local processing with age disabled")
 					}
@@ -114,9 +114,9 @@ func TestPeerSpotSpacePaddedDateRetainsStaleAdmissionGate(t *testing.T) {
 		for _, forward := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/forward=%t", kind, forward), func(t *testing.T) {
 				frame := peerSpotDateFrame(t, kind, " 4-Oct-2024", 3)
-				m, source, destination, ingest := peerSpotTestManager(forward, true)
+				m, source, destination, ingest := peerSpotTestManager(t, forward, true)
 				m.maxAgeSeconds = 60
-				m.HandleFrame(frame, source)
+				handleTestPeerFrame(m, frame, source)
 				entries, keyBytes, refused := m.dedupe.occupancy()
 				if len(ingest) != 0 || len(destination.writeCh) != 0 || len(source.writeCh) != 0 || entries != 0 || keyBytes != 0 || refused != 0 {
 					t.Fatal("stale original used fallback-to-now or entered local/peer admission")
@@ -135,10 +135,10 @@ func TestPeerSpotDateSpellingsSharePeerDedupeIdentity(t *testing.T) {
 				if first == second {
 					second = "04-Oct-2024"
 				}
-				m, source, destination, ingest := peerSpotTestManager(true, true)
+				m, source, destination, ingest := peerSpotTestManager(t, true, true)
 				for i, date := range []string{first, second} {
 					frame := peerSpotDateFrame(t, kind, date, 3)
-					m.HandleFrame(frame, source)
+					handleTestPeerFrame(m, frame, source)
 					if len(ingest) != 1 {
 						t.Fatal("peer duplicate suppression changed local eligibility")
 					}
@@ -267,12 +267,12 @@ func observeNativePeerSpot(t *testing.T, sentence string, forward, modern bool) 
 	destination.id, destination.pc9x = "dst", modern
 	ingest := make(chan *spot.Spot, 1)
 	manager := &Manager{
-		cfg: config.PeeringConfig{ForwardSpots: forward}, ingest: ingest, dedupe: newBoundedDedupe(time.Minute, 16, 4096),
+		cfg: config.PeeringConfig{ForwardSpots: forward}, ingress: newTestSpotIngress(t, ingest), dedupe: newBoundedDedupe(time.Minute, 16, 4096),
 		sessions: sessionTestIndex(map[string]*session{"src": source, "dst": destination}),
 	}
 	// Fixed historical sender fixtures intentionally disable the age cutoff.
 	// Root-owned stale-admission tests cover that gate with the same spelling.
-	manager.HandleFrame(frame, source)
+	handleTestPeerFrame(manager, frame, source)
 	result := nativePeerSpotObservation{frame: frame}
 	select {
 	case result.local = <-ingest:

@@ -36,9 +36,9 @@ func newPeerSpotResourceFixture(ctx context.Context, t testing.TB, saturate bool
 	fixture := &peerSpotResourceFixture{ingest: make(chan *spot.Spot, 1)}
 	m := &Manager{cfg: config.PeeringConfig{MaxPeers: 64, ForwardSpots: true}, ctx: ctx,
 		parseBudget: newFrameParseBudget(), dedupe: newBoundedDedupe(time.Minute, 8, 4096),
-		ingest: fixture.ingest, sessions: newFixedIndex[string, *session](64)}
+		ingress: newTestSpotIngress(t, fixture.ingest), sessions: newFixedIndex[string, *session](64)}
 	fixture.manager = m
-	fixture.source = &session{id: "N1SRC", remoteCall: "N1SRC", established: true,
+	fixture.source = &session{identity: new(sourceIdentity), id: "N1SRC", remoteCall: "N1SRC", established: true,
 		ctx: ctx, manager: m, pc9x: true, writeCh: make(chan string, 1)}
 	m.sessions.Set(fixture.source.id, fixture.source)
 	for i := range 63 {
@@ -93,6 +93,9 @@ func handleLeasedPeerSpot(fixture *peerSpotResourceFixture, wire string) error {
 		fixture.manager.HandleFrame(frame, fixture.source)
 		return true, nil
 	})
+	if err == nil {
+		waitTestPeerIngress(fixture.manager)
+	}
 	return err
 }
 
@@ -233,7 +236,7 @@ func TestPeerSpotFullHandlerReaderHeadroomAndStop(t *testing.T) {
 	results := make(chan error, 2)
 	m.wg.Go(func() {
 		_, err := fixture.source.withParsedFrame(wire, time.Time{}, func(frame *Frame) (bool, error) {
-			m.HandleFrame(frame, fixture.source)
+			handleTestPeerFrame(m, frame, fixture.source)
 			return false, ctx.Err()
 		})
 		results <- err

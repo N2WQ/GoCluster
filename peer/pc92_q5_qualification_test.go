@@ -44,7 +44,7 @@ func newQ5Rig(t *testing.T) *q5Rig {
 	}
 	input := make(chan *spot.Spot, 4096)
 	var err error
-	r.m, err = NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", input, 600, nil)
+	r.m, err = NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", newTestSpotIngress(t, input), 600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

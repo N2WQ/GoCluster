@@ -20,7 +20,6 @@ import (
 
 	"dxcluster/config"
 	"dxcluster/peer"
-	"dxcluster/spot"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
 )
@@ -349,7 +348,7 @@ func startPSKRZeroPeer(ctx context.Context) (*pskrZeroPeer, error) {
 		Peers: []config.PeeringPeer{{Enabled: true, Direction: config.PeeringPeerDirectionOutbound, Family: config.PeeringPeerFamilyDXSpider,
 			Host: "127.0.0.1", Port: socket.listener.Addr().(*net.TCPAddr).Port, LoginCallsign: "N0CALL", RemoteCallsign: "K1PEER", PreferPC9x: false}}}
 	//nolint:contextcheck // The context-free constructor starts no fixture workers; Start(ctx) below owns their lifecycle.
-	manager, err := peer.NewManager(cfg, "N0CALL", make(chan *spot.Spot, 1), 0, nil)
+	manager, err := peer.NewManager(cfg, "N0CALL", nil, 0, nil)
 	if err != nil {
 		return nil, errors.Join(err, socket.close())
 	}

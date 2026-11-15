@@ -147,7 +147,7 @@ Onward sentences end in `^Hn^~`, followed by writer CRLF. A modern destination
 receives original PC11, PC61 or eligible PC26 fields. A legacy destination
 receives original PC11 fields, or original PC61 fields with only its IP removed.
 PC26 retains its modern-destination restriction. Forwarding still requires
-`forward_spots: true`, successful local queue handoff, hop greater than one,
+`forward_spots: true`, shared peer admission, hop greater than one,
 peer-dedupe admission and source exclusion. Valid H0/H1 inputs remain locally
 eligible. The original timestamp governs age admission and PC11/PC61's second
 age check immediately before relay; PC26 keeps its existing age-check behavior.
@@ -158,6 +158,20 @@ configured reader limits continue to govern incoming sentences. Refuse an oversi
 fields. A fitting PC61-to-PC11 variant may still be sent when the modern PC61
 variant does not fit. Existing cache admission and expiry remain in force;
 refusal does not reset a key or create an automatic retry.
+
+
+Original peer spots use one bounded FIFO: 64 outstanding jobs including builders
+and active validation, and an 8 MiB conservative backing budget. Full or closed
+admission refuses local processing and transit, even with observe-only actions.
+Locally valid spots receive one flood evaluation and primary-admission attempt.
+Suppress/drop or primary-input pressure stops both paths. Completed local
+CTY/license rejection retains existing transit without a flood charge;
+cancellation is distinct and forbids relay. Copies retain their current charges.
+Admitted work survives source disconnect; replacement has distinct exclusion
+identity. Maintenance remains independent. `SpotIngress.Usage()` and `Refusals()`
+expose count/backing and refusal evidence; bounded `peer_ingress_refused`
+diagnostics name the guard. Reported origin is not the connected transport.
+See [ADR-0354](../docs/decisions/ADR-0354-peer-flood-verdict-and-retirement.md).
 
 ### Ownership and support evidence
 

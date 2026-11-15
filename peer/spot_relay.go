@@ -131,36 +131,17 @@ func (m *Manager) handlePeerSpot(frame *Frame, source *session, receivedAt time.
 		m.reportBadCallParseDrop(frame, source, err)
 		return
 	}
-	// Clone each field before local parsing: normalization caches and queued
-	// Spots may outlive the frame lease and must not pin its whole raw line.
-	// These <=8 compact copies also form the immutable transit payload.
-	original := Frame{Type: frame.Type, Hop: frame.Hop, Fields: make([]string, len(frame.Fields))}
-	for i, field := range frame.Fields {
-		original.Fields[i] = strings.Clone(field)
-	}
-	local, err := parseSpotFromFrame(&original, "")
-	if err != nil {
-		m.reportBadCallParseDrop(frame, source, err)
+	if m.ingress == nil {
+		m.reportDiagnostic("peer_ingress_refused", sessionLabel(source), "unattached_spot_admission")
 		return
 	}
-	// The tolerant local parser cannot decode every admitted wire spelling.
-	// Use the validated instant before identity/age checks; keep transit bytes.
-	local.Time = stamp
-	// The local consumer owns local after handoff and may immediately mutate
-	// every field. Capture the existing key and timestamp before sending it.
-	key := dxKey(&original, local)
-	if !m.ingestSpot(local) || original.Hop <= 1 || !m.shouldRelayDataFrame(original.Type) {
-		return
-	}
-	if m.dedupe.markSeen(key, receivedAt) {
-		m.relayOriginalPeerSpot(&original, stamp, original.Hop-1, source)
-	}
+	m.queuePeerSpot(m.ingress, frame, source, stamp, receivedAt)
 }
 
 // relayOriginalPeerSpot retains existing fanout/gates and never reads the local
 // Spot. PC11/PC61 retain their second age check; PC26 keeps merge age semantics.
 // Build at most two bounded variants, then use the existing nonblocking queues.
-func (m *Manager) relayOriginalPeerSpot(original *Frame, stamp time.Time, hop int, source *session) {
+func (m *Manager) relayOriginalPeerSpotIdentity(original *Frame, stamp time.Time, hop int, identity *sourceIdentity) {
 	if original.Type != "PC26" && m.maxAgeSeconds > 0 && time.Since(stamp) > time.Duration(m.maxAgeSeconds)*time.Second {
 		return
 	}
@@ -171,8 +152,11 @@ func (m *Manager) relayOriginalPeerSpot(original *Frame, stamp time.Time, hop in
 	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	if m.stopping {
+		return
+	}
 	for _, destination := range m.sessions.All() {
-		if destination == source || (original.Type == "PC26" && !destination.pc9x) {
+		if (identity != nil && destination.identity == identity) || (original.Type == "PC26" && !destination.pc9x) {
 			continue
 		}
 		line := modern

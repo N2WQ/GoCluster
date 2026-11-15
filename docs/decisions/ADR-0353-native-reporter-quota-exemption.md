@@ -1,4 +1,4 @@
-# ADR-0352: Native Reporter Quota Exemption
+# ADR-0353: Native Reporter Quota Exemption
 
 - Status: Accepted
 - Date: 2026-11-15

@@ -139,6 +139,7 @@ type clusterRuntime struct {
 	deduplicator    *dedup.Deduplicator
 	floodController *floodcontrol.Controller
 	ingestValidator *ingestValidator
+	peerIngress     *peer.SpotIngress
 	ingestInput     chan<- *spot.Spot
 
 	secondaryFast       *dedup.SecondaryDeduper
@@ -944,6 +945,14 @@ func (r *clusterRuntime) initializePipelineCore() bool {
 	if !r.cfg.FloodControl.Enabled {
 		r.ingestValidator.admitPrimary = admitPrimary
 	}
+	if r.cfg.Peering.Enabled {
+		r.peerIngress = peer.NewSpotIngress()
+	}
+	r.ingestValidator.peerIngress = r.peerIngress
+	r.ingestValidator.peerAdmit = admitPrimary
+	if r.floodController != nil {
+		r.ingestValidator.peerAdmit = func(s *spot.Spot) bool { return r.floodController.Admit(time.Now().UTC(), s) }
+	}
 	r.ingestValidator.SetBadCallReporter(r.reportBadCallDrop)
 	r.ingestValidator.Start()
 	r.ingestInput = r.ingestValidator.Input()
@@ -1132,7 +1141,7 @@ func (r *clusterRuntime) initializePeerManager() bool {
 		return true
 	}
 	diagnostics := peerdiag.New(r.cfg.Logging.PeerConnections.Enabled, r.peerLogEmitter, streamPeerConnections, streamPeerOverlong)
-	pm, err := peer.NewManager(r.cfg.Peering, r.cfg.Peering.LocalCallsign, r.ingestInput, r.cfg.SpotPolicy.MaxAgeSeconds, diagnostics)
+	pm, err := peer.NewManager(r.cfg.Peering, r.cfg.Peering.LocalCallsign, r.peerIngress, r.cfg.SpotPolicy.MaxAgeSeconds, diagnostics)
 	if err != nil {
 		diagnostics.Stop()
 		return r.failStartup("Failed to init peering manager: %v", err)
@@ -1718,9 +1727,7 @@ func (r *clusterRuntime) shutdown() {
 	if r.signalResolver != nil {
 		r.signalResolver.Stop()
 	}
-	if r.floodController != nil {
-		r.floodController.Stop()
-	}
+
 	r.stopSecondaryDedupers()
 	if r.rbnClient != nil {
 		r.rbnClient.Stop()
@@ -1738,6 +1745,21 @@ func (r *clusterRuntime) shutdown() {
 	if r.telnetServer != nil {
 		r.telnetServer.Stop()
 	}
+	r.stopIngestPipeline()
+}
+
+// stopIngestPipeline retires peer work, then joins validation before flood and
+// metadata/license stores disappear. Generic producers use nonblocking sends.
+func (r *clusterRuntime) stopIngestPipeline() {
+	if r.peerIngress != nil {
+		r.peerIngress.Close()
+	}
+	if r.ingestValidator != nil {
+		r.ingestValidator.Stop()
+	}
+	if r.floodController != nil {
+		r.floodController.Stop()
+	}
 }
 
 func (r *clusterRuntime) close() {
@@ -1748,6 +1770,7 @@ func (r *clusterRuntime) close() {
 	if r.peerManager != nil {
 		r.peerManager.Stop()
 	}
+	r.stopIngestPipeline()
 	r.stopHumanTelnetFeeds()
 	if r.telnetServer != nil {
 		r.telnetServer.Stop()

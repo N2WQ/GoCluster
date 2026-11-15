@@ -3,14 +3,17 @@
 package cluster
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"dxcluster/cty"
 	"dxcluster/internal/ratelimit"
+	"dxcluster/peer"
 	"dxcluster/spot"
 	"dxcluster/uls"
 )
@@ -23,6 +26,13 @@ const (
 // ingestValidator centralizes CTY/ULS validation before deduplication.
 // It is intentionally single-consumer to keep CTY cache usage bounded and predictable.
 type ingestValidator struct {
+	ctx                  context.Context
+	cancel               context.CancelFunc
+	done                 chan struct{}
+	lifecycle            sync.Mutex
+	started              bool
+	peerIngress          *peer.SpotIngress     // Installed before Start, same single CTY owner.
+	peerAdmit            func(*spot.Spot) bool // Direct policy + primary admission, never flood input.
 	input                chan *spot.Spot
 	dedupInput           chan<- *spot.Spot
 	admitPrimary         func(*spot.Spot) bool // Fixed before Start; used only without an intervening flood gate.
@@ -55,11 +65,13 @@ func newIngestValidator(
 	dropReporter func(line string),
 	requireCTY bool,
 ) *ingestValidator {
+	ctx, cancel := context.WithCancel(context.Background())
 	inputBuffer := cap(dedupInput)
 	if inputBuffer <= 0 {
 		inputBuffer = 10000
 	}
 	return &ingestValidator{
+		ctx: ctx, cancel: cancel, done: make(chan struct{}),
 		input:                make(chan *spot.Spot, inputBuffer),
 		dedupInput:           dedupInput,
 		ctyLookup:            ctyLookup,
@@ -99,28 +111,110 @@ func (v *ingestValidator) Start() {
 	if v == nil {
 		return
 	}
-	go v.run()
+	v.lifecycle.Lock()
+	defer v.lifecycle.Unlock()
+	if v.started || v.ctx.Err() != nil {
+		return
+	}
+	v.started = true
+	go func() { defer close(v.done); v.run() }()
+}
+
+// Stop cancels CTY waiting and joins the sole owner before its dependencies
+// retire. Producers keep their nonblocking channel API; the channel is not closed.
+func (v *ingestValidator) Stop() {
+	if v == nil {
+		return
+	}
+	v.lifecycle.Lock()
+	v.cancel()
+	started := v.started
+	v.lifecycle.Unlock()
+	if started {
+		<-v.done
+	}
+	for range len(v.input) {
+		select {
+		case <-v.input:
+		default:
+			return
+		}
+	}
 }
 
 // run is the ingress pressure boundary. Validation drops are intentional data
 // quality decisions, while dedup-channel drops mean downstream backpressure and
 // are logged separately for operator troubleshooting.
 func (v *ingestValidator) run() {
-	for s := range v.input {
-		if s == nil {
-			continue
+	var peerReady <-chan struct{}
+	if v.peerIngress != nil {
+		peerReady = v.peerIngress.Ready()
+	}
+	for {
+		if v.ctx.Err() != nil {
+			return
 		}
-		v.ingestTotal.Add(1)
-		if !v.validateSpot(s) {
-			continue
-		}
-		if !v.tryForward(s) {
-			if count, ok := v.dedupDropCounter.Inc(); ok {
-				log.Printf("Ingest: dedup input full, dropping spot (source=%s total=%d)", ingestSourceLabel(s), count)
+		select {
+		case <-v.ctx.Done():
+			return
+		case <-peerReady:
+			j := v.peerIngress.Take()
+			if j != nil {
+				v.processPeer(j)
+			}
+		case s, ok := <-v.input:
+			if !ok {
+				return
+			}
+			if s == nil {
+				continue
+			}
+			v.ingestTotal.Add(1)
+			if !v.validateSpot(s) {
+				continue
+			}
+			if !v.tryForward(s) {
+				if count, ok := v.dedupDropCounter.Inc(); ok {
+					log.Printf("Ingest: dedup input full, dropping spot (source=%s total=%d)", ingestSourceLabel(s), count)
+				}
 			}
 		}
 	}
 }
+
+func (v *ingestValidator) processPeer(j *peer.SpotAdmission) {
+	defer j.Finish()
+	s := j.TakeSpot()
+	v.ingestTotal.Add(1)
+	result := v.validateSpotCancelable(s, v.peerIngress.Done())
+	if v.ctx.Err() != nil {
+		return
+	}
+	select {
+	case <-v.peerIngress.Done():
+		return
+	default:
+	}
+	if result == ingestRejected {
+		j.Relay()
+		return
+	}
+	if result != ingestAccepted {
+		return
+	}
+	// peerAdmit captures identity before send. No Spot access follows success.
+	if v.peerAdmit != nil && v.peerAdmit(s) {
+		j.Relay()
+	}
+}
+
+type ingestResult uint8
+
+const (
+	ingestCanceled ingestResult = iota
+	ingestRejected
+	ingestAccepted
+)
 
 func (v *ingestValidator) tryForward(s *spot.Spot) bool {
 	if v.admitPrimary != nil {
@@ -145,23 +239,35 @@ func (v *ingestValidator) IngestCount() uint64 {
 // validateSpot enforces CTY validity and DE licensing before dedup.
 // It refreshes metadata from CTY while preserving any grid fields already attached.
 func (v *ingestValidator) validateSpot(s *spot.Spot) bool {
+	return v.validateSpotCancelable(s, nil) == ingestAccepted
+}
+
+func (v *ingestValidator) validateSpotCancelable(s *spot.Spot, canceled <-chan struct{}) ingestResult {
+	if v.ctx.Err() != nil {
+		return ingestCanceled
+	}
+	select {
+	case <-canceled:
+		return ingestCanceled
+	default:
+	}
 	if s == nil {
-		return false
+		return ingestRejected
 	}
 	s.EnsureNormalized()
 	// Incoming metadata cannot establish an FCC address association.
 	s.DEMetadata.State, s.DXMetadata.State = "", ""
 	if v.ctyLookup == nil {
-		return true
+		return ingestAccepted
 	}
 	ctyDB := v.ctyLookup()
 	if ctyDB == nil {
 		if !v.requireCTY {
-			return true
+			return ingestAccepted
 		}
-		ctyDB = v.waitForCTY()
+		ctyDB = v.waitForCTY(canceled)
 		if ctyDB == nil {
-			return false
+			return ingestCanceled
 		}
 	}
 
@@ -176,11 +282,11 @@ func (v *ingestValidator) validateSpot(s *spot.Spot) bool {
 
 	if shouldRejectCTYCall(dxCall) {
 		v.logInvalidDrop("DX", dxCall, s)
-		return false
+		return ingestRejected
 	}
 	if shouldRejectCTYCall(deCall) {
 		v.logInvalidDrop("DE", deCall, s)
-		return false
+		return ingestRejected
 	}
 
 	dxLookupCall := normalizeCallForMetadata(dxCall)
@@ -197,7 +303,7 @@ func (v *ingestValidator) validateSpot(s *spot.Spot) bool {
 			goto deLookup
 		}
 		v.logCTYDrop("DX", dxCall, s)
-		return false
+		return ingestRejected
 	}
 deLookup:
 	deInfo, ok := v.lookupCTY(ctyDB, deLookupCall)
@@ -206,7 +312,7 @@ deLookup:
 			goto afterLookup
 		}
 		v.logCTYDrop("DE", deCall, s)
-		return false
+		return ingestRejected
 	}
 afterLookup:
 
@@ -233,7 +339,10 @@ afterLookup:
 		v.gridUpdate(deLookupCall, deGrid)
 	}
 
-	return v.checkSpotterLicense(s, ctyDB, deCall, dxCall)
+	if v.checkSpotterLicense(s, ctyDB, deCall, dxCall) {
+		return ingestAccepted
+	}
+	return ingestRejected
 }
 
 // checkSpotterLicense attaches address metadata independently of enforcement.
@@ -277,7 +386,7 @@ func (v *ingestValidator) checkSpotterLicense(s *spot.Spot, ctyDB *cty.CTYDataba
 	return false
 }
 
-func (v *ingestValidator) waitForCTY() *cty.CTYDatabase {
+func (v *ingestValidator) waitForCTY(canceled <-chan struct{}) *cty.CTYDatabase {
 	if v == nil || v.ctyLookup == nil {
 		return nil
 	}
@@ -288,7 +397,16 @@ func (v *ingestValidator) waitForCTY() *cty.CTYDatabase {
 	timer := time.NewTimer(defaultIngestCTYLogInterval)
 	defer timer.Stop()
 	for {
-		<-timer.C
+		if v.ctx.Err() != nil {
+			return nil
+		}
+		select {
+		case <-v.ctx.Done():
+			return nil
+		case <-canceled:
+			return nil
+		case <-timer.C:
+		}
 		if db := v.ctyLookup(); db != nil {
 			return db
 		}

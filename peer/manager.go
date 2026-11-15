@@ -44,7 +44,7 @@ type Manager struct {
 	ownedRuns           *boundedIndex[*session, bool]
 	cfg                 config.PeeringConfig
 	localCall           string
-	ingest              chan<- *spot.Spot
+	ingress             *SpotIngress
 	maxAgeSeconds       int
 	topology            *topologyStore
 	sessions            *boundedIndex[string, *session]
@@ -115,7 +115,7 @@ func buildPeerRegistry(peers []config.PeeringPeer) ([]PeerEndpoint, map[string]P
 	return outbound, inbound, nil
 }
 
-func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.Spot, maxAgeSeconds int, diagnostics *peerdiag.Service) (*Manager, error) {
+func NewManager(cfg config.PeeringConfig, localCall string, ingress *SpotIngress, maxAgeSeconds int, diagnostics *peerdiag.Service) (*Manager, error) {
 	var err error
 	cfg, localCall, err = config.NormalizeActivePeeringWireContract(cfg, localCall)
 	if err != nil {
@@ -152,7 +152,7 @@ func NewManager(cfg config.PeeringConfig, localCall string, ingest chan<- *spot.
 	m := &Manager{
 		cfg:            cfg,
 		localCall:      strutil.NormalizeUpper(localCall),
-		ingest:         ingest,
+		ingress:        ingress,
 		maxAgeSeconds:  maxAgeSeconds,
 		topology:       topo,
 		sessions:       newFixedIndex[string, *session](cfg.MaxPeers),
@@ -200,7 +200,13 @@ func (m *Manager) Start(ctx context.Context) error {
 		return err
 	}
 	m.wg.Add(1)
-	go func() { defer m.wg.Done(); m.protocol.run(m.ctx) }()
+	go func() {
+		defer m.wg.Done()
+		if m.ingress != nil {
+			defer m.ingress.beginClose()
+		}
+		m.protocol.run(m.ctx)
+	}()
 	if m.topology != nil {
 		m.wg.Add(1)
 		go func() { defer m.wg.Done(); m.projectionLoop(m.projectionContexts[0].parent) }()
@@ -242,6 +248,9 @@ func (m *Manager) Stop() {
 		m.mu.Lock()
 		m.stopping = true
 		m.mu.Unlock()
+		if m.ingress != nil {
+			m.ingress.beginClose()
+		}
 		if m.listener != nil {
 			_ = m.listener.Close()
 		}
@@ -278,6 +287,9 @@ func (m *Manager) Stop() {
 		m.mu.RUnlock()
 		for _, s := range all {
 			s.close()
+		}
+		if m.ingress != nil {
+			m.ingress.Close()
 		}
 		m.wg.Wait()
 		m.stopContextOwners()
@@ -368,25 +380,6 @@ func (m *Manager) handleFrameAt(frame *Frame, sess *session, receivedAt time.Tim
 		if _, ok := parsePC93(frame); ok && m.protocol != nil {
 			m.protocol.enqueue(frame, sess, now)
 		}
-	}
-}
-
-func (m *Manager) ingestSpot(s *spot.Spot) bool {
-	if m == nil || s == nil || m.ingest == nil {
-		return false
-	}
-	if m.maxAgeSeconds > 0 {
-		if age := time.Since(s.Time); age > time.Duration(m.maxAgeSeconds)*time.Second {
-			// Drop stale spots before they enter the shared pipeline to avoid wasting dedupe/work.
-			return false
-		}
-	}
-	select {
-	case m.ingest <- s:
-		return true
-	default:
-		m.reportDiagnostic("ingest_queue_full", s.SourceNode, "spot_dropped")
-		return false
 	}
 }
 

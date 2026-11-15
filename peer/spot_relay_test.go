@@ -11,11 +11,11 @@ import (
 	"dxcluster/spot"
 )
 
-func peerSpotTestManager(forward, modern bool) (*Manager, *session, *session, chan *spot.Spot) {
+func peerSpotTestManager(t testing.TB, forward, modern bool) (*Manager, *session, *session, chan *spot.Spot) {
 	source := &session{id: "N1SRC", remoteCall: "N1SRC", ctx: context.Background(), writeCh: make(chan string, 4)}
 	destination := &session{id: "N2DST", remoteCall: "N2DST", pc9x: modern, ctx: context.Background(), writeCh: make(chan string, 4)}
 	ingest := make(chan *spot.Spot, 4)
-	manager := &Manager{cfg: config.PeeringConfig{ForwardSpots: forward}, dedupe: newBoundedDedupe(time.Minute, 8, 4096), ingest: ingest,
+	manager := &Manager{cfg: config.PeeringConfig{ForwardSpots: forward}, dedupe: newBoundedDedupe(time.Minute, 8, 4096), ingress: newTestSpotIngress(t, ingest),
 		sessions: sessionTestIndex(map[string]*session{source.id: source, destination.id: destination})}
 	return manager, source, destination, ingest
 }
@@ -26,7 +26,7 @@ func TestPeerSpotCorrectionIsolationBeforeRelay(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/modern=%v", kind, modern), func(t *testing.T) {
 				wire := originalSpotTestWire(kind, "  FT8 -10 dB 1100Z  ~CQ~~DX~\t \xfe  ")
 				frame := readNativePeerSpotFrame(t, wire+"~")
-				m, source, _, ingest := peerSpotTestManager(true, modern)
+				m, source, _, ingest := peerSpotTestManager(t, true, modern)
 				destination, remote := newTransportTestSession(t)
 				destination.id, destination.pc9x = "N2DST", modern
 				m.sessions.Set(destination.id, destination)
@@ -34,7 +34,7 @@ func TestPeerSpotCorrectionIsolationBeforeRelay(t *testing.T) {
 				// handoff, before serialization/fanout. No production hooks.
 				m.dedupe.mu.Lock()
 				done := make(chan struct{})
-				go func() { m.HandleFrame(frame, source); close(done) }()
+				go func() { handleTestPeerFrame(m, frame, source); close(done) }()
 				select {
 				case local := <-ingest:
 					if local.DXCall != "K1ABC" || local.DECall != "W1XYZ" || local.Frequency != 14074.02 {
@@ -104,7 +104,7 @@ func TestMalformedPeerSpotCannotPoisonAdmission(t *testing.T) {
 			}
 			for _, test := range bad {
 				t.Run(fmt.Sprintf("%s/forward=%v/%d=%q", kind, forward, test.index, test.value), func(t *testing.T) {
-					m, source, destination, ingest := peerSpotTestManager(forward, true)
+					m, source, destination, ingest := peerSpotTestManager(t, forward, true)
 					valid, err := ParseFrame(originalSpotTestWire(kind, "~CQ~~TEST~"))
 					if err != nil {
 						t.Fatal(err)
@@ -112,12 +112,12 @@ func TestMalformedPeerSpotCannotPoisonAdmission(t *testing.T) {
 					fields := append([]string(nil), valid.Fields...)
 					fields[test.index] = test.value
 					invalid := &Frame{Type: kind, Fields: fields, Hop: 3}
-					m.HandleFrame(invalid, source)
+					handleTestPeerFrame(m, invalid, source)
 					entries, keyBytes, refused := m.dedupe.occupancy()
 					if len(ingest) != 0 || len(destination.writeCh) != 0 || entries != 0 || keyBytes != 0 || refused != 0 {
 						t.Fatal("malformed original entered a queue or peer dedupe")
 					}
-					m.HandleFrame(valid, source)
+					handleTestPeerFrame(m, valid, source)
 					if len(ingest) != 1 || len(destination.writeCh) != map[bool]int{false: 0, true: 1}[forward] {
 						t.Fatal("valid same-identity control was suppressed")
 					}
@@ -131,12 +131,12 @@ func TestPeerSpotRelayGates(t *testing.T) {
 	for _, kind := range []string{"PC11", "PC61", "PC26"} {
 		for _, hop := range []int{0, 1, 2} {
 			for _, forward := range []bool{false, true} {
-				m, source, destination, ingest := peerSpotTestManager(forward, true)
+				m, source, destination, ingest := peerSpotTestManager(t, forward, true)
 				frame, err := ParseFrame(strings.TrimSuffix(originalSpotTestWire(kind, "~CQ~~TEST~"), "H3^") + fmt.Sprintf("H%d^", hop))
 				if err != nil {
 					t.Fatal(err)
 				}
-				m.HandleFrame(frame, source)
+				handleTestPeerFrame(m, frame, source)
 				want := 0
 				if forward && hop > 1 {
 					want = 1
@@ -147,7 +147,7 @@ func TestPeerSpotRelayGates(t *testing.T) {
 			}
 		}
 		for _, failure := range []string{"stale", "full", "duplicate", "legacy"} {
-			m, source, destination, ingest := peerSpotTestManager(true, failure != "legacy")
+			m, source, destination, ingest := peerSpotTestManager(t, true, failure != "legacy")
 			frame, _ := ParseFrame(originalSpotTestWire(kind, "~CQ~~TEST~"))
 			switch failure {
 			case "stale":
@@ -157,11 +157,11 @@ func TestPeerSpotRelayGates(t *testing.T) {
 					ingest <- &spot.Spot{}
 				}
 			case "duplicate":
-				m.HandleFrame(frame, source)
+				handleTestPeerFrame(m, frame, source)
 				<-ingest
 				<-destination.writeCh
 			}
-			m.HandleFrame(frame, source)
+			handleTestPeerFrame(m, frame, source)
 			wantRelay := 0
 			if failure == "legacy" && kind != "PC26" {
 				wantRelay = 1
@@ -187,7 +187,7 @@ func TestPeerSpotRelayGates(t *testing.T) {
 
 func TestPeerSpotSecondAgeCheckUsesOriginalTimestamp(t *testing.T) {
 	for _, kind := range []string{"PC11", "PC61", "PC26"} {
-		m, source, destination, ingest := peerSpotTestManager(true, true)
+		m, source, destination, ingest := peerSpotTestManager(t, true, true)
 		now := time.Now().UTC()
 		wire := strings.ReplaceAll(originalSpotTestWire(kind, "~CQ~~TEST~"), "01-oCt-2026^1200Z", now.Format("02-Jan-2006^1504Z"))
 		frame, err := ParseFrame(wire)
@@ -198,7 +198,7 @@ func TestPeerSpotSecondAgeCheckUsesOriginalTimestamp(t *testing.T) {
 		m.maxAgeSeconds = int(time.Since(stamp)/time.Second) + 2
 		m.dedupe.mu.Lock()
 		done := make(chan struct{})
-		go func() { m.HandleFrame(frame, source); close(done) }()
+		go func() { handleTestPeerFrame(m, frame, source); close(done) }()
 		select {
 		case local := <-ingest:
 			local.Time = now.Add(time.Hour)
@@ -226,7 +226,7 @@ func TestPeerSpotSecondAgeCheckUsesOriginalTimestamp(t *testing.T) {
 
 func TestPeerSpotVariantSizeRefusal(t *testing.T) {
 	for _, kind := range []string{"PC11", "PC61"} {
-		m, source, modern, ingest := peerSpotTestManager(true, true)
+		m, source, modern, ingest := peerSpotTestManager(t, true, true)
 		legacy := &session{id: "N3OLD", ctx: context.Background(), writeCh: make(chan string, 4)}
 		m.sessions.Set(legacy.id, legacy)
 		wire := originalSpotTestWire(kind, "X")
@@ -238,7 +238,7 @@ func TestPeerSpotVariantSizeRefusal(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		m.HandleFrame(frame, source)
+		handleTestPeerFrame(m, frame, source)
 		if len(ingest) != 1 || len(modern.writeCh) != 0 {
 			t.Fatal("oversized modern output was emitted or local admission lost")
 		}
@@ -255,7 +255,7 @@ func TestPeerSpotVariantSizeRefusal(t *testing.T) {
 		} else if len(legacy.writeCh) != 0 {
 			t.Fatal("oversized PC11 reached legacy peer")
 		}
-		m.HandleFrame(frame, source)
+		handleTestPeerFrame(m, frame, source)
 		if m.dedupe.items.Len() != 1 || len(modern.writeCh) != 0 || len(legacy.writeCh) != 0 {
 			t.Fatal("size refusal reset valid dedupe admission")
 		}

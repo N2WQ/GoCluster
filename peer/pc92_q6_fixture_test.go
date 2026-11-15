@@ -268,7 +268,7 @@ func newQ6Rig(t *testing.T, zeroTimers bool, maxBytes, tokenCount int) *q6Rig {
 			Family: config.PeeringPeerFamilyDXSpider, Direction: config.PeeringPeerDirectionInbound})
 	}
 	ingest := make(chan *spot.Spot, 4096)
-	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", ingest, 600, nil)
+	manager, err := NewManager(completeProtocolTestConfig(cfg, "N0CALL"), "N0CALL", newTestSpotIngress(t, ingest), 600, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
