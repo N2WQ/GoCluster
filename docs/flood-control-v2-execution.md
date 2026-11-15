@@ -72,7 +72,7 @@ falsifiability gates precede each affected implementation slice.
   focused flood/runtime race 67; all passed with zero skips. Targeted vet and
   YAML comment/value rigor passed. Shared-context actual-diff review found an
   accidental positive entry in the disabled test helper; restored zero and
-  reran the affected owner checks. Final integrated checks remain pending.
+  reran the affected owner checks. Covered by the final integrated lanes below.
 - Before peer changes, the saved native peer binary ran the complete leased
   handler benchmark three times per short/max-one-token/max-many-token shape,
   100 ms each. Raw baseline is `peer-baseline-bench.log`; it includes actual
@@ -83,7 +83,7 @@ falsifiability gates precede each affected implementation slice.
   Deferred relay workspace is charged inside the same 8 MiB budget. Selected
   peer/flood ordinary: 1,736 passed / 60 optional reference skips; focused race:
   496 passed / zero skips; final affected race: 39 passed / zero skips; final
-  ordinary units: 20 passed. Final integrated checks remain pending.
+  ordinary units: 20 passed. Covered by the final integrated lanes below.
 - Plain full-path benchmark medians (baseline 100 ms / final one second, three
   samples each): short 19.0 / 30.9 us; one-token 4.82 / 3.94 ms; many-token
   13.78 / 12.73 ms. Short cost includes serial consumer completion. Large-shape
@@ -121,7 +121,64 @@ falsifiability gates precede each affected implementation slice.
   fixtures. No production fallback was added. Full lint identified an unused
   private return value/fixture parameter and direct EOF comparison; removed the
   unused values and used `errors.Is`, preserving behavior.
-- Slice 5: final integrated qualification in progress.
+- Slice 4 checkpoint: `88aadc69`. Standalone explicit-VCS CLI build and generated
+  comparison passed: 30 arrivals, rolling 16 allowed / replenishing 19 allowed,
+  one labelled counterfactual recovered post. The slower-recovery phase resumes
+  at 92 / 86 generated seconds respectively. These small declared parameters
+  and schedules do not choose an operational policy.
+- Final parser fuzz experiments passed: capture record 79,074 executions,
+  original peer admission 59,457 and native spot framing 33,181 (15-second
+  requested budgets, two workers). No corpus failure was produced.
+- Full first-party vet and Staticcheck passed; full golangci-lint passed with
+  zero issues after the reported cleanup. YAML header/comment/value rigor,
+  support-critical crawler comments, troubleshooting indexing and local support
+  bundle checks passed. The support check did not use deployed endpoints.
+- Full final ordinary Windows lane passed: 13,590 cases / 97 skips, 61 executed
+  packages and 15 build-only packages. The required real recorder loopback case
+  ran and passed after the final interval, scenario and report-hash changes.
+  Skips are helper-only, optional external-reference/controlled campaign/live
+  environment cases and unavailable Windows H3 mapping; they do not substitute
+  for the required capture case.
+- Full final race Windows lane also passed: 13,590 cases / 97 skips, 61 executed
+  and 15 build-only packages, no race report. The required actual recorder case
+  ran and passed. These are first-party native Windows lanes, not maintained
+  dependency-module, Linux, hosted-CI or production qualification.
+- Additional qualification-tag preparation: `peer` compiled successfully after
+  the mechanical fixture migration. `internal/cluster` remains unbuildable in
+  that extra mode because unchanged `grid_authority_ordering_test.go:473` calls
+  `correctedGridHeldInput`, defined in a `!qualification` file. Inspected baseline
+  `dedefb5e` contains that same caller and excluded definition; neither file was
+  changed here. Initial and final failed preparation logs are preserved. No
+  whole-package qualification execution or pass is claimed.
+- The new peer delivery file now carries `!qualification`, matching its ordinary
+  delivery helpers. This removes its extra-mode undefined references while
+  preserving the identical default ordinary/race file set and test bodies.
+  Its ordinary rerun passed 25 cases / zero skips with required identities after
+  the tag change; the unchanged default file set does not invalidate either
+  complete default lane.
+  The unrelated grid qualification defect is outside this approved flood scope.
+
+Final lead verification compared approved items to actual production paths,
+refusals, ownership transfer, cancellation and retirement, parser bounds,
+configuration loading, test oracles, operator/support contracts and the direct
+diff. Review fixes and their affected checks are recorded above. Code-map final
+commands are `go run ./cmd/codemap generate -all` then `check -all`; their output
+is retained with the private validation evidence.
+
+## Traffic boundary
+
+All approved implementation is present in this isolated branch. Representative
+peer/contest traffic is still needed for operational thresholds, rate/burst and
+recovery timing, an algorithm choice, and material duplicate-charging harm.
+Generated fixtures and owned loopback bytes cannot resolve those decisions.
+The runbook preserves partial, timing and eligibility limitations so captured
+arrivals are not silently promoted to a calibrated live charging stream.
+
+No merge, push, deployment, restart, external peer session or operational flood
+activation occurred. Production whole-process memory, throughput, CPU and p99
+remain unmeasured. The bounded ingress proof and local component benchmarks
+do not establish those production ceilings. The existing recorder remains an
+external hash-pinned dependency; its production presence is not assumed.
 
 Support documentation impact: operator and support behavior changed. Updated
 `data/config/README.md`, `peer/README.md`, `docs/domain-contract.md`, durable

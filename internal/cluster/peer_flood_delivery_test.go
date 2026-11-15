@@ -1,3 +1,5 @@
+//go:build !qualification
+
 package cluster
 
 import (
