@@ -37,7 +37,7 @@ func TestControllerPartitionsBySourceType(t *testing.T) {
 	defer controller.Stop()
 
 	controller.Input() <- testSpot("W1AAA", spot.SourceManual)
-	controller.Input() <- testSpot("W1AAA", spot.SourceRBN)
+	controller.Input() <- testSpot("W1AAA", spot.SourcePeer)
 	controller.Input() <- testSpot("W1AAA", spot.SourceManual)
 
 	mustReceiveSpot(t, downstream)
@@ -136,13 +136,13 @@ func TestControllerCleanupPreservesLiveThreshold(t *testing.T) {
 func TestControllerCleanupSourceThresholdAndExpiry(t *testing.T) {
 	cfg := testFloodConfig(config.FloodActionObserve, 4)
 	cfg.Rails.DECall.ThresholdsPerSourceType["MANUAL"] = 3
-	cfg.Rails.DECall.ThresholdsPerSourceType["RBN"] = 5
+	cfg.Rails.DECall.ThresholdsPerSourceType["PEER"] = 5
 	controller := New(cfg, make(chan *spot.Spot, 16), nil, nil)
 	base := time.Date(2027, 1, 2, 3, 0, 0, 0, time.UTC)
 	for _, entry := range []struct {
 		source spot.SourceType
 		count  int
-	}{{spot.SourceManual, 3}, {spot.SourceRBN, 5}} {
+	}{{spot.SourceManual, 3}, {spot.SourcePeer, 5}} {
 		for i := 0; i < entry.count; i++ {
 			controller.process(base, testSpot("W1AAA", entry.source))
 		}
@@ -150,19 +150,19 @@ func TestControllerCleanupSourceThresholdAndExpiry(t *testing.T) {
 	// The cutoff is inclusive, independently for each source partition.
 	cutoff := base.Add(time.Minute)
 	controller.cleanup(cutoff)
-	for partition, want := range map[string]int{"MANUAL": 3, "RBN": 5} {
+	for partition, want := range map[string]int{"MANUAL": 3, "PEER": 5} {
 		if got := len(controller.rails[0].partitions[partition]["W1AAA"].times); got != want {
 			t.Fatalf("%s retained=%d at inclusive cutoff; want %d", partition, got, want)
 		}
 	}
 	controller.process(cutoff, testSpot("W1AAA", spot.SourceManual))
-	controller.process(cutoff, testSpot("W1AAA", spot.SourceRBN))
+	controller.process(cutoff, testSpot("W1AAA", spot.SourcePeer))
 	_, observed, _, _, _, _ := controller.GetStats()
 	if observed != 2 {
 		t.Fatalf("inclusive-cutoff observations=%d; want 2", observed)
 	}
 	controller.cleanup(cutoff.Add(time.Nanosecond))
-	for _, partition := range []string{"MANUAL", "RBN"} {
+	for _, partition := range []string{"MANUAL", "PEER"} {
 		if got := len(controller.rails[0].partitions[partition]["W1AAA"].times); got != 1 {
 			t.Fatalf("%s retained=%d after expiry; want only the newest event", partition, got)
 		}
@@ -217,7 +217,7 @@ func testFloodConfig(action string, maxEntries int) config.FloodControlConfig {
 				ThresholdsPerSourceType: map[string]int{
 					"MANUAL":      1,
 					"UPSTREAM":    0,
-					"PEER":        0,
+					"PEER":        1,
 					"RBN":         1,
 					"FT8":         0,
 					"FT4":         0,

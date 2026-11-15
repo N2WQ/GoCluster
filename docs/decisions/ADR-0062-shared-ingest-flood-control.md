@@ -4,6 +4,10 @@
 - Date: 2026-04-08
 - Decision Origin: Design
 
+Native automated-source DECALL applicability is superseded by
+[ADR-0352](ADR-0352-native-reporter-quota-exemption.md). Other rails and the
+required startup policy remain in force.
+
 ## Context
 
 The cluster already had primary dedupe and telnet-facing secondary dedupe, but it had no shared-ingest flood stage that could react to actor burst behavior before spots entered primary dedupe state. That left a gap for near-unique floods from one spotter, node, IP, or hot DX target. The requested implementation also required that operator-tunable flood behavior live entirely in YAML rather than code defaults.

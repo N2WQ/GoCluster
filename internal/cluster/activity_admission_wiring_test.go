@@ -20,13 +20,17 @@ func activityWiringConfig(flood bool, action string) *config.Config {
 	cfg.FloodControl = config.FloodControlConfig{Enabled: flood, LogIntervalSeconds: 30,
 		PartitionMode: config.FloodControlPartitionExactSourceType,
 		Rails: config.FloodControlRailsConfig{DECall: config.FloodRailConfig{Enabled: true, Action: action,
-			WindowSeconds: 60, MaxEntriesPerPartition: 16, ThresholdsPerSourceType: map[string]int{"RBN": 1}}}}
+			WindowSeconds: 60, MaxEntriesPerPartition: 16, ThresholdsPerSourceType: map[string]int{"PEER": 1}}}}
 	return cfg
 }
 
 func activityWiringRuntime(t *testing.T, flood bool, action string) *clusterRuntime {
 	t.Helper()
-	cfg := activityWiringConfig(flood, action)
+	return activityWiringRuntimeConfig(t, activityWiringConfig(flood, action))
+}
+
+func activityWiringRuntimeConfig(t *testing.T, cfg *config.Config) *clusterRuntime {
+	t.Helper()
 	r := newClusterRuntime(BuildInfo{}, cfg, "", config.LoadDiagnostics{})
 	r.adaptiveMinReports = spot.NewAdaptiveMinReports(cfg.CallCorrection)
 	r.ctyDB.Store(loadIngestCTY(t))
@@ -45,7 +49,7 @@ func activityWiringRuntime(t *testing.T, flood bool, action string) *clusterRunt
 
 func activityWiringSpot(dx, de, mode string) *spot.Spot {
 	s := spot.NewSpot(dx, de, 14030, mode)
-	s.SourceType = spot.SourceRBN
+	s.SourceType = spot.SourcePeer
 	return s
 }
 

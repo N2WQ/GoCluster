@@ -39,6 +39,8 @@ flood_control:
       max_entries_per_partition: 20000
       # Maximum events allowed per SourceType inside `window_seconds`.
       # A value of 0 disables this rail for that SourceType.
+      # Native automated sources below are required but exempt from DECALL
+      # accounting regardless of value. Their other rails remain effective.
       thresholds_per_source_type:
         MANUAL: 8      # Local/manual source type.
         UPSTREAM: 8    # Human upstream telnet source type.

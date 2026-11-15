@@ -123,6 +123,16 @@ Every threshold table must define `MANUAL`, `UPSTREAM`, `PEER`, `RBN`, `FT8`,
 `peer` and `" PEER "` load as `PEER`. Normalization changes the loaded maps;
 it does not rewrite configuration files.
 
+Native `RBN`, `FT4`, `FT8` and `PSKREPORTER` sources are exempt from the
+reporting-station (`decall`) quota. Their required DECALL table values remain
+accepted for configuration compatibility but do not create reporter state or
+enforce a reporter limit. Source type controls this exemption, not mode,
+comment, a skimmer suffix or `IsHuman`. A relayed `PEER` report remains human.
+The `source_node`, `spotter_ip` and `dxcall` rails retain their configured
+behavior for automated sources. Restarting with this repair therefore removes
+any private native DECALL enforcement; use the other appropriate rails for
+their distinct actors, rather than treating them as equivalent station quotas.
+
 Validation runs after the existing exact-key YAML merge. Differently spelled
 keys that become the same source, such as `PEER` and `peer`, are rejected rather
 than silently selecting one value. Existing exact-key overlay behavior remains
@@ -147,6 +157,10 @@ prevent representation overflow; they do not establish practical CPU, memory
 or whole-process limits. Choose operational values from traffic and resource
 evidence. Existing `enabled: false` switches retain their meaning; disabling a
 component does not permit malformed numeric values or incomplete tables.
+
+The startup arithmetic guard conservatively includes all configured positive
+partitions, including the inactive native DECALL entries. It remains an upper
+bound rather than an estimate of actual retained state.
 
 Before upgrading, inspect the active private policy. A noncanonical key paired
 with `suppress` or `drop` could previously pass validation while failing to

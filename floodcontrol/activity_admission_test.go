@@ -30,8 +30,8 @@ func TestFloodAdmissionSinkAfterPolicyAndBeforePressure(t *testing.T) {
 				}
 			})
 			at := time.Unix(1, 0)
-			c.process(at, testSpot("W1AAA", spot.SourceRBN))
-			c.process(at, testSpot("W1AAA", spot.SourceRBN))
+			c.process(at, testSpot("W1AAA", spot.SourcePeer))
+			c.process(at, testSpot("W1AAA", spot.SourcePeer))
 			want := 1
 			if action == config.FloodActionObserve {
 				want = 2
@@ -40,7 +40,7 @@ func TestFloodAdmissionSinkAfterPolicyAndBeforePressure(t *testing.T) {
 				t.Fatalf("policy/primary-pressure calls=%d successes=%d", calls, successes)
 			}
 			// A new actor passes policy but the full primary input refuses it.
-			c.process(at, testSpot("W1BBB", spot.SourceRBN))
+			c.process(at, testSpot("W1BBB", spot.SourcePeer))
 			if calls != want+1 || successes != 1 {
 				t.Fatal("input refusal bypassed the admission sink")
 			}

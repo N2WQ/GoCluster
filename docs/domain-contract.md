@@ -125,6 +125,21 @@ The [native output guide](../telnet/README.md#ve7cc-native-spot-output) and
 - Do not retain subslices of shared read buffers when data must outlive the read
   cycle.
 
+## Reporting-station flood allowances
+
+- Native RBN/FT4/FT8/PSKReporter reports bypass DECALL accounting only. Source
+  type, not mode/comment, a skimmer marker or `IsHuman`, selects the exemption.
+  PEER remains human; other native actor rails retain their configured policy.
+- MANUAL, PEER and human UPSTREAM reporting-station allowances are separate.
+  Local reputation admission remains independent and is not charged again by
+  the shared flood controller.
+- Rolling-window history includes the exact cutoff and retains current
+  per-arrival charging, including copies. As recent activity expires or falls,
+  normal posting resumes without operator action. Shipped observe actions and
+  numbers are not calibrated human-enforcement settings.
+- Native DECALL values remain required/validated but inactive. See
+  [ADR-0352](decisions/ADR-0352-native-reporter-quota-exemption.md).
+
 ## Human spot comments and wire times
 
 - Manual DX, peer PC11/PC61/PC26, DXSummit and human telnet input use

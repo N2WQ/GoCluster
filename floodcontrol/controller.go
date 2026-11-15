@@ -181,6 +181,12 @@ func (c *Controller) process(now time.Time, s *spot.Spot) {
 
 	c.mu.Lock()
 	for _, rail := range c.rails {
+		// Native receiver reports do not consume a human reporting-station
+		// allowance. Other actor/resource rails retain their configured policy;
+		// PEER remains human even when its mode or comment describes a skimmer.
+		if rail.name == "decall" && spot.IsSkimmerSource(spot.SourceType(sourceType)) {
+			continue
+		}
 		action, reason, overflow := rail.observe(sourceType, actorKey(rail.name, s), now)
 		if overflow {
 			overflowReasons = append(overflowReasons, reason)
