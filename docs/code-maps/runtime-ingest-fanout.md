@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `922875605886e4d4`
+- Source fingerprint: `4e1f04cde2dad17a`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,8 +12,8 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 14 | 24 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 208 |
-| `dxcluster/peer` | `peer` | 62 | 135 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 211 |
+| `dxcluster/peer` | `peer` | 63 | 138 |
 | `dxcluster/spot` | `spot` | 40 | 70 |
 | `dxcluster/telnet` | `telnet` | 83 | 176 |
 
@@ -286,6 +286,7 @@ Test files:
 - `internal/cluster/grid_retirement_test.go`
 - `internal/cluster/grid_writer_test.go`
 - `internal/cluster/human_comment_delivery_test.go`
+- `internal/cluster/human_flood_isolation_test.go`
 - `internal/cluster/human_telnet_runtime_test.go`
 - `internal/cluster/human_wire_diagnostics_test.go`
 - `internal/cluster/ingest_validation_test.go`
@@ -358,6 +359,8 @@ Test files:
 - `internal/cluster/pc92_runtime_stage_service_test.go`
 - `internal/cluster/pc92_runtime_warm_oracle_test.go`
 - `internal/cluster/pc92_runtime_warm_test.go`
+- `internal/cluster/peer_flood_delivery_test.go`
+- `internal/cluster/peer_ingress_driver_test.go`
 - `internal/cluster/peer_original_delivery_test.go`
 - `internal/cluster/peer_original_hold_delivery_test.go`
 - `internal/cluster/peer_publication_bench_test.go`
@@ -469,6 +472,7 @@ Source files:
 - `peer/session.go`
 - `peer/session_ownership.go`
 - `peer/session_transport.go`
+- `peer/spot_ingress.go`
 - `peer/spot_relay.go`
 - `peer/timestamp.go`
 - `peer/topology.go`
@@ -585,6 +589,7 @@ Test files:
 - `peer/qualification_test.go`
 - `peer/qualification_writer_test.go`
 - `peer/reader_allocation_qualification_test.go`
+- `peer/reader_pending_test.go`
 - `peer/reader_scratch_test.go`
 - `peer/reader_spot_framing_test.go`
 - `peer/reader_test.go`
@@ -596,6 +601,8 @@ Test files:
 - `peer/session_ownership_test.go`
 - `peer/session_ping_test.go`
 - `peer/session_test.go`
+- `peer/spot_ingress_driver_test.go`
+- `peer/spot_ingress_test.go`
 - `peer/spot_parse_budget_test.go`
 - `peer/spot_relay_contract_test.go`
 - `peer/spot_relay_date_test.go`
@@ -1003,6 +1010,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0354 | Accepted | 2026-11-15 | peer FIFO, one verdict, original relay, retirement | `area:peer` |
 | ADR-0339 | Accepted | 2026-11-11 | telnet workers, ordering, session membership | `area:telnet` |
 | ADR-0338 | Accepted | 2026-11-11 | cluster runtime, grid lifecycle, maintenance, recovery, storage ownership | `area:internal/cluster` |
 | ADR-0337 | Accepted | 2026-11-10 | commands, HELP, operator documentation | `area:commands` |
