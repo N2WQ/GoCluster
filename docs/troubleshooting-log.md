@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0135 | CI Fixture Inputs and Synchronization | Monitoring | 2026-11-16 | geography priors, scheduler ownership, VOACAP worker gating, Windows ACL diagnostics | none | `docs/troubleshooting/TSR-0135-ci-fixture-inputs-and-synchronization.md` |
 | TSR-0134 | Reputation Lookup Cap and Overflow | Monitoring | 2026-11-15 | combined cache cardinality, overflow work and string ownership | ADR-0355 | `docs/troubleshooting/TSR-0134-reputation-lookup-cap-and-overflow.md` |
 | TSR-0133 | Flood Configuration Contract | Monitoring | 2026-11-14 | flood YAML scalars, source-key normalization, arithmetic bounds | none | `docs/troubleshooting/TSR-0133-flood-configuration-contract.md` |
 | TSR-0132 | Human Comment Report and Time Parsing | Monitoring | 2026-11-12 | human comments, manual DX admission, reports and terminal wire times | ADR-0348, ADR-0349 | `docs/troubleshooting/TSR-0132-human-comment-report-and-time-parsing.md` |

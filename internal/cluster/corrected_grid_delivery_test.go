@@ -151,9 +151,11 @@ func runCorrectedGridCase(t *testing.T, tc correctedGridCase, delayed bool) {
 			return "", false, false
 		}
 		p.processSpot(s, nil)
-		if p.buf.GetCount() != 0 || p.telnetStabilizer.Pending() != 1 {
-			t.Fatal("initial source did not enter actual scheduler")
+		if got := p.buf.GetCount(); got != 0 {
+			t.Fatalf("initial source produced %d rows before scheduler release", got)
 		}
+		// A due retry leaves Pending before publication. Receipt proves actual
+		// scheduler admission and transfers ownership regardless of that timing.
 		envelope := temporalDeliveryReceiveRetry(t, p.telnetStabilizer, key, 0)
 		seedCorrectedGridWinner(t, r, d, key)
 		p.handleStabilizerRelease(envelope)

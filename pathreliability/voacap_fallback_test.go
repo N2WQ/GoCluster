@@ -390,10 +390,18 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 	now := time.Now().UTC()
 	store := openTestVOACAPForecastCacheStore(t)
 
+	// Hold completion until the initial lookup has observed the empty cache.
+	// Cancellation releases a worker even if an earlier assertion aborts.
+	release := make(chan struct{})
 	var calls atomic.Int32
 	forecaster := fakeClosedForecaster{
 		fn: func(ctx context.Context, job VOACAPClosedJob) (VOACAPClosedForecast, error) {
 			calls.Add(1)
+			select {
+			case <-ctx.Done():
+				return VOACAPClosedForecast{}, ctx.Err()
+			case <-release:
+			}
 			windowStart := job.WindowStartUTC
 			return testCompleteForecast(job, cfg.VOACAPFallback.ForecastHours, VOACAPClosedForecast{
 				WindowStartUTC: windowStart,
@@ -428,10 +436,14 @@ func TestVOACAPClosedFallbackPersistsSuccessfulWorkerForecast(t *testing.T) {
 	if _, ok := fallback.CheckForecastWindow(testClosedRequest(), now); ok {
 		t.Fatalf("enqueue lookup should not synchronously return a forecast")
 	}
+	close(release)
 	waitUntil(t, func() bool { return calls.Load() == 1 && fallback.Snapshot().CacheEntries == 1 })
 	// Memory publication precedes persistence; worker shutdown is the disk fence.
 	cancel()
 	fallback.Wait()
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("completed forecaster calls = %d, want 1", got)
+	}
 	records := readRawVOACAPRetentionRecords(t, store)
 	key := fallback.cacheKey(testClosedRequest())
 	record, ok := records[string(voacapForecastCacheKeyBytes(key))]

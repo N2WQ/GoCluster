@@ -124,6 +124,10 @@ grid corruption warrant stopping rollout and preserving exact revision/evidence.
 
 ### Retention-test retry ownership qualification
 
+The same released-retry ownership rule now applies to the corrected-grid
+writeback fixture; see [TSR-0135](TSR-0135-ci-fixture-inputs-and-synchronization.md)
+for its CI failure and bounded receipt-based repair.
+
 The full native Windows suite passed on `cc11` at `66405747`. A full Linux race
 run passed once, then a second full run failed in
 `TestStabilizerRetentionFreshEvidenceAndReasonBudget/floor_false/thinned` at

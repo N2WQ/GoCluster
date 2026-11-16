@@ -30,6 +30,14 @@ func TestGeographyStartup(t *testing.T) {
 			t.Fatal("child prewarmed")
 		}
 		cfg, configDir := fccRuntimeTestConfig(t)
+		// Geography owns these inputs; cold startup must not depend on local
+		// production priors or an LFS download. Keep model loading exercised.
+		cfg.CallCorrection.ConfusionModelEnabled = true
+		cfg.CallCorrection.ConfusionModelFile = correctionNumericFile(t, "model.json", correctionNumericValidModel)
+		weights := correctionNumericFile(t, "weights.txt", "N0AAA 1\nN1AAA 1\n")
+		cfg.CallCorrection.SpotterReliabilityFile = weights
+		cfg.CallCorrection.SpotterReliabilityFileCW = weights
+		cfg.CallCorrection.SpotterReliabilityFileRTTY = weights
 		cfg.PathReliability.Enabled = mode == "prediction_on_missing"
 		cfg.PathReliability.Native160Fallback.Enabled = false
 		cfg.CallCorrection.Enabled, cfg.CallCorrection.CustomSCP.Enabled = true, true
@@ -67,6 +75,9 @@ func TestGeographyStartup(t *testing.T) {
 				t.Fatalf("startup: %v", r.startupErr)
 			}
 			defer r.shutdown()
+			if r.confusionModel == nil {
+				t.Fatal("startup did not load the enabled fixture model")
+			}
 			if pathreliability.EncodeCell("FN31") == pathreliability.InvalidCell || pathreliability.EncodeCoarseCell("FN31") == pathreliability.InvalidCell {
 				t.Fatal("startup did not install geography")
 			}

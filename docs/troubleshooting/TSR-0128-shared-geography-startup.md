@@ -45,6 +45,11 @@ meaning and existing persisted records retain their contracts.
 
 ## Checker diagnosis
 
+The CI fixture now supplies temporary correction model/reliability inputs while
+keeping model loading enabled; see
+[TSR-0135](TSR-0135-ci-fixture-inputs-and-synchronization.md). This removes the
+local production-priors prerequisite without changing required H3 startup.
+
 The exact original live and replay startup sources failed the new cold child
 checks with missing usable geography. Private prediction-off YAML also needs
 both fallback flags disabled to satisfy its existing config contract. The live

@@ -3,6 +3,7 @@ package cluster
 import (
 	"crypto/sha256"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +20,26 @@ import (
 	"golang.org/x/sys/windows"
 )
 
+// Record the persisted descriptor, including inheritance metadata. String
+// conversion can fail silently in x/sys/windows; an empty result is no oracle.
+func readCTYFixtureSecurity(t *testing.T, path, phase string) (*windows.SECURITY_DESCRIPTOR, windows.SECURITY_DESCRIPTOR_CONTROL, string, error) {
+	t.Helper()
+	sd, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("%s read %s: %w", phase, path, err)
+	}
+	control, _, err := sd.Control()
+	if err != nil {
+		return nil, 0, "", fmt.Errorf("%s control %s: %w", phase, path, err)
+	}
+	sddl := sd.String()
+	if sddl == "" {
+		return nil, 0, "", fmt.Errorf("%s SDDL conversion returned an empty descriptor for %s", phase, path)
+	}
+	t.Logf("CTY fixture security phase=%s path=%s control=%#x sddl=%q", phase, path, control, sddl)
+	return sd, control, sddl, nil
+}
+
 // This fixture alone owns both objects. Preserve their DACL and protection state
 // before mutation, retain owner WRITE_DAC, and restore before TempDir cleanup.
 // No machine policy, production file, inherited parent or privilege is changed.
@@ -32,6 +53,7 @@ func protectCTYFixture(t *testing.T, root, path string) func() {
 		sd      *windows.SECURITY_DESCRIPTOR
 		acl     *windows.ACL
 		control windows.SECURITY_DESCRIPTOR_CONTROL
+		sddl    string
 	}
 	originals := make([]original, 0, 2)
 	for _, name := range []string{root, path} {
@@ -39,7 +61,7 @@ func protectCTYFixture(t *testing.T, root, path string) func() {
 		if err != nil || info.Mode()&os.ModeSymlink != 0 {
 			t.Fatalf("invalid owned fixture %s: %v", name, err)
 		}
-		sd, err := windows.GetNamedSecurityInfo(name, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
+		sd, control, sddl, err := readCTYFixtureSecurity(t, name, "baseline")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -47,17 +69,14 @@ func protectCTYFixture(t *testing.T, root, path string) func() {
 		if err != nil {
 			t.Fatal(err)
 		}
-		control, _, err := sd.Control()
-		if err != nil {
-			t.Fatal(err)
-		}
-		originals = append(originals, original{name, sd, acl, control})
+		originals = append(originals, original{name, sd, acl, control, sddl})
 	}
 	var once sync.Once
 	restore := func() {
 		once.Do(func() {
-			for i := len(originals) - 1; i >= 0; i-- {
-				o := originals[i]
+			// Restore the parent first: its inheritable ACEs may propagate to
+			// the child. Final equality still covers both complete descriptors.
+			for _, o := range originals {
 				flags := windows.SECURITY_INFORMATION(windows.DACL_SECURITY_INFORMATION | windows.UNPROTECTED_DACL_SECURITY_INFORMATION)
 				if o.control&windows.SE_DACL_PROTECTED != 0 {
 					flags = windows.DACL_SECURITY_INFORMATION | windows.PROTECTED_DACL_SECURITY_INFORMATION
@@ -65,11 +84,16 @@ func protectCTYFixture(t *testing.T, root, path string) func() {
 				if err := windows.SetNamedSecurityInfo(o.path, windows.SE_FILE_OBJECT, flags, nil, nil, o.acl, nil); err != nil {
 					t.Errorf("restore owned fixture ACL %s: %v", o.path, err)
 				}
+				for _, current := range originals {
+					if _, _, _, err := readCTYFixtureSecurity(t, current.path, "after restore "+o.path); err != nil {
+						t.Error(err)
+					}
+				}
 			}
 			for _, o := range originals {
-				sd, err := windows.GetNamedSecurityInfo(o.path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION)
-				if err != nil || sd.String() != o.sd.String() {
-					t.Errorf("original fixture DACL/protection not restored for %s: %v", o.path, err)
+				_, control, sddl, err := readCTYFixtureSecurity(t, o.path, "final")
+				if err != nil || sddl != o.sddl {
+					t.Errorf("original fixture DACL/protection not restored for %s: %v; control=%#x want=%#x; sddl=%q want=%q", o.path, err, control, o.control, sddl, o.sddl)
 				}
 			}
 		})
@@ -95,6 +119,9 @@ func protectCTYFixture(t *testing.T, root, path string) func() {
 		}
 		if err := windows.SetNamedSecurityInfo(o.path, windows.SE_FILE_OBJECT,
 			windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, acl, nil); err != nil {
+			t.Fatal(err)
+		}
+		if _, _, _, err := readCTYFixtureSecurity(t, o.path, "protected"); err != nil {
 			t.Fatal(err)
 		}
 	}
