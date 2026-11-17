@@ -29,6 +29,41 @@ func FuzzV7StorageOwners(f *testing.F) {
 	for kind, seed := range [][]byte{config, profile, library} {
 		f.Add(uint8(kind), seed)
 	}
+	// These guaranteed-valid owners force the optional feature through every
+	// storage entry point; malformed mutations must not be the only coverage.
+	cfg.Filters.CC, err = cfg.Filters.CC.WithDXBM(CCPass, []string{"UHF"})
+	if err != nil || len(cfg.Filters.CC.DXBM.FrequencyOverrides) == 0 {
+		f.Fatalf("feature fixture: %v", err)
+	}
+	set, err = V7PresetFromConfiguration(cfg, "cc")
+	if err != nil {
+		f.Fatal(err)
+	}
+	goSet, err := V7PresetFromConfiguration(cfg, "go")
+	if err != nil {
+		f.Fatal(err)
+	}
+	config, err = EncodeV7Configuration(cfg)
+	if err != nil {
+		f.Fatal(err)
+	}
+	profile, err = EncodeV7UserRecord(&V7UserRecord{Configuration: cfg, Presets: V7PresetReferences{GO: &V7PresetReference{Name: "GO", Baseline: goSet}, CC: &V7PresetReference{Name: "NATIVE", Baseline: set}}})
+	if err != nil {
+		f.Fatal(err)
+	}
+	library, err = EncodeV7PresetCollection(&V7PresetCollection{Presets: map[string]*V7SavedPreset{"NATIVE": set, "GO": goSet}})
+	if err != nil {
+		f.Fatal(err)
+	}
+	for kind, seed := range [][]byte{config, profile, library} {
+		if _, err := canonicalV7FuzzOwner(uint8(kind), seed); err != nil {
+			f.Fatalf("invalid feature seed: %v", err)
+		}
+		f.Add(uint8(kind), seed)
+		f.Add(uint8(kind), bytes.Replace(seed, []byte("frequency_overrides:"), []byte("frequency_overrides: null\ninvalid_overrides:"), 1))
+		f.Add(uint8(kind), bytes.Replace(seed, []byte("P:"), []byte("UNKNOWN:"), 1))
+		f.Add(uint8(kind), append(bytes.Clone(seed), []byte("configuration_version: 7\nconfiguration_version: 7\n")...))
+	}
 	f.Add(uint8(1), []byte("configuration_version: 8\n"))
 	f.Add(uint8(2), []byte("configuration_version: 7\npresets: &loop {NATIVE: *loop}\n"))
 	f.Fuzz(func(t *testing.T, kind uint8, data []byte) {

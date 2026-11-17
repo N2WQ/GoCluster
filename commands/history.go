@@ -31,11 +31,12 @@ type historySelector struct {
 // HistoryQuery is an immutable, classified search. Connections retain this small
 // value, never CTY snapshots, predicates, result slices, or archive iterators.
 type HistoryQuery struct {
-	selector historySelector
-	count    int
-	comment  string   // At most MaxCommentPhraseBytes; retained with continuation.
-	bands    []string // Unique canonical names, bounded by SupportedBandNames.
-	modes    []string // Unique canonical names, bounded by SupportedFilterModes.
+	selector  historySelector
+	count     int
+	comment   string   // At most MaxCommentPhraseBytes; retained with continuation.
+	bands     []string // Unique canonical names, bounded by SupportedBandNames.
+	modes     []string // Unique canonical names, bounded by SupportedFilterModes.
+	metaBands bool     // Classify query-local frequency when a BAND meta name was supplied.
 }
 
 // HistoryCommand distinguishes a fresh search from a connection-local NEXT token.
@@ -125,7 +126,7 @@ func ValidHistoryToken(token string) bool {
 }
 
 func (p *Processor) prepareHistory(args []string, label string) (HistoryQuery, string) {
-	base, bands, modes, errText := parseHistorySelections(args)
+	base, bands, modes, metaBands, errText := parseHistorySelections(args)
 	if errText != "" {
 		return HistoryQuery{}, errText
 	}
@@ -136,7 +137,7 @@ func (p *Processor) prepareHistory(args []string, label string) (HistoryQuery, s
 	// Normalization can retain its input in the callsign cache. Detach the
 	// selector first so a short uppercase call cannot pin the entire command.
 	selector, errText := p.resolveHistorySelector(strings.Clone(strings.ToUpper(req.selector)))
-	return HistoryQuery{selector: selector, count: req.count, bands: bands, modes: modes}, errText
+	return HistoryQuery{selector: selector, count: req.count, bands: bands, modes: modes, metaBands: metaBands}, errText
 }
 
 func (p *Processor) resolveHistorySelector(raw string) (historySelector, string) {
@@ -210,6 +211,16 @@ func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match fun
 			case historyEntity:
 				if s.DXMetadata.ADIF != query.selector.adif {
 					return false
+				}
+			}
+			if query.metaBands {
+				// Only stale archive labels need a detached query view. Clone resets
+				// formatting locks/caches safely; copying Spot would copy sync.Once.
+				band := spot.FreqToBand(s.Frequency)
+				normalized := spot.NormalizeBand(band)
+				if s.Band != band || s.BandNorm != normalized {
+					s = s.Clone()
+					s.Band, s.BandNorm = band, normalized
 				}
 			}
 			if !query.matchesBandMode(s) {

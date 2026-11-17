@@ -57,6 +57,27 @@ named slots; a whole-band edit changes all its slots. OFF and an active selectio
 that currently allows everything remain distinct for the next edit. These
 ordering rules are explicit GoCluster choices, not verified native CC behavior.
 
+### Fixed meta bands
+
+`HELP BANDS` lists `WARC`, `HFCONTEST`, `HF`, `VHF`, `UHF` and `VHFUP`.
+For example, `SET/FILTER DXBM/PASS WARC` selects the shared physical WARC members.
+Start with `SET/FILTER DXBM/OFF` when replacing the previous DXBM selection.
+The processor expands a meta name into band identifiers; the shared physical
+catalogue owns their ranges. Modes, sources, geography and separate controls
+still apply. Existing native labels and subslot ranges do not change.
+
+Optional `dxbm.frequency_overrides` stores exact member coverage where the native
+slots are insufficient, including 70cm and both 13cm segments. Later native or
+meta edits change only the frequencies they address; DXBM OFF clears both native
+choices and overrides. Readback displays these additional frequency decisions.
+There is no profile conversion, preset reset or new filter bank. See
+[the shared contract](domain-contract.md#fixed-meta-bands) and
+[ADR-0356](decisions/ADR-0356-fixed-meta-bands-and-shared-physical-catalogue.md).
+
+History accepts the same meta names: `SHOW/DX 20 BAND UHF`. Searches do not edit
+saved preferences and retain the ordinary saved-filter, self and continuation
+rules. The catalogue-based query gate runs before counting.
+
 Boolean rule edits require GO. OWN, BOB, DX/NODX, TALK filtering, announcement
 and weather geography, and an independent WX switch are unsupported. ANNOUNCE
 retains its existing inclusion of WX. Unsupported operations change nothing.
@@ -92,6 +113,12 @@ for framing, refusal and stored-ADIF/WPXLOC limitations. This does not establish
 full CC User interoperability or change the unverified native filtering claims.
 
 ## YAML and backups
+
+The optional DXBM frequency-override field is omitted when unused. Complete
+profile, preset and schema-seven round trips retain it when present. Strict
+older executables or clients may reject feature-bearing documents; preserve
+compatible executable/profile/library backups before using new meta selections.
+No existing file is migrated or cleared merely because this feature is installed.
 
 Use `GET YAML CONFIG SCHEMA 7` for a complete writable configuration backup.
 It includes `configuration.filters.go`, `configuration.filters.cc` and shared

@@ -206,8 +206,13 @@ func writeNativeCCDXBM(h *humanResponse, dxbm filter.CCDXBM) error {
 	if dxbm.BaseAllow {
 		base = "ALLOW"
 	}
-	if err := h.row("DXBM:", "ACTIVE; base "+base+". Frequencies outside native slots follow the base."); err != nil {
+	if err := h.row("DXBM:", "ACTIVE; base "+base+". Unselected frequencies follow the base."); err != nil {
 		return err
+	}
+	if len(dxbm.FrequencyOverrides) != 0 {
+		if err := h.prose("", "", "Native slot entries below are the underlying selection. The additional frequency exceptions listed afterward override them."); err != nil {
+			return err
+		}
 	}
 	for _, slot := range filter.CCSupportedSlots() {
 		value, overridden := dxbm.Slots[slot.Name]
@@ -225,6 +230,28 @@ func writeNativeCCDXBM(h *humanResponse, dxbm filter.CCDXBM) error {
 		}
 		if err := h.row(slot.Name+":", text); err != nil {
 			return err
+		}
+	}
+	if len(dxbm.FrequencyOverrides) != 0 {
+		if err := h.row("Additional band selections:", "Exact points or open intervals, in kHz."); err != nil {
+			return err
+		}
+		for _, cell := range filter.CCSupportedFrequencyCells() {
+			enabled, exists := dxbm.FrequencyOverrides[cell.ID]
+			if !exists {
+				continue
+			}
+			label := fmt.Sprintf("%g < f < %g:", cell.LowKHz, cell.HighKHz)
+			if cell.Point {
+				label = fmt.Sprintf("f = %g:", cell.LowKHz)
+			}
+			value := "BLOCK"
+			if enabled {
+				value = "ALLOW"
+			}
+			if err := h.row(label, value); err != nil {
+				return err
+			}
 		}
 	}
 	return h.prose("", "", "DXBM slot names select frequency ranges, regardless of decoded mode. The separate mode selection also applies.")

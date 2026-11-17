@@ -23,6 +23,7 @@ HELP rendering and its detailed references are owned by:
 
 - `helpOverviewLines(...)` in [`help_overview.go`](help_overview.go)
 - `installTaskHelp(...)` and `commandIndexHelpLines(...)` in [`help_tasks.go`](help_tasks.go)
+- `installBandHelp(...)` in [`bands_help.go`](bands_help.go)
 - `buildHelpCatalog(...)`
 - `filterGuideHelpLines(...)` and `filterExampleHelpLines(...)` in [`help_filters.go`](help_filters.go)
 - `presetGuideHelpLines(...)` in [`help_tasks.go`](help_tasks.go)
@@ -41,6 +42,8 @@ path symbols and seven help links. It has no title or disconnect command.
 `HELP PRESETS` shows saving DAY, creating NIGHT and switching between them.
 It explains overwrite and future-login effects before the affected commands.
 `HELP SPOTS`, `HELP SETTINGS` and `HELP TROUBLE` give short examples and next steps.
+`HELP BANDS` lists physical bands and the six fixed meta-band memberships in
+both dialects. Its names and physical limits come from the shared spot catalogue.
 `HELP COMMANDS` lists every installed command topic,
 including machine YAML help, in stable alphabetical order. Existing aliases
 remain in command-specific help. These help topics do not add executable commands.
@@ -297,6 +300,12 @@ bands contain 37 slots, including 4-MTR and MW-MW. The first PASS after OFF
 starts a whitelist; the first REJECT starts a blacklist. Later edits change
 only the named slots, and whole-band selections expand to their slots. The
 higher slot owns a shared endpoint, with the final upper endpoint included.
+Meta names select shared physical members rather than native slot labels. Use
+`SET/FILTER DXBM/PASS WARC` or `SET/FILTER DXBM/REJECT HFCONTEST`; a fresh
+replacement starts with `SET/FILTER DXBM/OFF`. Optional bounded frequency
+overrides represent exact shared coverage, including 70cm and the split 13cm
+band. A later native edit changes only its original range. Readback and YAML
+include any overrides. Existing native bands, slots and geography remain intact.
 OFF is different from an active allow-all selection. Native terminal mode
 shortcuts require the operator taxonomy's cc_shortcut flag; mode edits apply to
 both sources and source edits leave modes unchanged. SET/NOFILTER restores the
@@ -440,6 +449,13 @@ For 24 hours after every startup, output warns that history may be incomplete:
 a previous storage failure may have prevented recording a shutdown marker.
 
 ### Archive history
+
+`BAND <list>` also accepts fixed meta names. For example,
+`SHOW DX 20 BAND WARC` and CC `SHOW/DX 20 BAND VHF` use the same member catalogue;
+history uses spaces here, unlike a GO rule's `BAND=WARC` comparison. A query with
+a meta name classifies candidate frequency through the physical catalogue before
+counting and pagination, including retained unknown-band 4m records. It does not
+rewrite the archive or change saved filters. Use `HELP BANDS` for memberships.
 
 `SHOW DX` and `SHOW MYDX` search archived spots using your current filters and
 existing self-spot rules. Both accept a count, a selector, or one of each in

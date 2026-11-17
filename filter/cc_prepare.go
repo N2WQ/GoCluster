@@ -46,7 +46,7 @@ func PrepareCCConfiguration(input CCConfiguration) (CCConfiguration, *PreparedCC
 }
 
 func preflightCCConfiguration(c CCConfiguration) error {
-	if len(c.Modes) > MaxCCModes || len(c.Sources) > len(SupportedSources) || len(c.Geography) > len(ccGeographyNames) || len(c.DXBM.Slots) > len(ccNativeSlots) {
+	if len(c.Modes) > MaxCCModes || len(c.Sources) > len(SupportedSources) || len(c.Geography) > len(ccGeographyNames) || len(c.DXBM.Slots) > len(ccNativeSlots) || len(c.DXBM.FrequencyOverrides) > len(ccFrequencyCells) {
 		return storageAdmissionf("native CC collection exceeds its cardinality limit")
 	}
 	for _, toggle := range c.toggles() {
@@ -86,6 +86,11 @@ func preflightCCConfiguration(c CCConfiguration) error {
 		}
 	}
 	for name := range c.DXBM.Slots {
+		if !consume(name) {
+			return storageAdmissionf("native CC scalar bytes exceed configuration limit")
+		}
+	}
+	for name := range c.DXBM.FrequencyOverrides {
 		if !consume(name) {
 			return storageAdmissionf("native CC scalar bytes exceed configuration limit")
 		}
@@ -234,6 +239,11 @@ func prepareCCDXBM(input CCDXBM) (CCDXBM, error) {
 	}
 	if !input.Active {
 		result.BaseAllow = true
+	}
+	var err error
+	result.FrequencyOverrides, err = prepareCCFrequencyOverrides(result, input.FrequencyOverrides)
+	if err != nil {
+		return CCDXBM{}, err
 	}
 	return result, nil
 }

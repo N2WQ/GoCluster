@@ -38,9 +38,14 @@ func v7CCCapacityCandidate(base filter.CCConfiguration, count int) filter.CCConf
 func v7NearestCCCapacity(t *testing.T) (filter.CCConfiguration, filter.CCConfiguration) {
 	t.Helper()
 	base, _ := v7PreparedFixture(t)
+	return v7NearestCCCapacityFrom(t, base.Filters.CC)
+}
+
+func v7NearestCCCapacityFrom(t *testing.T, base filter.CCConfiguration) (filter.CCConfiguration, filter.CCConfiguration) {
+	t.Helper()
 	low, high := 0, 2*(1+len(filter.CCSupportedBands()))*filter.MaxCCCountries
 	encodedLength := func(count int) int {
-		raw, err := yaml.Marshal(v7CCCapacityCandidate(base.Filters.CC, count))
+		raw, err := yaml.Marshal(v7CCCapacityCandidate(base, count))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -60,7 +65,34 @@ func v7NearestCCCapacity(t *testing.T) (filter.CCConfiguration, filter.CCConfigu
 	if gap := filter.MaxCCCanonicalBytes - encodedLength(low); gap < 0 || gap >= 64 {
 		t.Fatalf("native fixture is not within one operand of cap: gap=%d", gap)
 	}
-	return v7CCCapacityCandidate(base.Filters.CC, low), v7CCCapacityCandidate(base.Filters.CC, high)
+	return v7CCCapacityCandidate(base, low), v7CCCapacityCandidate(base, high)
+}
+
+func TestMetaBandMaximumWrappedConfiguration(t *testing.T) {
+	cfg, _ := v7PreparedFixture(t)
+	cfg.Filters.CC.DXBM = filter.CCDXBM{Active: true, BaseAllow: false, Slots: map[string]bool{}, FrequencyOverrides: make(filter.CCFrequencyOverrides)}
+	for _, cell := range filter.CCSupportedFrequencyCells() {
+		cfg.Filters.CC.DXBM.FrequencyOverrides[cell.ID] = true
+	}
+	accepted, refused := v7NearestCCCapacityFrom(t, cfg.Filters.CC)
+	canonical, program, err := filter.PrepareCCConfiguration(accepted)
+	if err != nil || program.Counts().FrequencyOverrides != len(filter.CCSupportedFrequencyCells()) {
+		t.Fatalf("maximal feature candidate refused or collapsed: %v", err)
+	}
+	if _, _, err := filter.PrepareCCConfiguration(refused); !errors.Is(err, filter.ErrStorageAdmission) {
+		t.Fatalf("feature-bearing candidate crossed canonical limit: %v", err)
+	}
+	cfg.Filters.CC, cfg.Settings.Dialect = canonical, "cc"
+	s, c := v7MachineTestClient(t)
+	reservation, err := c.reserveConfigurationOutput()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reservation.Release()
+	if err := s.v7ConfigurationReadbackFits(c, cfg, c, filter.V7PresetReferences{}); err != nil {
+		t.Fatalf("maximal overrides lost complete human/machine views: %v", err)
+	}
+	t.Logf("maximum feature canonical bytes=%d, cells=%d; full wrapped readback admitted", program.Counts().CanonicalBytes, program.Counts().FrequencyOverrides)
 }
 
 func TestV7CapacityNativeNearestCanonicalLimit(t *testing.T) {

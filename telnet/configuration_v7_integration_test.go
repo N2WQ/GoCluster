@@ -151,6 +151,11 @@ func TestV7ConcurrentBankPublication(t *testing.T) {
 	s, c := v7IndependentClient(t)
 	cc, _ := c.captureV7Configuration()
 	before := cc.Clone()
+	var err error
+	cc.Filters.CC, err = cc.Filters.CC.WithDXBM(filter.CCPass, []string{"UHF"})
+	if err != nil || len(cc.Filters.CC.DXBM.FrequencyOverrides) == 0 {
+		t.Fatalf("publication fixture did not activate frequency overrides: %v", err)
+	}
 	cc.Settings.Grid = "FN31"
 	goConfig := cc.Clone()
 	goConfig.Settings.Dialect = "go"
@@ -165,7 +170,14 @@ func TestV7ConcurrentBankPublication(t *testing.T) {
 	}
 	s.publishConfigurationState(c, cc.Settings, ccPrepared, nil, time.Time{}, false)
 	old := c.captureMatchingSnapshot()
-	sp := spot.NewSpot("K1DX", "W1SPOT", 14020, "CW")
+	sp := spot.NewSpot("K1DX", "W1SPOT", 14020, "FT8")
+	uhf := spot.NewSpot("K1DX", "W1SPOT", 432000, "FT8")
+	if matched, _, _ := s.matchSnapshot(old, sp); matched {
+		t.Fatal("CC fixture admitted HF despite UHF-only frequency selection")
+	}
+	if matched, _, _ := s.matchSnapshot(old, uhf); !matched {
+		t.Fatal("CC fixture failed to admit UHF outside legacy MW")
+	}
 	var readers sync.WaitGroup
 	var mixed atomic.Bool
 	readers.Add(1)
@@ -173,12 +185,12 @@ func TestV7ConcurrentBankPublication(t *testing.T) {
 		defer readers.Done()
 		for range 1000 {
 			snap := c.captureMatchingSnapshot()
-			_, _, _ = s.matchSnapshot(snap, sp)
+			matched, _, _ := s.matchSnapshot(snap, sp)
 			want := "FN31"
 			if snap.filter.SelfEnabled() {
 				want = "IO91"
 			}
-			if snap.path.grid != want {
+			if snap.path.grid != want || matched != snap.filter.SelfEnabled() {
 				mixed.Store(true)
 			}
 		}
@@ -190,6 +202,9 @@ func TestV7ConcurrentBankPublication(t *testing.T) {
 	readers.Wait()
 	if c.filter.IsCC() || mixed.Load() || old.path.grid != "FN31" || old.filter.SelfEnabled() {
 		t.Fatal("publication mixed program/control/location or changed old snapshot")
+	}
+	if matched, _, _ := s.matchSnapshot(old, sp); matched {
+		t.Fatal("publication changed retained feature-bearing snapshot")
 	}
 }
 

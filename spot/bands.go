@@ -21,7 +21,7 @@ var bandTable = []BandInfo{
 	{Name: "630m", Min: 472, Max: 479},
 	{Name: "160m", Min: 1800, Max: 2000},
 	{Name: "80m", Min: 3500, Max: 4000},
-	{Name: "60m", Min: 5330, Max: 5405},
+	{Name: "60m", Min: 5260, Max: 5405},
 	{Name: "40m", Min: 7000, Max: 7300},
 	{Name: "30m", Min: 10100, Max: 10150},
 	{Name: "20m", Min: 14000, Max: 14350},
@@ -30,8 +30,9 @@ var bandTable = []BandInfo{
 	{Name: "12m", Min: 24890, Max: 24990},
 	{Name: "10m", Min: 28000, Max: 29700},
 	{Name: "6m", Min: 50000, Max: 54000},
+	{Name: "4m", Min: 70000, Max: 70650},
 	{Name: "2m", Min: 144000, Max: 148000},
-	{Name: "1.25m", Min: 222000, Max: 225000},
+	{Name: "1.25m", Min: 220000, Max: 225000},
 	{Name: "70cm", Min: 420000, Max: 450000},
 	{Name: "33cm", Min: 902000, Max: 928000},
 	{Name: "23cm", Min: 1240000, Max: 1300000},
@@ -116,6 +117,26 @@ func IsValidBand(label string) bool {
 	}
 	_, ok := bandLookup[normalized]
 	return ok
+}
+
+// BandContainsFrequency uses the common physical-band catalog and inclusive
+// segment endpoints. Meta names are deliberately not physical band identifiers.
+// The lookup reads immutable startup data and allocates no retained state.
+func BandContainsFrequency(name string, frequencyKHz float64) bool {
+	band, ok := bandLookup[NormalizeBand(name)]
+	return ok && band.Contains(frequencyKHz)
+}
+
+// BandFrequencySegments returns an owned physical-band range snapshot in kHz.
+// Separate segments preserve allocation gaps such as the gap within 13cm.
+func BandFrequencySegments(name string) ([]BandSegment, bool) {
+	band, ok := bandLookup[NormalizeBand(name)]
+	if !ok {
+		return nil, false
+	}
+	segments := make([]BandSegment, 1, 1+len(band.Segments))
+	segments[0] = BandSegment{Min: band.Min, Max: band.Max}
+	return append(segments, band.Segments...), true
 }
 
 // SupportedBandNames returns canonical names for all configured bands.

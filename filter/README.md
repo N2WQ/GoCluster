@@ -7,6 +7,17 @@ expr child package owns syntax and canonical formatting; it does not evaluate
 spots or resolve user location. Telnet owns configuration publication, GRID,
 client delivery policy and history continuation.
 
+Fixed meta bands are command-input shortcuts for physical band identifiers.
+`spot` owns the physical ranges and the six membership lists; GO preparation
+expands meta operands into ordinary canonical BAND lists. CC derives exact
+member coverage from that catalogue without changing its legacy 37 native slots.
+Optional bounded DXBM frequency overrides retain selections those slots cannot
+express. Later native edits replace only their covered frequencies; OFF clears
+both native selections and overrides. Matching parses no meta names and allocates
+no per-spot selection state. See
+[the meta-band contract](../docs/domain-contract.md#fixed-meta-bands) and
+[ADR-0356](../docs/decisions/ADR-0356-fixed-meta-bands-and-shared-physical-catalogue.md).
+
 Each numbered slot holds one PASS or REJECT expression. A matching REJECT vetoes;
 otherwise any PASS qualifies. No PASS means unrestricted personal selection
 except matching REJECTs. New-user slot 0 is an ordinary editable configured rule;

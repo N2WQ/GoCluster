@@ -21,6 +21,7 @@ type PreparedCCFilter struct {
 	configuration  CCConfiguration
 	geography      [len(ccGeographyNames)]ccPreparedGeography
 	slots          [len(ccNativeSlots)]bool
+	frequencyCells []bool
 	human, skimmer bool
 	needsFrequency bool
 	counts         CCCounts
@@ -29,7 +30,8 @@ type PreparedCCFilter struct {
 func buildPreparedCCFilter(owned CCConfiguration, bytes int) *PreparedCCFilter {
 	prepared := &PreparedCCFilter{configuration: owned, counts: CCCounts{
 		Modes: len(owned.Modes), Sources: len(owned.Sources), CanonicalBytes: bytes,
-		DXBMSlots: len(owned.DXBM.Slots),
+		DXBMSlots:          len(owned.DXBM.Slots),
+		FrequencyOverrides: len(owned.DXBM.FrequencyOverrides),
 	}, needsFrequency: owned.DXBM.Active}
 	for _, source := range owned.Sources {
 		prepared.human = prepared.human || source == "HUMAN"
@@ -53,6 +55,16 @@ func buildPreparedCCFilter(owned CCConfiguration, bytes int) *PreparedCCFilter {
 			enabled = owned.DXBM.BaseAllow
 		}
 		prepared.slots[index] = enabled
+	}
+	if len(owned.DXBM.FrequencyOverrides) != 0 {
+		prepared.frequencyCells = make([]bool, len(ccFrequencyCells))
+		for index, cell := range ccFrequencyCells {
+			allowed, exists := owned.DXBM.FrequencyOverrides[cell.ID]
+			if !exists {
+				allowed = ccNativeFrequencyDecision(owned.DXBM, cell.probe())
+			}
+			prepared.frequencyCells[index] = allowed
+		}
 	}
 	return prepared
 }
@@ -99,6 +111,11 @@ func (p *PreparedCCFilter) Matches(value *spot.Spot, _ EvaluationContext) bool {
 			allowed := p.configuration.DXBM.BaseAllow
 			if slot >= 0 {
 				allowed = p.slots[slot]
+			}
+			if len(p.frequencyCells) != 0 {
+				if cell := ccFrequencyCellIndex(value.Frequency); cell >= 0 {
+					allowed = p.frequencyCells[cell]
+				}
 			}
 			if !allowed {
 				return false

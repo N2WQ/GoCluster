@@ -57,7 +57,7 @@ func PrepareRuleSet(definitions []RuleDefinition) (*PreparedRuleSet, error) {
 		seen[definition.Slot] = true
 	}
 	rules := make([]preparedRule, 0, len(definitions))
-	atoms, values := 0, 0
+	atoms, values, rawValues := 0, 0, 0
 	for _, definition := range definitions {
 		rule, err := prepareRule(definition, nil)
 		if err != nil {
@@ -65,7 +65,11 @@ func PrepareRuleSet(definitions []RuleDefinition) (*PreparedRuleSet, error) {
 		}
 		atoms += rule.program.atomCount
 		values += rule.program.valueCount
+		rawValues += rule.program.rawValueCount
 		if err := validateRuleTotals(atoms, values); err != nil {
+			return nil, err
+		}
+		if err := validateRuleTotals(atoms, rawValues); err != nil {
 			return nil, err
 		}
 		rules = append(rules, rule)
@@ -151,15 +155,21 @@ func (s *PreparedRuleSet) WithRuleDXCCResolver(definition RuleDefinition, resolv
 	if count > MaxRuleSlots {
 		return nil, fmt.Errorf("rules exceed slot limit %d", MaxRuleSlots)
 	}
-	atoms, values := rule.program.atomCount, rule.program.valueCount
+	atoms, values, rawValues := rule.program.atomCount, rule.program.valueCount, rule.program.rawValueCount
 	for i := range previous {
 		if replace && i == index {
 			continue
 		}
 		atoms += previous[i].program.atomCount
 		values += previous[i].program.valueCount
+		// Existing slots are canonical saved state, not fresh raw input. Only
+		// this edit's incoming expression contributes its pre-expansion count.
+		rawValues += previous[i].program.valueCount
 	}
 	if err := validateRuleTotals(atoms, values); err != nil {
+		return nil, err
+	}
+	if err := validateRuleTotals(atoms, rawValues); err != nil {
 		return nil, err
 	}
 	rules := make([]preparedRule, count)

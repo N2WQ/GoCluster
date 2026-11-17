@@ -13,6 +13,7 @@ type v7CCCapability struct {
 	Geography      []string                  `yaml:"geography"`
 	Bands          []string                  `yaml:"bands"`
 	Slots          []filter.CCSlotDefinition `yaml:"slots"`
+	FrequencyCells []filter.CCFrequencyCell  `yaml:"frequency_cells"`
 	MaxModes       int                       `yaml:"max_modes"`
 	MaxCountries   int                       `yaml:"max_countries_per_row"`
 	MaxStates      int                       `yaml:"max_states_per_row"`
@@ -38,7 +39,11 @@ func v7MachineCapabilities() any {
 	}{
 		SupportedSchemaVersions: []int{6, 7}, Resources: []string{"FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"},
 		GOFilterFields: slices.Clone(machineV6FilterFields[:]), GOLegacySchema6: v6MachineCapabilities(),
-		CC:             v7CCCapability{machineV7CCFields[:], machineV7GeographyNames[:], filter.CCSupportedBands(), filter.CCSupportedSlots(), filter.MaxCCModes, filter.MaxCCCountries, filter.MaxCCStates, filter.MaxCCCanonicalBytes},
+		CC: v7CCCapability{
+			Fields: machineV7CCFields[:], Geography: machineV7GeographyNames[:],
+			Bands: filter.CCSupportedBands(), Slots: filter.CCSupportedSlots(), FrequencyCells: filter.CCSupportedFrequencyCells(),
+			MaxModes: filter.MaxCCModes, MaxCountries: filter.MaxCCCountries, MaxStates: filter.MaxCCStates, CanonicalBytes: filter.MaxCCCanonicalBytes,
+		},
 		SettingsFields: append(slices.Clone(machineSettingFields[:]), "cw_speed"), ResponseBytes: maxV7YAMLBytes, UploadBytes: maxV7YAMLBytes,
 		ConfigurationBytes: filter.MaxV7ConfigurationBytes, CompleteBackupResource: "PUT YAML CONFIG SCHEMA 7",
 		NativePerBandTerminalVerified: false,

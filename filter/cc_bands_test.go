@@ -104,7 +104,7 @@ func TestCCWholeBandsAndFrequencyOnlyClassification(t *testing.T) {
 			}
 		}
 	}
-	for _, bad := range []string{"HF", "VHF", "UHF", "70cm", "1.25m", "20-FT8", "4-CW", "160-RTTY"} {
+	for _, bad := range []string{"QUIETHF", "70cm", "1.25m", "20-FT8", "4-CW", "160-RTTY"} {
 		if _, err := ccTestBase().WithDXBM(CCPass, []string{bad}); err == nil {
 			t.Fatalf("invented native selector accepted: %s", bad)
 		}

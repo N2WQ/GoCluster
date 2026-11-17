@@ -31,7 +31,7 @@ func installTaskHelp(catalog *helpCatalog, dialect string) {
 			"  This posts a real spot. Use a station you heard.",
 			"  Enter the frequency in kHz.",
 			"  A queued spot still needs processing before delivery.",
-			"", "More help:", "  HELP " + show, "  HELP DX", "  HELP SHOW DXCC", "  HELP WHOSPOTSME",
+			"", "More help:", "  HELP " + show, "  HELP BANDS", "  HELP DX", "  HELP SHOW DXCC", "  HELP WHOSPOTSME",
 		}},
 		{"SETTINGS", "Change your location and settings.", []string{
 			"Change your location and settings:",

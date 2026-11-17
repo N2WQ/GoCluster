@@ -18,6 +18,7 @@ func filterGuideHelpLines(dialect string) []string {
 			"", "What would you like to do?",
 			"  HELP FILTER EXAMPLES   Try a complete filter setup.",
 			"  HELP PRESETS           Save and switch between setups.",
+			"  HELP BANDS             Choose individual bands or band groups.",
 			"  HELP SET/FILTER        See all filter options.",
 			"  HELP SET/NOFILTER      Restore this cluster's starting selections.",
 		}
@@ -38,6 +39,7 @@ func filterGuideHelpLines(dialect string) []string {
 		"", "What would you like to do?",
 		"  HELP FILTER EXAMPLES   Try a complete filter setup.",
 		"  HELP PRESETS           Save and switch between setups.",
+		"  HELP BANDS             Choose individual bands or band groups.",
 		"  HELP RULE              Write or change individual rules.",
 		"  HELP PASS              Change separate delivery settings.",
 	}

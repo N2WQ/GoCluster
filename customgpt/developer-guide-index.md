@@ -184,6 +184,7 @@ completed-validation claims.
 
 | Concern | Local source owners |
 | --- | --- |
+| Shared physical ranges, fixed meta memberships, expansion and HELP BANDS | `spot/bands.go`, `spot/meta_bands.go`, `filter/rule_compile.go`, `commands/history_selection.go`, `commands/bands_help.go`; [contract](../docs/domain-contract.md#fixed-meta-bands), [ADR-0356](../docs/decisions/ADR-0356-fixed-meta-bands-and-shared-physical-catalogue.md) |
 | GO syntax, preparation, field compilation/evaluation and normalization | `filter/expr/parse.go`, `filter/rule_set.go`, `filter/rule_compile.go`, `filter/rule_evaluate.go`, `filter/rule_view.go` |
 | Native CC canonical state, edits, frequency table and immutable matching | `filter/cc_configuration.go`, `filter/cc_prepare.go`, `filter/cc_edit.go`, `filter/cc_bands.go`, `filter/cc_match.go`, `filter/native_cc_runtime.go` |
 | Both-bank defaults, capture and preparation | `filter/rule_defaults.go`, `filter/profile_v7.go`, `filter/runtime_v7.go`; activation admission in `telnet/configuration_v7_startup.go` |

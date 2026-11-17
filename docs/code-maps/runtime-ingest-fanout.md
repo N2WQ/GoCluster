@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `93428feef34baa39`
+- Source fingerprint: `58468ca87195904c`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -11,11 +11,11 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
-| `dxcluster/commands` | `commands` | 14 | 24 |
+| `dxcluster/commands` | `commands` | 15 | 26 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 57 | 211 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
-| `dxcluster/spot` | `spot` | 40 | 70 |
-| `dxcluster/telnet` | `telnet` | 83 | 177 |
+| `dxcluster/spot` | `spot` | 41 | 71 |
+| `dxcluster/telnet` | `telnet` | 83 | 179 |
 
 ## In-Scope Package Edges
 
@@ -103,6 +103,7 @@
 ### `dxcluster/commands`
 
 Source files:
+- `commands/bands_help.go`
 - `commands/boolean_rule_catalog.go`
 - `commands/boolean_rule_help.go`
 - `commands/bulletin_command.go`
@@ -119,6 +120,7 @@ Source files:
 - `commands/processor.go`
 
 Test files:
+- `commands/bands_help_test.go`
 - `commands/boolean_rule_help_test.go`
 - `commands/bulletin_command_test.go`
 - `commands/cc_filter_help_test.go`
@@ -134,6 +136,7 @@ Test files:
 - `commands/history_append_test.go`
 - `commands/history_archive_test.go`
 - `commands/history_comment_alias_test.go`
+- `commands/history_meta_bands_test.go`
 - `commands/history_selection_taxonomy_test.go`
 - `commands/history_selection_test.go`
 - `commands/history_test.go`
@@ -647,6 +650,7 @@ Source files:
 - `spot/harmonics.go`
 - `spot/human_comment_parser.go`
 - `spot/iaru_region.go`
+- `spot/meta_bands.go`
 - `spot/mode_alloc.go`
 - `spot/mode_infer.go`
 - `spot/mode_provenance.go`
@@ -706,6 +710,7 @@ Test files:
 - `spot/human_comment_parser_test.go`
 - `spot/human_explicit_report_test.go`
 - `spot/iaru_region_test.go`
+- `spot/meta_bands_test.go`
 - `spot/mode_infer_test.go`
 - `spot/mode_region_test.go`
 - `spot/numerical_integrity_resolver_test.go`
@@ -937,6 +942,8 @@ Test files:
 - `telnet/machine_v7_switches_test.go`
 - `telnet/machine_v7_tcp_test.go`
 - `telnet/matching_snapshot_test.go`
+- `telnet/meta_band_command_test.go`
+- `telnet/meta_band_configuration_test.go`
 - `telnet/minsnr_history_test.go`
 - `telnet/native_cc_commands_fuzz_test.go`
 - `telnet/native_cc_commands_test.go`

@@ -4,6 +4,7 @@ package filter
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,7 @@ type compiledRule struct {
 	root                  int
 	canonical             string
 	atomCount, valueCount int
+	rawValueCount         int // Incoming operand count before meta expansion; admission only.
 	needsPath             bool
 	needsNearby           bool
 }
@@ -65,6 +67,7 @@ func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error
 				}
 			}
 		}
+		program.rawValueCount += len(node.Atom.Values)
 		predicate, err := compileRulePredicate(&node.Atom, resolve)
 		if err != nil {
 			return nil, err
@@ -108,6 +111,11 @@ func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error)) (r
 			return rulePredicate{}, ruleCompileError(atom.Column, "%s ordered comparisons require one value", atom.Field)
 		}
 	}
+	if field == ruleFieldBand {
+		if err := expandRuleMetaBands(atom); err != nil {
+			return rulePredicate{}, err
+		}
+	}
 	for i := range atom.Values {
 		value := &atom.Values[i]
 		text, err := predicate.compileValue(value, ordered, resolve)
@@ -118,6 +126,45 @@ func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error)) (r
 		value.Quoted = field == ruleFieldComment
 	}
 	return predicate, nil
+}
+
+// Only BAND atoms containing a fixed meta name are expanded and deduplicated.
+// Physical-only operands keep their existing multiplicity and budget accounting.
+// This operates on parsed values, so COMMENT contents and Boolean topology are
+// untouched; the canonical stored form contains physical members only.
+func expandRuleMetaBands(atom *expr.Atom) error {
+	containsMeta := false
+	for _, value := range atom.Values {
+		if _, ok := spot.MetaBandMembers(value.Text); ok {
+			containsMeta = true
+			break
+		}
+	}
+	if !containsMeta {
+		return nil
+	}
+	values := make([]expr.Value, 0, len(atom.Values))
+	for _, value := range atom.Values {
+		members, ok := spot.MetaBandMembers(value.Text)
+		if !ok {
+			member := spot.NormalizeBand(value.Text)
+			if !spot.IsValidBand(member) {
+				return ruleCompileError(value.Column, "unsupported BAND value %q", value.Text)
+			}
+			members = []string{member}
+		}
+		for _, member := range members {
+			if slices.ContainsFunc(values, func(existing expr.Value) bool { return existing.Text == member }) {
+				continue
+			}
+			if len(values) >= expr.MaxValuesPerAtom {
+				return ruleCompileError(value.Column, "expanded BAND selection exceeds value limit %d", expr.MaxValuesPerAtom)
+			}
+			values = append(values, expr.Value{Text: member, Column: value.Column})
+		}
+	}
+	atom.Values = values
+	return nil
 }
 
 func (p *rulePredicate) compileValue(value *expr.Value, ordered bool, resolve func(string) (int, error)) (string, error) {

@@ -55,6 +55,7 @@ func decodeV6MachineRules(node *yaml.Node, path string, resolve func(string) (in
 		definitions[i] = filter.RuleDefinition{Slot: slot, Action: filter.RuleAction(action), Expr: source}
 	}
 	var set *filter.PreparedRuleSet
+	rawValues := 0
 	for i := range node.Content {
 		next, err := set.WithRuleDXCCResolver(definitions[i], resolve)
 		if err != nil {
@@ -64,6 +65,19 @@ func decodeV6MachineRules(node *yaml.Node, path string, resolve func(string) (in
 				reason = syntax.Error()
 			}
 			return nil, schemaError(path+"["+strconv.Itoa(i)+"].expr", reason)
+		}
+		// Count this successfully prepared row's raw operands before publishing
+		// the proposal. Parsing all rows up front would let a later syntax error
+		// preempt an earlier domain error; identities also retain first refusal.
+		syntax, err := expr.Parse(definitions[i].Expr)
+		if err != nil {
+			return nil, schemaError(path+"["+strconv.Itoa(i)+"].expr", err.Error())
+		}
+		for _, node := range syntax.Nodes {
+			rawValues += len(node.Atom.Values)
+		}
+		if rawValues > filter.MaxTotalRuleValues {
+			return nil, schemaError(path+"["+strconv.Itoa(i)+"].expr", "col 1: rules exceed total value limit 512 before meta expansion")
 		}
 		set = next
 	}

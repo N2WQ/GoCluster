@@ -913,6 +913,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	installCommentHelp(&catalog)
 	installBooleanRuleHelp(&catalog, dialect)
 	installTaskHelp(&catalog, dialect)
+	installBandHelp(&catalog)
 	installHelpRoutingAliases(&catalog, dialect)
 	return catalog
 }

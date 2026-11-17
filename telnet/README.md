@@ -317,6 +317,16 @@ This port needs no archive reset or profile migration. See
 
 ## Filters
 
+`HELP BANDS` lists individual bands and fixed meta bands: `WARC`, `HFCONTEST`,
+`HF`, `VHF`, `UHF` and `VHFUP`. Meta names expand into physical members from one
+shared catalogue; they do not define separate frequency ranges or add a filter
+bank. GO accepts them in BAND operands, for example
+`PASS RULE 0 BAND=WARC AND MODE=CW`. The slot edit still replaces the complete
+rule. Readback and storage contain the expanded ordinary band list. In CC use
+`SET/FILTER DXBM/PASS WARC`, preserving native incremental DXBM semantics.
+See [fixed meta bands](../docs/domain-contract.md#fixed-meta-bands) for memberships,
+ranges and compatibility. No profile or preset reset is required.
+
 This describes the Boolean filter MVP in the current local checkout, not a
 production deployment or a claim that new source files are published on main.
 Private local-cluster acceptance remains pending. The telnet layer owns command
@@ -655,6 +665,13 @@ the [configuration guide](../data/config/README.md).
 Live messages can interleave with startup output.
 
 ## Archive History And Continuation
+
+History BAND lists accept the same fixed meta names. For example,
+`SHOW DX 20 BAND WARC` or CC `SHOW/DX 20 BAND VHF` selects the shared physical
+members without changing saved filters. A query containing a meta name
+classifies each candidate's reported frequency through the shared catalogue,
+including retained 4m records with an old unknown band label. The query runs
+before counting and continuation; it does not rewrite archive records.
 
 `SHOW DX` and `SHOW MYDX` share archive history selection and paging. Counts
 range from 1 to 250, default 50; selector and count may appear in either order.

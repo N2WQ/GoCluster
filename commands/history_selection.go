@@ -18,7 +18,7 @@ func historySelectionToken(token string) bool {
 
 // The optional selector/count retain their old grammar before the first clause.
 // COMMENT has already consumed the literal remainder; its words are never lists.
-func parseHistorySelections(args []string) (base, bands, modes []string, errText string) {
+func parseHistorySelections(args []string) (base, bands, modes []string, metaBands bool, errText string) {
 	pos := 0
 	for pos < len(args) && !historySelectionToken(args[pos]) {
 		pos++
@@ -27,24 +27,26 @@ func parseHistorySelections(args []string) (base, bands, modes []string, errText
 	for pos < len(args) {
 		domain := strings.ToUpper(args[pos])
 		if (domain == "BAND" && bands != nil) || (domain == "MODE" && modes != nil) {
-			return nil, nil, nil, fmt.Sprintf("Invalid %s selection: category may appear only once.\n", domain)
+			return nil, nil, nil, false, fmt.Sprintf("Invalid %s selection: category may appear only once.\n", domain)
 		}
-		values, consumed, text := parseHistorySelectionValues(domain, args[pos+1:])
+		values, consumed, expanded, text := parseHistorySelectionValues(domain, args[pos+1:])
 		if text != "" {
-			return nil, nil, nil, text
+			return nil, nil, nil, false, text
 		}
 		pos += 1 + consumed
 		if domain == "BAND" {
 			bands = values
+			metaBands = expanded
 		} else {
 			modes = values
 		}
 	}
-	return base, bands, modes, ""
+	return base, bands, modes, metaBands, ""
 }
 
-func parseHistorySelectionValues(domain string, args []string) ([]string, int, string) {
+func parseHistorySelectionValues(domain string, args []string) ([]string, int, bool, string) {
 	var values []string
+	metaBands := false
 	separatorRequired := false
 	consumed := 0
 	for _, arg := range args {
@@ -63,7 +65,18 @@ func parseHistorySelectionValues(domain string, args []string) ([]string, int, s
 				continue
 			}
 			if separatorRequired {
-				return nil, 0, fmt.Sprintf("Invalid %s selection: separate values with commas.\n", domain)
+				return nil, 0, false, fmt.Sprintf("Invalid %s selection: separate values with commas.\n", domain)
+			}
+			if domain == "BAND" {
+				if members, ok := spot.MetaBandMembers(value); ok {
+					metaBands, separatorRequired = true, true
+					for _, member := range members {
+						if !slices.Contains(values, member) {
+							values = append(values, member)
+						}
+					}
+					continue
+				}
 			}
 			var normalized string
 			var valid bool
@@ -75,7 +88,7 @@ func parseHistorySelectionValues(domain string, args []string) ([]string, int, s
 				valid = filter.IsSupportedMode(normalized)
 			}
 			if !valid || strings.EqualFold(value, "ALL") || strings.EqualFold(value, "NONE") {
-				return nil, 0, fmt.Sprintf("Invalid %s selection: unsupported value %q.\n", domain, value)
+				return nil, 0, false, fmt.Sprintf("Invalid %s selection: unsupported value %q.\n", domain, value)
 			}
 			separatorRequired = true
 			if !slices.Contains(values, normalized) {
@@ -87,9 +100,9 @@ func parseHistorySelectionValues(domain string, args []string) ([]string, int, s
 		consumed++
 	}
 	if len(values) == 0 {
-		return nil, 0, fmt.Sprintf("Invalid %s selection: supply at least one supported value.\n", domain)
+		return nil, 0, false, fmt.Sprintf("Invalid %s selection: supply at least one supported value.\n", domain)
 	}
-	return values, consumed, ""
+	return values, consumed, metaBands, ""
 }
 
 // Explicit clauses also constrain self-spots. Saved filters keep their existing

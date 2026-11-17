@@ -186,13 +186,17 @@ func (g *v7ShapeGuard) validate(node *yaml.Node, typ reflect.Type, depth int) er
 			return errors.New("v7 map must be a mapping")
 		}
 		limit := MaxPresets
-		switch typ.Elem() {
-		case reflect.TypeFor[CCGeography]():
-			limit = 4
-		case reflect.TypeFor[CCCategory]():
-			limit = len(ccNativeBands)
-		case reflect.TypeFor[bool]():
-			limit = len(ccNativeSlots)
+		if typ == reflect.TypeFor[CCFrequencyOverrides]() {
+			limit = len(ccFrequencyCells)
+		} else {
+			switch typ.Elem() {
+			case reflect.TypeFor[CCGeography]():
+				limit = 4
+			case reflect.TypeFor[CCCategory]():
+				limit = len(ccNativeBands)
+			case reflect.TypeFor[bool]():
+				limit = len(ccNativeSlots)
+			}
 		}
 		if len(node.Content)/2 > limit {
 			return storageAdmissionf("v7 map exceeds %d entries", limit)

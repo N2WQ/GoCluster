@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+
+	"dxcluster/spot"
 )
 
 // Edits prepare the source before copying and the complete result before
@@ -140,15 +142,21 @@ func editCCDXBMSelector(dxbm *CCDXBM, raw string, enabled bool) error {
 		return fmt.Errorf("unsupported native CC DXBM selector")
 	}
 	name := strings.ToUpper(raw)
+	if members, ok := spot.MetaBandMembers(name); ok {
+		editCCPhysicalBands(dxbm, members, enabled)
+		return nil
+	}
 	if index := ccSlotIndex(name); index >= 0 {
+		clearCCSlotFrequencyOverrides(dxbm, index)
 		dxbm.Slots[name] = enabled
 		return nil
 	}
 	if ccBandIndex(name) < 0 {
 		return fmt.Errorf("unsupported native CC DXBM selector %q", raw)
 	}
-	for _, slot := range ccNativeSlots {
+	for index, slot := range ccNativeSlots {
 		if slot.Band == name {
+			clearCCSlotFrequencyOverrides(dxbm, index)
 			dxbm.Slots[slot.Name] = enabled
 		}
 	}

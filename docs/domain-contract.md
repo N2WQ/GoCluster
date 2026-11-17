@@ -805,6 +805,56 @@ parentheses and NOT, not flat AND/OR tree height. These do not enlarge human,
 machine or stored-document limits. Any parse, domain, slot or budget refusal
 leaves the previous complete rule set intact.
 
+### Fixed Meta Bands
+
+The physical band catalogue in `spot/bands.go` owns frequency ranges. The meta
+catalogue owns only fixed member identifiers; command-input processing expands
+names without copying numeric range definitions or creating a filter bank.
+
+| Meta band | Physical members |
+| --- | --- |
+| WARC | 30m, 17m, 12m |
+| HFCONTEST | 160m, 80m, 40m, 20m, 15m, 10m |
+| HF | 160m, 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, 10m |
+| VHF | 6m, 4m, 2m, 1.25m |
+| UHF | 70cm, 33cm, 23cm, 13cm |
+| VHFUP | VHF and UHF members above |
+
+Names are case-insensitive and may mix with individual bands. Expansion
+deduplicates overlapping physical members while retaining raw-input and expanded
+admission limits. GO preserves comparison operators and Boolean structure and
+saves ordinary canonical BAND lists. Meta names are not physical spot labels.
+HF deliberately includes 160m as operating shorthand; HFCONTEST identifies a
+fixed band collection, not contest activity or universal contest eligibility.
+
+Physical catalogue ranges include 4m at 70.000-70.650 MHz, 60m at
+5.260-5.405 MHz and 1.25m at 220-225 MHz. Other ranges retain existing GO
+definitions, including both 13cm segments and their intervening gap. General 4m
+recognition does not add inferred modes, VOACAP support or path-ingestion defaults.
+
+Native CC meta selections derive their member coverage from this same physical
+catalogue. Existing native band labels, 37 slots, internal endpoints and geography
+remain unchanged. Optional `dxbm.frequency_overrides` retains bounded exact
+coverage that native slots cannot express. The fixed cell partition derives from
+catalogue and legacy-slot endpoints; inclusive physical endpoints and higher-slot
+ownership remain unambiguous. Later edits replace only frequencies they cover;
+native edits preserve meta selections outside their original range. OFF clears
+native choices and overrides, while active allow-all remains distinct from OFF.
+Existing mode, source, geography and separate-control combination rules still apply.
+
+The optional field is omitted when unused. Profile, preset and machine paths
+strictly validate and retain it, including applied baselines. Older strict
+readers may reject feature-bearing documents; rollback requires compatible
+executable and saved data. This feature performs no profile/preset conversion or
+reset and does not reuse the pre-seven discard path.
+
+An explicit history meta selection classifies candidate frequency through the
+physical catalogue before counting/pagination, including stored unknown-band
+4m records. Saved filters and existing self/comment rules still apply. Queries
+retain bounded member identifiers and never rewrite archive records.
+`HELP BANDS` presents the same catalogue in GO and CC; see
+[ADR-0356](decisions/ADR-0356-fixed-meta-bands-and-shared-physical-catalogue.md).
+
 ### NEARBY Predicate And Recovery
 
 Live startup requires both configured shared H3 tables independently of the path

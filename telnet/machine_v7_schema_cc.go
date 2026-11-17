@@ -78,9 +78,14 @@ func decodeV7StringList(node *yaml.Node, path string, limit int) ([]string, erro
 }
 
 func decodeV7DXBM(node *yaml.Node, path string) (filter.CCDXBM, error) {
-	fields, err := machineObject(node, path, []string{"active", "base_allow", "slots"}, true)
+	fields, err := machineObject(node, path, []string{"active", "base_allow", "slots", "frequency_overrides"}, false)
 	if err != nil {
 		return filter.CCDXBM{}, err
+	}
+	for _, name := range []string{"active", "base_allow", "slots"} {
+		if fields[name] == nil {
+			return filter.CCDXBM{}, schemaError(path+"."+name, "required field is missing")
+		}
 	}
 	active, err := machineBoolean(fields["active"], path+".active")
 	if err != nil {
@@ -112,6 +117,36 @@ func decodeV7DXBM(node *yaml.Node, path string) (filter.CCDXBM, error) {
 	}
 	if !active && !base {
 		return filter.CCDXBM{}, schemaError(path, "inactive DXBM requires base_allow true and empty slots")
+	}
+	if overrides := fields["frequency_overrides"]; overrides != nil {
+		result.FrequencyOverrides, err = decodeV7FrequencyOverrides(overrides, path+".frequency_overrides")
+		if err != nil {
+			return filter.CCDXBM{}, err
+		}
+		if !active && len(result.FrequencyOverrides) != 0 {
+			return filter.CCDXBM{}, schemaError(path, "inactive DXBM requires empty frequency overrides")
+		}
+	}
+	return result, nil
+}
+
+func decodeV7FrequencyOverrides(node *yaml.Node, path string) (filter.CCFrequencyOverrides, error) {
+	cells := filter.CCSupportedFrequencyCells()
+	names := make([]string, len(cells))
+	for index, cell := range cells {
+		names[index] = cell.ID
+	}
+	entries, err := v7NativeObject(node, path, names, false)
+	if err != nil {
+		return nil, err
+	}
+	result := make(filter.CCFrequencyOverrides, len(entries))
+	for name, entry := range entries {
+		value, err := machineBoolean(entry, path+"."+name)
+		if err != nil {
+			return nil, err
+		}
+		result[name] = value
 	}
 	return result, nil
 }

@@ -43,9 +43,10 @@ type CCGeography struct {
 // CCDXBM stores a base selection plus exceptions for the fixed native slots.
 // Active remains true even when the current selection admits every frequency.
 type CCDXBM struct {
-	Active    bool            `yaml:"active"`
-	BaseAllow bool            `yaml:"base_allow"`
-	Slots     map[string]bool `yaml:"slots"`
+	Active             bool                 `yaml:"active"`
+	BaseAllow          bool                 `yaml:"base_allow"`
+	Slots              map[string]bool      `yaml:"slots"`
+	FrequencyOverrides CCFrequencyOverrides `yaml:"frequency_overrides,omitempty"`
 }
 
 // Modes and Sources are explicit selections: empty means deny all. Only the
@@ -82,6 +83,9 @@ func (c CCConfiguration) Clone() CCConfiguration {
 	}
 	c.Geography = geography
 	c.DXBM.Slots = cloneCCSlots(c.DXBM.Slots)
+	if c.DXBM.FrequencyOverrides != nil {
+		c.DXBM.FrequencyOverrides = CCFrequencyOverrides(cloneCCSlots(c.DXBM.FrequencyOverrides))
+	}
 	return c
 }
 
@@ -107,7 +111,7 @@ func (c CCConfiguration) Equal(other CCConfiguration) bool {
 	if c.toggles() != other.toggles() || !slices.Equal(c.Modes, other.Modes) ||
 		!slices.Equal(c.Sources, other.Sources) || len(c.Geography) != len(other.Geography) ||
 		c.DXBM.Active != other.DXBM.Active || c.DXBM.BaseAllow != other.DXBM.BaseAllow ||
-		len(c.DXBM.Slots) != len(other.DXBM.Slots) {
+		len(c.DXBM.Slots) != len(other.DXBM.Slots) || len(c.DXBM.FrequencyOverrides) != len(other.DXBM.FrequencyOverrides) {
 		return false
 	}
 	for name, geography := range c.Geography {
@@ -124,6 +128,12 @@ func (c CCConfiguration) Equal(other CCConfiguration) bool {
 	}
 	for slot, enabled := range c.DXBM.Slots {
 		peer, exists := other.DXBM.Slots[slot]
+		if !exists || enabled != peer {
+			return false
+		}
+	}
+	for cell, enabled := range c.DXBM.FrequencyOverrides {
+		peer, exists := other.DXBM.FrequencyOverrides[cell]
 		if !exists || enabled != peer {
 			return false
 		}
@@ -168,6 +178,16 @@ func (c CCConfiguration) Fingerprint() [32]byte {
 	for _, toggle := range c.toggles() {
 		writeFingerprintInt(h, int(toggle))
 	}
+	// Preserve every legacy fingerprint when the feature is unused.
+	if len(c.DXBM.FrequencyOverrides) != 0 {
+		writeFingerprintString(h, "frequency-overrides-v1")
+		for _, cell := range ccFrequencyCells {
+			if enabled, exists := c.DXBM.FrequencyOverrides[cell.ID]; exists {
+				writeFingerprintString(h, cell.ID)
+				writeFingerprintInt(h, boolCCInt(enabled))
+			}
+		}
+	}
 	var result [32]byte
 	h.Sum(result[:0])
 	return result
@@ -196,6 +216,7 @@ func writeCCCategoryFingerprint(h hash.Hash, category CCCategory) {
 // history. CanonicalBytes includes definitions and all six exact controls.
 type CCCounts struct {
 	Modes, Sources, GeographyRows, Countries, States, DXBMSlots, CanonicalBytes int
+	FrequencyOverrides                                                          int
 }
 
 func canonicalCCBytes(c CCConfiguration) (int, error) {

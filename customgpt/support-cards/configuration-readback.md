@@ -21,6 +21,17 @@ Local source behavior does not establish publication, deployment or validation.
 
 ## Must Include
 
+- `HELP BANDS` lists six fixed meta groups. The processor expands a name into
+  physical band identifiers; `spot` owns ranges. GO saves expanded ordinary BAND
+  lists. CC derives exact shared coverage while retaining its legacy slot meanings
+  and geography. Optional `dxbm.frequency_overrides` is part of complete readback,
+  preset and YAML state; OFF clears it. No existing profile or preset is migrated
+  or reset. Older strict readers may reject feature-bearing files, so rollback
+  requires compatible backups. History `BAND WARC` uses the shared catalogue before
+  counting and can find retained unknown-band 4m records without rewriting them.
+  Retrieve [the contract](../../docs/domain-contract.md#fixed-meta-bands) and
+  [CC guidance](../../docs/cc-dialect.md#fixed-meta-bands).
+
 - GO and CC remember independent filters and independent BEACON, SELF, TOXIC,
   ANNOUNCE, WWV and WCY selections. Switching activates the saved bank. GRID,
   noise, dedupe, PATHSAMPLES, SOLAR and CWSPEED are shared. GO Boolean mutations require
