@@ -23,12 +23,117 @@ from types import SimpleNamespace
 import uuid
 
 from command_fixture_support import (Child, ROOT, build, command, deny_record_replacement,
-                                     plain_output, require, runner_lock, stage, yaml)
+                                     plain_output, require, resource_fixture, runner_lock, stage, yaml)
 
 spec = importlib.util.spec_from_file_location("checkout_telnet_harness", ROOT / "scripts" / "test-telnet-commands.py")
 harness = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = harness
 spec.loader.exec_module(harness)
+
+
+# Allocate positive logins once. Exact spelling owns settings; reconnects reuse
+# an allocation, while independent cases get distinct full identities.
+FIXTURE_LOGINS = {
+    "main": tuple(f"{base}-{number:02d}" for base, numbers in (
+        ("K1ABC", (1, 2, *range(4, 14), *range(21, 30), 34, *range(50, 56))),
+        ("VE3ABC", (3, *range(33, 36), *range(40, 50), 56, 57, *range(63, 72), *range(73, 81))),
+    ) for number in numbers),
+    "dedupe": ("K1ABC-58", "K1ABC-59", "VE3ABC-60", "VE3ABC-61", "VE3ABC-62"),
+    "reputation": ("K1ABC-81", "K1ABC-82", "VE3ABC-83"),
+}
+
+
+def validate_fixture_calls(inventory):
+    require(0 < len(inventory) <= 3, "invalid fixture profile inventory")
+    for profile, calls in inventory.items():
+        require(profile in FIXTURE_LOGINS and 0 < len(calls) <= 200,
+                "invalid fixture login allocation bound")
+        seen = set()
+        for call in calls:
+            require(isinstance(call, str) and re.fullmatch(r"(?:K1ABC|VE3ABC)-[0-9]{1,2}", call),
+                    f"invalid fixture login: {call!r}")
+            require(call not in seen, f"duplicate fixture login allocation: {call}")
+            seen.add(call)
+
+
+def fixture_session(suite, call):
+    require(any(call in calls for calls in FIXTURE_LOGINS.values()),
+            f"unallocated fixture login: {call!r}")
+    current = FixtureSession(suite, call)
+    # The reusable client paces logins for public nodes. This private fixture
+    # explicitly loads 100 accepts/second with a 100-token burst; remain below
+    # that unchanged server limit without spending the case budget sleeping.
+    suite.next_connection_at = time.monotonic() + .02
+    return current
+
+
+class FixtureSession(harness.V7Session):
+    """Retain the existing client's consumed login text as failure evidence."""
+
+    def send(self, text, count=True):
+        if not count:
+            self.sock.setsockopt(harness.socket.IPPROTO_TCP, harness.socket.TCP_NODELAY, 1)
+        super().send(text, count)
+        if not count:
+            # The V7 client owns login and its bounds. Capture its normal next
+            # until() result, without performing another read or replaying input.
+            original = self.reader.until
+
+            def login_receipt(marker):
+                self.reader.until = original
+                value = original(marker)
+                self.login_greeting = value
+                self.suite.log.write(f"\n[{self.call}] login\n".encode() + value)
+                self.suite.log.flush()
+                return value
+            self.reader.until = login_receipt
+
+    def remember_configuration(self, document):
+        configuration, status = document.get("configuration", {}), document.get("status", {})
+        if (document.get("resource") == "CONFIG" and document.get("schema_version") == 7 and
+                "error" not in document and isinstance(configuration, dict) and
+                isinstance(configuration.get("filters"), dict) and set(configuration["filters"]) == {"go", "cc"} and
+                isinstance(configuration.get("settings"), dict) and isinstance(status, dict) and
+                isinstance(status.get("presets"), dict) and set(status["presets"]) == {"go", "cc"}):
+            # This fixture is the only command writer for the connection. A
+            # complete correlated reply already fences its previous command;
+            # retain one detached snapshot for the next adjacent edit check.
+            self.last_configuration = copy.deepcopy(document)
+
+    def frame(self, resource, identifier, version, command):
+        document, prefix = super().frame(resource, identifier, version, command)
+        self.remember_configuration(document)
+        return document, prefix
+
+
+def login_text(current, remainder):
+    return current.login_greeting.decode("ascii", "strict") + remainder
+
+
+class CommandSuite(harness.Suite):
+    """Disposable source-bound cases own every session they create.
+
+    The profile's initial shared sessions predate case entry. New sessions are
+    retired even after an assertion failure, so the first defect cannot exhaust
+    admission and hide the remaining evidence. Cleanup errors remain failures.
+    """
+
+    def case(self, name, operation, required=None):
+        started = time.monotonic()
+        existing = {id(current) for current in self.sessions}
+
+        def owned_operation():
+            try:
+                operation()
+            finally:
+                for current in self.sessions:
+                    if id(current) not in existing:
+                        try:
+                            current.close()
+                        except Exception as error:
+                            self.cleanup_errors.append(f"{name}: {error}")
+        super().case(name, owned_operation, required)
+        self.results[-1]["elapsed_seconds"] = round(time.monotonic() - started, 3)
 
 
 def qualified(results, required, wire_failures, cleanup_errors):
@@ -138,14 +243,79 @@ def require_frequency_refusal(text):
             "manual DX frequency refusal is missing or incorrect")
 
 
+def active_fixture_bank(document):
+    return document["configuration"]["filters"][document["status"]["active_dialect"]]
+
+
+def require_fixture_persisted(document, record):
+    saved = copy.deepcopy(stored_configuration(record.read_bytes()))
+    # The native disk field is optional when false; schema seven writes it
+    # explicitly. Compare the complete preference value, including both banks.
+    saved["settings"].setdefault("cw_speed", False)
+    require(saved == document["configuration"], "native preferences were not saved before disconnect")
+    require_cc_typed_value(saved, document["configuration"])
+
+
+def require_fixture_unchanged(before, after, record, saved):
+    require(after["configuration"] == before["configuration"] and
+            after["revision"] == before["revision"] and
+            after["status"]["effective"] == before["status"]["effective"] and
+            after["status"]["presets"] == before["status"]["presets"] and
+            record.read_bytes() == saved,
+            "refused/read-only operation changed preferences, either baseline, runtime or stored bytes")
+    require_cc_typed_value(after["configuration"], before["configuration"])
+    require_cc_typed_value(after["status"]["presets"], before["status"]["presets"])
+
+
+def require_fixture_refusal(session, command, record, marker="No changes applied."):
+    before, saved = fixture_before(session), record.read_bytes()
+    text, after = session.human(command, marker)
+    require("No changes applied." in text, "retired or malformed filter command lacks an explicit refusal")
+    require_fixture_unchanged(before, after, record, saved)
+    return after
+
+
+def fixture_edit(session, command, record):
+    before = fixture_before(session)
+    references = stored_document(record.read_bytes())["presets"]
+    text, after = session.human(command)
+    require(text.strip() and "No changes applied." not in text and "warning: failed to persist" not in text and
+            "Unknown command" not in text and "Usage:" not in text,
+            "positive native command was refused or not saved: " + command)
+    inactive = "cc" if before["status"]["active_dialect"] == "go" else "go"
+    require(after["configuration"]["filters"][inactive] == before["configuration"]["filters"][inactive],
+            "ordinary command changed the inactive filter bank")
+    require_fixture_persisted(after, record)
+    require_cc_typed_value(stored_document(record.read_bytes())["presets"], references)
+    return after
+
+
+def fixture_before(session):
+    before = getattr(session, "last_configuration", None)
+    return before if isinstance(before, dict) else session.get()
+
+
+def reconnect_fixture_session(session, record):
+    # Semantic groups use the same durable owner on a fresh connection. Never
+    # retry a failed command, change command pacing, or hide unsaved outcomes.
+    before = session.get()
+    require_fixture_persisted(before, record)
+    references = stored_document(record.read_bytes())["presets"]
+    session.close()
+    restored = fixture_session(session.suite, session.call)
+    _, after = restored.human("PAUSE 300")
+    require_cc_typed_value(after["configuration"], before["configuration"])
+    require_cc_typed_value(after["status"]["presets"], before["status"]["presets"])
+    require_fixture_persisted(after, record)
+    require_cc_typed_value(stored_document(record.read_bytes())["presets"], references)
+    return restored
+
+
 def require_mode_rules(document, expected, record=None):
-    require(document["configuration"]["filters"]["modes"] == expected,
-            "MODE delta lost its exact open/restrictive state")
+    require(active_fixture_bank(document) == expected, "MODE delta lost its exact native bank")
+    require_cc_typed_value(active_fixture_bank(document), expected)
     if record is not None:
-        saved = stored_document(record.read_bytes())
-        require(dict(allow_all=saved["allmodes"], block_all=saved["blockallmodes"],
-                     allow=saved["modes"], block=saved["blockmodes"]) == expected,
-                "MODE delta was not saved before disconnect")
+        require_fixture_persisted(document, record)
 
 
 def require_mode_archive(session, label, mode, visible):
@@ -169,18 +339,15 @@ def literal_archive_label(suite, suffix):
 def require_grid_configuration(document, grid, record):
     require(document["configuration"]["settings"]["grid"] == grid and
             document["status"]["effective"]["grid"] == grid and
-            stored_document(record.read_bytes())["grid"] == grid,
+            stored_configuration(record.read_bytes())["settings"]["grid"] == grid,
             "GRID canonical selection, effective location or saved bytes disagree")
+    require_fixture_persisted(document, record)
 
 
 def require_callsign_rules(document, expected, record):
-    saved = stored_document(record.read_bytes())
-    names = dict(dx_callsigns="callsigns", block_dx_callsigns="block_callsigns",
-                 de_callsigns="decallsigns", block_de_callsigns="block_decallsigns")
-    for key, stored_key in names.items():
-        require(document["configuration"]["filters"][key] == expected[key] and
-                (saved.get(stored_key) or []) == expected[key],
-                "callsign canonical selection or saved patterns disagree")
+    require(active_fixture_bank(document) == expected, "callsign rules or native CC bank changed")
+    require_cc_typed_value(active_fixture_bank(document), expected)
+    require_fixture_persisted(document, record)
 
 
 def require_callsign_archive(session, label, visible):
@@ -227,44 +394,53 @@ def exact_human_reply(session, command, reply):
 
 
 def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
-    for dialect, call in (("go", "VE3ABC-70044"), ("cc", "VE3ABC-70045")):
-        current = harness.Session(suite, call)
+    for dialect, call in (("go", "VE3ABC-44"), ("cc", "VE3ABC-45")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         current.human("DIALECT " + dialect)
-        allow = "PASS" if dialect == "go" else "SET/FILTER"
-        block = "REJECT" if dialect == "go" else "UNSET/FILTER"
         record = root / "users" / (call + ".yaml")
-        for domain, matching, prefix in (("DXCALL", "W6ABC", "w6*"), ("DECALL", "K1ABC", "k1*")):
-            current.human(allow + " " + domain + " ALL", "All ")
+        if dialect == "cc":
+            fixture_edit(current, "SET/NOFILTER", record)
+            for domain in ("DXCALL", "DECALL"):
+                for verb in ("SET/FILTER", "UNSET/FILTER", "PASS", "REJECT"):
+                    for values in ("w6*,*abc,k1abc,ea8/w1xyz,w2abc-1", "N0XYZ,W*ABC"):
+                        require_fixture_refusal(current, verb + " " + domain + " " + values, record)
+                current = reconnect_fixture_session(current, record)
+            # Native CC has no arbitrary callsign condition. Refusal must leave
+            # the real matching row visible and the inactive GO bank untouched.
             require_callsign_archive(current, cw_label, True)
-            current.human(allow + " " + domain + " w6*,*abc,k1abc,ea8/w1xyz,w2abc-1")
-            require_callsign_archive(current, cw_label, True)
-            for verb in (allow, block):
-                # A dot reaches this domain through the human input safe list;
-                # underscores/non-ASCII are separately checked at the direct stage.
-                for bad_list in ("N0XYZ,W*ABC", "*ABC*,N0XYZ", "N0XYZ,W1?", "W1.ABC,N0XYZ"):
-                    before, saved = current.get(), record.read_bytes()
-                    _, after = exact_human_reply(current, verb + " " + domain + " " + bad_list,
-                                                 "Invalid callsign pattern. Use ASCII letters, digits, / or -.\n"
-                                                 "Use at most one * at the beginning or end. No changes applied.")
-                    require(after["configuration"] == before["configuration"] and
-                            after["revision"] == before["revision"] and
-                            after["status"]["effective"] == before["status"]["effective"] and
-                            after["status"]["preset"] == before["status"]["preset"] and
-                            record.read_bytes() == saved,
-                            "invalid callsign list changed live/revision/saved state")
-                    require_callsign_archive(current, cw_label, True)
-            current.human(block + " " + domain + " " + matching)
-            require_callsign_archive(current, cw_label, False)
-            current.human(allow + " " + domain + " *")
-            require_callsign_archive(current, cw_label, False)
-            current.human(allow + " " + domain + " ALL", "All ")
-            require_callsign_archive(current, cw_label, True)
-            current.human(allow + " " + domain + " " + prefix)
-            current.human(block + " " + domain + " N0XYZ")
+        else:
+            fixture_edit(current, "RESET FILTER RULE ALL", record)
+            for domain, matching, prefix in (("DXCALL", "W6ABC", "w6*"), ("DECALL", "K1ABC", "k1*")):
+                fixture_edit(current, "RESET FILTER RULE ALL", record)
+                fixture_edit(current, "PASS RULE 0 " + domain + "=w6*,*abc,k1abc,ea8/w1xyz,w2abc-1", record)
+                require_callsign_archive(current, cw_label, True)
+                for action in ("PASS", "REJECT"):
+                    for bad_list in ("N0XYZ,W*ABC", "*ABC*,N0XYZ", "N0XYZ,W1?", "W1.ABC,N0XYZ"):
+                        require_fixture_refusal(current, action + " RULE 9 " + domain + "=" + bad_list,
+                                                record, "Invalid rule:")
+                        require_callsign_archive(current, cw_label, True)
+                    current = reconnect_fixture_session(current, record)
+                fixture_edit(current, "REJECT RULE 1 " + domain + "=" + matching, record)
+                require_callsign_archive(current, cw_label, False)
+                fixture_edit(current, "PASS RULE 0 " + domain + "=*", record)
+                require_callsign_archive(current, cw_label, False)  # REJECT vetoes PASS.
+                fixture_edit(current, "RESET FILTER RULE 1", record)
+                require_callsign_archive(current, cw_label, True)
+                fixture_edit(current, "PASS RULE 0 " + domain + "=" + prefix, record)
+                require_callsign_archive(current, cw_label, True)
+                current = reconnect_fixture_session(current, record)
+            fixture_edit(current, "RESET FILTER RULE ALL", record)
+            fixture_edit(current, "PASS RULE 0 DXCALL=w6* AND DECALL=k1*", record)
+            document = fixture_edit(current, "REJECT RULE 1 DXCALL=N0XYZ OR DECALL=N0XYZ", record)
+            require(active_fixture_bank(document)["rules"] == [
+                dict(slot=0, action="pass", expr="DXCALL=W6* AND DECALL=K1*"),
+                dict(slot=1, action="reject", expr="DXCALL=N0XYZ OR DECALL=N0XYZ")],
+                "callsign lists lost exact canonical definitions")
+            for old in ("PASS DXCALL W6*", "REJECT DECALL N0XYZ"):
+                require_fixture_refusal(current, old, record, "Use numbered rules:")
         document = current.get()
-        expected = dict(dx_callsigns=["W6*"], block_dx_callsigns=["N0XYZ"],
-                        de_callsigns=["K1*"], block_de_callsigns=["N0XYZ"])
+        expected = copy.deepcopy(active_fixture_bank(document))
         require_callsign_rules(document, expected, record)
         require_callsign_archive(current, cw_label, True)
         result = current.upload("VALIDATE", "CONFIG", document["configuration"])
@@ -288,51 +464,49 @@ def require_filter_argument_refusal(session, command, record, exact_feedback=Non
 
 
 def require_command_refusal(session, command, record, exact_feedback):
-    before, saved = session.get(), record.read_bytes()
+    before, saved = fixture_before(session), record.read_bytes()
     text, after = exact_human_reply(session, command, exact_feedback)
     require(text.strip() == exact_feedback, "malformed filter arguments lack a refusal")
-    require(after["configuration"] == before["configuration"] and
-            after["revision"] == before["revision"] and
-            after["status"]["effective"] == before["status"]["effective"] and
-            after["status"]["preset"] == before["status"]["preset"] and
-            record.read_bytes() == saved, "malformed filter arguments changed live or saved state")
+    require_fixture_unchanged(before, after, record, saved)
+    return after
 
 
 require_remote_logout = harness.remote_logout
 
 
 def require_setting_argument_refusal(session, command, record, feedback):
-    mode = session.get()["status"]["session"]["diagnostic_comments"]
-    require_command_refusal(session, command, record, feedback)
-    require(session.get()["status"]["session"]["diagnostic_comments"] == mode,
+    mode = fixture_before(session)["status"]["session"]["diagnostic_comments"]
+    after = require_command_refusal(session, command, record, feedback)
+    require(after["status"]["session"]["diagnostic_comments"] == mode,
             "malformed setting arguments changed the session diagnostic mode")
 
 
 def require_setting_control(session, record, command, feedback, field, value):
-    before, saved = session.get(), record.read_bytes()
+    before, saved = fixture_before(session), record.read_bytes()
     text, after = exact_human_reply(session, command, feedback)
     require(text.strip() == feedback, "valid setting lacks exact feedback")
     if field == "diagnostic_comments":
         require(after["status"]["session"][field] == value and
                 after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
                 after["status"]["effective"] == before["status"]["effective"] and
-                after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+                after["status"]["presets"] == before["status"]["presets"] and record.read_bytes() == saved,
                 "diagnostic control lost session mode or changed persistent state")
     else:
-        stored = yaml.safe_load(record.read_bytes())
-        stored_value = stored.get(field, 0) if type(value) is int else stored.get(field)
+        stored = stored_configuration(record.read_bytes())["settings"]
+        stored_value = stored.get(field)
         configured_value = after["configuration"]["settings"][field]
         require(type(configured_value) is type(value) and configured_value == value and
                 type(stored_value) is type(value) and stored_value == value,
                 "valid setting lacks its exact configured or immediately saved value")
         if field not in ("path_min_observation_count", "solar_summary_minutes"):
             require(after["status"]["effective"][field] == value, "valid setting did not reach runtime state")
+        require_fixture_persisted(after, record)
     return after
 
 
 def fixed_setting_cases(suite, root, saved_settings):
-    for dialect, call in (("go", "VE3ABC-70056"), ("cc", "VE3ABC-70057")):
-        current = harness.Session(suite, call)
+    for dialect, call in (("go", "VE3ABC-56"), ("cc", "VE3ABC-57")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         current.human("DIALECT " + dialect)
         current.human("SET NOISE RURAL")
@@ -353,6 +527,7 @@ def fixed_setting_cases(suite, root, saved_settings):
                 ("SET DIAG", ("", " OFF EXTRA", " CONFIDENCE EXTRA"), "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>")):
             for tail in tails:
                 require_setting_argument_refusal(current, prefix.lower() + tail, record, feedback)
+            current = reconnect_fixture_session(current, record)
         require(current.get()["status"]["server"]["path_min_observation_count"] == 21,
                 "loaded fixture path floor differs from literal positive control")
         for alias in ("go", "gocluster", "classic", "default", "cc"):
@@ -362,28 +537,36 @@ def fixed_setting_cases(suite, root, saved_settings):
             require_setting_control(current, record, "DIALECT " + alias, feedback, "dialect", value)
         exact_human_reply(current, "DIALECT", "Current dialect: CC")
         exact_human_reply(current, "DIALECT LIST", "Available dialects: CC, GO")
+        current = reconnect_fixture_session(current, record)
         for grid in ("FN31", "FN31PR"):
             require_setting_control(current, record, "SET GRID " + grid, "Grid set to " + grid, "grid", grid)
         for noise in ("QUIET", "RURAL", "SUBURBAN", "URBAN", "INDUSTRIAL"):
             require_setting_control(current, record, "SET NOISE " + noise, "Noise class set to " + noise, "noise_class", noise)
+        current = reconnect_fixture_session(current, record)
         for token, value, feedback in (("30", 30, "Path sample minimum set to 30 (cluster default 21)"),
                                         ("DEFAULT", 0, "Path sample minimum reset to cluster default 21"),
                                         ("30", 30, "Path sample minimum set to 30 (cluster default 21)")):
             after = require_setting_control(current, record, "SET PATHSAMPLES " + token, feedback, "path_min_observation_count", value)
             require(after["status"]["effective"]["path_min_observation_count"] == (30 if value else 21),
                     "path sample control did not reach the runtime floor")
+        current = reconnect_fixture_session(current, record)
         for policy, key in (("FAST", "grid2"), ("MED", "grid2"), ("SLOW", "cqzone")):
             require_setting_control(current, record, "SET DEDUPE " + policy, "Dedupe policy set to " + policy, "dedupe_policy", policy)
             exact_human_reply(current, "SHOW DEDUPE", f"Dedupe: {policy} ({key}) (fast=on med=on slow=on)")
+        current = reconnect_fixture_session(current, record)
         for token, value in (("15", 15), ("30", 30), ("60", 60), ("OFF", 0), ("30", 30)):
             feedback = "Solar summaries: OFF" if not value else f"Solar summaries: every {value} minutes when conditions are active"
             require_setting_control(current, record, "SET SOLAR " + token, feedback, "solar_summary_minutes", value)
+        current = reconnect_fixture_session(current, record)
         for token, canonical in (("OFF", "OFF"), ("DEDUPE", "DEDUPE"), ("SOURCE", "SOURCE"),
                                   ("CONF", "CONF"), ("CONFIDENCE", "CONF"), ("PATH", "PATH"), ("MODE", "MODE")):
             require_setting_argument_refusal(current, "SET DIAG " + token + " EXTRA", record,
                                              "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>")
             require_setting_control(current, record, "SET DIAG " + token, "Diagnostic comments: " + canonical,
                                     "diagnostic_comments", canonical)
+            # DIAG is intentionally session-only; exercise the next token on
+            # its own connection rather than expecting diagnostics to persist.
+            current = reconnect_fixture_session(current, record)
         unchanged = current.get()["configuration"]["settings"]["dialect"] == dialect
         require_setting_control(current, record, "DIALECT " + dialect,
                                 ("Dialect already set to " if unchanged else "Dialect set to ") + dialect.upper(), "dialect", dialect)
@@ -391,8 +574,8 @@ def fixed_setting_cases(suite, root, saved_settings):
 
 
 def command_arity_cases(suite, root, saved_arity):
-    for index, (dialect, call) in enumerate((("go", "VE3ABC-70048"), ("cc", "VE3ABC-70049"))):
-        current = harness.Session(suite, call)
+    for index, (dialect, call) in enumerate((("go", "VE3ABC-48"), ("cc", "VE3ABC-49"))):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         current.human("DIALECT " + dialect)
         current.human("SET DEDUPE FAST")
@@ -401,15 +584,17 @@ def command_arity_cases(suite, root, saved_arity):
             for tail in ("", " VE EXTRA", " W6/LZ5VV/M EXTRA MORE"):
                 require_command_refusal(current, prefix + tail, record, "Usage: SHOW DXCC <prefix|callsign>")
             current.human(prefix + " VE", "Canada")
+            current = reconnect_fixture_session(current, record)
         for verb in ("BYE", "QUIT", "EXIT"):
             for tail in (" NOW", " ALL MORE"):
                 require_command_refusal(current, verb.lower() + tail, record, "Usage: " + verb)
                 # Keep using the original connection after each invalid logout.
                 text, _ = current.human("SHOW OWN", "Login call: " + call)
                 require("Own call: VE3ABC" in text, "baseline own-call identity changed after refused logout")
+            current = reconnect_fixture_session(current, record)
         saved_arity[call] = current.get()["configuration"]
         for offset, verb in enumerate(("BYE", "QUIT", "EXIT")):
-            terminal = harness.Session(suite, "K1ABC-" + str(70050 + index * 3 + offset))
+            terminal = fixture_session(suite, "K1ABC-" + str(50 + index * 3 + offset))
             terminal.human("PAUSE 300")
             terminal.human("DIALECT " + dialect)
             require_remote_logout(terminal, verb)
@@ -418,136 +603,137 @@ def command_arity_cases(suite, root, saved_arity):
 def filter_argument_cases(suite, root, cw_label, saved_arguments):
     switches = dict(BEACON="include_beacons", WWV="allow_wwv", WCY="allow_wcy",
                     ANNOUNCE="allow_announce", SELF="allow_self", TOXIC="allow_toxic")
-    for dialect, call in (("go", "VE3ABC-70046"), ("cc", "VE3ABC-70047")):
-        current = harness.Session(suite, call)
+    for dialect, call in (("go", "VE3ABC-46"), ("cc", "VE3ABC-47")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         current.human("DIALECT " + dialect)
         allow, block = ("PASS", "REJECT") if dialect == "go" else ("SET/FILTER", "UNSET/FILTER")
         record = root / "users" / (call + ".yaml")
         for domain, key in switches.items():
             for verb, opposite, enabled in ((allow, block, True), (block, allow, False)):
-                current.human(opposite + " " + domain)
+                fixture_edit(current, opposite + " " + domain, record)
                 for tail in ("OFF", "ALL OFF", "ALL ALL"):
                     require_filter_argument_refusal(current, verb + " " + domain + " " + tail, record)
-                _, document = current.human(verb + " " + domain + " ALL")
-                require(document["configuration"]["filters"][key] is enabled and
-                        stored_document(record.read_bytes())[key] is enabled,
+                document = fixture_edit(current, verb + " " + domain + " ALL", record)
+                require(active_fixture_bank(document)[key] is enabled,
                         "valid switch operation lost its live or saved direction")
-        current.human("REJECT BAND ALL")
-        require_filter_argument_refusal(current, "PASS NOFILTER OFF", record)
-        _, document = current.human("PASS NOFILTER ALL", "All filters disabled")
-        require(document["configuration"]["filters"]["bands"]["allow_all"] is True,
-                "compatible NOFILTER ALL did not clear restrictions")
-        require_callsign_archive(current, cw_label, True)
-        if dialect == "cc":
+                current = reconnect_fixture_session(current, record)
+        if dialect == "go":
+            for old in ("PASS NOFILTER OFF", "PASS NOFILTER ALL", "REJECT BAND ALL",
+                        "PASS MODE CW", "SET/FILTER BAND/ON", "SET/FILTER DXCALL/OFF"):
+                require_fixture_refusal(current, old, record, "Use numbered rules:")
+            current = reconnect_fixture_session(current, record)
+            fixture_edit(current, "RESET FILTER RULE ALL", record)
+            fixture_edit(current, "PASS RULE 0 MODE=CW", record)
+            for malformed in ("PASS RULE 0 MODE=CW EXTRA", "REJECT RULE 1 BAND=20M ALL",
+                              "PASS RULE 01 MODE=CW", "RESET FILTER RULE ALL EXTRA"):
+                require_fixture_refusal(current, malformed, record)
+            require_callsign_archive(current, cw_label, True)
+            document = fixture_edit(current, "REJECT RULE 1 MODE=FT8", record)
+            require(active_fixture_bank(document)["rules"] == [
+                dict(slot=0, action="pass", expr="MODE=CW"), dict(slot=1, action="reject", expr="MODE=FT8")],
+                "GO replacement rule arguments were not retained exactly")
+        else:
             for yes, no, key in (("SET/ANN", "SET/NOANN", "allow_announce"),
                                  ("SET/BEACON", "SET/NOBEACON", "include_beacons"),
                                  ("SET/WWV", "SET/NOWWV", "allow_wwv"),
                                  ("SET/WCY", "SET/NOWCY", "allow_wcy"),
                                  ("SET/SELF", "SET/NOSELF", "allow_self")):
                 for command, opposite, enabled in ((yes, no, True), (no, yes, False)):
-                    current.human(opposite)
+                    fixture_edit(current, opposite, record)
                     for tail in ("ON", "ALL"):
-                        require_filter_argument_refusal(current, command + " " + tail, record)
-                    _, document = current.human(command)
-                    require(document["configuration"]["filters"][key] is enabled,
-                            "valid CC feature shortcut changed the wrong direction")
+                        require_fixture_refusal(current, command + " " + tail, record, "Usage:")
+                    document = fixture_edit(current, command, record)
+                    require(active_fixture_bank(document)[key] is enabled, "CC shortcut changed the wrong control")
+                    current = reconnect_fixture_session(current, record)
             for command, opposite, enabled in (("SET/SKIMMER", "SET/NOSKIMMER", True),
                                                ("SET/NOSKIMMER", "SET/SKIMMER", False)):
-                current.human(opposite)
-                require_filter_argument_refusal(current, command + " ALL", record)
-                _, document = current.human(command)
-                rule = document["configuration"]["filters"]["sources"]
-                require(rule["block"].get("SKIMMER", False) is (not enabled) and
-                        rule["allow"].get("SKIMMER", False) is enabled,
-                        "valid skimmer shortcut changed the wrong source")
-            current.human("PASS NOFILTER")
+                fixture_edit(current, opposite, record)
+                require_fixture_refusal(current, command + " ALL", record, "Usage:")
+                document = fixture_edit(current, command, record)
+                require(("SKIMMER" in active_fixture_bank(document)["sources"]) is enabled,
+                        "CC skimmer shortcut changed the wrong source")
+                current = reconnect_fixture_session(current, record)
+            fixture_edit(current, "SET/NOFILTER", record)
             for mode in ("CW", "FT8"):
                 for command, opposite in (("SET/" + mode, "SET/NO" + mode),
                                           ("SET/NO" + mode, "SET/" + mode)):
-                    current.human(opposite)
-                    require_filter_argument_refusal(current, command + " CW", record)
-                    current.human(command)
-            current.human("SET/CW")
+                    fixture_edit(current, opposite, record)
+                    require_fixture_refusal(current, command + " CW", record, "Usage:")
+                    document = fixture_edit(current, command, record)
+                    require((mode in active_fixture_bank(document)["modes"]) is (command == "SET/" + mode),
+                            "CC mode shortcut changed the wrong selection")
+                current = reconnect_fixture_session(current, record)
+            fixture_edit(current, "SET/CW", record)
             require_callsign_archive(current, cw_label, True)
-            current.human("SET/NOCW")
+            fixture_edit(current, "SET/NOCW", record)
             require_callsign_archive(current, cw_label, False)
-            current.human("SET/CW")
-            current.human("REJECT BAND ALL")
-            require_filter_argument_refusal(current, "SET/NOFILTER ALL", record)
-            current.human("SET/NOFILTER")
-            for domain in ("BAND", "MODE", "DXCALL", "DECALL", "BEACON", "TOXIC"):
+            fixture_edit(current, "SET/CW", record)
+            for old in ("SET/FILTER BAND/ON", "SET/FILTER MODE/OFF", "SET/FILTER DXCALL/ON",
+                        "SET/FILTER DECALL/OFF", "SET/FILTER NOFILTER/ON", "SET/FILTER NOFILTER/OFF",
+                        "PASS NOFILTER ALL", "PASS RULE 0 MODE=CW"):
+                require_fixture_refusal(current, old, record)
+            current = reconnect_fixture_session(current, record)
+            for domain in ("BEACON", "TOXIC"):
                 for flag, opposite in (("OFF", "ON"), ("ON", "OFF")):
-                    current.human("SET/FILTER " + domain + "/" + opposite)
+                    fixture_edit(current, "SET/FILTER " + domain + "/" + opposite, record)
                     for tail in ("ALL", "20 CW"):
                         require_filter_argument_refusal(current, "SET/FILTER " + domain + "/" + flag + " " + tail, record)
-                    _, document = current.human("SET/FILTER " + domain + "/" + flag)
-                    filters = document["configuration"]["filters"]
-                    if domain in ("BAND", "MODE"):
-                        rule = filters["bands" if domain == "BAND" else "modes"]
-                        require(rule == dict(allow_all=flag == "ON", block_all=flag == "OFF",
-                                             allow={}, block={}), "valid inline flag lost its ALL direction")
-                    elif domain in ("DXCALL", "DECALL"):
-                        stem = "dx" if domain == "DXCALL" else "de"
-                        require(filters[stem + "_callsigns"] == [] and
-                                filters["block_" + stem + "_callsigns"] == ([] if flag == "ON" else ["*"]),
-                                "valid inline flag lost its callsign reset/block operation")
-                    else:
-                        require(filters[switches[domain]] is (flag == "ON"),
-                                "valid inline feature flag lost its direction")
-                    if domain in ("BAND", "MODE", "DXCALL", "DECALL"):
-                        require_callsign_archive(current, cw_label, flag == "ON")
-            require_filter_argument_refusal(current, "SET/FILTER NOFILTER/ON OFF", record)
-            current.human("REJECT BAND ALL")
-            require_filter_argument_refusal(current, "SET/FILTER NOFILTER/OFF", record,
-                                            "Invalid filter command. Type HELP for usage.")
-            current.human("SET/FILTER NOFILTER/ON")
-            # GO fallback must reach the same strict switch owner.
-            require_filter_argument_refusal(current, "PASS BEACON OFF", record)
-            require_filter_argument_refusal(current, "REJECT PC93 ON", record)
-        current.human("PASS NOFILTER")
-        current.human("REJECT BEACON")
-        _, document = current.human("REJECT MODE FT8")
-        require(document["configuration"]["filters"]["include_beacons"] is False and
-                document["configuration"]["filters"]["modes"]["block"] == {"FT8": True},
-                "final supported switch/MODE selection is incorrect")
+                    document = fixture_edit(current, "SET/FILTER " + domain + "/" + flag, record)
+                    require(active_fixture_bank(document)[switches[domain]] is (flag == "ON"),
+                            "CC inline feature flag lost its direction")
+                    current = reconnect_fixture_session(current, record)
+            for malformed in ("SET/NOFILTER ALL", "SET/FILTER DXBM/OFF ALL",
+                              "SET/FILTER DXBM/PASS 20,", "SET/FILTER DOC/OFF K"):
+                require_fixture_refusal(current, malformed, record)
+            fixture_edit(current, "SET/FILTER DXBM/OFF", record)
+            document = fixture_edit(current, "SET/FILTER DXBM/PASS 20", record)
+            require(active_fixture_bank(document)["dxbm"]["active"] is True and
+                    active_fixture_bank(document)["dxbm"]["base_allow"] is False,
+                    "native DXBM PASS did not establish its restrictive selection")
+            require_callsign_archive(current, cw_label, True)
+            fixture_edit(current, "SET/FILTER DXBM/REJECT 20", record)
+            require_callsign_archive(current, cw_label, False)
+            fixture_edit(current, "SET/NOFILTER", record)
+            fixture_edit(current, "SET/NOFT8", record)
+        document = fixture_edit(current, "REJECT BEACON", record)
+        require(active_fixture_bank(document)["include_beacons"] is False,
+                "final supported BEACON choice was lost")
         require_callsign_archive(current, cw_label, True)
         saved_arguments[call] = document["configuration"]
 
 
 def grid_exact_cases(suite, root, saved_grids):
-    for dialect, call in (("go", "VE3ABC-70042"), ("cc", "VE3ABC-70043")):
-        current = harness.Session(suite, call)
+    for dialect, call in (("go", "VE3ABC-42"), ("cc", "VE3ABC-43")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
-        current.human("DIALECT " + dialect)
+        current.human("DIALECT GO")
         record = root / "users" / (call + ".yaml")
-        current.human("SET GRID IO91", "Grid set to IO91")
+        fixture_edit(current, "RESET FILTER RULE ALL", record)
+        fixture_edit(current, "PASS RULE 0 NEARBY", record)
+        current.human("DIALECT " + dialect)
+        fixture_edit(current, "SET GRID IO91", record)
         for command in ("SET GRID FN31PRJUNK", "SET GRID FN31P", "SET GRID FN31YZ",
                         "SET GRID SN31", "SET GRID FN31 EXTRA", "SET GRID FN31 PR"):
             before, saved = current.get(), record.read_bytes()
             text, after = current.human(command)
             require("Invalid grid." in text or "Usage: SET GRID" in text,
                     "malformed GRID lacks a specific refusal")
-            require(after["configuration"] == before["configuration"] and
-                    after["revision"] == before["revision"] and
-                    after["status"]["effective"] == before["status"]["effective"] and
-                    after["status"]["preset"] == before["status"]["preset"] and
-                    record.read_bytes() == saved,
-                    "malformed GRID changed configuration, runtime, revision or saved bytes")
+            require_fixture_unchanged(before, after, record, saved)
         for token in ("fn31", "Fn31pR"):
             grid = token.upper()
-            _, document = current.human("SET GRID " + token, "Grid set to " + grid)
+            document = fixture_edit(current, "SET GRID " + token, record)
             require_grid_configuration(document, grid, record)
             result = current.upload("VALIDATE", "CONFIG", document["configuration"])
             require("error" not in result and result["result"]["operation"] == "VALIDATE" and
                     result["result"]["valid"] is True and
                     result["result"]["applied"] is False and result["result"]["persisted"] is False,
                     "accepted human GRID failed machine validation")
-        current.human("PASS NEARBY ON")
-        _, document = current.human("SET GRID IO91", "Grid set to IO91")
+        require_fixture_refusal(current, "PASS NEARBY ON", record)
+        document = fixture_edit(current, "SET GRID IO91", record)
         require_grid_configuration(document, "IO91", record)
-        require(document["status"]["effective"]["nearby_active"] is True,
-                "valid GRID update lost active NEARBY cells")
+        require(document["configuration"]["filters"]["go"]["rules"] == [dict(slot=0, action="pass", expr="NEARBY")],
+                "GRID publication lost the independent GO proximity rule")
         saved_grids[call] = document["configuration"]
 
 
@@ -562,24 +748,23 @@ def require_nearby_archive(rows, label, frequency, visible):
 
 
 def nearby_endpoint_cases(suite, child):
-    # The pre-filter barrier proves every positive and negative row exists in
-    # the real archive. Absence after enabling NEARBY then proves filtering.
+    # Prove each seeded row exists before selecting the GO predicate. CC has
+    # no NEARBY override: its retired commands must refuse without hiding rows.
     seeds = (("DX20", 14021, True), ("DE20", 14022, True),
              ("DXBAD20", 14023, True), ("DEBAD20", 14024, True),
              ("NONE20", 14025, False), ("FAR20", 14026, False),
              ("DX80", 3521, True), ("DE80", 3522, True),
              ("DX60", 5355, True), ("DE160", 1821, True))
-    for dialect, call in (("go", "VE3ABC-70040"), ("cc", "VE3ABC-70041")):
-        current = harness.Session(suite, call)
+    for dialect, call in (("go", "VE3ABC-40"), ("cc", "VE3ABC-41")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         current.human("DIALECT " + dialect)
-        nearby = "PASS NEARBY" if dialect == "go" else "SET/FILTER NEARBY"
-        current.human(nearby + " OFF")
-        current.human("PASS MODE ALL")
-        current.human("SET GRID FN31")
+        record = child.root / "users" / (call + ".yaml")
+        fixture_edit(current, "RESET FILTER RULE ALL" if dialect == "go" else "SET/NOFILTER", record)
+        fixture_edit(current, "SET GRID FN31", record)
         for name, frequency, _ in seeds:
             label = "N08" + child.nonce[:8].upper() + name
-            deadline = time.monotonic() + 5
+            deadline = min(suite.deadline, time.monotonic() + 5)
             while True:
                 rows = archive_rows(current, label)
                 if rows:
@@ -587,52 +772,72 @@ def nearby_endpoint_cases(suite, child):
                     break
                 require(time.monotonic() < deadline, "NEARBY pre-filter archive barrier absent")
                 time.sleep(.025)
-        _, document = current.human(nearby + " ON")
-        require(document["status"]["effective"]["nearby_active"] is True and
-                document["status"]["effective"]["grid"] == "FN31",
-                "NEARBY endpoint controls lack an active user location")
+        require_fixture_refusal(current, "PASS NEARBY ON", record)
+        if dialect == "go":
+            before = current.get()
+            document = fixture_edit(current, "PASS RULE 0 NEARBY", record)
+            require(active_fixture_bank(document)["rules"] == [dict(slot=0, action="pass", expr="NEARBY")] and
+                    document["status"]["effective"]["grid"] == "FN31" and
+                    document["status"]["effective"]["dedupe_policy"] == before["status"]["effective"]["dedupe_policy"],
+                    "GO proximity rule lacks its saved definition/location or changed dedupe")
+        else:
+            for command in ("SET/FILTER NEARBY ON", "PASS RULE 0 NEARBY"):
+                require_fixture_refusal(current, command, record)
         for name, frequency, visible in seeds:
             label = "N08" + child.nonce[:8].upper() + name
-            require_nearby_archive(archive_rows(current, label), label, frequency, visible)
+            require_nearby_archive(archive_rows(current, label), label, frequency, visible if dialect == "go" else True)
 
 
 def mode_delta_cases(suite, root, cw_label, saved_modes):
-    poster = harness.Session(suite, "K1ABC-70034")
+    poster = fixture_session(suite, "K1ABC-34")
     poster.human("PAUSE 300")
-    poster.human("PASS MODE ALL")
+    poster.human("DIALECT GO")
+    poster.human("RESET FILTER RULE ALL")
     ft8_label = literal_archive_label(suite, "F8")
     poster.human("DX 7074 W6ABC FT8 " + ft8_label, "Spot queued.")
-    deadline = time.monotonic() + 5
+    deadline = min(suite.deadline, time.monotonic() + 5)
     while not archive_rows(poster, ft8_label):
         require(time.monotonic() < deadline, "MODE positive archive barrier absent")
         time.sleep(.025)
     require_mode_archive(poster, ft8_label, "FT8", True)
-    for dialect, call in (("go", "VE3ABC-70033"), ("cc", "VE3ABC-70034")):
-        current = harness.Session(suite, call)
+    for dialect, call in (("go", "VE3ABC-33"), ("cc", "VE3ABC-34")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         current.human("DIALECT " + dialect)
-        allow = "PASS MODE" if dialect == "go" else "SET/FILTER MODE"
-        block = "REJECT MODE" if dialect == "go" else "UNSET/FILTER MODE"
-        for command, ft8_visible in ((allow + " ALL", True), (block + " FT8", False),
-                                     (allow + " FT8", True)):
-            current.human(command, "Effective MODE:")
+        record = root / "users" / (call + ".yaml")
+        if dialect == "go":
+            fixture_edit(current, "RESET FILTER RULE ALL", record)
+            operations = (("RESET FILTER RULE 1", True), ("REJECT RULE 1 MODE=FT8", False),
+                          ("RESET FILTER RULE 1", True))
+        else:
+            initial = current.get()
+            result = current.upload("PATCH", "FILTER", dict(dialect="cc", filters=dict(modes=["CW", "FT8"])))
+            require("error" not in result and result["result"]["persisted"] is True,
+                    "native MODE list setup failed")
+            require(current.get()["configuration"]["filters"]["go"] == initial["configuration"]["filters"]["go"],
+                    "native MODE setup changed GO rules")
+            operations = (("SET/FT8", True), ("SET/NOFT8", False), ("SET/FT8", True))
+        for command, ft8_visible in operations:
+            fixture_edit(current, command, record)
             require_mode_archive(current, cw_label, "CW", True)
             require_mode_archive(current, ft8_label, "FT8", ft8_visible)
-        text, document = current.human("SHOW FILTER MODE", "PASS: ALL")
-        require("Unknown modes are included" in text, "MODE warning disagrees with open state")
-        expected = dict(allow_all=True, block_all=False, allow={}, block={})
-        record = root / "users" / (call + ".yaml")
+        document = current.get()
+        expected = copy.deepcopy(active_fixture_bank(document))
+        require(expected["rules"] == [] if dialect == "go" else expected["modes"] == ["CW", "FT8"],
+                "MODE re-enable did not restore the explicit native selection")
         require_mode_rules(document, expected, record)
         saved_modes[call] = (document["configuration"], expected, cw_label, ft8_label, True)
-
-    current = harness.Session(suite, "VE3ABC-70035")
+    current = fixture_session(suite, "VE3ABC-35")
     current.human("PAUSE 300")
-    for command in ("REJECT MODE ALL", "PASS MODE CW", "REJECT MODE CW"):
-        current.human(command, "Effective MODE:")
-    text, document = current.human("SHOW FILTER MODE", "PASS: NONE")
-    require("Unknown modes are hidden" in text, "MODE warning disagrees with restrictive empty state")
-    expected = dict(allow_all=False, block_all=False, allow={}, block={"CW": True})
-    record = root / "users" / "VE3ABC-70035.yaml"
+    current.human("DIALECT GO")
+    record = root / "users" / (current.call + ".yaml")
+    fixture_edit(current, "RESET FILTER RULE ALL", record)
+    fixture_edit(current, "PASS RULE 0 MODE=CW", record)
+    document = fixture_edit(current, "REJECT RULE 1 MODE=CW", record)
+    expected = copy.deepcopy(active_fixture_bank(document))
+    require(expected["rules"] == [dict(slot=0, action="pass", expr="MODE=CW"),
+                                  dict(slot=1, action="reject", expr="MODE=CW")],
+            "restrictive MODE rule/veto definitions differ")
     require_mode_rules(document, expected, record)
     require_mode_archive(current, cw_label, "CW", False)
     require_mode_archive(current, ft8_label, "FT8", False)
@@ -673,7 +878,7 @@ def require_reputation_preferences(root, sessions, expected):
     for current in sessions:
         configuration = current.get()["configuration"]
         require(configuration == expected[current.call], "full-SSID preferences were shared or lost")
-        saved = stored_document((root / "users" / (current.call + ".yaml")).read_bytes())
+        saved = stored_configuration((root / "users" / (current.call + ".yaml")).read_bytes())["settings"]
         settings = configuration["settings"]
         require(all(saved[key] == settings[key] for key in ("noise_class", "grid", "dialect")),
                 "SSID setting was not saved while connected")
@@ -691,7 +896,7 @@ def reputation_posts(suite, sessions, observer, generation, labels):
         if frequency == 14074:
             if generation == 0:
                 sessions[1].close()
-                sessions[1] = harness.Session(suite, sessions[1].call)
+                sessions[1] = fixture_session(suite, sessions[1].call)
                 sessions[1].human("PAUSE 300")
             refused = literal_archive_label(suite, f"G{generation}BAND")
             text, _ = sessions[1].human(f"DX 14074 W6ABC CW {refused}")
@@ -703,7 +908,7 @@ def reputation_posts(suite, sessions, observer, generation, labels):
     if generation == 0:
         for current in sessions:
             current.close()
-        sessions[:] = [harness.Session(suite, current.call) for current in sessions]
+        sessions[:] = [fixture_session(suite, current.call) for current in sessions]
         for current in sessions:
             current.human("PAUSE 300")
     for index, current in enumerate(sessions):
@@ -731,22 +936,20 @@ def reputation_posts(suite, sessions, observer, generation, labels):
 
 
 def require_unrestricted_geography(document, saved):
-    filters = document["configuration"]["filters"]
-    for category in ("dx_continents", "de_continents", "dx_zones", "de_zones",
-                     "dx_grid2", "de_grid2", "dx_dxcc", "de_dxcc", "dx_states", "de_states"):
-        rule = filters[category]
-        require(rule == dict(allow_all=True, block_all=False, allow={}, block={}),
-                f"live geography restriction remained: {category}")
-    for stem, allow_key in (("dxcontinents", "dxcontinents"), ("decontinents", "decontinents"),
-                            ("dxzones", "dxzones"), ("dezones", "dezones"),
-                            ("dxgrid2", "dxgrid2prefixes"), ("degrid2", "degrid2prefixes"),
-                            ("dxdxcc", "dxdxcc"), ("dedxcc", "dedxcc"),
-                            ("dxstates", "dxstates"), ("destates", "destates")):
-        require(saved["all" + stem] is True and saved["blockall" + stem] is False and
-                saved[allow_key] == {} and saved["block" + stem] == {},
-                f"saved geography restriction remained: {stem}")
-    require(filters["nearby_enabled"] is False and saved.get("nearby_enabled", False) is False,
-            "NEARBY remained enabled")
+    require(saved.get("configuration_version") == 7, "NOFILTER owner is not native seven")
+    live = document["configuration"]
+    stored = copy.deepcopy(saved["configuration"])
+    stored["settings"].setdefault("cw_speed", False)
+    require(stored == live, "NOFILTER live and stored banks disagree")
+    dialect = document["status"]["active_dialect"]
+    bank = live["filters"][dialect]
+    if dialect == "go":
+        require(bank["rules"] == [], "GO reset retained personal or NEARBY rules")
+    else:
+        require(set(bank["geography"]) == {"DOC", "DOS", "DXCTY", "DXSTATE"} and
+                all(row == {"global": {"action": "off"}, "bands": {}} for row in bank["geography"].values()) and
+                bank["dxbm"] == dict(active=False, base_allow=True, slots={}),
+                "CC NOFILTER retained geography or native-band restrictions")
 
 
 def require_save_warning(text):
@@ -756,30 +959,124 @@ def require_save_warning(text):
             f"missing or misleading persistence warning: {text[:800]}")
 
 
+def require_setting_save_warning(text):
+    require(text.count("warning: failed to persist:") == 1 and
+            re.fullmatch(r"[^\r\n]+ \(warning: failed to persist: [^\r\n]+\)", text.strip()),
+            f"missing setting persistence warning: {text[:800]}")
+
+
 RECORD_BYTES = 1 << 20
 
 
-def refused_resource_record(kind):
-    """Separate raw, normalized-byte and logical-work refusals with valid YAML."""
+def refused_resource_record(kind, base, canonical=None):
+    """Native shapes isolate physical bytes, Go encoding bytes and alias work."""
     if kind == "RAW":
-        # A fitting mapping with comment padding would otherwise load normally.
-        return b"{}\n#" + b"X" * (RECORD_BYTES - 3)
+        require(len(base) < RECORD_BYTES, "resource baseline must fit")
+        return base + b"\n#" + b"X" * (RECORD_BYTES - len(base) - 1)
     if kind == "CANONICAL":
-        # Five retained scalar occurrences alone exceed the normalized-record
-        # byte quota. P+E stays below 2 Mi units and raw bytes remain small.
-        return ("legacy: &text " + "K" * 210000 +
-                "\nrecent_ips: [" + ",".join(["*text"] * 5) + "]\n").encode("ascii")
+        require(canonical is not None and len(canonical) < RECORD_BYTES,
+                "canonical refusal needs measured compact native bytes")
+        return canonical
     require(kind == "WORK", "unknown resource fixture")
-    # Frozen 04a control: 144 old decode visits, but 70*32768 scalar bytes.
-    # Trimming retains only five entries, separating work from final bytes.
-    return ("legacy: &text " + "K" * 32768 +
-            "\nrecent_ips: [" + ",".join(["*text"] * 70) + "]\n").encode("ascii")
+    owner = stored_document(base)
+    owner.pop("recent_ips", None)
+    # Seventy physical list entries are below 128. The anchored scalar belongs
+    # to a known field, so unknown-field rejection cannot mask logical work.
+    return native_storage_bytes(owner) + (
+        "recent_ips:\n  - &text " + "K" * 32768 + "\n" + "  - *text\n" * 69).encode("ascii")
+
+
+def resource_vectors(suite, root):
+    if hasattr(suite, "resource_vectors"):
+        return suite.resource_vectors
+    base = suite.resource_seed
+    admitted = resource_fixture(suite.binary, root, suite.source, "profile_admission", input_bytes=base)
+    require(not admitted["measurements"]["input.yaml"]["error"], "resource baseline refused")
+    sizing = resource_fixture(suite.binary, root, suite.source, "profile_at_size",
+                              input_bytes=base, target_bytes=RECORD_BYTES + 1)
+    require(len(sizing["artifacts"]["canonical.yaml"]) == RECORD_BYTES + 1,
+            "canonical overflow target was not exact")
+    vectors = {kind: refused_resource_record(kind, base, sizing["artifacts"]["compact.yaml"])
+               for kind in ("RAW", "CANONICAL", "WORK")}
+    for kind, raw in vectors.items():
+        receipt = resource_fixture(suite.binary, root, suite.source, "profile_admission", input_bytes=raw)
+        measure = receipt["measurements"]["input.yaml"]
+        expected = ("stored configuration decoding work exceeds 2097152 units" if kind == "WORK"
+                    else "v7 document exceeds 1048576 bytes")
+        require(measure["admission"] and expected in measure["error"],
+                f"{kind} fixture refused at wrong boundary: {measure}")
+    frames = resource_fixture(suite.binary, root, suite.source, "config_frames", input_bytes=base)
+    fit, over = frames["measurements"]["fit.yaml"], frames["measurements"]["over.yaml"]
+    require(not fit["error"] and 0 < fit["frame_bytes"] <= 262144 and
+            fit["canonical_bytes"] < 196608 and over["canonical_bytes"] == fit["canonical_bytes"] + 1 and
+            over["admission"] and over["reference_bytes"] > 262144 and over["error"] ==
+            "response exceeds 65,536 bytes; request a smaller filter category or reduce the configuration",
+            "native frame owner did not separate fitting compact output from refusal")
+    suite.resource_frame_measurements = frames["measurements"]
+    dedupe = resource_fixture(suite.binary, root, suite.source, "dedupe_frames")
+    require_dedupe_owner_receipt(dedupe)
+    suite.resource_frame_measurements["human_dedupe"] = dedupe["measurements"]
+    suite.resource_vectors = vectors
+    return vectors
+
+
+def require_dedupe_owner_receipt(receipt):
+    for name, count in (("fit.txt", 49200), ("over.txt", 49366)):
+        wire = receipt["artifacts"][name]
+        measure = receipt["measurements"][name]
+        require(0 < len(wire) <= 65536 and wire.endswith(b"\r\n") and
+                all(row.endswith(b"\r") and b"\r" not in row[:-1] for row in wire.split(b"\n")[:-1]) and
+                all(len(row) <= 78 and all(32 <= byte <= 126 for byte in row)
+                    for row in wire.split(b"\r\n")[:-1]) and
+                measure["raw_bytes"] == count and measure["frame_bytes"] == len(wire),
+                "human DEDUPE owner did not prove exact bounded final wire")
+        text = wire.decode("ascii", "strict").replace("\r\n", "\n").rstrip("\n")
+        if name == "fit.txt":
+            require(not measure["admission"] and measure["canonical_bytes"] < 65536,
+                    "fitting human DEDUPE owner was refused")
+            require_large_dedupe_output(text, "X" * count)
+        else:
+            require(measure["admission"] and measure["canonical_bytes"] == 65536 and
+                    text == "Readback failed: response exceeds 65,536 bytes.",
+                    "oversized human DEDUPE owner partially succeeded or failed at another boundary")
 
 
 def stored_document(raw):
     document = harness.yaml.load(raw.decode("ascii"), Loader=harness.StrictLoader)
     require(isinstance(document, dict), "stored fixture is not a mapping")
     return document
+
+
+def stored_configuration(raw):
+    document = stored_document(raw)
+    require(document.get("configuration_version") == 7 and
+            set(document["configuration"]["filters"]) == {"go", "cc"},
+            "stored owner is not a complete native-seven profile")
+    configuration = document["configuration"]
+    # False is omitted by the native disk DTO and explicit on the wire.
+    configuration["settings"].setdefault("cw_speed", False)
+    return configuration
+
+
+def native_storage_bytes(document):
+    owner = copy.deepcopy(document)
+    timestamp = owner.get("last_login_utc")
+    if hasattr(timestamp, "isoformat"):
+        owner["last_login_utc"] = timestamp.isoformat().replace("+00:00", "Z")
+    return yaml.safe_dump(owner, sort_keys=False).encode("ascii")
+
+
+def native_record(configuration, *, presets=None):
+    return dict(configuration_version=7, configuration=copy.deepcopy(configuration),
+                presets=copy.deepcopy(presets or {}),
+                notice=dict(profile_reset_generation=0, profile_acknowledged_generation=0,
+                            library_acknowledged_generation=0))
+
+
+def tagged_preset(configuration, dialect=None):
+    dialect = dialect or configuration["settings"]["dialect"]
+    return dict(configuration_version=7, dialect=dialect, settings=copy.deepcopy(configuration["settings"]),
+                **{dialect: copy.deepcopy(configuration["filters"][dialect])})
 
 
 def record_with_metadata(raw, timestamp, ip):
@@ -799,31 +1096,17 @@ def require_metadata(raw, timestamp, ip):
             "save used stale session metadata instead of the authoritative repair")
 
 
-def padded_canonical_record(raw, remaining=8):
-    """Pad only the Go-written plain-ASCII metadata block, preserving encoding."""
-    require(stored_document(raw)["recent_ips"] == ["127.0.0.1"],
-            "canonical padding requires the held loopback login")
-    match = re.search(rb"(?m)^recent_ips:\n(?: +[^\n]*\n)+", raw)
-    require(match is not None, "Go-written recent IP block absent")
-    block = b"recent_ips:\n    - 127.0.0.1\n    - METADATA"
-    fixed = raw[:match.start()] + block + b"\n" + raw[match.end():]
-    padding = RECORD_BYTES - remaining - len(fixed)
-    require(padding > 0, "canonical record has no padding room")
-    result = raw[:match.start()] + block + b"A" * padding + b"\n" + raw[match.end():]
-    require(len(result) == RECORD_BYTES - remaining and
-            stored_document(result)["recent_ips"] == ["127.0.0.1", "METADATA" + "A" * padding],
-            "prospective fixture size or retained metadata changed")
-    return result
-
 
 def preset_library(root):
     return root / "users" / "presets" / ("K1ABC".encode().hex() + ".yaml")
 
 
 def require_transaction_unchanged(before, after, record, saved, library, library_saved):
+    require_cc_typed_value(after["configuration"], before["configuration"])
+    require_cc_typed_value(after["status"]["presets"], before["status"]["presets"])
     require(after["configuration"] == before["configuration"] and
             after["revision"] == before["revision"] and
-            after["status"]["preset"] == before["status"]["preset"] and
+            after["status"]["presets"] == before["status"]["presets"] and
             after["status"]["effective"] == before["status"]["effective"] and
             after["status"]["session"]["temporary_defaults"] ==
             before["status"]["session"]["temporary_defaults"] and
@@ -834,23 +1117,23 @@ def require_transaction_unchanged(before, after, record, saved, library, library
 def resource_login_cases(suite, root, refused):
     library = preset_library(root)
     for index, kind in enumerate(("RAW", "CANONICAL", "WORK"), start=21):
-        call = f"K1ABC-700{index:02d}"
-        record, raw = root / "users" / (call + ".yaml"), refused_resource_record(kind)
+        call = f"K1ABC-{index:02d}"
+        record, raw = root / "users" / (call + ".yaml"), resource_vectors(suite, root)[kind]
         record.write_bytes(raw)
         refused[call] = raw
-        current = harness.Session(suite, call)
+        current = fixture_session(suite, call)
         startup, document = current.human("PAUSE 300")
-        require("temporary defaults" in startup and
+        require("temporary defaults" in login_text(current, startup) and
                 document["status"]["session"]["temporary_defaults"] is True and
                 record.read_bytes() == raw, f"{kind} resource-refused login was not protected")
         for dialect in ("cc", "go"):
             text, document = current.human("DIALECT " + dialect)
-            require_save_warning(text)
-            line = "SET/FILTER BAND 20" if dialect == "cc" else "PASS BAND 40"
+            line = "SET/FILTER BEACON" if dialect == "cc" else "PASS RULE 0 BAND=40M"
             text, document = current.human(line)
             require_save_warning(text)
-            require(document["configuration"]["filters"]["bands"]["allow"].get(
-                "20m" if dialect == "cc" else "40m") is True and record.read_bytes() == raw,
+            bank = document["configuration"]["filters"][dialect]
+            require((bank["include_beacons"] is True if dialect == "cc" else
+                     bank["rules"] == [dict(slot=0, action="pass", expr="BAND=40M")]) and record.read_bytes() == raw,
                 f"{kind} protected edit was lost or overwrote storage")
         library_saved = library.read_bytes()
         before = current.get()
@@ -863,47 +1146,58 @@ def resource_login_cases(suite, root, refused):
 def resource_warm_cases(suite, root, refused, repaired):
     library = preset_library(root)
     for index, kind in enumerate(("RAW", "CANONICAL", "WORK"), start=24):
-        call = f"K1ABC-700{index:02d}"
-        current = harness.Session(suite, call)
+        call = f"K1ABC-{index:02d}"
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         name = "WARM" + kind
         current.human("SAVE PRESET " + name, "Saved preset " + name)
         record = root / "users" / (call + ".yaml")
-        repair_source, raw = record.read_bytes(), refused_resource_record(kind)
+        repair_source, raw = record.read_bytes(), resource_vectors(suite, root)[kind]
         record.write_bytes(raw)
         text, temporary = current.human("DIALECT cc")
+        current.human("DIALECT go")
+        text, temporary = current.human("PASS RULE 0 COMMENT=TEMP" + kind)
         require_save_warning(text)
-        text, temporary = current.human("PASS COMMENT TEMP " + kind)
-        require_save_warning(text)
-        require(temporary["configuration"]["filters"]["comments"] == ["TEMP " + kind] and
+        require(temporary["configuration"]["filters"]["go"]["rules"] ==
+                [dict(slot=0, action="pass", expr='COMMENT="TEMP' + kind + '"')] and
                 temporary["status"]["session"]["temporary_defaults"] is False and
                 record.read_bytes() == raw, "warm refusal became sticky or lost its temporary edit")
         library_saved = library.read_bytes()
         for target in (name, "DENY" + kind):
             text, after = current.human("SAVE PRESET " + target, "SAVE PRESET failed:")
-            require("load current user record:" in text and
-                    "but could not persist its association" not in text,
+            reason = {"RAW": "user record exceeds 1048576 bytes",
+                      "CANONICAL": "v7 document exceeds 1048576 bytes",
+                      "WORK": "stored configuration decoding work exceeds 2097152 units"}[kind]
+            require("current user record could not be loaded: " + reason in text,
+                    "warm SAVE omitted the intended storage resource reason")
+            require("but could not persist its association" not in text and
+                    "protected" not in text,
                     "warm refusal was misreported as protected or as a successful library write")
             require_transaction_unchanged(temporary, after, record, raw, library, library_saved)
         timestamp, ip = f"2026-10-08T12:34:{index:02d}Z", f"198.51.100.{index}"
         record.write_bytes(record_with_metadata(repair_source, timestamp, ip))
-        text, after = current.human("PASS COMMENT RETRY " + kind)
+        text, after = current.human("PASS RULE 1 COMMENT=RETRY" + kind)
         require("warning: failed to persist" not in text and
-                after["configuration"]["filters"]["comments"] == ["TEMP " + kind, "RETRY " + kind] and
+                after["configuration"]["filters"]["go"]["rules"] == [
+                    dict(slot=0, action="pass", expr='COMMENT="TEMP' + kind + '"'),
+                    dict(slot=1, action="pass", expr='COMMENT="RETRY' + kind + '"')] and
                 after["status"]["session"]["temporary_defaults"] is False,
                 "warm preparation did not retry after authoritative repair")
+        require(stored_configuration(record.read_bytes()) == after["configuration"],
+                "warm repair did not immediately persist complete native preferences")
         require_metadata(record.read_bytes(), timestamp, ip)
         repaired[call] = (after["configuration"], timestamp, ip)
 
     # A still-refused ordinary logout must preserve bytes; a repaired logout
     # must independently retry without a second mutating command masking it.
-    for call, repair in (("K1ABC-70028", False), ("K1ABC-70029", True)):
-        current = harness.Session(suite, call)
+    for call, repair in (("K1ABC-28", False), ("K1ABC-29", True)):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         record = root / "users" / (call + ".yaml")
-        repair_source, raw = record.read_bytes(), refused_resource_record("RAW")
+        repair_source, raw = record.read_bytes(), resource_vectors(suite, root)["RAW"]
         record.write_bytes(raw)
-        text, temporary = current.human("PASS COMMENT LOGOUT RETRY")
+        current.human("DIALECT go")
+        text, temporary = current.human("PASS RULE 0 COMMENT=LOGOUTRETRY")
         require_save_warning(text)
         require(temporary["status"]["session"]["temporary_defaults"] is False and
                 record.read_bytes() == raw, "warm logout control did not remain temporary")
@@ -916,7 +1210,7 @@ def resource_warm_cases(suite, root, refused, repaired):
             refused[call] = raw
             continue
         deadline = time.monotonic() + 5
-        while stored_document(record.read_bytes()).get("comments") != ["LOGOUT RETRY"]:
+        while stored_configuration(record.read_bytes())["filters"]["go"]["rules"] != [dict(slot=0, action="pass", expr='COMMENT="LOGOUTRETRY"')]:
             require(time.monotonic() < deadline, "repaired logout did not save the temporary live edit")
             time.sleep(.025)
         require_metadata(record.read_bytes(), timestamp, ip)
@@ -924,50 +1218,52 @@ def resource_warm_cases(suite, root, refused, repaired):
 
 
 def resource_prospective_case(suite, root, prospective):
-    call = "K1ABC-70027"
-    current = harness.Session(suite, call)
+    call = "K1ABC-27"
+    current = fixture_session(suite, call)
     current.human("PAUSE 300")
+    current.human("DIALECT go")
     current.human("SET NOISE QUIET")
+    current.human("RESET FILTER RULE ALL")
     current.human("SAVE PRESET QUOTAOLD", "Saved preset QUOTAOLD")
-    _, before = current.human("PASS COMMENT CURRENT QUOTA")
-    require(before["status"]["preset"] == dict(associated=True, name="QUOTAOLD", modified=True),
-            "prospective control lacks an older, smaller applied baseline")
+    _, before = current.human("PASS RULE 0 COMMENT=CURRENTQUOTA")
+    require(before["status"]["presets"]["go"] == dict(associated=True, name="QUOTAOLD", modified=True),
+            "prospective control lacks smaller applied baseline")
     library, record = preset_library(root), root / "users" / (call + ".yaml")
     collection = stored_document(library.read_bytes())
     target = copy.deepcopy(collection["presets"]["QUOTAOLD"])
-    target["comments"] = ["LOAD TARGET GROWS BOTH CONFIGURATION AND BASELINE"]
+    target["go"]["rules"] = [dict(slot=0, action="pass", expr='COMMENT="LOADTARGETGROWSBOTHCONFIGURATIONANDBASELINE"')]
     collection["presets"]["QUOTALOAD"] = target
-    library.write_text(harness.yaml.safe_dump(collection, sort_keys=False), encoding="ascii")
+    library.write_text(yaml.safe_dump(collection, sort_keys=False), encoding="ascii")
     library_saved = library.read_bytes()
-    saved = padded_canonical_record(record.read_bytes())
+    sizing = resource_fixture(suite.binary, root, suite.source, "profile_at_size",
+                              input_bytes=record.read_bytes(), target_bytes=RECORD_BYTES - 8)
+    saved = sizing["artifacts"]["canonical.yaml"]
+    require(len(saved) == RECORD_BYTES - 8 and not sizing["measurements"]["canonical.yaml"]["error"],
+            "prospective destination is not an admitted fitting control")
     record.write_bytes(saved)
-
-    text, after = current.human("PASS COMMENT HUMAN PROSPECTIVE QUOTA", "Configuration command failed:")
-    require("user record exceeds 1048576 bytes" in text and
-            "load current user record:" not in text and "warning: failed to persist" not in text,
-            "prospective human quota was misclassified as a temporary live change")
+    text, after = current.human("PASS RULE 1 COMMENT=HUMANPROSPECTIVEQUOTA", "Configuration command failed:")
+    require("exceeds 1048576 bytes" in text and "load current user record:" not in text and
+            "warning: failed to persist" not in text, "human quota failed at wrong layer")
     require_transaction_unchanged(before, after, record, saved, library, library_saved)
     for name in ("QUOTAOLD", "QUOTANEW"):
         text, after = current.human("SAVE PRESET " + name, "SAVE PRESET failed:")
-        require("user record exceeds 1048576 bytes" in text and
-                "load current user record:" not in text and
-                "but could not persist its association" not in text,
-                "SAVE did not refuse prospective bytes before library publication")
+        require("exceeds 1048576 bytes" in text and "load current user record:" not in text and
+                "but could not persist its association" not in text, "SAVE published before prospective admission")
         require_transaction_unchanged(before, after, record, saved, library, library_saved)
     candidate = copy.deepcopy(before["configuration"])
-    candidate["filters"]["comments"].append("EXTRA PROSPECTIVE QUOTA")
-    validation = current.upload("VALIDATE", "CONFIG", candidate)
-    suite.acknowledge(validation, applied=False)
-    require_transaction_unchanged(before, current.get(), record, saved, library, library_saved)
-    response = current.upload("PUT", "CONFIG", candidate, revision=before["revision"])
-    require(response.get("error", {}).get("code") == "persistence_failed",
-            "small valid machine candidate did not reach destination admission")
-    require_transaction_unchanged(before, current.get(), record, saved, library, library_saved)
+    candidate["filters"]["go"]["rules"].append(dict(slot=1, action="pass", expr="COMMENT=EXTRAPROSPECTIVEQUOTA"))
+    for verb, resource, body in (("VALIDATE", "CONFIG", candidate), ("PUT", "CONFIG", candidate),
+                                  ("PATCH", "CONFIG", {"filters": {"go": candidate["filters"]["go"]}})):
+        response = current.upload(verb, resource, body, revision=before["revision"])
+        require(response.get("error", {}).get("code") == "invalid_configuration" and
+                "exceeds 1048576 bytes" in response["error"]["message"],
+                f"{verb} did not refuse prospective destination before publication: {response}")
+        require_transaction_unchanged(before, current.get(), record, saved, library, library_saved)
     text, after = current.human("LOAD PRESET QUOTALOAD", "LOAD PRESET failed:")
-    require("user record exceeds 1048576 bytes" in text and "load current user record:" not in text,
-            "LOAD fixture failed before prospective destination admission")
+    require("exceeds 1048576 bytes" in text and "load current user record:" not in text,
+            "LOAD failed before prospective destination admission")
     require_transaction_unchanged(before, after, record, saved, library, library_saved)
-    prospective[call] = (saved, before["configuration"], before["status"]["preset"])
+    prospective[call] = (saved, before["configuration"], before["status"]["presets"])
 
 
 def profile(binary, root, source, transport):
@@ -1027,8 +1323,8 @@ def profile(binary, root, source, transport):
                 f"{transport}/1: HELP routing and full preferences survive fresh child",
                 f"{transport}/1: discovery wording and full preferences survive fresh child",
                 f"{transport}/1: HOLD preferences and delivery survive fresh child"]
-    call = "K1ABC-70001"
-    observer_call, observer_configuration = "VE3ABC-70003", None
+    call = "K1ABC-01"
+    observer_call, observer_configuration = "VE3ABC-03", None
     failed_records, refused_records, compatible_records = {}, {}, {}
     prepared_records = {}
     staged_records = {}
@@ -1054,13 +1350,15 @@ def profile(binary, root, source, transport):
         try:
             child = Child(binary, root, source)
             children.append(child.identity)
-            suite = harness.Suite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
+            suite = CommandSuite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
                                                   timeout=8, run_seconds=120,
                                                   output=root / f"wire-{generation}"))
             if generation == 0:
                 label = literal_archive_label(suite, "CW")
             suites.append(suite)
-            session = harness.Session(suite, call)
+            session = fixture_session(suite, call)
+            suite.binary, suite.source = binary, source
+            suite.resource_seed = (root / "users" / (call + ".yaml")).read_bytes()
 
             def case(name, fn):
                 suite.case(name, fn)
@@ -1084,9 +1382,9 @@ def profile(binary, root, source, transport):
                             before = session.get()
                             saved = record.read_bytes()
                             identifier = suite.identifier()
-                            sync = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+                            sync = f"GET YAML CONFIG SCHEMA 7 ID {identifier}"
                             session.send(bad + "\r\nSHOW OWN\r\n" + sync + "\r\n")
-                            after, prefix = session.frame("CONFIG", identifier, 4, "rejected physical line")
+                            after, prefix = session.frame("CONFIG", identifier, 7, "rejected physical line")
                             require(prefix.count(b"Own call: K1ABC") == 1,
                                     "recovery lost or duplicated the next read-only command")
                             require(b"Command input" in prefix, "rejection response absent")
@@ -1101,7 +1399,7 @@ def profile(binary, root, source, transport):
                 case(f"{transport}: rejected lines have no command effects", rejected_lines)
 
                 def stalled_rejection():
-                    terminal = harness.Session(suite, "K1ABC-70002")
+                    terminal = fixture_session(suite, "K1ABC-02")
                     record = root / "users" / (terminal.call + ".yaml")
                     saved = record.read_bytes()
                     terminal.send("DX 14074 K1ABC CW !REJECT BAND ALL")  # No physical EOL.
@@ -1127,7 +1425,7 @@ def profile(binary, root, source, transport):
                         require(doc["configuration"]["settings"]["dialect"] == dialect, "dialect not applied")
                         saved = harness.yaml.load((root / "users" / (call + ".yaml")).read_text(),
                                                   Loader=harness.StrictLoader)
-                        require(saved["dialect"] == dialect, "dialect not saved before next command")
+                        require(saved["configuration"]["settings"]["dialect"] == dialect, "dialect not saved before next command")
                     _, doc = session.human("SET GRID FN31", "Grid set")
                     require(doc["configuration"]["settings"]["grid"] == "FN31", "loaded grid unavailable")
                     _, doc = session.human("SET NOISE URBAN", "Noise class set")
@@ -1136,8 +1434,9 @@ def profile(binary, root, source, transport):
                     # must never repair a false-green command-save assertion.
                     saved = harness.yaml.load((root / "users" / (call + ".yaml")).read_text(),
                                               Loader=harness.StrictLoader)
-                    require(saved["noise_class"] == "URBAN" and saved["grid"] == "FN31" and
-                            saved["dialect"] == "cc", "command persistence absent before disconnect")
+                    require(stored_configuration((root / "users" / (call + ".yaml")).read_bytes()) == doc["configuration"] and
+                            saved["configuration"]["settings"]["dialect"] == "cc",
+                            "complete command persistence absent before disconnect")
 
                 case(f"{transport}: live change saved before disconnect", persistence)
 
@@ -1150,41 +1449,36 @@ def profile(binary, root, source, transport):
 
                 def nofilter():
                     nonlocal observer_configuration
-                    observer = harness.Session(suite, observer_call)
+                    observer = fixture_session(suite, observer_call)
                     observer.human("PAUSE 300")
                     observer.human("SET GRID FN31", "Grid set")
-                    require_archive(observer, label) # Control: exact row exists and is visible.
-                    for dialect, reset in (("go", "PASS NOFILTER"), ("cc", "SET/NOFILTER")):
+                    for dialect in ("go", "cc"):
                         observer.human("DIALECT " + dialect)
-                        # The isolated manual bridge does not run production
-                        # metadata enrichment. A restrictive whitelist also
-                        # hides unknown geography, providing a valid control.
-                        observer.human("PASS DXCONT EU")
-                        require(not archive_rows(observer, label), "restrictive geography failed to hide control row")
-                        observer.human("PASS NEARBY ON", "Nearby filter enabled")
-                        _, document = observer.human(reset, "All filters disabled")
-                        saved = harness.yaml.load((root / "users" / (observer_call + ".yaml")).read_text(),
-                                                  Loader=harness.StrictLoader)
+                        observer.human("RESET FILTER" if dialect == "go" else "SET/NOFILTER")
+                        require_archive(observer, label)
+                        observer.human("PASS RULE 0 DXCONT=EU AND NEARBY" if dialect == "go"
+                                       else "SET/FILTER DOC/PASS VE")
+                        require(not archive_rows(observer, label), "restriction did not hide control row")
+                        _, document = observer.human("RESET FILTER RULE ALL" if dialect == "go" else "SET/NOFILTER")
+                        saved = stored_document((root / "users" / (observer_call + ".yaml")).read_bytes())
                         require_unrestricted_geography(document, saved)
-                        require(saved["grid"] == "FN31" and document["configuration"]["settings"]["grid"] == "FN31",
-                                "NOFILTER cleared the user's grid")
+                        require(saved["configuration"]["settings"]["grid"] == "FN31",
+                                "bank reset cleared shared grid")
                         require_archive(observer, label)
                         observer_configuration = document["configuration"]
 
                 case(f"{transport}: NOFILTER retires NEARBY geography and saves", nofilter)
 
                 def failed_saves():
-                    for dialect, failed_call in (("go", "K1ABC-70004"), ("cc", "K1ABC-70007")):
-                        failed = harness.Session(suite, failed_call)
+                    for dialect, failed_call in (("go", "K1ABC-04"), ("cc", "K1ABC-07")):
+                        failed = fixture_session(suite, failed_call)
                         failed.human("PAUSE 300")
-                        failed.human("DIALECT " + ("cc" if dialect == "go" else "go"))
-                        failed.human("PASS BAND 40")
-                        _, before = failed.human("PASS COMMENT OLD")
+                        failed.human("DIALECT " + dialect)
+                        failed.human("PASS RULE 0 BAND=40M" if dialect == "go" else "SET/FILTER BEACON")
+                        before = failed.get()
                         record = root / "users" / (failed_call + ".yaml")
                         saved = record.read_bytes()
                         failed_records[failed_call] = (saved, before["configuration"])
-                        # Keep this handle through child.stop(), not merely BYE:
-                        # unregister's final save must not repair a failed save.
                         replacement_faults.enter_context(deny_record_replacement(record))
 
                         def changed(line, check):
@@ -1194,143 +1488,139 @@ def profile(binary, root, source, transport):
                             require(record.read_bytes() == saved, f"failed save changed disk: {line}")
                             return document
 
+                        # Edit both banks before switching back: a later complete save must own
+                        # all pending state, while every failed replacement preserves disk.
+                        other = "cc" if dialect == "go" else "go"
+                        changed("DIALECT " + other, lambda cfg: cfg["settings"]["dialect"] == other)
+                        changed("PASS RULE 2 COMMENT=NEW" if other == "go" else "SET/FT8",
+                                lambda cfg: bool(cfg["filters"]["go"]["rules"]) if other == "go"
+                                else "FT8" in cfg["filters"]["cc"]["modes"])
                         changed("DIALECT " + dialect, lambda cfg: cfg["settings"]["dialect"] == dialect)
-                        for line in ("DIALECT " + dialect, "PASS COMMENT old",
-                                     "REMOVE PASS COMMENT absent", "RESET FILTER COMMENT REJECT"):
-                            before_noop = failed.get()
-                            text, after_noop = failed.human(line)
-                            require("warning: failed to persist" not in text and
-                                    after_noop["configuration"] == before_noop["configuration"] and
-                                    record.read_bytes() == saved, f"no-op save behavior changed: {line}")
-                        band_command = "PASS BAND 20" if dialect == "go" else "SET/FILTER BAND 20"
-                        changed(band_command, lambda cfg: cfg["filters"]["bands"]["allow"].get("20m") is True)
-                        changed(band_command, lambda cfg: cfg["filters"]["bands"]["allow"].get("20m") is True)
-                        changed("PASS COMMENT NEW", lambda cfg: cfg["filters"]["comments"] == ["OLD", "NEW"])
-                        changed("REMOVE PASS COMMENT OLD", lambda cfg: cfg["filters"]["comments"] == ["NEW"])
-                        changed("RESET FILTER COMMENT", lambda cfg: cfg["filters"]["comments"] == [])
-                        changed("RESET FILTER", lambda cfg: cfg["filters"]["bands"]["allow_all"] is True)
-                        changed("REJECT BAND ALL", lambda cfg: cfg["filters"]["bands"]["block_all"] is True)
-                        changed("PASS NOFILTER" if dialect == "go" else "SET/NOFILTER",
-                                lambda cfg: cfg["filters"]["bands"]["allow_all"] is True and
-                                cfg["filters"]["bands"]["block_all"] is False)
+                        before_noop = failed.get()
+                        text, after_noop = failed.human("DIALECT " + dialect)
+                        require("warning: failed to persist" not in text and
+                                after_noop["configuration"] == before_noop["configuration"] and
+                                record.read_bytes() == saved, "no-op dialect attempted persistence")
+                        if dialect == "go":
+                            changed("PASS RULE 0 BAND=20M", lambda cfg: cfg["filters"]["go"]["rules"] ==
+                                    [dict(slot=0, action="pass", expr="BAND=20M")])
+                            changed("REJECT RULE 1 MODE=FT8", lambda cfg: len(cfg["filters"]["go"]["rules"]) == 2)
+                            changed("RESET FILTER RULE 1", lambda cfg: len(cfg["filters"]["go"]["rules"]) == 1)
+                            changed("RESET FILTER RULE ALL", lambda cfg: cfg["filters"]["go"]["rules"] == [])
+                        else:
+                            changed("SET/FT8", lambda cfg: "FT8" in cfg["filters"]["cc"]["modes"])
+                            changed("SET/FILTER DXBM/PASS 20", lambda cfg: cfg["filters"]["cc"]["dxbm"]["active"] is True)
+                            changed("SET/NOFILTER", lambda cfg: cfg["filters"]["cc"]["dxbm"]["active"] is False)
 
                 case(f"{transport}: actual replacement failure warns and preserves saved bytes", failed_saves)
 
                 def refused_storage():
-                    for refused_call, raw in (("K1ABC-70005", b"[broken"),
-                                              ("K1ABC-70006", b"configuration_version: 99\nnoise_class: URBAN\n")):
-                        existing = harness.Session(suite, refused_call)
+                    for refused_call, raw in (("K1ABC-05", b"[broken"),
+                                              ("K1ABC-06", b"configuration_version: 99\nnoise_class: URBAN\n")):
+                        existing = fixture_session(suite, refused_call)
                         existing.human("PAUSE 300")
                         record = root / "users" / (refused_call + ".yaml")
-                        record.write_bytes(raw) # Authoritative storage changes after valid login.
+                        record.write_bytes(raw)
                         refused_records[refused_call] = raw
-                        for dialect, line in (("cc", "SET/FILTER BAND 20"), ("go", "PASS BAND 40")):
+                        for dialect, line in (("cc", "SET/FILTER BEACON"), ("go", "PASS RULE 0 BAND=40M")):
                             text, document = existing.human("DIALECT " + dialect)
-                            require_save_warning(text)
-                            require(document["configuration"]["settings"]["dialect"] == dialect,
-                                    "preparation failure rolled back live dialect")
+                            require(document["configuration"]["settings"]["dialect"] == dialect, "dialect lost")
                             text, document = existing.human(line)
                             require_save_warning(text)
-                            require(document["configuration"]["filters"]["bands"]["allow"].get(
-                                "20m" if dialect == "cc" else "40m") is True and record.read_bytes() == raw,
-                                "preparation failure changed disk or lost live filter")
+                            bank = document["configuration"]["filters"][dialect]
+                            require((bank["include_beacons"] is True if dialect == "cc" else
+                                     bank["rules"] == [dict(slot=0, action="pass", expr="BAND=40M")]) and
+                                    record.read_bytes() == raw, "warm refusal changed disk or lost live bank")
                         existing.close()
-                        protected = harness.Session(suite, refused_call)
+                        protected = fixture_session(suite, refused_call)
                         startup, document = protected.human("PAUSE 300")
-                        # The configured greeting ends in a UTC prompt before
-                        # the appended restore warning. Synchronize through GET
-                        # to consume and check that remainder, not just prompt.
-                        require("temporary defaults" in startup,
-                                "protected login omitted temporary-settings warning")
-                        require(document["status"]["session"]["temporary_defaults"] is True,
-                                "protected login status absent")
-                        for line in ("DIALECT cc", "SET/FILTER BAND 20", "PASS COMMENT TEMP"):
+                        require("temporary defaults" in login_text(protected, startup) and
+                                document["status"]["session"]["temporary_defaults"] is True,
+                                "protected login omitted temporary defaults")
+                        for line in ("DIALECT cc", "SET/FILTER BEACON", "DIALECT go", "PASS RULE 0 COMMENT=TEMP"):
                             text, document = protected.human(line)
-                            require_save_warning(text)
+                            if not line.startswith("DIALECT "):
+                                require("temporary" in text or "not saved" in text, "protected edit warning absent")
                             require(record.read_bytes() == raw, "protected edit overwrote refused file")
-                        require(document["configuration"]["settings"]["dialect"] == "cc" and
-                                document["configuration"]["filters"]["comments"] == ["TEMP"],
-                                "protected live edits were not applied")
+                        require(document["configuration"]["filters"]["go"]["rules"] ==
+                                [dict(slot=0, action="pass", expr='COMMENT="TEMP"')], "protected live edit absent")
 
                 case(f"{transport}: preparation failure and protected login preserve refused records", refused_storage)
 
                 def compatible_storage():
-                    unused = ("a: &a {x: 0}\nb: &b {<<: [*a,*a,*a,*a,*a,*a,*a]}\n"
-                              "c: &c {<<: [*b,*b,*b,*b,*b,*b,*b]}\n"
-                              "d: &d {<<: [*c,*c,*c,*c,*c,*c,*c]}\n")
-                    legacy_call, exact_call, trap_call = "K1ABC-70008", "K1ABC-70009", "K1ABC-70010"
                     users = root / "users"
-                    legacy = (unused + "rules: &rules {20m: true, 40m: false}\n"
-                              "bands: *rules\nallbands: false\nblockbands: {80m: true}\n"
-                              "dialect: cc\ndedupe_policy: MED\n")
-                    (users / (legacy_call + ".yaml")).write_text(legacy, encoding="utf-8")
-                    restored = harness.Session(suite, legacy_call)
-                    startup, document = restored.human("PAUSE 300")
-                    bands = document["configuration"]["filters"]["bands"]
-                    require("temporary defaults" not in startup and
-                            document["status"]["session"]["temporary_defaults"] is False and
-                            bands == dict(allow_all=False, block_all=False,
-                                          allow={"20m": True, "40m": False}, block={"80m": True}),
-                            "legacy aliases, false entries or migration changed at login")
-                    compatible_records[legacy_call] = document["configuration"]
-
-                    exact = harness.yaml.load((users / (call + ".yaml")).read_text(), Loader=harness.StrictLoader)
-                    exact.update(bands={"20m": True, "40m": False}, blockbands={"80m": False},
-                                 allbands=False, modes={}, allmodes=False, min_snr={"CW": -5},
-                                 comments=["CQ TEST"], allow_wwv=False)
-                    # PyYAML emits a space-separated datetime that time.Time's
-                    # pinned decoder refuses. Keep the stored RFC3339 contract.
-                    exact["last_login_utc"] = exact["last_login_utc"].isoformat().replace("+00:00", "Z")
-                    baseline = {key: value for key, value in exact.items()
-                                if key not in ("preset", "recent_ips", "last_login_utc")}
-                    exact["preset"] = dict(name="BASE04A", baseline=baseline)
-                    (users / (exact_call + ".yaml")).write_text(harness.yaml.safe_dump(exact), encoding="utf-8")
-                    restored = harness.Session(suite, exact_call)
-                    startup, document = restored.human("PAUSE 300")
-                    filters = document["configuration"]["filters"]
-                    require("temporary defaults" not in startup and
-                            filters["bands"] == dict(allow_all=False, block_all=False,
-                                                     allow={"20m": True, "40m": False}, block={"80m": False}) and
-                            filters["modes"]["allow_all"] is False and filters["modes"]["allow"] == {} and
-                            filters["comments"] == ["CQ TEST"] and filters["min_snr"] == {"CW": -5} and
-                            filters["allow_wwv"] is False and
-                            document["status"]["preset"]["name"] == "BASE04A" and
-                            document["status"]["preset"]["modified"] is False,
-                            "exact false/empty values or detached baseline changed at login")
-                    library = users / "presets" / ("K1ABC".encode().hex() + ".yaml")
+                    legacy_call, exact_call, trap_call = "K1ABC-08", "K1ABC-09", "K1ABC-10"
+                    legacy = b"bands: {20m: true, 40m: false}\nallbands: false\ndialect: cc\ndedupe_policy: MED\nnoise_class: URBAN\n"
+                    library = preset_library(root)
                     library.parent.mkdir(exist_ok=True)
-                    collection = harness.yaml.safe_dump(dict(presets=dict(LEGACY04A=dict(
-                        bands={"20m": True, "40m": False}, allbands=False, dialect="go", dedupe_policy="MED"))))
-                    library.write_text("<<:\n" + "".join("  " + line for line in collection.splitlines(True)),
-                                       encoding="utf-8")
-                    restored.human("LIST PRESET", "LEGACY04A")
-                    _, document = restored.human("LOAD PRESET LEGACY04A", "Loaded preset")
-                    require(document["configuration"]["filters"]["bands"]["allow"] ==
-                            {"20m": True, "40m": False} and
-                            document["status"]["preset"]["name"] == "LEGACY04A" and
-                            document["status"]["preset"]["modified"] is False,
-                            "merged collection did not load its migrated preset")
-                    compatible_records[exact_call] = document["configuration"]
-
+                    require(not library.exists(), "legacy reset requires an owned unused library")
+                    old_library = b"presets:\n  LEGACY04A:\n    dialect: go\n    dedupe_policy: MED\n    bands: {20m: true}\n"
+                    library.write_bytes(old_library)
+                    legacy_path = users / (legacy_call + ".yaml")
+                    legacy_path.write_bytes(legacy)
+                    restored = fixture_session(suite, legacy_call)
+                    startup, document = restored.human("PAUSE 300")
+                    require(document["status"]["session"]["temporary_defaults"] is False and
+                            document["configuration"]["settings"]["dialect"] == "cc" and
+                            document["configuration"]["settings"]["noise_class"] == "URBAN" and
+                            document["configuration"]["filters"] == stored_configuration(suite.resource_seed)["filters"] and
+                            Path(str(legacy_path) + ".pre-v7.bak").read_bytes() == legacy,
+                            "legacy reset lost shared preferences, backup, or GO fresh start")
+                    collection = stored_document(library.read_bytes())
+                    require(collection["configuration_version"] == 7 and collection["reset_generation"] == 7 and
+                            collection["presets"] == {} and
+                            Path(str(library) + ".pre-v7.bak").read_bytes() == old_library,
+                            "legacy library reset lost backup or completion marker")
+                    compatible_records[legacy_call] = document["configuration"]
+                    restored.human("SAVE PRESET NATIVE04A", "Saved preset NATIVE04A")
+                    library_saved = library.read_bytes()
+                    # A second eligible SSID must not repeat an already completed library reset.
+                    second = users / (exact_call + ".yaml")
+                    second.write_bytes(legacy)
+                    upgrading = fixture_session(suite, exact_call)
+                    upgrading.human("PAUSE 300")
+                    require(library.read_bytes() == library_saved and
+                            Path(str(second) + ".pre-v7.bak").read_bytes() == legacy,
+                            "second SSID repeated library reset or lost original backup")
+                    exact = native_record(document["configuration"])
+                    exact["configuration"]["settings"]["dialect"] = "go"
+                    exact["configuration"]["filters"]["go"]["rules"] = [dict(slot=3, action="pass", expr='COMMENT="CQ TEST"')]
+                    exact["configuration"]["filters"]["go"]["allow_wwv"] = False
+                    suite.acknowledge(upgrading.upload("PUT", "CONFIG", exact["configuration"]))
+                    upgrading.human("SAVE PRESET BASE04A", "Saved preset BASE04A")
+                    upgrading.close()
+                    library_saved = library.read_bytes()
+                    current = fixture_session(suite, exact_call)
+                    _, native = current.human("PAUSE 300")
+                    require(native["configuration"] == exact["configuration"] and
+                            native["status"]["presets"]["go"] == dict(associated=True, name="BASE04A", modified=False),
+                            "native exact rules, false switch or baseline changed at login")
+                    inactive = copy.deepcopy(native["configuration"]["filters"]["go"])
+                    _, loaded = current.human("LOAD PRESET NATIVE04A", "Loaded preset")
+                    require(loaded["configuration"]["settings"]["dialect"] == "cc" and
+                            loaded["configuration"]["filters"]["go"] == inactive and library.read_bytes() == library_saved,
+                            "tagged LOAD changed inactive bank or library")
+                    compatible_records[exact_call] = loaded["configuration"]
+                    unused = "a: &a {x: 0}\nb: &b {<<: [*a,*a,*a,*a,*a,*a,*a]}\nc: &c {<<: [*b,*b,*b,*b,*b,*b,*b]}\nd: &d {<<: [*c,*c,*c,*c,*c,*c,*c]}\n"
                     trap = (unused + "<<: *d\n").encode("ascii")
-                    require(len(trap) == 125, "alias refusal fixture changed")
+                    require(len(trap) == 125, "legacy alias refusal fixture changed")
                     record = users / (trap_call + ".yaml")
                     record.write_bytes(trap)
                     refused_records[trap_call] = trap
-                    protected = harness.Session(suite, trap_call)
-                    startup, document = protected.human("PAUSE 300")
-                    require("temporary defaults" in startup and
-                            document["status"]["session"]["temporary_defaults"] is True,
-                            "old alias guard refusal was lost at login")
-                    text, _ = protected.human("PASS BAND 20")
+                    protected = fixture_session(suite, trap_call)
+                    startup, state = protected.human("PAUSE 300")
+                    require("temporary defaults" in login_text(protected, startup) and state["status"]["session"]["temporary_defaults"],
+                            "legacy alias refusal was lost at login")
+                    protected.human("DIALECT go")
+                    text, _ = protected.human("PASS RULE 0 BAND=20M")
                     require_save_warning(text)
-                    require(record.read_bytes() == trap, "alias-refused file was overwritten")
+                    require(record.read_bytes() == trap, "alias-refused original was overwritten")
 
                 case(f"{transport}: compatible storage and old alias refusal reach login and LOAD", compatible_storage)
 
                 def prepared_commit_faults():
-                    prepared_call = "K1ABC-70011"
-                    current = harness.Session(suite, prepared_call)
+                    prepared_call = "K1ABC-11"
+                    current = fixture_session(suite, prepared_call)
                     current.human("PAUSE 300")
                     current.human("SET NOISE QUIET")
                     current.human("SAVE PRESET OLD04B", "Saved preset OLD04B")
@@ -1345,7 +1635,7 @@ def profile(binary, root, source, transport):
                     def preserved(document):
                         require(document["configuration"] == before["configuration"] and
                                 document["revision"] == before["revision"] and
-                                document["status"]["preset"] == before["status"]["preset"] and
+                                document["status"]["presets"] == before["status"]["presets"] and
                                 document["status"]["effective"] == before["status"]["effective"] and
                                 record.read_bytes() == saved,
                                 "failed commit published or persisted a staged change")
@@ -1362,7 +1652,7 @@ def profile(binary, root, source, transport):
                         _, document = current.human("SAVE PRESET NEW04B", "but could not persist its association")
                         preserved(document)
                         collection = harness.yaml.load(library.read_text(), Loader=harness.StrictLoader)
-                        require(collection["presets"]["NEW04B"]["noise_class"] == "URBAN",
+                        require(collection["presets"]["NEW04B"]["settings"]["noise_class"] == "URBAN",
                                 "later association I/O failure lost the successful library write")
 
                     # The record is writable for this control. A library failure
@@ -1373,61 +1663,47 @@ def profile(binary, root, source, transport):
                         preserved(document)
                         require(library.read_bytes() == library_before,
                                 "failed library replacement altered the saved presets")
-                    prepared_records[prepared_call] = (saved, before["configuration"], before["status"]["preset"])
+                    prepared_records[prepared_call] = (saved, before["configuration"], before["status"]["presets"])
 
                 case(f"{transport}: real machine LOAD and SAVE commit faults preserve publication", prepared_commit_faults)
 
                 def detached_human_edits():
-                    for dialect, staged_call in (("go", "K1ABC-70012"), ("cc", "K1ABC-70013")):
-                        current = harness.Session(suite, staged_call)
+                    for dialect, staged_call in (("go", "K1ABC-12"), ("cc", "K1ABC-13")):
+                        current = fixture_session(suite, staged_call)
                         current.human("PAUSE 300")
-                        current.human("DIALECT " + dialect)
+                        current.human("DIALECT go")
                         current.human("SET DIAG SOURCE")
                         current.human("SET GRID FN31", "Grid set to FN31")
-                        _, ordinary = current.human("PASS DXCONT EU", "Filter set: DX continents EU")
-                        restoration = ordinary["configuration"]["filters"]["dx_continents"]
-                        _, nearby = current.human("PASS NEARBY ON", "Nearby filter enabled")
-                        require(nearby["status"]["effective"]["nearby_active"],
-                                "NEARBY control did not become active")
+                        current.human("PASS RULE 0 DXCONT=EU")
+                        _, nearby = current.human("PASS RULE 1 NEARBY")
                         record = root / "users" / (staged_call + ".yaml")
                         saved = record.read_bytes()
-                        band = "PASS BAND" if dialect == "go" else "SET/FILTER BAND"
-                        mode = "REJECT MODE" if dialect == "go" else "UNSET/FILTER MODE"
-                        for line, response in ((band + " 20,NOTABAND", "Unknown band"),
-                                               (mode + " CW,NOTAMODE", "Unknown mode"),
-                                               ("PASS COMMENT", "Usage:"),
-                                               ("SET NOISE NOTACLASS", "Unknown noise class"),
-                                               ("PASS NEARBY MAYBE", "Usage:")):
-                            _, refused = current.human(line, response)
+                        for line in ("PASS RULE 2 BAND=20M,NOTABAND", "REJECT RULE 2 MODE=CW,NOTAMODE",
+                                     "PASS RULE 2 COMMENT=", "SET NOISE NOTACLASS", "PASS NEARBY MAYBE"):
+                            text, refused = current.human(line)
                             require(refused["configuration"] == nearby["configuration"] and
-                                    refused["revision"] == nearby["revision"] and
-                                    refused["status"]["effective"] == nearby["status"]["effective"] and
-                                    record.read_bytes() == saved,
-                                    "refused detached edit affected live or durable state")
-
-                        # Readable authoritative file and writable temp directory;
-                        # only atomic replacement is refused after valid login.
+                                    refused["revision"] == nearby["revision"] and record.read_bytes() == saved,
+                                    "refused edit changed state")
+                            require(any(word in text for word in ("Invalid", "Unknown", "Usage", "unsupported", "Use ")),
+                                    "refused edit lacks feedback")
                         with deny_record_replacement(record):
-                            text, temporary = current.human("SET NOISE URBAN", "warning: failed to persist")
-                            require(text.count("warning: failed to persist") == 1 and
-                                    temporary["configuration"]["settings"]["noise_class"] == "URBAN" and
-                                    temporary["status"]["effective"]["nearby_active"] and
-                                    record.read_bytes() == saved,
-                                    "human commit failure lost the live edit or NEARBY state")
-
+                            text, temporary = current.human("SET NOISE URBAN")
+                            require_setting_save_warning(text)
+                            require(temporary["configuration"]["settings"]["noise_class"] == "URBAN" and
+                                    temporary["configuration"]["filters"] == nearby["configuration"]["filters"] and
+                                    record.read_bytes() == saved, "late failure lost live edit or predicate")
                         _, changed_grid = current.human("SET GRID IO91", "Grid set to IO91")
-                        require(changed_grid["status"]["effective"]["nearby_active"] and
-                                changed_grid["status"]["effective"]["grid"] == "IO91",
-                                "active GRID change lost NEARBY cells")
-                        _, restored = current.human("PASS NEARBY OFF", "Nearby filter disabled")
-                        require(restored["configuration"]["filters"]["dx_continents"] == restoration and
-                                not restored["status"]["effective"]["nearby_active"],
-                                "unrelated edits or GRID change lost restoration rules")
+                        require(changed_grid["configuration"]["filters"] == nearby["configuration"]["filters"] and
+                                changed_grid["status"]["effective"]["grid"] == "IO91", "GRID lost predicate")
+                        _, restored = current.human("RESET FILTER RULE 1")
+                        require(restored["configuration"]["filters"]["go"]["rules"] ==
+                                [dict(slot=0, action="pass", expr="DXCONT=EU")], "removing NEARBY lost unrelated rule")
+                        current.human("DIALECT " + dialect)
                         _, configured = current.human("SET SOLAR 15", "Solar summaries: every 15 minutes")
                         require(configured["status"]["session"]["diagnostic_comments"] == "SOURCE" and
-                                configured["status"]["session"]["pause_active"],
-                                "human publication changed diagnostics or read pause")
+                                configured["status"]["session"]["pause_active"], "publication changed session state")
                         persisted = record.read_bytes()
+                        require(stored_configuration(persisted) == configured["configuration"], "later save lost banks")
                         current.human("SHOW DEDUPE", "Dedupe")
                         require(record.read_bytes() == persisted, "read-only command saved a record")
                         staged_records[staged_call] = configured["configuration"]
@@ -1481,7 +1757,7 @@ def profile(binary, root, source, transport):
                 case(f"{transport}: preferences and archive survive fresh child", restored)
 
                 def restored_nofilter():
-                    observer = harness.Session(suite, observer_call)
+                    observer = fixture_session(suite, observer_call)
                     observer.human("PAUSE 300")
                     document = observer.get()
                     require(document["configuration"] == observer_configuration,
@@ -1497,7 +1773,7 @@ def profile(binary, root, source, transport):
                     for failed_call, (saved, configuration) in failed_records.items():
                         record = root / "users" / (failed_call + ".yaml")
                         require(record.read_bytes() == saved, "teardown repaired failed persistence")
-                        restored = harness.Session(suite, failed_call)
+                        restored = fixture_session(suite, failed_call)
                         restored.human("PAUSE 300")
                         require(restored.get()["configuration"] == configuration,
                                 "fresh child restored a previously unsaved change")
@@ -1506,13 +1782,13 @@ def profile(binary, root, source, transport):
                                 document["configuration"]["settings"]["grid"] == "FN31",
                                 "save did not recover after fault release")
                         saved_now = harness.yaml.load(record.read_text(), Loader=harness.StrictLoader)
-                        require(saved_now["grid"] == "FN31", "later successful save not immediately durable")
+                        require(saved_now["configuration"]["settings"]["grid"] == "FN31", "later successful save not immediately durable")
                     for refused_call, raw in refused_records.items():
                         record = root / "users" / (refused_call + ".yaml")
                         require(record.read_bytes() == raw, "teardown overwrote refused record")
-                        protected = harness.Session(suite, refused_call)
+                        protected = fixture_session(suite, refused_call)
                         startup, document = protected.human("PAUSE 300")
-                        require("temporary defaults" in startup and
+                        require("temporary defaults" in login_text(protected, startup) and
                                 document["status"]["session"]["temporary_defaults"] is True,
                                 "fresh child did not protect refused record")
                         require(record.read_bytes() == raw, "fresh login overwrote refused record")
@@ -1521,12 +1797,12 @@ def profile(binary, root, source, transport):
 
                 def restored_compatible_storage():
                     for stored_call, configuration in compatible_records.items():
-                        restored = harness.Session(suite, stored_call)
+                        restored = fixture_session(suite, stored_call)
                         startup, document = restored.human("PAUSE 300")
-                        require("temporary defaults" not in startup and
+                        require("temporary defaults" not in login_text(restored, startup) and
                                 document["configuration"] == configuration,
                                 "accepted legacy/exact storage did not survive a fresh process")
-                    listing, _ = session.human("LIST PRESET", "LEGACY04A")
+                    listing, _ = session.human("LIST PRESET", "NATIVE04A")
                     require("Failed" not in listing, "merged preset library was lost on restart")
 
                 case(f"{transport}: compatible storage survives fresh child", restored_compatible_storage)
@@ -1535,10 +1811,10 @@ def profile(binary, root, source, transport):
                     for stored_call, (saved, configuration, preset_status) in prepared_records.items():
                         require((root / "users" / (stored_call + ".yaml")).read_bytes() == saved,
                                 "teardown changed a failed transaction's stored record")
-                        restored = harness.Session(suite, stored_call)
+                        restored = fixture_session(suite, stored_call)
                         _, document = restored.human("PAUSE 300")
                         require(document["configuration"] == configuration and
-                                document["status"]["preset"] == preset_status,
+                                document["status"]["presets"] == preset_status,
                                 "fresh child restored a failed staged change or association")
                         listing, _ = restored.human("LIST PRESET", "NEW04B")
                         require("OLD04B" in listing and "FAIL04B" not in listing,
@@ -1548,12 +1824,12 @@ def profile(binary, root, source, transport):
 
                 def restored_detached_humans():
                     for stored_call, configuration in staged_records.items():
-                        restored = harness.Session(suite, stored_call)
+                        restored = fixture_session(suite, stored_call)
                         _, document = restored.human("PAUSE 300")
                         require(document["configuration"] == configuration and
                                 document["status"]["effective"]["grid"] == "IO91" and
                                 document["status"]["effective"]["noise_class"] == "URBAN" and
-                                not document["status"]["effective"]["nearby_active"],
+                                document["configuration"]["filters"]["go"]["rules"] == [dict(slot=0, action="pass", expr="DXCONT=EU")],
                                 "fresh child lost accepted detached human outcomes")
 
                 case(f"{transport}: detached human settings survive fresh child", restored_detached_humans)
@@ -1563,9 +1839,9 @@ def profile(binary, root, source, transport):
                     for stored_call, raw in resource_refused.items():
                         record = root / "users" / (stored_call + ".yaml")
                         require(record.read_bytes() == raw, "teardown changed resource-refused bytes")
-                        restored = harness.Session(suite, stored_call)
+                        restored = fixture_session(suite, stored_call)
                         startup, document = restored.human("PAUSE 300")
-                        require("temporary defaults" in startup and
+                        require("temporary defaults" in login_text(restored, startup) and
                                 document["status"]["session"]["temporary_defaults"] is True and
                                 record.read_bytes() == raw, "fresh child did not protect resource refusal")
 
@@ -1576,9 +1852,9 @@ def profile(binary, root, source, transport):
                     for stored_call, (configuration, timestamp, ip) in resource_repaired.items():
                         record = root / "users" / (stored_call + ".yaml")
                         require_metadata(record.read_bytes(), timestamp, ip) # Before login changes timestamp.
-                        restored = harness.Session(suite, stored_call)
+                        restored = fixture_session(suite, stored_call)
                         startup, document = restored.human("PAUSE 300")
-                        require("temporary defaults" not in startup and
+                        require("temporary defaults" not in login_text(restored, startup) and
                                 document["status"]["session"]["temporary_defaults"] is False and
                                 document["configuration"] == configuration,
                                 "fresh child lost the admitted temporary edit or repair")
@@ -1588,18 +1864,19 @@ def profile(binary, root, source, transport):
                 def restored_prospective_admission():
                     require(len(resource_prospective) == 1, "prospective admission control did not execute")
                     library = stored_document(preset_library(root).read_bytes())["presets"]
-                    require("QUOTANEW" not in library and library["QUOTAOLD"].get("comments", []) == [] and
-                            library["QUOTALOAD"]["comments"] ==
-                            ["LOAD TARGET GROWS BOTH CONFIGURATION AND BASELINE"],
+                    require("QUOTANEW" not in library and library["QUOTAOLD"]["go"]["rules"] == [] and
+                            library["QUOTALOAD"]["go"]["rules"] ==
+                            [dict(slot=0, action="pass", expr='COMMENT="LOADTARGETGROWSBOTHCONFIGURATIONANDBASELINE"')],
                             "failed quota SAVE altered the library before restart")
                     for stored_call, (saved, configuration, preset_status) in resource_prospective.items():
                         record = root / "users" / (stored_call + ".yaml")
                         require(record.read_bytes() == saved, "teardown changed refused prospective state")
-                        restored = harness.Session(suite, stored_call)
+                        restored = fixture_session(suite, stored_call)
                         startup, document = restored.human("PAUSE 300")
-                        require("temporary defaults" not in startup and
+                        require("temporary defaults" not in login_text(restored, startup) and
+                                document["status"]["session"]["temporary_defaults"] is False and
                                 document["configuration"] == configuration and
-                                document["status"]["preset"] == preset_status,
+                                document["status"]["presets"] == preset_status,
                                 "fresh child restored a refused candidate or changed its baseline")
 
                 case(f"{transport}: prospective admission outcomes survive fresh child", restored_prospective_admission)
@@ -1607,7 +1884,7 @@ def profile(binary, root, source, transport):
                 def restored_modes():
                     require(len(saved_modes) == 3, "required MODE controls did not execute")
                     for saved_call, (configuration, expected, cw_label, ft8_label, visible) in saved_modes.items():
-                        current = harness.Session(suite, saved_call)
+                        current = fixture_session(suite, saved_call)
                         _, document = current.human("PAUSE 300")
                         require(document["configuration"] == configuration, "MODE configuration lost across process replacement")
                         require_mode_rules(document, expected, root / "users" / (saved_call + ".yaml"))
@@ -1621,10 +1898,10 @@ def profile(binary, root, source, transport):
                 def restored_grids():
                     require(len(saved_grids) == 2, "required GRID controls did not execute")
                     for stored_call, configuration in saved_grids.items():
-                        current = harness.Session(suite, stored_call)
+                        current = fixture_session(suite, stored_call)
                         _, document = current.human("PAUSE 300")
                         require(document["configuration"] == configuration and
-                                document["status"]["effective"]["nearby_active"] is True,
+                                any("NEARBY" in row["expr"] for row in document["configuration"]["filters"]["go"]["rules"]),
                                 "fresh child lost canonical GRID or active NEARBY")
                         require_grid_configuration(document, "IO91", root / "users" / (stored_call + ".yaml"))
 
@@ -1633,7 +1910,7 @@ def profile(binary, root, source, transport):
                 def restored_callsigns():
                     require(len(saved_callsigns) == 2, "required callsign controls did not execute")
                     for stored_call, (configuration, expected) in saved_callsigns.items():
-                        current = harness.Session(suite, stored_call)
+                        current = fixture_session(suite, stored_call)
                         _, document = current.human("PAUSE 300")
                         require(document["configuration"] == configuration,
                                 "fresh child lost callsign configuration")
@@ -1645,7 +1922,7 @@ def profile(binary, root, source, transport):
                 def restored_arguments():
                     require(len(saved_arguments) == 2, "required original-argument controls did not execute")
                     for stored_call, configuration in saved_arguments.items():
-                        current = harness.Session(suite, stored_call)
+                        current = fixture_session(suite, stored_call)
                         _, document = current.human("PAUSE 300")
                         require(document["configuration"] == configuration,
                                 "fresh child lost supported filter argument selections")
@@ -1656,7 +1933,7 @@ def profile(binary, root, source, transport):
                 def restored_arity():
                     require(len(saved_arity) == 2, "required command arity controls did not execute")
                     for stored_call, configuration in saved_arity.items():
-                        current = harness.Session(suite, stored_call)
+                        current = fixture_session(suite, stored_call)
                         _, document = current.human("PAUSE 300")
                         require(document["configuration"] == configuration,
                                 "fresh child lost preferences after refused command arity")
@@ -1667,7 +1944,7 @@ def profile(binary, root, source, transport):
                 def restored_settings():
                     require(len(saved_settings) == 2, "required fixed setting controls did not execute")
                     for stored_call, configuration in saved_settings.items():
-                        current = harness.Session(suite, stored_call)
+                        current = fixture_session(suite, stored_call)
                         _, document = current.human("PAUSE 300")
                         require(document["configuration"] == configuration and
                                 document["status"]["effective"]["path_min_observation_count"] == 30 and
@@ -1714,7 +1991,9 @@ def profile(binary, root, source, transport):
                 except (OSError, ValueError) as error:
                     cleanup.append(str(error))
     report = {"transport": transport, "required": required, "results": results,
-              "wire_failures": wire, "cleanup_errors": cleanup, "children": children}
+              "wire_failures": wire, "cleanup_errors": cleanup, "children": children,
+              "resource_frames": [current.resource_frame_measurements for current in suites
+                                  if hasattr(current, "resource_frame_measurements")]}
     (root / "results.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     qualified(results, required, wire, cleanup)
     return report
@@ -1725,8 +2004,9 @@ def require_dedupe_readback(before, after, record, saved, text=None):
             after["status"]["effective"]["dedupe_policy"] == "FAST" and
             after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
             after["status"]["effective"] == before["status"]["effective"] and
-            after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+            after["status"]["presets"] == before["status"]["presets"] and record.read_bytes() == saved,
             "DEDUPE readback changed or hid its configured/effective owner")
+    require_cc_unchanged(before, after, record, saved)
     if text is not None:
         expected = "Dedupe        SLOW; effective FAST\n              Configured choice is unavailable on this server"
         require(expected in text and text.splitlines().count("Dedupe        SLOW; effective FAST") == 1,
@@ -1765,9 +2045,9 @@ def dedupe_read_barrier(current, remaining):
     # The correlated frame closes this response. Session.get discards its
     # prefix, which could hide leaked content after a refusal or pause footer.
     identifier = current.suite.identifier()
-    command = f"GET YAML FILTER SCHEMA 4 ID {identifier}"
+    command = f"GET YAML CONFIG SCHEMA 7 ID {identifier}"
     current.send(command + "\r\n")
-    document, prefix = current.frame("FILTER", identifier, 4, command)
+    document, prefix = current.frame("CONFIG", identifier, 7, command)
     echoed, trailing = False, 0
     for line in prefix.splitlines(keepends=True):
         require(line.endswith(b"\r\n") and b"\r" not in line[:-2],
@@ -1781,6 +2061,9 @@ def dedupe_read_barrier(current, remaining):
     require("error" not in document and isinstance(document.get("configuration"), dict) and
             isinstance(document.get("status"), dict) and isinstance(document.get("revision"), str) and
             bool(document["revision"]), "large DEDUPE barrier lacks a valid readback")
+    require(document.get("resource") == "CONFIG" and type(document.get("schema_version")) is int and
+            document["schema_version"] == 7 and document.get("request_id") == identifier,
+            "large DEDUPE barrier has the wrong resource, schema or request identity")
     return document
 
 
@@ -1794,28 +2077,43 @@ def require_large_dedupe_output(text, value):
 
 def large_dedupe_cases(suite, root, generation):
     users = root / "users"
-    for count, call in ((49200, "VE3ABC-70063"), (49366, "VE3ABC-70064")):
+    # The full native login now admits every promised view. Its 64KiB budget
+    # rejects the old final-send boundary before a TCP session can own it.
+    # Direct dedupe_frames owner probes retain the exact 49200/49366 send
+    # boundary; these sessions prove fitting login and protected refusal.
+    for count, call in ((40000, "VE3ABC-63"), (49366, "VE3ABC-64")):
         record = users / (call + ".yaml")
         if generation == 0:
-            record.write_text(yaml.safe_dump(dict(configuration_version=4, dialect="go", dedupe_policy="X" * count)),
-                              encoding="utf-8")
-        current = harness.Session(suite, call)
-        before, saved = current.get("FILTER"), record.read_bytes()
+            require(not record.exists(), "large DEDUPE requires an unused fixture owner")
+            native = stored_document(suite.resource_seed)
+            require(native["configuration_version"] == 7, "large DEDUPE seed is not native seven")
+            native["configuration"]["settings"]["dedupe_policy"] = "X" * count
+            record.write_bytes(native_storage_bytes(native))
+        original = record.read_bytes()
+        require(stored_configuration(original)["settings"]["dedupe_policy"] == "X" * count,
+                "large DEDUPE restart prerequisite lost its exact saved choice")
+        current = fixture_session(suite, call)
+        before, saved = current.get(), record.read_bytes()
+        if count == 49366:
+            require("could not be read, admitted or reset" in login_text(current, "") and
+                    before["status"]["session"]["temporary_defaults"] is True and saved == original,
+                    "oversized native login did not protect its original record")
+            effective = before["status"]["effective"]["dedupe_policy"]
+            require(effective == before["status"]["server"]["default_dedupe_policy"] and
+                    before["configuration"]["settings"]["dedupe_policy"] == effective and
+                    effective in ("FAST", "MED", "SLOW"), "protected login misstates its bounded fallback")
+            key = "cqzone" if effective == "SLOW" else "grid2"
+            expected = "Dedupe: " + effective + " (" + key + ") (fast=on med=on slow=on)"
+            _, after = exact_human_reply(current, "SHOW DEDUPE", expected)
+            require_cc_unchanged(before, after, record, original)
+            continue
         require(before["status"]["configured"]["dedupe_policy"] == "X" * count and
                 before["status"]["effective"]["dedupe_policy"] == "MED" and
                 before["status"]["session"]["temporary_defaults"] is False,
-                "large marked record did not restore exact choice and existing MED interpretation")
-        final = "Missed spots are not replayed." if count == 49200 else "Readback failed: response exceeds 65,536 bytes."
-        text, after = large_dedupe_reply(current, final)
-        if count == 49200:
-            require_large_dedupe_output(text, "X" * count)
-        else:
-            require(text == final, "over-budget DEDUPE response partially succeeded")
-        require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
-                after["status"]["configured"] == before["status"]["configured"] and
-                after["status"]["effective"] == before["status"]["effective"] and
-                after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
-                "large DEDUPE success/refusal changed a preference owner")
+                "large native record did not restore exact choice and existing MED interpretation")
+        text, after = large_dedupe_reply(current, "Missed spots are not replayed.")
+        require_large_dedupe_output(text, "X" * count)
+        require_cc_unchanged(before, after, record, saved)
 
 
 def decode_history_alias_page(raw, query, older):
@@ -1880,9 +2178,9 @@ def history_alias_page(current, query, older=False):
         current.suite.log.write(receipt)
         current.suite.log.flush()
     identifier = current.suite.identifier()
-    command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+    command = f"GET YAML CONFIG SCHEMA 7 ID {identifier}"
     current.send(command + "\r\n")
-    document, prefix = current.frame("CONFIG", identifier, 4, command)
+    document, prefix = current.frame("CONFIG", identifier, 7, command)
     echoed, trailing = False, 0
     for line in prefix.splitlines(keepends=True):
         require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "history alias barrier breaks CRLF")
@@ -1895,6 +2193,9 @@ def history_alias_page(current, query, older=False):
     require("error" not in document and type(document.get("configuration")) is dict and
             type(document.get("status")) is dict and type(document.get("revision")) is str and bool(document["revision"]),
             "history alias barrier lacks a valid configuration readback")
+    require(document.get("resource") == "CONFIG" and type(document.get("schema_version")) is int and
+            document["schema_version"] == 7 and document.get("request_id") == identifier,
+            "history alias barrier has the wrong resource, schema or request identity")
     return rows, token, document
 
 
@@ -1907,9 +2208,9 @@ def require_history_alias_row(rows, frequency, phrase):
 
 def history_alias_cases(suite, root, nonce, generation, saved_history):
     phrase = "C16" + nonce[:8].upper() + ":  UP5!"
-    for dialect, call, prefixes in (("go", "VE3ABC-70069", ("SHOW DX", "SH MYDX")),
-                                    ("cc", "VE3ABC-70070", ("SHOW/DX", "SH/DX", "SHOW MYDX", "SH DX"))):
-        current = harness.Session(suite, call)
+    for dialect, call, prefixes in (("go", "VE3ABC-69", ("SHOW DX", "SH MYDX")),
+                                    ("cc", "VE3ABC-70", ("SHOW/DX", "SH/DX", "SHOW MYDX", "SH DX"))):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         if generation == 0:
             current.human("DIALECT " + dialect)
@@ -1917,13 +2218,13 @@ def history_alias_cases(suite, root, nonce, generation, saved_history):
         record = root / "users" / (call + ".yaml")
         saved = record.read_bytes()
         if generation:
-            require((before["configuration"], before["status"]["preset"]) == saved_history[call],
+            require((before["configuration"], before["status"]["presets"]) == saved_history[call],
                     "fresh child lost read-only history preferences")
 
         def unchanged(after):
             require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
                     after["status"]["effective"] == before["status"]["effective"] and
-                    after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+                    after["status"]["presets"] == before["status"]["presets"] and record.read_bytes() == saved,
                     "history alias request changed a preference owner")
 
         for index, prefix in enumerate(prefixes):
@@ -1945,7 +2246,7 @@ def history_alias_cases(suite, root, nonce, generation, saved_history):
             rows, end_token, after = history_alias_page(current, prefix + " NEXT " + next_token, older=True)
             require(not rows and end_token is None, "alias continuation retained decoys or fabricated more matches")
             unchanged(after)
-        saved_history[call] = before["configuration"], before["status"]["preset"]
+        saved_history[call] = before["configuration"], before["status"]["presets"]
 
 
 CC_HELP_LISTS = tuple("BAND MODE SOURCE EVENT CONFIDENCE PATH DXCONT DECONT DXZONE DEZONE "
@@ -1987,49 +2288,53 @@ def decode_cc_help(raw, query, minimum_rows, minimum_seconds):
     return body
 
 
+def bounded_filter_refusal(message, indent=""):
+    import textwrap
+    return "\n".join("\n".join(textwrap.wrap(line, width=78, subsequent_indent=indent,
+                                           break_long_words=False, break_on_hyphens=False))
+                     for line in message.split("\n")) + "\nNo changes applied."
+
+
+def native_retired_reply(command):
+    if command in ("PASS", "REJECT") or command.startswith("PASS ") or command.startswith("REJECT "):
+        message = "Use HELP SET/FILTER for native CC filters. Boolean rule edits require DIALECT GO."
+    elif command.startswith("UNSET/FILTER"):
+        message = "UNSET/FILTER changes the six switches. For geography or DXBM use SET/FILTER with /PASS, /REJECT or /OFF."
+    else:
+        message = "Use SET/FILTER <category>/PASS <list>, /REJECT <list> or /OFF. Per-band geography terminal syntax is unverified; use schema-seven YAML."
+    return bounded_filter_refusal(message)
+
+
 def require_cc_help_grammar(lines, topic):
     if topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
         harness.require_help_task(lines, topic, "cc")
         return
-    # Category/value expectations are independent of the generated catalog.
     require(topic in ("SET/FILTER", "UNSET/FILTER"), "unsupported detailed CC HELP oracle")
-    for verb in (topic,):
-        starts = [i for i, line in enumerate(lines) if line.startswith(verb + " - ")]
-        require(len(starts) == 1, "CC HELP lost or duplicated a command entry")
-        start = starts[0]
-        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith(("SET/FILTER - ", "UNSET/FILTER - "))), len(lines))
-        entry = lines[start:end]
-
-        def group(title, expected):
-            require(entry.count(title) == 1, "CC HELP lost or duplicated a category group")
-            pos, names = entry.index(title) + 1, []
-            while pos < len(entry) and entry[pos].startswith("  "):
-                names.extend(value.strip() for value in entry[pos].split(","))
-                pos += 1
-            require(len(names) == len(expected) and set(names) == set(expected), "CC HELP has an incorrect category group")
-
-        group("CC list types:", CC_HELP_LISTS)
-        group("Switches:", CC_HELP_SWITCHES)
-        clear = "ALL" if verb == "SET/FILTER" else "NONE"
-        usage = {line[7:] for line in entry if line.startswith("Usage: ") or line.startswith("       " + verb)}
-        expected = {verb + " <list-type> <values>", verb + " MINSNR <modes|ALL> <integer dB|" + clear + ">",
-                    verb + " NEARBY ON|OFF", verb + " <switch> [ALL]", verb + " DXBM <band-codes>"}
-        if verb == "SET/FILTER":
-            expected.update(("SET/FILTER NOFILTER [ALL]", "SET/FILTER DXBM PASS|REJECT <band-codes>",
-                             "SET/FILTER DXBM/PASS <band-codes>", "SET/FILTER DXBM/REJECT <band-codes>"))
-        require(usage == expected, "CC HELP advertises missing or unsupported usage forms")
-        prose = " ".join(line.strip() for line in entry)
-        for rule in (r"SOURCE[^.]*\bone\b[^.]*HUMAN[^.]*SKIMMER[^.]*ALL", r"MINSNR[^.]*numeric[^.]*same[^.]*inclusive[^.]*either verb",
-                     r"NEARBY[^.]*explicit ON/OFF[^.]*either verb", r"Switches[^.]*no value or ALL",
-                     r"COMMENT[^.]*PASS/REJECT COMMENT <phrase>", r"SET/FILTER COMMENT and UNSET/FILTER COMMENT[^.]*unsupported",
-                     r"UNSET/FILTER[^.]*does not accept[^.]*/ON[^.]*/OFF[^.]*NOFILTER", r"DXBM[^.]*numeric band codes[^.]*not ALL"):
-            require(re.search(rule, prose), "CC HELP loses category-specific argument ownership")
-        require("<type>/ON" not in prose and "<type>/OFF" not in prose, "CC HELP retains blanket inline flags")
-        if verb == "SET/FILTER":
-            for rule in (r"SET/FILTER <list-type>/ON[^.]*/OFF", r"SET/FILTER <switch>/ON[^.]*/OFF",
-                         r"SET/FILTER NOFILTER/ON[^.]*clears restrictions[^.]*NOFILTER/OFF[^.]*unsupported",
-                         r"No inline flags[^.]*COMMENT[^.]*MINSNR[^.]*NEARBY[^.]*DXBM", r"Flags[^.]*no extra arguments"):
-                require(re.search(rule, prose), "CC HELP loses qualified inline flags or exceptions")
+    require(lines[0] == topic + " - Change native CC selections or switches.", "wrong native CC HELP header")
+    usages = [line[7:] for line in lines if line.startswith("Usage: ") or line.startswith("       " + topic)]
+    expected = [topic + " <switch> [ALL]"]
+    if topic == "SET/FILTER":
+        expected += ["SET/FILTER <DOC|DOS|DXCTY|DXSTATE>/<PASS|REJECT> <list>",
+                     "SET/FILTER <DOC|DOS|DXCTY|DXSTATE>/OFF",
+                     "SET/FILTER <country-list>/PASS or /REJECT",
+                     "SET/FILTER DXBM/PASS <band-or-slot-list>",
+                     "SET/FILTER DXBM/REJECT <band-or-slot-list>", "SET/FILTER DXBM/OFF"]
+    require(usages == expected, "native CC HELP broadens or omits supported grammar")
+    flat = " ".join(" ".join(lines).split())
+    for phrase in ("Switches accept no value or ALL.", "PC93 aliases ANNOUNCE.",
+                   "SELF controls spots of your own call", "OWN, BOB, DX/NODX, TALK, WX"):
+        require(phrase in flat, "native CC HELP loses switch/unsupported-feature boundaries")
+    if topic == "SET/FILTER":
+        for phrase in ("Each geography edit replaces", "Other categories remain unchanged.",
+                       "First PASS after OFF starts a whitelist", "Later edits keep other slots.",
+                       "Per-band geography is a GoCluster schema-seven YAML extension.",
+                       "do not split them across replacing commands.", "Native bands:", "Native slots:", "State/province codes:"):
+            require(phrase in flat, "native CC HELP loses category ownership: " + phrase)
+    else:
+        require("UNSET/FILTER does not accept inline /ON or /OFF or geography lists." in flat,
+                "native CC HELP invents UNSET geography/inline syntax")
+    require("NEARBY ON|OFF" not in flat and "CC list types:" not in flat and "MINSNR <" not in flat,
+            "native CC HELP advertises retired category syntax")
 
 
 def cc_help_readback(current, topic, minimum_rows, minimum_seconds):
@@ -2055,9 +2360,9 @@ def cc_help_readback(current, topic, minimum_rows, minimum_seconds):
         current.suite.log.write(receipt)
         current.suite.log.flush()
     identifier = current.suite.identifier()
-    command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+    command = f"GET YAML CONFIG SCHEMA 7 ID {identifier}"
     current.send(command + "\r\n")
-    document, prefix = current.frame("CONFIG", identifier, 4, command)
+    document, prefix = current.frame("CONFIG", identifier, 7, command)
     echo, trailing = False, 0
     for line in prefix.splitlines(keepends=True):
         require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "CC HELP barrier breaks CRLF")
@@ -2070,6 +2375,9 @@ def cc_help_readback(current, topic, minimum_rows, minimum_seconds):
     require("error" not in document and type(document.get("configuration")) is dict and
             type(document.get("status")) is dict and type(document.get("revision")) is str and document["revision"],
             "CC HELP barrier lacks a valid configuration")
+    require(document.get("resource") == "CONFIG" and type(document.get("schema_version")) is int and
+            document["schema_version"] == 7 and document.get("request_id") == identifier,
+            "CC HELP barrier has the wrong resource, schema or request identity")
     require_cc_help_grammar(body, topic)
     return document
 
@@ -2091,30 +2399,36 @@ def require_cc_typed_value(actual, expected):
 
 def require_cc_saved_state(document, expected, record):
     require_cc_typed_value(document["configuration"], expected)
-    saved, filters = stored_document(record.read_bytes()), expected["filters"]
-    require(document["status"]["effective"]["nearby_active"] is filters["nearby_enabled"],
-            "CC NEARBY saved choice lacks its intended effective state")
-    for field, stem in CC_HELP_RULE_FIELDS.items():
-        allow_key = stem + "prefixes" if field in ("dx_grid2", "de_grid2") else stem
-        actual = dict(allow=saved[allow_key], block=saved["block" + stem],
-                      allow_all=saved["all" + stem], block_all=saved["blockall" + stem])
-        require_cc_typed_value(actual, filters[field])
-    for field, key in dict(dx_callsigns="callsigns", block_dx_callsigns="block_callsigns",
-                           de_callsigns="decallsigns", block_de_callsigns="block_decallsigns",
-                           comments="comments", block_comments="block_comments", min_snr="min_snr",
-                           nearby_enabled="nearby_enabled", **{value: value for value in CC_HELP_SWITCHES.values()}).items():
-        default = {} if field == "min_snr" else False if field == "nearby_enabled" else "DEFAULT" if field in CC_HELP_SWITCHES.values() else []
-        require_cc_typed_value(saved.get(key, default), filters[field])
-    for field in ("dialect", "grid"):
-        require_cc_typed_value(saved.get(field, ""), expected["settings"][field])
+    saved = copy.deepcopy(stored_configuration(record.read_bytes()))
+    # cw_speed is intentionally optional false on disk, explicit on schema-seven wire.
+    saved["settings"].setdefault("cw_speed", False)
+    require_cc_typed_value(saved, expected)
+    require(set(expected["filters"]) == {"go", "cc"} and
+            document["status"]["active_dialect"] == expected["settings"]["dialect"] and
+            set(document["status"]["presets"]) == {"go", "cc"}, "missing active/inactive bank owner")
+
+
+def scoped_bank_fixture(configuration, dialect, label):
+    expected = copy.deepcopy(configuration)
+    expected["settings"].update(dialect=dialect, grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
+                                path_min_observation_count=30, solar_summary_minutes=30)
+    expected["filters"]["go"]["rules"] = [dict(slot=0, action="pass", expr='MODE=CW AND COMMENT="' + label + '" AND NOT COMMENT="QRT" AND (SOURCE=HUMAN OR SNR>=7)')]
+    cc = expected["filters"]["cc"]
+    cc.update(modes=["CW"], sources=["HUMAN"], dxbm=dict(active=False, base_allow=True, slots={}))
+    cc["geography"] = {key: {"global": {"action": "off"}, "bands": {}} for key in ("DOC", "DOS", "DXCTY", "DXSTATE")}
+    for bank in expected["filters"].values():
+        bank.update({field: True for field in CC_HELP_SWITCHES.values()})
+    return expected
 
 
 def require_cc_unchanged(before, after, record, saved):
     for field in ("configuration", "revision"):
         require_cc_typed_value(after[field], before[field])
-    for field in ("configured", "effective", "preset"):
-        require_cc_typed_value(after["status"][field], before["status"][field])
-    require(record.read_bytes() == saved, "CC refusal/readback changed durable bytes")
+    require(after["status"].keys() == before["status"].keys(), "readback changed status shape or owners")
+    for field in before["status"]:
+        if field != "session":
+            require_cc_typed_value(after["status"][field], before["status"][field])
+    require(record.read_bytes() == saved, "refusal/readback changed durable bytes or preset references")
 
 
 def require_cc_success(text, before, after, expected, record):
@@ -2125,117 +2439,131 @@ def require_cc_success(text, before, after, expected, record):
     require_cc_saved_state(after, expected, record)
 
 
+def resume_help_fixture(current, record, before, *, diagnostic=None, pause=False):
+    # Independent successful groups reconnect the same durable identity. This
+    # never retries a failed command or changes the server's pacing policy.
+    references = copy.deepcopy(stored_document(record.read_bytes())["presets"])
+    current.close()
+    restored = fixture_session(current.suite, current.call)
+    after = restored.get()
+    require_cc_saved_state(after, before["configuration"], record)
+    require_cc_typed_value(after["status"]["presets"], before["status"]["presets"])
+    require_cc_typed_value(stored_document(record.read_bytes())["presets"], references)
+    session = after["status"]["session"]
+    require(session["diagnostic_comments"] == "OFF" and session["pause_active"] is False and
+            session["pause_pending_delivery"] is False and session["pause_remaining_seconds"] == 0 and
+            session["suppressed_spots"] == 0, "HELP reconnect retained session-only owners")
+    commands = []
+    if diagnostic is not None:
+        commands.append(("SET DIAG " + diagnostic, "Diagnostic comments: " + diagnostic))
+    if pause:
+        commands.append(("PAUSE 300", "Live spots paused for 300s."))
+    for command, feedback in commands:
+        prior, saved = after, record.read_bytes()
+        _, after = restored.human(command, feedback)
+        require_cc_unchanged(prior, after, record, saved)
+    require(after["status"]["session"]["diagnostic_comments"] == (diagnostic or "OFF") and
+            after["status"]["session"]["pause_active"] is pause,
+            "HELP reconnect did not establish requested session-only owners")
+    return restored, after
+
+
 def cc_help_grammar_cases(suite, root, generation, saved_cc_grammar):
-    call = "VE3ABC-70071"
-    record = root / "users" / (call + ".yaml")
+    call, record = "VE3ABC-71", root / "users" / "VE3ABC-71.yaml"
     if not generation:
         require(not record.exists(), "CC grammar control requires a fresh unused SSID")
-    current = harness.Session(suite, call)
+    current = fixture_session(suite, call)
     current.human("PAUSE 300")
-    if not generation:
-        current.human("DIALECT CC")
+    current.human("DIALECT CC")
     before = current.get()
-    defaults = copy.deepcopy(before["configuration"]["filters"]) if not generation else saved_cc_grammar[call][1]
+    defaults = copy.deepcopy(before["configuration"]["filters"]["cc"]) if not generation else saved_cc_grammar[call][1]
     if generation:
         require_cc_saved_state(before, saved_cc_grammar[call][0], record)
-    private = stored_document((root / "config" / "runtime.yaml").read_bytes())["telnet"]
+    private = stored_document((root / "config/runtime.yaml").read_bytes())["telnet"]
     minimum_rows, minimum_seconds = private["auto_read_pause_min_rows"], private["auto_read_pause_seconds"]
-    require(type(minimum_rows) is int and minimum_rows > 0 and type(minimum_seconds) is int and minimum_seconds > 0 and
-            before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
-            before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds,
-            "CC HELP requires the fixture's existing loaded automatic pause")
+    require(minimum_rows > 0 and minimum_seconds > 0 and before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
+            before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds, "CC HELP lacks loaded pause owners")
     for topic in ("SET/FILTER", "UNSET/FILTER", "FILTERS", "FILTER EXAMPLES", "PRESETS"):
         saved = record.read_bytes()
         after = cc_help_readback(current, topic, minimum_rows, minimum_seconds)
         require_cc_unchanged(before, after, record, saved)
+        before = after
+    current, state = resume_help_fixture(current, record, before, pause=True)
 
-    def apply(command, changes, settings=None):
-        prior = current.get()
+    def apply(command, changes):
+        nonlocal state
+        prior = state
         expected = copy.deepcopy(prior["configuration"])
-        expected["filters"].update(copy.deepcopy(changes))
-        if settings:
-            expected["settings"].update(settings)
+        expected["filters"]["cc"].update(copy.deepcopy(changes))
         text, after = current.human(command)
         require_cc_success(text, prior, after, expected, record)
+        require(after["status"]["presets"]["go"] == prior["status"]["presets"]["go"], "CC edit changed inactive GO reference")
+        state = after
         return after
 
     def refuse(command, feedback):
-        prior, saved = current.get(), record.read_bytes()
-        text, after = exact_human_reply(current, command, feedback)
-        require(text == feedback, "CC grammar refusal feedback differs")
+        nonlocal state
+        prior, saved = state, record.read_bytes()
+        _, after = exact_human_reply(current, command, feedback)
         require_cc_unchanged(prior, after, record, saved)
+        state = after
 
-    open_rule = dict(allow_all=True, block_all=False, allow={}, block={})
-    closed_rule = dict(allow_all=False, block_all=True, allow={}, block={})
-    unrestricted = {field: copy.deepcopy(open_rule) for field in CC_HELP_RULE_FIELDS}
-    unrestricted.update({key: True for key in CC_HELP_SWITCHES.values()})
-    unrestricted.update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[],
-                        comments=[], block_comments=[], min_snr={}, nearby_enabled=False)
-    # Ensure every advertised reset has a visible transition, including reruns.
-    apply("UNSET/FILTER BAND ALL", dict(bands=closed_rule))
-    apply("SET/FILTER NOFILTER ALL", unrestricted)
-    apply("SET/FILTER BAND 20,40", dict(bands=dict(allow_all=False, block_all=False, allow={"20m": True, "40m": True}, block={})))
-    apply("UNSET/FILTER BAND 40", dict(bands=dict(allow_all=False, block_all=False, allow={"20m": True}, block={"40m": True})))
-    apply("SET/FILTER BAND/ON", dict(bands=open_rule))
-    apply("SET/FILTER BAND/OFF", dict(bands=closed_rule))
-    apply("SET/FILTER BAND/ON", dict(bands=open_rule))
-    apply("UNSET/FILTER MODE FT8", dict(modes=dict(allow_all=True, block_all=False, allow={}, block={"FT8": True})))
-    apply("SET/FILTER MODE FT8", dict(modes=open_rule))
-    apply("UNSET/FILTER SOURCE SKIMMER", dict(sources=dict(allow_all=True, block_all=False, allow={}, block={"SKIMMER": True})))
-    apply("SET/FILTER SOURCE ALL", dict(sources=open_rule))
-    for domain, key in CC_HELP_SWITCHES.items():
-        apply("UNSET/FILTER " + domain + " ALL", {key: False})
-        apply("SET/FILTER " + domain + "/ON", {key: True})
-    for verb, threshold, clear in (("SET/FILTER", 7, "ALL"), ("UNSET/FILTER", -3, "NONE")):
-        apply(verb + " MINSNR CW " + str(threshold), dict(min_snr={"CW": threshold}))
-        wrong = "NONE" if clear == "ALL" else "ALL"
-        refusal = "Usage: " + ("PASS" if verb == "SET/FILTER" else "REJECT") + " MINSNR <mode[,mode...]|ALL> <integer dB|" + clear + ">\nNumeric PASS and REJECT set the same inclusive minimum.\nHuman spots and spots without SNR are exempt."
-        refuse(verb + " MINSNR CW " + wrong, refusal)
-        refuse(verb + " MINSNR CW 3 TAIL", refusal)
-        apply(verb + " MINSNR CW " + clear, dict(min_snr={}))
-    if before["configuration"]["settings"]["grid"] != "FN31":
-        apply("SET GRID FN31", {}, dict(grid="FN31"))
-    for verb in ("SET/FILTER", "UNSET/FILTER"):
-        apply(verb + " NEARBY ON", dict(nearby_enabled=True))
-        refuse(verb + " NEARBY ON TAIL", "Usage: PASS NEARBY ON|OFF\nType HELP for usage.")
-        apply(verb + " NEARBY OFF", dict(nearby_enabled=False))
-    apply("PASS COMMENT CQ", dict(comments=["CQ"]))
-    apply("REJECT COMMENT QRT", dict(block_comments=["QRT"]))
-    for command in ("SET/FILTER COMMENT CQ", "UNSET/FILTER COMMENT CQ", "UNSET/FILTER BAND/ON", "UNSET/FILTER BEACON/OFF"):
-        refuse(command, filter_discovery_reply("REJECT" if command.startswith("UNSET/") else "PASS", True))
-    min_inline = "Usage: PASS MINSNR <mode[,mode...]|ALL> <integer dB|ALL>\nNumeric PASS and REJECT set the same inclusive minimum.\nHuman spots and spots without SNR are exempt."
-    for command, feedback in (("SET/FILTER COMMENT/ON", filter_discovery_reply("PASS", True)), ("SET/FILTER MINSNR/ON", min_inline),
-                              ("SET/FILTER NEARBY/ON", "Usage: PASS NEARBY ON|OFF\nType HELP for usage."),
-                              ("SET/FILTER DXBM/ON", DXBM_DISCOVERY_INVALID)):
-        refuse(command, feedback)
-    for domain in ("COMMENT", "MINSNR", "NEARBY", "DXBM"):
-        # Inline normalization supplies ALL; these special owners refuse it.
-        command = "SET/FILTER " + domain + "/ON TAIL"
-        refuse(command, "Usage: SET/FILTER " + domain + "/ON\nNo changes applied.")
-    for command in ("UNSET/FILTER NOFILTER", "SET/FILTER NOFILTER/OFF"):
-        refuse(command, "Invalid filter command. Type HELP for usage.")
-    refuse("SET/FILTER NOFILTER OFF", "NOFILTER accepts no value or ALL. No changes applied.")
-    for command in ("SET/FILTER DXBM ALL", "UNSET/FILTER DXBM ALL"):
-        refuse(command, DXBM_DISCOVERY_INVALID)
-    for command, enabled in (("SET/FILTER DXBM 20,40", True), ("UNSET/FILTER DXBM 40", False),
-                              ("SET/FILTER DXBM PASS 40", True), ("SET/FILTER DXBM REJECT 40", False),
-                              ("SET/FILTER DXBM/PASS 40", True), ("SET/FILTER DXBM/REJECT 40", False)):
-        bands = dict(allow_all=False, block_all=False, allow={"20m": True}, block={})
-        bands["allow" if enabled else "block"]["40m"] = True
-        apply(command, dict(bands=bands))
-    apply("SET/FILTER NOFILTER/ON", unrestricted)
-    apply("RESET FILTER", defaults)
+    # Native replacing/incremental selections and the six surviving switches.
+    for index, (domain, field) in enumerate(CC_HELP_SWITCHES.items()):
+        if index > 0:
+            current, state = resume_help_fixture(current, record, state, pause=True)
+        if state["configuration"]["filters"]["cc"][field] is not True:
+            apply("SET/FILTER " + domain, {field: True})
+        apply("UNSET/FILTER " + domain + " ALL", {field: False})
+        apply("SET/FILTER " + domain + "/ON", {field: True})
+    current, state = resume_help_fixture(current, record, state, pause=True)
+    for index, (command, field, enabled) in enumerate((("SET/NOFT8", "modes", False), ("SET/FT8", "modes", True),
+                                     ("UNSET/SKIMMER", "sources", False), ("SET/SKIMMER", "sources", True))):
+        if index == 2:
+            current, state = resume_help_fixture(current, record, state, pause=True)
+        prior = state["configuration"]["filters"]["cc"]
+        value = "FT8" if field == "modes" else "SKIMMER"
+        if (value in prior[field]) is enabled:
+            opposite = "SET/FT8" if field == "modes" and not enabled else "SET/NOFT8" if field == "modes" else "SET/SKIMMER" if not enabled else "UNSET/SKIMMER"
+            values = sorted(set(prior[field]) | {value}) if not enabled else [item for item in prior[field] if item != value]
+            apply(opposite, {field: values})
+        prior = state["configuration"]["filters"]["cc"]
+        values = sorted(set(prior[field]) | {value}) if enabled else [item for item in prior[field] if item != value]
+        apply(command, {field: values})
+    current, state = resume_help_fixture(current, record, state, pause=True)
+    for category, action, values in (("DOC", "pass", {"countries": [291]}), ("DOC", "reject", {"countries": [1]}),
+                                      ("DXSTATE", "pass", {"states": ["CA"]}), ("DOC", "off", {}), ("DXSTATE", "off", {})):
+        geo = copy.deepcopy(state["configuration"]["filters"]["cc"]["geography"])
+        geo[category] = {"global": {"action": action, **values}, "bands": {}}
+        suffix = "" if action == "off" else " " + ("CA" if category == "DXSTATE" else "291" if action == "pass" else "1")
+        apply("SET/FILTER " + category + "/" + action.upper() + suffix, {"geography": geo})
+    current, state = resume_help_fixture(current, record, state, pause=True)
+    if state["configuration"]["filters"]["cc"]["dxbm"]["active"]:
+        apply("SET/FILTER DXBM/OFF", {"dxbm": dict(active=False, base_allow=True, slots={})})
+    apply("SET/FILTER DXBM/PASS 20-CW", {"dxbm": dict(active=True, base_allow=False, slots={"20-CW": True})})
+    apply("SET/FILTER DXBM/REJECT 20-CW", {"dxbm": dict(active=True, base_allow=False, slots={})})
+    apply("SET/FILTER DXBM/OFF", {"dxbm": dict(active=False, base_allow=True, slots={})})
+    for command in ("PASS COMMENT CQ", "PASS MINSNR CW 7", "SET/FILTER NEARBY ON", "SET/FILTER BAND 20",
+                    "UNSET/FILTER MODE CW", "SET/FILTER DXBM 20 CW", "SET/FILTER NOFILTER"):
+        refuse(command, native_retired_reply(command))
+    before = state
+    text, after = current.human("SET/NOFILTER")
+    require(text.strip() and "No changes applied" not in text, "native reset refused")
+    expected = copy.deepcopy(before["configuration"])
+    expected["filters"]["cc"] = copy.deepcopy(defaults)
+    expected["filters"]["cc"].update({field: True for field in CC_HELP_SWITCHES.values()})
+    require_cc_saved_state(after, expected, record)
+    state = after
     after = apply("UNSET/FILTER BEACON", dict(include_beacons=False))
     saved_cc_grammar[call] = copy.deepcopy(after["configuration"]), copy.deepcopy(defaults)
 
 
-HELP_SHORTCUT_MODES = ("CW", "FT2", "FT4", "FT8", "RTTY")
+HELP_SHORTCUT_MODES = ("CW", "FT2", "FT4", "FT8", "PSK", "RTTY")
 
 
 def help_route_contract(key, dialect):
-    # Literal dispatch-derived heads/usages, not an enumeration of the HELP
-    # catalog. Short replies have source-verified terminal lines; long replies
-    # require their complete counted automatic-pause footer.
+    # Source-literal heads, complete usages/aliases and terminal lines. The
+    # output itself never supplies an expected contract.
     contracts = {
         "DX": ("DX - Post a spot (human entry).",
                ("DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]"), None, ()),
@@ -2256,13 +2584,13 @@ def help_route_contract(key, dialect):
         "SHOW HOLD": ("SHOW HOLD - Show read-pause status.", ("SHOW HOLD",),
                       "  Shows remaining pause time and suppressed spot count.", ()),
         "SHOW SETTINGS": ("SHOW SETTINGS - Display preferences and session behavior.", ("SHOW SETTINGS",),
-                          "  bytes.", ()),
+                          "  65,536 bytes.", ("SHOW/SETTINGS", "SH/SETTINGS")),
         "SHOW DEDUPE": ("SHOW DEDUPE - Show your broadcast dedupe policy.", ("SHOW DEDUPE",),
                         "  Shows if a policy is disabled server-side.", ()),
         "SET SOLAR": ("SET SOLAR - Opt into solar summaries.", ("SET SOLAR <15|30|60|OFF>",),
                       "  OFF disables summaries.", ()),
         "SET GRID": ("SET GRID - Set your grid for path reliability glyphs.", ("SET GRID <locator>",),
-                     "  When NEARBY is on, both fine and coarse grid mappings must be usable.", ()),
+                     "  Unavailable grid mapping is reported separately from invalid syntax.", ()),
         "SET NOISE": ("SET NOISE - Set your noise class for glyphs.",
                       ("SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>",), "  Default is QUIET when unset.", ()),
         "SET PATHSAMPLES": ("SET PATHSAMPLES - Set your path sample floor.", ("SET PATHSAMPLES <count|DEFAULT>",),
@@ -2272,59 +2600,80 @@ def help_route_contract(key, dialect):
         "SET DEDUPE": ("SET DEDUPE - Select broadcast dedupe policy.", ("SET DEDUPE <FAST|MED|SLOW>",),
                        "  If a policy is disabled, the nearest available is chosen.", ()),
         "DIALECT": ("DIALECT - Show or switch filter command dialect.",
-                    ("DIALECT", "DIALECT LIST", "DIALECT <go|cc>"), "  Dialect selection is persisted per callsign.", ()),
+                    ("DIALECT", "DIALECT LIST", "DIALECT <go|cc>"), "  Dialect selection does not change session-only VE7CC spot output.", ()),
         "BYE": ("BYE - Disconnect from the cluster.", ("BYE",), "Aliases: QUIT, EXIT", ("QUIT", "EXIT")),
-        "RESET FILTER": ("RESET FILTER - Reset filters to configured defaults.", ("RESET FILTER",),
-                         "Usage: RESET FILTER", ()),
-        "RESET FILTER COMMENT": ("RESET FILTER COMMENT - Clear comment selections.",
-                                 ("RESET FILTER COMMENT [PASS|REJECT]",),
-                                 "  RESET FILTER and PASS NOFILTER also clear all comment rules.", ()),
-        "SHOW FILTER COMMENT": ("SHOW FILTER COMMENT - Display saved comment phrases.",
-                                ("SHOW FILTER COMMENT",),
-                                "Aliases: SHOW/FILTER COMMENT, SH/FILTER COMMENT", ("SHOW/FILTER COMMENT", "SH/FILTER COMMENT")),
-        "PASS NEARBY": ("PASS NEARBY - Toggle nearby filtering.", ("PASS NEARBY ON|OFF",), None, ("REJECT NEARBY",)),
         "VALIDATE YAML CONFIG": ("VALIDATE YAML CONFIG - Check a complete client proposal.",
-                                 ("VALIDATE YAML CONFIG",),
+                                 ("VALIDATE YAML CONFIG", "VALIDATE YAML CONFIG SCHEMA 7"),
                                  "  Does not change revisions, pause, diagnostics or scheduling.", ()),
-        "SET/NOFILTER": ("SET/NOFILTER - Allow everything (CC dialect).", ("SET/NOFILTER",),
-                         "  Resets filters to a fully permissive state.", ()),
-        "SET/ANN": ("SET/ANN - Enable announcements.", ("SET/ANN",), "  Alias of PASS ANNOUNCE.", ()),
-        "SET/NOANN": ("SET/NOANN - Disable announcements.", ("SET/NOANN",), "  Alias of REJECT ANNOUNCE.", ()),
     }
+
+    def last_note(note):
+        import textwrap
+        return textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  ",
+                             break_long_words=False, break_on_hyphens=False)[-1]
+
+    contracts["SHOW SETTINGS"] = ("SHOW SETTINGS - Display preferences and session behavior.", ("SHOW SETTINGS",),
+        last_note("The complete response, including its pause footer, is limited to 65,536 bytes."), ("SHOW/SETTINGS", "SH/SETTINGS"))
     parent_usages = (("SHOW DX [count|selector]",) if dialect == "go" else ()) + (
-        "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>",
+        "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW WWV [FULL]", "SHOW WCY [FULL]",
         "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN")
     contracts["SHOW"] = ("SHOW - See SHOW subcommands.", parent_usages,
                          "  Use HELP " + ("SHOW DX" if dialect == "go" else "SHOW/DX") + " for the history alias.", ("SH",))
     for topic in ("SHOW MYDX", "SHOW DX" if dialect == "go" else "SHOW/DX"):
-        header = "Show filtered spot history." if topic == "SHOW MYDX" else "Alias of SHOW MYDX (stored history)."
+        summary = "Show filtered spot history." if topic == "SHOW MYDX" else "Alias of SHOW MYDX (stored history)."
         usage = (topic + " [count]", topic + " <prefix|callsign> [count]", topic + " [count] <prefix|callsign>",
                  topic + " NEXT <cursor>", topic + " [selector] [count] COMMENT <phrase>",
                  topic + " [selector] [count] BAND <list> MODE <list>")
-        contracts[topic] = (topic + " - " + header, usage, None,
-                            ("SH MYDX",) if topic == "SHOW MYDX" else ("SH DX",) if dialect == "go" else ("SH/DX", "SHOW DX", "SH DX"))
+        contracts[topic] = (topic + " - " + summary, usage, None,
+                           ("SH MYDX",) if topic == "SHOW MYDX" else ("SH DX",) if dialect == "go" else ("SH/DX", "SHOW DX", "SH DX"))
     filter_topic = "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"
-    contracts[filter_topic] = (filter_topic + " - Display current filter state.",
-                              (filter_topic, filter_topic + " FULL", filter_topic + " <category>"), None,
-                              ("SHOW/FILTER", "SH/FILTER") if dialect == "go" else ("SH/FILTER", "SHOW FILTER"))
+    contracts[filter_topic] = ((filter_topic + " - Display current filter state.",
+        (filter_topic, filter_topic + " RULE", filter_topic + " FULL"), None, ("SHOW/FILTER", "SH/FILTER")) if dialect == "go" else
+        (filter_topic + " - Inspect native CC state.",
+         (filter_topic + " [DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL]",),
+         last_note("GET YAML CONFIG SCHEMA 7 provides a complete both-bank backup. Schema 6 does not."), ("SHOW FILTER", "SH/FILTER")))
     for verb in ("PASS", "REJECT"):
         if dialect == "go":
-            contracts[verb] = (verb + " - " + ("Allow" if verb == "PASS" else "Block") + " filter matches.",
-                               (verb + " <type> <list>",), None, ())
+            summary = "Allow matching spots or enable separate controls." if verb == "PASS" else "Veto matching spots or disable separate controls."
+            contracts[verb] = (verb + " - " + summary,
+                (verb + " RULE <0..9> <expression>", verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"),
+                "  Old category mutation syntax is refused, not translated; use HELP RULE.", ())
         else:
-            topic, clear = ("SET/FILTER", "ALL") if verb == "PASS" else ("UNSET/FILTER", "NONE")
-            usage = (topic + " <list-type> <values>", topic + " MINSNR <modes|ALL> <integer dB|" + clear + ">",
-                     topic + " NEARBY ON|OFF", topic + " <switch> [ALL]", topic + " DXBM <band-codes>")
-            if verb == "PASS":
-                usage += ("SET/FILTER NOFILTER [ALL]", "SET/FILTER DXBM PASS|REJECT <band-codes>",
-                          "SET/FILTER DXBM/PASS <band-codes>", "SET/FILTER DXBM/REJECT <band-codes>")
-            contracts[verb] = (topic + " - " + ("Allow" if verb == "PASS" else "Block") + " filter matches (CC dialect).",
-                               usage, None, ())
-        contracts[verb + " COMMENT"] = (verb + " COMMENT - Add a literal comment phrase.",
-                                          (verb + " COMMENT <phrase>",), None, ())
-        clear = "ALL" if verb == "PASS" else "NONE"
-        contracts[verb + " MINSNR"] = (verb + " MINSNR - Set or clear per-mode minimum SNR.",
-                                        (verb + " MINSNR <mode[,mode...]|ALL> <integer dB|" + clear + ">",), None, ())
+            contracts[verb] = (verb + " - Change separate delivery switches.",
+                (verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]",),
+                last_note("Boolean rule edits require GO; HELP SET/FILTER describes native CC selection."), ())
+    for topic in ("SET/FILTER", "UNSET/FILTER"):
+        usages = [topic + " <switch> [ALL]"]
+        if topic == "SET/FILTER":
+            usages += ["SET/FILTER <DOC|DOS|DXCTY|DXSTATE>/<PASS|REJECT> <list>", "SET/FILTER <DOC|DOS|DXCTY|DXSTATE>/OFF",
+                       "SET/FILTER <country-list>/PASS or /REJECT", "SET/FILTER DXBM/PASS <band-or-slot-list>",
+                       "SET/FILTER DXBM/REJECT <band-or-slot-list>", "SET/FILTER DXBM/OFF"]
+        contracts[topic] = (topic + " - Change native CC selections or switches.", tuple(usages), None, ())
+    for topic in ("RESET FILTER COMMENT", "SHOW FILTER COMMENT", "PASS COMMENT", "REJECT COMMENT", "PASS MINSNR", "REJECT MINSNR"):
+        if dialect == "cc":
+            contracts[topic] = (topic + " - GO dialect only.", ("DIALECT GO",),
+                last_note("Switching banks preserves the other bank. Use HELP SET/FILTER or HELP FILTERS for native CC commands."), ())
+        elif topic.endswith("MINSNR"):
+            contracts[topic] = (topic + " - Replaced by Boolean SNR expressions.", ("HELP RULE",),
+                "  Missing SNR makes comparisons false; NOT reverses that result.", ())
+        else:
+            contracts[topic] = (topic + " - Replaced by numbered Boolean rules.", ("HELP RULE",),
+                "  Use SHOW FILTER RULE to read saved and effective expressions.", ())
+    contracts["RESET FILTER"] = (("RESET FILTER - Reset filters without restoring defaults.",
+        ("RESET FILTER", "RESET FILTER RULE <0..9|ALL>"), "  No rules means no personal restriction. See HELP RULE.", ()) if dialect == "go" else
+        ("RESET FILTER - GO dialect only.", ("DIALECT GO",),
+         last_note("Switching banks preserves the other bank. Use HELP SET/FILTER or HELP FILTERS for native CC commands."), ()))
+    contracts["PASS NEARBY"] = (("NEARBY - Boolean proximity predicate.",
+        ("PASS RULE 0 NEARBY", "PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)"),
+        last_note("The old PASS/REJECT NEARBY ON/OFF commands are refused; use numbered rules."), ("PASS NEARBY", "REJECT NEARBY")) if dialect == "go" else
+        ("NEARBY - GO dialect only.", ("DIALECT GO",),
+         last_note("Switching banks preserves the other bank. Use HELP SET/FILTER or HELP FILTERS for native CC commands."), ()))
+    for topic in ("SET/NOFILTER", "SET/<MODE>", "SET/NO<MODE>"):
+        note = ("Restores current operator mode/source defaults and clears geography, band exceptions and DXBM. Keeps six switches, inactive GO bank and shared preferences." if topic == "SET/NOFILTER" else
+                "SET/<MODE> enables; SET/NO<MODE> or UNSET/<MODE> disables. Empty mode/source selections admit no reports.")
+        contracts[topic] = (topic + " - Change a native CC selection.", (topic,), last_note(note), ())
+    contracts["SET/ANN"] = ("SET/ANN - Enable announcements.", ("SET/ANN",), "  Alias of PASS ANNOUNCE.", ())
+    contracts["SET/NOANN"] = ("SET/NOANN - Disable announcements.", ("SET/NOANN",), "  Alias of REJECT ANNOUNCE.", ())
     for verb, summary in (("SAVE", "Save filters and preferences to a preset."), ("LIST", "List your saved presets."),
                           ("LOAD", "Load a preset and save this SSID's defaults."), ("DELETE", "Delete a saved preset.")):
         topic = verb + " PRESET"
@@ -2332,14 +2681,11 @@ def help_route_contract(key, dialect):
     for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"):
         topic = "GET YAML " + resource
         contracts[topic] = (topic + " - Read " + resource.lower() + " for clients.",
-                            (topic + " [SCHEMA 2|3|4] [ID <id>]",), None, ())
+                           (topic + " SCHEMA 6 [ID <id>]", topic + " SCHEMA 7 [ID <id>]"), None, ())
     for verb in ("PUT", "PATCH"):
         for resource in ("FILTER", "SETTINGS", "CONFIG"):
             topic = verb + " YAML " + resource
-            contracts[topic] = (topic + " - Write " + resource.lower() + " for clients.", (topic,), None, ())
-    for topic, action in (("SET/<MODE>", "Allow"), ("SET/NO<MODE>", "Block")):
-        contracts[topic] = (topic + " - " + action + " a mode (CC dialect).", (topic,),
-                            "  " + ", ".join(HELP_SHORTCUT_MODES), ())
+            contracts[topic] = (topic + " - Write " + resource.lower() + " for clients.", (topic, topic + " SCHEMA 7"), None, ())
     require(key in contracts, "unknown independent HELP contract")
     return contracts[key]
 
@@ -2364,7 +2710,7 @@ def help_routing_topics(dialect):
     topics += [(head + " FULL EXTRA", filter_topic) for head in ("SHOW FILTER", "SHOW/FILTER", "SH/FILTER")]
     topics += [(head + " COMMENT EXTRA", "SHOW FILTER COMMENT") for head in ("SHOW FILTER", "SHOW/FILTER", "SH/FILTER")]
     topics += [(verb + " PRESET ROUTE18 EXTRA", verb + " PRESET") for verb in ("SAVE", "LIST", "LOAD", "DELETE")]
-    topics += [("GET YAML " + resource + " SCHEMA 4 ID ROUTE18", "GET YAML " + resource)
+    topics += [("GET YAML " + resource + " SCHEMA 7 ID ROUTE18", "GET YAML " + resource)
                for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES")]
     topics += [(verb + " YAML " + resource + " EXTRA", verb + " YAML " + resource)
                for verb in ("PUT", "PATCH") for resource in ("FILTER", "SETTINGS", "CONFIG")]
@@ -2373,7 +2719,7 @@ def help_routing_topics(dialect):
                "SHOW DXCCX DL", "GET YAML CONFIGX ID ROUTE18", "SET SOLARX 30"]
     if dialect == "cc":
         topics += [(head + " 1", "SHOW/DX") for head in ("SHOW/DX", "SH/DX")]
-        topics += [("SET/FILTER BAND 40", "PASS"), ("UNSET/FILTER MODE CW", "REJECT"),
+        topics += [("SET/FILTER BAND 40", "SET/FILTER"), ("UNSET/FILTER MODE CW", "UNSET/FILTER"),
                    ("SET/NOFILTER EXTRA", "SET/NOFILTER"), ("SET/ANN EXTRA", "SET/ANN"), ("SET/NOANN EXTRA", "SET/NOANN")]
         topics += [("SET/" + token + " EXTRA", "SET/<MODE>") for token in ("CW_ALIAS", "COMMENT", "BAND", "MODE")]
         topics += [("SET/NO" + token + " EXTRA", "SET/NO<MODE>") for token in ("CW_ALIAS", "COMMENT")]
@@ -2479,9 +2825,9 @@ def complete_reply_config(current, received, label):
     # human response pending. The frame collector retains its own receipt.
     # Unlike Session.get, the barrier rejects any hidden trailing human output.
     identifier = current.suite.identifier()
-    command = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+    command = f"GET YAML CONFIG SCHEMA 7 ID {identifier}"
     current.send(command + "\r\n")
-    document, prefix = current.frame("CONFIG", identifier, 4, command)
+    document, prefix = current.frame("CONFIG", identifier, 7, command)
     echoed, trailing = False, 0
     for line in prefix.splitlines(keepends=True):
         require(line.endswith(b"\r\n") and b"\r" not in line[:-2], label + " barrier breaks CRLF")
@@ -2495,7 +2841,7 @@ def complete_reply_config(current, received, label):
             type(document.get("status")) is dict and type(document.get("revision")) is str and document["revision"],
             label + " barrier lacks a valid configuration")
     require(document.get("resource") == "CONFIG" and type(document.get("schema_version")) is int and
-            document["schema_version"] == 4 and document.get("request_id") == identifier,
+            document["schema_version"] == 7 and document.get("request_id") == identifier,
             label + " barrier has the wrong resource, schema or request identity")
     return document
 
@@ -2503,8 +2849,6 @@ def complete_reply_config(current, received, label):
 def require_help_routing_state(before, after, record, saved, library, library_saved, paused):
     require_cc_unchanged(before, after, record, saved)
     require(library.read_bytes() == library_saved, "HELP routing changed the shared preset library")
-    for field in ("server", "min_snr", "comments"):
-        require_cc_typed_value(after["status"].get(field), before["status"].get(field))
     for field in ("callsign", "diagnostic_comments", "temporary_defaults", "suppressed_spots"):
         require_cc_typed_value(after["status"]["session"][field], before["status"]["session"][field])
     session = after["status"]["session"]
@@ -2520,9 +2864,6 @@ def require_help_routing_state(before, after, record, saved, library, library_sa
 
 def require_help_routing_saved(document, expected, record):
     require_cc_saved_state(document, expected, record)
-    saved = stored_document(record.read_bytes())
-    for field, value in expected["settings"].items():
-        require_cc_typed_value(saved.get(field, 0 if type(value) is int else ""), value)
 
 
 def help_routing_cases(suite, root, generation, saved_help_routes):
@@ -2538,88 +2879,70 @@ def help_routing_cases(suite, root, generation, saved_help_routes):
             any(mode["name"] == "TEST_MODE" and mode.get("filter_visible") is True and not mode.get("cc_shortcut")
                 for mode in taxonomy["modes"]), "HELP routing lost its configured shortcut/alias prerequisites")
     library = root / "users" / "presets" / ("VE3ABC".encode().hex() + ".yaml")
-    for dialect, call in (("go", "VE3ABC-70073"), ("cc", "VE3ABC-70074")):
+    for dialect, call in (("go", "VE3ABC-73"), ("cc", "VE3ABC-74")):
         record = root / "users" / (call + ".yaml")
         if not generation:
             require(not record.exists(), "HELP routing requires fresh unused SSIDs")
-        current = harness.Session(suite, call)
+        current = fixture_session(suite, call)
         before = current.get()
         if generation:
             require_help_routing_saved(before, saved_help_routes[call], record)
         else:
-            expected = copy.deepcopy(before["configuration"])
-            expected["settings"].update(dialect=dialect, grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
-                                        path_min_observation_count=30, solar_summary_minutes=30)
-            expected["filters"].update(comments=["ROUTE18 " + dialect.upper()], block_comments=["QRT"], min_snr={"CW": 7},
-                                       include_beacons=False, allow_announce=False)
+            expected = scoped_bank_fixture(before["configuration"], dialect, "ROUTE18")
             response = current.upload("PUT", "CONFIG", expected, revision=before["revision"])
             require("error" not in response, "HELP routing preference setup was refused")
             before = current.get()
             require_help_routing_saved(before, expected, record)
             name = "HELP18" + dialect.upper()
-            exact_human_reply(current, "SAVE PRESET " + name, "Saved preset " + name + " for VE3ABC.")
+            exact_human_reply(current, "SAVE PRESET " + name, "Saved preset " + name + " (" + dialect.upper() + ") for VE3ABC.")
             before = current.get()
             require_help_routing_saved(before, expected, record)
-            require(before["status"]["preset"] == dict(associated=True, name=name, modified=False),
+            require(before["status"]["presets"][dialect] == dict(associated=True, name=name, modified=False),
                     "HELP routing setup lacks its saved preset baseline")
             saved_help_routes[call] = copy.deepcopy(expected)
         require(before["configuration"]["settings"]["dialect"] == dialect and
                 before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
                 before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds and
-                before["status"]["preset"] == dict(associated=True, name="HELP18" + dialect.upper(), modified=False),
+                before["status"]["presets"][dialect] == dict(associated=True, name="HELP18" + dialect.upper(), modified=False),
                 "HELP routing fresh preferences or loaded pause owner disagree")
-        require_setting_control(current, record, "SET DIAG MODE", "Diagnostic comments: MODE", "diagnostic_comments", "MODE")
-        for topic, key in help_routing_topics(dialect):
-            before, saved, library_saved = current.get(), record.read_bytes(), library.read_bytes()
+        before = require_setting_control(current, record, "SET DIAG MODE", "Diagnostic comments: MODE", "diagnostic_comments", "MODE")
+        for index, (topic, key) in enumerate(help_routing_topics(dialect)):
+            if index % 8 == 0:
+                current, before = resume_help_fixture(current, record, before, diagnostic="MODE")
+            saved, library_saved = record.read_bytes(), library.read_bytes()
             contract = help_route_contract(key, dialect) if key else (
                 "Unknown help topic: " + topic, (), "Type HELP for available commands.", ())
             after, paused = help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds)
             require_help_routing_state(before, after, record, saved, library, library_saved, paused)
+            before = after
 
 
-DISCOVERY_FAMILIES = tuple("BAND MODE SOURCE EVENT COMMENT DXCALL DECALL CONFIDENCE PATH DXGRID2 DEGRID2 "
-                           "DXCONT DECONT DXZONE DEZONE DXDXCC DEDXCC DXSTATE DESTATE MINSNR BEACON WWV WCY "
-                           "ANNOUNCE SELF TOXIC NEARBY DXBM NOFILTER".split())
-DISCOVERY_TYPES = ("Types: BAND, MODE, MINSNR, SOURCE, EVENT, COMMENT, DXCALL, DECALL,\n"
-                   "       CONFIDENCE, PATH, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE,\n"
-                   "       DXDXCC, DEDXCC, DXSTATE, DESTATE, DXBM, NEARBY,\n"
-                   "       BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC\n")
-DXBM_DISCOVERY_MISSING = ("Usage: PASS DXBM <band-codes> or REJECT DXBM <band-codes>\n"
-                          "Type HELP PASS or HELP REJECT for usage.")
-DXBM_DISCOVERY_INVALID = ("Unknown DXBM band: ALL\n"
-                          "Supported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled).\n"
-                          "Modes ignored; use REJECT MODE <mode>.")
 HELP_MAILING_CODES = tuple("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA "
                            "MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON "
                            "OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT".split())
 
 
-def filter_discovery_reply(verb, unknown=False):
+def filter_discovery_reply(verb, unknown=False, dialect="go"):
     require(verb in ("PASS", "REJECT"), "invalid discovery action oracle")
+    if dialect == "cc":
+        return native_retired_reply(verb)
     if unknown:
-        extra = "PASS also supports NOFILTER; PC93 aliases ANNOUNCE.\n" if verb == "PASS" else "PC93 aliases ANNOUNCE.\n"
-        return ("Unknown filter type.\n" + DISCOVERY_TYPES +
-                "COMMENT uses PASS/REJECT COMMENT in either dialect.\n" + extra + "Type HELP " + verb + " for usage.")
-    clear = "ALL" if verb == "PASS" else "NONE"
-    ending = ("PASS supports NOFILTER. Type HELP PASS for complete syntax and examples." if verb == "PASS" else
-              "Type HELP REJECT for complete syntax and examples.")
-    return ("Usage: " + verb + " <type> ...\n" + DISCOVERY_TYPES +
-            "COMMENT uses PASS/REJECT COMMENT <literal phrase>.\n" +
-            "MINSNR takes modes and <integer dB|" + clear + ">.\n" +
-            "NEARBY takes ON|OFF with either verb; PC93 aliases ANNOUNCE.\n" + ending)
+        message = "Use numbered rules: PASS RULE <0..9> <expression> or REJECT RULE <0..9> <expression>. Type HELP RULE for fields and examples."
+    else:
+        message = "Usage: PASS RULE <0..9> <expression>\n       REJECT RULE <0..9> <expression>\nType HELP RULE for fields and examples."
+    return bounded_filter_refusal(message, "  ")
 
 
-def require_discovery_inventory(reply, verb, unknown=False):
-    require(reply == filter_discovery_reply(verb, unknown), "discovery loses its action-specific exact feedback")
-    rows = reply.splitlines()
-    types = [name for name in re.split(r"[, ]+", " ".join(rows[1:5]).removeprefix("Types: ")) if name]
-    expected = set(DISCOVERY_FAMILIES) - {"NOFILTER"}
-    require(len(DISCOVERY_FAMILIES) == 29 and len(types) == len(expected) and set(types) == expected,
-            "discovery has a missing, duplicate or invented filter family")
-    require("PC93" not in types and "PC93 aliases ANNOUNCE." in reply and
-            (("NOFILTER" in reply) is (verb == "PASS")), "discovery loses its alias or PASS-only NOFILTER boundary")
-    require("SET/FILTER COMMENT" not in reply and "UNSET/FILTER COMMENT" not in reply and
-            "COMMENT uses PASS/REJECT COMMENT" in reply, "discovery invents a CC COMMENT alias")
+def require_discovery_inventory(reply, verb, unknown=False, dialect="go"):
+    require(reply == filter_discovery_reply(verb, unknown, dialect), "discovery loses exact dialect-specific feedback")
+    if dialect == "go":
+        flat = " ".join(reply.split())
+        require("PASS RULE <0..9> <expression>" in flat and "REJECT RULE <0..9> <expression>" in flat and
+                "HELP RULE" in flat, "GO discovery omits numbered-rule recovery")
+    else:
+        require("HELP SET/FILTER" in reply and "DIALECT GO" in " ".join(reply.split()) and "HELP RULE" not in reply,
+                "CC discovery loses bank-specific recovery")
+    require(reply.endswith("No changes applied."), "discovery does not prove a refusal")
 
 
 def decode_discovery_reply(raw, query, expected, remote_echo=False):
@@ -2665,24 +2988,19 @@ def discovery_readback(current, query, expected):
 
 def discovery_feedback_cases(dialect):
     cases = []
-    heads = [("PASS", "PASS"), ("REJECT", "REJECT")]
+    for verb in ("PASS", "REJECT"):
+        cases.append((verb, filter_discovery_reply(verb, False, dialect), verb, False))
+        cases.append((verb + " INVENTED", filter_discovery_reply(verb, True, dialect), verb, True))
+        for family in ("BAND", "MODE", "SOURCE", "EVENT", "COMMENT", "DXCALL", "DECALL", "CONFIDENCE", "PATH",
+                       "DXGRID2", "DEGRID2", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC", "DEDXCC", "DXSTATE",
+                       "DESTATE", "MINSNR", "NEARBY", "DXBM", "NOFILTER"):
+            cases.append((verb + " " + family + " ALL", filter_discovery_reply(verb, True, dialect), verb, True))
     if dialect == "cc":
-        heads += [("SET/FILTER", "PASS"), ("UNSET/FILTER", "REJECT")]
-    for head, verb in heads:
-        cases += [(head, filter_discovery_reply(verb), verb, False),
-                  (head + " INVENTED", filter_discovery_reply(verb, True), verb, True),
-                  (head + " DXBM", DXBM_DISCOVERY_MISSING, None, False),
-                  (head + " DXBM ALL", DXBM_DISCOVERY_INVALID, None, False)]
-        for family in ("DXSTATE", "DESTATE"):
-            usage = ("Usage: " + verb + " " + family + " <state>[,<state>...] or ALL\n"
-                     "US/Canadian mailing codes include provinces and territories.\nType HELP " + verb + " for usage.")
-            cases += [(head + " " + family, usage, None, False),
-                      (head + " " + family + " CT,ZZ", "Invalid state selection: ZZ", None, False)]
-    cases += [("RESET MODE", "Usage: RESET FILTER\nType HELP for usage.", None, False),
-              ("REJECT NOFILTER", "Invalid filter command. Type HELP for usage.", None, False)]
-    if dialect == "cc":
-        cases += [("SET/FILTER COMMENT CQ", filter_discovery_reply("PASS", True), "PASS", True),
-                  ("UNSET/FILTER COMMENT CQ", filter_discovery_reply("REJECT", True), "REJECT", True)]
+        missing = bounded_filter_refusal("Usage: SET/FILTER <DOC|DOS|DXCTY|DXSTATE|DXBM>/<PASS|REJECT> <list>, or <category>/OFF.")
+        cases.append(("SET/FILTER", missing, None, False))
+        for command in ("SET/FILTER COMMENT CQ", "UNSET/FILTER COMMENT CQ", "SET/FILTER NEARBY ON",
+                        "SET/FILTER BAND 20", "UNSET/FILTER MODE CW", "SET/FILTER DXBM ALL"):
+            cases.append((command, native_retired_reply(command), None, False))
     return cases
 
 
@@ -2716,37 +3034,21 @@ def require_discovery_help(lines, key, dialect):
                     "HELP TROUBLE", "HELP COMMANDS", "For help with one command, type HELP before its name:")
         forbidden = ("GoCluster help -", "BYE", "RESET MODE", "RESET FILTER RULE ALL", "HELP WEB", "Path ratings do not guarantee contact.")
     elif key in ("PASS", "REJECT"):
-        required = ("Filter categories have their own selection rules; see HELP PASS/REJECT.",
-                    "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name.",
-                    "DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code.")
-        forbidden = ("Values you do not name remain unchanged.", "Allowed selections do not generally replace your existing selections.",
-                     "List is comma or space separated; use ALL to allow all.", "List is comma or space separated; use ALL to block all.",
-                     "RESET MODE")
-        block, allow = ("REJECT MODE ALL", "PASS MODE CW,FT8") if dialect == "go" else ("UNSET/FILTER MODE ALL", "SET/FILTER MODE CW,FT8")
-        require(any(lines[index:index + 2] == ["  " + block, "  " + allow] for index in range(len(lines) - 1)),
-                "HELP loses its executable block-before-pass MODE recipe")
+        required = (("GO uses numbered Boolean rules.", "PASS rules are ORed", "Old category mutation syntax is refused, not translated;")
+                    if dialect == "go" else ("PASS enables; REJECT disables.", "PC93 aliases ANNOUNCE.", "Boolean rule edits require GO;"))
+        forbidden = ("MODE preserves visibility for every mode you do not name.", "MINSNR takes modes", "NEARBY takes ON|OFF", "RESET MODE")
     elif key in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
         harness.require_help_task(lines, key, dialect)
         required, forbidden = (), ("RESET MODE", "show FCC mailing-address codes")
     else:
         require(key in ("SHOW FILTER", "SHOW/FILTER"), "invalid HELP wording oracle")
-        required = ("DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown.",)
+        required = (("Shows canonical numbered rules and separate controls.", "GET YAML CONFIG SCHEMA 7") if dialect == "go" else
+                    ("Shows exact native selections and six controls.", "Band INHERIT differs from explicit OFF", "GET YAML CONFIG SCHEMA 7"))
         forbidden = ("show FCC mailing-address codes",)
     for phrase in required:
-        require(phrase in flat, "HELP omits an intended admission/state/MODE contract: " + phrase)
+        require(phrase in flat, "HELP omits intended current contract: " + phrase)
     for phrase in forbidden:
-        require(phrase.lower() not in flat.lower(), "HELP retains an unsupported admission/state/MODE claim: " + phrase)
-    if key in ("PASS", "REJECT"):
-        heading = "US/Canada mailing codes (states, provinces, territories):"
-        require(lines.count(heading) == 1, "HELP loses or duplicates the registered-mailing-code section")
-        rows = []
-        for line in lines[lines.index(heading) + 1:]:
-            if not line.strip():
-                break
-            rows.append(line)
-        codes = tuple(value for value in re.split(r"[, ]+", " ".join(rows)) if value)
-        require(len(HELP_MAILING_CODES) == 73 and codes == HELP_MAILING_CODES,
-                "HELP omits, duplicates or changes registered mailing codes")
+        require(phrase.lower() not in flat.lower(), "HELP advertises retired behavior: " + phrase)
 
 
 def discovery_file_receipt(path):
@@ -2769,15 +3071,21 @@ def require_discovery_owners(before, after, record, user_receipt, library, libra
 
 def require_discovery_saved(document, expected, record, library, name):
     require_help_routing_saved(document, expected, record)
-    require_cc_typed_value(document["status"]["preset"], dict(associated=True, name=name, modified=False))
-    reference = stored_document(record.read_bytes()).get("preset")
+    dialect = expected["settings"]["dialect"]
+    require_cc_typed_value(document["status"]["presets"][dialect], dict(associated=True, name=name, modified=False))
+    references = stored_document(record.read_bytes()).get("presets")
+    require(type(references) is dict, "missing native preset references")
+    reference = references.get(dialect)
     require(type(reference) is dict and reference.get("name") == name and type(reference.get("baseline")) is dict,
-            "discovery lost its stored preset association/baseline")
+            "discovery lost its tagged preset association/baseline")
     baseline = reference["baseline"]
     require_cc_typed_value(baseline, stored_document(library.read_bytes())["presets"][name])
-    # Reuse the independent stored-field oracle on the detached baseline too.
-    baseline_record = SimpleNamespace(read_bytes=lambda: yaml.safe_dump(baseline).encode("ascii"))
-    require_help_routing_saved(document, expected, baseline_record)
+    wanted = tagged_preset(expected, dialect)
+    # Optional false is the sole stored/wire representation distinction.
+    actual, wanted = copy.deepcopy(baseline), copy.deepcopy(wanted)
+    actual["settings"].setdefault("cw_speed", False)
+    wanted["settings"].setdefault("cw_speed", False)
+    require_cc_typed_value(actual, wanted)
 
 
 def filter_discovery_cases(suite, root, generation, saved_discovery):
@@ -2786,27 +3094,23 @@ def filter_discovery_cases(suite, root, generation, saved_discovery):
     require(type(minimum_rows) is int and minimum_rows == 10 and type(minimum_seconds) is int and minimum_seconds > 0,
             "discovery requires the unchanged fixture automatic-pause floor")
     library = root / "users" / "presets" / ("VE3ABC".encode().hex() + ".yaml")
-    for dialect, call in (("go", "VE3ABC-70075"), ("cc", "VE3ABC-70076")):
+    for dialect, call in (("go", "VE3ABC-75"), ("cc", "VE3ABC-76")):
         record, name = root / "users" / (call + ".yaml"), "DISC18" + dialect.upper()
         if not generation:
             require(not record.exists(), "discovery requires a fresh unused SSID")
-        current = harness.Session(suite, call)
+        current = fixture_session(suite, call)
         before = current.get()
         if generation:
             expected = saved_discovery[call]
             require_discovery_saved(before, expected, record, library, name)
             require(before["status"]["session"]["diagnostic_comments"] == "OFF", "fresh discovery session retained diagnostics")
         else:
-            expected = copy.deepcopy(before["configuration"])
-            expected["settings"].update(dialect=dialect, grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
-                                        path_min_observation_count=30, solar_summary_minutes=30)
-            expected["filters"].update(comments=["DISCOVERY18 " + dialect.upper()], block_comments=["QRT"], min_snr={"CW": 7},
-                                       include_beacons=False, allow_announce=False)
+            expected = scoped_bank_fixture(before["configuration"], dialect, "DISCOVERY18")
             response = current.upload("PUT", "CONFIG", expected, revision=before["revision"])
             require("error" not in response, "discovery preference setup was refused")
             before = current.get()
             require_help_routing_saved(before, expected, record)
-            exact_human_reply(current, "SAVE PRESET " + name, "Saved preset " + name + " for VE3ABC.")
+            exact_human_reply(current, "SAVE PRESET " + name, "Saved preset " + name + " (" + dialect.upper() + ") for VE3ABC.")
             before = current.get()
             require_discovery_saved(before, expected, record, library, name)
             saved_discovery[call] = copy.deepcopy(expected)
@@ -2814,23 +3118,26 @@ def filter_discovery_cases(suite, root, generation, saved_discovery):
                 before["status"]["server"]["auto_read_pause_min_rows"] == minimum_rows and
                 before["status"]["server"]["auto_read_pause_seconds"] == minimum_seconds and
                 before["status"]["session"]["pause_active"] is False, "discovery lacks its saved dialect/loaded pause prerequisites")
-        require_setting_control(current, record, "SET DIAG MODE", "Diagnostic comments: MODE", "diagnostic_comments", "MODE")
-        for query, feedback, verb, unknown in discovery_feedback_cases(dialect):
+        before = require_setting_control(current, record, "SET DIAG MODE", "Diagnostic comments: MODE", "diagnostic_comments", "MODE")
+        for index, (query, feedback, verb, unknown) in enumerate(discovery_feedback_cases(dialect)):
+            if index % 6 == 0:
+                current, before = resume_help_fixture(current, record, before, diagnostic="MODE")
             if verb is not None:
-                require_discovery_inventory(feedback, verb, unknown)
-            before = current.get()
+                require_discovery_inventory(feedback, verb, unknown, dialect)
             user_receipt, library_receipt = discovery_file_receipt(record), discovery_file_receipt(library)
             after = discovery_readback(current, query, feedback)
             require_discovery_owners(before, after, record, user_receipt, library, library_receipt)
+            before = after
+        current, before = resume_help_fixture(current, record, before, diagnostic="MODE")
         filter_topic = "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"
         for topic, key in (("DX", "DX"), ("", "OVERVIEW"), ("FILTERS", "FILTERS"),
                            ("FILTER EXAMPLES", "FILTER EXAMPLES"), ("PRESETS", "PRESETS"),
                            ("PASS", "PASS"), ("REJECT", "REJECT"), (filter_topic, filter_topic)):
-            before = current.get()
             user_receipt, library_receipt = discovery_file_receipt(record), discovery_file_receipt(library)
             after, paused = help_routing_readback(current, topic, help_route_contract(key, dialect), minimum_rows, minimum_seconds,
                                                 lambda lines: require_discovery_help(lines, key, dialect))
             require_discovery_owners(before, after, record, user_receipt, library, library_receipt, paused)
+            before = after
 
 
 HOLD_VALID_QUERIES = ("SHOW HOLD", "show hold", "  ShOw   HoLd  ", "SHOW    HOLD")
@@ -3000,9 +3307,9 @@ def dx_input_contract_cases(suite, root):
     limit = stored_document((root / "config/runtime.yaml").read_bytes())["telnet"]["command_line_limit"]
     require(type(limit) is int and limit == 128, "DX input fixture lacks its loaded 128-byte command bound")
     for index, dialect in enumerate(("go", "cc")):
-        current = harness.Session(suite, "VE3ABC-" + str(70079 + index))
+        current = fixture_session(suite, "VE3ABC-" + str(79 + index))
         current.human("DIALECT " + dialect)
-        current.human("PASS NOFILTER", "All filters disabled")
+        current.human("RESET FILTER" if dialect == "go" else "SET/NOFILTER")
         current.human("PAUSE 300", "Live spots paused for 300s.")
         before = current.get()
         require(before["configuration"]["settings"]["dialect"] == dialect and
@@ -3032,9 +3339,9 @@ def dx_input_contract_cases(suite, root):
             query = f"DX {base + offset} W6ABC CW {label} "
             query += ("X" * (limit + 1 - len(query))) if suffix == "LONG" else suffix
             identifier = suite.identifier()
-            sync = f"GET YAML CONFIG SCHEMA 4 ID {identifier}"
+            sync = f"GET YAML CONFIG SCHEMA 7 ID {identifier}"
             current.send(query + "\r\nSHOW OWN\r\n" + sync + "\r\n")
-            after, prefix = current.frame("CONFIG", identifier, 4, "DX input refusal and following command")
+            after, prefix = current.frame("CONFIG", identifier, 7, "DX input refusal and following command")
             diagnostic = b"Command input is too long" if suffix == "LONG" else b"Command input may only contain"
             require(diagnostic in prefix and prefix.count(b"Own call: VE3ABC") == 1 and b"Spot queued" not in prefix,
                     "DX refusal missing, dispatched a spot, or lost the following valid command")
@@ -3052,28 +3359,22 @@ def hold_command_cases(suite, root, generation, saved_hold, poster):
     require(type(private["auto_read_pause_min_rows"]) is int and private["auto_read_pause_min_rows"] == 10,
             "HOLD checkout keeps the loaded threshold ten; threshold-one bypass proof belongs to Go sessions")
     library = root / "users" / "presets" / ("VE3ABC".encode().hex() + ".yaml")
-    for index, (dialect, call) in enumerate((("go", "VE3ABC-70077"), ("cc", "VE3ABC-70078"))):
+    for index, (dialect, call) in enumerate((("go", "VE3ABC-77"), ("cc", "VE3ABC-78"))):
         record, name = root / "users" / (call + ".yaml"), "HOLD19" + dialect.upper()
         if not generation:
             require(not record.exists(), "HOLD requires a fresh unused SSID")
-        current = harness.Session(suite, call)
+        current = fixture_session(suite, call)
         before, observation = hold_snapshot(current)
         if generation:
             expected = saved_hold[call]
             require_discovery_saved(before, expected, record, library, name)
         else:
-            expected = copy.deepcopy(before["configuration"])
-            expected["settings"].update(dialect=dialect, grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
-                                        path_min_observation_count=30, solar_summary_minutes=30)
-            expected["filters"].update({field: dict(allow_all=True, block_all=False, allow={}, block={}) for field in CC_HELP_RULE_FIELDS})
-            expected["filters"].update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[],
-                                       comments=["HOLD19"], block_comments=["QRT"], min_snr={"CW": 7}, nearby_enabled=False,
-                                       **{field: True for field in CC_HELP_SWITCHES.values()})
+            expected = scoped_bank_fixture(before["configuration"], dialect, "HOLD19")
             response = current.upload("PUT", "CONFIG", expected, revision=before["revision"])
             require("error" not in response, "HOLD preference/consumer-predicate setup was refused")
             before, observation = hold_snapshot(current)
             require_help_routing_saved(before, expected, record)
-            discovery_readback(current, "SAVE PRESET " + name, "Saved preset " + name + " for VE3ABC.")
+            discovery_readback(current, "SAVE PRESET " + name, "Saved preset " + name + " (" + dialect.upper() + ") for VE3ABC.")
             before, observation = hold_snapshot(current)
             require_discovery_saved(before, expected, record, library, name)
             saved_hold[call] = copy.deepcopy(expected)
@@ -3155,19 +3456,10 @@ def hold_command_cases(suite, root, generation, saved_hold, poster):
 
 
 def require_taxonomy_rules(document, expected, record):
-    stored = stored_document(record.read_bytes())
-    for name, allow, block, allow_all, block_all in (("modes", "modes", "blockmodes", "allmodes", "blockallmodes"),
-                                                   ("events", "events", "blockevents", "allevents", "blockallevents")):
-        actual = document["configuration"]["filters"][name]
-        require(all(key in stored for key in (allow, block, allow_all, block_all)),
-                "saved taxonomy rule fields are missing")
-        saved = dict(allow=stored[allow], block=stored[block], allow_all=stored[allow_all], block_all=stored[block_all])
-        for rules in (actual, saved):
-            require(type(rules) is dict and rules == expected[name] and
-                    type(rules["allow_all"]) is bool and type(rules["block_all"]) is bool and
-                    type(rules["allow"]) is dict and type(rules["block"]) is dict and
-                    all(type(value) is bool for values in (rules["allow"], rules["block"]) for value in values.values()),
-                    "taxonomy human or immediately saved rules lost canonical names or exact booleans")
+    require(active_fixture_bank(document) == expected,
+            "taxonomy selection lost exact canonical rules or native modes")
+    require_cc_typed_value(active_fixture_bank(document), expected)
+    require_fixture_persisted(document, record)
 
 
 def require_taxonomy_archive(rows, label, frequency, visible):
@@ -3182,66 +3474,81 @@ def require_taxonomy_archive(rows, label, frequency, visible):
 
 def taxonomy_cases(suite, root, nonce, generation, saved_taxonomy, cw_label):
     labels = ["T15" + nonce[:8].upper() + str(i) for i in range(2)]
-    expected = dict(modes=dict(allow_all=False, block_all=False, allow={"TEST_MODE": True, "CW": True}, block={}),
-                    events=dict(allow_all=False, block_all=False, allow={"TEST_EVENT": True}, block={}))
-    for dialect, call in (("go", "VE3ABC-70067"), ("cc", "VE3ABC-70068")):
-        current = harness.Session(suite, call)
+    go_expression = "MODE=TEST_MODE,CW AND (EVENT=TEST_EVENT OR MODE=CW)"
+    for dialect, call in (("go", "VE3ABC-67"), ("cc", "VE3ABC-68")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
-        choices = current.get("CAPABILITIES")["configuration"]["choices"]
+        choices = current.get("CAPABILITIES")["configuration"]["go_legacy_schema6_capabilities"]["vocabulary"]
         require("TEST_MODE" in choices["modes"] and "TEST_EVENT" in choices["events"],
                 "loaded taxonomy does not advertise literal underscore names")
         record = root / "users" / (call + ".yaml")
-        allow, block = ("PASS", "REJECT") if dialect == "go" else ("SET/FILTER", "UNSET/FILTER")
         if generation == 0:
             current.human("DIALECT " + dialect)
-            current.human(block + " MODE ALL", "All modes blocked")
-            current.human(allow + " MODE test_mode,cw_alias", "Modes enabled: TEST_MODE, CW")
-            current.human(allow + " EVENT test_event", "Events enabled: TEST_EVENT")
+            if dialect == "go":
+                fixture_edit(current, "RESET FILTER RULE ALL", record)
+                fixture_edit(current, "PASS RULE 0 MODE=test_mode,cw_alias AND (EVENT=test_event OR MODE=cw)", record)
+            else:
+                fixture_edit(current, "SET/NOFILTER", record)
+                result = current.upload("PATCH", "FILTER", dict(dialect="cc", filters=dict(modes=["test_mode", "cw_alias"])))
+                require("error" not in result and result["result"]["persisted"] is True,
+                        "native YAML taxonomy mode list was refused")
             current.human("SAVE PRESET TAXONOMY15", "Saved preset TAXONOMY15")
         before, saved = current.get(), record.read_bytes()
+        expected = copy.deepcopy(active_fixture_bank(before))
+        require(expected["rules"] == [dict(slot=0, action="pass", expr=go_expression)] if dialect == "go" else
+                expected["modes"] == ["CW", "TEST_MODE"], "taxonomy canonical names differ from literal expectations")
         require_taxonomy_rules(before, expected, record)
         if generation:
-            require((before["configuration"], before["status"]["preset"]) == saved_taxonomy[call],
+            require((before["configuration"], before["status"]["presets"]) == saved_taxonomy[call],
                     "fresh child lost underscore rules or preset association")
-        for domain, known, unknown in (("MODE", "TEST_MODE", "MISSING_MODE"), ("EVENT", "TEST_EVENT", "MISSING_EVENT")):
-            for command in (allow + " " + domain + " " + known + "," + unknown,
-                            block + " " + domain + " " + unknown + "," + known):
-                text, after = current.human(command, "Unknown " + domain.lower() + ": " + unknown)
-                require("Invalid character" not in text and after["configuration"] == before["configuration"] and
-                        after["revision"] == before["revision"] and after["status"]["preset"] == before["status"]["preset"] and
-                        after["status"]["effective"] == before["status"]["effective"] and
-                        record.read_bytes() == saved, "unsupported taxonomy name changed a preference owner")
-        for category in ("MODE", "EVENT"):
-            _, after = current.human("SHOW FILTER " + category, "PASS:")
-            require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
-                    after["status"]["preset"] == before["status"]["preset"] and
-                    after["status"]["effective"] == before["status"]["effective"] and
-                    record.read_bytes() == saved, "taxonomy read changed a preference owner")
+        if dialect == "go":
+            for domain, known, unknown in (("MODE", "TEST_MODE", "MISSING_MODE"), ("EVENT", "TEST_EVENT", "MISSING_EVENT")):
+                for action in ("PASS", "REJECT"):
+                    require_fixture_refusal(current, action + " RULE 9 " + domain + "=" + known + "," + unknown,
+                                            record, "Invalid rule:")
+            text, after = current.human("SHOW FILTER RULE")
+            require(go_expression in text, "GO inspection omitted its complete underscore expression")
+        else:
+            for command in ("PASS RULE 0 EVENT=test_event", "SET/FILTER EVENT test_event",
+                            "SET/TEST_MODE", "SET/MISSING_MODE"):
+                require_fixture_refusal(current, command, record)
+            result = current.upload("PATCH", "FILTER", dict(dialect="cc", filters=dict(modes=["TEST_MODE", "MISSING_MODE"])))
+            require("error" in result, "native YAML accepted an unknown taxonomy mode")
+            after = current.get()
+            require_fixture_unchanged(before, after, record, saved)
+            text, after = current.human("SHOW/FILTER MODE")
+            require("TEST_MODE" in text and "CW" in text, "CC inspection omitted its explicit taxonomy modes")
+        require_fixture_unchanged(before, after, record, saved)
+        current = reconnect_fixture_session(current, record)
         require_mode_archive(current, cw_label, "CW", True)
         cw_rows = archive_rows(current, cw_label)
         require(archive_rows(current, cw_label, "MODE CW_ALIAS") == cw_rows and len(cw_rows) == 1,
                 "configured underscore alias cannot select its canonical history mode")
-        for i, visible in ((0, True), (1, False)):
-            require_taxonomy_archive(archive_rows(current, labels[i]), labels[i], 14061 + i, visible)
-        current.human(allow + " EVENT ALL", "All events enabled")
-        require_taxonomy_archive(archive_rows(current, labels[1]), labels[1], 14062, True)
-        current.human(allow + " EVENT TEST_EVENT", "Events enabled: TEST_EVENT")
-        current.human(block + " MODE TEST_MODE", "Modes rejected: TEST_MODE")
-        require_taxonomy_archive(archive_rows(current, labels[0]), labels[0], 14061, False)
-        current.human(allow + " MODE TEST_MODE", "Modes enabled: TEST_MODE")
+        for i in range(2):
+            require_taxonomy_archive(archive_rows(current, labels[i]), labels[i], 14061 + i,
+                                     i == 0 or dialect == "cc")
+        if dialect == "go":
+            fixture_edit(current, "PASS RULE 0 MODE=TEST_MODE,CW", record)
+            require_taxonomy_archive(archive_rows(current, labels[1]), labels[1], 14062, True)
+            fixture_edit(current, "PASS RULE 0 " + go_expression, record)
+            fixture_edit(current, "REJECT RULE 1 MODE=TEST_MODE", record)
+            require_taxonomy_archive(archive_rows(current, labels[0]), labels[0], 14061, False)
+            fixture_edit(current, "RESET FILTER RULE 1", record)
+        else:
+            result = current.upload("PATCH", "FILTER", dict(dialect="cc", filters=dict(modes=["CW"])))
+            require("error" not in result and result["result"]["persisted"] is True, "native mode removal failed")
+            require_taxonomy_archive(archive_rows(current, labels[0]), labels[0], 14061, False)
+            result = current.upload("PATCH", "FILTER", dict(dialect="cc", filters=dict(modes=["CW", "TEST_MODE"])))
+            require("error" not in result and result["result"]["persisted"] is True, "native mode restoration failed")
         require_taxonomy_archive(archive_rows(current, labels[0]), labels[0], 14061, True)
         final = current.get()
         require_taxonomy_rules(final, expected, record)
         final_saved = record.read_bytes()
         result = current.upload("VALIDATE", "CONFIG", final["configuration"])
         require("error" not in result and result["result"]["valid"] is True and result["result"]["applied"] is False and
-                result["result"]["persisted"] is False, "human underscore rules are machine-invalid")
-        validated = current.get()
-        require(validated["configuration"] == final["configuration"] and validated["revision"] == final["revision"] and
-                validated["status"]["effective"] == final["status"]["effective"] and
-                validated["status"]["preset"] == final["status"]["preset"] and record.read_bytes() == final_saved,
-                "VALIDATE changed a taxonomy preference owner")
-        saved_taxonomy[call] = final["configuration"], final["status"]["preset"]
+                result["result"]["persisted"] is False, "native underscore configuration is machine-invalid")
+        require_fixture_unchanged(final, current.get(), record, final_saved)
+        saved_taxonomy[call] = final["configuration"], final["status"]["presets"]
 
 
 def require_solar_value(document, value, available):
@@ -3256,7 +3563,7 @@ def require_solar_readback(before, after, record, saved, available, text=None):
     require_solar_value(after, 30, available)
     require(after["configuration"] == before["configuration"] and after["revision"] == before["revision"] and
             after["status"]["effective"] == before["status"]["effective"] and
-            after["status"]["preset"] == before["status"]["preset"] and record.read_bytes() == saved,
+            after["status"]["presets"] == before["status"]["presets"] and record.read_bytes() == saved,
             "SOLAR read changed a preference owner")
     if text is not None:
         wording = "Every 30 minutes when conditions are active" if available else "30 minutes; unavailable on this server"
@@ -3267,8 +3574,8 @@ def require_solar_readback(before, after, record, saved, available, text=None):
 def solar_cases(suite, root, available, generation, saved_solar):
     # This manager has loaded availability and unobserved feeds. Fresh calm and
     # active generation/dispatch are qualified by permanent owner/queue tests.
-    for dialect, call in (("go", "VE3ABC-70065"), ("cc", "VE3ABC-70066")):
-        current = harness.Session(suite, call)
+    for dialect, call in (("go", "VE3ABC-65"), ("cc", "VE3ABC-66")):
+        current = fixture_session(suite, call)
         current.human("PAUSE 300")
         record = root / "users" / (call + ".yaml")
         if generation == 0:
@@ -3281,9 +3588,10 @@ def solar_cases(suite, root, available, generation, saved_solar):
             with deny_record_replacement(record):
                 warning = "Solar summaries: every 15 minutes when conditions are active" if available else \
                           "Solar cadence: 15 minutes; unavailable on this server"
-                text, failed = current.human("SET SOLAR 15", warning + " (warning: failed to persist:")
+                text, failed = current.human("SET SOLAR 15", warning)
                 require_solar_value(failed, 15, available)
-                require(record.read_bytes() == saved and "warning: failed to persist:" in text,
+                require_setting_save_warning(text)
+                require(record.read_bytes() == saved,
                         "SOLAR commit failure hid failure or replaced saved cadence")
             require_setting_control(current, record, "SET SOLAR 30", feedback, "solar_summary_minutes", 30)
             before, saved = current.get(), record.read_bytes()
@@ -3300,14 +3608,16 @@ def solar_cases(suite, root, available, generation, saved_solar):
         before, saved = current.get(), record.read_bytes()
         require_solar_value(before, 30, available)
         if generation:
-            require((before["configuration"], before["status"]["preset"]) == saved_solar[call],
+            require((before["configuration"], before["status"]["presets"]) == saved_solar[call],
                     "fresh child lost saved SOLAR cadence or preset association")
-        for version in (1, 2, 3, 4):
-            require_solar_value(current.get("CONFIG", version), 30, available)
+        require_solar_value(current.get("CONFIG", 7), 30, available)
+        legacy = current.get("SETTINGS", 6)
+        require_solar_value(dict(configuration={"settings": legacy["configuration"]}, status=legacy["status"]),
+                            30, available)
         for _ in range(2):
             text, after = current.human("SHOW SETTINGS")
             require_solar_readback(before, after, record, saved, available, text)
-        saved_solar[call] = before["configuration"], before["status"]["preset"]
+        saved_solar[call] = before["configuration"], before["status"]["presets"]
 
 
 def dedupe_profile(binary, root, source, transport):
@@ -3321,14 +3631,9 @@ def dedupe_profile(binary, root, source, transport):
                 f"{prefix}/1: saved SLOW survives fresh child without read effects",
                 f"{prefix}/1: disabled SOLAR cadence survives fresh child"]
     available = dict(FAST=True, MED=False, SLOW=False)
-    calls = (("go", "K1ABC-70058"), ("cc", "K1ABC-70059"))
+    calls = (("go", "K1ABC-58"), ("cc", "K1ABC-59"))
     users = root / "users"
     users.mkdir()
-    for dialect, call in calls:
-        baseline = dict(configuration_version=4, dialect=dialect, dedupe_policy="SLOW",
-                        bands={"20m": True}, allbands=False, allmodes=True, allsources=True)
-        document = {**baseline, "preset": dict(name="DEDUPE13", baseline=baseline)}
-        (users / (call + ".yaml")).write_text(yaml.safe_dump(document), encoding="utf-8")
     saved_configuration = {}
     saved_solar = {}
     results, wire, cleanup, children = [], [], [], []
@@ -3337,14 +3642,30 @@ def dedupe_profile(binary, root, source, transport):
         try:
             child = Child(binary, root, source, dedupe_available=available, solar_enabled=False)
             children.append(child.identity)
-            suite = harness.Suite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
+            suite = CommandSuite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
                                                   timeout=8, run_seconds=120, output=root / f"wire-{generation}"))
+            if generation == 0:
+                seed = fixture_session(suite, "VE3ABC-62")
+                seed.human("PAUSE 300")
+                seed_owner = stored_document((users / "VE3ABC-62.yaml").read_bytes())
+                seed.close()
+                for dialect, call in calls:
+                    record = users / (call + ".yaml")
+                    require(not record.exists(), "dedupe native seed requires an unused owner")
+                    owner = copy.deepcopy(seed_owner)
+                    cfg = owner["configuration"]
+                    cfg["settings"].update(dialect=dialect, dedupe_policy="SLOW")
+                    cfg["filters"]["go"]["rules"] = [dict(slot=0, action="pass", expr="BAND=20M")]
+                    cfg["filters"]["cc"]["modes"] = ["CW"]
+                    owner["presets"] = {dialect: dict(name="DEDUPE13", baseline=tagged_preset(cfg))}
+                    record.write_bytes(native_storage_bytes(owner))
 
             def identity():
-                current = harness.Session(suite, "VE3ABC-70062")
+                current = fixture_session(suite, "VE3ABC-62")
                 current.human("PAUSE 300")
                 current.human("SHOW BUILD", "Build version: fixture-" + child.nonce)
-                require(current.get("CAPABILITIES")["configuration"]["dedupe_available"] == available,
+                require(current.get("CAPABILITIES")["schema_version"] == 7 and
+                        child.identity["dedupe_available"] == available,
                         "actual server does not expose the literal FAST-only profile")
 
             suite.case(required[0 if generation == 0 else 4], identity)
@@ -3352,7 +3673,7 @@ def dedupe_profile(binary, root, source, transport):
 
             def reads():
                 for dialect, call in calls:
-                    current = harness.Session(suite, call)
+                    current = fixture_session(suite, call)
                     _, before = current.human("PAUSE 300")
                     record = users / (call + ".yaml")
                     saved = record.read_bytes()
@@ -3375,8 +3696,8 @@ def dedupe_profile(binary, root, source, transport):
             child.check_running()
             if generation == 0:
                 def positive():
-                    for dialect, call in (("go", "VE3ABC-70060"), ("cc", "VE3ABC-70061")):
-                        current = harness.Session(suite, call)
+                    for dialect, call in (("go", "VE3ABC-60"), ("cc", "VE3ABC-61")):
+                        current = fixture_session(suite, call)
                         current.human("PAUSE 300")
                         current.human("DIALECT " + dialect)
                         record = users / (call + ".yaml")
@@ -3434,7 +3755,7 @@ def reputation_profile(binary, root, source, transport):
                 f"{prefix}/1: saved ownership and archive outcomes survive fresh child",
                 f"{prefix}: fresh runtime resets counts while retaining shared admission"]
     results, wire, cleanup, children = [], [], [], []
-    calls = ("K1ABC-70101", "K1ABC-70102")
+    calls = ("K1ABC-81", "K1ABC-82")
     expected, labels, old_files = {}, {"accepted": [], "refused": [], "invalid": []}, {}
     directory = root / "reputation"
     directory.mkdir()
@@ -3456,11 +3777,11 @@ def reputation_profile(binary, root, source, transport):
         try:
             child = Child(binary, root, source, reputation_enabled=True)
             children.append(child.identity)
-            suite = harness.Suite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
+            suite = CommandSuite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
                                                   timeout=8, run_seconds=120,
                                                   output=root / f"wire-{generation}"))
-            sessions = [harness.Session(suite, call) for call in calls]
-            observer = harness.Session(suite, "VE3ABC-70103")
+            sessions = [fixture_session(suite, call) for call in calls]
+            observer = fixture_session(suite, "VE3ABC-83")
 
             def case(name, fn):
                 suite.case(name, fn)
@@ -3563,6 +3884,7 @@ def reputation_profile(binary, root, source, transport):
 
 
 def main():
+    validate_fixture_calls(FIXTURE_LOGINS)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--race", action="store_true", help="build and run fixture with Go race detector")
     args = parser.parse_args()
@@ -3577,12 +3899,26 @@ def main():
                                "yaml": harness.yaml.__version__}
             require(harness.yaml.__version__ == "6.0.3", "use pinned PyYAML 6.0.3 test environment")
             for transport in ("native", "ziutek"):
-                root = stage(run / transport, transport, underscore_taxonomy=True)
-                report["profiles"].append(profile(binary, root, source, transport))
-                reputation_root = stage(run / (transport + "-reputation"), transport, reputation_enabled=True)
-                report["profiles"].append(reputation_profile(binary, reputation_root, source, transport))
-                dedupe_root = stage(run / (transport + "-dedupe"), transport, dedupe_fast_only=True, solar_enabled=False)
-                report["profiles"].append(dedupe_profile(binary, dedupe_root, source, transport))
+                for suffix, operation, options in (
+                        ("", profile, dict(underscore_taxonomy=True)),
+                        ("-reputation", reputation_profile, dict(reputation_enabled=True)),
+                        ("-dedupe", dedupe_profile, dict(dedupe_fast_only=True, solar_enabled=False))):
+                    root = run / (transport + suffix)
+                    try:
+                        stage(root, transport, **options)
+                        row = operation(binary, root, source, transport)
+                        row["qualification"] = "PASS"
+                    except Exception as error:
+                        # Keep independent profiles visible after a failure.
+                        # Missing or interrupted evidence remains a failure.
+                        receipt = root / "results.json"
+                        row = json.loads(receipt.read_text()) if receipt.is_file() else {}
+                        row.update(qualification="FAIL", error=f"{type(error).__name__}: {error}")
+                    row["profile_name"] = transport + suffix
+                    report["profiles"].append(row)
+            require(len(report["profiles"]) == 6 and
+                    all(row["qualification"] == "PASS" for row in report["profiles"]),
+                    "one or more required integration profiles failed")
         report["result"] = "PASS"
     except Exception as error:
         report["error"] = f"{type(error).__name__}: {error}"

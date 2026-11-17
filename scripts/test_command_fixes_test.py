@@ -27,34 +27,27 @@ HISTORY_ROW = "DX de K1ABC:     14074.00  W6ABC       CW LABEL                  
 
 
 def cc_help_literal(verb):
-    # Independent grammar fixture; wording and wrapping do not copy the Go catalog.
-    clear = "ALL" if verb == "SET/FILTER" else "NONE"
-    lines = [verb + " - Contract fixture (CC dialect).",
-             "Usage: " + verb + " <list-type> <values>",
-             "       " + verb + " MINSNR <modes|ALL> <integer dB|" + clear + ">",
-             "       " + verb + " NEARBY ON|OFF", "       " + verb + " <switch> [ALL]",
-             "       " + verb + " DXBM <band-codes>"]
+    lines = [verb + " - Change native CC selections or switches.", "Usage: " + verb + " <switch> [ALL]"]
     if verb == "SET/FILTER":
-        lines += ["       SET/FILTER NOFILTER [ALL]", "       SET/FILTER DXBM PASS|REJECT <band-codes>",
-                  "       SET/FILTER DXBM/PASS <band-codes>", "       SET/FILTER DXBM/REJECT <band-codes>"]
-    lines += ["Notes:"]
-    notes = ["SOURCE takes one of HUMAN, SKIMMER or ALL.",
-             "MINSNR numeric thresholds use the same inclusive minimum with either verb.",
-             "NEARBY uses the explicit ON/OFF choice with either verb.",
-             "Switches allow no value or ALL.", "COMMENT uses PASS/REJECT COMMENT <phrase>.",
-             "SET/FILTER COMMENT and UNSET/FILTER COMMENT remain unsupported.",
-             "UNSET/FILTER does not accept /ON, /OFF or NOFILTER.",
-             "DXBM requires numeric band codes, not ALL."]
+        lines += ["       SET/FILTER <DOC|DOS|DXCTY|DXSTATE>/<PASS|REJECT> <list>",
+                  "       SET/FILTER <DOC|DOS|DXCTY|DXSTATE>/OFF",
+                  "       SET/FILTER <country-list>/PASS or /REJECT",
+                  "       SET/FILTER DXBM/PASS <band-or-slot-list>",
+                  "       SET/FILTER DXBM/REJECT <band-or-slot-list>", "       SET/FILTER DXBM/OFF"]
+    notes = ["Switches accept no value or ALL. PC93 aliases ANNOUNCE.",
+             "SELF controls spots of your own call in GoCluster.", "OWN, BOB, DX/NODX, TALK, WX are unavailable."]
+    if verb == "SET/FILTER":
+        notes += ["Each geography edit replaces its category. Other categories remain unchanged.",
+                  "First PASS after OFF starts a whitelist; Later edits keep other slots.",
+                  "Per-band geography is a GoCluster schema-seven YAML extension.",
+                  "Use YAML for long lists; do not split them across replacing commands.",
+                  "Native bands:", "Native slots:", "State/province codes:"]
+    else:
+        notes += ["UNSET/FILTER does not accept inline /ON or /OFF or geography lists."]
     for note in notes:
-        lines.extend(textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  "))
-    lines += ["CC list types:", "  BAND, MODE, SOURCE, EVENT, CONFIDENCE, PATH, DXCONT, DECONT, DXZONE, DEZONE",
-              "  DXGRID2, DEGRID2, DXDXCC, DEDXCC, DXSTATE, DESTATE, DXCALL, DECALL",
-              "Switches:", "  BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC"]
-    if verb == "SET/FILTER":
-        lines += ["Notes:", "  SET/FILTER <list-type>/ON or /OFF changes an ordinary list.",
-                  "  SET/FILTER <switch>/ON or /OFF changes a feature switch.",
-                  "  SET/FILTER NOFILTER/ON clears restrictions; NOFILTER/OFF is unsupported.",
-                  "  No inline flags for COMMENT, MINSNR, NEARBY or DXBM.", "  Flags allow no extra arguments."]
+        lines += textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  ")
+    while len(lines) < 10:
+        lines.append("  Independent receipt filler.")
     return lines
 
 
@@ -71,20 +64,32 @@ def routing_help_wire(lines, query="HELP SH BUILD EXTRA", pause=False, echo=True
     return ((query + "\r\n" if echo else "") + "\r\n".join(body) + "\r\n").encode("ascii")
 
 
-def discovery_literal_reply(verb, unknown=False):
-    types = ("Types: BAND, MODE, MINSNR, SOURCE, EVENT, COMMENT, DXCALL, DECALL,\n"
-             "       CONFIDENCE, PATH, DXGRID2, DEGRID2, DXCONT, DECONT, DXZONE, DEZONE,\n"
-             "       DXDXCC, DEDXCC, DXSTATE, DESTATE, DXBM, NEARBY,\n"
-             "       BEACON, WWV, WCY, ANNOUNCE, SELF, TOXIC\n")
+def discovery_literal_reply(verb, unknown=False, dialect="go"):
+    if dialect == "cc":
+        return ("Use HELP SET/FILTER for native CC filters. Boolean rule edits require DIALECT\nGO.\nNo changes applied.")
     if unknown:
-        extra = "PASS also supports NOFILTER; PC93 aliases ANNOUNCE.\n" if verb == "PASS" else "PC93 aliases ANNOUNCE.\n"
-        return "Unknown filter type.\n" + types + "COMMENT uses PASS/REJECT COMMENT in either dialect.\n" + extra + "Type HELP " + verb + " for usage."
-    ending = ("PASS supports NOFILTER. Type HELP PASS for complete syntax and examples." if verb == "PASS" else
-              "Type HELP REJECT for complete syntax and examples.")
-    clear = "ALL" if verb == "PASS" else "NONE"
-    return ("Usage: " + verb + " <type> ...\n" + types + "COMMENT uses PASS/REJECT COMMENT <literal phrase>.\n"
-            "MINSNR takes modes and <integer dB|" + clear + ">.\n"
-            "NEARBY takes ON|OFF with either verb; PC93 aliases ANNOUNCE.\n" + ending)
+        return ("Use numbered rules: PASS RULE <0..9> <expression> or REJECT RULE <0..9>\n"
+                "  <expression>. Type HELP RULE for fields and examples.\nNo changes applied.")
+    return ("Usage: PASS RULE <0..9> <expression>\n       REJECT RULE <0..9> <expression>\n"
+            "Type HELP RULE for fields and examples.\nNo changes applied.")
+
+
+def current_configuration(dialect="cc"):
+    controls = dict(include_beacons=False, allow_wwv=True, allow_wcy=True, allow_announce=True, allow_self=True, allow_toxic=True)
+    return dict(settings=dict(dialect=dialect, grid="FN31", noise_class="URBAN", dedupe_policy="SLOW",
+                              path_min_observation_count=30, solar_summary_minutes=30, cw_speed=False),
+                filters={"go": dict(rules=[dict(slot=0, action="pass", expr='COMMENT="CQ"')], **controls),
+                         "cc": dict(modes=["CW"], sources=["HUMAN"],
+                                    geography={key: {"global": {"action": "off"}, "bands": {}} for key in ("DOC", "DOS", "DXCTY", "DXSTATE")},
+                                    dxbm=dict(active=False, base_allow=True, slots={}), **controls)})
+
+
+def current_document(dialect="cc"):
+    configuration = current_configuration(dialect)
+    refs = {key: dict(associated=False, name="", modified=False) for key in ("go", "cc")}
+    return dict(configuration=configuration, revision="r7", schema_version=7, resource="CONFIG",
+                status=dict(configured=copy.deepcopy(configuration["settings"]), effective=dict(dedupe_policy="FAST"),
+                            active_dialect=dialect, preset=copy.deepcopy(refs[dialect]), presets=refs))
 
 
 def task_help_literal(topic, dialect):
@@ -151,35 +156,324 @@ def discovery_help_literal(key, dialect):
                  "Spot queued confirms intake; filtering and processing determine delivery.",
                  "A missing or full input queue refuses the spot with an explicit response."]
     elif key in ("SHOW FILTER", "SHOW/FILTER"):
-        lines = [key + " - Display current filter state.", "Usage: " + key, "       " + key + " FULL", "       " + key + " <category>"]
-        aliases = "SHOW/FILTER, SH/FILTER" if dialect == "go" else "SH/FILTER, SHOW FILTER"
-        lines += ["Aliases: " + aliases, "Notes:"]
-        notes = ["DESTATE/DXSTATE show US/Canadian registered mailing codes; empty means unknown."]
-    else:
-        if dialect == "cc":
-            lines = cc_help_literal("SET/FILTER" if key == "PASS" else "UNSET/FILTER")
-            lines[0] = ("SET/FILTER - Allow" if key == "PASS" else "UNSET/FILTER - Block") + " filter matches (CC dialect)."
+        if dialect == "go":
+            lines = ["SHOW FILTER - Display current filter state.", "Usage: SHOW FILTER", "       SHOW FILTER RULE", "       SHOW FILTER FULL",
+                     "Aliases: SHOW/FILTER, SH/FILTER"]
+            notes = ["Shows canonical numbered rules and separate controls.", "GET YAML CONFIG SCHEMA 7 is complete."]
         else:
-            lines = [key + " - " + ("Allow" if key == "PASS" else "Block") + " filter matches.", "Usage: " + key + " <type> <list>"]
-        notes = ["DXSTATE Spotted station's US/Canadian mailing code.", "DESTATE Spotter's US/Canadian mailing code."]
-        notes += ["Filter categories have their own selection rules; see HELP PASS/REJECT.",
-                  "MODE preserves visibility for every mode you do not name.", "MODE changes only the modes you name."]
-        lines += (["  REJECT MODE ALL", "  PASS MODE CW,FT8"] if dialect == "go" else
-                  ["  UNSET/FILTER MODE ALL", "  SET/FILTER MODE CW,FT8"])
-    for note in notes:
+            lines = ["SHOW/FILTER - Inspect native CC state.", "Usage: SHOW/FILTER [DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL]",
+                     "Aliases: SHOW FILTER, SH/FILTER"]
+            notes = ["Shows exact native selections and six controls.", "Band INHERIT differs from explicit OFF; DXBM also has independent state.",
+                     "GET YAML CONFIG SCHEMA 7 provides a complete both-bank backup. Schema 6 does not."]
+    else:
+        assert key in ("PASS", "REJECT")
+        summary = ("Allow matching spots or enable separate controls." if key == "PASS" else "Veto matching spots or disable separate controls.") if dialect == "go" else "Change separate delivery switches."
+        lines = [key + " - " + summary]
+        if dialect == "go":
+            lines += ["Usage: " + key + " RULE <0..9> <expression>", "       " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"]
+            notes = ["GO uses numbered Boolean rules.", "PASS rules are ORed; a matching REJECT vetoes them.",
+                     "Old category mutation syntax is refused, not translated; use HELP RULE."]
+        else:
+            lines += ["Usage: " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"]
+            notes = ["PASS enables; REJECT disables. PC93 aliases ANNOUNCE.",
+                     "Boolean rule edits require GO; HELP SET/FILTER describes native CC selection."]
+    for note in notes[:-1]:
         lines += textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  ")
-    if key in ("PASS", "REJECT"):
-        lines += ["", "US/Canada mailing codes (states, provinces, territories):"]
-        codes = ("AA AB AE AK AL AP AR AS AZ BC CA CO CT DC DE FL GA GU HI IA ID IL IN KS KY LA "
-                 "MA MB MD ME MI MN MO MP MS MT NB NC ND NE NH NJ NL NM NS NT NU NV NY OH OK ON "
-                 "OR PA PE PR QC RI SC SD SK TN TX UM UT VA VI VT WA WI WV WY YT").split()
-        lines += ["  " + ", ".join(codes[index:index + 15]) for index in range(0, len(codes), 15)]
+    # Filler precedes the independently specified terminal, so the strict
+    # decoder still detects trailing text after a complete response.
     while len(lines) < 10:
         lines.append("  Independent receipt filler.")
+    lines += textwrap.wrap(notes[-1], width=78, initial_indent="  ", subsequent_indent="  ")
     return lines
 
 
+def native_oracle_document(dialect="go"):
+    """Literal two-bank values, independent of the driver and Go encoders."""
+    controls = dict(include_beacons="DEFAULT", allow_wwv="DEFAULT", allow_wcy="DEFAULT",
+                    allow_announce="DEFAULT", allow_self="DEFAULT", allow_toxic="DEFAULT")
+    configuration = dict(filters={
+        "go": dict(rules=[], **controls),
+        "cc": dict(modes=["CW", "FT8"], sources=["HUMAN", "SKIMMER"],
+                   geography={name: {"global": {"action": "off"}, "bands": {}}
+                              for name in ("DOC", "DOS", "DXCTY", "DXSTATE")},
+                   dxbm=dict(active=False, base_allow=True, slots={}), **controls)},
+        settings=dict(dialect=dialect, grid="FN31", noise_class="RURAL", dedupe_policy="FAST",
+                      path_min_observation_count=0, solar_summary_minutes=0, cw_speed=False))
+    return dict(configuration=configuration, revision="revision-1",
+                status=dict(active_dialect=dialect, effective=copy.deepcopy(configuration["settings"]),
+                            presets={name: dict(associated=False, name="", modified=False) for name in ("go", "cc")},
+                            session=dict(diagnostic_comments="SOURCE")))
+
+
+def native_oracle_bytes(document):
+    return driver.yaml.safe_dump(dict(configuration_version=7, configuration=copy.deepcopy(document["configuration"]),
+                                      presets={}, notice=dict(profile_reset_generation=0,
+                                                              profile_acknowledged_generation=0,
+                                                              library_acknowledged_generation=0))).encode("ascii")
+
+
 class DriverControls(unittest.TestCase):
+    def test_semantic_reconnect_requires_saved_owner_and_never_retries_failed_close(self):
+        before = native_oracle_document()
+        for fault in (None, "configuration", "go", "cc", "stored_reference", "unsaved", "close"):
+            session, restored, record = mock.Mock(), mock.Mock(), mock.Mock()
+            session.call = "VE3ABC-46"
+            session.get.return_value = before
+            after = copy.deepcopy(before)
+            if fault == "configuration":
+                after["configuration"]["filters"]["cc"]["modes"] = []
+            elif fault in ("go", "cc"):
+                after["status"]["presets"][fault]["name"] = "CHANGED"
+            initial = native_oracle_bytes(before)
+            later = driver.yaml.safe_load(initial)
+            if fault == "stored_reference":
+                later["presets"] = {"go": {"name": "CHANGED"}}
+            if fault == "unsaved":
+                later["configuration"]["settings"]["grid"] = "IO91"
+                initial = driver.yaml.safe_dump(later).encode()
+            record.read_bytes.side_effect = [initial, initial, driver.yaml.safe_dump(later).encode(),
+                                              driver.yaml.safe_dump(later).encode()]
+            restored.human.return_value = "Paused", after
+            if fault == "close":
+                session.close.side_effect = ValueError("close failed")
+            with self.subTest(fault=fault), mock.patch.object(driver, "fixture_session", return_value=restored) as opened:
+                if fault is None:
+                    self.assertIs(driver.reconnect_fixture_session(session, record), restored)
+                    opened.assert_called_once_with(session.suite, "VE3ABC-46")
+                    session.close.assert_called_once()
+                else:
+                    with self.assertRaises(ValueError):
+                        driver.reconnect_fixture_session(session, record)
+                    if fault in ("close", "unsaved"):
+                        opened.assert_not_called()
+                    if fault == "unsaved":
+                        session.close.assert_not_called()
+
+    def test_native_edit_preserves_inactive_bank_and_both_stored_baselines(self):
+        before = native_oracle_document()
+        changed = copy.deepcopy(before)
+        changed["configuration"]["filters"]["go"]["rules"] = [dict(slot=0, action="pass", expr="MODE=CW")]
+        references = {name: dict(name=name.upper(), baseline=dict(configuration_version=7, dialect=name,
+                                                               settings=copy.deepcopy(before["configuration"]["settings"]),
+                                                               **{name: copy.deepcopy(before["configuration"]["filters"][name])}))
+                      for name in ("go", "cc")}
+        for fault in (None, "inactive", "go", "cc"):
+            session, record = mock.Mock(), mock.Mock()
+            after = copy.deepcopy(changed)
+            if fault == "inactive":
+                after["configuration"]["filters"]["cc"]["modes"] = []
+            original = driver.yaml.safe_load(native_oracle_bytes(before))
+            stored = driver.yaml.safe_load(native_oracle_bytes(after))
+            original["presets"], stored["presets"] = copy.deepcopy(references), copy.deepcopy(references)
+            if fault in ("go", "cc"):
+                stored["presets"][fault]["name"] = "CHANGED"
+            first, last = driver.yaml.safe_dump(original).encode(), driver.yaml.safe_dump(stored).encode()
+            record.read_bytes.side_effect = [first, last, last]
+            session.get.return_value = before
+            session.human.return_value = "Rule 0 set.", after
+            with self.subTest(fault=fault):
+                if fault is None:
+                    driver.fixture_edit(session, "PASS RULE 0 MODE=CW", record)
+                else:
+                    with self.assertRaises(ValueError):
+                        driver.fixture_edit(session, "PASS RULE 0 MODE=CW", record)
+
+    def test_native_unchanged_requires_boolean_types_and_both_reference_owners(self):
+        before = native_oracle_document()
+        before["configuration"]["filters"]["go"]["include_beacons"] = False
+        record = mock.Mock()
+        record.read_bytes.return_value = b"unchanged"
+        driver.require_fixture_unchanged(before, before, record, b"unchanged")
+        for fault in ("integer_control", "go", "cc"):
+            after = copy.deepcopy(before)
+            if fault == "integer_control":
+                after["configuration"]["filters"]["go"]["include_beacons"] = 0
+            else:
+                after["status"]["presets"][fault]["modified"] = True
+            with self.subTest(fault=fault), self.assertRaises(ValueError):
+                driver.require_fixture_unchanged(before, after, record, b"unchanged")
+
+    def test_fixture_login_allocation_has_exact_stable_spelling(self):
+        expected_main = """K1ABC-01 K1ABC-02 K1ABC-04 K1ABC-05 K1ABC-06 K1ABC-07
+            K1ABC-08 K1ABC-09 K1ABC-10 K1ABC-11 K1ABC-12 K1ABC-13
+            K1ABC-21 K1ABC-22 K1ABC-23 K1ABC-24 K1ABC-25 K1ABC-26 K1ABC-27 K1ABC-28 K1ABC-29
+            K1ABC-34 K1ABC-50 K1ABC-51 K1ABC-52 K1ABC-53 K1ABC-54 K1ABC-55
+            VE3ABC-03 VE3ABC-33 VE3ABC-34 VE3ABC-35 VE3ABC-40 VE3ABC-41 VE3ABC-42 VE3ABC-43
+            VE3ABC-44 VE3ABC-45 VE3ABC-46 VE3ABC-47 VE3ABC-48 VE3ABC-49 VE3ABC-56 VE3ABC-57
+            VE3ABC-63 VE3ABC-64 VE3ABC-65 VE3ABC-66 VE3ABC-67 VE3ABC-68 VE3ABC-69 VE3ABC-70
+            VE3ABC-71 VE3ABC-73 VE3ABC-74 VE3ABC-75 VE3ABC-76 VE3ABC-77 VE3ABC-78 VE3ABC-79 VE3ABC-80""".split()
+        self.assertEqual(set(driver.FIXTURE_LOGINS["main"]), set(expected_main))
+        self.assertEqual(driver.FIXTURE_LOGINS["dedupe"],
+                         ("K1ABC-58", "K1ABC-59", "VE3ABC-60", "VE3ABC-61", "VE3ABC-62"))
+        self.assertEqual(driver.FIXTURE_LOGINS["reputation"], ("K1ABC-81", "K1ABC-82", "VE3ABC-83"))
+        driver.validate_fixture_calls(driver.FIXTURE_LOGINS)
+
+    def test_fixture_login_validation_preserves_leading_zero_and_base(self):
+        inventory = {"main": ("K1ABC-1", "K1ABC-01", "VE3ABC-1", "K1ABC-0", "K1ABC-99")}
+        before = copy.deepcopy(inventory)
+        driver.validate_fixture_calls(inventory)
+        self.assertEqual(inventory, before)
+        for suffix in ("100", "70001", "001", "", "A", "1A", "-1", "\u0661", "\uff11"):
+            with self.subTest(suffix=suffix), self.assertRaisesRegex(ValueError, "invalid fixture login"):
+                driver.validate_fixture_calls({"main": ("K1ABC-" + suffix,)})
+
+    def test_fixture_login_preflight_rejects_collisions_and_unbounded_inventory(self):
+        for inventory in ({"main": ("K1ABC-01", "K1ABC-01")},
+                          {"main": ("K1ABC-01",) * 201}, {}, {"other": ("K1ABC-01",)}):
+            with self.subTest(inventory=inventory), self.assertRaises(ValueError):
+                driver.validate_fixture_calls(inventory)
+
+    def test_fixture_session_refuses_unallocated_call_and_keeps_reconnect_spelling(self):
+        suite = mock.Mock()
+        with mock.patch.object(driver, "FixtureSession") as session:
+            with self.assertRaisesRegex(ValueError, "unallocated fixture login"):
+                driver.fixture_session(suite, "K1ABC-70001")
+            session.assert_not_called()
+            driver.fixture_session(suite, "K1ABC-01")
+            driver.fixture_session(suite, "K1ABC-01")
+            self.assertEqual(session.call_args_list, [mock.call(suite, "K1ABC-01")] * 2)
+
+    def test_fixture_preflight_fails_before_build_staging_or_output(self):
+        with mock.patch.object(driver, "validate_fixture_calls", side_effect=ValueError("bad allocation")), \
+                mock.patch.object(driver, "build") as build, mock.patch.object(driver, "stage") as stage, \
+                mock.patch.object(driver, "plain_output") as output:
+            with self.assertRaisesRegex(ValueError, "bad allocation"):
+                driver.main()
+            build.assert_not_called()
+            stage.assert_not_called()
+            output.assert_not_called()
+
+    def test_positive_logins_cannot_bypass_allocation_guard(self):
+        tree = ast.parse(Path(driver.__file__).read_text(encoding="utf-8"))
+        calls = [node for node in ast.walk(tree) if isinstance(node, ast.Call) and
+                 isinstance(node.func, ast.Name) and node.func.id == "FixtureSession"]
+        factory = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "fixture_session")
+        self.assertEqual(len(calls), 1)
+        self.assertIn(calls[0], list(ast.walk(factory)))
+
+    def test_case_retirement_preserves_shared_sessions_and_original_failure(self):
+        suite = driver.CommandSuite.__new__(driver.CommandSuite)
+        shared, first, second = mock.Mock(), mock.Mock(), mock.Mock()
+        suite.sessions, suite.results, suite.cleanup_errors = [shared], [], []
+        first.close.side_effect = ValueError("cleanup refusal")
+
+        def failed_case():
+            suite.sessions.extend((first, second))
+            raise ValueError("original semantic failure")
+
+        suite.case("owned", failed_case)
+        shared.close.assert_not_called()
+        first.close.assert_called_once()
+        second.close.assert_called_once()
+        self.assertEqual(suite.results[0]["result"], "FAIL")
+        self.assertIn("original semantic failure", suite.results[0]["detail"])
+        self.assertEqual(suite.cleanup_errors, ["owned: cleanup refusal"])
+
+    def test_login_receipt_uses_existing_bounded_read_without_replay(self):
+        from types import SimpleNamespace
+        session = driver.FixtureSession.__new__(driver.FixtureSession)
+        greeting = b"Hello K1ABC-01; using temporary defaults. UTC>"
+        until = mock.Mock(return_value=greeting)
+        session.call, session.sock = "K1ABC-01", mock.Mock()
+        session.reader = SimpleNamespace(until=until)
+        session.suite = SimpleNamespace(deadline=time.monotonic() + 20,
+                                        args=SimpleNamespace(timeout=8), log=io.BytesIO())
+        session.send("K1ABC-01\r\n", count=False)
+        until.assert_not_called()
+        self.assertEqual(session.reader.until(b"UTC>"), greeting)
+        until.assert_called_once_with(b"UTC>")
+        self.assertIs(session.reader.until, until)
+        session.sock.sendall.assert_called_once_with(b"K1ABC-01\r\n")
+        self.assertIn(greeting, session.suite.log.getvalue())
+        self.assertIn("temporary defaults", driver.login_text(session, "later reply"))
+
+    def test_adjacent_edit_snapshot_is_detached_complete_and_only_from_current_config(self):
+        session = driver.FixtureSession.__new__(driver.FixtureSession)
+        complete = dict(resource="CONFIG", schema_version=7, configuration={"filters": {"go": {}, "cc": {}}, "settings": {}},
+                        status={"presets": {"go": {}, "cc": {}}})
+        session.remember_configuration(complete)
+        original = copy.deepcopy(session.last_configuration)
+        complete["configuration"]["filters"]["go"]["mutated_by_caller"] = True
+        self.assertEqual(session.last_configuration, original)
+        for changed in (dict(complete, resource="SETTINGS"), dict(complete, schema_version=6),
+                        dict(complete, error={"code": "refused"}), dict(resource="CONFIG", schema_version=7),
+                        dict(complete, status={"presets": {"go": {}}}),
+                        dict(complete, configuration={"filters": {"go": {}}, "settings": {}})):
+            session.remember_configuration(changed)
+            self.assertEqual(session.last_configuration, original)
+        with mock.patch.object(session, "get") as get:
+            self.assertIs(driver.fixture_before(session), session.last_configuration)
+            get.assert_not_called()
+        del session.last_configuration
+        with mock.patch.object(session, "get", return_value=original) as get:
+            self.assertIs(driver.fixture_before(session), original)
+            get.assert_called_once_with()
+        with mock.patch.object(driver.harness.V7Session, "frame", return_value=(original, b"prefix")) as frame:
+            actual, prefix = session.frame("CONFIG", "request", 7, "manual barrier")
+            self.assertEqual((actual, prefix), (original, b"prefix"))
+            self.assertEqual(session.last_configuration, original)
+            self.assertIsNot(session.last_configuration, actual)
+            frame.assert_called_once_with("CONFIG", "request", 7, "manual barrier")
+
+    def test_setting_warning_requires_complete_single_line_failure(self):
+        reply = "Noise class set to URBAN (warning: failed to persist: Access is denied.)"
+        driver.require_setting_save_warning(reply)
+        for text in ("Noise class set to URBAN", reply + "\n" + reply,
+                     reply.replace(" (warning:", "\nwarning:"), "warning: failed to persist:"):
+            with self.assertRaises(ValueError):
+                driver.require_setting_save_warning(text)
+
+    def test_help_group_reconnect_preserves_both_banks_refs_and_resets_only_session(self):
+        before = native_oracle_document("cc")
+        fresh = copy.deepcopy(before)
+        fresh["status"]["session"] = dict(diagnostic_comments="OFF", pause_active=False,
+            pause_pending_delivery=False, pause_remaining_seconds=0, suppressed_spots=0)
+        for fault in (None, "go", "cc", "reference", "disk_reference", "diagnostic", "pause", "suppressed"):
+            with self.subTest(fault=fault):
+                current, restored, record = mock.Mock(), mock.Mock(), mock.Mock()
+                current.call, current.suite = "VE3ABC-73", mock.Mock()
+                raw = native_oracle_bytes(before)
+                record.read_bytes.return_value = raw
+                after = copy.deepcopy(fresh)
+                if fault == "go":
+                    after["configuration"]["filters"]["go"]["include_beacons"] = False
+                elif fault == "cc":
+                    after["configuration"]["filters"]["cc"]["modes"] = []
+                elif fault == "reference":
+                    after["status"]["presets"]["go"]["name"] = "OTHER"
+                elif fault == "disk_reference":
+                    bad = driver.yaml.safe_load(raw)
+                    bad["presets"]["go"] = dict(name="OTHER", baseline={})
+                    record.read_bytes.side_effect = [raw, driver.yaml.safe_dump(bad).encode(), driver.yaml.safe_dump(bad).encode()]
+                elif fault == "diagnostic":
+                    after["status"]["session"]["diagnostic_comments"] = "MODE"
+                elif fault == "pause":
+                    after["status"]["session"].update(pause_active=True, pause_remaining_seconds=30)
+                elif fault == "suppressed":
+                    after["status"]["session"]["suppressed_spots"] = 1
+                restored.get.return_value = after
+
+                def human(command, feedback):
+                    result = copy.deepcopy(after)
+                    self.assertEqual((command, feedback), ("SET DIAG MODE", "Diagnostic comments: MODE"))
+                    result["status"]["session"]["diagnostic_comments"] = "MODE"
+                    return feedback, result
+
+                restored.human.side_effect = human
+                with mock.patch.object(driver, "fixture_session", return_value=restored) as factory:
+                    if fault is None:
+                        result, document = driver.resume_help_fixture(current, record, before, diagnostic="MODE")
+                        self.assertIs(result, restored)
+                        self.assertEqual(document["status"]["session"]["diagnostic_comments"], "MODE")
+                        restored.human.assert_called_once()
+                    else:
+                        with self.assertRaises(ValueError):
+                            driver.resume_help_fixture(current, record, before, diagnostic="MODE")
+                        restored.human.assert_not_called()
+                    factory.assert_called_once_with(current.suite, current.call)
+                    current.close.assert_called_once()
+                    restored.get.assert_called_once()
+
     def test_dx_input_archive_requires_positive_exact_identity(self):
         driver.require_dx_input_archive([HISTORY_ROW], "LABEL", 14074)
         for rows, label, frequency in (([], "LABEL", 14074), ([HISTORY_ROW] * 2, "LABEL", 14074),
@@ -258,12 +552,12 @@ class DriverControls(unittest.TestCase):
 
         query = "show  hold"
         raw = routing_help_wire(["Live spots paused for 14s more. Suppressed spots: 1."], query.upper())
-        command = b"GET YAML CONFIG SCHEMA 4 ID HOLD19\r\n"
-        document = dict(resource="CONFIG", schema_version=4, request_id="HOLD19", configuration={}, status={}, revision="r19")
+        command = b"GET YAML CONFIG SCHEMA 7 ID HOLD19\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="HOLD19", configuration={}, status={}, revision="r19")
 
         def session(prefix=command, reply=raw):
             current = mock.Mock()
-            current.call = "VE3ABC-70077"
+            current.call = "VE3ABC-77"
             current.reader.remote_echo, current.reader.buffer = True, b""
             current.reader.line.side_effect = reply.splitlines(keepends=True)
             current.suite.log, current.suite.identifier.return_value = Receipt(), "HOLD19"
@@ -348,7 +642,7 @@ class DriverControls(unittest.TestCase):
                 driver.hold_deadline_window(invalid, inactive, (115.1, 115.2))
 
     def test_hold_state_preserves_all_owners_counters_and_observed_deadline(self):
-        session = dict(callsign="VE3ABC-70077", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=1,
+        session = dict(callsign="VE3ABC-77", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=1,
                        pause_active=True, pause_pending_delivery=False, pause_remaining_seconds=15)
         before = dict(configuration=dict(filters=dict(comments=["HOLD19"])), revision="r19",
                       status=dict(configured=dict(grid="FN31PR"), effective=dict(dedupe_policy="SLOW"),
@@ -430,12 +724,12 @@ class DriverControls(unittest.TestCase):
 
         base = HISTORY_ROW.replace("14074.00", "14178.00")
         raw = (base[:39] + "CW CW|CMT".ljust(24) + base[63:] + "\r\n").encode("ascii")
-        command = b"GET YAML CONFIG SCHEMA 4 ID HOLD19\r\n"
-        document = dict(resource="CONFIG", schema_version=4, request_id="HOLD19", configuration={}, status={}, revision="r19")
+        command = b"GET YAML CONFIG SCHEMA 7 ID HOLD19\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="HOLD19", configuration={}, status={}, revision="r19")
 
         def session(prefix=command):
             current = mock.Mock()
-            current.call = "VE3ABC-70077"
+            current.call = "VE3ABC-77"
             current.reader.remote_echo, current.reader.buffer = True, b""
             current.reader.line.side_effect = [raw]
             current.suite.log, current.suite.identifier.return_value, current.suite.deadline = Receipt(), "HOLD19", float("inf")
@@ -490,58 +784,35 @@ class DriverControls(unittest.TestCase):
                                        driver.help_route_contract("DX", "go"), 10, 30, True)
 
     def test_discovery_inventory_is_literal_complete_action_specific_and_alias_qualified(self):
-        families = ("BAND MODE SOURCE EVENT COMMENT DXCALL DECALL CONFIDENCE PATH DXGRID2 DEGRID2 "
-                    "DXCONT DECONT DXZONE DEZONE DXDXCC DEDXCC DXSTATE DESTATE MINSNR BEACON WWV WCY "
-                    "ANNOUNCE SELF TOXIC NEARBY DXBM NOFILTER").split()
-        self.assertEqual(len(families), 29)
-        self.assertEqual(set(driver.DISCOVERY_FAMILIES), set(families))
-        for verb in ("PASS", "REJECT"):
-            for unknown in (False, True):
-                expected = discovery_literal_reply(verb, unknown)
-                self.assertEqual(driver.filter_discovery_reply(verb, unknown), expected)
-                driver.require_discovery_inventory(expected, verb, unknown)
-                self.assertEqual(len(expected.splitlines()), 8 if unknown else 9)
-                self.assertTrue(all(len(line) <= 78 for line in expected.splitlines()))
-                opposite = "REJECT" if verb == "PASS" else "PASS"
-                faults = [discovery_literal_reply(opposite, unknown), expected.replace("COMMENT, ", ""),
-                          expected.replace("DXBM, NEARBY", "DXBM, DXBM"), expected.replace("SELF, TOXIC", "SELF, INVENTED"),
-                          expected.replace("PC93 aliases ANNOUNCE.", "PC93 is a separate family."),
-                          expected.replace("COMMENT uses PASS/REJECT COMMENT", "COMMENT uses SET/FILTER COMMENT")]
-                for fault in faults:
-                    with self.assertRaises(ValueError):
-                        driver.require_discovery_inventory(fault, verb, unknown)
-        # Altering both the expected wording and emitted reply must still fail
-        # the separately enumerated family/alias/action boundary oracle.
-        with mock.patch.object(driver, "DISCOVERY_TYPES", driver.DISCOVERY_TYPES.replace("COMMENT, ", "")):
-            with self.assertRaisesRegex(ValueError, "filter family"):
-                driver.require_discovery_inventory(driver.filter_discovery_reply("PASS"), "PASS")
-        bad = discovery_literal_reply("REJECT", True).replace("PC93 aliases ANNOUNCE.", "NOFILTER; PC93 aliases ANNOUNCE.")
-        with mock.patch.object(driver, "filter_discovery_reply", return_value=bad):
-            with self.assertRaisesRegex(ValueError, "PASS-only NOFILTER"):
-                driver.require_discovery_inventory(bad, "REJECT", True)
+        for dialect in ("go", "cc"):
+            for verb in ("PASS", "REJECT"):
+                for unknown in (False, True):
+                    reply = discovery_literal_reply(verb, unknown, dialect)
+                    self.assertEqual(driver.filter_discovery_reply(verb, unknown, dialect), reply)
+                    driver.require_discovery_inventory(reply, verb, unknown, dialect)
+                    for bad in (reply.replace("No changes applied.", "Applied."), reply.replace("RULE", "BROKEN"), reply + "\nEXTRA"):
+                        if bad != reply:
+                            with self.assertRaises(ValueError):
+                                driver.require_discovery_inventory(bad, verb, unknown, dialect)
 
     def test_discovery_case_matrix_covers_both_actions_domains_and_existing_cc_forms(self):
         for dialect in ("go", "cc"):
             cases = driver.discovery_feedback_cases(dialect)
             commands = {query: (reply, verb, unknown) for query, reply, verb, unknown in cases}
             self.assertEqual(len(commands), len(cases))
-            heads = [("PASS", "PASS"), ("REJECT", "REJECT")]
-            if dialect == "cc":
-                heads += [("SET/FILTER", "PASS"), ("UNSET/FILTER", "REJECT")]
-            for head, verb in heads:
-                self.assertEqual(commands[head], (discovery_literal_reply(verb), verb, False))
-                self.assertEqual(commands[head + " INVENTED"], (discovery_literal_reply(verb, True), verb, True))
-                self.assertEqual(commands[head + " DXBM"][0], "Usage: PASS DXBM <band-codes> or REJECT DXBM <band-codes>\nType HELP PASS or HELP REJECT for usage.")
-                self.assertEqual(commands[head + " DXBM ALL"][0], "Unknown DXBM band: ALL\nSupported: 160, 80, 40, 30, 20, 17, 15, 12, 10, 6, 2 (and 1 if enabled).\nModes ignored; use REJECT MODE <mode>.")
-                for family in ("DXSTATE", "DESTATE"):
-                    self.assertEqual(commands[head + " " + family][0], "Usage: " + verb + " " + family + " <state>[,<state>...] or ALL\nUS/Canadian mailing codes include provinces and territories.\nType HELP " + verb + " for usage.")
-                    self.assertEqual(commands[head + " " + family + " CT,ZZ"][0], "Invalid state selection: ZZ")
-            self.assertEqual(commands["RESET MODE"][0], "Usage: RESET FILTER\nType HELP for usage.")
-            self.assertEqual(commands["REJECT NOFILTER"][0], "Invalid filter command. Type HELP for usage.")
+            for verb in ("PASS", "REJECT"):
+                self.assertEqual(commands[verb], (discovery_literal_reply(verb, False, dialect), verb, False))
+                self.assertEqual(commands[verb + " INVENTED"], (discovery_literal_reply(verb, True, dialect), verb, True))
+                for family in ("BAND", "MODE", "SOURCE", "EVENT", "COMMENT", "DXCALL", "DECALL", "CONFIDENCE", "PATH",
+                               "DXGRID2", "DEGRID2", "DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC", "DEDXCC", "DXSTATE",
+                               "DESTATE", "MINSNR", "NEARBY", "DXBM", "NOFILTER"):
+                    self.assertEqual(commands[verb + " " + family + " ALL"],
+                                     (discovery_literal_reply(verb, True, dialect), verb, True))
             self.assertEqual(any(query.startswith("SET/FILTER") for query in commands), dialect == "cc")
             if dialect == "cc":
-                self.assertEqual(commands["SET/FILTER COMMENT CQ"][1:], ("PASS", True))
-                self.assertEqual(commands["UNSET/FILTER COMMENT CQ"][1:], ("REJECT", True))
+                for command in ("SET/FILTER COMMENT CQ", "UNSET/FILTER COMMENT CQ", "SET/FILTER NEARBY ON", "SET/FILTER BAND 20"):
+                    self.assertIn("No changes applied.", commands[command][0])
+                    self.assertNotIn("HELP RULE", commands[command][0])
 
     def test_discovery_decoder_requires_complete_exact_printable_bounded_feedback(self):
         query, expected = "PASS", discovery_literal_reply("PASS")
@@ -549,13 +820,13 @@ class DriverControls(unittest.TestCase):
         for echo in (True, False):
             raw = routing_help_wire(lines, query, echo=echo)
             self.assertEqual(driver.decode_discovery_reply(raw, query, expected, echo), lines)
-        faults = [routing_help_wire(discovery_literal_reply("REJECT").splitlines(), query),
+        faults = [routing_help_wire(["Usage: WRONG", *lines[1:]], query),
                   routing_help_wire(lines[:-1], query), routing_help_wire(lines + ["EXTRA"], query),
                   routing_help_wire([lines[0], *lines[2:]], query), routing_help_wire([lines[0], "PASS", *lines[1:]], query),
                   routing_help_wire(["PASS", *lines], query), routing_help_wire(lines, query, pause=True),
                   routing_help_wire([lines[0], "X" * 79, *lines[2:]], query),
                   routing_help_wire(lines, query).replace(b"\r\n", b"\n", 1),
-                  routing_help_wire(lines, query).replace(b"NEARBY", b"NEAR\x01Y"), b"X" * 65537]
+                  routing_help_wire(lines, query).replace(b"RULE", b"RU\x01E", 1), b"X" * 65537]
         for raw in faults:
             with self.assertRaises(ValueError):
                 driver.decode_discovery_reply(raw, query, expected, True)
@@ -571,12 +842,12 @@ class DriverControls(unittest.TestCase):
 
         query, expected = "PASS", discovery_literal_reply("PASS")
         raw = routing_help_wire(expected.splitlines(), query)
-        command = b"GET YAML CONFIG SCHEMA 4 ID DISC18\r\n"
-        document = dict(resource="CONFIG", schema_version=4, request_id="DISC18", configuration={}, status={}, revision="r18")
+        command = b"GET YAML CONFIG SCHEMA 7 ID DISC18\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="DISC18", configuration={}, status={}, revision="r18")
 
         def session(prefix=command):
             current = mock.Mock()
-            current.call = "VE3ABC-70075"
+            current.call = "VE3ABC-75"
             current.reader.remote_echo, current.reader.buffer = True, b""
             current.reader.line.side_effect = raw.splitlines(keepends=True)
             current.suite.log, current.suite.identifier.return_value = Receipt(), "DISC18"
@@ -596,11 +867,11 @@ class DriverControls(unittest.TestCase):
             current = session(prefix)
             if prefix in (command, b"\r\n" + command):
                 self.assertEqual(driver.discovery_readback(current, query, expected), document)
-                current.frame.assert_called_once_with("CONFIG", "DISC18", 4, command.decode().rstrip("\r\n"))
+                current.frame.assert_called_once_with("CONFIG", "DISC18", 7, command.decode().rstrip("\r\n"))
             else:
                 with self.assertRaises(ValueError):
                     driver.discovery_readback(current, query, expected)
-        for field, value in (("resource", "FILTER"), ("schema_version", True), ("schema_version", "4"),
+        for field, value in (("resource", "FILTER"), ("schema_version", True), ("schema_version", "7"),
                              ("request_id", "OTHER"), ("configuration", []), ("status", []), ("revision", ""), ("error", {})):
             current = session()
             current.frame.return_value[0][field] = value
@@ -630,65 +901,34 @@ class DriverControls(unittest.TestCase):
             for key in ("DX", "OVERVIEW", "FILTERS", "FILTER EXAMPLES", "PRESETS", "PASS", "REJECT",
                         "SHOW FILTER" if dialect == "go" else "SHOW/FILTER"):
                 lines = discovery_help_literal(key, dialect)
-                topic = "" if key == "OVERVIEW" else key
-                query = ("HELP " + topic).rstrip()
+                topic, query = ("" if key == "OVERVIEW" else key), ("HELP " + ("" if key == "OVERVIEW" else key)).rstrip()
                 contract = driver.help_route_contract(key, dialect)
                 decoded, paused = driver.decode_help_routing(routing_help_wire(lines, query, pause=True), query, contract, 10, 30, True)
                 self.assertTrue(paused)
                 driver.require_discovery_help(decoded, key, dialect)
-                claim = ("Spot queued guarantees delivery." if key == "DX" else
-                         "show FCC mailing-address codes" if key.startswith("SHOW") else "RESET MODE")
-                bad = [*lines, "  " + claim]
-                # Fault remains a valid complete, counted, correctly routed HELP
-                # response; only the independent semantic oracle rejects it.
-                decoded, _ = driver.decode_help_routing(routing_help_wire(bad, query, pause=True), query, contract, 10, 30, True)
+                claim = "Spot queued guarantees delivery." if key == "DX" else "show FCC mailing-address codes" if key.startswith("SHOW") else "RESET MODE"
                 with self.assertRaises(ValueError):
-                    driver.require_discovery_help(decoded, key, dialect)
-                if key in ("PASS", "REJECT"):
-                    for fault in ("NT", "NU", "YT", "AA", "AE", "AP", "UM"):
-                        bad = [line.replace(fault + ",", "ZZ,").replace(", " + fault, ", ZZ") for line in lines]
-                        decoded, _ = driver.decode_help_routing(routing_help_wire(bad, query, pause=True), query, contract, 10, 30, True)
-                        with self.assertRaisesRegex(ValueError, "mailing codes"):
-                            driver.require_discovery_help(decoded, key, dialect)
-                    heading = "US/Canada mailing codes (states, provinces, territories):"
-                    for bad in ([*lines, heading], [*lines, "  YT"], [line for line in lines if line != heading]):
-                        with self.assertRaises(ValueError):
-                            driver.require_discovery_help(bad, key, dialect)
-                if key in ("PASS", "REJECT"):
-                    for note in ("MODE preserves visibility", "Filter categories have their own", "DXSTATE Spotted", "DESTATE Spotter"):
-                        bad = [line for line in lines if note not in line]
-                        with self.assertRaises(ValueError):
-                            driver.require_discovery_help(bad, key, dialect)
-                    bad = [line.replace("REJECT MODE ALL", "PASS MODE ALL").replace("UNSET/FILTER MODE ALL", "SET/FILTER MODE ALL") for line in lines]
-                    with self.assertRaisesRegex(ValueError, "block-before-pass"):
-                        driver.require_discovery_help(bad, key, dialect)
-                if key == "OVERVIEW":
-                    for note in ("HELP SPOTS", "HELP SETTINGS", "HELP PRESETS", "HELP TROUBLE", "HELP COMMANDS", "Call confidence:"):
-                        with self.assertRaises(ValueError):
-                            driver.require_discovery_help([line for line in lines if note not in line], key, dialect)
+                    driver.require_discovery_help([*decoded, claim], key, dialect)
+                required = (("GO uses numbered Boolean rules.", "PASS rules are ORed", "Old category mutation syntax is refused") if key in ("PASS", "REJECT") and dialect == "go" else
+                            ("PASS enables; REJECT disables.", "Boolean rule edits require GO;") if key in ("PASS", "REJECT") else
+                            ("Shows canonical numbered rules",) if key == "SHOW FILTER" else
+                            ("Shows exact native selections", "Band INHERIT") if key == "SHOW/FILTER" else
+                            ("HELP SPOTS", "Call confidence:") if key == "OVERVIEW" else
+                            ("station reputation admission", "Spot queued confirms", "Comment: ASCII") if key == "DX" else ())
+                for phrase in required:
                     with self.assertRaises(ValueError):
-                        driver.require_discovery_help([*lines, "  BYE"], key, dialect)
-                if key == "DX":
-                    for note in ("station reputation admission", "Spot queued confirms", "Posting admission may", "Requires a valid logged", "Logins ending TEST",
-                                 "Comment: ASCII", "Other punctuation", "whole command", "Mode/report may"):
-                        with self.assertRaises(ValueError):
-                            driver.require_discovery_help([line for line in lines if note not in line], key, dialect)
-                    with self.assertRaises(ValueError):
-                        driver.require_discovery_help([*lines, "Comment is free text."], key, dialect)
-                if key.startswith("SHOW"):
-                    with self.assertRaises(ValueError):
-                        driver.require_discovery_help([line.replace("US/Canadian registered mailing", "FCC mailing-address") for line in lines], key, dialect)
+                        driver.require_discovery_help([line for line in lines if phrase not in line], key, dialect)
 
     def test_discovery_help_semantic_callback_logs_receipt_before_barrier_and_refuses_false_green(self):
         query, lines = "HELP DX", discovery_help_literal("DX", "go")
         raw = routing_help_wire(lines, query, pause=True)
-        document = dict(resource="CONFIG", schema_version=4, request_id="DISC18", configuration={}, status={}, revision="r18")
+        document = dict(resource="CONFIG", schema_version=7, request_id="DISC18", configuration={}, status={}, revision="r18")
         for corrupt in (False, True):
             current = mock.Mock()
-            current.call, current.reader.remote_echo, current.reader.buffer = "VE3ABC-70075", True, b""
+            current.call, current.reader.remote_echo, current.reader.buffer = "VE3ABC-75", True, b""
             current.reader.line.side_effect = raw.splitlines(keepends=True)
             current.suite.log, current.suite.identifier.return_value = io.BytesIO(), "DISC18"
-            current.frame.return_value = document, b"GET YAML CONFIG SCHEMA 4 ID DISC18\r\n"
+            current.frame.return_value = document, b"GET YAML CONFIG SCHEMA 7 ID DISC18\r\n"
 
             def oracle(body):
                 self.assertEqual(body, lines)
@@ -708,7 +948,7 @@ class DriverControls(unittest.TestCase):
             self.assertTrue(current.suite.log.getvalue().endswith(raw))
 
     def test_discovery_owners_refuse_session_runtime_revision_bytes_and_same_bytes_rewrites(self):
-        session = dict(callsign="VE3ABC-70075", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=0,
+        session = dict(callsign="VE3ABC-75", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=0,
                        pause_active=False, pause_pending_delivery=False, pause_remaining_seconds=0)
         before = dict(configuration=dict(filters=dict(comments=["DISCOVERY18 GO"])), revision="r18",
                       status=dict(configured=dict(grid="FN31PR"), effective=dict(dedupe_policy="SLOW"),
@@ -756,56 +996,30 @@ class DriverControls(unittest.TestCase):
                 driver.require_discovery_owners(before, changed, record, saved, library, library_saved)
 
     def test_discovery_fresh_saved_baseline_must_match_full_preferences_and_named_library(self):
-        rule = dict(allow_all=True, block_all=False, allow={}, block={})
-        filters = {field: copy.deepcopy(rule) for field in ("bands", "modes", "sources", "events", "confidence", "path_classes",
-                                                           "dx_continents", "de_continents", "dx_zones", "de_zones", "dx_grid2",
-                                                           "de_grid2", "dx_dxcc", "de_dxcc", "dx_states", "de_states")}
-        filters.update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[], comments=["DISCOVERY18 CC"],
-                       block_comments=[], min_snr={"CW": 7}, nearby_enabled=False, include_beacons=False,
-                       allow_wwv=True, allow_wcy=True, allow_announce=False, allow_self=True, allow_toxic=True)
-        settings = dict(dialect="cc", grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
-                        path_min_observation_count=30, solar_summary_minutes=30)
-        expected = dict(settings=settings, filters=filters)
-        baseline = dict(settings, configuration_version=4, comments=["DISCOVERY18 CC"], min_snr={"CW": 7},
-                        include_beacons=False, allow_wwv=True, allow_wcy=True, allow_announce=False, allow_self=True, allow_toxic=True)
-        for stem in "bands modes sources events confidence pathclasses dxcontinents decontinents dxzones dezones dxgrid2 degrid2 dxdxcc dedxcc dxstates destates".split():
-            baseline[stem + "prefixes" if stem in ("dxgrid2", "degrid2") else stem] = {}
-            baseline["block" + stem], baseline["all" + stem], baseline["blockall" + stem] = {}, True, False
-        stored = {**baseline, "preset": dict(name="DISC18CC", baseline=copy.deepcopy(baseline))}
-        collection = dict(presets=dict(DISC18CC=copy.deepcopy(baseline)))
-        record, library = mock.Mock(), mock.Mock()
-        document = dict(configuration=expected, status=dict(effective=dict(nearby_active=False),
-                                                            preset=dict(associated=True, name="DISC18CC", modified=False)))
-
-        def assign(user=stored, presets=collection):
-            record.read_bytes.return_value = driver.yaml.safe_dump(user).encode("ascii")
-            library.read_bytes.return_value = driver.yaml.safe_dump(presets).encode("ascii")
-
-        assign()
-        driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
-        for field, value in (("grid", "IO91"), ("noise_class", "QUIET"), ("dedupe_policy", "FAST"),
-                             ("path_min_observation_count", True), ("solar_summary_minutes", 0), ("comments", []), ("min_snr", {})):
-            bad = copy.deepcopy(stored)
-            bad["preset"]["baseline"][field] = value
-            changed_library = dict(presets=dict(DISC18CC=copy.deepcopy(bad["preset"]["baseline"])))
-            assign(bad, changed_library)
-            with self.assertRaises(ValueError):
-                driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
-        for bad in ({**stored, "preset": None}, {**stored, "preset": dict(name="OTHER", baseline=baseline)},
-                    {**stored, "preset": dict(name="DISC18CC")}, {**stored, "grid": "IO91"}):
-            assign(bad)
-            with self.assertRaises(ValueError):
-                driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
-        assign()
-        changed = copy.deepcopy(document)
-        changed["status"]["preset"]["modified"] = True
-        with self.assertRaises(ValueError):
-            driver.require_discovery_saved(changed, expected, record, library, "DISC18CC")
-        changed_library = copy.deepcopy(collection)
-        changed_library["presets"]["DISC18CC"]["comments"] = ["OTHER"]
-        assign(presets=changed_library)
-        with self.assertRaises(ValueError):
-            driver.require_discovery_saved(document, expected, record, library, "DISC18CC")
+        for dialect in ("go", "cc"):
+            expected, document = current_configuration(dialect), current_document(dialect)
+            baseline = dict(configuration_version=7, dialect=dialect, settings=copy.deepcopy(expected["settings"]))
+            baseline[dialect] = copy.deepcopy(expected["filters"][dialect])
+            native = dict(configuration_version=7, configuration=copy.deepcopy(expected),
+                          presets={dialect: dict(name="DISC18", baseline=baseline)}, notice={})
+            document["status"]["presets"][dialect] = dict(associated=True, name="DISC18", modified=False)
+            record, library = mock.Mock(), mock.Mock()
+            record.read_bytes.return_value = driver.yaml.safe_dump(native).encode()
+            library.read_bytes.return_value = driver.yaml.safe_dump(dict(configuration_version=7, reset_generation=7, presets={"DISC18": baseline})).encode()
+            driver.require_discovery_saved(document, expected, record, library, "DISC18")
+            for fault in ("name", "tag", "settings", "bank", "library", "inactive"):
+                bad_native, bad_doc, bad_library = copy.deepcopy(native), copy.deepcopy(document), {"DISC18": copy.deepcopy(baseline)}
+                ref = bad_native["presets"][dialect]
+                if fault == "name": ref["name"] = "OTHER"
+                elif fault == "tag": ref["baseline"]["dialect"] = "go" if dialect == "cc" else "cc"
+                elif fault == "settings": ref["baseline"]["settings"]["grid"] = "IO91"
+                elif fault == "bank": ref["baseline"][dialect]["include_beacons"] = True
+                elif fault == "library": bad_library["DISC18"]["settings"]["grid"] = "IO91"
+                else: bad_native["configuration"]["filters"]["go" if dialect == "cc" else "cc"]["allow_self"] = False
+                record.read_bytes.return_value = driver.yaml.safe_dump(bad_native).encode()
+                library.read_bytes.return_value = driver.yaml.safe_dump(dict(presets=bad_library)).encode()
+                with self.assertRaises(ValueError):
+                    driver.require_discovery_saved(bad_doc, expected, record, library, "DISC18")
 
     def test_help_routing_short_response_requires_intended_header_usage_terminal_and_real_aliases(self):
         contract = driver.help_route_contract("SHOW BUILD", "go")
@@ -841,23 +1055,23 @@ class DriverControls(unittest.TestCase):
                                        "HELP EXIT EXTRA", driver.help_route_contract("BYE", "cc"), 10, 30)
 
     def test_help_routing_long_response_requires_conditional_complete_counted_pause_footer(self):
-        query = "HELP PASS BAND 40 EXTRA"
-        lines = ["PASS - Allow filter matches.", "Usage: PASS <type> <list>", "Notes:"] + ["  Literal contract note."] * 7
+        query, lines = "HELP PASS BAND 40 EXTRA", discovery_help_literal("PASS", "go")
         contract = driver.help_route_contract("PASS", "go")
         raw = routing_help_wire(lines, query, pause=True)
         self.assertEqual(driver.decode_help_routing(raw, query, contract, 10, 30, True), (lines, True))
         for fault in (routing_help_wire(lines, query), raw.replace(b"Missed spots are not replayed.\r\n", b""),
-                      routing_help_wire(lines, query, pause=True, count=11), routing_help_wire(lines, query, pause=True, seconds=29),
-                      routing_help_wire(lines[:3], query, pause=True), raw + b"TRAILING\r\n",
-                      routing_help_wire(lines + ["Missed spots are not replayed."], query, pause=True),
-                      routing_help_wire(["REJECT - Block filter matches.", *lines[1:]], query, pause=True)):
+                      routing_help_wire(lines, query, pause=True, count=len(lines)+1), routing_help_wire(lines, query, pause=True, seconds=29),
+                      raw + b"TRAILING\r\n", routing_help_wire(lines + ["Missed spots are not replayed."], query, pause=True),
+                      routing_help_wire(["REJECT - Wrong header.", *lines[1:]], query, pause=True)):
             with self.assertRaises(ValueError):
                 driver.decode_help_routing(fault, query, contract, 10, 30, True)
-        # Leading body blanks count as rendered rows; they do not satisfy the header.
-        blank_raw = routing_help_wire(["", *lines], query, pause=True)
-        self.assertEqual(driver.decode_help_routing(blank_raw, query, contract, 10, 30, True), (lines, True))
+        self.assertEqual(driver.decode_help_routing(routing_help_wire(["", *lines], query, pause=True), query, contract, 10, 30, True), (lines, True))
 
     def test_help_routing_independent_topics_cover_source_heads_and_preserve_explicit_unknowns(self):
+        self.assertEqual(driver.HELP_SHORTCUT_MODES, ("CW", "FT2", "FT4", "FT8", "PSK", "RTTY"))
+        for dialect in ("go", "cc"):
+            self.assertEqual(driver.help_route_contract("VALIDATE YAML CONFIG", dialect)[1],
+                             ("VALIDATE YAML CONFIG", "VALIDATE YAML CONFIG SCHEMA 7"))
         shared = {"SH", "SH BUILD EXTRA", "SH OWN EXTRA", "SH DXCC DL EXTRA", "SH MYDX 1 MODE COMMENT",
                   "SH DX W6ABC 1", "SHOW/PROP DL 20 CW", "SH/PROP DL 20 CW", "SET SOLAR OFF EXTRA",
                   "SAVE PRESET ROUTE18 EXTRA", "LOAD PRESET ROUTE18 EXTRA", "LIST PRESET ROUTE18 EXTRA",
@@ -873,7 +1087,7 @@ class DriverControls(unittest.TestCase):
             self.assertTrue(negatives <= {topic for topic, key in rows if key is None})
             self.assertEqual(topics["SH DXCC DL EXTRA"], "SHOW DXCC")
             for resource in ("FILTER", "SETTINGS", "CONFIG", "CAPABILITIES"):
-                self.assertEqual(topics["GET YAML " + resource + " SCHEMA 4 ID ROUTE18"], "GET YAML " + resource)
+                self.assertEqual(topics["GET YAML " + resource + " SCHEMA 7 ID ROUTE18"], "GET YAML " + resource)
             for verb in ("PUT", "PATCH"):
                 for resource in ("FILTER", "SETTINGS", "CONFIG"):
                     self.assertEqual(topics[verb + " YAML " + resource + " EXTRA"], verb + " YAML " + resource)
@@ -898,8 +1112,8 @@ class DriverControls(unittest.TestCase):
         go = dict(driver.help_routing_topics("go"))
         self.assertIsNone(go["SHOW/DX 1"])
         self.assertIsNone(go["SH/DX 1"])
-        self.assertEqual(driver.help_route_contract("PASS", "cc")[0], "SET/FILTER - Allow filter matches (CC dialect).")
-        self.assertEqual(driver.help_route_contract("REJECT", "cc")[0], "UNSET/FILTER - Block filter matches (CC dialect).")
+        self.assertEqual(driver.help_route_contract("PASS", "cc")[0], "PASS - Change separate delivery switches.")
+        self.assertEqual(driver.help_route_contract("REJECT", "cc")[0], "REJECT - Change separate delivery switches.")
 
     def test_help_routing_receipt_completes_and_flushes_before_strict_correlated_barrier(self):
         class Receipt(io.BytesIO):
@@ -912,12 +1126,12 @@ class DriverControls(unittest.TestCase):
         lines = ["SHOW BUILD - Show binary build metadata.", "Usage: SHOW BUILD", "Aliases: SH BUILD", "Notes:",
                  "  Shows the build version, release tag, and Go version when available."]
         raw = routing_help_wire(lines, query)
-        command = b"GET YAML CONFIG SCHEMA 4 ID HELP18\r\n"
-        document = dict(resource="CONFIG", schema_version=4, request_id="HELP18", configuration={}, status={}, revision="r18")
+        command = b"GET YAML CONFIG SCHEMA 7 ID HELP18\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="HELP18", configuration={}, status={}, revision="r18")
         for prefix in (command, b"\r\n" + command, command + b"LEAK\r\n", b"LEAK\r\n" + command,
                        command + command, b"\n" + command, command.replace(b"HELP18", b"OTHER"), b"\r\n" * 32769 + command):
             current = mock.Mock()
-            current.call = "VE3ABC-70073"
+            current.call = "VE3ABC-73"
             current.reader.line.side_effect = raw.splitlines(keepends=True)
             current.reader.buffer = b""
             current.reader.remote_echo = True
@@ -935,11 +1149,11 @@ class DriverControls(unittest.TestCase):
             if prefix in (command, b"\r\n" + command):
                 self.assertEqual(driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "go"),
                                                            10, 30), (document, False))
-                current.frame.assert_called_once_with("CONFIG", "HELP18", 4, command.decode().rstrip("\r\n"))
+                current.frame.assert_called_once_with("CONFIG", "HELP18", 7, command.decode().rstrip("\r\n"))
             else:
                 with self.assertRaises(ValueError):
                     driver.help_routing_readback(current, "SH BUILD EXTRA", driver.help_route_contract("SHOW BUILD", "go"), 10, 30)
-        for field, value in (("resource", "FILTER"), ("schema_version", True), ("schema_version", "4"),
+        for field, value in (("resource", "FILTER"), ("schema_version", True), ("schema_version", "7"),
                              ("request_id", "OTHER"), ("configuration", []), ("status", []), ("revision", ""), ("error", {})):
             current.reader.line.reset_mock()
             current.reader.line.side_effect = raw.splitlines(keepends=True)
@@ -955,10 +1169,10 @@ class DriverControls(unittest.TestCase):
                  *["  Independent filler note."] * 5,
                  "  Shows the build version, release tag, and Go version when available."]
         raw = routing_help_wire(lines, query, pause=True)
-        command = b"GET YAML CONFIG SCHEMA 4 ID HELP18\r\n"
-        document = dict(resource="CONFIG", schema_version=4, request_id="HELP18", configuration={}, status={}, revision="r18")
+        command = b"GET YAML CONFIG SCHEMA 7 ID HELP18\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="HELP18", configuration={}, status={}, revision="r18")
         current = mock.Mock()
-        current.call = "VE3ABC-70074"
+        current.call = "VE3ABC-74"
         current.reader.line.side_effect = raw.splitlines(keepends=True)
         current.reader.buffer = b""
         current.reader.remote_echo = True
@@ -998,7 +1212,7 @@ class DriverControls(unittest.TestCase):
         self.assertEqual(current.send.call_count, 1)
 
     def test_help_routing_preserves_every_preference_owner_and_only_allows_deliberate_pause(self):
-        session = dict(callsign="VE3ABC-70073", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=0,
+        session = dict(callsign="VE3ABC-73", diagnostic_comments="MODE", temporary_defaults=False, suppressed_spots=0,
                        pause_active=False, pause_pending_delivery=False, pause_remaining_seconds=0)
         before = dict(configuration=dict(filters=dict(comments=["ROUTE18 GO"])), revision="r18",
                       status=dict(configured=dict(grid="FN31PR"), effective=dict(dedupe_policy="SLOW"),
@@ -1032,34 +1246,24 @@ class DriverControls(unittest.TestCase):
             handle.read_bytes.return_value = original
 
     def test_help_routing_fresh_preferences_require_every_immediately_saved_setting(self):
-        expected = dict(settings=dict(dialect="cc", grid="FN31PR", noise_class="URBAN", dedupe_policy="SLOW",
-                                      path_min_observation_count=30, solar_summary_minutes=30))
+        expected, document = current_configuration(), current_document()
+        native = dict(configuration_version=7, configuration=copy.deepcopy(expected), presets={}, notice={})
         record = mock.Mock()
-        record.read_bytes.return_value = driver.yaml.safe_dump(expected["settings"]).encode()
-        document = dict(configuration=copy.deepcopy(expected))
-        with mock.patch.object(driver, "require_cc_saved_state") as previous:
-            driver.require_help_routing_saved(document, expected, record)
-            previous.assert_called_once_with(document, expected, record)
-            for field in expected["settings"]:
-                changed = copy.deepcopy(expected["settings"])
-                del changed[field]
-                record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
-                with self.assertRaises(ValueError):
-                    driver.require_help_routing_saved(document, expected, record)
-            for field, value in (("path_min_observation_count", True), ("solar_summary_minutes", "30"),
-                                 ("dedupe_policy", "FAST"), ("noise_class", "QUIET")):
-                changed = copy.deepcopy(expected["settings"])
-                changed[field] = value
-                record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
-                with self.assertRaises(ValueError):
-                    driver.require_help_routing_saved(document, expected, record)
+        record.read_bytes.return_value = driver.yaml.safe_dump(native).encode()
+        driver.require_help_routing_saved(document, expected, record)
+        for field in expected["settings"]:
+            bad = copy.deepcopy(native)
+            bad["configuration"]["settings"][field] = "CHANGED"
+            record.read_bytes.return_value = driver.yaml.safe_dump(bad).encode()
+            with self.assertRaises(ValueError):
+                driver.require_help_routing_saved(document, expected, record)
 
     def test_cc_help_decoder_requires_complete_bounded_printable_response_and_count(self):
         lines = cc_help_literal("SET/FILTER")
         raw = cc_help_wire(lines)
         self.assertEqual(driver.decode_cc_help(raw, "HELP SET/FILTER", 10, 30), lines)
         for changed in (raw.replace(b"\r\n", b"\n"), raw + b"LEAK\r\n", raw[:-2],
-                        raw.replace(b"CC dialect", b"CC\x01dialect"), cc_help_wire(lines, seconds=29),
+                        raw.replace(b"native CC", b"native\x01CC"), cc_help_wire(lines, seconds=29),
                         cc_help_wire(lines, count=len(lines) + 1), cc_help_wire(lines, count=0),
                         cc_help_wire(["X" * 79] + lines), cc_help_wire(["HELP SET/FILTER"] + lines),
                         cc_help_wire(["WRONG - header"] + lines[1:]),
@@ -1072,21 +1276,15 @@ class DriverControls(unittest.TestCase):
             lines = cc_help_literal(verb)
             driver.require_cc_help_grammar(lines, verb)
             faults = [lines + ["Usage: " + verb + " COMMENT <phrase>"],
-                      [line.replace("DXCALL, DECALL", "COMMENT, DECALL") for line in lines],
-                      [line.replace("SELF, TOXIC", "SELF, MINSNR") for line in lines],
-                      [line for line in lines if "NEARBY ON|OFF" not in line],
-                      [line.replace("<integer dB|" + ("ALL" if verb == "SET/FILTER" else "NONE") + ">", "<integer dB|BAD>") for line in lines],
-                      [line.replace("CC list types:", "Lists:") for line in lines],
-                      [line.replace("remain unsupported", "are supported") for line in lines],
-                      lines + ["  SET/FILTER <type>/ON or /OFF"]]
+                      ["WRONG - header", *lines[1:]], [line for line in lines if "<switch> [ALL]" not in line],
+                      [*lines, "Usage: " + verb + " NEARBY ON|OFF"],
+                      [line.replace("PC93 aliases ANNOUNCE.", "PC93 is independent.") for line in lines]]
             if verb == "SET/FILTER":
-                faults += [[line for line in lines if "<list-type>/ON" not in line],
-                           [line.replace("NOFILTER/OFF is unsupported", "NOFILTER/OFF is supported") for line in lines],
-                           [line for line in lines if "DXBM/REJECT <band-codes>" not in line]]
+                faults += [[line for line in lines if "DXBM/REJECT <band-or-slot-list>" not in line],
+                           [line.replace("Each geography edit replaces", "Each geography edit appends") for line in lines]]
             for fault in faults:
                 with self.assertRaises(ValueError):
-                    decoded = driver.decode_cc_help(cc_help_wire(fault, "HELP " + verb), "HELP " + verb, 10, 30)
-                    driver.require_cc_help_grammar(decoded, verb)
+                    driver.require_cc_help_grammar(fault, verb)
 
     def test_cc_task_guides_have_their_own_oracle_not_detailed_grammar(self):
         for topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
@@ -1104,12 +1302,12 @@ class DriverControls(unittest.TestCase):
     def test_cc_help_receipt_precedes_barrier_and_rejects_hidden_suffix(self):
         query = "HELP SET/FILTER"
         raw = cc_help_wire(cc_help_literal("SET/FILTER"), query)
-        command = b"GET YAML CONFIG SCHEMA 4 ID CC17\r\n"
-        document = dict(configuration={}, status={}, revision="r17")
+        command = b"GET YAML CONFIG SCHEMA 7 ID CC17\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="CC17", configuration={}, status={}, revision="r17")
         for prefix in (command, command + b"LEAK\r\n", b"LEAK\r\n" + command,
                        command + command, b"\n" + command, b"\r\n" * 32769 + command):
             current = mock.Mock()
-            current.call = "VE3ABC-70071"
+            current.call = "VE3ABC-71"
             current.reader.line.side_effect = raw.splitlines(keepends=True)
             current.reader.buffer = b""
             current.reader.remote_echo = True
@@ -1163,37 +1361,24 @@ class DriverControls(unittest.TestCase):
                 driver.require_cc_typed_value(actual, wanted)
 
     def test_cc_saved_state_requires_live_and_immediate_disk_rules(self):
-        rule = dict(allow_all=True, block_all=False, allow={}, block={})
-        filters = {field: copy.deepcopy(rule) for field in ("bands", "modes", "sources", "events", "confidence", "path_classes",
-                                                           "dx_continents", "de_continents", "dx_zones", "de_zones", "dx_grid2",
-                                                           "de_grid2", "dx_dxcc", "de_dxcc", "dx_states", "de_states")}
-        filters.update(dx_callsigns=[], block_dx_callsigns=[], de_callsigns=[], block_de_callsigns=[], comments=["CQ"],
-                       block_comments=[], min_snr={"CW": -3}, nearby_enabled=False, include_beacons=False,
-                       allow_wwv=True, allow_wcy=True, allow_announce=True, allow_self=True, allow_toxic=True)
-        expected = dict(filters=filters, settings=dict(dialect="cc", grid="FN31"))
-        stored = dict(dialect="cc", grid="FN31", comments=["CQ"], min_snr={"CW": -3}, include_beacons=False,
-                      allow_wwv=True, allow_wcy=True, allow_announce=True, allow_self=True, allow_toxic=True)
-        for stem in "bands modes sources events confidence pathclasses dxcontinents decontinents dxzones dezones dxgrid2 degrid2 dxdxcc dedxcc dxstates destates".split():
-            stored[stem + "prefixes" if stem in ("dxgrid2", "degrid2") else stem] = {}
-            stored["block" + stem], stored["all" + stem], stored["blockall" + stem] = {}, True, False
+        expected, document = current_configuration(), current_document()
         record = mock.Mock()
-        record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
-        document = dict(configuration=expected, status=dict(effective=dict(nearby_active=False)))
+        native = dict(configuration_version=7, configuration=copy.deepcopy(expected), presets={}, notice={})
+        record.read_bytes.return_value = driver.yaml.safe_dump(native).encode()
         driver.require_cc_saved_state(document, expected, record)
-        for field, value in (("min_snr", {"CW": True}), ("include_beacons", 0), ("comments", []), ("allbands", 1), ("grid", "IO91")):
-            changed = copy.deepcopy(stored)
-            changed[field] = value
-            record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
+        for bank, field, value in (("go", "rules", []), ("go", "include_beacons", 0),
+                                   ("cc", "modes", []), ("cc", "sources", []), ("cc", "include_beacons", 0)):
+            bad = copy.deepcopy(native)
+            bad["configuration"]["filters"][bank][field] = value
+            record.read_bytes.return_value = driver.yaml.safe_dump(bad).encode()
             with self.assertRaises(ValueError):
                 driver.require_cc_saved_state(document, expected, record)
-        record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
-        changed = copy.deepcopy(expected)
-        changed["filters"]["include_beacons"] = 0
-        with self.assertRaises(ValueError):
-            driver.require_cc_saved_state(dict(configuration=changed, status=document["status"]), expected, record)
-        for active in (True, 0):
+        record.read_bytes.return_value = driver.yaml.safe_dump(native).encode()
+        for field, value in (("active_dialect", "go"), ("presets", {"cc": {}})):
+            bad = copy.deepcopy(document)
+            bad["status"][field] = value
             with self.assertRaises(ValueError):
-                driver.require_cc_saved_state(dict(configuration=expected, status=dict(effective=dict(nearby_active=active))), expected, record)
+                driver.require_cc_saved_state(bad, expected, record)
 
     def test_cc_refusal_preserves_all_preference_owners_and_exact_disk_bytes(self):
         before = dict(configuration=dict(filters=dict(nearby_enabled=False)), revision="r17",
@@ -1254,8 +1439,8 @@ class DriverControls(unittest.TestCase):
     def test_history_alias_barrier_rejects_hidden_suffix_and_missing_readback(self):
         query = "SHOW DX 1 MODE COMMENT COMMENT LABEL"
         raw = (HISTORY_ROW + "\r\nEnd of retained history search.\r\n").encode()
-        command = b"GET YAML CONFIG SCHEMA 4 ID BARRIER16\r\n"
-        document = dict(configuration={}, status={}, revision="r16")
+        command = b"GET YAML CONFIG SCHEMA 7 ID BARRIER16\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="BARRIER16", configuration={}, status={}, revision="r16")
 
         def session(prefix, readback=document):
             current = mock.Mock()
@@ -1277,34 +1462,39 @@ class DriverControls(unittest.TestCase):
                 driver.history_alias_page(session(command, readback), query)
 
     def test_taxonomy_rules_require_canonical_live_and_saved_names_and_booleans(self):
-        expected = dict(modes=dict(allow_all=False, block_all=False, allow={"TEST_MODE": True, "CW": True}, block={}),
-                        events=dict(allow_all=False, block_all=False, allow={"TEST_EVENT": True}, block={}))
-        stored = dict(modes={"TEST_MODE": True, "CW": True}, blockmodes={}, allmodes=False, blockallmodes=False,
-                      events={"TEST_EVENT": True}, blockevents={}, allevents=False, blockallevents=False)
-        record = mock.Mock()
-        record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
-        document = dict(configuration=dict(filters=copy.deepcopy(expected)))
-        driver.require_taxonomy_rules(document, expected, record)
-        for kind in ("modes", "events"):
-            for fault in ("wrong_name", "integer_flag", "integer_entry", "missing_name"):
+        for dialect in ("go", "cc"):
+            document = native_oracle_document(dialect)
+            if dialect == "go":
+                document["configuration"]["filters"]["go"]["rules"] = [
+                    dict(slot=0, action="pass", expr="MODE=TEST_MODE,CW AND EVENT=TEST_EVENT")]
+            else:
+                document["configuration"]["filters"]["cc"]["modes"] = ["CW", "TEST_MODE"]
+            document["configuration"]["filters"][dialect]["include_beacons"] = False
+            expected = copy.deepcopy(document["configuration"]["filters"][dialect])
+            record = mock.Mock()
+            record.read_bytes.return_value = native_oracle_bytes(document)
+            driver.require_taxonomy_rules(document, expected, record)
+            for fault in ("wrong_name", "missing_name", "integer_control", "wrong_owner"):
                 changed = copy.deepcopy(document)
-                rules = changed["configuration"]["filters"][kind]
-                if fault == "wrong_name":
-                    rules["allow"] = {"UNDERSCORE_REMOVED": True}
-                elif fault == "integer_flag":
-                    rules["allow_all"] = 0
-                elif fault == "integer_entry":
-                    rules["allow"][next(iter(rules["allow"]))] = 1
+                bank = changed["configuration"]["filters"][dialect]
+                if fault == "wrong_owner":
+                    changed["status"]["active_dialect"] = "cc" if dialect == "go" else "go"
+                elif fault == "integer_control":
+                    bank["include_beacons"] = 0
+                elif dialect == "go":
+                    bank["rules"][0]["expr"] = "MODE=CW" if fault == "missing_name" else "MODE=UNDERSCORE_REMOVED"
                 else:
-                    rules["allow"] = {}
-                with self.assertRaises(ValueError):
+                    bank["modes"] = ["CW"] if fault == "missing_name" else ["CW", "UNDERSCORE_REMOVED"]
+                with self.subTest(dialect=dialect, fault=fault), self.assertRaises(ValueError):
                     driver.require_taxonomy_rules(changed, expected, record)
-            changed = copy.deepcopy(stored)
-            changed[kind] = {}
-            record.read_bytes.return_value = driver.yaml.safe_dump(changed).encode()
-            with self.assertRaises(ValueError):
-                driver.require_taxonomy_rules(document, expected, record)
-            record.read_bytes.return_value = driver.yaml.safe_dump(stored).encode()
+            for bank_name in ("go", "cc"):
+                changed = copy.deepcopy(document)
+                changed["configuration"]["filters"][bank_name]["allow_toxic"] = True
+                record.read_bytes.return_value = native_oracle_bytes(changed)
+                with self.subTest(dialect=dialect, disk_bank=bank_name), self.assertRaises(ValueError):
+                    driver.require_taxonomy_rules(document, expected, record)
+            record.read_bytes.return_value = native_oracle_bytes(document)
+
 
     def test_taxonomy_archive_requires_literal_identity_mode_frequency_and_label(self):
         # Reuse the literal fixture's padding/tail, not the production formatter.
@@ -1342,11 +1532,11 @@ class DriverControls(unittest.TestCase):
         for available in (False, True):
             before = dict(configuration={"settings": {"solar_summary_minutes": 30}}, revision="r14",
                           status=dict(effective={"solar_summary_minutes": 30 if available else 0},
-                                      preset={"name": "SOLAR14"}))
+                                      presets={"go": {"name": "SOLAR14"}, "cc": {"name": "INACTIVE"}}))
             wording = "Every 30 minutes when conditions are active" if available else "30 minutes; unavailable on this server"
             text = "Solar         " + wording
             driver.require_solar_readback(before, copy.deepcopy(before), record, saved, available, text)
-            for fault in ("configuration", "effective", "revision", "preset", "wording", "duplicate", "disk"):
+            for fault in ("configuration", "effective", "revision", "preset", "inactive_preset", "wording", "duplicate", "disk"):
                 after, output = copy.deepcopy(before), text
                 record.read_bytes.return_value = saved
                 if fault == "configuration":
@@ -1356,7 +1546,9 @@ class DriverControls(unittest.TestCase):
                 elif fault == "revision":
                     after["revision"] = "changed"
                 elif fault == "preset":
-                    after["status"]["preset"] = {}
+                    after["status"]["presets"]["go"] = {}
+                elif fault == "inactive_preset":
+                    after["status"]["presets"]["cc"] = {}
                 elif fault == "wording":
                     output = "Solar         Every 30 minutes"
                 elif fault == "duplicate":
@@ -1383,18 +1575,67 @@ class DriverControls(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "large DEDUPE output lost"):
                 driver.require_large_dedupe_output(text.replace(old, new), "XXXX")
 
+    def test_large_dedupe_live_restart_distinguishes_admitted_value_from_protected_login(self):
+        for fault in (None, "positive_effective", "negative_admitted", "negative_fallback", "negative_record"):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "users").mkdir()
+                documents, sessions = [], []
+                for count, call in ((40000, "VE3ABC-63"), (49366, "VE3ABC-64")):
+                    owner = current_document("go")
+                    owner["configuration"]["settings"]["dedupe_policy"] = "X" * count
+                    raw = driver.yaml.safe_dump(dict(configuration_version=7,
+                        configuration=owner["configuration"], presets={}, notice={})).encode()
+                    record = root / "users" / (call + ".yaml")
+                    record.write_bytes(raw)
+                    document = copy.deepcopy(owner)
+                    document["status"].update(configured=copy.deepcopy(owner["configuration"]["settings"]),
+                        session=dict(temporary_defaults=False), effective=dict(dedupe_policy="MED"),
+                        server=dict(default_dedupe_policy="SLOW"))
+                    if count == 49366:
+                        document["configuration"]["settings"]["dedupe_policy"] = "SLOW"
+                        document["status"]["configured"]["dedupe_policy"] = "SLOW"
+                        document["status"]["session"]["temporary_defaults"] = True
+                        document["status"]["effective"]["dedupe_policy"] = "SLOW"
+                        if fault == "negative_admitted":
+                            document["status"]["session"]["temporary_defaults"] = False
+                        elif fault == "negative_fallback":
+                            document["status"]["effective"]["dedupe_policy"] = "FAST"
+                    elif fault == "positive_effective":
+                        document["status"]["effective"]["dedupe_policy"] = "SLOW"
+                    session = mock.Mock()
+                    session.get.return_value = document
+                    session.login_greeting = b"Your saved user record could not be read, admitted or reset. Using temporary defaults."
+                    if count == 49366 and fault == "negative_record":
+                        session.get.side_effect = lambda record=record, raw=raw, document=document: (record.write_bytes(raw + b"#changed\n"), document)[1]
+                    documents.append(document)
+                    sessions.append(session)
+                text = ('Dedupe: "' + "X" * 40000 + '"; effective MED (grid2)\n'
+                        '(fast=on med=on slow=on)\nConfigured choice is unrecognized\n'
+                        'Type RESUME to resume now.\nMissed spots are not replayed.')
+                with mock.patch.object(driver, "fixture_session", side_effect=sessions), \
+                     mock.patch.object(driver, "large_dedupe_reply", return_value=(text, documents[0])) as positive, \
+                     mock.patch.object(driver, "exact_human_reply", return_value=("bounded fallback", documents[1])) as fallback:
+                    if fault is None:
+                        driver.large_dedupe_cases(mock.Mock(), root, 1)
+                        positive.assert_called_once_with(sessions[0], "Missed spots are not replayed.")
+                        fallback.assert_called_once_with(sessions[1], "SHOW DEDUPE", "Dedupe: SLOW (cqzone) (fast=on med=on slow=on)")
+                    else:
+                        with self.assertRaises(ValueError):
+                            driver.large_dedupe_cases(mock.Mock(), root, 1)
+
     def test_large_dedupe_reader_checks_wire_before_correlated_get(self):
         current = mock.Mock()
         current.call, current.suite.log = "N0CALL-1", io.BytesIO()
         current.suite.identifier.return_value = "BARRIER13"
         current.reader.remote_echo = True
-        expected = dict(configuration={}, status={}, revision="r13")
-        current.frame.return_value = (expected, b"\r\nGET YAML FILTER SCHEMA 4 ID BARRIER13\r\n\r\n")
+        expected = dict(resource="CONFIG", schema_version=7, request_id="BARRIER13", configuration={}, status={}, revision="r13")
+        current.frame.return_value = (expected, b"\r\nGET YAML CONFIG SCHEMA 7 ID BARRIER13\r\n\r\n")
         current.reader.buffer = b"pending"
         current.reader.line.side_effect = [b"Dedupe: control\r\n", b"Done\r\n"]
         text, document = driver.large_dedupe_reply(current, "Done")
         self.assertEqual(text, "Dedupe: control\nDone")
-        current.frame.assert_called_once_with("FILTER", "BARRIER13", 4, "GET YAML FILTER SCHEMA 4 ID BARRIER13")
+        current.frame.assert_called_once_with("CONFIG", "BARRIER13", 7, "GET YAML CONFIG SCHEMA 7 ID BARRIER13")
         current.get.assert_not_called()
         self.assertIs(document, expected)
         for line in (b"bad\n", b"bad\r\r\n", b"X" * 79 + b"\r\n", b"X" * 65536 + b"\r\n"):
@@ -1411,8 +1652,8 @@ class DriverControls(unittest.TestCase):
         current.call, current.suite.log = "N0CALL-1", io.BytesIO()
         current.suite.identifier.return_value = "BARRIER13"
         current.reader.remote_echo, current.reader.buffer = True, b""
-        document = dict(configuration={}, status={}, revision="r13")
-        echo = b"GET YAML FILTER SCHEMA 4 ID BARRIER13\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="BARRIER13", configuration={}, status={}, revision="r13")
+        echo = b"GET YAML CONFIG SCHEMA 7 ID BARRIER13\r\n"
         for final in ("Readback failed: response exceeds 65,536 bytes.", "Missed spots are not replayed."):
             for prefix in (b'        + "LEAKED"\r\n', b"\r\n" * 32768, b"bad\n", b"\r\r\n", echo + echo):
                 with self.subTest(final=final, prefix=prefix[:80]):
@@ -1425,8 +1666,8 @@ class DriverControls(unittest.TestCase):
         current = mock.Mock()
         current.suite.identifier.return_value = "BARRIER13"
         current.reader.remote_echo = False
-        document = dict(configuration={}, status={}, revision="r13")
-        current.frame.return_value = document, b"GET YAML FILTER SCHEMA 4 ID BARRIER13\r\n"
+        document = dict(resource="CONFIG", schema_version=7, request_id="BARRIER13", configuration={}, status={}, revision="r13")
+        current.frame.return_value = document, b"GET YAML CONFIG SCHEMA 7 ID BARRIER13\r\n"
         with self.assertRaisesRegex(ValueError, "trailing content"):
             driver.dedupe_read_barrier(current, 100)
         for bad in ({}, {**document, "revision": ""}, {**document, "error": {"message": "failed"}}):
@@ -1436,22 +1677,27 @@ class DriverControls(unittest.TestCase):
 
     def test_dedupe_readback_oracle_requires_saved_effective_and_unchanged_owners(self):
         before = dict(configuration={"settings": {"dedupe_policy": "SLOW"}}, revision="r1",
-                      status=dict(effective={"dedupe_policy": "FAST"}, preset={"name": "DEDUPE13"}))
+                      status=dict(configured={"dedupe_policy": "SLOW"}, active_dialect="go",
+                                  effective={"dedupe_policy": "FAST"}, presets={"go": {"name": "DEDUPE13"}, "cc": {"associated": False}}))
         text = "Dedupe        SLOW; effective FAST\n              Configured choice is unavailable on this server"
         record = mock.Mock()
         record.read_bytes.return_value = b"dedupe_policy: SLOW\n"
         driver.require_dedupe_readback(before, copy.deepcopy(before), record, record.read_bytes(), text)
-        for field in ("configured", "effective", "revision", "preset", "disk", "wording"):
+        for field in ("configured", "status_configured", "active_dialect", "effective", "revision", "preset", "disk", "wording"):
             value = copy.deepcopy(before)
             record.read_bytes.return_value = b"changed" if field == "disk" else b"dedupe_policy: SLOW\n"
             if field == "configured":
                 value["configuration"]["settings"]["dedupe_policy"] = "FAST"
+            elif field == "status_configured":
+                value["status"]["configured"]["dedupe_policy"] = "FAST"
+            elif field == "active_dialect":
+                value["status"]["active_dialect"] = "cc"
             elif field == "effective":
                 value["status"]["effective"]["dedupe_policy"] = "SLOW"
             elif field == "revision":
                 value["revision"] = "r2"
             elif field == "preset":
-                value["status"]["preset"] = {}
+                value["status"]["presets"] = {}
             with self.assertRaises(ValueError):
                 driver.require_dedupe_readback(before, value, record, b"dedupe_policy: SLOW\n",
                                               "Dedupe        FAST" if field == "wording" else text)
@@ -1467,76 +1713,83 @@ class DriverControls(unittest.TestCase):
     def test_setting_zero_oracle_requires_integer_representation(self):
         for field in ("path_min_observation_count", "solar_summary_minutes"):
             session, record = mock.Mock(), mock.Mock()
-            session.get.return_value = {"configuration": {"settings": {field: 30}}}
-            # Go's canonical omitempty representation may omit zero; both an
-            # omitted key and a literal integer zero retain the numeric contract.
-            for wire_value, saved in ((0, b"{}\n"), (0, (field + ": 0\n").encode()),
-                                       (False, b"{}\n"), (0.0, b"{}\n"),
-                                       (0, (field + ": false\n").encode()),
-                                       (0, (field + ": 0.0\n").encode()),
-                                       (0, (field + ": '0'\n").encode()),
-                                       (0, (field + ": null\n").encode())):
-                record.read_bytes.return_value = saved
-                document = {"configuration": {"settings": {field: wire_value}}}
+            session.get.return_value = native_oracle_document()
+            for wire_value, stored_value in ((0, 0), (False, 0), (0.0, 0), (0, False),
+                                             (0, 0.0), (0, "0"), (0, None)):
+                document = native_oracle_document()
+                document["configuration"]["settings"][field] = wire_value
+                stored = native_oracle_document()
+                stored["configuration"]["settings"][field] = stored_value
+                record.read_bytes.return_value = native_oracle_bytes(stored)
                 with mock.patch.object(driver, "exact_human_reply", return_value=("Zero control", document)):
-                    if type(wire_value) is int and saved in (b"{}\n", (field + ": 0\n").encode()):
+                    if type(wire_value) is int and type(stored_value) is int:
                         driver.require_setting_control(session, record, "Zero", "Zero control", field, 0)
                     else:
                         with self.assertRaisesRegex(ValueError, "immediately saved value"):
                             driver.require_setting_control(session, record, "Zero", "Zero control", field, 0)
+            stored = native_oracle_document()
+            del stored["configuration"]["settings"][field]
+            record.read_bytes.return_value = native_oracle_bytes(stored)
+            document = native_oracle_document()
+            with mock.patch.object(driver, "exact_human_reply", return_value=("Zero control", document)), \
+                    self.assertRaisesRegex(ValueError, "immediately saved value"):
+                driver.require_setting_control(session, record, "Zero", "Zero control", field, 0)
+
 
     def test_setting_refusal_oracle_includes_session_only_diagnostics(self):
         session = mock.Mock()
-        session.get.side_effect = [{"status": {"session": {"diagnostic_comments": "SOURCE"}}},
-                                   {"status": {"session": {"diagnostic_comments": "OFF"}}}]
-        with mock.patch.object(driver, "require_command_refusal") as common:
+        session.last_configuration = {"status": {"session": {"diagnostic_comments": "SOURCE"}}}
+        with mock.patch.object(driver, "require_command_refusal", return_value=
+                               {"status": {"session": {"diagnostic_comments": "OFF"}}}) as common:
             with self.assertRaisesRegex(ValueError, "session diagnostic mode"):
                 driver.require_setting_argument_refusal(session, "SET DIAG OFF EXTRA", mock.Mock(), "Usage")
             common.assert_called_once()
-        session.get.side_effect = [{"status": {"session": {"diagnostic_comments": "SOURCE"}}},
-                                   {"status": {"session": {"diagnostic_comments": "SOURCE"}}}]
-        with mock.patch.object(driver, "require_command_refusal"):
+        with mock.patch.object(driver, "require_command_refusal", return_value=
+                               {"status": {"session": {"diagnostic_comments": "SOURCE"}}}):
             driver.require_setting_argument_refusal(session, "SET DIAG OFF EXTRA", mock.Mock(), "Usage")
+        session.get.assert_not_called()
 
     def test_setting_control_requires_live_value_and_immediate_disk(self):
-        before = dict(configuration={"settings": {"noise_class": "RURAL"}}, revision="revision-1",
-                      status=dict(effective={"noise_class": "RURAL"}, preset={"name": "control"},
-                                  session={"diagnostic_comments": "SOURCE"}))
-        after = dict(configuration={"settings": {"noise_class": "URBAN"}}, revision="revision-2",
-                     status=dict(effective={"noise_class": "URBAN"}, preset={"name": "control"},
-                                 session={"diagnostic_comments": "SOURCE"}))
+        before = native_oracle_document()
+        after = copy.deepcopy(before)
+        after["configuration"]["settings"]["noise_class"] = "URBAN"
+        after["status"]["effective"]["noise_class"] = "URBAN"
+        after["revision"] = "revision-2"
         session, record = mock.Mock(), mock.Mock()
-        for live, disk in (("URBAN", b"noise_class: URBAN\n"), ("RURAL", b"noise_class: URBAN\n"),
-                           ("URBAN", b"noise_class: RURAL\n")):
-            value = copy.deepcopy(after)
+        for live, disk in (("URBAN", "URBAN"), ("RURAL", "URBAN"), ("URBAN", "RURAL")):
+            value, stored = copy.deepcopy(after), copy.deepcopy(after)
             value["configuration"]["settings"]["noise_class"] = live
+            stored["configuration"]["settings"]["noise_class"] = disk
             session.get.return_value = before
-            record.read_bytes.return_value = disk
+            record.read_bytes.return_value = native_oracle_bytes(stored)
             with mock.patch.object(driver, "exact_human_reply", return_value=("Noise class set to URBAN", value)):
-                if live == "URBAN" and b"URBAN" in disk:
+                if live == disk == "URBAN":
                     driver.require_setting_control(session, record, "SET NOISE URBAN", "Noise class set to URBAN", "noise_class", "URBAN")
                 else:
                     with self.assertRaisesRegex(ValueError, "immediately saved value"):
                         driver.require_setting_control(session, record, "SET NOISE URBAN", "Noise class set to URBAN", "noise_class", "URBAN")
         value = copy.deepcopy(after)
         value["status"]["effective"]["noise_class"] = "RURAL"
-        record.read_bytes.return_value = b"noise_class: URBAN\n"
+        record.read_bytes.return_value = native_oracle_bytes(after)
         with mock.patch.object(driver, "exact_human_reply", return_value=("Noise class set to URBAN", value)):
             with self.assertRaisesRegex(ValueError, "runtime state"):
                 driver.require_setting_control(session, record, "SET NOISE URBAN", "Noise class set to URBAN", "noise_class", "URBAN")
-        for channel in ("configuration", "revision", "effective", "preset", "disk", "diagnostics"):
+        for channel in ("configuration", "revision", "effective", "go_preset", "cc_preset", "disk", "diagnostics"):
             value = copy.deepcopy(before)
             value["status"]["session"]["diagnostic_comments"] = "CONF"
             record.read_bytes.side_effect = [b"unchanged", b"changed" if channel == "disk" else b"unchanged"]
             if channel in ("configuration", "revision"):
                 value[channel] = "changed"
-            elif channel in ("effective", "preset"):
+            elif channel == "effective":
                 value["status"][channel] = "changed"
+            elif channel.endswith("_preset"):
+                value["status"]["presets"][channel.split("_")[0]]["name"] = "changed"
             elif channel == "diagnostics":
                 value["status"]["session"]["diagnostic_comments"] = "OFF"
             with mock.patch.object(driver, "exact_human_reply", return_value=("Diagnostic comments: CONF", value)):
                 with self.assertRaisesRegex(ValueError, "changed persistent state"):
                     driver.require_setting_control(session, record, "SET DIAG CONFIDENCE", "Diagnostic comments: CONF", "diagnostic_comments", "CONF")
+
 
     def test_logout_oracle_requires_remote_eof_before_local_close(self):
         session = mock.Mock()
@@ -1586,9 +1839,8 @@ class DriverControls(unittest.TestCase):
         self.assertTrue(session.closed)
 
     def test_filter_argument_oracle_requires_refusal_and_exact_owners(self):
-        before = dict(configuration={"selection": "before"}, revision="revision-1",
-                      status=dict(effective={"selection": "before"}, preset={"name": "before"}))
-        for fault in (None, "response", "configuration", "revision", "effective", "preset", "disk"):
+        before = native_oracle_document()
+        for fault in (None, "response", "configuration", "revision", "effective", "go_preset", "cc_preset", "disk"):
             with self.subTest(fault=fault):
                 session, record = mock.Mock(), mock.Mock()
                 session.get.return_value = copy.deepcopy(before)
@@ -1598,8 +1850,10 @@ class DriverControls(unittest.TestCase):
                     response = "enabled"
                 elif fault in ("configuration", "revision"):
                     after[fault] = "changed"
-                elif fault in ("effective", "preset"):
+                elif fault == "effective":
                     after["status"][fault] = "changed"
+                elif fault in ("go_preset", "cc_preset"):
+                    after["status"]["presets"][fault.split("_")[0]]["name"] = "changed"
                 record.read_bytes.side_effect = [b"before", b"changed" if fault == "disk" else b"before"]
                 with mock.patch.object(driver, "exact_human_reply", return_value=(response, after)):
                     if fault is None:
@@ -1617,6 +1871,7 @@ class DriverControls(unittest.TestCase):
             with self.assertRaises(ValueError):
                 driver.require_filter_argument_refusal(session, "SET/FILTER NOFILTER/OFF", record, expected)
 
+
     def test_exact_human_reply_precedes_get_and_preserves_failures(self):
         command, reply = "PASS DXCALL BAD", "First refusal line\nLast refusal line"
         session = mock.Mock()
@@ -1624,10 +1879,10 @@ class DriverControls(unittest.TestCase):
         raw = (command + "\r\nFirst refusal line\r\nLast refusal line\r\n").encode()
         session.reader.line.side_effect = raw.splitlines(keepends=True)
 
-        document = dict(resource="CONFIG", request_id="End-1", schema_version=4, revision="r", configuration={}, status={})
+        document = dict(resource="CONFIG", request_id="End-1", schema_version=7, revision="r", configuration={}, status={})
         session.suite.identifier.return_value = "End-1"
         session.reader.remote_echo = True
-        for prefix in (b"", b"hidden row\r\n", b"GET YAML CONFIG SCHEMA 4 ID Other\r\n"):
+        for prefix in (b"", b"hidden row\r\n", b"GET YAML CONFIG SCHEMA 7 ID Other\r\n"):
             session.reader.line.side_effect = raw.splitlines(keepends=True)
             session.suite.log = io.BytesIO()
             def framed(*args):
@@ -1684,7 +1939,7 @@ class DriverControls(unittest.TestCase):
 
         session.suite.identifier.return_value = "End-1"
         session.reader.remote_echo = True
-        document = dict(resource="CONFIG", request_id="End-1", schema_version=4, revision="r", configuration={}, status={})
+        document = dict(resource="CONFIG", request_id="End-1", schema_version=7, revision="r", configuration={}, status={})
         def framed(*args):
             self.assertEqual(raw_log.getvalue(), expected_receipt)
             session.suite.log.flush.assert_called_once()
@@ -1696,7 +1951,7 @@ class DriverControls(unittest.TestCase):
                                   ("line", (query + "\r\n").encode()),
                                   ("line", (row + "\r\n").encode()),
                                   ("line", b"End of retained history search.\r\n"),
-                                  ("send", "GET YAML CONFIG SCHEMA 4 ID End-1\r\n"), ("frame",)])
+                                  ("send", "GET YAML CONFIG SCHEMA 7 ID End-1\r\n"), ("frame",)])
         session.human.assert_not_called()
 
         for prefix in (b"DX de EXTRA: additional row\r\n", b"\n"):
@@ -1779,20 +2034,26 @@ class DriverControls(unittest.TestCase):
                 self.assertEqual(session.suite.log.getvalue(), expected)
 
     def test_callsign_oracle_requires_all_four_canonical_and_saved_lists(self):
-        expected = dict(dx_callsigns=["W6*"], block_dx_callsigns=["N0XYZ"],
-                        de_callsigns=["K1*"], block_de_callsigns=["N0XYZ"])
-        document = {"configuration": {"filters": copy.deepcopy(expected)}}
+        document = native_oracle_document()
+        expected = copy.deepcopy(document["configuration"]["filters"]["go"])
+        expected["rules"] = [dict(slot=0, action="pass", expr="DXCALL=W6* AND DECALL=K1*"),
+                             dict(slot=1, action="reject", expr="DXCALL=N0XYZ OR DECALL=N0XYZ")]
+        document["configuration"]["filters"]["go"] = copy.deepcopy(expected)
         record = mock.Mock()
-        record.read_bytes.return_value = b"callsigns: [W6*]\nblock_callsigns: [N0XYZ]\ndecallsigns: [K1*]\nblock_decallsigns: [N0XYZ]\n"
+        record.read_bytes.return_value = native_oracle_bytes(document)
         driver.require_callsign_rules(document, expected, record)
-        for key in expected:
-            document["configuration"]["filters"][key] = ["W*ABC"]
-            with self.assertRaisesRegex(ValueError, "callsign canonical selection"):
-                driver.require_callsign_rules(document, expected, record)
-            document["configuration"]["filters"][key] = expected[key]
-        record.read_bytes.return_value = b"callsigns: [W6*]\nblock_callsigns: [N0XYZ]\ndecallsigns: [K1*]\n"
-        with self.assertRaisesRegex(ValueError, "callsign canonical selection"):
+        for index, field in ((0, "DXCALL"), (0, "DECALL"), (1, "DXCALL"), (1, "DECALL")):
+            changed = copy.deepcopy(document)
+            rule = changed["configuration"]["filters"]["go"]["rules"][index]
+            rule["expr"] = rule["expr"].replace(field + "=", field + "<>by_error,")
+            with self.assertRaisesRegex(ValueError, "callsign rules"):
+                driver.require_callsign_rules(changed, expected, record)
+        stored = copy.deepcopy(document)
+        stored["configuration"]["filters"]["go"]["rules"].pop()
+        record.read_bytes.return_value = native_oracle_bytes(stored)
+        with self.assertRaisesRegex(ValueError, "not saved before disconnect"):
             driver.require_callsign_rules(document, expected, record)
+
 
     def test_callsign_archive_oracle_requires_identity_visibility_and_exact_row(self):
         session = mock.Mock()
@@ -1812,19 +2073,26 @@ class DriverControls(unittest.TestCase):
                 driver.require_callsign_archive(session, "LABEL", True)
 
     def test_grid_oracle_requires_configured_effective_and_saved_canonical_values(self):
-        document = {"configuration": {"settings": {"grid": "FN31"}},
-                    "status": {"effective": {"grid": "FN31"}}}
+        document = native_oracle_document()
         record = mock.Mock()
-        record.read_bytes.return_value = b"grid: FN31\n"
+        record.read_bytes.return_value = native_oracle_bytes(document)
         driver.require_grid_configuration(document, "FN31", record)
         for owner in (document["configuration"]["settings"], document["status"]["effective"]):
             owner["grid"] = "FN31PRJUNK"
             with self.assertRaisesRegex(ValueError, "GRID canonical selection"):
                 driver.require_grid_configuration(document, "FN31", record)
             owner["grid"] = "FN31"
-        record.read_bytes.return_value = b"grid: FN31PRJUNK\n"
+        stored = copy.deepcopy(document)
+        stored["configuration"]["settings"]["grid"] = "FN31PRJUNK"
+        record.read_bytes.return_value = native_oracle_bytes(stored)
         with self.assertRaisesRegex(ValueError, "GRID canonical selection"):
             driver.require_grid_configuration(document, "FN31", record)
+        stored = copy.deepcopy(document)
+        stored["configuration"]["filters"]["cc"]["modes"] = []
+        record.read_bytes.return_value = native_oracle_bytes(stored)
+        with self.assertRaisesRegex(ValueError, "not saved before disconnect"):
+            driver.require_grid_configuration(document, "FN31", record)
+
 
     def test_literal_archive_labels_avoid_signal_tags_and_clipping(self):
         suite = mock.Mock(token="341C7DBB")
@@ -1850,12 +2118,17 @@ class DriverControls(unittest.TestCase):
             driver.require_nearby_archive([row], "NEARBYCONTROL", 14021, False)
 
     def test_mode_oracles_reject_whitelist_and_missing_or_misclassified_controls(self):
-        expected = dict(allow_all=True, block_all=False, allow={}, block={})
-        document = {"configuration": {"filters": {"modes": copy.deepcopy(expected)}}}
-        driver.require_mode_rules(document, expected)
-        document["configuration"]["filters"]["modes"]["allow_all"] = False
-        with self.assertRaisesRegex(ValueError, "exact open/restrictive state"):
+        for dialect in ("go", "cc"):
+            document = native_oracle_document(dialect)
+            expected = copy.deepcopy(document["configuration"]["filters"][dialect])
             driver.require_mode_rules(document, expected)
+            bank = document["configuration"]["filters"][dialect]
+            if dialect == "go":
+                bank["rules"] = [dict(slot=0, action="pass", expr="MODE=CW")]
+            else:
+                bank["modes"] = ["CW"]
+            with self.assertRaisesRegex(ValueError, "exact native bank"):
+                driver.require_mode_rules(document, expected)
         row = "DX de K1ABC:       14074.00  W6ABC       CW MODECONTROL             1234Z"
         with mock.patch.object(driver, "archive_rows", return_value=[row]):
             driver.require_mode_archive(None, "MODECONTROL", "CW", True)
@@ -1866,6 +2139,7 @@ class DriverControls(unittest.TestCase):
         with mock.patch.object(driver, "archive_rows", return_value=[]), \
                 self.assertRaisesRegex(ValueError, "absent or misclassified"):
             driver.require_mode_archive(None, "MODECONTROL", "CW", True)
+
 
     def test_frequency_refusal_requires_its_specific_feedback(self):
         driver.require_frequency_refusal("Invalid frequency. Use a kHz value like 7001.0.\r\n")
@@ -1901,54 +2175,114 @@ class DriverControls(unittest.TestCase):
             driver.require_archive_absent([row])
 
     def test_resource_fixtures_separate_raw_canonical_and_work_refusals(self):
-        raw = driver.refused_resource_record("RAW")
-        self.assertEqual(len(raw), driver.RECORD_BYTES + 1)
-        self.assertEqual(driver.stored_document(raw), {})
-        canonical = driver.refused_resource_record("CANONICAL")
-        decoded = driver.stored_document(canonical)
-        self.assertLess(len(canonical), driver.RECORD_BYTES)
-        self.assertEqual(len(decoded["recent_ips"]), 5)
-        self.assertTrue(all(len(ip) == 210000 for ip in decoded["recent_ips"]))
-        self.assertGreater(sum(map(len, decoded["recent_ips"])), driver.RECORD_BYTES)
-        # Scalar work, including physical anchor plus all logical occurrences,
-        # is below the separate two-million-unit guard for this byte fixture.
-        self.assertLess(6 * 210000 + 1000, 2 << 20)
-        work = driver.refused_resource_record("WORK")
+        owner = driver.native_record(dict(filters=dict(go=dict(rules=[]), cc=dict(modes=["CW"])),
+                                          settings=dict(dialect="go")))
+        base = driver.yaml.safe_dump(owner).encode("ascii")
+        raw = driver.refused_resource_record("RAW", base)
+        self.assertEqual(len(raw), 1_048_577)
+        self.assertEqual(driver.stored_document(raw), owner)
+        compact = base + b"# measured compact canonical candidate\n"
+        self.assertEqual(driver.refused_resource_record("CANONICAL", base, compact), compact)
+        with self.assertRaises(ValueError):
+            driver.refused_resource_record("CANONICAL", base)
+        work = driver.refused_resource_record("WORK", base)
         decoded = driver.stored_document(work)
-        self.assertEqual(work.count(b"*text"), 70)
+        self.assertEqual(work.count(b"*text"), 69)
+        self.assertNotIn("legacy", decoded)
+        self.assertEqual(decoded["configuration"], owner["configuration"])
         self.assertEqual(len(decoded["recent_ips"]), 70)
         self.assertTrue(all(len(ip) == 32768 for ip in decoded["recent_ips"]))
-        self.assertGreater(sum(map(len, decoded["recent_ips"])), 2 << 20)
-        self.assertLess(sum(map(len, decoded["recent_ips"][:5])) + 4096, driver.RECORD_BYTES)
+        self.assertGreater(71 * 32768, 2_097_152)
+        self.assertLess(5 * 32768 + len(base), 1_048_576)
         with self.assertRaisesRegex(ValueError, "unknown resource fixture"):
-            driver.refused_resource_record("OTHER")
+            driver.refused_resource_record("OTHER", base)
 
-    def test_canonical_padding_changes_only_retained_loopback_metadata(self):
-        raw = (b"configuration_version: 4\nrecent_ips:\n    - 127.0.0.1\n"
-               b"last_login_utc: 2026-10-08T12:34:56Z\nnoise_class: QUIET\n")
-        result = driver.padded_canonical_record(raw)
-        self.assertEqual(len(result), driver.RECORD_BYTES - 8)
-        before, after = driver.stored_document(raw), driver.stored_document(result)
-        self.assertEqual(after["recent_ips"][0], "127.0.0.1")
-        self.assertEqual(len(after["recent_ips"]), 2)
-        self.assertTrue(after["recent_ips"][1].startswith("METADATA"))
-        self.assertEqual(after["recent_ips"][1][len("METADATA"):],
-                         "A" * (len(after["recent_ips"][1]) - len("METADATA")))
-        after["recent_ips"] = before["recent_ips"]
-        self.assertEqual(after, before)
-        for invalid in (raw.replace(b"127.0.0.1", b"198.51.100.1"),
-                        raw.replace(b"recent_ips:\n    - 127.0.0.1", b"recent_ips: [127.0.0.1]")):
-            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
-                driver.padded_canonical_record(invalid)
+    def test_resource_cause_requires_exact_reason_and_fitting_control(self):
+        from types import SimpleNamespace
+        base = driver.yaml.safe_dump(driver.native_record(dict(filters=dict(go=dict(rules=[]), cc={}),
+                                                               settings=dict(dialect="go")))).encode()
+        def receipt(error="", admission=False):
+            return dict(measurements={"input.yaml": dict(error=error, admission=admission)})
+        sizing = dict(artifacts={"canonical.yaml": b"X" * 1_048_577, "compact.yaml": base})
+        expected = [receipt(), sizing,
+                    receipt("v7 document exceeds 1048576 bytes", True),
+                    receipt("v7 document exceeds 1048576 bytes", True),
+                    receipt("stored configuration decoding work exceeds 2097152 units", True),
+                    dict(measurements={
+                        "fit.yaml": dict(error="", frame_bytes=262100, canonical_bytes=196400),
+                        "over.yaml": dict(error="response exceeds 65,536 bytes; request a smaller filter category or reduce the configuration",
+                                          admission=True, reference_bytes=262200, canonical_bytes=196401)}),
+                    dict(measurements={})]
+        for index in range(6):
+            replies = copy.deepcopy(expected)
+            if index == 1:
+                replies[1]["artifacts"]["canonical.yaml"] = b"X" * 1_048_576
+            elif index == 5:
+                replies[5]["measurements"]["over.yaml"]["reference_bytes"] = 262144
+            else:
+                replies[index] = receipt("wrong layer", True)
+            suite = SimpleNamespace(binary="binary", source={}, resource_seed=base)
+            with mock.patch.object(driver, "resource_fixture", side_effect=replies), \
+                    mock.patch.object(driver, "require_dedupe_owner_receipt"), self.assertRaises(ValueError):
+                driver.resource_vectors(suite, Path("unused"))
+        suite = SimpleNamespace(binary="binary", source={}, resource_seed=base)
+        with mock.patch.object(driver, "resource_fixture", side_effect=expected) as measure, \
+                mock.patch.object(driver, "require_dedupe_owner_receipt") as dedupe:
+            vectors = driver.resource_vectors(suite, Path("unused"))
+            self.assertEqual(set(vectors), {"RAW", "CANONICAL", "WORK"})
+            self.assertIs(driver.resource_vectors(suite, Path("unused")), vectors)
+            self.assertEqual(measure.call_count, 7)
+            dedupe.assert_called_once_with(expected[-1])
+
+    def test_dedupe_owner_receipt_requires_lossless_fit_and_exact_final_refusal(self):
+        chunks = ["X" * 60] * 819 + ["X" * 30, "X" * 30]
+        lines = ['Dedupe: "' + chunks[0] + '"'] + ['        + "' + value + '"' for value in chunks[1:]]
+        lines[-1] += "; effective MED (grid2)"
+        lines += ["        (fast=on med=on slow=on)", "        Configured choice is unrecognized"]
+        lines += [f"Live spots paused for 30s after {len(lines)} output rows. Type RESUME to resume now.",
+                  "Missed spots are not replayed."]
+        fit = ("\r\n".join(lines) + "\r\n").encode()
+        over = b"Readback failed: response exceeds 65,536 bytes.\r\n"
+        receipt = dict(artifacts={"fit.txt": fit, "over.txt": over}, measurements={
+            "fit.txt": dict(raw_bytes=49200, frame_bytes=len(fit), canonical_bytes=len(fit)-200, admission=False),
+            "over.txt": dict(raw_bytes=49366, frame_bytes=len(over), canonical_bytes=65536, admission=True)})
+        driver.require_dedupe_owner_receipt(receipt)
+        for fault in ("count", "wire_size", "classification", "wrong_boundary", "partial", "crlf", "value", "footer", "width"):
+            changed = copy.deepcopy(receipt)
+            if fault == "count":
+                changed["measurements"]["fit.txt"]["raw_bytes"] = 49199
+            elif fault == "wire_size":
+                changed["measurements"]["fit.txt"]["frame_bytes"] += 1
+            elif fault == "classification":
+                changed["measurements"]["over.txt"]["admission"] = False
+            elif fault == "wrong_boundary":
+                changed["measurements"]["over.txt"]["canonical_bytes"] = 65535
+            else:
+                key = "over.txt" if fault == "partial" else "fit.txt"
+                wire = changed["artifacts"][key]
+                if fault == "partial":
+                    wire = b"Partial output\r\n" + wire
+                elif fault == "crlf":
+                    wire = wire.replace(b"\r\n", b"\n", 1)
+                elif fault == "value":
+                    wire = wire.replace(b"XXX", b"XX", 1)
+                elif fault == "width":
+                    wire = b"A" * 79 + b"\r\n" + wire
+                else:
+                    wire = wire.replace(b"Missed spots are not replayed.\r\n", b"")
+                changed["artifacts"][key] = wire
+                changed["measurements"][key]["frame_bytes"] = len(wire)
+            with self.subTest(fault=fault), self.assertRaises(ValueError):
+                driver.require_dedupe_owner_receipt(changed)
 
     def test_resource_transaction_checker_refuses_each_missing_effect_channel(self):
         before = dict(configuration={"filters": {}}, revision="epoch-1",
-                      status=dict(preset=dict(associated=False), effective=dict(grid="FN31"),
+                      status=dict(presets=dict(go=dict(associated=False), cc=dict(associated=False)), effective=dict(grid="FN31"),
                                   session=dict(temporary_defaults=False)))
         record, library = mock.Mock(), mock.Mock()
         record.read_bytes.return_value, library.read_bytes.return_value = b"record", b"library"
         driver.require_transaction_unchanged(before, before, record, b"record", library, b"library")
-        for channel in ("configuration", "revision", "preset", "effective", "protection", "record", "library"):
+        for channel in ("configuration", "revision", "preset", "inactive_preset", "effective", "protection", "record", "library"):
             after = copy.deepcopy(before)
             record.read_bytes.return_value, library.read_bytes.return_value = b"record", b"library"
             if channel == "configuration":
@@ -1956,7 +2290,9 @@ class DriverControls(unittest.TestCase):
             elif channel == "revision":
                 after["revision"] = "epoch-2"
             elif channel == "preset":
-                after["status"]["preset"]["associated"] = True
+                after["status"]["presets"]["go"]["associated"] = True
+            elif channel == "inactive_preset":
+                after["status"]["presets"]["cc"]["associated"] = True
             elif channel == "effective":
                 after["status"]["effective"]["grid"] = "IO91"
             elif channel == "protection":
@@ -2192,6 +2528,205 @@ class DriverControls(unittest.TestCase):
             child.communicate(b"STOP\n", timeout=10)
             ready.unlink(missing_ok=True)
         self.assertEqual(child.returncode, 0)
+
+
+class CommandResourceReceipts(unittest.TestCase):
+    """Receipt integrity only; native boundary behavior is qualified separately."""
+
+    def setUp(self):
+        directory = support.ROOT / ".tmp" / "resource-receipt-tests"
+        directory.mkdir(parents=True, exist_ok=True)
+        temporary = tempfile.TemporaryDirectory(dir=directory)
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+        self.binary = self.root / "fixture.test.exe"
+        self.binary.write_bytes(b"offline receipt fixture executable identity")
+        self.source = {"digest": "1" * 64}
+        self.private = self.root / "direct"
+        self.private.mkdir()
+        (self.private / "input.yaml").write_bytes(b"offline source owner")
+        self.spec = {"nonce": "f" * 32, "root": str(self.private),
+                     "source_digest": self.source["digest"],
+                     "input_hash": support.digest(self.private / "input.yaml"),
+                     "operation": "profile_at_size", "target_bytes": 1048568}
+        self.binary_hash = support.digest(self.binary)
+
+    def receipt(self, spec=None, private=None):
+        spec = self.spec if spec is None else spec
+        private = self.private if private is None else private
+        names = {"profile_admission": ("input.yaml",),
+                 "profile_at_size": ("canonical.yaml", "compact.yaml"),
+                 "config_frames": ("fit.yaml", "over.yaml"),
+                 "dedupe_frames": ("fit.txt", "over.txt")}[spec["operation"]]
+        measurements = {}
+        artifacts = {}
+        for name in names:
+            value = b"offline measured owner: " + name.encode("ascii")
+            if name != "input.yaml":
+                (private / name).write_bytes(value)
+                artifacts[name] = {"bytes": len(value), "sha256": support.digest(private / name)}
+            measurements[name] = {"raw_bytes": len(value), "canonical_bytes": len(value),
+                                  "frame_bytes": 0, "reference_bytes": 0,
+                                  "admission": False, "error": ""}
+        return {**{key: spec[key] for key in
+                   ("nonce", "source_digest", "input_hash", "operation", "target_bytes")},
+                "binary_hash": self.binary_hash, "pid": 123,
+                "measurements": measurements, "artifacts": artifacts}
+
+    def verify(self, receipt):
+        return support.verify_resource_receipt(receipt, self.spec, self.private, self.binary_hash)
+
+    def command_stub(self, *, change=None, output=None, receipt_mode="normal"):
+        def execute(args, *, timeout, cwd, env):
+            self.assertEqual(args[0], str(self.binary))
+            self.assertIn("-test.run=^TestCheckoutCommandResourceFixture$", args)
+            self.assertEqual(timeout, 60)
+            self.assertEqual(cwd, support.ROOT / "telnet")
+            path = Path(env["GOCLUSTER_COMMAND_RESOURCE_FIXTURE"])
+            spec = json.loads(path.read_text(encoding="utf-8"))
+            private = path.parent
+            receipt = self.receipt(spec, private)
+            if change is not None:
+                change(receipt)
+            if receipt_mode == "oversized":
+                (private / "receipt.json").write_text(" " * 16385, encoding="ascii")
+            elif receipt_mode == "normal":
+                (private / "receipt.json").write_text(json.dumps(receipt), encoding="utf-8")
+            if output is not None:
+                return output(spec)
+            return ("CHECKOUT_RESOURCE_FIXTURE_EXECUTED " + spec["nonce"] +
+                    "\n--- PASS: TestCheckoutCommandResourceFixture")
+        return execute
+
+    def run_wrapper(self, operation="profile_at_size"):
+        return support.resource_fixture(self.binary, self.root, self.source, operation,
+                                        input_bytes=b"" if operation == "dedupe_frames" else b"offline source owner",
+                                        target_bytes=1048568 if operation == "profile_at_size" else 0)
+
+    def test_verified_wrapper_success_for_each_fixed_operation(self):
+        for operation in ("profile_admission", "profile_at_size", "config_frames", "dedupe_frames"):
+            with self.subTest(operation=operation), mock.patch.object(
+                    support, "command", side_effect=self.command_stub()) as command:
+                result = self.run_wrapper(operation)
+                self.assertEqual(result["operation"], operation)
+                self.assertEqual(result["source_digest"], "1" * 64)
+                self.assertEqual(result["binary_hash"], self.binary_hash)
+                self.assertTrue(all(type(value) is bytes for value in result["artifacts"].values()))
+                command.assert_called_once()
+
+    def test_each_provenance_mismatch_is_rejected(self):
+        for key in ("nonce", "source_digest", "binary_hash", "input_hash", "operation", "target_bytes", "pid"):
+            with self.subTest(field=key):
+                receipt = self.receipt()
+                receipt[key] = 0 if key == "pid" else "substituted"
+                with self.assertRaisesRegex(ValueError, "provenance mismatch"):
+                    self.verify(receipt)
+
+    def test_input_replacement_is_rejected(self):
+        receipt = self.receipt()
+        (self.private / "input.yaml").write_bytes(b"substituted source owner")
+        with self.assertRaisesRegex(ValueError, "changed input bytes"):
+            self.verify(receipt)
+
+    def test_output_digest_and_size_mismatches_are_rejected(self):
+        for mutation in ("content", "digest", "size"):
+            with self.subTest(mutation=mutation):
+                receipt = self.receipt()
+                descriptor = receipt["artifacts"]["canonical.yaml"]
+                if mutation == "content":
+                    original = (self.private / "canonical.yaml").read_bytes()
+                    (self.private / "canonical.yaml").write_bytes(b"X" * len(original))
+                elif mutation == "digest":
+                    descriptor["sha256"] = "0" * 64
+                else:
+                    descriptor["bytes"] += 1
+                with self.assertRaisesRegex(ValueError, "artifact (digest|size) mismatch"):
+                    self.verify(receipt)
+
+    def test_missing_and_oversized_receipts_are_rejected(self):
+        for mode, error in (("missing", FileNotFoundError), ("oversized", ValueError)):
+            with self.subTest(mode=mode), mock.patch.object(
+                    support, "command", side_effect=self.command_stub(receipt_mode=mode)):
+                if mode == "oversized":
+                    with self.assertRaisesRegex(error, "receipt exceeds bound"):
+                        self.run_wrapper()
+                else:
+                    with self.assertRaises(error):
+                        self.run_wrapper()
+
+    def test_wrong_measurement_sets_are_rejected(self):
+        for mutation in ("missing", "unexpected", "wrong-type"):
+            with self.subTest(mutation=mutation):
+                receipt = self.receipt()
+                if mutation == "missing":
+                    del receipt["measurements"]["compact.yaml"]
+                elif mutation == "unexpected":
+                    receipt["measurements"]["other.yaml"] = receipt["measurements"]["compact.yaml"]
+                else:
+                    receipt["measurements"] = []
+                with self.assertRaisesRegex(ValueError, "measurements"):
+                    self.verify(receipt)
+
+    def test_measurement_types_and_bounds_are_strict(self):
+        invalid = [(key, value) for key in
+                   ("raw_bytes", "canonical_bytes", "frame_bytes", "reference_bytes")
+                   for value in (True, -1, 2097155, "1")]
+        invalid += [("admission", 1), ("error", None), ("error", "X" * 2049)]
+        for key, value in invalid:
+            with self.subTest(field=key, value=repr(value)[:50]):
+                receipt = self.receipt()
+                receipt["measurements"]["canonical.yaml"][key] = value
+                with self.assertRaisesRegex(ValueError, "measurement is malformed"):
+                    self.verify(receipt)
+        for value in (None, [], 1):
+            with self.subTest(measurement=value):
+                receipt = self.receipt()
+                receipt["measurements"]["canonical.yaml"] = value
+                with self.assertRaisesRegex(ValueError, "measurement is malformed"):
+                    self.verify(receipt)
+
+    def test_artifact_names_and_sets_are_fixed(self):
+        for name in ("../outside.yaml", "input.yaml", "unexpected.yaml"):
+            with self.subTest(name=name):
+                receipt = self.receipt()
+                receipt["artifacts"][name] = receipt["artifacts"].pop("canonical.yaml")
+                with self.assertRaisesRegex(ValueError, "unexpected artifacts"):
+                    self.verify(receipt)
+        receipt = self.receipt()
+        del receipt["artifacts"]["compact.yaml"]
+        with self.assertRaisesRegex(ValueError, "unexpected artifacts"):
+            self.verify(receipt)
+
+    def test_artifact_descriptor_types_and_bounds_are_strict(self):
+        for key, value in (("bytes", 0), ("bytes", -1), ("bytes", True),
+                           ("bytes", 1048578), ("bytes", "1"), ("sha256", None)):
+            with self.subTest(field=key, value=value):
+                receipt = self.receipt()
+                receipt["artifacts"]["canonical.yaml"][key] = value
+                with self.assertRaisesRegex(ValueError, "descriptor is malformed"):
+                    self.verify(receipt)
+
+    def test_gated_test_must_execute_and_pass(self):
+        outputs = (lambda spec: "--- PASS: TestCheckoutCommandResourceFixture",
+                   lambda spec: "CHECKOUT_RESOURCE_FIXTURE_EXECUTED " + spec["nonce"],
+                   lambda spec: "CHECKOUT_RESOURCE_FIXTURE_EXECUTED " + "0" * 32 +
+                                "\n--- PASS: TestCheckoutCommandResourceFixture")
+        for index, output in enumerate(outputs):
+            with self.subTest(output=index), mock.patch.object(
+                    support, "command", side_effect=self.command_stub(output=output)):
+                with self.assertRaisesRegex(ValueError, "did not execute"):
+                    self.run_wrapper()
+
+    def test_invalid_operation_input_and_target_stop_before_command(self):
+        bad = (("unknown", b"", 0), ("profile_admission", b"X" * 1048578, 0),
+               ("profile_admission", b"", 1), ("profile_at_size", b"", True),
+               ("profile_at_size", b"", 1048578), ("dedupe_frames", b"unexpected input", 0))
+        for operation, raw, target in bad:
+            with self.subTest(operation=operation, target=target), mock.patch.object(support, "command") as command:
+                with self.assertRaises(ValueError):
+                    support.resource_fixture(self.binary, self.root, self.source, operation,
+                                             input_bytes=raw, target_bytes=target)
+                command.assert_not_called()
 
 
 if __name__ == "__main__":

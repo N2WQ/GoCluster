@@ -69,8 +69,9 @@ Tags: CTY, longitude, exact calls, snapshot, grid, provenance
 
 ## Verification and Monitoring
 - CI fixture follow-up: [TSR-0135](TSR-0135-ci-fixture-inputs-and-synchronization.md)
-  retains exact Windows permission restoration while adding descriptor
-  diagnostics and a parent-first trial; hosted closure remains outstanding.
+  retains exact Windows permission restoration using controlled owned fixture
+  construction after the parent-first trial exposed a hosted inheritance-model
+  mismatch; hosted closure remains outstanding.
 - Actual targeted/final ordinary, race, fuzz, performance and source-review
   results are recorded in [v5 execution](../cty-grid-repair-v5.md).
 - Disposable checks verify backup contents, actual recovery selection, cold

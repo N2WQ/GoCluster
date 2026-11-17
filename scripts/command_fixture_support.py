@@ -90,7 +90,7 @@ def digest(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
-def command(args, *, timeout=180, cwd=ROOT):
+def command(args, *, timeout=180, cwd=ROOT, env=None):
     """Bound diagnostic output during execution, including failed builds."""
     require(os.name == "nt", "checkout command-fix runner requires native Windows")
     log_dir = plain_output(ROOT / ".tmp" / "command-fixes" / "tool-logs")
@@ -103,7 +103,7 @@ def command(args, *, timeout=180, cwd=ROOT):
         with log_path.open("wb") as log:
             launch = [sys.executable, str(ROOT / "scripts" / "command_fixture_process.py"), *args]
             process = subprocess.Popen(launch, cwd=cwd, stdout=log, stderr=subprocess.STDOUT,
-                                       env={**os.environ, "GOCLUSTER_TEST_TOOL_JOB": job.name})
+                                       env={**os.environ, **(env or {}), "GOCLUSTER_TEST_TOOL_JOB": job.name})
             deadline = time.monotonic() + timeout
             while process.poll() is None:
                 require(time.monotonic() < deadline, f"command timed out: {args[0]}")
@@ -125,6 +125,87 @@ def command(args, *, timeout=180, cwd=ROOT):
     text = log_path.read_text(encoding="utf-8", errors="replace")
     require(process.returncode == 0, f"command failed ({process.returncode}): {args!r}\n{text[-4000:]}")
     return text.strip()
+
+
+RESOURCE_OPERATIONS = frozenset(("profile_admission", "profile_at_size", "config_frames", "dedupe_frames"))
+MAX_RESOURCE_BYTES = (1 << 20) + 1
+
+
+def resource_fixture(binary, root, source, operation, *, input_bytes=b"", target_bytes=0):
+    """Measure native owner bytes with the already-built, one-shot Go fixture.
+
+    Only this helper's private directory is writable. Returned artifacts are
+    authenticated bytes; callers independently assert expected limits/reasons.
+    ``command`` and ``verify_resource_receipt`` are the offline mocking seams.
+    """
+    require(operation in RESOURCE_OPERATIONS, "unknown resource fixture operation")
+    require(type(input_bytes) is bytes and len(input_bytes) <= MAX_RESOURCE_BYTES,
+            "resource fixture input exceeds bound")
+    require(operation != "dedupe_frames" or input_bytes == b"",
+            "dedupe frames accept only their fixed owner vectors")
+    require(type(target_bytes) is int and 0 <= target_bytes <= MAX_RESOURCE_BYTES and
+            (operation == "profile_at_size" or target_bytes == 0),
+            "invalid resource fixture target")
+    root = plain_output(root)
+    require(root.is_relative_to(ROOT / ".tmp"), "resource fixture root must be temporary")
+    nonce = uuid.uuid4().hex
+    private = plain_output(root / ("resources-" + nonce))
+    private.mkdir(parents=True, exist_ok=False)
+    spec = {"nonce": nonce, "root": str(private), "source_digest": source["digest"],
+            "input_hash": hashlib.sha256(input_bytes).hexdigest(),
+            "operation": operation, "target_bytes": target_bytes}
+    (private / "input.yaml").write_bytes(input_bytes)
+    spec_path = private / "spec.json"
+    spec_path.write_text(json.dumps(spec), encoding="utf-8")
+    binary_hash = digest(binary)
+    output = command([str(binary), "-test.run=^TestCheckoutCommandResourceFixture$",
+                      "-test.count=1", "-test.paniconexit0", "-test.timeout=45s", "-test.v"],
+                     timeout=60, cwd=ROOT / "telnet",
+                     env={"GOCLUSTER_COMMAND_RESOURCE_FIXTURE": str(spec_path)})
+    require("CHECKOUT_RESOURCE_FIXTURE_EXECUTED " + nonce in output and
+            "--- PASS: TestCheckoutCommandResourceFixture" in output,
+            "required resource fixture did not execute")
+    receipt_path = plain_output(private / "receipt.json")
+    require(receipt_path.stat().st_size <= 16384, "resource receipt exceeds bound")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    return verify_resource_receipt(receipt, spec, private, binary_hash)
+
+
+def verify_resource_receipt(receipt, spec, private, binary_hash):
+    """Fail closed on stale, malformed, oversized or substituted measurements."""
+    require(isinstance(receipt, dict) and all(receipt.get(key) == spec[key] for key in
+            ("nonce", "source_digest", "input_hash", "operation", "target_bytes")) and
+            receipt.get("binary_hash") == binary_hash and type(receipt.get("pid")) is int and
+            receipt["pid"] > 0, "resource fixture provenance mismatch")
+    require(digest(plain_output(private / "input.yaml")) == spec["input_hash"],
+            "resource fixture changed input bytes")
+    names = {"profile_admission": {"input.yaml"},
+             "profile_at_size": {"canonical.yaml", "compact.yaml"},
+             "config_frames": {"fit.yaml", "over.yaml"},
+             "dedupe_frames": {"fit.txt", "over.txt"}}[spec["operation"]]
+    measurements, artifacts = receipt.get("measurements"), receipt.get("artifacts")
+    require(isinstance(measurements, dict) and measurements.keys() == names,
+            "resource receipt has missing or unexpected measurements")
+    expected_artifacts = set() if spec["operation"] == "profile_admission" else names
+    require(isinstance(artifacts, dict) and artifacts.keys() == expected_artifacts,
+            "resource receipt has missing or unexpected artifacts")
+    for value in measurements.values():
+        require(isinstance(value, dict) and all(type(value.get(key)) is int and
+                0 <= value[key] <= 2 * MAX_RESOURCE_BYTES for key in
+                ("raw_bytes", "canonical_bytes", "frame_bytes", "reference_bytes")) and
+                type(value.get("admission")) is bool and type(value.get("error")) is str and
+                len(value["error"]) <= 2048, "resource receipt measurement is malformed")
+    data = {}
+    for name, value in artifacts.items():
+        require(isinstance(value, dict) and type(value.get("bytes")) is int and
+                0 < value["bytes"] <= MAX_RESOURCE_BYTES and type(value.get("sha256")) is str,
+                "resource artifact descriptor is malformed")
+        path = plain_output(private / name)
+        require(path.stat().st_size == value["bytes"], "resource artifact size mismatch")
+        raw = path.read_bytes()
+        require(hashlib.sha256(raw).hexdigest() == value["sha256"], "resource artifact digest mismatch")
+        data[name] = raw
+    return {**receipt, "artifacts": data}
 
 
 def source_manifest():
