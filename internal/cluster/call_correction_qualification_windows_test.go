@@ -112,20 +112,21 @@ type ccQualResult struct {
 }
 
 type ccQualArtifact struct {
-	Schema       string            `json:"schema"`
-	Status       string            `json:"invocation_status"`
-	StartedUTC   string            `json:"started_utc"`
-	Options      ccQualOptions     `json:"inputs"`
-	Seed         uint64            `json:"seed"`
-	GoVersion    string            `json:"go_version"`
-	GOOS         string            `json:"goos"`
-	GOARCH       string            `json:"goarch"`
-	GOMAXPROCS   int               `json:"gomaxprocs"`
-	CPUCount     int               `json:"cpu_count"`
-	Fingerprints map[string]string `json:"sha256_fingerprints"`
-	Caps         map[string]int    `json:"configured_caps"`
-	Limits       []string          `json:"limits"`
-	Results      []*ccQualResult   `json:"results"`
+	Schema        string            `json:"schema"`
+	Status        string            `json:"invocation_status"`
+	StartedUTC    string            `json:"started_utc"`
+	Options       ccQualOptions     `json:"inputs"`
+	Seed          uint64            `json:"seed"`
+	GoVersion     string            `json:"go_version"`
+	GOOS          string            `json:"goos"`
+	GOARCH        string            `json:"goarch"`
+	GOMAXPROCS    int               `json:"gomaxprocs"`
+	CPUCount      int               `json:"cpu_count"`
+	Fingerprints  map[string]string `json:"sha256_fingerprints"`
+	Caps          map[string]int    `json:"configured_caps"`
+	Limits        []string          `json:"limits"`
+	Results       []*ccQualResult   `json:"results"`
+	RecoveryCases []string          `json:"observed_backlog_recovery_cases"`
 }
 
 func TestCallCorrectionPacedQualification(t *testing.T) {
@@ -176,6 +177,27 @@ func TestCallCorrectionPacedQualification(t *testing.T) {
 			ccQualRun(t, opts, assets, result)
 		})
 	}
+	artifact.RecoveryCases = ccQualObservedRecoveryCases(artifact.Results)
+	if len(artifact.RecoveryCases) == 0 {
+		t.Error("fixed workload did not demonstrate natural completion from actual input-stop backlog in any case")
+	}
+}
+
+// Recovery coverage belongs to the unchanged invocation, not to one case name.
+// A faster case may already be empty at input stop and supplies no coverage.
+// Sampled high-water observations or forced retirement cannot establish it.
+func ccQualObservedRecoveryCases(results []*ccQualResult) []string {
+	var cases []string
+	for _, result := range results {
+		if result == nil || result.Status != "recorded_comparison_required" || len(result.Errors) != 0 ||
+			!ccQualHasBacklog(result.BeforeRecovery) || !result.NaturalRecovery ||
+			!result.OutputJoined || !result.ResolverJoined || !result.ShutdownJoined || !result.TCPBarriersJoined ||
+			ccQualHasBacklog(result.AfterRecovery) || result.ArchiveMissing != 0 || result.ArchiveRows != result.ArchiveExpected {
+			continue
+		}
+		cases = append(cases, result.Name)
+	}
+	return cases
 }
 
 func ccQualReadOptions(t *testing.T) ccQualOptions {

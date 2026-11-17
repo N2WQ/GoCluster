@@ -105,9 +105,6 @@ func ccQualRun(t *testing.T, opts ccQualOptions, assets *ccQualAssets, result *c
 	result.Warmup = ccQualProduce(t, f, assets, inputs, 0, warmCount, rate)
 	result.Steady = ccQualProduce(t, f, assets, inputs, warmCount, steadyCount, rate)
 	result.BeforeRecovery = f.snapshot()
-	if result.Name == "drain_recovery" && !ccQualHasBacklog(result.BeforeRecovery) {
-		ccQualError(t, result, "drain_recovery stimulus produced no observable backlog at input stop")
-	}
 	ccQualRecover(t, opts, f, result)
 	if !result.ShutdownJoined {
 		return

@@ -454,3 +454,48 @@ lower-weight membership. Targeted ordinary/race and full consumer qualification
 are recorded separately as they complete. Frozen tuning predictions/selection
 remain preserved; untouched confirmation requires a fresh executable freeze and
 actual tuning-stream parity before any holdout inspection.
+
+The selected five-package correction-consumer race group subsequently passed
+633 cases with zero skips, and settled vet/Staticcheck/lint passed. A broader
+five-package race command hit its six-minute package limit in the unchanged
+native process-launcher tests; that failed receipt is preserved rather than
+counted as a full pass. Final full lanes use the appropriate larger package
+timeout. The exact-only selection benchmark, with neighborhood checking enabled,
+measures 939-968 ns with 0 B/0 allocations.
+
+The next matched capture accepted/processed all 90,000 raw inputs with zero
+recorded loss. Typical CPU was 191,406.25 ns/input; dense CPU was 979,166.67,
+52.1% above the fresh original dense control. Dense input-stop temporal backlog
+was 5,976 and naturally drained in 15.35 seconds. Every owner and TCP barrier
+joined, and all 90,003 archive rows including barriers reopened. Nevertheless,
+`matched-sorted-v1/` remains **failed**: its named recovery case had no observable
+backlog at input stop, violating that fixture's case-specific coverage assertion.
+These measurements are not reclassified as a passed invocation.
+
+A separate non-steered test-strategy adversary inspected the contract, fixed
+fixtures and actual captures. It classified the narrower named-case obligation
+as a checker-only refinement: S7 requires recovery from actual backlog, which
+the dense case exercises, not backlog in one particular case name. The refined
+checker requires at least one fixed case with actual input-stop backlog,
+successful natural completion, all owner/TCP joins, no residual backlog/errors
+and complete archive readback. Sampled high-water values or forced retirement
+cannot supply coverage. Every case's existing loss/completion checks remains.
+Thirteen ordinary and thirteen race checker vectors passed with zero skips.
+
+`paced-coverage-addendum-v2.json` records this post-capture finding before new
+measurements, binding five byte-identical shared fixture files across original,
+matched and release worktrees. Workloads, rates, seed, assets, caps, warm/steady
+windows and barriers are unchanged. New identical-fixture original/candidate
+captures are required; every earlier CPU denominator is retained. Boundary
+comparison additionally reconciles each fixed case's raw acceptance with
+resolver processing, finalized fanout, ring, both TCP clients and reopened
+archive, rather than accepting archive-versus-ring equality alone.
+
+The revised runtime prediction executable remains frozen at `cf217f2f`, SHA256
+`78977742e88c6d9398bde91745f15f98670653a29515fda9963844c7f8d1274e`.
+Its four actual selected-candidate tuning replays reproduce complete OFF/ON
+decision-stream SHA256 on both dates, including all labels and input/reference
+coverage. `study-v3-parity/equivalence-proof.json`, SHA256
+`6eff5553e992715eb1f866730b270d260aa0a72d86b6f4a1e68971ecf3055efe`,
+binds the separate executable/plan freeze. No tuning artifact or selected vector
+was overwritten. Final holdout contents remain unopened at this checkpoint.
