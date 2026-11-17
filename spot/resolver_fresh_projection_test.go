@@ -267,8 +267,8 @@ func TestP3LookupEligibleStillSettledTopCanRetainAuthority(t *testing.T) {
 
 func TestP3LookupEligibleFilteredTieRetainsPublishedOrder(t *testing.T) {
 	r, _, key, at := freshProjectionOwner(t, SignalResolverConfig{})
-	// Published ranks preserve the owner's chosen tie order (including its
-	// confusion model). View order is lexical and cannot replace that provenance.
+	// With no optional model, published ranks preserve the owner's ordinary
+	// chosen tie order. View order cannot replace that non-model provenance.
 	view := &ResolverEvidenceView{window: time.Second, count: 3, candidates: []resolverEvidenceCandidate{
 		{call: "K1ABC", receivers: []ResolverReceiverObservation{{Receiver: "N0AAA", ObservedAt: at, FrequencyKHz: 7010.05, WeightMilli: 1000}}},
 		{call: "K1ABD", receivers: []ResolverReceiverObservation{{Receiver: "N0BBB", ObservedAt: at, FrequencyKHz: 7010.05, WeightMilli: 1000}}},

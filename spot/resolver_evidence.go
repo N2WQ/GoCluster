@@ -50,7 +50,36 @@ func (s ResolverSnapshot) EffectiveSupportBasis() ResolverSupportBasis {
 type resolverReporterObservation struct {
 	observedAt        time.Time
 	frequencyKHz      float64
+	report            int
 	frequencyConflict bool
+	hasReport         bool
+	snrConflict       bool
+}
+
+// joinResolverReporterObservation is a commutative newest-timestamp join.
+// Equal-time conflicts are absorbing independently for frequency and SNR; only
+// a strictly newer observation can replace them. Missing numeric payloads carry
+// no SNR evidence, so their canonical value is zero regardless of the raw field.
+func joinResolverReporterObservation(left, right resolverReporterObservation) resolverReporterObservation {
+	if !left.hasReport {
+		left.report = 0
+	}
+	if !right.hasReport {
+		right.report = 0
+	}
+	if right.observedAt.Before(left.observedAt) {
+		return left
+	}
+	if right.observedAt.After(left.observedAt) {
+		return right
+	}
+	if left.frequencyConflict || right.frequencyConflict || left.frequencyKHz != right.frequencyKHz {
+		left.frequencyKHz, left.frequencyConflict = 0, true
+	}
+	if left.snrConflict || right.snrConflict || left.hasReport != right.hasReport || left.hasReport && left.report != right.report {
+		left.report, left.hasReport, left.snrConflict = 0, false, true
+	}
+	return left
 }
 
 // ResolverReceiverObservation is a by-value observation from a published key.
@@ -60,7 +89,10 @@ type ResolverReceiverObservation struct {
 	ObservedAt        time.Time
 	FrequencyKHz      float64
 	WeightMilli       int
+	Report            int
 	FrequencyConflict bool
+	HasReport         bool
+	SNRConflict       bool
 }
 
 type resolverEvidenceCandidate struct {
@@ -136,7 +168,8 @@ func publishedResolverEvidence(st *resolverKeyState) *ResolverEvidenceView {
 			}
 			rows = append(rows, ResolverReceiverObservation{Receiver: receiver,
 				ObservedAt: observation.observedAt, FrequencyKHz: observation.frequencyKHz,
-				FrequencyConflict: observation.frequencyConflict, WeightMilli: weight})
+				FrequencyConflict: observation.frequencyConflict, WeightMilli: weight,
+				Report: observation.report, HasReport: observation.hasReport, SNRConflict: observation.snrConflict})
 		}
 		sort.Slice(rows, func(i, j int) bool { return rows[i].Receiver < rows[j].Receiver })
 		view.candidates = append(view.candidates, resolverEvidenceCandidate{call: call, receivers: rows})

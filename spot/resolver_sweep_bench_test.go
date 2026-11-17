@@ -65,7 +65,7 @@ func BenchmarkResolverPreparedSweep(b *testing.B) {
 			for _, st := range states {
 				previous[st.key] = st.cell.snapshot.Load()
 				for _, candidate := range st.candidates {
-					upsertResolverReporter(st, candidate, "N0EXPIRED", old, 7010.1, 1000)
+					upsertResolverReporter(st, candidate, "N0EXPIRED", old, 7010.1, 1000, 0, false)
 				}
 				if st.reporterRefs["N0EXPIRED"].refCount != 2 {
 					b.Fatal("expiry fixture was not fully replenished")
@@ -94,7 +94,7 @@ func newSweepBenchmarkPopulation(b *testing.B, keys, candidates, reporters int) 
 				identity:  normalizeCorrectionCallIdentity(call), callRunes: []rune(call)}
 			for reporterIndex := 0; reporterIndex < reporters; reporterIndex++ {
 				receiver := fmt.Sprintf("N%dR%d", candidateIndex, reporterIndex)
-				upsertResolverReporter(st, candidate, receiver, now, 7010.1, 1000)
+				upsertResolverReporter(st, candidate, receiver, now, 7010.1, 1000, 0, false)
 			}
 			st.candidates[call] = candidate
 		}

@@ -47,7 +47,7 @@ func sweepBoundaryFixture(t testing.TB) (*SignalResolver, *SignalResolverDriver,
 				lastFreqKHz: 7010.1, identity: normalizeCorrectionCallIdentity(row.call), callRunes: []rune(row.call)}
 			st.candidates[row.call] = c
 		}
-		upsertResolverReporter(st, c, row.receiver, row.observedAt, 7010.1, 1000)
+		upsertResolverReporter(st, c, row.receiver, row.observedAt, 7010.1, 1000, 0, false)
 		if row.observedAt.After(c.lastSeen) {
 			c.lastSeen = row.observedAt
 		}

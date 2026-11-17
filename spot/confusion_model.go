@@ -60,8 +60,9 @@ type confusionOp struct {
 }
 
 type confusionAlignmentWorkspace struct {
-	dp  []int
-	ops []confusionOp
+	dp         []int
+	ops        []confusionOp
+	binWeights []int64 // Reusable component scratch, never a call-pair cache.
 }
 
 // LoadConfusionModel parses and validates confusion_model.json output from the
@@ -257,6 +258,12 @@ func (m *ConfusionModel) scorePreparedCandidate(observedRunes, candidateRunes []
 		return 0
 	}
 
+	return m.scoreAlignedConfusion(ops, modeIdx, bandIdx)
+}
+
+// The alignment is independent of SNR; resolver callers reuse one operation
+// sequence over the present bins for a pair rather than aligning per receiver.
+func (m *ConfusionModel) scoreAlignedConfusion(ops []confusionOp, modeIdx, bandIdx int) float64 {
 	alpha := float64(len(m.alphabet))
 	score := 0.0
 	for _, op := range ops {

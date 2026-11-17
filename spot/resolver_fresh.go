@@ -41,13 +41,13 @@ func resolverProjectionBase(snapshot ResolverSnapshot) ResolverSnapshot {
 func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time.Time) ResolverSnapshot {
 	view := snap.receiverEvidence
 	cutoff := now.Add(-view.window)
-	eligible := func(row ResolverReceiverObservation) bool {
+	eligible := func(row *ResolverReceiverObservation) bool {
 		return !row.ObservedAt.Before(cutoff) && !row.ObservedAt.After(now)
 	}
 	count := 0
 	for _, candidate := range view.candidates {
-		for _, row := range candidate.receivers {
-			if eligible(row) {
+		for i := range candidate.receivers {
+			if eligible(&candidate.receivers[i]) {
 				count++
 			}
 		}
@@ -66,11 +66,12 @@ func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time
 	for _, candidate := range view.candidates {
 		rows := make([]ResolverReceiverObservation, 0, len(candidate.receivers))
 		tally := ResolverCandidateSupport{Call: candidate.call}
-		for _, row := range candidate.receivers {
+		for i := range candidate.receivers {
+			row := &candidate.receivers[i]
 			if !eligible(row) {
 				continue
 			}
-			rows = append(rows, row)
+			rows = append(rows, *row)
 			tally.Support++
 			tally.WeightedSupportMilli += row.WeightMilli
 			if previous, exists := receivers[row.Receiver]; !exists || row.WeightMilli > previous {
@@ -87,21 +88,46 @@ func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time
 	for _, weight := range receivers {
 		projected.TotalWeightedSupportMilli += weight
 	}
-	// Preserve owner ranking (including confusion tie provenance) for equal
-	// filtered tallies. Never sort a published slice or use owner workspaces.
-	projected.CandidateRanks = make([]ResolverCandidateSupport, 0, len(tallies))
-	for _, previous := range snap.CandidateRanks {
-		if tally, exists := tallies[previous.Call]; exists {
-			projected.CandidateRanks = append(projected.CandidateRanks, tally)
+	if r.cfg.ConfusionModel == nil || r.cfg.ConfusionWeight <= 0 {
+		// Preserve the existing non-model projection's order and allocations.
+		projected.CandidateRanks = make([]ResolverCandidateSupport, 0, len(tallies))
+		for _, previous := range snap.CandidateRanks {
+			if tally, exists := tallies[previous.Call]; exists {
+				projected.CandidateRanks = append(projected.CandidateRanks, tally)
+			}
 		}
+		sort.SliceStable(projected.CandidateRanks, func(i, j int) bool {
+			left, right := projected.CandidateRanks[i], projected.CandidateRanks[j]
+			if left.WeightedSupportMilli != right.WeightedSupportMilli {
+				return left.WeightedSupportMilli > right.WeightedSupportMilli
+			}
+			return left.Support > right.Support
+		})
+		return r.projectResolverAuthority(projected, snap)
 	}
-	sort.SliceStable(projected.CandidateRanks, func(i, j int) bool {
-		left, right := projected.CandidateRanks[i], projected.CandidateRanks[j]
-		if left.WeightedSupportMilli != right.WeightedSupportMilli {
-			return left.WeightedSupportMilli > right.WeightedSupportMilli
+	// Recompute optional ordering from the surviving measurements. A stale
+	// receiver's SNR cannot keep deciding a fresh tie. Scratch belongs only to
+	// this reader, never the owner or an older immutable generation.
+	ranked := make([]rankedResolverCandidate, 0, len(fresh.candidates))
+	for _, group := range fresh.candidates {
+		tally := tallies[group.call]
+		candidate := rankedResolverCandidate{call: group.call, support: tally.Support,
+			weightedSupportMilli: tally.WeightedSupportMilli, receivers: group.receivers,
+			identity: normalizeCorrectionCallIdentity(group.call), callRunes: []rune(group.call)}
+		for _, row := range group.receivers {
+			if row.ObservedAt.After(candidate.lastSeen) {
+				candidate.lastSeen = row.ObservedAt
+			}
 		}
-		return left.Support > right.Support
-	})
+		ranked = append(ranked, candidate)
+	}
+	sort.Slice(ranked, func(i, j int) bool { return resolverCandidateRanksAhead(ranked[i], ranked[j]) })
+	var workspace confusionAlignmentWorkspace
+	applyResolverConfusionTieBreak(ranked, snap.Key.Mode, r.cfg.ConfusionModel, r.cfg.ConfusionWeight, &workspace)
+	projected.CandidateRanks = make([]ResolverCandidateSupport, 0, len(tallies))
+	for _, candidate := range ranked {
+		projected.CandidateRanks = append(projected.CandidateRanks, tallies[candidate.call])
+	}
 	if len(projected.CandidateRanks) == 0 {
 		return projected
 	}

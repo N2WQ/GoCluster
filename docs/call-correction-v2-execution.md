@@ -30,7 +30,7 @@ these failure mechanisms and be recorded with executed results.
 | S1a legacy report parsing | Removed substring SNR fallback; whole integer grammar and human rules retained | 139 native parser/display/RBN cases passed; 20s grammar + 20s legacy differential fuzz passed (unguided prepared binary) |
 | S1b harmonic presence | Missing incoming reports neither compare nor seed harmonic evidence; measured cross-receiver/mode policy preserved | 33 native presence/threshold/expiry/maintenance/delivery cases passed, including TCP and reopened archive |
 | S2 neighborhood admission | Only admitted comparable adjacent populations set neighborhood use | 13 selection/accounting + 7 native delivery cases passed; immediate/temporal/stabilizer exact distance-2/3 recovery |
-| S3 receiver SNR | Pending | Not run |
+| S3 receiver SNR | Receiver timestamp/conflict join, immutable SNR rows, top-cohort bin scoring and fresh reranking complete | 1068-case spot pass before final scoring extraction; targeted final checks + 11 native race cases passed; modeled shape benches executed, final resource qualification pending |
 | S4 canonical slash authority | Pending | Not run |
 | S5 per-decision history | Pending | Not run |
 | S6 Bayesian retention/study/activation | Pending | Not qualified |
@@ -127,3 +127,18 @@ existing source policy (missing/zero dropped). The final selected group passed
 139 cases without skips. Prepared-binary fuzzing executed 2,716,179 grammar and
 2,376,232 differential inputs without failure; the tool explicitly reported no
 coverage instrumentation, so these are unguided fuzz results.
+
+S3 adds 8 logical bytes per retained owner row (40 to 48 bytes) and public row
+(64 to 72 bytes), measured with native `unsafe.Sizeof`. At 16x64 incidences this
+adds 8192 logical bytes to each full row population; map allocation classes,
+slice backing and overlapping immutable generations require profile accounting.
+Reusable owner SNR-bin scratch is bounded by admitted tied-candidate count times
+the immutable model bin count; fresh readers use local scratch. There is no
+second receiver registry or lifetime pair cache. All-fresh reads remain zero
+allocation, and the no-model partial branch retains its previous allocation path.
+The independent S3 source review found no remaining production correctness issue
+and identified the missing modeled capped benchmark; that case was added using
+the actual checked-in model. Native race checks include simultaneous modeled
+partial projections. Bench artifacts are component evidence; final quiet paced
+comparison and full lanes remain required, and intermediate CPU timings are not
+the release performance verdict.

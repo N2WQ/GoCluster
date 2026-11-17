@@ -94,11 +94,15 @@ func BenchmarkSignalResolverEvaluateConfusionTie(b *testing.B) {
 			lastHasReport: true,
 			lastFreqKHz:   7010.0,
 			reporters: map[string]resolverReporterObservation{
-				reporter: {observedAt: now},
+				reporter: {observedAt: now, report: 10, hasReport: true},
 			},
 			identity:  normalizeCorrectionCallIdentity(call),
 			callRunes: []rune(call),
 		}
+	}
+	resolver.evaluateKey(st, now)
+	if snapshot, ok := resolver.Lookup(key); !ok || snapshot.Winner != "ZZ1ZZ" {
+		b.Fatal("confusion benchmark lacks measured receiver evidence")
 	}
 
 	b.ReportAllocs()

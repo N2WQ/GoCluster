@@ -11,7 +11,6 @@ import (
 	"math"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -300,6 +299,7 @@ type rankedResolverCandidate struct {
 	lastHasReport        bool
 	lastFreqKHz          float64
 	reporters            map[string]resolverReporterObservation
+	receivers            []ResolverReceiverObservation // Immutable rows for this evaluation.
 	identity             correctionCallIdentity
 	callRunes            []rune
 }
@@ -569,15 +569,15 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 		}
 		st.cell.activity.Store(int64(admittedAt))
 		r.ownerAdmitted.Store(true)
-		// Presence follows the existing newest timestamp/later equal-time receipt
-		// policy too: missing newest metadata must not reuse an older present SNR.
+		// Keep representative raw metadata for existing diagnostic consumers.
+		// Optional model scoring uses only the receiver observations below.
 		if !ev.ObservedAt.Before(candidate.lastSeen) {
 			candidate.lastSeen = ev.ObservedAt
 			candidate.lastReport = ev.Report
 			candidate.lastHasReport = ev.HasReport
 			candidate.lastFreqKHz = ev.FrequencyKHz
 		}
-		upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, ev.FrequencyKHz, reporterWeightMilli)
+		upsertResolverReporter(st, candidate, ev.Spotter, ev.ObservedAt, ev.FrequencyKHz, reporterWeightMilli, ev.Report, ev.HasReport)
 		updateAtomicMax(&r.highWaterReporters, uint64(len(candidate.reporters)))
 
 		st.dirty = true
@@ -632,7 +632,7 @@ func (r *SignalResolver) sweep(states map[ResolverSignalKey]*resolverKeyState, n
 	r.activeKeys.Store(int64(len(states)))
 }
 
-func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, seenAt time.Time, frequencyKHz float64, reporterWeightMilli int) {
+func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, seenAt time.Time, frequencyKHz float64, reporterWeightMilli, report int, hasReport bool) {
 	if st == nil || candidate == nil || reporter == "" {
 		return
 	}
@@ -643,17 +643,13 @@ func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 		st.reporterRefs = make(map[string]resolverReporterRef, 1)
 	}
 	previous, exists := candidate.reporters[reporter]
+	incoming := resolverReporterObservation{observedAt: seenAt, frequencyKHz: frequencyKHz, report: report, hasReport: hasReport}
+	if !hasReport {
+		incoming.report = 0
+	}
 	if exists {
-		if seenAt.Before(previous.observedAt) {
-			return
-		}
-		if seenAt.Equal(previous.observedAt) {
-			if frequencyKHz != previous.frequencyKHz && !previous.frequencyConflict {
-				previous.frequencyConflict = true
-				previous.frequencyKHz = 0 // No invented frequency for an unresolved tie.
-				candidate.reporters[reporter] = previous
-				st.receiverEvidenceDirty = true
-			}
+		incoming = joinResolverReporterObservation(previous, incoming)
+		if incoming == previous {
 			return
 		}
 	} else {
@@ -668,7 +664,7 @@ func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 			st.reporterRefs[reporter] = ref
 		}
 	}
-	candidate.reporters[reporter] = resolverReporterObservation{observedAt: seenAt, frequencyKHz: frequencyKHz}
+	candidate.reporters[reporter] = incoming
 	st.receiverEvidenceDirty = true
 }
 
@@ -793,8 +789,11 @@ func (r *SignalResolver) evaluateKey(st *resolverKeyState, now time.Time) {
 func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) {
 	st.lastEvalAt = now
 
+	view := publishedResolverEvidence(st)
 	ranked := st.rankedScratch[:0]
-	for call, candidate := range st.candidates {
+	for _, group := range view.candidates {
+		call := group.call
+		candidate := st.candidates[call]
 		if candidate == nil {
 			continue
 		}
@@ -811,6 +810,7 @@ func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) 
 			lastHasReport:        candidate.lastHasReport,
 			lastFreqKHz:          candidate.lastFreqKHz,
 			reporters:            candidate.reporters,
+			receivers:            group.receivers,
 			identity:             candidate.identity,
 			callRunes:            candidate.callRunes,
 		}
@@ -822,7 +822,7 @@ func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) 
 		SupportBasis:     ResolverSupportBasisWeighted,
 		EvaluatedAt:      now,
 		State:            ResolverStateUncertain,
-		receiverEvidence: publishedResolverEvidence(st),
+		receiverEvidence: view,
 	}
 	if len(ranked) == 0 {
 		st.stableWinner = ""
@@ -1118,71 +1118,6 @@ func normalizeResolverEvidence(e ResolverEvidence) (ResolverEvidence, bool) {
 		FrequencyKHz:  e.FrequencyKHz,
 		RecencyWindow: window,
 	}, true
-}
-
-func applyResolverConfusionTieBreak(ranked []rankedResolverCandidate, mode string, model *ConfusionModel, weight float64, workspace *confusionAlignmentWorkspace) {
-	if len(ranked) < 2 || model == nil || weight <= 0 || math.IsNaN(weight) || math.IsInf(weight, 0) {
-		return
-	}
-	tieEnd := 1
-	top := ranked[0]
-	for tieEnd < len(ranked) {
-		next := ranked[tieEnd]
-		if next.weightedSupportMilli != top.weightedSupportMilli || next.support != top.support {
-			break
-		}
-		tieEnd++
-	}
-	if tieEnd <= 1 {
-		return
-	}
-	cohort := ranked[:tieEnd]
-	for i := range cohort {
-		score := resolverConfusionAggregateScore(cohort[i], cohort, mode, model, workspace)
-		if math.IsNaN(score) || math.IsInf(score, 0) {
-			score = 0
-		}
-		cohort[i].confusionScore = score
-	}
-	sort.Slice(cohort, func(i, j int) bool {
-		leftScore := float64(cohort[i].weightedSupportMilli) + weight*cohort[i].confusionScore
-		rightScore := float64(cohort[j].weightedSupportMilli) + weight*cohort[j].confusionScore
-		if leftScore != rightScore {
-			return leftScore > rightScore
-		}
-		if cohort[i].confusionScore != cohort[j].confusionScore {
-			return cohort[i].confusionScore > cohort[j].confusionScore
-		}
-		return resolverCandidateRanksAhead(cohort[i], cohort[j])
-	})
-}
-
-func resolverConfusionAggregateScore(
-	candidate rankedResolverCandidate,
-	cohort []rankedResolverCandidate,
-	mode string,
-	model *ConfusionModel,
-	workspace *confusionAlignmentWorkspace,
-) float64 {
-	if model == nil || len(cohort) <= 1 {
-		return 0
-	}
-	score := 0.0
-	for i := range cohort {
-		observed := &cohort[i]
-		if !observed.lastHasReport {
-			continue
-		}
-		if strings.EqualFold(observed.call, candidate.call) {
-			continue
-		}
-		weight := float64(observed.weightedSupportMilli)
-		if weight <= 0 {
-			weight = 1
-		}
-		score += model.scorePreparedCandidate(observed.callRunes, candidate.callRunes, mode, float64(observed.lastReport), workspace) * weight
-	}
-	return score
 }
 
 func classifyResolverState(weightedSupportMilli int, totalWeightedSupportMilli int) ResolverState {
