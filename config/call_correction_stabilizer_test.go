@@ -78,8 +78,11 @@ func TestLoadCallCorrectionStabilizerDefaults(t *testing.T) {
 	if !cfg.CallCorrection.ResolverRecentPlus1AllowTruncation {
 		t.Fatalf("expected resolver recent plus1 truncation-family allowance enabled by default")
 	}
-	if !cfg.CallCorrection.BayesBonus.Enabled {
-		t.Fatalf("expected bayes bonus enabled from shipped YAML")
+	if cfg.CallCorrection.BayesBonus.Enabled {
+		t.Fatalf("expected unqualified bayes bonus inactive from shipped YAML")
+	}
+	if cfg.CallCorrection.BayesBonus.EnabledDistancesByMode == nil || len(cfg.CallCorrection.BayesBonus.EnabledDistancesByMode) != 0 {
+		t.Fatalf("expected shipped explicit empty bayes cell mask, got %#v", cfg.CallCorrection.BayesBonus.EnabledDistancesByMode)
 	}
 	if cfg.CallCorrection.BayesBonus.WeightDistance1Milli != 350 || cfg.CallCorrection.BayesBonus.WeightDistance2Milli != 200 {
 		t.Fatalf("expected bayes distance weights defaults 350/200, got %d/%d",

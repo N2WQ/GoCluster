@@ -115,6 +115,65 @@ Configuration is split by concern so you only edit the relevant file:
 - `toxicity_safe_gate.yaml` - optional reference table for routine ham-radio comments that may bypass the classifier when the Worker is enabled.
 - `voacap_experiment.yaml` - optional tool config for manual VOACAP SSN forecast experiments; ignored by server startup and loaded by `voacap_ssn_forecast_watch`.
 
+### Call-correction Bayes cells
+
+`pipeline.yaml` owns the optional
+`call_correction.bayes_bonus.enabled_distances_by_mode` setting. It is algorithm
+calibration, with one complete mode-to-distance map:
+
+The supplied configuration selects `enabled: false` and
+`enabled_distances_by_mode: {}`. The frozen RBN-only study rejected activation
+under its zero-contradiction rule; see the
+[qualification record](../../docs/call-correction-v2-qualification.md). The
+method remains implemented, with ordinary correction and recent +1 active.
+Apply both off settings in the active configuration directory, including a
+private `data/config.local` deployment. Installing the executable alone does
+not update that private policy.
+
+| Effective setting | Meaning |
+| --- | --- |
+| Omitted; direct-Go nil map | Preserve legacy distance-1/2 eligibility in CW, RTTY, USB and LSB, subject to `max_edit_distance`. |
+| `{}` | Select no Bayes cells. |
+| A mode's `[]` | Select no distances for that mode. Unlisted modes also select none. |
+| A listed subset of `[1, 2]` | Select only those distances for that mode. |
+| `bayes_bonus.enabled: false` | Disable all Bayes cells regardless of the map. |
+
+Mode keys are trimmed and uppercased. Only CW, RTTY, USB and LSB are supported;
+SSB is not an alias here. The final effective mask rejects top-level or nested
+YAML null, unsupported modes/distances, noninteger distances, repeated distances
+and duplicate normalized mode keys. Direct-Go `mode: nil` means an empty list;
+mapping and typed YAML serialization preserve omitted versus explicit-empty
+maps. This does not make YAML null valid.
+
+Registered runtime files keep their normal sorted merge order. A later explicit
+mask replaces the whole earlier mask, including `{}`; omission preserves an
+earlier definition. Other nested maps retain deep-merge behavior. Validation
+remains at the final effective configuration boundary, rather than imposing a
+new per-file value-validation rule.
+
+Live correction, replay, the evaluator, startup diagnostics and both history
+capacity validators share the same cell eligibility rule. Capacity follows
+structurally selected distances permitted by `max_edit_distance`, even with zero
+weights or unreachable score thresholds. An empty mask removes only unused
+Bayes requirements: recent +1, including distance-zero slash cases, truncation,
+stabilizer and support-floor consumers keep their requirements. The startup
+Bayes summary prints the legacy/explicit mask and effective cells; master-on
+with no eligible cells is `inactive`.
+
+Existing scalar defaults and validation remain compatible. For the historical
+weights/caps, the score ceilings are 560 at distance 1 and 470 at distance 2.
+The old distance-2 report threshold 650 and advantage thresholds 700/950 are
+therefore unreachable by that score. These configurations remain bootable;
+the tuning study's search bounds are not new startup scalar restrictions.
+Custom settings and the compatibility defaults are not qualification
+certificates. A qualified claim must identify the exact tested cells and scalar
+combination; see [replay evidence limits](../../docs/rbn_replay.md#bayes-evaluation-and-evidence-limits).
+
+Deploy the mask with its supporting executable: an older executable can ignore
+the new key. The existing master `enabled: false` remains the whole-block off
+switch. See [ADR-0357](../../docs/decisions/ADR-0357-call-correction-v2-evidence-and-bounded-bonuses.md)
+and the [correction contract](../../spot/README.md#bounded-historical-bonuses).
+
 ### Flood configuration
 
 `floodcontrol.yaml` is loaded with the merged runtime configuration at startup.

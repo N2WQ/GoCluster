@@ -63,6 +63,9 @@ func b14LoadCapacityConfig(t *testing.T, overlay string) (*Config, error) {
 	t.Helper()
 	dir := testConfigDir(t)
 	writeRequiredFloodControlFile(t, dir)
+	// This fixture exercises legacy omitted-mask consumer reachability. Do not
+	// inherit the shipped release's explicit no-cells policy into those cases.
+	removeTestConfigKey(t, dir, "pipeline.yaml", "call_correction", "bayes_bonus", "enabled_distances_by_mode")
 	writeTestConfigOverlay(t, dir, "pipeline.yaml", b14CapacityFixture)
 	writeTestConfigOverlay(t, dir, "pipeline.yaml", overlay)
 	return Load(dir)

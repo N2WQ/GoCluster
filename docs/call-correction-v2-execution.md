@@ -499,3 +499,59 @@ coverage. `study-v3-parity/equivalence-proof.json`, SHA256
 `6eff5553e992715eb1f866730b270d260aa0a72d86b6f4a1e68971ecf3055efe`,
 binds the separate executable/plan freeze. No tuning artifact or selected vector
 was overwritten. Final holdout contents remain unopened at this checkpoint.
+
+## S7 untouched result and release policy
+
+The identical-coverage-fixture original control and matched candidate passed.
+The lead's separate artifact comparator requires all per-case raw/resolver/
+finalized/ring/TCP/archive counts, actual backlog recovery coverage, zero loss
+and <=1.10 typical CPU/input against every retained control. The matched result
+is 203,125 ns/input, 52/55 of the newest original control's 214,843.75; all four
+comparisons pass. Dense cost is 990,234.375 versus 578,776.042 ns/input, a real
+71.1% increase, with zero refusal/loss and natural completion in 15.37 seconds.
+Every 90,000-input invocation reconciles 90,000 TCP receipts per client and
+90,003 reopened archive rows including controls. Whole-invocation allocation
+churn is higher than the original, as the qualification record discloses.
+
+The held-out plan was frozen at 2026-11-17T23:17:46Z, SHA256
+`ca63715c9e509e5d2f7215bb279f02aafae8ab1ba4005ebe5a4e6c36292a9932`.
+The first recorded inspection is 23:17:47.410554Z. Freeze SHA256 is
+`c25196aba81cb1eb1ff4f963f107ace1ee76106c7fef4ccb39b159bf500e55bf`.
+One complete CW/2 candidate, both actual prediction binaries, all config/assets,
+references and CTY input rules remain fixed; no same-holdout adaptation occurred.
+
+All six held-out arms and two comparison engines completed. A separate empirical
+reviewer recounted all six terminal streams before reading any generated
+aggregate. It derived 79 additional normalized episode IDs, two jointly strong,
+R1 coverage 9/79 (11.392405%) and R2 coverage 22/79 (27.848101%). November 15 has
+61/1/7/15 incremental/joint/R1-covered/R2-covered and November 16 has 18/1/2/7.
+Positive supported nets are +9/+15 and +2/+8. New contradiction flags are R1=1,
+R2=3 on November 15 and zero on November 16; the flags are distinct episode,
+mode and configured-distance units. Here they also equal the affected rename
+receipt counts. No inactive-cell spillover or unpaired raw ID was found. All
+1,024,414 focal-A IDs and 6,043 strong-reference disagreements remain accounted.
+
+The fixed verdict is **whole Bayes off**: zero-contradiction, sample/date and
+coverage floors fail. Positive support does not waive any failed floor.
+The lead directly checked the four actual OFF/ON rows; one target already
+appeared elsewhere in OFF's episode and correctly adds no new normalized gain,
+while its changed-row contradiction is retained. These are RBN-reference
+disagreements, not independently adjudicated RF errors.
+
+`study-v2-holdout/comparison-corrected/comparison.json` SHA256 is
+`6d4142ebc98439cdfd7cef305c30ffd6e05ab0d73d2cb08eb99ce8e775503d7c`;
+the paired stream SHA256 is
+`a3fb7eafd5e41e4b3c3f68647c3997d61e0c26131bf65f225f860b7476d9a3c6`.
+The two engines report identical activation statistics/verdict. Independent
+aggregate reconciliation follows the recorded raw recount.
+
+The shipped `pipeline.yaml` therefore uses master false and an explicit empty
+cell mask. Ordinary gates, confusion ranking and recent +1 stay active; the
+retained bonus is implemented but inactive. Operators must apply both off fields
+to their active/private config directory. Compatibility scalar values remain
+bootable, not qualified calibration. Config tests passed 970 cases without
+skips. The first config run found two legacy omitted-mask capacity fixtures
+inheriting the new explicit empty sample mask; only that owned fixture now
+removes the seeded mask to exercise its stated legacy policy. No production
+capacity check was weakened. Final complete lanes and the separate actual
+release-policy paced capture remain mandatory.
