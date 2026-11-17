@@ -1,4 +1,5 @@
-// Qualification collapses only repeats within frozen episode/mode/distance cells.
+// File role: Qualify the frozen complete episode/mode/distance combination.
+// Qualification collapses only repeats within those cells.
 // Unknown incremental outputs remain in each coverage denominator; any new
 // strong disagreement survives the aggregation and prevents activation.
 package main

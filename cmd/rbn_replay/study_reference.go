@@ -1,4 +1,5 @@
-// Study references use only frozen raw archive observations. They never consume
+// File role: Derive study references from frozen raw archive observations.
+// They never consume
 // corrections, SNR weights, licensing, model ranks or the legacy stability
 // collector. Day-owned raw/index storage has the enforced input-size bound in
 // study_plan.go; per-query family scratch is discarded before the next row.

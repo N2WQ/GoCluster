@@ -1,4 +1,4 @@
-// Selected candidate application belongs only to the offline study boundary.
+// File role: Apply selected candidates only at the offline study boundary.
 // A complete vector and complete mask replace the study-owned repaired config;
 // shared live/replay consumers then enforce their existing gates and capacity.
 package main

@@ -1,5 +1,5 @@
-// Terminal study observations are streamed, not retained for the replay's
-// lifetime. The sole extra pending map is bounded by temporal MaxPending+1:
+// File role: Stream terminal study observations and bound pending context.
+// The sole extra pending map is bounded by temporal MaxPending+1:
 // each held spot already has an existing bounded owner, plus one synchronous
 // current row. Retirement deletes context before writing its terminal record.
 package main

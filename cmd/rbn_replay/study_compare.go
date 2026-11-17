@@ -1,5 +1,5 @@
-// Paired study accounting uses the full raw-ID union. Every changed output is
-// streamed; qualification collapses repeats only at the frozen episode/cell.
+// File role: Account paired study outcomes using the full raw-ID union.
+// Every changed output is streamed; repeats collapse at the frozen episode/cell.
 // Per-day maps have the plan's enforced raw-row bound and are released between
 // dates. No whole-study raw registry or intersection-only denominator is kept.
 package main
@@ -442,6 +442,7 @@ func studyAccountDay(in studyInput, pairs map[int64]*studyPair, candidate studyC
 			result.CrossCellEpisodes++
 		}
 	}
+	studyCompleteSpilloverSupport(ordinals, pairs, spillovers)
 	for cell, counts := range studySummarizeDate(in.DateUTC, spillovers) {
 		result.Spillover = append(result.Spillover, studySpillover{Cell: cell, Counts: counts})
 	}
@@ -452,6 +453,38 @@ func studyAccountDay(in studyInput, pairs map[int64]*studyPair, candidate studyC
 		return result.Spillover[i].Cell < result.Spillover[j].Cell
 	})
 	return studySummarizeDate(in.DateUTC, episodes), nil
+}
+
+// Changed ON renames admit spillover episode/cells in the first pass. Their
+// descriptive net support must then include every correction receipt in that
+// same episode/cell, including unchanged receipts before or after the rename.
+// This day-owned second pass adds no retained state and touches only support
+// flags: admission, incremental coverage and raw-row harms remain unchanged.
+func studyCompleteSpilloverSupport(ordinals []int64, pairs map[int64]*studyPair, spillovers map[string]map[string]*studyEpisodeCell) {
+	if len(spillovers) == 0 {
+		return
+	}
+	for _, ordinal := range ordinals {
+		pair := pairs[ordinal]
+		for arm := 1; arm <= 2; arm++ {
+			d := pair.Arms[arm]
+			if !studyDeliveredCorrection(d) {
+				continue
+			}
+			cell := fmt.Sprintf("%s/%d", d.Raw.Mode, d.ConfiguredDistance)
+			ep := spillovers[cell][d.EpisodeID]
+			if ep == nil {
+				continue
+			}
+			if arm == 1 {
+				ep.OffSupportedR1 = ep.OffSupportedR1 || d.R1.Strong && d.R1.Identity == d.FinalIdentity
+				ep.OffSupportedR2 = ep.OffSupportedR2 || d.R2.Strong && d.R2.Identity == d.FinalIdentity
+			} else {
+				ep.OnSupportedR1 = ep.OnSupportedR1 || d.R1.Strong && d.R1.Identity == d.FinalIdentity
+				ep.OnSupportedR2 = ep.OnSupportedR2 || d.R2.Strong && d.R2.Identity == d.FinalIdentity
+			}
+		}
+	}
 }
 
 func studyAddMissed(date string, pair *studyPair, result *studyComparison, maxExamples int) {

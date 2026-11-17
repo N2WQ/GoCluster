@@ -1,4 +1,4 @@
-// Study geography is an explicit, frozen CTY representative-location scenario.
+// File role: Supply the explicit frozen CTY receiver-location study scenario.
 // It is applied only to focal A inputs, before learning, and owns no cache or
 // receiver registry. A derived cell is not evidence of a historical station site.
 package main

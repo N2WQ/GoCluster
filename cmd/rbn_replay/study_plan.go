@@ -1,4 +1,4 @@
-// CCv2 study configuration is optional tool input, never server configuration.
+// File role: Validate optional CCv2 study input, never server configuration.
 // A caller supplies an externally frozen plan digest. Strict decoding, complete
 // vectors, exact cell maps and bounded local inputs prevent silent experiment
 // changes. The declarations record exposure; they cannot prove human blinding.

@@ -1,3 +1,6 @@
+// File role: Compare measured reports against recent harmonic fundamentals.
+// Missing reports cannot seed or match evidence. Cross-receiver/mode comparisons
+// retain their configured policy; TTL expiry limits age, not entry cardinality.
 package spot
 
 import (

@@ -1,4 +1,4 @@
-// The study route reuses the existing replay runner, parser and bounded owners.
+// File role: Run the study with the existing replay parser and bounded owners.
 // It bypasses only download discovery, requiring frozen local inputs instead.
 // Each run starts with empty A-only history; this is a declared experimental
 // population, not a reconstruction of a warm production history or delivery.
