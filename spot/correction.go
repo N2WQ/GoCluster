@@ -175,6 +175,7 @@ func IsCallCorrectionCandidate(mode string) bool {
 //   - Pure function: no shared mutable state updates.
 //   - Applies max-edit rails before confidence/support gates.
 //   - Truncation-family relaxations never bypass confidence and advantage rails.
+//   - Historical aliases reuse their first count within this gate call only.
 func EvaluateResolverPrimaryGates(
 	subjectCall, winnerCall, subjectBand, subjectMode string,
 	subjectSupport, winnerSupport, winnerConfidence int,
@@ -223,6 +224,7 @@ func EvaluateResolverPrimaryGates(
 	}
 	familyPolicy := normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
 	truncationAdvantagePolicy := normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
+	history := newResolverGateHistory(cfg, subjectBand, subjectMode, now)
 
 	truncationRelation := false
 	candidateMoreSpecific := false
@@ -236,8 +238,8 @@ func EvaluateResolverPrimaryGates(
 		candidateMoreSpecific = len(winnerIdentity.VoteKey) > len(subjectIdentity.VoteKey)
 		if candidateMoreSpecific {
 			lengthDelta = len(winnerIdentity.VoteKey) - len(subjectIdentity.VoteKey)
-			candidateValidated = resolverCallValidated(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
-			subjectValidated = resolverCallValidated(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+			candidateValidated = history.validated(winnerIdentity, winnerCall, cfg.RecentBandRecordMinUniqueSpotters)
+			subjectValidated = history.validated(subjectIdentity, subjectCall, cfg.RecentBandRecordMinUniqueSpotters)
 			candidateValidatedKnown = true
 			subjectValidatedKnown = true
 		}
@@ -246,7 +248,7 @@ func EvaluateResolverPrimaryGates(
 		if candidateValidatedKnown {
 			return candidateValidated
 		}
-		candidateValidated = resolverCallValidated(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
+		candidateValidated = history.validated(winnerIdentity, winnerCall, cfg.RecentBandRecordMinUniqueSpotters)
 		candidateValidatedKnown = true
 		return candidateValidated
 	}
@@ -254,7 +256,7 @@ func EvaluateResolverPrimaryGates(
 		if subjectValidatedKnown {
 			return subjectValidated
 		}
-		subjectValidated = resolverCallValidated(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		subjectValidated = history.validated(subjectIdentity, subjectCall, cfg.RecentBandRecordMinUniqueSpotters)
 		subjectValidatedKnown = true
 		return subjectValidated
 	}
@@ -328,8 +330,8 @@ func EvaluateResolverPrimaryGates(
 		if rejectReason == "" && !distanceAllowed && !familyAllowed {
 			rejectReason = "distance_or_family"
 		}
-		winnerRecent := resolverCallRecentSupport(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
-		subjectRecent := resolverCallRecentSupport(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		winnerRecent := history.support(winnerIdentity, winnerCall)
+		subjectRecent := history.support(subjectIdentity, subjectCall)
 		result.RecentPlus1Winner = winnerRecent
 		result.RecentPlus1Subject = subjectRecent
 		if rejectReason == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
@@ -361,8 +363,8 @@ func EvaluateResolverPrimaryGates(
 			extraConfidence = bayes.AdvantageExtraConfidenceDistance2
 		}
 
-		winnerRecent := resolverCallRecentSupport(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
-		subjectRecent := resolverCallRecentSupport(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		winnerRecent := history.support(winnerIdentity, winnerCall)
+		subjectRecent := history.support(subjectIdentity, subjectCall)
 		result.BayesWinnerRecent = winnerRecent
 		result.BayesSubjectRecent = subjectRecent
 		result.BayesDistanceWeightMilli = weightDistance
@@ -450,48 +452,6 @@ func EvaluateResolverPrimaryGates(
 
 	result.Allow = true
 	return result
-}
-
-func resolverCallValidated(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) bool {
-	minUnique := cfg.RecentBandRecordMinUniqueSpotters
-	if minUnique <= 0 {
-		minUnique = 2
-	}
-	return resolverCallRecentSupport(identity, displayCall, subjectBand, subjectMode, cfg, now) >= minUnique
-}
-
-type customSCPRequirementCounter interface {
-	RecentSupportCountWithRequirements(call, band, mode string, requirements CustomSCPRequirements, now time.Time) int
-}
-
-func resolverCallRecentSupport(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) int {
-	if cfg.RecentBandStore == nil {
-		return 0
-	}
-	candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
-	seenCalls := make(map[string]struct{}, len(candidates))
-	maxSupport := 0
-	for _, candidateCall := range candidates {
-		candidateCall = strings.TrimSpace(candidateCall)
-		if candidateCall == "" {
-			continue
-		}
-		upper := strutil.NormalizeUpper(candidateCall)
-		if _, exists := seenCalls[upper]; exists {
-			continue
-		}
-		seenCalls[upper] = struct{}{}
-		var support int
-		if queries, ok := cfg.RecentBandStore.(customSCPRequirementCounter); ok && cfg.RecentBandCustomSCPEnabled {
-			support = queries.RecentSupportCountWithRequirements(upper, subjectBand, subjectMode, cfg.RecentBandCustomSCPRequirements, now)
-		} else {
-			support = cfg.RecentBandStore.RecentSupportCount(upper, subjectBand, subjectMode, now)
-		}
-		if support > maxSupport {
-			maxSupport = support
-		}
-	}
-	return maxSupport
 }
 
 type correctionCallIdentity struct {

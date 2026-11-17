@@ -41,7 +41,7 @@ these failure mechanisms and be recorded with executed results.
 | S2 neighborhood admission | Only admitted comparable adjacent populations set neighborhood use | 13 selection/accounting + 7 native delivery cases passed; immediate/temporal/stabilizer exact distance-2/3 recovery |
 | S3 receiver SNR | Receiver timestamp/conflict join, immutable SNR rows, top-cohort bin scoring and fresh reranking complete | 1068-case spot pass before final scoring extraction; targeted final checks + 11 native race cases passed; modeled shape benches executed, final resource qualification pending |
 | S4 canonical slash authority | Immutable canonical receiver union, observed display, independent threshold and identity-consistent consumers complete | Full spot (1087) and flow (202) passed; 14 native delivery, 144 replay/selection, 23 race cases passed; legacy fixture corrections passed 116 cases; final frequency scratch checks passed 63 cases |
-| S5 per-decision history | Pending | Not run |
+| S5 per-decision history | Fixed eight-entry first-read capture shared by validation/recent+1/Bayes, fresh next gate | 40 gate/capture + 32 actual backend/consumer cases passed, zero skips; independent source review and paired native benchmarks completed |
 | S6 Bayesian retention/study/activation | Pending | Not qualified |
 | S7 final integration/resource/docs/lane | Pending | Not qualified |
 
@@ -197,3 +197,17 @@ literal display lanes; 116 affected cases passed. The two replay/evaluator
 packages separately passed 541 cases with one intentional subprocess-helper skip.
 The failed broad cluster run is not counted as a full-package pass. Final ordinary
 and race lanes on the completed relevant state remain mandatory.
+
+S5 uses synchronous scratch for the two immutable gate identities and their four
+existing aliases each. It caches zero and partial counts, takes each identity's
+maximum, and preserves the original normalized query methods and consumer
+requirements. It makes no atomicity claim across aliases, stores or publications.
+Changing-store tests prove first-read consistency and fresh next-call evidence;
+the existing concrete Custom SCP and legacy consumer tests remain passing.
+Independent source review found no remaining material issue. Paired three-sample
+native benchmarks retained every no-history allocation count and introduced no
+lock: bare no-history remains 0 B/0 allocations, although its local median rose
+from 291 to 402 ns. Custom-history bare/slash/shared-base medians fell from
+4217/8413/3341 to 1854/5112/2416 ns with unchanged allocation counts. Legacy
+repeated-query cases also reduced allocations. Component logs preserve all nine
+shapes and do not replace the final paced CPU/input comparison.
