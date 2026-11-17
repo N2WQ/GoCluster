@@ -174,6 +174,17 @@ type trainingReport struct {
 }
 
 type evalReport struct {
+	EvaluationContractVersion int                    `json:"evaluation_contract_version"`
+	ExternalLabelAgreement    externalLabelAgreement `json:"external_label_agreement"`
+	EvaluationDenominators    evaluationDenominators `json:"evaluation_denominators"`
+	UnlabeledDecisions        unlabeledDecisions     `json:"unlabeled_decisions"`
+	RFTruth                   rfTruthEvaluation      `json:"rf_truth"`
+	MetricDefinitions         map[string]string      `json:"metric_definitions"`
+	DeprecatedMetrics         map[string]string      `json:"deprecated_metrics"`
+	Warnings                  []string               `json:"warnings"`
+
+	// Legacy fields retain their historical formulas and JSON values. Their
+	// names do not imply independently established RF correctness.
 	RBNRows                   int64           `json:"rbn_rows"`
 	PositivesTotal            int64           `json:"positives_total"`
 	CorrectPositive           int64           `json:"correct_positive"`
@@ -786,8 +797,8 @@ func evaluateResolverPrimaryDecision(
 	return resolverDecision{Applied: true, Winner: winnerCall, Reason: reason}
 }
 
-// buildEvalReport combines positive-label scoring, sampled negatives, and branch
-// counters into the JSON report consumed by tuning notes.
+// buildEvalReport preserves legacy scoring for existing consumers and adds
+// explicit agreement, population, and unavailable-RF-truth definitions.
 func buildEvalReport(st *runState, labels otherLoadStats) evalReport {
 	report := evalReport{
 		Replay:   st.replay,
@@ -821,6 +832,7 @@ func buildEvalReport(st *runState, labels otherLoadStats) evalReport {
 		report.PrecisionPercentSampled = round2(float64(report.CorrectPositive) * 100 / float64(report.CorrectPositive+report.FalsePositive))
 	}
 	report.RBNRows = st.replay.RBNRows
+	addEvaluationContract(&report, st)
 	return report
 }
 
@@ -1279,7 +1291,7 @@ func shouldRejectCTYCall(call string) bool {
 
 func writeSummary(path string, report evalReport, method inferredMethod) {
 	text := fmt.Sprintf(
-		"callcorr_reveng summary\n======================\n\nMethod source:\n  config_loaded_from=%s\n\nOther logs:\n  lines=%d parsed=%d skipped_harmonic=%d skipped_invalid=%d skipped_no_db=%d conflicting_label=%d\n\nReplay:\n  rbn_rows=%d candidate_rows=%d skipped_bad_row=%d skipped_schema=%d\n\nPrimary counters:\n  decision_total=%d applied=%d rejected=%d suppressed=%d\n  no_snapshot=%d neighborhood_conflict=%d state_split=%d state_uncertain=%d state_unknown=%d\n  invalid_base=%d cty_miss=%d same_call=%d winner_missing=%d\n  neighborhood_used=%d override=%d split=%d excluded_unrelated=%d excluded_distance=%d excluded_anchor_missing=%d\n  recent_plus1_considered=%d applied=%d rejected=%d\n\nEvaluation:\n  positives_total=%d\n  correct_positive=%d\n  missed_positive=%d\n  predicted_extra_on_positives=%d\n  negatives_seen=%d\n  negatives_sampled=%d\n  false_positive=%d\n  true_negative=%d\n  predicted_applied_total=%d\n  predicted_on_unlabeled=%d\n  recall_percent=%.2f\n  precision_percent_sampled=%.2f\n",
+		"callcorr_reveng summary\n======================\n\nMethod source:\n  config_loaded_from=%s\n\nOther logs:\n  lines=%d parsed=%d skipped_harmonic=%d skipped_invalid=%d skipped_no_db=%d conflicting_label=%d\n\nReplay:\n  rbn_rows=%d candidate_rows=%d skipped_bad_row=%d skipped_schema=%d\n\nPrimary counters:\n  decision_total=%d applied=%d rejected=%d suppressed=%d\n  no_snapshot=%d neighborhood_conflict=%d state_split=%d state_uncertain=%d state_unknown=%d\n  invalid_base=%d cty_miss=%d same_call=%d winner_missing=%d\n  neighborhood_used=%d override=%d split=%d excluded_unrelated=%d excluded_distance=%d excluded_anchor_missing=%d\n  recent_plus1_considered=%d applied=%d rejected=%d\n\n%s\nDeprecated legacy evaluation (compatibility values; not RF accuracy):\n  false_positive means sampled unlabeled applications; true_negative means sampled unlabeled non-applications.\n  positives_total=%d\n  correct_positive=%d\n  missed_positive=%d\n  predicted_extra_on_positives=%d\n  negatives_seen=%d\n  negatives_sampled=%d\n  false_positive=%d\n  true_negative=%d\n  predicted_applied_total=%d\n  predicted_on_unlabeled=%d\n  recall_percent=%.2f\n  precision_percent_sampled=%.2f\n",
 		method.ConfigLoadedFrom,
 		report.Labels.Lines, report.Labels.Parsed, report.Labels.SkippedHarmonic, report.Labels.SkippedInvalid, report.Labels.SkippedNoDB, report.Labels.ConflictingLabel,
 		report.Replay.RBNRows, report.Replay.CandidateRows, report.Replay.SkippedBadRow, report.Replay.SkippedSchema,
@@ -1288,6 +1300,7 @@ func writeSummary(path string, report evalReport, method inferredMethod) {
 		report.Counters.RejectedInvalidBase, report.Counters.RejectedCTYMiss, report.Counters.RejectedSameCall, report.Counters.RejectedWinnerMissing,
 		report.Counters.NeighborhoodUsed, report.Counters.NeighborhoodWinnerOverride, report.Counters.NeighborhoodConflictSplit, report.Counters.NeighborhoodExcludedUnrelated, report.Counters.NeighborhoodExcludedDistance, report.Counters.NeighborhoodExcludedAnchorMissing,
 		report.Counters.RecentPlus1Considered, report.Counters.RecentPlus1Applied, report.Counters.RecentPlus1Rejected,
+		formatEvaluationSummary(report),
 		report.PositivesTotal, report.CorrectPositive, report.MissedPositive, report.PredictedExtraOnPositives,
 		report.NegativesSeen, report.NegativesSampled, report.FalsePositive, report.TrueNegative, report.PredictedAppliedTotal, report.PredictedOnUnlabeled,
 		report.RecallPercent, report.PrecisionPercentSampled,
