@@ -246,7 +246,7 @@ func TestRefreshMigrationFailureRetryAndFirstBoot(t *testing.T) {
 	var requests atomic.Int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
-		w.Header().Set("ETag", "unchanged")
+		w.Header().Set("ETag", `"unchanged"`)
 		if mode.Load() == 0 {
 			w.Write(bad)
 		} else {
@@ -297,7 +297,7 @@ func TestRefreshRetriesUnchangedFailedPublication(t *testing.T) {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		w.Header().Set("ETag", "same-content")
+		w.Header().Set("ETag", `"same-content"`)
 		w.Write(payload)
 	}))
 	defer server.Close()

@@ -91,15 +91,15 @@ func TestLookupCacheWorkerAndConsumerCompatibility(t *testing.T) {
 			} else if known || ipinfo != (LookupResult{}) || cymru != (LookupResult{}) || country != "" || continent != "" || fallbacks != 1 {
 				t.Fatal("negative worker fallback behavior changed")
 			}
-			// Main-cache hits return the cached value in the first tuple position,
-			// including the existing empty negative-Cymru promotion behavior.
+			// Positive main-cache hits retain the cached tuple. A DNS negative
+			// remains in the DNS namespace while unavailable enrichment stays unknown.
 			ipinfo, cymru, country, continent, known = gate.lookupIP(addr, now)
 			expectedFallbacks := 0
 			if !success {
-				expectedFallbacks = 1
+				expectedFallbacks = 2
 			}
-			if !known || ipinfo != want || cymru != (LookupResult{}) || continent != "" || fallbacks != expectedFallbacks {
-				t.Fatal("main-hit tuple or negative promotion changed")
+			if known != success || ipinfo != want || cymru != (LookupResult{}) || continent != "" || fallbacks != expectedFallbacks {
+				t.Fatal("positive main-hit tuple or negative DNS fallback changed")
 			}
 			if (success && country != "US") || (!success && country != "") {
 				t.Fatal("main-hit country changed")
@@ -185,8 +185,8 @@ func TestLookupCacheOversizeAdmissionStoreResult(t *testing.T) {
 		return LookupResult{}, false, false
 	}
 	gate.lookupIPInfoFunc = func(netip.Addr, time.Time) LookupResult { t.Fatal("admission invoked API"); return LookupResult{} }
-	want, found := gate.lookupIPInfoStore(netip.MustParseAddr("203.0.113.10"))
-	if !found || want.ASN != largeASN {
+	want, _ := gate.lookupIPInfoStore(netip.MustParseAddr("203.0.113.10"))
+	if want.Source == "" || want.ASN != largeASN {
 		t.Fatal("oversized store fixture did not preserve input")
 	}
 	for i := 0; i < 2; i++ {
@@ -215,4 +215,22 @@ func TestLookupCacheSnapshotAgeStillRejectsMainHit(t *testing.T) {
 	if result, _, _, _, known := gate.lookupIP(addr, cacheTestNow); !known || result != fresh {
 		t.Fatal("stale snapshot main hit bypassed age check")
 	}
+}
+
+func TestLookupCacheIPInfoEpochStaysWithinSharedCap(t *testing.T) {
+	const cap = 8
+	gate := cacheConsumerGate(t, cap)
+	for epoch := uint64(1); epoch <= 128; epoch++ {
+		key := cymruTestAddr(int(epoch)).String()
+		current := LookupResult{Source: ipinfoSource, ASN: "64500"}
+		older := LookupResult{Source: ipinfoSource, ASN: "64501"}
+		gate.lookupCache.setEntry(key, cacheTestNow, cacheEntry{value: current, ipinfoEpoch: epoch, localIPInfo: true})
+		gate.lookupCache.setEntry(key, cacheTestNow, cacheEntry{value: older, ipinfoEpoch: epoch - 1, localIPInfo: true})
+		var origin ipinfoCacheOrigin
+		if value, ok, _ := gate.lookupCache.getWithIPInfo(key, cacheTestNow, &origin); !ok || value != current || origin.epoch != epoch || !origin.local {
+			t.Fatalf("retired generation displaced the current entry: value=%+v provenance=%+v", value, origin)
+		}
+		gate.cymru.cache.set(key, current, cacheTestNow, false)
+	}
+	cacheTestCheck(t, gate.lookupCache)
 }

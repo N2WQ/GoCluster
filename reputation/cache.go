@@ -24,9 +24,11 @@ const (
 )
 
 type cacheEntry struct {
-	value     LookupResult
-	expiresAt time.Time
-	negative  bool
+	value       LookupResult
+	expiresAt   time.Time
+	ipinfoEpoch uint64
+	negative    bool
+	localIPInfo bool
 }
 
 // ttlCache is a namespace/TTL view of one Gate-owned store. Main enrichment and
@@ -105,6 +107,12 @@ func newLookupCacheStore(shards, maxEntries int) *lookupCacheStore {
 // get lazily removes the requested expired entry. Equality remains a hit, as in
 // the original cache; idle expired records stay bounded by the same hard cap.
 func (c *ttlCache) get(key string, now time.Time) (LookupResult, bool, bool) {
+	return c.getWithIPInfo(key, now, nil)
+}
+
+// getWithIPInfo reads only the optional provenance alongside the result.
+// Cymru uses the same cache read without requesting provenance.
+func (c *ttlCache) getWithIPInfo(key string, now time.Time, origin *ipinfoCacheOrigin) (LookupResult, bool, bool) {
 	if c == nil || c.store == nil || len(key) > maxCachePayloadBytes || strings.TrimSpace(key) == "" {
 		return LookupResult{}, false, false
 	}
@@ -115,19 +123,31 @@ func (c *ttlCache) get(key string, now time.Time) (LookupResult, bool, bool) {
 	if !ok {
 		return LookupResult{}, false, false
 	}
-	entry := shard.slots[index].entry
+	entry := &shard.slots[index].entry
 	if !entry.expiresAt.IsZero() && now.After(entry.expiresAt) {
 		shard.remove(index)
 		shard.expirations++
 		return LookupResult{}, false, false
 	}
+	if origin != nil {
+		origin.epoch, origin.local = entry.ipinfoEpoch, entry.localIPInfo
+	}
 	return entry.value, true, entry.negative
+}
+
+type ipinfoCacheOrigin struct {
+	epoch uint64
+	local bool
 }
 
 // set admits bounded exact copies. Updating a key refreshes its write order;
 // reading it does not. Full shards remove one FIFO head before adding membership,
 // so concurrent writers cannot transiently exceed the sum of shard quotas.
 func (c *ttlCache) set(key string, value LookupResult, now time.Time, negative bool) {
+	c.setEntry(key, now, cacheEntry{value: value, negative: negative})
+}
+
+func (c *ttlCache) setEntry(key string, now time.Time, entry cacheEntry) {
 	if c == nil || c.store == nil {
 		return
 	}
@@ -138,11 +158,14 @@ func (c *ttlCache) set(key string, value LookupResult, now time.Time, negative b
 	if strings.TrimSpace(key) == "" {
 		return
 	}
-	bytes, admitted := cachePayloadSize(key, value)
+	bytes, admitted := cachePayloadSize(key, entry.value)
 	shard := &c.store.shards[c.shardIndex(key)]
 	shard.mu.Lock()
 	defer shard.mu.Unlock()
 	index, exists := shard.items[cacheKey{c.namespace, key}]
+	if exists && shard.slots[index].entry.ipinfoEpoch > entry.ipinfoEpoch {
+		return // A lookup from a retired epoch cannot displace current evidence.
+	}
 	if !admitted {
 		shard.bypasses++
 		if exists {
@@ -160,16 +183,15 @@ func (c *ttlCache) set(key string, value LookupResult, now time.Time, negative b
 		shard.counts[c.namespace]++
 	}
 	slot := &shard.slots[index]
-	slot.entry.value = ownLookupResult(value, slot.entry.value)
-	slot.entry.negative = negative
-	slot.entry.expiresAt = time.Time{}
+	entry.value = ownLookupResult(entry.value, slot.entry.value)
 	ttl := c.ttl
-	if negative {
+	if entry.negative {
 		ttl = c.negativeTT
 	}
 	if ttl > 0 {
-		slot.entry.expiresAt = now.Add(ttl)
+		entry.expiresAt = now.Add(ttl)
 	}
+	slot.entry = entry
 	shard.ownedBytes += bytes
 	shard.append(index)
 }

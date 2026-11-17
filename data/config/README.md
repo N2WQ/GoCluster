@@ -292,6 +292,13 @@ Loader behavior:
 - `peering.yaml` in the public example uses disabled `.example.invalid` peers, blank passwords, and placeholder callsigns. Put real peer connection details only in a private config directory.
 - `peering.max_peers` is a required integer from 1 through 64, including when peering is disabled. The shipped value is 64; there is no omitted, null, zero, or unlimited fallback. Existing private configurations must add this key explicitly. When peering is enabled, the number of enabled direct peer identities must fit this cap; disabled rows do not count, and a `both` direction counts once. An over-cap dormant registry remains loadable while peering is disabled, but enabling it fails startup. Changes require a restart, and lowering the cap never silently selects a subset of peers. The cap bounds direct sessions and recovery identities; the pending-handshake limit remains 128, with at most `max_peers + 128` transport owners. It does not limit remote topology population or raise the existing memory budget.
 - `reputation.yaml` in the public example disables IPinfo download/API usage and uses a placeholder download token so the strict loader still sees the required key. Put real IPinfo tokens only in a private config directory.
+- Reputation `snapshot_max_age_seconds` measures the age of the last verified
+  active IPinfo snapshot. A verified unchanged archive renews the window when
+  its bytes match the serving database's source. Manually supplied databases
+  use their recorded build time. Signed-in lookup tries Cymru and the enabled
+  API before using a valid stale local match. Pre-login admission uses retained
+  and local metadata without starting network lookups. See
+  [IPinfo refresh and recovery](../../docs/OPERATOR_GUIDE.md#ipinfo-refresh-and-recovery).
 - Manual DX reputation uses the baseline station across numeric SSIDs. Reconnect preserves active spent counts and deadlines, with normal elapsed-window advancement and configured risk tightening. Baseline ASN/country history is reused; old SSID histories are untouched and unmerged. Counters are runtime-only and can be lost on restart or state eviction. Configuration remains full-SSID. See [ADR-0271](../../docs/decisions/ADR-0271-shared-station-reputation.md).
 - Reputation `lookup_cache_max_entries` is one hard combined record cap for main
   enrichment and Cymru DNS results. The same IP in both caches counts twice.

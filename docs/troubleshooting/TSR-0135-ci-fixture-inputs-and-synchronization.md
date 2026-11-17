@@ -115,7 +115,7 @@ substituting metadata normalization or a synthetic conversion-only test:
 | --- | --- | --- | --- |
 | Declared fixture state | Host ignores supplied creation metadata | Query persisted P/AI/no-AR and exact explicit full-control ACE after construction | `TestCTYFixtureAllowsUnprotectedPublication`; cluster integration |
 | Exact restoration | Drop AI/AR, owner/group or denial cleanup | Capture both originals before mutation; compare full control and O/G/D afterward; outer descriptor unchanged | `TestCTYProtectedInputPublication`, `TestCTYFixtureRestoresDuringCleanup`; native ordinary/race |
-| Real publication protection | Sharing violation, 304 or temp-create failure masquerades as denial | Closed creation handles, writable temp body, changed HTTP payload, remove-old-file permission error, unchanged input and positive replacement | `TestCTYProtectedInputPublication`; cluster integration |
+| Real publication protection | Sharing violation, 304 or temp-create failure masquerades as denial | Closed creation handles, writable temp body, changed HTTP payload, permission error at the replacement step, unchanged input and positive replacement | `TestCTYProtectedInputPublication`; cluster integration |
 | Portable identity | Removing casts breaks other architectures or weakens link checks | Real alias/hard-link identities with no skipped Linux cases; compile supported 32/64-bit field widths | `internal/logidentity` tests and Linux amd64/arm64/386/MIPS/MIPS64 compilation |
 | Previously blocked CI tail | Unit tests pass while integration never reaches commands | Runner self-tests, pinned Python oracles and source-bound native/ziutek integration | Existing Windows/Python scripts; lead validation |
 

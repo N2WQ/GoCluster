@@ -2,10 +2,13 @@ package reputation
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"dxcluster/strutil"
 	"encoding/binary"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +16,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,6 +34,7 @@ const (
 
 	ipinfoPebbleMetaVersion = "meta|version"
 	ipinfoPebbleMetaBuiltAt = "meta|built_at"
+	ipinfoPebbleMetaSHA256  = "meta|source_sha256"
 	ipinfoPebbleMetaRowsV4  = "meta|rows_v4"
 	ipinfoPebbleMetaRowsV6  = "meta|rows_v6"
 )
@@ -44,10 +49,11 @@ var (
 // ipinfoStore provides range lookups backed by a Pebble database.
 // Invariants: keys are sorted by range start; ranges are expected not to overlap.
 type ipinfoStore struct {
-	db      *pebble.DB
-	cache   *pebble.Cache
-	path    string
-	builtAt time.Time
+	db         *pebble.DB
+	cache      *pebble.Cache
+	path       string
+	builtAt    time.Time
+	sourceHash string
 }
 
 // openIPInfoStore opens an existing Pebble DB for lookups.
@@ -81,17 +87,34 @@ func openIPInfoStore(path string, cacheBytes int64) (*ipinfoStore, error) {
 		cache: opts.Cache,
 		path:  path,
 	}
-	if builtAt, err := readIPInfoMetaTime(db, ipinfoPebbleMetaBuiltAt); err == nil {
-		store.builtAt = builtAt
-	}
 	version, err := readIPInfoMetaInt(db, ipinfoPebbleMetaVersion)
-	if err == nil && version != ipinfoPebbleVersion {
+	if err != nil {
+		store.Close()
+		return nil, fmt.Errorf("ipinfo pebble read version: %w", err)
+	}
+	if version != ipinfoPebbleVersion {
 		store.Close()
 		return nil, fmt.Errorf("ipinfo pebble version %d unsupported (expected %d)", version, ipinfoPebbleVersion)
 	}
-	if store.builtAt.IsZero() {
-		store.builtAt = time.Now().UTC()
+	store.builtAt, err = readIPInfoMetaTime(db, ipinfoPebbleMetaBuiltAt)
+	if err != nil {
+		store.Close()
+		return nil, fmt.Errorf("ipinfo pebble read built_at: %w", err)
 	}
+	if store.builtAt.After(time.Now().UTC()) {
+		store.Close()
+		return nil, errors.New("ipinfo pebble built_at is in the future")
+	}
+	sourceHash, err := readIPInfoMeta(db, ipinfoPebbleMetaSHA256, sha256.Size*2)
+	if err != nil && !errors.Is(err, pebble.ErrNotFound) {
+		store.Close()
+		return nil, fmt.Errorf("ipinfo pebble read source hash: %w", err)
+	}
+	if err == nil && !validIPInfoSourceHash(sourceHash) {
+		store.Close()
+		return nil, errors.New("ipinfo pebble invalid source hash")
+	}
+	store.sourceHash = sourceHash
 	return store, nil
 }
 
@@ -127,19 +150,14 @@ func (s *ipinfoStore) lookupV4(addr netip.Addr) (LookupResult, bool) {
 
 	if !iter.SeekGE(key) {
 		iter.Last()
-	} else if bytesCompare(iter.Key(), key) > 0 {
+	} else if bytes.Compare(iter.Key(), key) > 0 {
 		iter.Prev()
 	}
 	if !iter.Valid() {
 		return LookupResult{}, false
 	}
-	value := iter.Value()
-	endBytes, asn, country, ok := decodeIPInfoValue(value, 4)
-	if !ok {
-		return LookupResult{}, false
-	}
-	end := binary.BigEndian.Uint32(endBytes)
-	if ip > end {
+	_, end, asn, country, ok := decodeIPInfoRecord(iter.Key(), iter.Value(), ipinfoPebblePrefixV4)
+	if !ok || ip > binary.BigEndian.Uint32(end) {
 		return LookupResult{}, false
 	}
 	return LookupResult{
@@ -168,20 +186,14 @@ func (s *ipinfoStore) lookupV6(addr netip.Addr) (LookupResult, bool) {
 
 	if !iter.SeekGE(key) {
 		iter.Last()
-	} else if bytesCompare(iter.Key(), key) > 0 {
+	} else if bytes.Compare(iter.Key(), key) > 0 {
 		iter.Prev()
 	}
 	if !iter.Valid() {
 		return LookupResult{}, false
 	}
-	value := iter.Value()
-	endBytes, asn, country, ok := decodeIPInfoValue(value, 16)
-	if !ok {
-		return LookupResult{}, false
-	}
-	var end [16]byte
-	copy(end[:], endBytes)
-	if compareIPv6(ip, end) > 0 {
+	_, end, asn, country, ok := decodeIPInfoRecord(iter.Key(), iter.Value(), ipinfoPebblePrefixV6)
+	if !ok || bytes.Compare(ip[:], end) > 0 {
 		return LookupResult{}, false
 	}
 	return LookupResult{
@@ -195,20 +207,28 @@ func (s *ipinfoStore) lookupV6(addr netip.Addr) (LookupResult, bool) {
 // buildIPInfoPebble imports a CSV snapshot into a new Pebble DB under rootDir.
 // It returns the absolute path to the new DB directory.
 func buildIPInfoPebble(ctx context.Context, csvPath, rootDir string, compact bool) (string, error) {
-	csvPath = strings.TrimSpace(csvPath)
-	if csvPath == "" {
-		return "", errors.New("ipinfo csv path is empty")
+	file, err := os.Open(csvPath)
+	if err != nil {
+		return "", err
 	}
-	if strings.TrimSpace(rootDir) == "" {
+	defer file.Close()
+	return buildIPInfoPebbleFromSource(ctx, file, rootDir, compact, "")
+}
+
+func buildIPInfoPebbleFromSource(ctx context.Context, source io.Reader, rootDir string, compact bool, sourceHash string) (string, error) {
+	return buildIPInfoPebbleCandidate(ctx, source, rootDir, compact, sourceHash, (*pebble.DB).Close)
+}
+
+func buildIPInfoPebbleCandidate(ctx context.Context, source io.Reader, rootDir string, compact bool, sourceHash string, closeCandidate func(*pebble.DB) error) (string, error) {
+	if rootDir == "" {
 		return "", errors.New("ipinfo pebble root path is empty")
 	}
 	if err := os.MkdirAll(rootDir, 0o755); err != nil {
 		return "", fmt.Errorf("ipinfo pebble root mkdir: %w", err)
 	}
 
-	dirName := fmt.Sprintf("db-%s", time.Now().UTC().Format("20060102-150405"))
-	dbPath := filepath.Join(rootDir, dirName)
-	if err := os.MkdirAll(dbPath, 0o755); err != nil {
+	dbPath, err := os.MkdirTemp(rootDir, "db-")
+	if err != nil {
 		return "", fmt.Errorf("ipinfo pebble mkdir: %w", err)
 	}
 	cleanup := func(err error) (string, error) {
@@ -221,26 +241,24 @@ func buildIPInfoPebble(ctx context.Context, csvPath, rootDir string, compact boo
 		L0CompactionThreshold: 4,
 		L0StopWritesThreshold: 16,
 	}
-	var db *pebble.DB
 	db, err := pebble.Open(dbPath, opts)
 	if err != nil {
 		return cleanup(fmt.Errorf("ipinfo pebble open: %w", err))
 	}
-	cleanup = func(err error) (string, error) {
-		if db != nil {
-			_ = db.Close()
+	// Pebble consumes the handle even when Close returns an error.
+	closeDB := func() error {
+		if db == nil {
+			return nil
 		}
-		_ = os.RemoveAll(dbPath)
-		return "", err
+		current := db
+		db = nil
+		return closeCandidate(current)
+	}
+	cleanup = func(err error) (string, error) {
+		return "", errors.Join(err, closeDB(), os.RemoveAll(dbPath))
 	}
 
-	file, err := os.Open(csvPath)
-	if err != nil {
-		return cleanup(err)
-	}
-	defer file.Close()
-
-	reader := csv.NewReader(bufio.NewReader(file))
+	reader := csv.NewReader(bufio.NewReader(source))
 	reader.FieldsPerRecord = -1
 	reader.ReuseRecord = true
 
@@ -291,6 +309,9 @@ func buildIPInfoPebble(ctx context.Context, csvPath, rootDir string, compact boo
 		}
 		asn := normalizeASN(fieldAt(row, asnIdx))
 		countryCode := strutil.NormalizeUpper(fieldAt(row, countryCodeIdx))
+		if asn == "" && countryCode == "" {
+			continue
+		}
 		if start.Is4() {
 			start4 := ip4ToUint32(start.As4())
 			end4 := ip4ToUint32(end.As4())
@@ -341,6 +362,9 @@ func buildIPInfoPebble(ctx context.Context, csvPath, rootDir string, compact boo
 			batch.Reset()
 		}
 	}
+	if rowCount == 0 {
+		return cleanup(errors.New("ipinfo csv contains no usable IP ranges"))
+	}
 	if err := batch.Commit(pebble.NoSync); err != nil {
 		return cleanup(err)
 	}
@@ -350,6 +374,11 @@ func buildIPInfoPebble(ctx context.Context, csvPath, rootDir string, compact boo
 	now := time.Now().UTC()
 	if err := db.Set([]byte(ipinfoPebbleMetaBuiltAt), encodeIPInfoMetaTime(now), pebble.NoSync); err != nil {
 		return cleanup(err)
+	}
+	if sourceHash != "" {
+		if err := db.Set([]byte(ipinfoPebbleMetaSHA256), []byte(sourceHash), pebble.NoSync); err != nil {
+			return cleanup(err)
+		}
 	}
 	if err := db.Set([]byte(ipinfoPebbleMetaRowsV4), encodeIPInfoMetaInt(rowCountV4), pebble.NoSync); err != nil {
 		return cleanup(err)
@@ -373,30 +402,35 @@ func buildIPInfoPebble(ctx context.Context, csvPath, rootDir string, compact boo
 		}
 		log.Printf("IPinfo pebble compaction completed in %s", time.Since(compactStart))
 	}
-	if err := db.Close(); err != nil {
-		return cleanup(err)
+	if err := closeDB(); err != nil {
+		return cleanup(fmt.Errorf("close IPinfo candidate database: %w", err))
 	}
-	db = nil
 	return dbPath, nil
 }
 
 func resolveIPInfoPebblePath(rootDir string) (string, error) {
-	rootDir = strings.TrimSpace(rootDir)
 	if rootDir == "" {
 		return "", errors.New("ipinfo pebble root path is empty")
 	}
 	currentPath := filepath.Join(rootDir, ipinfoPebbleCurrentFile)
-	if data, err := os.ReadFile(currentPath); err == nil {
-		trimmed := strings.TrimSpace(string(data))
-		if trimmed != "" {
-			return filepath.Join(rootDir, trimmed), nil
-		}
+	data, err := readIPInfoRecord(currentPath)
+	if errors.Is(err, os.ErrNotExist) {
+		return filepath.Join(rootDir, "db"), nil
 	}
-	return filepath.Join(rootDir, "db"), nil
+	if err != nil {
+		return "", fmt.Errorf("ipinfo read current database: %w", err)
+	}
+	relative := strings.TrimSpace(string(data))
+	if relative == "" {
+		return filepath.Join(rootDir, "db"), nil
+	}
+	if filepath.Clean(relative) == "." || !filepath.IsLocal(relative) {
+		return "", errors.New("ipinfo current database path must be relative to its root")
+	}
+	return filepath.Join(rootDir, relative), nil
 }
 
-func updateIPInfoPebbleCurrent(rootDir, dbPath string) error {
-	rootDir = strings.TrimSpace(rootDir)
+func updateIPInfoPebbleCurrent(ctx context.Context, rootDir, dbPath string) error {
 	if rootDir == "" {
 		return errors.New("ipinfo pebble root path is empty")
 	}
@@ -407,15 +441,10 @@ func updateIPInfoPebbleCurrent(rootDir, dbPath string) error {
 	if err != nil {
 		return err
 	}
-	tmp := filepath.Join(rootDir, ipinfoPebbleCurrentFile+".tmp")
-	if err := os.WriteFile(tmp, []byte(rel), 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, filepath.Join(rootDir, ipinfoPebbleCurrentFile))
+	return writeIPInfoRecord(ctx, filepath.Join(rootDir, ipinfoPebbleCurrentFile), []byte(rel))
 }
 
 func cleanupIPInfoPebbleDirs(rootDir, keepPath string) error {
-	rootDir = strings.TrimSpace(rootDir)
 	if rootDir == "" {
 		return nil
 	}
@@ -423,6 +452,7 @@ func cleanupIPInfoPebbleDirs(rootDir, keepPath string) error {
 	if err != nil {
 		return err
 	}
+	var firstErr error
 	for _, entry := range entries {
 		if !entry.IsDir() {
 			continue
@@ -435,10 +465,12 @@ func cleanupIPInfoPebbleDirs(rootDir, keepPath string) error {
 					continue
 				}
 			}
-			_ = os.RemoveAll(full)
+			if err := os.RemoveAll(full); err != nil && firstErr == nil {
+				firstErr = err
+			}
 		}
 	}
-	return nil
+	return firstErr
 }
 
 func samePath(a, b string) bool {
@@ -450,7 +482,7 @@ func samePath(a, b string) bool {
 	return absA == absB
 }
 
-func loadIPv4IndexFromStore(store *ipinfoStore) (*ipinfoIndex, error) {
+func loadIPv4IndexFromStore(ctx context.Context, store *ipinfoStore) (*ipinfoIndex, error) {
 	if store == nil || store.db == nil {
 		return nil, errors.New("ipinfo store not initialized")
 	}
@@ -469,21 +501,20 @@ func loadIPv4IndexFromStore(store *ipinfoStore) (*ipinfoIndex, error) {
 		source:   store.path,
 	}
 	for iter.First(); iter.Valid(); iter.Next() {
-		key := iter.Key()
-		if len(key) < 5 {
-			continue
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
-		start := binary.BigEndian.Uint32(key[1:])
-		value := iter.Value()
-		endBytes, asn, country, ok := decodeIPInfoValue(value, 4)
+		startBytes, endBytes, asn, country, ok := decodeIPInfoRecord(iter.Key(), iter.Value(), ipinfoPebblePrefixV4)
 		if !ok {
 			continue
 		}
+		start := binary.BigEndian.Uint32(startBytes)
+		end := binary.BigEndian.Uint32(endBytes)
 		asn = internString(stringPool, asn)
 		country = internString(stringPool, country)
 		index.v4 = append(index.v4, ipRange4{
 			start:       start,
-			end:         binary.BigEndian.Uint32(endBytes),
+			end:         end,
 			asn:         asn,
 			countryCode: country,
 		})
@@ -518,6 +549,30 @@ func encodeIPInfoValue(end []byte, asn, country string) []byte {
 	return out
 }
 
+// Version one stores a family-prefixed start and an equally wide end, followed
+// by the length-prefixed enrichment fields. Both admission and preload reject
+// an invalid record here before interpreting it as an address interval.
+func decodeIPInfoRecord(key, value []byte, family byte) (start, end []byte, asn, country string, ok bool) {
+	var width int
+	switch family {
+	case ipinfoPebblePrefixV4:
+		width = 4
+	case ipinfoPebblePrefixV6:
+		width = 16
+	default:
+		return nil, nil, "", "", false
+	}
+	if len(key) != width+1 || key[0] != family {
+		return nil, nil, "", "", false
+	}
+	start = key[1:]
+	end, asn, country, ok = decodeIPInfoValue(value, width)
+	if !ok || bytes.Compare(start, end) > 0 {
+		return nil, nil, "", "", false
+	}
+	return start, end, asn, country, true
+}
+
 func decodeIPInfoValue(data []byte, endLen int) ([]byte, string, string, bool) {
 	if len(data) < endLen {
 		return nil, "", "", false
@@ -525,25 +580,26 @@ func decodeIPInfoValue(data []byte, endLen int) ([]byte, string, string, bool) {
 	end := data[:endLen]
 	rest := data[endLen:]
 	asnLen, n := binary.Uvarint(rest)
-	if n <= 0 {
+	if n <= 0 || (n > 1 && rest[n-1] == 0) {
 		return nil, "", "", false
 	}
 	rest = rest[n:]
-	if int(asnLen) > len(rest) {
+	// Legacy values can contain a length larger than the native int range.
+	// Compare in uint64 before slicing and defer string copies until validated.
+	if asnLen > uint64(len(rest)) {
 		return nil, "", "", false
 	}
-	asn := string(rest[:asnLen])
+	asn := rest[:asnLen]
 	rest = rest[asnLen:]
 	countryLen, n := binary.Uvarint(rest)
-	if n <= 0 {
+	if n <= 0 || (n > 1 && rest[n-1] == 0) {
 		return nil, "", "", false
 	}
 	rest = rest[n:]
-	if int(countryLen) > len(rest) {
+	if countryLen != uint64(len(rest)) || (asnLen == 0 && countryLen == 0) {
 		return nil, "", "", false
 	}
-	country := string(rest[:countryLen])
-	return end, asn, country, true
+	return end, string(asn), string(rest), true
 }
 
 func appendUvarint(dst []byte, value uint64) []byte {
@@ -560,55 +616,43 @@ func encodeIPInfoMetaTime(value time.Time) []byte {
 	return []byte(fmt.Sprintf("%d", value.Unix()))
 }
 
-func readIPInfoMetaInt(db *pebble.DB, key string) (int, error) {
+func readIPInfoMeta(db *pebble.DB, key string, maxBytes int) (string, error) {
 	data, closer, err := db.Get([]byte(key))
+	if err != nil {
+		return "", err
+	}
+	defer closer.Close()
+	if len(data) > maxBytes {
+		return "", errors.New("ipinfo metadata exceeds maximum length")
+	}
+	return string(data), nil
+}
+
+func readIPInfoMetaInt(db *pebble.DB, key string) (int, error) {
+	data, err := readIPInfoMeta(db, key, 20)
 	if err != nil {
 		return 0, err
 	}
-	defer closer.Close()
-	var value int
-	if _, err := fmt.Sscanf(string(data), "%d", &value); err != nil {
-		return 0, err
-	}
-	return value, nil
+	return strconv.Atoi(data)
 }
 
 func readIPInfoMetaTime(db *pebble.DB, key string) (time.Time, error) {
-	data, closer, err := db.Get([]byte(key))
+	data, err := readIPInfoMeta(db, key, 20)
 	if err != nil {
 		return time.Time{}, err
 	}
-	defer closer.Close()
-	var unix int64
-	if _, err := fmt.Sscanf(string(data), "%d", &unix); err != nil {
-		return time.Time{}, err
-	}
-	if unix <= 0 {
+	unix, err := strconv.ParseInt(data, 10, 64)
+	if err != nil || unix <= 0 {
 		return time.Time{}, errors.New("invalid meta time")
 	}
 	return time.Unix(unix, 0).UTC(), nil
 }
 
-func bytesCompare(a, b []byte) int {
-	min := len(a)
-	if len(b) < min {
-		min = len(b)
+func validIPInfoSourceHash(value string) bool {
+	var decoded [sha256.Size]byte
+	if len(value) != hex.EncodedLen(len(decoded)) || value != strings.ToLower(value) {
+		return false
 	}
-	for i := 0; i < min; i++ {
-		if a[i] == b[i] {
-			continue
-		}
-		if a[i] < b[i] {
-			return -1
-		}
-		return 1
-	}
-	switch {
-	case len(a) < len(b):
-		return -1
-	case len(a) > len(b):
-		return 1
-	default:
-		return 0
-	}
+	_, err := hex.Decode(decoded[:], []byte(value))
+	return err == nil
 }

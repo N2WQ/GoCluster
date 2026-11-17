@@ -150,42 +150,30 @@ func TestDownloadSameContent(t *testing.T) {
 }
 
 func TestDownloadAllowMissingDestination(t *testing.T) {
-	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("ETag", `"v1"`)
 		if r.Header.Get("If-None-Match") == `"v1"` {
 			w.WriteHeader(http.StatusNotModified)
 			return
 		}
-		t.Fatalf("expected conditional request")
+		_, _ = w.Write([]byte("valid archive"))
 	}))
 	t.Cleanup(server.Close)
 
-	dir := t.TempDir()
-	dest := filepath.Join(dir, "l_amat.zip")
-	metaPath := MetadataPath(dest)
-
-	meta := Metadata{
-		URL:  server.URL,
-		ETag: `"v1"`,
+	dest := filepath.Join(t.TempDir(), "l_amat.zip")
+	req := Request{URL: server.URL, Destination: dest, Timeout: 5 * time.Second, AllowMissingDestination: true}
+	if result, err := Download(testContext(t), req); err != nil || result.Status != StatusUpdated {
+		t.Fatalf("seed: %+v, %v", result, err)
 	}
-	if err := WriteMetadata(metaPath, meta); err != nil {
-		t.Fatalf("write metadata: %v", err)
+	if err := os.Remove(dest); err != nil {
+		t.Fatal(err)
 	}
-
-	res, err := Download(testContext(t), Request{
-		URL:                     server.URL,
-		Destination:             dest,
-		Timeout:                 5 * time.Second,
-		AllowMissingDestination: true,
-	})
-	if err != nil {
-		t.Fatalf("download: %v", err)
-	}
-	if res.Status != StatusNotModified {
-		t.Fatalf("expected not modified status, got %s", res.Status)
+	res, err := Download(testContext(t), req)
+	if err != nil || res.Status != StatusNotModified {
+		t.Fatalf("missing archive: %+v, %v", res, err)
 	}
 	if _, err := os.Stat(dest); !os.IsNotExist(err) {
-		t.Fatalf("expected destination to remain missing")
+		t.Fatalf("expected destination to remain missing: %v", err)
 	}
 }
 

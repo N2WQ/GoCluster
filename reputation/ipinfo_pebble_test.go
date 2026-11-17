@@ -26,7 +26,7 @@ func TestIPInfoPebbleImportAndLookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildIPInfoPebble: %v", err)
 	}
-	if err := updateIPInfoPebbleCurrent(root, dbPath); err != nil {
+	if err := updateIPInfoPebbleCurrent(t.Context(), root, dbPath); err != nil {
 		t.Fatalf("update current: %v", err)
 	}
 	store, err := openIPInfoStore(dbPath, 0)
@@ -46,7 +46,7 @@ func TestIPInfoPebbleImportAndLookup(t *testing.T) {
 		t.Fatalf("v6 lookup mismatch: ok=%t res=%+v", ok, res6)
 	}
 
-	index, err := loadIPv4IndexFromStore(store)
+	index, err := loadIPv4IndexFromStore(t.Context(), store)
 	if err != nil {
 		t.Fatalf("load ipv4 index: %v", err)
 	}

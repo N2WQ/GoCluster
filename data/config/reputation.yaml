@@ -24,7 +24,8 @@ reputation:
   # then optionally deletes the CSV (and gzip if desired). When disabled, you must
   # supply an existing Pebble DB at ipinfo_pebble_path.
   ipinfo_download_enabled: false
-  ipinfo_snapshot_path: "data/ipinfo/location.csv"   # temp extract location used for import
+  # Refresh needs distinct paths for the archive, sidecar, and diagnostic CSV.
+  ipinfo_snapshot_path: "data/ipinfo/location.csv"   # published CSV for diagnostics
   ipinfo_download_path: "data/ipinfo/ipinfo_lite.csv.gz"
   ipinfo_download_url: "https://ipinfo.io/data/ipinfo_lite.csv.gz?token=$TOKEN"
   ipinfo_download_token: "REPLACE_WITH_IPINFO_TOKEN"
@@ -33,7 +34,9 @@ reputation:
   ipinfo_import_timeout_ms: 600000                   # extract + import + optional compaction
   ipinfo_delete_csv_after_import: true               # keep CSV only if you need to debug
   ipinfo_keep_gzip: true                             # keep .gz for reuse or auditing
-  snapshot_max_age_seconds: 93600                    # stale lookups fall back to Cymru/API
+  # Signed-in lookups prefer current local IPinfo, then Cymru and the enabled API.
+  # A valid stale local match is the last resort. Verified unchanged data renews its age.
+  snapshot_max_age_seconds: 93600
 
   # ===== Fallback sources =====
   # Team Cymru DNS (fallback after Pebble or stale cache). Keep timeout tight.

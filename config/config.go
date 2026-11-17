@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"dxcluster/download"
+	"dxcluster/internal/fsutil"
 	"dxcluster/internal/yamlconfig"
 	"dxcluster/pathreliability"
 	"dxcluster/solarweather"
@@ -3358,37 +3359,7 @@ func licensePathAtOrBelow(path, parent string) bool {
 }
 
 func licenseDataPathIdentity(path string) (string, error) {
-	abs, err := filepath.Abs(strings.TrimSpace(path))
-	if err != nil {
-		return "", err
-	}
-	ancestor := abs
-	var suffix []string
-	for {
-		resolved, err := filepath.EvalSymlinks(ancestor)
-		if err == nil {
-			for i := len(suffix) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, suffix[i])
-			}
-			return resolved, nil
-		}
-		if !os.IsNotExist(err) {
-			return "", err
-		}
-		info, statErr := os.Lstat(ancestor)
-		if statErr == nil && info.Mode()&os.ModeSymlink != 0 {
-			return "", fmt.Errorf("dangling symlink %q", ancestor)
-		}
-		if statErr != nil && !os.IsNotExist(statErr) {
-			return "", statErr
-		}
-		parent := filepath.Dir(ancestor)
-		if parent == ancestor {
-			return "", err
-		}
-		suffix = append(suffix, filepath.Base(ancestor))
-		ancestor = parent
-	}
+	return fsutil.ResolvePathIdentity(strings.TrimSpace(path))
 }
 
 func normalizeGridConfig(cfg *Config) {

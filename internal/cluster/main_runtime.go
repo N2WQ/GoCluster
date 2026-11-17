@@ -1798,6 +1798,9 @@ func (r *clusterRuntime) close() {
 	if r.cancel != nil {
 		r.cancel()
 	}
+	if r.repGate != nil {
+		r.repGate.Close()
+	}
 	if r.ulsDone != nil {
 		<-r.ulsDone
 	}

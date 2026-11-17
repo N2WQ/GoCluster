@@ -316,7 +316,7 @@ func TestCTYProtectedInputPublication(t *testing.T) {
 	defer server.Close()
 	cfg := config.CTYConfig{Enabled: true, File: path, URL: server.URL}
 	db, updated, err := refreshCTYDatabase(t.Context(), cfg)
-	if err == nil || !errors.Is(err, os.ErrPermission) || !strings.Contains(err.Error(), "remove old file") || db != nil || updated {
+	if err == nil || !errors.Is(err, os.ErrPermission) || !strings.Contains(err.Error(), "download: replace file") || db != nil || updated {
 		t.Fatalf("expected permission denial at real publication, got db=%v updated=%v err=%v", db != nil, updated, err)
 	}
 	if requests.Load() != 1 || sent.Load() != int64(len(fresh)) {

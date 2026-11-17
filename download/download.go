@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,7 @@ import (
 
 const MetadataSuffix = ".status.json"
 
-// Status indicates whether the remote content changed.
+// Status indicates whether the local file was published or verified unchanged.
 type Status string
 
 const (
@@ -43,6 +44,11 @@ type Metadata struct {
 	UpToDate     bool      `json:"up_to_date,omitempty"`
 	ProcessedAt  time.Time `json:"processed_at,omitempty"`
 	ProcessedOK  bool      `json:"processed_ok,omitempty"`
+	// ByteExactETag belongs to SHA256 and URL from a complete, direct response.
+	ByteExactETag string `json:"byte_exact_etag,omitempty"`
+	// ValidatorResource identifies the effective URL of a complete response.
+	// Hash it so signed redirect URLs need no additional plaintext storage.
+	ValidatorResource string `json:"validator_resource,omitempty"`
 }
 
 // Request configures a download with optional metadata and legacy fallbacks.
@@ -56,6 +62,9 @@ type Request struct {
 	LegacyMetadataPaths     []string
 	UserAgent               string
 	DisableLegacyCleanup    bool
+	// RequireByteExact304 allows a 304 only for the same strong ETag as a
+	// previously verified, complete response from the requested resource.
+	RequireByteExact304 bool
 	// MaxBytes bounds both declared and streamed body size before publication.
 	// Zero preserves unlimited downloads for existing callers.
 	MaxBytes int64
@@ -79,9 +88,13 @@ func MetadataPath(dest string) string {
 // Download downloads a file with conditional headers and metadata sidecar.
 // Key aspects: Uses ETag/Last-Modified, computes SHA256, and caps opted-in bodies
 // before publication. Oversized or interrupted bodies preserve existing data.
-// Upstream: CTY/SCP/IPinfo/ULS/ISED refreshers.
+// Upstream: CTY, IPinfo, FCC, ISED and RBN replay.
 // Downstream: HTTP client, metadata read/write helpers.
 func Download(ctx context.Context, req Request) (Result, error) {
+	return download(ctx, req, fsutil.ReplaceFile)
+}
+
+func download(ctx context.Context, req Request, replace func(string, string) error) (Result, error) {
 	var result Result
 	url := strings.TrimSpace(req.URL)
 	dest := strings.TrimSpace(req.Destination)
@@ -94,146 +107,292 @@ func Download(ctx context.Context, req Request) (Result, error) {
 	if req.MaxBytes < 0 {
 		return result, errors.New("download: MaxBytes must be >= 0")
 	}
-
 	metaPath := strings.TrimSpace(req.MetadataPath)
 	if metaPath == "" {
 		metaPath = MetadataPath(dest)
 	}
 
-	destInfo, err := os.Stat(dest)
+	_, err := os.Stat(dest)
 	destExists := err == nil
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return result, fmt.Errorf("download: stat destination: %w", err)
 	}
-
 	prevMeta, metaSource := ReadMetadata(append([]string{metaPath}, req.LegacyMetadataPaths...)...)
-	if prevMeta == nil && destExists {
-		prevMeta = &Metadata{
-			LastModified: destInfo.ModTime().UTC().Format(http.TimeFormat),
-			SizeBytes:    destInfo.Size(),
-		}
-	}
-
 	force := req.Force || (!destExists && !req.AllowMissingDestination)
-
-	client := &http.Client{}
-	if req.Timeout > 0 {
-		client.Timeout = req.Timeout
+	if prevMeta != nil && prevMeta.URL != "" && prevMeta.URL != url {
+		force = true
 	}
-	reqCtx := ctx
+
 	if req.Timeout > 0 {
 		var cancel context.CancelFunc
-		reqCtx, cancel = context.WithTimeout(ctx, req.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, req.Timeout)
 		defer cancel()
 	}
-
-	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	resp, evidence, err := fetch(ctx, url, req, prevMeta, force)
 	if err != nil {
-		return result, fmt.Errorf("download: build request: %w", err)
+		return result, err
 	}
-	if !force && prevMeta != nil {
-		if prevMeta.ETag != "" {
-			httpReq.Header.Set("If-None-Match", prevMeta.ETag)
+	if resp.StatusCode == http.StatusNotModified {
+		allowMissing := req.AllowMissingDestination && !req.RequireByteExact304
+		validatorOK := evidence.conditional
+		if req.RequireByteExact304 {
+			validatorOK = validatorOK && evidence.direct && prevMeta != nil &&
+				prevMeta.ByteExactETag != "" && responseStrongETag(resp) == prevMeta.ByteExactETag
 		}
-		if prevMeta.LastModified != "" {
-			httpReq.Header.Set("If-Modified-Since", prevMeta.LastModified)
+		verified := validatorOK && ((!destExists && allowMissing) ||
+			(destExists && prevMeta != nil && retainedFileMatches(ctx, dest, prevMeta.SHA256, prevMeta.SizeBytes, req.MaxBytes)))
+		if err := ctx.Err(); err != nil {
+			resp.Body.Close()
+			return result, err
 		}
-	}
-	if req.UserAgent != "" {
-		httpReq.Header.Set("User-Agent", req.UserAgent)
-	}
-
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return result, fmt.Errorf("download: fetch failed: %w", err)
+		if verified {
+			defer resp.Body.Close()
+			result.Status = StatusNotModified
+			result.Meta = mergeMetadata(prevMeta, url, resp, time.Now().UTC(), false, "")
+			if !req.RequireByteExact304 {
+				result.Meta.ByteExactETag = ""
+			}
+			saveDownloadMetadata(req, metaPath, metaSource, result.Meta, replace)
+			return result, nil
+		}
+		resp.Body.Close()
+		if !evidence.conditional {
+			return result, errors.New("download: unexpected 304 without a conditional request")
+		}
+		// Neither the validator nor the retained file proved this response.
+		// Fetch once without validators under the original deadline.
+		resp, evidence, err = fetch(ctx, url, req, nil, true)
+		if err != nil {
+			return result, err
+		}
+		force = true
 	}
 	defer resp.Body.Close()
-
+	result, err = publishResponse(ctx, resp, dest, req.MaxBytes, prevMeta, !force && destExists, replace)
+	if err != nil {
+		return result, err
+	}
 	now := time.Now().UTC()
-	if resp.StatusCode == http.StatusNotModified {
-		result.Status = StatusNotModified
-		meta := mergeMetadata(prevMeta, url, resp, now, false, "")
-		meta.CheckedAt = now
-		meta.UpToDate = true
-		if err := WriteMetadata(metaPath, meta); err != nil {
-			log.Printf("Warning: unable to write metadata %s: %v", metaPath, err)
-		} else if !req.DisableLegacyCleanup {
-			cleanupLegacyMetadata(metaSource, metaPath)
-		}
-		result.Meta = meta
-		return result, nil
+	result.Meta = mergeMetadata(prevMeta, url, resp, now, result.Status == StatusUpdated, result.Meta.SHA256)
+	result.Meta.SizeBytes = result.Bytes
+	result.Meta.ValidatorResource = evidence.resource
+	result.Meta.ByteExactETag = ""
+	if req.RequireByteExact304 && evidence.direct {
+		result.Meta.ByteExactETag = responseStrongETag(resp)
 	}
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return result, fmt.Errorf("download: fetch failed: status %s", resp.Status)
-	}
-	if req.MaxBytes > 0 && resp.ContentLength > req.MaxBytes {
-		return result, fmt.Errorf("download: body exceeds MaxBytes (%d)", req.MaxBytes)
-	}
+	saveDownloadMetadata(req, metaPath, metaSource, result.Meta, replace)
+	return result, nil
+}
 
+type fetchEvidence struct {
+	conditional bool
+	direct      bool
+	resource    string
+}
+
+func fetch(ctx context.Context, endpoint string, opts Request, previous *Metadata, force bool) (*http.Response, fetchEvidence, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fetchEvidence{}, fmt.Errorf("download: build request: %w", err)
+	}
+	if force || (previous != nil && previous.URL != endpoint) {
+		previous = nil
+	}
+	setDownloadValidators(req, opts.RequireByteExact304, previous, true)
+	if opts.UserAgent != "" {
+		req.Header.Set("User-Agent", opts.UserAgent)
+	}
+	client := &http.Client{
+		CheckRedirect: func(next *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("stopped after 10 redirects")
+			}
+			// Go copies the initial headers before this hook. Recompute them
+			// for this hop so matching tag text at a different URL is irrelevant.
+			setDownloadValidators(next, opts.RequireByteExact304, previous, false)
+			return nil
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fetchEvidence{}, fmt.Errorf("download: fetch failed: %w", err)
+	}
+	final := resp.Request
+	if final == nil {
+		return resp, fetchEvidence{}, nil
+	}
+	return resp, fetchEvidence{
+		conditional: final.Header.Get("If-None-Match") != "" || final.Header.Get("If-Modified-Since") != "",
+		direct:      final.Response == nil,
+		resource:    validatorResource(final.URL),
+	}, nil
+}
+
+func setDownloadValidators(req *http.Request, exact bool, previous *Metadata, direct bool) {
+	req.Header.Del("If-None-Match")
+	req.Header.Del("If-Modified-Since")
+	if previous == nil {
+		return
+	}
+	if exact {
+		if direct && isStrongETag(previous.ByteExactETag) {
+			req.Header.Set("If-None-Match", previous.ByteExactETag)
+		}
+		return
+	}
+	if previous.ValidatorResource == "" || previous.ValidatorResource != validatorResource(req.URL) {
+		return
+	}
+	if isEntityTag(previous.ETag) {
+		req.Header.Set("If-None-Match", previous.ETag)
+	}
+	if isHTTPDate(previous.LastModified) {
+		req.Header.Set("If-Modified-Since", previous.LastModified)
+	}
+}
+
+func validatorResource(resource *url.URL) string {
+	identity := *resource
+	identity.Fragment, identity.RawFragment = "", ""
+	hash := sha256.Sum256([]byte(identity.String()))
+	return hex.EncodeToString(hash[:])
+}
+
+func singleResponseHeader(resp *http.Response, name string) string {
+	values := resp.Header.Values(name)
+	if len(values) != 1 {
+		return ""
+	}
+	return strings.Trim(values[0], " \t")
+}
+
+func responseStrongETag(resp *http.Response) string {
+	value := singleResponseHeader(resp, "ETag")
+	if !isStrongETag(value) {
+		return ""
+	}
+	return value
+}
+
+func isEntityTag(value string) bool {
+	return isStrongETag(strings.TrimPrefix(value, "W/"))
+}
+
+func isHTTPDate(value string) bool {
+	_, err := http.ParseTime(value)
+	return err == nil
+}
+
+// RFC 9110 entity-tag syntax for a single strong tag. The quoted contents are
+// opaque, including any backslash. ASCII space, controls and quotes are excluded.
+func isStrongETag(value string) bool {
+	if len(value) < 2 || value[0] != '"' || value[len(value)-1] != '"' {
+		return false
+	}
+	for i := 1; i < len(value)-1; i++ {
+		if b := value[i]; b < '!' || b == '"' || b == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+func publishResponse(ctx context.Context, resp *http.Response, dest string, maxBytes int64, previous *Metadata, compare bool, replace func(string, string) error) (Result, error) {
+	var result Result
+	if resp.StatusCode != http.StatusOK {
+		return result, fmt.Errorf("download: expected a complete HTTP 200 response: %s", resp.Status)
+	}
+	if len(resp.Header.Values("Content-Range")) != 0 {
+		return result, errors.New("download: HTTP 200 carried a Content-Range header")
+	}
+	if maxBytes > 0 && resp.ContentLength > maxBytes {
+		return result, fmt.Errorf("download: body exceeds MaxBytes (%d)", maxBytes)
+	}
 	if err := fsutil.EnsureParentDir(dest, "download: create directory"); err != nil {
 		return result, err
 	}
-	tmpFile, err := os.CreateTemp(filepath.Dir(dest), "download-*.tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(dest), "download-*.tmp")
 	if err != nil {
 		return result, fmt.Errorf("download: create temp file: %w", err)
 	}
-	tmpName := tmpFile.Name()
-	defer os.Remove(tmpName)
+	defer os.Remove(tmp.Name())
 
 	hasher := sha256.New()
-	written, err := copyDownloadBody(io.MultiWriter(tmpFile, hasher), resp.Body, req.MaxBytes)
-	if err != nil {
-		tmpFile.Close()
-		return result, fmt.Errorf("download: copy body: %w", err)
+	written, copyErr := copyDownloadBody(io.MultiWriter(tmp, hasher), resp.Body, maxBytes)
+	closeErr := tmp.Close()
+	if copyErr != nil {
+		return result, fmt.Errorf("download: copy body: %w", copyErr)
 	}
-	if err := tmpFile.Close(); err != nil {
-		return result, fmt.Errorf("download: finalize temp file: %w", err)
+	if closeErr != nil {
+		return result, fmt.Errorf("download: finalize temp file: %w", closeErr)
 	}
 	if written <= 0 {
 		return result, errors.New("download: empty response body")
 	}
-	if err := reqCtx.Err(); err != nil {
+
+	hash := hex.EncodeToString(hasher.Sum(nil))
+	same := compare && previous != nil && previous.SHA256 == hash &&
+		retainedFileMatches(ctx, dest, hash, written, maxBytes)
+	if err := ctx.Err(); err != nil {
 		return result, fmt.Errorf("download: canceled before publication: %w", err)
 	}
-
-	hashHex := hex.EncodeToString(hasher.Sum(nil))
 	result.Bytes = written
-
-	sameContent := prevMeta != nil && destExists && prevMeta.SHA256 != "" && prevMeta.SHA256 == hashHex
-	if sameContent && !force {
+	result.Meta.SHA256 = hash
+	if same {
 		result.Status = StatusSameContent
-		meta := mergeMetadata(prevMeta, url, resp, now, false, hashHex)
-		meta.CheckedAt = now
-		meta.UpToDate = true
-		if err := WriteMetadata(metaPath, meta); err != nil {
-			log.Printf("Warning: unable to write metadata %s: %v", metaPath, err)
-		} else if !req.DisableLegacyCleanup {
-			cleanupLegacyMetadata(metaSource, metaPath)
-		}
-		result.Meta = meta
 		return result, nil
 	}
-
-	if err := os.Remove(dest); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return result, fmt.Errorf("download: remove old file: %w", err)
-	}
-	if err := os.Rename(tmpName, dest); err != nil {
+	if err := replace(tmp.Name(), dest); err != nil {
 		return result, fmt.Errorf("download: replace file: %w", err)
 	}
-
 	result.Status = StatusUpdated
-	meta := mergeMetadata(prevMeta, url, resp, now, true, hashHex)
-	meta.CheckedAt = now
-	meta.DownloadedAt = now
-	meta.SizeBytes = written
-	meta.UpToDate = true
-	if err := WriteMetadata(metaPath, meta); err != nil {
-		log.Printf("Warning: unable to write metadata %s: %v", metaPath, err)
-	} else if !req.DisableLegacyCleanup {
-		cleanupLegacyMetadata(metaSource, metaPath)
-	}
-	result.Meta = meta
 	return result, nil
+}
+
+// Read only a regular file of the expected size. The size observed on the open
+// handle limits verification work even if the file changes during the read.
+func retainedFileMatches(ctx context.Context, path, expectedHash string, expectedSize, maxBytes int64) bool {
+	if len(expectedHash) != sha256.Size*2 || ctx.Err() != nil {
+		return false
+	}
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	info, err = f.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 ||
+		(expectedSize > 0 && info.Size() != expectedSize) || (maxBytes > 0 && info.Size() > maxBytes) {
+		return false
+	}
+
+	hash := sha256.New()
+	size, err := copyDownloadBody(hash, cancelableReader{ctx, f}, info.Size())
+	return err == nil && size == info.Size() && hex.EncodeToString(hash.Sum(nil)) == expectedHash
+}
+
+type cancelableReader struct {
+	ctx context.Context
+	src io.Reader
+}
+
+func (r cancelableReader) Read(p []byte) (int, error) {
+	if err := r.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return r.src.Read(p)
+}
+
+func saveDownloadMetadata(req Request, path, previousPath string, meta Metadata, replace func(string, string) error) {
+	if err := writeMetadata(path, meta, replace); err != nil {
+		log.Printf("Warning: unable to write metadata %s: %v", path, err)
+	} else if !req.DisableLegacyCleanup {
+		cleanupLegacyMetadata(previousPath, path)
+	}
 }
 
 // copyDownloadBody consumes at most the configured limit plus one overflow byte.
@@ -282,8 +441,12 @@ func ReadMetadata(paths ...string) (*Metadata, string) {
 // WriteMetadata persists metadata JSON to disk.
 // Key aspects: Writes an indented JSON file for operator readability.
 // Upstream: Download, UpdateProcessedStatus.
-// Downstream: json.MarshalIndent, os.WriteFile.
+// Downstream: same-directory staging and replacement.
 func WriteMetadata(path string, meta Metadata) error {
+	return writeMetadata(path, meta, fsutil.ReplaceFile)
+}
+
+func writeMetadata(path string, meta Metadata, replace func(string, string) error) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("download: metadata path is empty")
 	}
@@ -291,7 +454,16 @@ func WriteMetadata(path string, meta Metadata) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	temp, err := os.CreateTemp(filepath.Dir(path), ".download-metadata-*.tmp")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(temp.Name())
+	_, writeErr := temp.Write(data)
+	if err := errors.Join(writeErr, temp.Close()); err != nil {
+		return err
+	}
+	return replace(temp.Name(), path)
 }
 
 // UpdateProcessedStatus updates metadata with post-processing status (e.g., DB build).
@@ -323,12 +495,15 @@ func mergeMetadata(prev *Metadata, url string, resp *http.Response, now time.Tim
 		meta = *prev
 	}
 	meta.URL = url
-	if resp != nil {
-		if etag := strings.TrimSpace(resp.Header.Get("ETag")); etag != "" {
-			meta.ETag = etag
+	meta.CheckedAt = now
+	meta.UpToDate = true
+	if resp.StatusCode == http.StatusOK {
+		meta.ETag, meta.LastModified = "", ""
+		if tag := singleResponseHeader(resp, "ETag"); isEntityTag(tag) {
+			meta.ETag = tag
 		}
-		if last := strings.TrimSpace(resp.Header.Get("Last-Modified")); last != "" {
-			meta.LastModified = last
+		if date := singleResponseHeader(resp, "Last-Modified"); isHTTPDate(date) {
+			meta.LastModified = date
 		}
 	}
 	if updated {

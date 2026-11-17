@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -60,6 +61,7 @@ func newISEDHTTPFixture(t *testing.T) (*isedHTTPFixture, config.ISEDConfig) {
 			}
 			body, etag = f.special, f.specialETag
 		}
+		etag = strconv.Quote(etag)
 		w.Header().Set("ETag", etag)
 		if !f.ignoreValidators && r.Header.Get("If-None-Match") == etag {
 			f.statuses = append(f.statuses, 304)

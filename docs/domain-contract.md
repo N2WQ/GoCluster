@@ -981,10 +981,26 @@ FIFO head can be evicted while another expired record remains unread. Cache
 admission permits at most 1,024 bytes total for the key and five result strings,
 owns their exact backing, and bypasses oversized payloads without truncating or
 rejecting their lookup result. Oversized updates remove the old cached record.
-This bounds retained string payload, not total process memory. Source order,
-negative-result handling, prelogin's no-network behavior and DNS request ownership
-remain unchanged. See
-[ADR-0355](decisions/ADR-0355-shared-reputation-lookup-retention.md).
+This bounds retained string payload. Each slot also carries a fixed IPinfo epoch
+and local-source flag. Retired entries age out or are evicted within the same
+cap. See [ADR-0355](decisions/ADR-0355-shared-reputation-lookup-retention.md).
+
+Current local IPinfo data takes precedence for signed-in reputation. After
+`snapshot_max_age_seconds`, try Cymru and the enabled IPinfo API before using a
+valid stale local match. A negative Cymru answer belongs to the DNS cache and
+does not count as known location. Pre-login reads retained or local metadata and
+starts no network work. A successful upstream check renews the active snapshot
+only when the verified archive matches that database's recorded source.
+IPinfo accepts HTTP 304 as byte-exact evidence only with a matching strong
+ETag bound to a complete response from the same direct resource. Otherwise
+verification requires a complete download. An import requires at least one
+ordered IP range with an ASN or country. Invalid ranges and rows without
+enrichment are skipped. All Pebble lookup paths apply the same version-one key,
+range, and value checks. The builder consumes the verified private extraction.
+Configured source files and diagnostic CSV must have independent identities
+from each other and from managed database files. A failed build preserves the serving database and leaves
+the new archive eligible for import on the next successful refresh. See
+[ADR-0357](decisions/ADR-0357-ipinfo-verification-and-download-integrity.md).
 
 ## Stored Configuration Admission
 

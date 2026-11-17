@@ -23,7 +23,7 @@ func TestGateProbationAndRamp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildIPInfoPebble failed: %v", err)
 	}
-	if err := updateIPInfoPebbleCurrent(pebbleRoot, dbPath); err != nil {
+	if err := updateIPInfoPebbleCurrent(t.Context(), pebbleRoot, dbPath); err != nil {
 		t.Fatalf("updateIPInfoPebbleCurrent failed: %v", err)
 	}
 
@@ -121,7 +121,7 @@ func TestPrefixLimiterDrop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildIPInfoPebble failed: %v", err)
 	}
-	if err := updateIPInfoPebbleCurrent(pebbleRoot, dbPath); err != nil {
+	if err := updateIPInfoPebbleCurrent(t.Context(), pebbleRoot, dbPath); err != nil {
 		t.Fatalf("updateIPInfoPebbleCurrent failed: %v", err)
 	}
 
@@ -186,7 +186,7 @@ func TestLookupIPForAdmissionUsesStoreAndCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildIPInfoPebble failed: %v", err)
 	}
-	if err := updateIPInfoPebbleCurrent(pebbleRoot, dbPath); err != nil {
+	if err := updateIPInfoPebbleCurrent(t.Context(), pebbleRoot, dbPath); err != nil {
 		t.Fatalf("updateIPInfoPebbleCurrent failed: %v", err)
 	}
 

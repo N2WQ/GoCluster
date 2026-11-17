@@ -104,6 +104,9 @@ func LoadIPInfoSnapshot(path string) (*ipinfoIndex, error) {
 		}
 		asn := normalizeASN(fieldAt(row, asnIdx))
 		countryCode := strutil.NormalizeUpper(fieldAt(row, countryCodeIdx))
+		if asn == "" && countryCode == "" {
+			continue
+		}
 		asn = internString(stringPool, asn)
 		countryCode = internString(stringPool, countryCode)
 
@@ -184,6 +187,16 @@ func parseRowRange(row []string, startIdx, endIdx, cidrIdx, ipIdx int) (netip.Ad
 		}
 		end, ok := parseAddr(fieldAt(row, endIdx))
 		if !ok {
+			return netip.Addr{}, netip.Addr{}, false
+		}
+		// Keep the start address's existing representation for bare and mapped
+		// IPv4 pairs. A native IPv4/IPv6 pair cannot describe one range.
+		if start.Is4() && end.Is4In6() {
+			end = end.Unmap()
+		} else if start.Is4In6() && end.Is4() {
+			end = netip.AddrFrom16(end.As16())
+		}
+		if start.BitLen() != end.BitLen() || start.WithZone("").Compare(end.WithZone("")) > 0 {
 			return netip.Addr{}, netip.Addr{}, false
 		}
 		return start, end, true

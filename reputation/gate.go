@@ -29,7 +29,11 @@ type Gate struct {
 	cfg              gateConfig
 	ctyLookup        func() *cty.CTYDatabase
 	store            *Store
-	ipinfoIndex      atomic.Pointer[ipinfoIndex]
+	ipinfoView       atomic.Pointer[ipinfoSnapshot]
+	ipinfoRefreshMu  sync.Mutex // Owns preparation, refresh and cleanup.
+	ipinfoCommitMu   sync.Mutex // Owns publication and the terminal close fence.
+	ipinfoClosed     bool
+	ipinfoEpoch      uint64
 	ipinfoAPI        *ipinfoClient
 	ipinfoStore      *ipinfoStore
 	ipinfoStoreMu    sync.RWMutex
@@ -142,6 +146,9 @@ func NewGate(cfg config.ReputationConfig, ctyLookup func() *cty.CTYDatabase) (*G
 	if !gcfg.enabled {
 		return &Gate{cfg: gcfg}, nil
 	}
+	if err := absolutizeIPInfoPaths(&gcfg); err != nil {
+		return nil, err
+	}
 	store := NewStore(cfg.ReputationDir, gcfg.maxASNHistory, gcfg.maxCountryHistory)
 	lookupCache := newTTLCache(32, gcfg.lookupCacheTTL, 5*time.Minute, gcfg.lookupCacheMaxEntries)
 	cymru := newCymruResolver(gcfg.cymruEnabled, gcfg.cymruLookupTimeout, gcfg.cymruCacheTTL, gcfg.cymruNegativeTTL, lookupCache.store, gcfg.cymruWorkers)
@@ -189,7 +196,7 @@ func (g *Gate) Start(ctx context.Context) {
 	if g == nil || !g.cfg.enabled {
 		return
 	}
-	if err := g.LoadStore(); err != nil {
+	if err := g.loadStore(ctx); err != nil {
 		log.Printf("Warning: failed to load ipinfo store: %v", err)
 	}
 	if g.cymru != nil {
@@ -206,50 +213,45 @@ func (g *Gate) Close() {
 	if g == nil {
 		return
 	}
+	g.ipinfoCommitMu.Lock()
+	defer g.ipinfoCommitMu.Unlock()
+	g.ipinfoClosed = true
 	g.ipinfoStoreMu.Lock()
 	store := g.ipinfoStore
 	g.ipinfoStore = nil
-	g.ipinfoIndex.Store(nil)
+	g.ipinfoView.Store(nil)
 	g.ipinfoStoreMu.Unlock()
 	if store != nil {
-		_ = store.Close()
+		store.Close()
 	}
 }
 
-// LoadStore refreshes the Pebble store handle and optionally builds the IPv4
-// in-memory index. The pointer swap keeps readers on either the old complete
-// store or the new complete store, never a half-loaded one.
+// LoadStore opens the selected database before publishing its complete view.
+// A failed open or index build leaves the currently serving store in place.
 func (g *Gate) LoadStore() error {
+	return g.loadStore(context.Background())
+}
+
+func (g *Gate) loadStore(ctx context.Context) error {
 	if g == nil || !g.cfg.enabled {
 		return nil
 	}
-	path := strings.TrimSpace(g.cfg.ipinfoPebblePath)
-	if path == "" {
-		return errors.New("ipinfo pebble path is empty")
+	g.ipinfoRefreshMu.Lock()
+	defer g.ipinfoRefreshMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	resolved, err := resolveIPInfoPebblePath(path)
+	path, err := resolveIPInfoPebblePath(g.cfg.ipinfoPebblePath)
 	if err != nil {
 		return err
 	}
-	store, err := openIPInfoStore(resolved, g.cfg.ipinfoPebbleCacheBytes)
+	store, view, err := g.prepareIPInfoStore(ctx, path)
 	if err != nil {
 		return err
 	}
-	var idx *ipinfoIndex
-	if g.cfg.ipinfoPebbleLoadIPv4 {
-		idx, err = loadIPv4IndexFromStore(store)
-		if err != nil {
-			store.Close()
-			return err
-		}
-	}
-	g.ipinfoStoreMu.Lock()
-	oldStore := g.ipinfoStore
-	g.ipinfoStore = store
-	g.ipinfoIndex.Store(idx)
-	g.ipinfoStoreMu.Unlock()
-	if oldStore != nil {
-		oldStore.Close()
+	if err := g.publishIPInfoStore(ctx, store, view, false); err != nil {
+		store.Close()
+		return err
 	}
 	return nil
 }
@@ -563,88 +565,106 @@ func (g *Gate) lookupIP(addr netip.Addr, now time.Time) (LookupResult, LookupRes
 		return LookupResult{}, LookupResult{}, "", "", false
 	}
 	key := addr.String()
-	if cached, ok, _ := g.lookupCache.get(key, now); ok {
-		if g.cfg.ipinfoSnapshotMaxAge == 0 || now.Sub(cached.FetchedAt) <= g.cfg.ipinfoSnapshotMaxAge {
-			countryKey := countryKeyFromCode(cached.CountryCode)
-			if countryKey == "" {
-				countryKey = countryKeyFromName(cached.CountryName)
+	view := g.ipinfoView.Load()
+	epoch := view.lookupEpoch()
+	var local LookupResult
+	var origin ipinfoCacheOrigin
+	if cached, ok, _ := g.lookupCache.getWithIPInfo(key, now, &origin); ok && origin.epoch == epoch {
+		if origin.local {
+			local = cached
+			if view != nil && view.current(now, g.cfg.ipinfoSnapshotMaxAge) {
+				return lookupIPResult(local, LookupResult{}, true)
 			}
-			continentKey := continentKey(cached.ContinentCode)
-			return cached, LookupResult{}, countryKey, continentKey, true
+		} else if cached.Source != "" && (g.cfg.ipinfoSnapshotMaxAge == 0 || now.Sub(cached.FetchedAt) <= g.cfg.ipinfoSnapshotMaxAge) {
+			return lookupIPResult(cached, LookupResult{}, true)
 		}
 	}
-	var ipinfo LookupResult
-	var cymru LookupResult
-	if addr.Is4() {
-		if idx := g.ipinfoIndex.Load(); idx != nil {
-			if result, ok := idx.lookup(addr); ok {
-				ipinfo = result
-			}
-		}
-		if ipinfo.Source == "" {
-			if result, ok := g.lookupIPInfoStore(addr); ok {
-				ipinfo = result
-			}
-		}
-	} else if addr.Is6() {
-		if result, ok := g.lookupIPInfoStore(addr); ok {
-			ipinfo = result
-		}
-	}
-	if ipinfo.Source != "" {
-		g.lookupCache.set(key, ipinfo, now, false)
-	} else if g.lookupCymruFunc != nil {
-		if result, ok, _ := g.lookupCymruFunc(addr, now); ok {
-			cymru = result
-			g.lookupCache.set(key, cymru, now, false)
-		}
-		if cymru.Source == "" && g.lookupIPInfoFunc != nil {
-			ipinfo = g.lookupIPInfoFunc(addr, now)
-			if ipinfo.Source != "" {
-				g.lookupCache.set(key, ipinfo, now, false)
+	if local.Source == "" {
+		local, view = g.lookupLocalIPInfo(addr, view)
+		epoch = view.lookupEpoch()
+		if local.Source != "" {
+			g.cacheIPResult(key, now, local, epoch, true)
+			if view != nil && view.current(now, g.cfg.ipinfoSnapshotMaxAge) {
+				return lookupIPResult(local, LookupResult{}, true)
 			}
 		}
 	}
 
+	// A stale local hit remains available while asynchronous DNS work is
+	// pending. Neither a cache hit for it nor a negative DNS hit skips fallback.
+	cymru, api := g.lookupOutsideSnapshot(addr, now, key, epoch)
+	if cymru.Source != "" || api.Source != "" {
+		return lookupIPResult(api, cymru, true)
+	}
+	return lookupIPResult(local, LookupResult{}, local.Source != "")
+}
+
+func (g *Gate) lookupOutsideSnapshot(addr netip.Addr, now time.Time, key string, epoch uint64) (LookupResult, LookupResult) {
+	if g.lookupCymruFunc != nil {
+		result, ok, negative := g.lookupCymruFunc(addr, now)
+		if ok && !negative && result.Source != "" {
+			g.cacheIPResult(key, now, result, epoch, false)
+			return result, LookupResult{}
+		}
+	}
+	if g.lookupIPInfoFunc != nil {
+		if result := g.lookupIPInfoFunc(addr, now); result.Source != "" {
+			g.cacheIPResult(key, now, result, epoch, false)
+			return LookupResult{}, result
+		}
+	}
+	return LookupResult{}, LookupResult{}
+}
+
+func lookupIPResult(ipinfo, cymru LookupResult, known bool) (LookupResult, LookupResult, string, string, bool) {
 	primary := ipinfo
 	if primary.Source == "" {
 		primary = cymru
 	}
-	countryKey := countryKeyFromCode(primary.CountryCode)
-	if countryKey == "" {
-		countryKey = countryKeyFromName(primary.CountryName)
+	country := countryKeyFromCode(primary.CountryCode)
+	if country == "" {
+		country = countryKeyFromName(primary.CountryName)
 	}
-	continentKey := continentKey(primary.ContinentCode)
-	if primary.Source == "" {
-		return ipinfo, cymru, "", "", false
-	}
-	return ipinfo, cymru, countryKey, continentKey, true
+	return ipinfo, cymru, country, continentKey(primary.ContinentCode), known
 }
 
-func (g *Gate) lookupIPInfoStore(addr netip.Addr) (LookupResult, bool) {
-	if g == nil {
-		return LookupResult{}, false
+func (g *Gate) cacheIPResult(key string, now time.Time, result LookupResult, epoch uint64, local bool) {
+	if g.ipinfoView.Load().lookupEpoch() == epoch {
+		g.lookupCache.setEntry(key, now, cacheEntry{value: result, ipinfoEpoch: epoch, localIPInfo: local})
 	}
+}
+
+func (g *Gate) lookupLocalIPInfo(addr netip.Addr, view *ipinfoSnapshot) (LookupResult, *ipinfoSnapshot) {
+	if view == nil {
+		return LookupResult{}, nil
+	}
+	if addr.Is4() && view.index != nil {
+		if value, ok := view.index.lookup(addr); ok {
+			return value, view
+		}
+	}
+	return g.lookupIPInfoStore(addr)
+}
+
+func (g *Gate) lookupIPInfoStore(addr netip.Addr) (LookupResult, *ipinfoSnapshot) {
 	g.ipinfoStoreMu.RLock()
+	defer g.ipinfoStoreMu.RUnlock()
+	view := g.ipinfoView.Load()
 	store := g.ipinfoStore
 	if store == nil {
-		g.ipinfoStoreMu.RUnlock()
-		return LookupResult{}, false
+		return LookupResult{}, view
 	}
-	var result LookupResult
-	var ok bool
+	var value LookupResult
 	if addr.Is4() {
-		result, ok = store.lookupV4(addr)
+		value, _ = store.lookupV4(addr)
 	} else if addr.Is6() {
-		result, ok = store.lookupV6(addr)
+		value, _ = store.lookupV6(addr)
 	}
-	g.ipinfoStoreMu.RUnlock()
-	return result, ok
+	return value, view
 }
 
-// LookupIPForAdmission returns IPinfo-derived metadata for pre-login admission
-// controls. It is intentionally store-only (no live API/Cymru network lookups)
-// so admission checks stay bounded and deterministic under load.
+// LookupIPForAdmission uses only retained metadata and the local Pebble store.
+// It never starts IPinfo API or Cymru network work.
 func (g *Gate) LookupIPForAdmission(ip string, now time.Time) (LookupResult, bool) {
 	if g == nil || !g.cfg.enabled {
 		return LookupResult{}, false
@@ -656,18 +676,14 @@ func (g *Gate) LookupIPForAdmission(ip string, now time.Time) (LookupResult, boo
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	if g.lookupCache != nil {
-		if cached, ok, _ := g.lookupCache.get(addr.String(), now); ok {
-			if cached.Source != "" {
-				return cached, true
-			}
-			return LookupResult{}, false
-		}
+	key := addr.String()
+	epoch := g.ipinfoView.Load().lookupEpoch()
+	var origin ipinfoCacheOrigin
+	if cached, ok, _ := g.lookupCache.getWithIPInfo(key, now, &origin); ok && origin.epoch == epoch {
+		return cached, cached.Source != ""
 	}
-	if result, ok := g.lookupIPInfoStore(addr); ok {
-		if g.lookupCache != nil {
-			g.lookupCache.set(addr.String(), result, now, false)
-		}
+	if result, view := g.lookupIPInfoStore(addr); result.Source != "" {
+		g.cacheIPResult(key, now, result, view.lookupEpoch(), true)
 		return result, true
 	}
 	return LookupResult{}, false
@@ -830,15 +846,15 @@ func normalizeGateConfig(cfg config.ReputationConfig) gateConfig {
 		prefixTTL:                time.Duration(cfg.PrefixTTLSeconds) * time.Second,
 		prefixMaxEntries:         cfg.PrefixMaxEntries,
 		ipinfoSnapshotMaxAge:     time.Duration(cfg.SnapshotMaxAgeSeconds) * time.Second,
-		ipinfoSnapshotPath:       cfg.IPInfoSnapshotPath,
+		ipinfoSnapshotPath:       strings.TrimSpace(cfg.IPInfoSnapshotPath),
 		ipinfoDownloadToken:      cfg.IPInfoDownloadToken,
 		ipinfoDownloadURL:        cfg.IPInfoDownloadURL,
-		ipinfoDownloadPath:       cfg.IPInfoDownloadPath,
+		ipinfoDownloadPath:       strings.TrimSpace(cfg.IPInfoDownloadPath),
 		ipinfoRefreshUTC:         cfg.IPInfoRefreshUTC,
 		ipinfoDownloadTimeout:    time.Duration(cfg.IPInfoDownloadTimeoutMS) * time.Millisecond,
 		ipinfoImportTimeout:      time.Duration(cfg.IPInfoImportTimeoutMS) * time.Millisecond,
 		ipinfoDownloadEnabled:    cfg.IPInfoDownloadEnabled,
-		ipinfoPebblePath:         cfg.IPInfoPebblePath,
+		ipinfoPebblePath:         strings.TrimSpace(cfg.IPInfoPebblePath),
 		ipinfoPebbleCacheBytes:   int64(cfg.IPInfoPebbleCacheMB) << 20,
 		ipinfoPebbleLoadIPv4:     cfg.IPInfoPebbleLoadIPv4,
 		ipinfoDeleteCSV:          cfg.IPInfoDeleteCSVAfterImport,

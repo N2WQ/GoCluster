@@ -30,6 +30,34 @@ Linux operators currently build from source:
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
 ```
 
+## IPinfo Refresh And Recovery
+
+The signed-in reputation gate uses fresh local IPinfo metadata first. The
+shipped freshness window is 26 hours. After it elapses, the gate tries Cymru and
+the enabled IPinfo API before using a valid stale local match. Pre-login
+admission uses retained or local metadata without making live network requests.
+
+The database's build time starts the window. A successful refresh renews it
+when the upstream archive matches the serving database. An HTTP 304 counts
+when the server returns the same strong ETag previously recorded from a full
+download at that URL. A weak or missing validator can require another full
+download. A manually supplied database needs a valid version and build timestamp. If
+startup reports invalid metadata, restore a valid database or let the enabled
+IPinfo refresh rebuild it from a verified archive. Keep the database directory,
+`CURRENT_DB`, and `VERIFIED_SNAPSHOT.json` together when backing up a
+download-managed database. With no verification record, the database uses its
+build time. Each imported snapshot needs at least one valid IP range with an
+ASN or country. A stored row needs a valid key, endpoint, and enrichment
+encoding. An unusable row is treated as missing metadata. Surrounding whitespace
+is trimmed from configured IPinfo paths, which are then made absolute and
+lexically cleaned before use. The archive, sidecar, and diagnostic
+CSV need independent paths outside any managed database generation, pointer, or
+verification record. A path collision aborts refresh before the download.
+A failed
+import preserves the serving database and is retried on the next successful
+refresh, even when upstream still serves the same bytes.
+[IPinfo troubleshooting record](troubleshooting/TSR-0136-ipinfo-and-download-integrity.md)
+
 ## Configure A Real Node
 
 The packaged and checked-in `data/config` directory is public example config.

@@ -27,8 +27,9 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0357 | IPinfo Verification And Download Integrity | Accepted | 2026-11-17 | snapshot freshness, fallback, retained bytes and replacement | refines ADR-0355 lookup precedence and negative results | none | [ADR-0357](decisions/ADR-0357-ipinfo-verification-and-download-integrity.md) |
 | ADR-0356 | Fixed Meta Bands And Shared Physical Catalogue | Accepted | 2026-11-17 | six meta memberships, shared ranges, 4m, bounded CC selection, HELP | none; refines native DXBM capability only | none | [ADR-0356](decisions/ADR-0356-fixed-meta-bands-and-shared-physical-catalogue.md) |
-| ADR-0355 | Shared Reputation Lookup Retention | Accepted | 2026-11-15 | combined cache cap, FIFO, owned payload and diagnostics | none | none | [ADR-0355](decisions/ADR-0355-shared-reputation-lookup-retention.md) |
+| ADR-0355 | Shared Reputation Lookup Retention | Accepted | 2026-11-15 | combined cache cap, FIFO, owned payload and diagnostics | none | lookup precedence and negative results refined by ADR-0357 | [ADR-0355](decisions/ADR-0355-shared-reputation-lookup-retention.md) |
 | ADR-0354 | Peer Flood Verdict And Retirement | Accepted | 2026-11-15 | peer FIFO, one verdict, original relay, retirement | ADR-0239 initial-enqueue boundary only | none | [ADR-0354](decisions/ADR-0354-peer-flood-verdict-and-retirement.md) |
 | ADR-0353 | Native Reporter Quota Exemption | Accepted | 2026-11-15 | DECALL exemption, human source separation, recovery | ADR-0062 native DECALL applicability only | none | [ADR-0353](decisions/ADR-0353-native-reporter-quota-exemption.md) |
 | ADR-0351 | Native CC11 Output Port | Accepted | 2026-11-13 | session-only native live/history, raw comments, shared output ownership | ADR-0332 display scope for native output only | none | [ADR-0351](decisions/ADR-0351-native-cc11-output-port.md) |
