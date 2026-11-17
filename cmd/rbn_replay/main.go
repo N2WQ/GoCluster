@@ -24,8 +24,32 @@ func main() {
 		configDirFlag    = flag.String("config", "", "Cluster config directory override (defaults to replay config, DXC_CONFIG_PATH, or data/config)")
 		archiveDirFlag   = flag.String("archive-dir", "", "Archive directory override (defaults to replay config)")
 		forceDownload    = flag.Bool("force-download", false, "Force re-download of the RBN history zip (overrides replay config)")
+		studyPlan        = flag.String("study-plan", "", "Frozen CCv2 study JSON (local archives only)")
+		studyFreeze      = flag.String("study-freeze", "", "SHA256 of the already frozen study plan")
+		studyArm         = flag.String("study-arm", "", "Study arm: shipped, repaired_off, or repaired_on")
+		studyCandidate   = flag.String("study-candidate", "", "Complete predeclared study candidate ID")
+		studyPhase       = flag.String("study-phase", "holdout", "Study population: tuning or holdout")
+		studyOut         = flag.String("study-out", "", "New study output directory (must not exist)")
+		studyCompare     = flag.String("study-compare", "", "Comma-separated complete study report paths to compare")
 	)
 	flag.Parse()
+	studyRequested := false
+	var replayOverrides []string
+	flag.Visit(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "study-") {
+			studyRequested = true
+		} else if f.Name != "date" {
+			replayOverrides = append(replayOverrides, f.Name)
+		}
+	})
+	if studyRequested {
+		if len(replayOverrides) > 0 || len(flag.Args()) > 0 {
+			must(errors.New("study uses only frozen plan inputs; ordinary replay overrides and positional arguments are not allowed"))
+		}
+		must(runCCV2Study(studyCLIRequest{Plan: *studyPlan, Freeze: *studyFreeze, Arm: *studyArm,
+			Candidate: *studyCandidate, Phase: *studyPhase, Output: *studyOut, Compare: *studyCompare, Date: *dateFlag}))
+		return
+	}
 	must(runReplay(replayRequest{
 		dateValue:        *dateFlag,
 		replayConfigPath: *replayConfigFlag,

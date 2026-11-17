@@ -87,6 +87,9 @@ type replayRunner struct {
 	temporalNextID     uint64
 	temporalQueue      replayTemporalHeap
 	temporalPending    map[uint64]replayTemporalPending
+	// Non-nil only for the explicitly selected offline study. This observer
+	// owns row provenance and never supplies a prediction or gate decision.
+	study *studyObserver
 }
 
 // runReplay is the public orchestration entry point used by main and tests.
@@ -509,6 +512,11 @@ func (r *replayRunner) advanceReplayTime(until time.Time) error {
 // misleading A/B metrics.
 func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 	r.recordsTotal++
+	if r.study != nil {
+		if err := r.study.checkRaw(row, ok, r.recordsTotal); err != nil {
+			return err
+		}
+	}
 	if !ok {
 		r.recordsSkippedBad++
 		return nil
@@ -524,6 +532,11 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 
 	if err := r.advanceReplayTime(row.Time); err != nil {
 		return err
+	}
+	// Withheld receivers never reach resolver, adaptive activity, history or
+	// learning. Their raw rows remain in the separate frozen reference input.
+	if r.study != nil && !r.study.predictor(row.Spotter) {
+		return nil
 	}
 
 	if !row.SpotClass.Accepted() {
@@ -547,6 +560,11 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 	spotEntry := newReplaySpot(row)
 	if spotEntry.IsBeacon {
 		return nil
+	}
+	if r.study != nil {
+		if err := r.study.begin(spotEntry, r.recordsTotal); err != nil {
+			return err
+		}
 	}
 	correctionflow.ObserveResolverActivity(spotEntry, r.adaptiveMinReports, now)
 
@@ -611,6 +629,9 @@ func (r *replayRunner) maybeHoldTemporal(
 		Selection:   selection,
 	})
 	if accepted {
+		if r.study != nil {
+			r.study.noteTemporal(spotEntry, "held")
+		}
 		r.temporalPending[id] = replayTemporalPending{
 			id:          id,
 			spot:        spotEntry,
@@ -647,6 +668,9 @@ func (r *replayRunner) maybeHoldTemporal(
 		overflowDecision.Action = correctionflow.TemporalDecisionActionFallbackResolver
 	}
 	r.abMetrics.Temporal.ObserveDecision(overflowDecision)
+	if r.study != nil {
+		r.study.noteTemporal(spotEntry, string(overflowDecision.Action))
+	}
 	outcome := r.temporalReleaseOutcome(spotEntry, resolverEvidence, hasResolverEvidence, overflowDecision, now)
 	r.processOutcome(spotEntry, outcome, now)
 	r.driver.Step(now)
@@ -686,7 +710,12 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 	if spotEntry == nil {
 		return
 	}
+	terminalStatus := "output"
+	if r.study != nil {
+		defer func() { r.study.finish(spotEntry, outcome, now, terminalStatus, r) }()
+	}
 	if outcome.Suppress {
+		terminalStatus = "suppressed"
 		return
 	}
 	if outcome.temporal {
@@ -701,6 +730,7 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 	// acceptance; a drop does not undo the accepted identity history.
 	spotEntry.RefreshBeaconFlag()
 	if rejectReplayDXLicense(r.ctyDB, normalizedDXCall(spotEntry), spotEntry.IsBeacon, now) {
+		terminalStatus = "license_rejected"
 		return
 	}
 	if outcome.temporal {
@@ -723,6 +753,9 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 
 	if stabilizerDelayProxyEligible(spotEntry, r.recentBandStore, r.cfg.CallCorrection) {
 		delayDecision := evaluateStabilizerDelay(spotEntry, r.recentBandStore, r.cfg.CallCorrection, now, outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
+		if r.study != nil {
+			r.study.noteStabilizer(spotEntry, delayDecision)
+		}
 		r.abMetrics.StabilizerDelayProxy.Observe(delayDecision)
 	}
 
@@ -762,6 +795,9 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 
 		delete(r.temporalPending, item.id)
 		r.abMetrics.Temporal.ObserveDecision(decision)
+		if r.study != nil {
+			r.study.noteTemporal(pending.spot, string(decision.Action))
+		}
 
 		outcome := r.temporalReleaseOutcome(pending.spot, pending.evidence, pending.hasEvidence, decision, now)
 		r.processOutcome(pending.spot, outcome, now)
