@@ -93,7 +93,7 @@ func studyValidateBayesScalarDomain(value config.CallCorrectionBayesBonusConfig)
 // baseline values. Master enablement and the separately frozen mask are controls.
 func studyCheckFixedBayes(selected, baseline config.CallCorrectionBayesBonusConfig) error {
 	var objects [2]map[string]json.RawMessage
-	for i, value := range []config.CallCorrectionBayesBonusConfig{selected, baseline} {
+	for i, value := range []*config.CallCorrectionBayesBonusConfig{&selected, &baseline} {
 		data, err := json.Marshal(value)
 		if err != nil {
 			return err

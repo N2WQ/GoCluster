@@ -124,6 +124,8 @@ func TestCCV2StudyDistinctCandidateExecution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	geography := &config.Config{}
+	studyTestBindGeography(t, &p, geography, studyTestCTYPoints())
 	var reports []studyReport
 	for i, frozen := range p.Candidates {
 		candidate, err := studySelectCandidate(p, studyCLIRequest{Phase: "tuning", Candidate: frozen.ID})
@@ -131,6 +133,7 @@ func TestCCV2StudyDistinctCandidateExecution(t *testing.T) {
 			t.Fatal(err)
 		}
 		cfg := &config.Config{CallCorrection: replayTemporalFreshConfig()}
+		cfg.CTY, cfg.H3TablePath = geography.CTY, geography.H3TablePath
 		cfg.CallCorrection.BayesBonus = studyTestBayesBaseline()
 		if err := studyApplyCandidate(cfg, p.Arms[2], candidate); err != nil {
 			t.Fatal(err)

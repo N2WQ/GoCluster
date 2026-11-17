@@ -90,6 +90,7 @@ func TestCCV2StudyRealRunnerAndWithheldReceivers(t *testing.T) {
 	}
 	at := day.Rows[3].Row.Time
 	r, store := replayLegacyClockRunner(t, at)
+	r.ctyDB = studyTestCTY(t, studyTestCTYPoints())
 	observer, err := newStudyObserver(day, r, filepath.Join(t.TempDir(), "decisions.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -118,6 +119,7 @@ func TestCCV2StudyRealRunnerAndWithheldReceivers(t *testing.T) {
 	}
 	cfg := &config.Config{CallCorrection: replayTemporalFreshConfig()}
 	p := studyTestPlan(t)
+	studyTestBindGeography(t, &p, cfg, studyTestCTYPoints())
 	arm := p.Arms[0]
 	if err := studyRunDay(p, "test-plan", studyCLIRequest{Output: out, Phase: "tuning"}, arm, p.Candidates[0], in, cfg, day, false); err != nil {
 		t.Fatal(err)

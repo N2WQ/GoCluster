@@ -13,51 +13,55 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/cty"
 	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 )
 
 type studyDecision struct {
-	RawID                 string         `json:"raw_id"`
-	RawSHA256             string         `json:"raw_sha256"`
-	EpisodeID             string         `json:"episode_id"`
-	Ordinal               int64          `json:"ordinal"`
-	Raw                   rbnHistoryRow  `json:"raw"`
-	ReceiverFamily        string         `json:"receiver_family"`
-	SubjectIdentity       string         `json:"subject_identity"`
-	FinalIdentity         string         `json:"final_identity"`
-	FinalObserved         string         `json:"final_observed"`
-	ProposedIdentity      string         `json:"proposed_identity,omitempty"`
-	Status                string         `json:"status"`
-	Reason                string         `json:"reason"`
-	Held                  bool           `json:"held"`
-	TemporalAction        string         `json:"temporal_action,omitempty"`
-	DecisionAtUTC         time.Time      `json:"decision_at_utc"`
-	DecisionAfterCutoff   bool           `json:"decision_after_cutoff"`
-	Applied               bool           `json:"applied"`
-	IdentityCorrection    bool           `json:"identity_correction"`
-	PlainDistance         int            `json:"plain_distance"`
-	ConfiguredDistance    int            `json:"configured_distance"`
-	DistanceModelCW       string         `json:"distance_model_cw"`
-	DistanceModelRTTY     string         `json:"distance_model_rtty"`
-	GateEvaluated         bool           `json:"gate_evaluated"`
-	GateAllow             bool           `json:"gate_allow"`
-	WinnerSupport         int            `json:"winner_support"`
-	SubjectSupport        int            `json:"subject_support"`
-	TotalReporters        int            `json:"total_reporters"`
-	WinnerWeightedMilli   int            `json:"winner_weighted_milli"`
-	SubjectWeightedMilli  int            `json:"subject_weighted_milli"`
-	FocalSNRPresent       bool           `json:"focal_snr_present"`
-	SNRCoverageScope      string         `json:"snr_coverage_scope"`
-	StabilizerProxyDelay  bool           `json:"stabilizer_proxy_delay"`
-	StabilizerProxyReason string         `json:"stabilizer_proxy_reason,omitempty"`
-	R1                    studyReference `json:"r1"`
-	R2                    studyReference `json:"r2"`
-	R2Frozen              studyReference `json:"r2_frozen"`
+	RawID                 string                `json:"raw_id"`
+	RawSHA256             string                `json:"raw_sha256"`
+	EpisodeID             string                `json:"episode_id"`
+	Ordinal               int64                 `json:"ordinal"`
+	Raw                   rbnHistoryRow         `json:"raw"`
+	ReceiverFamily        string                `json:"receiver_family"`
+	ReceiverLocation      studyReceiverLocation `json:"receiver_location"`
+	SubjectIdentity       string                `json:"subject_identity"`
+	FinalIdentity         string                `json:"final_identity"`
+	FinalObserved         string                `json:"final_observed"`
+	ProposedIdentity      string                `json:"proposed_identity,omitempty"`
+	Status                string                `json:"status"`
+	Reason                string                `json:"reason"`
+	Held                  bool                  `json:"held"`
+	TemporalAction        string                `json:"temporal_action,omitempty"`
+	DecisionAtUTC         time.Time             `json:"decision_at_utc"`
+	DecisionAfterCutoff   bool                  `json:"decision_after_cutoff"`
+	Applied               bool                  `json:"applied"`
+	IdentityCorrection    bool                  `json:"identity_correction"`
+	PlainDistance         int                   `json:"plain_distance"`
+	ConfiguredDistance    int                   `json:"configured_distance"`
+	DistanceModelCW       string                `json:"distance_model_cw"`
+	DistanceModelRTTY     string                `json:"distance_model_rtty"`
+	GateEvaluated         bool                  `json:"gate_evaluated"`
+	GateAllow             bool                  `json:"gate_allow"`
+	WinnerSupport         int                   `json:"winner_support"`
+	SubjectSupport        int                   `json:"subject_support"`
+	TotalReporters        int                   `json:"total_reporters"`
+	WinnerWeightedMilli   int                   `json:"winner_weighted_milli"`
+	SubjectWeightedMilli  int                   `json:"subject_weighted_milli"`
+	FocalSNRPresent       bool                  `json:"focal_snr_present"`
+	SNRCoverageScope      string                `json:"snr_coverage_scope"`
+	StabilizerProxyDelay  bool                  `json:"stabilizer_proxy_delay"`
+	StabilizerProxyReason string                `json:"stabilizer_proxy_reason,omitempty"`
+	R1                    studyReference        `json:"r1"`
+	R2                    studyReference        `json:"r2"`
+	R2Frozen              studyReference        `json:"r2_frozen"`
 }
 
 type studyReport struct {
 	SchemaVersion              int                    `json:"schema_version"`
+	InputScenario              studyInputScenario     `json:"input_scenario"`
+	InputCoverage              studyInputCoverage     `json:"input_coverage"`
 	Complete                   bool                   `json:"complete"`
 	PlanSHA256                 string                 `json:"plan_sha256"`
 	ReferenceVersion           string                 `json:"reference_version"`
@@ -101,23 +105,28 @@ type studyReferenceCoverage struct {
 }
 
 type studyObserver struct {
-	day         *studyRawDay
-	pending     map[*spot.Spot]*studyDecision
-	pendingCap  int
-	highWater   int
-	expected    int
-	terminal    int
-	checked     int64
-	lastReasons map[string]uint64
-	file        *os.File
-	encoder     *json.Encoder
-	path        string
-	err         error
-	maxHeap     uint64
-	coverage    studyReferenceCoverage
+	day           *studyRawDay
+	pending       map[*spot.Spot]*studyDecision
+	pendingCap    int
+	highWater     int
+	expected      int
+	terminal      int
+	checked       int64
+	lastReasons   map[string]uint64
+	file          *os.File
+	encoder       *json.Encoder
+	path          string
+	err           error
+	maxHeap       uint64
+	coverage      studyReferenceCoverage
+	ctyDB         *cty.CTYDatabase
+	inputCoverage studyInputCoverage
 }
 
 func newStudyObserver(day *studyRawDay, r *replayRunner, path string) (*studyObserver, error) {
+	if err := studyValidateCTYImage(r.ctyDB); err != nil {
+		return nil, err
+	}
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
@@ -127,10 +136,10 @@ func newStudyObserver(day *studyRawDay, r *replayRunner, path string) (*studyObs
 		bound += r.cfg.CallCorrection.TemporalDecoder.MaxPending
 	}
 	observer := &studyObserver{day: day, pending: make(map[*spot.Spot]*studyDecision),
-		pendingCap: bound, lastReasons: make(map[string]uint64), file: file, encoder: json.NewEncoder(file), path: path}
+		pendingCap: bound, lastReasons: make(map[string]uint64), file: file, encoder: json.NewEncoder(file), path: path, ctyDB: r.ctyDB}
 	observer.coverage.R1Unknown, observer.coverage.R2Unknown = make(map[string]int), make(map[string]int)
-	for _, raw := range day.Rows {
-		if studyFocalRow(raw) {
+	for i := range day.Rows {
+		if studyFocalRow(day.Rows[i]) {
 			observer.expected++
 		}
 	}
@@ -172,9 +181,12 @@ func (o *studyObserver) begin(s *spot.Spot, ordinal int64) error {
 		return errors.New("study duplicate pending spot ownership")
 	}
 	r2 := o.day.reference(raw, true)
+	location := studyDeriveReceiverLocation(o.ctyDB, raw.Row.Spotter)
+	studyApplyReceiverLocation(s, location)
+	o.inputCoverage.observe(location)
 	o.pending[s] = &studyDecision{
 		RawID: fmt.Sprintf("%s:%d", o.day.InputSHA256, ordinal), RawSHA256: hashAnyStable(raw.Row),
-		EpisodeID: raw.Episode, Ordinal: ordinal, Raw: raw.Row, ReceiverFamily: raw.Family,
+		EpisodeID: raw.Episode, Ordinal: ordinal, Raw: raw.Row, ReceiverFamily: raw.Family, ReceiverLocation: location,
 		SubjectIdentity: spot.CorrectionVoteKey(raw.Row.DXCall),
 		R1:              o.day.reference(raw, false), R2: r2, R2Frozen: r2,
 		FocalSNRPresent: true, SNRCoverageScope: "focal parsed input only; candidate measurement coverage is not inferred"}
@@ -283,7 +295,7 @@ func (o *studyObserver) complete() error {
 	if err := o.err; err != nil {
 		return err
 	}
-	if o.checked != int64(len(o.day.Rows)) || len(o.pending) != 0 || o.expected != o.terminal {
+	if o.checked != int64(len(o.day.Rows)) || len(o.pending) != 0 || o.expected != o.terminal || !o.inputCoverage.complete(o.expected) {
 		return fmt.Errorf("incomplete study: raw=%d/%d terminal=%d/%d pending=%d",
 			o.checked, len(o.day.Rows), o.terminal, o.expected, len(o.pending))
 	}
@@ -301,7 +313,7 @@ func (o *studyObserver) close() error {
 
 func newStudyReport(p studyPlan, digest string, req studyCLIRequest, arm studyArm, candidate studyCandidate,
 	in studyInput, o *studyObserver, maskSchema bool) studyReport {
-	return studyReport{SchemaVersion: 1, Complete: true, PlanSHA256: digest,
+	return studyReport{SchemaVersion: studySchemaVersion, InputScenario: p.InputScenario, InputCoverage: o.inputCoverage, Complete: true, PlanSHA256: digest,
 		ReferenceVersion: p.ReferenceVersion, Arm: arm.Name, Candidate: candidate.ID, CandidateSHA256: hashAnyStable(candidate),
 		DateUTC: in.DateUTC, Phase: req.Phase, SourceRevision: arm.SourceRevision, ExecutableSHA256: strings.ToLower(arm.ExecutableSHA256),
 		AssetsSHA256: studyAssetDigest(arm.Assets), ConfigFilesSHA256: hashAnyStable(arm.ConfigFiles), MaskSchemaPresent: maskSchema,
@@ -312,6 +324,7 @@ func newStudyReport(p studyPlan, digest string, req studyCLIRequest, arm studyAr
 		Population:       "A-only prediction/activity/history/learning; each UTC day starts with empty history",
 		LegacyStatistics: "manifest.json and gates.json retain deprecated legacy statistics; they are not independent study accuracy oracles",
 		ClaimLimits: []string{"Archive reference agreement is not RF truth or calibrated probability",
+			"Receiver locations are fixed CTY representative proxies, not reconstructed historical sites or reported grids; common imputation does not cancel nonlinear eligibility errors",
 			"Receiver/date/episode dependence and site/decoder independence are unverified",
 			"Largest-ZIP selection and model-training exposure can bias the population",
 			"Empty daily A-history does not reconstruct the full historical horizon or production steady state",
@@ -322,6 +335,7 @@ func newStudyReport(p studyPlan, digest string, req studyCLIRequest, arm studyAr
 
 func studyDecisionBinding(d studyDecision, archiveSHA string) bool {
 	return d.RawID == fmt.Sprintf("%s:%d", strings.ToLower(archiveSHA), d.Ordinal) &&
+		studyReceiverLocationBinding(d.ReceiverLocation, d.Raw.Spotter) &&
 		d.RawSHA256 == hashAnyStable(d.Raw) && d.SubjectIdentity == spot.CorrectionVoteKey(d.Raw.DXCall) &&
 		d.FinalIdentity == spot.CorrectionVoteKey(d.FinalObserved) &&
 		d.IdentityCorrection == (d.Applied && d.SubjectIdentity != d.FinalIdentity) &&

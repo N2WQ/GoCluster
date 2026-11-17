@@ -46,7 +46,11 @@ func studyTestWriteReports(t *testing.T, p studyPlan, digest string,
 				t.Fatal(err)
 			}
 			candidate := p.Candidates[0]
-			report := studyReport{SchemaVersion: 1, Complete: true, PlanSHA256: digest, ReferenceVersion: p.ReferenceVersion,
+			var coverage studyInputCoverage
+			for _, d := range rows {
+				coverage.observe(d.ReceiverLocation)
+			}
+			report := studyReport{SchemaVersion: 2, InputScenario: p.InputScenario, InputCoverage: coverage, Complete: true, PlanSHA256: digest, ReferenceVersion: p.ReferenceVersion,
 				Arm: arm.Name, Candidate: candidate.ID, CandidateSHA256: hashAnyStable(candidate), DateUTC: in.DateUTC, Phase: in.Phase,
 				SourceRevision: arm.SourceRevision, ExecutableSHA256: arm.ExecutableSHA256, AssetsSHA256: studyAssetDigest(arm.Assets),
 				ConfigFilesSHA256: hashAnyStable(arm.ConfigFiles), PipelineWithoutBayesSHA256: pipeline,

@@ -16,14 +16,19 @@ import (
 )
 
 func studyTestZIP(t *testing.T, body string) studyFile {
+	return studyTestZIPDate(t, "2026-11-15", body)
+}
+
+func studyTestZIPDate(t *testing.T, date, body string) studyFile {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "20261115.zip")
+	compact := strings.ReplaceAll(date, "-", "")
+	path := filepath.Join(t.TempDir(), compact+".zip")
 	f, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	z := zip.NewWriter(f)
-	w, err := z.Create("20261115.csv")
+	w, err := z.Create(compact + ".csv")
 	if err == nil {
 		_, err = w.Write([]byte("callsign,freq,band,dx,db,date,mode,tx_mode\n" + body))
 	}
@@ -71,6 +76,7 @@ func TestCCV2StudyInputAndReferenceIsolation(t *testing.T) {
 		}
 		r := newReplayRunner(replayRequest{})
 		r.cfg, r.tracker = &config.Config{}, stats.NewTracker()
+		r.ctyDB = studyTestCTY(t, studyTestCTYPoints())
 		observer, err := newStudyObserver(day, r, filepath.Join(t.TempDir(), "decisions.jsonl"))
 		if err != nil {
 			t.Fatal(err)

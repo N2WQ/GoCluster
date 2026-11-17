@@ -76,8 +76,7 @@ func loadStudyReceiverAliases(file studyFile) (map[string]string, error) {
 		return nil, errors.Join(err, errors.New("receiver metadata must be an explicit array of alias groups"))
 	}
 	parents := make(map[string]string)
-	var root func(string) string
-	root = func(key string) string {
+	root := func(key string) string {
 		parent, ok := parents[key]
 		if !ok {
 			parents[key] = key

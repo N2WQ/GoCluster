@@ -23,6 +23,7 @@ import (
 )
 
 const (
+	studySchemaVersion    = 2
 	studyReferenceVersion = "ccv2-reference-v1"
 	studyMaxRows          = 8_000_000
 	studyMaxCSVBytes      = 512 << 20
@@ -64,25 +65,26 @@ type studyCandidate struct {
 }
 
 type studyPlan struct {
-	SchemaVersion              int              `json:"schema_version"`
-	Frozen                     bool             `json:"frozen"`
-	ReferenceVersion           string           `json:"reference_version"`
-	ReferenceContractSHA256    string           `json:"reference_contract_sha256"`
-	FrozenAtUTC                string           `json:"frozen_at_utc"`
-	SelectedAtUTC              string           `json:"selected_at_utc"`
-	AssetTrainingThroughUTC    string           `json:"asset_training_through_utc"`
-	TuningThroughUTC           string           `json:"tuning_through_utc"`
-	ReceiverMetadataThroughUTC string           `json:"receiver_metadata_through_utc"`
-	ReceiverMetadata           studyFile        `json:"receiver_metadata"`
-	HoldoutContentUninspected  bool             `json:"holdout_content_uninspected"`
-	SelectedCandidate          string           `json:"selected_candidate"`
-	DecisionCutoffSeconds      int              `json:"decision_cutoff_seconds"`
-	EmbargoSeconds             int              `json:"embargo_seconds"`
-	WarmupSeconds              int              `json:"warmup_seconds"`
-	MaxExamples                int              `json:"max_examples"`
-	Candidates                 []studyCandidate `json:"candidates"`
-	Arms                       []studyArm       `json:"arms"`
-	Inputs                     []studyInput     `json:"inputs"`
+	SchemaVersion              int                `json:"schema_version"`
+	InputScenario              studyInputScenario `json:"input_scenario"`
+	Frozen                     bool               `json:"frozen"`
+	ReferenceVersion           string             `json:"reference_version"`
+	ReferenceContractSHA256    string             `json:"reference_contract_sha256"`
+	FrozenAtUTC                string             `json:"frozen_at_utc"`
+	SelectedAtUTC              string             `json:"selected_at_utc"`
+	AssetTrainingThroughUTC    string             `json:"asset_training_through_utc"`
+	TuningThroughUTC           string             `json:"tuning_through_utc"`
+	ReceiverMetadataThroughUTC string             `json:"receiver_metadata_through_utc"`
+	ReceiverMetadata           studyFile          `json:"receiver_metadata"`
+	HoldoutContentUninspected  bool               `json:"holdout_content_uninspected"`
+	SelectedCandidate          string             `json:"selected_candidate"`
+	DecisionCutoffSeconds      int                `json:"decision_cutoff_seconds"`
+	EmbargoSeconds             int                `json:"embargo_seconds"`
+	WarmupSeconds              int                `json:"warmup_seconds"`
+	MaxExamples                int                `json:"max_examples"`
+	Candidates                 []studyCandidate   `json:"candidates"`
+	Arms                       []studyArm         `json:"arms"`
+	Inputs                     []studyInput       `json:"inputs"`
 }
 
 func loadStudyPlan(path, frozenSHA string) (studyPlan, string, error) {
@@ -106,8 +108,11 @@ func loadStudyPlan(path, frozenSHA string) (studyPlan, string, error) {
 }
 
 func validateStudyPlan(p studyPlan) error {
-	if p.SchemaVersion != 1 || !p.Frozen || !p.HoldoutContentUninspected || p.ReferenceVersion != studyReferenceVersion {
-		return errors.New("study requires schema 1, frozen=true, uninspected holdout and ccv2-reference-v1")
+	if p.SchemaVersion != studySchemaVersion || !p.Frozen || !p.HoldoutContentUninspected || p.ReferenceVersion != studyReferenceVersion {
+		return errors.New("study requires schema 2, frozen=true, uninspected holdout and ccv2-reference-v1")
+	}
+	if err := studyValidateInputScenario(p.InputScenario, p.Arms); err != nil {
+		return err
 	}
 	if !strings.EqualFold(p.ReferenceContractSHA256, "879cc458ef9fa94f977051fb71ae0f07a72deede6728604fc7b18d556ed74626") {
 		return errors.New("study reference contract fingerprint changed")
@@ -205,9 +210,10 @@ func studyValidateArms(arms []studyArm) error {
 			return errors.New("invalid or duplicate study arm")
 		}
 		seen[a.Name] = true
-		if a.Name == "repaired_off" {
+		switch a.Name {
+		case "repaired_off":
 			repairedOff = a
-		} else if a.Name == "repaired_on" {
+		case "repaired_on":
 			repairedOn = a
 		}
 		if !studyValidSHA(a.ExecutableSHA256) || len(a.SourceRevision) != 40 || a.ConfigDir == "" || len(a.ConfigFiles) < 1 || len(a.ConfigFiles) > 256 || len(a.Assets) > 64 {

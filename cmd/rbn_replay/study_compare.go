@@ -60,6 +60,7 @@ type studyMissed struct {
 
 type studyComparison struct {
 	SchemaVersion             int                `json:"schema_version"`
+	InputScenario             studyInputScenario `json:"input_scenario"`
 	Complete                  bool               `json:"complete"`
 	PlanSHA256                string             `json:"plan_sha256"`
 	CandidateSHA256           string             `json:"candidate_sha256"`
@@ -109,9 +110,10 @@ func compareCCV2Study(p studyPlan, digest string, req studyCLIRequest) (err erro
 		}
 	}()
 	encoder := json.NewEncoder(file)
-	result := studyComparison{SchemaVersion: 1, PlanSHA256: digest, CandidateSHA256: hashAnyStable(candidate), Phase: req.Phase,
+	result := studyComparison{SchemaVersion: studySchemaVersion, InputScenario: p.InputScenario, PlanSHA256: digest, CandidateSHA256: hashAnyStable(candidate), Phase: req.Phase,
 		BayesOutcomes: make(map[string]int64), RepairOutcomes: make(map[string]int64),
 		ClaimLimits: []string{"Reduced-input empty-A-history archive population; no RF-truth or calibrated probability claim",
+			"Fixed CTY representative receiver-location scenario; no historical-site equivalence; common imputation does not cancel nonlinear eligibility errors",
 			"Physical receiver/site/decoder independence and production steady-state history are unverified",
 			"Largest-ZIP selection, date/receiver/episode dependence and training exposure can bias results",
 			"Replay stabilization is a proxy, not a network delivery or paced-capacity qualification",
@@ -183,6 +185,12 @@ func studyReadReports(p studyPlan, digest string, req studyCLIRequest, candidate
 	if err := studyValidateArms(p.Arms); err != nil {
 		return nil, err
 	}
+	if p.SchemaVersion != studySchemaVersion {
+		return nil, errors.New("study comparison requires schema 2 input scenario")
+	}
+	if err := studyValidateInputScenario(p.InputScenario, p.Arms); err != nil {
+		return nil, err
+	}
 	paths := strings.Split(req.Compare, ",")
 	if len(paths) > 96 {
 		return nil, errors.New("study comparison exceeds 32 days/96 arm reports")
@@ -213,11 +221,12 @@ func studyReadReports(p studyPlan, digest string, req studyCLIRequest, candidate
 		index := studyArmIndex(report.Arm)
 		arm := arms[report.Arm]
 		in, known := inputs[report.DateUTC]
-		if !known || index < 0 || report.SchemaVersion != 1 || !report.Complete || report.PlanSHA256 != digest ||
+		if !known || index < 0 || report.SchemaVersion != studySchemaVersion || report.InputScenario != p.InputScenario || !report.Complete || report.PlanSHA256 != digest ||
 			report.ReferenceVersion != p.ReferenceVersion || report.Phase != req.Phase || report.CandidateSHA256 != hashAnyStable(candidate) ||
 			report.SourceRevision != arm.SourceRevision || !strings.EqualFold(report.ExecutableSHA256, arm.ExecutableSHA256) ||
 			report.AssetsSHA256 != studyAssetDigest(arm.Assets) || report.ConfigFilesSHA256 != hashAnyStable(arm.ConfigFiles) ||
 			report.FocalRows != report.TerminalRows || report.RawRows > in.MaxRows || report.RawRows < 1 ||
+			!report.InputCoverage.complete(report.FocalRows) ||
 			report.MaxRows != in.MaxRows || report.MaxCSVBytes != in.MaxCSVBytes || !studyValidFile(report.Decisions) {
 			return nil, errors.New("study comparison refused incomplete, mismatched or unfrozen report")
 		}
@@ -252,6 +261,15 @@ func studyReadDayPairs(in studyInput, reports [3]*studyReport) (map[int64]*study
 		if err = errors.Join(err, file.Close()); err != nil {
 			return nil, err
 		}
+		var coverage studyInputCoverage
+		for _, pair := range pairs {
+			if decision := pair.Arms[arm]; decision != nil {
+				coverage.observe(decision.ReceiverLocation)
+			}
+		}
+		if coverage != report.InputCoverage {
+			return nil, errors.New("study receiver input coverage does not reconcile with all terminal rows")
+		}
 	}
 	for _, pair := range pairs {
 		var first *studyDecision
@@ -260,8 +278,8 @@ func studyReadDayPairs(in studyInput, reports [3]*studyReport) (map[int64]*study
 				continue // Full union remains visible; never filter to intersection.
 			}
 			if first != nil && (decision.RawSHA256 != first.RawSHA256 || decision.EpisodeID != first.EpisodeID ||
-				decision.R1 != first.R1 || decision.R2Frozen != first.R2Frozen) {
-				return nil, errors.New("paired raw row/SNR, frozen episode or reference changed between arms")
+				decision.R1 != first.R1 || decision.R2Frozen != first.R2Frozen || decision.ReceiverLocation != first.ReceiverLocation) {
+				return nil, errors.New("paired raw row/SNR, frozen episode, reference or receiver input covariates changed between arms")
 			}
 			first = decision
 		}
@@ -454,7 +472,8 @@ func studyAddMissed(date string, pair *studyPair, result *studyComparison, maxEx
 	// reference distance from the same mode model used by that candidate's arm.
 	// The vector records the actual selected model on every decision below.
 	missed.ConfiguredDistance = spot.CallDistance(d.SubjectIdentity, d.R1.Identity, d.Raw.Mode, d.DistanceModelCW, d.DistanceModelRTTY)
-	for i, existing := range result.Missed {
+	for i := range result.Missed {
+		existing := &result.Missed[i]
 		if existing.EpisodeID == missed.EpisodeID && existing.Mode == missed.Mode && existing.ConfiguredDistance == missed.ConfiguredDistance {
 			if existing.Support >= missed.Support {
 				return

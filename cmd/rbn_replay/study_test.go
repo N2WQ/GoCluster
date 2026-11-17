@@ -17,7 +17,8 @@ import (
 func studyTestPlan(t *testing.T) studyPlan {
 	t.Helper()
 	sha := strings.Repeat("a", 64)
-	plan := studyPlan{SchemaVersion: 1, Frozen: true, HoldoutContentUninspected: true,
+	plan := studyPlan{SchemaVersion: 2, InputScenario: studyInputScenario{ReceiverGeography: studyReceiverGeography,
+		CTYSHA256: sha, H3Res1SHA256: strings.Repeat("c", 64), H3Res2SHA256: strings.Repeat("d", 64)}, Frozen: true, HoldoutContentUninspected: true,
 		ReferenceVersion:        studyReferenceVersion,
 		ReferenceContractSHA256: "879cc458ef9fa94f977051fb71ae0f07a72deede6728604fc7b18d556ed74626",
 		FrozenAtUTC:             time.Now().UTC().Add(-time.Minute).Format(time.RFC3339),
@@ -30,7 +31,9 @@ func studyTestPlan(t *testing.T) studyPlan {
 			{DateUTC: "2026-11-16", Phase: "holdout", Archive: studyFile{Path: "20261116.zip", SHA256: sha}, MaxRows: 10, MaxCSVBytes: 4096}}}
 	for _, name := range []string{"shipped", "repaired_off", "repaired_on"} {
 		plan.Arms = append(plan.Arms, studyArm{Name: name, ExecutableSHA256: sha, SourceRevision: strings.Repeat("b", 40),
-			ConfigDir: "config", ConfigFiles: map[string]string{"pipeline.yaml": sha}})
+			ConfigDir: "config", ConfigFiles: map[string]string{"pipeline.yaml": sha}, Assets: []studyFile{
+				{Path: "fixture-cty.plist", SHA256: sha}, {Path: "fixture-res1.bin", SHA256: strings.Repeat("c", 64)},
+				{Path: "fixture-res2.bin", SHA256: strings.Repeat("d", 64)}}})
 	}
 	return plan
 }
@@ -106,7 +109,8 @@ func TestCCV2StudyFreezeAndProvenance(t *testing.T) {
 func studyTestDecision(id, episode string, corrected bool, reference string) *studyDecision {
 	at := time.Date(2026, 11, 15, 0, 10, 0, 0, time.UTC)
 	d := &studyDecision{RawID: id, EpisodeID: episode, Raw: studyTestRaw(at, "N0BBB", "N0BBB", "K1ABD", true).Row,
-		SubjectIdentity: "K1ABD", FinalIdentity: "K1ABD", FinalObserved: "K1ABD", Status: "output", DecisionAtUTC: at,
+		ReceiverLocation: studyReceiverLocation{LookupCall: "N0BBB", Reason: "cty_no_match"},
+		SubjectIdentity:  "K1ABD", FinalIdentity: "K1ABD", FinalObserved: "K1ABD", Status: "output", DecisionAtUTC: at,
 		ConfiguredDistance: 0, R1: studyReference{Strong: true, Identity: reference, Families: 3, Reason: "strong"},
 		R2: studyReference{Strong: true, Identity: reference, Families: 3, Reason: "strong"}}
 	if corrected {
@@ -212,12 +216,22 @@ func TestCCV2StudyActualMainRefusals(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"unfrozen", "wrong_hash", "missing_input", "retuned_candidate", "partial_reports", "ordinary_override"} {
+	for _, name := range []string{"unfrozen", "wrong_hash", "missing_input", "retuned_candidate", "partial_reports", "ordinary_override", "old_schema", "missing_scenario", "wrong_scenario", "scenario_asset_drift"} {
 		t.Run(name, func(t *testing.T) {
 			p := studyTestPlan(t)
 			p.Inputs[0].Archive.Path = filepath.Join(t.TempDir(), "missing.zip")
 			if name == "unfrozen" {
 				p.Frozen = false
+			}
+			switch name {
+			case "old_schema":
+				p.SchemaVersion = 1
+			case "missing_scenario":
+				p.InputScenario = studyInputScenario{}
+			case "wrong_scenario":
+				p.InputScenario.ReceiverGeography = "historical_sites"
+			case "scenario_asset_drift":
+				p.InputScenario.CTYSHA256 = strings.Repeat("f", 64)
 			}
 			data, err := json.Marshal(p)
 			if err != nil {
@@ -237,7 +251,8 @@ func TestCCV2StudyActualMainRefusals(t *testing.T) {
 			args := []string{"-study-plan", path, "-study-freeze", sum, "-study-arm", "repaired_on", "-date", "2026-11-15",
 				"-study-out", filepath.Join(t.TempDir(), "out")}
 			want := map[string]string{"unfrozen": "frozen=true", "wrong_hash": "frozen digest", "missing_input": "missing.zip",
-				"retuned_candidate": "single frozen", "partial_reports": "every frozen date", "ordinary_override": "ordinary replay overrides"}[name]
+				"retuned_candidate": "single frozen", "partial_reports": "every frozen date", "ordinary_override": "ordinary replay overrides",
+				"old_schema": "schema 2", "missing_scenario": "cty_representative_v1", "wrong_scenario": "cty_representative_v1", "scenario_asset_drift": "scenario asset"}[name]
 			if name == "retuned_candidate" {
 				args = append(args, "-study-candidate", "retuned")
 			}

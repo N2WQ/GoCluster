@@ -59,17 +59,13 @@ func runCCV2Study(req studyCLIRequest) error {
 	if input == nil {
 		return errors.New("study date/population was not predeclared in frozen plan")
 	}
-	if err := studyCheckFile(input.Archive); err != nil {
-		return err
+	if info, err := os.Stat(input.Archive.Path); err != nil || !info.Mode().IsRegular() {
+		return errors.Join(err, errors.New("study archive must be a regular local file"))
 	}
 	if err := studyCheckExecutable(*arm); err != nil {
 		return err
 	}
 	if err := studyCheckConfigFiles(*arm); err != nil {
-		return err
-	}
-	aliases, err := loadStudyReceiverAliases(p.ReceiverMetadata)
-	if err != nil {
 		return err
 	}
 	// Validation precedes input content inspection. In particular, a holdout
@@ -91,14 +87,13 @@ func runCCV2Study(req studyCLIRequest) error {
 	if err := studyCheckAssets(*arm, cfg); err != nil {
 		return err
 	}
-	day, err := loadStudyRawDay(*input, aliases, p.WarmupSeconds)
-	if err != nil {
+	if err := studyValidateGeographyAssets(p.InputScenario, *arm, cfg); err != nil {
 		return err
 	}
 	if err := os.Mkdir(req.Output, 0o700); err != nil {
 		return fmt.Errorf("study output must be a new directory: %w", err)
 	}
-	return studyRunDay(p, digest, req, *arm, candidate, *input, cfg, day, maskSchema)
+	return studyRunDay(p, digest, req, *arm, candidate, *input, cfg, nil, maskSchema)
 }
 
 func studySelectCandidate(p studyPlan, req studyCLIRequest) (studyCandidate, error) {
@@ -232,6 +227,9 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 	if err := r.resolveDay(); err != nil {
 		return err
 	}
+	if err := studyValidateGeographyAssets(p.InputScenario, arm, cfg); err != nil {
+		return err
+	}
 	ccFingerprint := hashAnyStable(cfg.CallCorrection)
 	pipelineFingerprint, err := studyPipelineFingerprint(cfg)
 	if err != nil {
@@ -240,16 +238,33 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 	if err := studySnapshotAssets(arm, r); err != nil {
 		return err
 	}
-	if cfg.CallCorrection.CustomSCP.Enabled {
-		if err := pathreliability.InitRequiredH3Mappings(cfg.H3TablePath); err != nil {
-			return err
-		}
+	if err := pathreliability.InitRequiredH3Mappings(cfg.H3TablePath); err != nil {
+		return err
 	}
 	if err := r.configureExternalDependencies(); err != nil {
 		return err
 	}
+	if err := studyValidateCTYImage(r.ctyDB); err != nil {
+		return err
+	}
 	if err := r.buildReplayRuntime(); err != nil {
 		return err
+	}
+	// Asset/schema/setup failures must not inspect raw archive contents or be
+	// converted into per-row unknown locations. Tests may supply a private day;
+	// the CLI always parses only after frozen dependencies have loaded.
+	if err := studyCheckFile(in.Archive); err != nil {
+		return err
+	}
+	if day == nil {
+		aliases, err := loadStudyReceiverAliases(p.ReceiverMetadata)
+		if err != nil {
+			return err
+		}
+		day, err = loadStudyRawDay(in, aliases, p.WarmupSeconds)
+		if err != nil {
+			return err
+		}
 	}
 	if err := r.openReplayOutputs(); err != nil {
 		return err
@@ -333,26 +348,24 @@ func studySnapshotAssets(arm studyArm, r *replayRunner) error {
 		&cfg.CallCorrection.SpotterReliabilityFileRTTY, &cfg.FCCULS.DBPath, &cfg.ISED.DBPath, &cfg.FCCULS.AllowlistPath} {
 		rewrite(path)
 	}
-	if cfg.CallCorrection.CustomSCP.Enabled {
-		geography := filepath.Join(root, "geography")
-		if err := os.Mkdir(geography, 0o700); err != nil {
+	geography := filepath.Join(root, "geography")
+	if err := os.Mkdir(geography, 0o700); err != nil {
+		return err
+	}
+	for _, name := range []string{"res1.bin", "res2.bin"} {
+		original, err := filepath.Abs(filepath.Join(cfg.H3TablePath, name))
+		if err != nil {
 			return err
 		}
-		for _, name := range []string{"res1.bin", "res2.bin"} {
-			original, err := filepath.Abs(filepath.Join(cfg.H3TablePath, name))
-			if err != nil {
-				return err
-			}
-			path, ok := frozen[strings.ToLower(original)]
-			if !ok || filepath.Dir(path) != root {
-				return errors.New("study geography is not owned by the frozen asset directory")
-			}
-			if err := os.Rename(path, filepath.Join(geography, name)); err != nil {
-				return err
-			}
+		path, ok := frozen[strings.ToLower(original)]
+		if !ok || filepath.Dir(path) != root {
+			return errors.New("study geography is not owned by the frozen asset directory")
 		}
-		cfg.H3TablePath = geography
+		if err := os.Rename(path, filepath.Join(geography, name)); err != nil {
+			return err
+		}
 	}
+	cfg.H3TablePath = geography
 	return nil
 }
 
