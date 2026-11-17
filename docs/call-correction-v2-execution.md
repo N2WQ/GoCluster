@@ -28,7 +28,7 @@ these failure mechanisms and be recorded with executed results.
 | --- | --- | --- |
 | S0 evaluation foundation/provenance | Legacy compatibility, frozen baselines, strict paired-study CLI and native paced fixture complete | 13 compatibility + 33 study cases passed; native paced baseline passed; archive/candidate qualification pending |
 | S1a legacy report parsing | Removed substring SNR fallback; whole integer grammar and human rules retained | 139 native parser/display/RBN cases passed; 20s grammar + 20s legacy differential fuzz passed (unguided prepared binary) |
-| S1b harmonic presence | Pending | Not run |
+| S1b harmonic presence | Missing incoming reports neither compare nor seed harmonic evidence; measured cross-receiver/mode policy preserved | 33 native presence/threshold/expiry/maintenance/delivery cases passed, including TCP and reopened archive |
 | S2 neighborhood admission | Pending | Not run |
 | S3 receiver SNR | Pending | Not run |
 | S4 canonical slash authority | Pending | Not run |
