@@ -15,61 +15,31 @@ import (
 
 func studyTestComparisonReports(t *testing.T, p studyPlan, digest string, badSecondCell, spillover bool) []string {
 	t.Helper()
-	var paths []string
-	candidate := p.Candidates[0]
-	for _, in := range p.Inputs {
-		for _, arm := range p.Arms {
-			dir := t.TempDir()
-			decisions := filepath.Join(dir, "decisions.jsonl")
-			file, err := os.Create(decisions)
-			if err != nil {
-				t.Fatal(err)
-			}
-			encoder := json.NewEncoder(file)
-			for i := 1; i <= 100; i++ {
-				rawID := fmt.Sprintf("%s:%d", in.Archive.SHA256, i)
-				d := studyTestDecision(rawID, rawID, arm.Name == "repaired_on", "K1ABC")
-				date, _, err := parseUTCDate(in.DateUTC)
-				if err != nil {
-					t.Fatal(err)
-				}
-				d.Raw.Time, d.DecisionAtUTC = date.Add(time.Duration(300+i*196)*time.Second), date.Add(time.Duration(300+i*196)*time.Second)
-				d.Ordinal, d.ReceiverFamily = int64(i), "N0BBB"
-				d.RawSHA256 = hashAnyStable(d.Raw)
-				if spillover && i == 1 {
-					d.R1.Identity = "K9BAD" // Frozen label is identical in every arm.
-					if arm.Name == "repaired_on" {
-						d.ConfiguredDistance = 3
-					}
-				}
-				if badSecondCell && i == 1 && arm.Name == "repaired_on" {
-					d.ConfiguredDistance = 2
-				}
-				if err := encoder.Encode(d); err != nil {
-					t.Fatal(err)
-				}
-			}
-			if err := file.Close(); err != nil {
-				t.Fatal(err)
-			}
-			sum, err := studyHashFile(decisions)
-			if err != nil {
-				t.Fatal(err)
-			}
-			report := studyReport{SchemaVersion: 1, Complete: true, PlanSHA256: digest, ReferenceVersion: p.ReferenceVersion,
-				Arm: arm.Name, Candidate: candidate.ID, CandidateSHA256: hashAnyStable(candidate), DateUTC: in.DateUTC, Phase: in.Phase,
-				SourceRevision: arm.SourceRevision, ExecutableSHA256: arm.ExecutableSHA256, AssetsSHA256: studyAssetDigest(arm.Assets),
-				ConfigFilesSHA256: hashAnyStable(arm.ConfigFiles), PipelineWithoutBayesSHA256: strings.Repeat("c", 64),
-				Decisions: studyFile{Path: decisions, SHA256: sum}, RawRows: 100, FocalRows: 100, TerminalRows: 100,
-				MaxRows: in.MaxRows, MaxCSVBytes: in.MaxCSVBytes, WarmupSeconds: p.WarmupSeconds, MaskSchemaPresent: true}
-			path := filepath.Join(dir, "complete.json")
-			if err := writeJSONAtomic(path, report); err != nil {
-				t.Fatal(err)
-			}
-			paths = append(paths, path)
+	return studyTestWriteReports(t, p, digest, func(in studyInput, arm studyArm) []studyDecision {
+		date, _, err := parseUTCDate(in.DateUTC)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	return paths
+		rows := make([]studyDecision, 0, 100)
+		for i := 1; i <= 100; i++ {
+			rawID := fmt.Sprintf("%s:%d", in.Archive.SHA256, i)
+			d := studyTestDecision(rawID, rawID, arm.Name == "repaired_on", "K1ABC")
+			d.Raw.Time, d.DecisionAtUTC = date.Add(time.Duration(300+i*196)*time.Second), date.Add(time.Duration(300+i*196)*time.Second)
+			d.Ordinal, d.ReceiverFamily = int64(i), "N0BBB"
+			d.RawSHA256 = hashAnyStable(d.Raw)
+			if spillover && i == 1 {
+				d.R1.Identity = "K9BAD"
+				if arm.Name == "repaired_on" {
+					d.ConfiguredDistance = 3
+				}
+			}
+			if badSecondCell && i == 1 && arm.Name == "repaired_on" {
+				d.ConfiguredDistance = 2
+			}
+			rows = append(rows, *d)
+		}
+		return rows
+	})
 }
 
 func TestCCV2StudyWholeCombinationQualification(t *testing.T) {

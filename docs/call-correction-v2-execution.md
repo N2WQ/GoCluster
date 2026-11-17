@@ -3,6 +3,15 @@
 Authority: [approved Scope Ledger v3](call-correction-v2-scope-ledger-v3.md).
 Owner authorization: exact `Approved v3`, 2026-11-17.
 Branch: `call-correctionv2`; baseline `3fd37c6cb48d2028756ca18184d4f18a8dc95bb0`.
+Active execution worktree: `C:\src\gocluster-call-correctionv2`.
+
+The owner confirmed another task was using the original checkout after it
+switched to `meta-bands` at 11:07. Work was isolated without changing that
+task's band/filter edits. The S3 commit initially landed on that shared branch;
+the requested branch was advanced to the same commit with a guarded fast-forward.
+Subsequent correction work uses only the isolated worktree. Frozen data inputs
+were copied and hash-verified; local index flags preserve those hydrated inputs
+without including them in source commits. No model installation was performed.
 
 ## Evidence status
 
@@ -26,7 +35,7 @@ these failure mechanisms and be recorded with executed results.
 
 | Unit | Implementation | Validation |
 | --- | --- | --- |
-| S0 evaluation foundation/provenance | Legacy compatibility, frozen baselines, strict paired-study CLI and native paced fixture complete | 13 compatibility + 33 study cases passed; native paced baseline passed; archive/candidate qualification pending |
+| S0 evaluation foundation/provenance | Legacy compatibility, frozen baselines, strict paired-study CLI and native paced fixture complete | 13 compatibility + 112 final study cases passed; native paced baseline passed; archive/candidate qualification pending |
 | S1a legacy report parsing | Removed substring SNR fallback; whole integer grammar and human rules retained | 139 native parser/display/RBN cases passed; 20s grammar + 20s legacy differential fuzz passed (unguided prepared binary) |
 | S1b harmonic presence | Missing incoming reports neither compare nor seed harmonic evidence; measured cross-receiver/mode policy preserved | 33 native presence/threshold/expiry/maintenance/delivery cases passed, including TCP and reopened archive |
 | S2 neighborhood admission | Only admitted comparable adjacent populations set neighborhood use | 13 selection/accounting + 7 native delivery cases passed; immediate/temporal/stabilizer exact distance-2/3 recovery |
@@ -113,6 +122,18 @@ a malformed spillover test fixture with different strong references between
 paired arms; fixing the fixture preserved the strict pairing check, and the
 complete selected group passed on rerun. These are hand-counted tool contract
 checks and a tiny real-runner integration, not held-out empirical qualification.
+
+Independent S0 review subsequently found receipt-shift inflation, incomplete
+off/on policy/binary provenance, non-executable candidate selection and scalar
+normalization drift. All were repaired and independently rechecked. Final
+`TestCCV2Study*` passed 112 native cases, zero skips, in a detached worktree at
+`4395eb31` with only the reviewed study-tool repairs applied; original production
+correction source remains unchanged there. It also rejects exposure on the
+holdout UTC date even within warmup. Per-row strong contradictions survive
+episode deduplication and can block the complete stateful combination outside
+the directly selected cells. A rebuilt hook-enabled shipped binary is frozen
+with its exact bytes, source revision and dirty tool-file hashes; its source
+revision alone is not claimed to identify those instrumented bytes.
 
 No new model has been qualified; no production accuracy, capacity, deployment,
 hosted CI, final-lane pass or task completion is claimed by this record.

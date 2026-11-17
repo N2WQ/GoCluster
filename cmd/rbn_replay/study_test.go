@@ -45,6 +45,17 @@ func TestCCV2StudyFreezeAndProvenance(t *testing.T) {
 		if err := validateStudyPlan(p); err == nil || !strings.Contains(err.Error(), "embargo") {
 			t.Fatalf("training/label overlap was not refused: %v", err)
 		}
+		for _, exposed := range []string{"training", "tuning"} {
+			p = studyTestPlan(t)
+			if exposed == "training" {
+				p.AssetTrainingThroughUTC = "2026-11-15T00:00:01Z"
+			} else {
+				p.TuningThroughUTC = "2026-11-15T00:00:01Z"
+			}
+			if err := validateStudyPlan(p); err == nil {
+				t.Fatalf("%s exposure on the holdout date was absorbed by warmup", exposed)
+			}
+		}
 		p = studyTestPlan(t)
 		p.EmbargoSeconds = 194
 		if err := validateStudyPlan(p); err == nil {
@@ -144,10 +155,10 @@ func TestCCV2StudyPairedOutcomes(t *testing.T) {
 	// Unknown repeated output must remain in the same episode's full coverage
 	// denominator; an earlier strong receipt cannot hide it.
 	ep := &studyEpisodeCell{CoveredR1: true, CoveredR2: true, Joint: true}
-	studyAccountEpisode(ep, retained, strong, "CW/1")
+	studyAccountEpisode(ep, retained, strong, "CW/1", nil)
 	unknown := *strong
 	unknown.R2 = studyReference{Reason: "insufficient_families"}
-	studyAccountEpisode(ep, retained, &unknown, "CW/1")
+	studyAccountEpisode(ep, retained, &unknown, "CW/1", nil)
 	if !ep.Incremental || !ep.CoveredR1 || ep.CoveredR2 || ep.Joint {
 		t.Fatalf("repeat/unknown coverage was inflated: %+v", ep)
 	}

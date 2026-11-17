@@ -5,7 +5,26 @@ package main
 
 import "fmt"
 
-func studyAccountEpisode(ep *studyEpisodeCell, off, on *studyDecision, cell string) {
+type studyEpisodeIdentity struct {
+	Episode, Mode, Identity string
+}
+
+// The day owns at most one entry per delivered OFF row, including corrections
+// outside active cells. Precomputing before accounting makes receipt movement
+// within an episode irrelevant to the count of additional normalized identities.
+type studyEpisodeCorrections map[studyEpisodeIdentity]struct{}
+
+func studyOffEpisodeCorrections(pairs map[int64]*studyPair) studyEpisodeCorrections {
+	identities := make(studyEpisodeCorrections)
+	for _, pair := range pairs {
+		if off := pair.Arms[1]; studyDeliveredCorrection(off) {
+			identities[studyEpisodeIdentity{off.EpisodeID, off.Raw.Mode, off.FinalIdentity}] = struct{}{}
+		}
+	}
+	return identities
+}
+
+func studyAccountEpisode(ep *studyEpisodeCell, off, on *studyDecision, cell string, offIdentities studyEpisodeCorrections) {
 	onHere := studyDeliveredCorrection(on) && fmt.Sprintf("%s/%d", on.Raw.Mode, on.ConfiguredDistance) == cell
 	offHere := studyDeliveredCorrection(off) && fmt.Sprintf("%s/%d", off.Raw.Mode, off.ConfiguredDistance) == cell
 	if onHere {
@@ -16,15 +35,23 @@ func studyAccountEpisode(ep *studyEpisodeCell, off, on *studyDecision, cell stri
 		ep.OffSupportedR1 = ep.OffSupportedR1 || off.R1.Strong && off.R1.Identity == off.FinalIdentity
 		ep.OffSupportedR2 = ep.OffSupportedR2 || off.R2.Strong && off.R2.Identity == off.FinalIdentity
 	}
-	if !onHere || studyDeliveredCorrection(off) && off.FinalIdentity == on.FinalIdentity {
+	if !onHere {
+		return
+	}
+	// Contradictions are raw-row outcome changes, not the gain denominator.
+	// A target already delivered elsewhere in the OFF episode still cannot
+	// conceal a new rename disagreeing with this row's strong frozen label.
+	if !studyDeliveredCorrection(off) || off.FinalIdentity != on.FinalIdentity {
+		ep.NewWrongR1 = ep.NewWrongR1 || on.R1.Strong && on.R1.Identity != on.FinalIdentity
+		ep.NewWrongR2 = ep.NewWrongR2 || on.R2.Strong && on.R2.Identity != on.FinalIdentity
+	}
+	if _, alreadyDelivered := offIdentities[studyEpisodeIdentity{on.EpisodeID, on.Raw.Mode, on.FinalIdentity}]; alreadyDelivered {
 		return
 	}
 	ep.Incremental = true
 	ep.CoveredR1 = ep.CoveredR1 && on.R1.Strong
 	ep.CoveredR2 = ep.CoveredR2 && on.R2.Strong
 	ep.Joint = ep.Joint && on.R1.Strong && on.R2.Strong
-	ep.NewWrongR1 = ep.NewWrongR1 || on.R1.Strong && on.R1.Identity != on.FinalIdentity
-	ep.NewWrongR2 = ep.NewWrongR2 || on.R2.Strong && on.R2.Identity != on.FinalIdentity
 }
 
 func studyBool(v bool) int {
@@ -41,6 +68,8 @@ func studySummarizeDate(date string, cells map[string]map[string]*studyEpisodeCe
 		for _, ep := range episodes {
 			count.NetSupportedR1 += studyBool(ep.OnSupportedR1) - studyBool(ep.OffSupportedR1)
 			count.NetSupportedR2 += studyBool(ep.OnSupportedR2) - studyBool(ep.OffSupportedR2)
+			count.NewWrongR1 += studyBool(ep.NewWrongR1)
+			count.NewWrongR2 += studyBool(ep.NewWrongR2)
 			if !ep.Incremental {
 				continue
 			}
@@ -48,8 +77,6 @@ func studySummarizeDate(date string, cells map[string]map[string]*studyEpisodeCe
 			count.Joint += studyBool(ep.Joint)
 			count.CoveredR1 += studyBool(ep.CoveredR1)
 			count.CoveredR2 += studyBool(ep.CoveredR2)
-			count.NewWrongR1 += studyBool(ep.NewWrongR1)
-			count.NewWrongR2 += studyBool(ep.NewWrongR2)
 		}
 		result[cell] = count
 	}

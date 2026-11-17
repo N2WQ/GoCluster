@@ -180,6 +180,9 @@ func studyArmIndex(name string) int {
 }
 
 func studyReadReports(p studyPlan, digest string, req studyCLIRequest, candidate studyCandidate) (map[string][3]*studyReport, error) {
+	if err := studyValidateArms(p.Arms); err != nil {
+		return nil, err
+	}
 	paths := strings.Split(req.Compare, ",")
 	if len(paths) > 96 {
 		return nil, errors.New("study comparison exceeds 32 days/96 arm reports")
@@ -227,7 +230,8 @@ func studyReadReports(p studyPlan, digest string, req studyCLIRequest, candidate
 	}
 	for _, group := range reports {
 		if group[0] == nil || group[1] == nil || group[2] == nil || group[1].AssetsSHA256 != group[2].AssetsSHA256 ||
-			group[1].PipelineWithoutBayesSHA256 == "" || group[1].PipelineWithoutBayesSHA256 != group[2].PipelineWithoutBayesSHA256 {
+			group[1].PipelineWithoutBayesSHA256 == "" || group[1].PipelineWithoutBayesSHA256 != group[2].PipelineWithoutBayesSHA256 ||
+			group[1].SourceRevision != group[2].SourceRevision || !strings.EqualFold(group[1].ExecutableSHA256, group[2].ExecutableSHA256) {
 			return nil, errors.New("study requires identical repaired pipeline/assets with Bayes off/on")
 		}
 	}
@@ -351,6 +355,7 @@ func studyAccountDay(in studyInput, pairs map[int64]*studyPair, candidate studyC
 	sort.Slice(ordinals, func(i, j int) bool { return ordinals[i] < ordinals[j] })
 	crossCells := make(map[string]map[string]bool)
 	spillovers := make(map[string]map[string]*studyEpisodeCell)
+	offIdentities := studyOffEpisodeCorrections(pairs)
 	for _, ordinal := range ordinals {
 		pair := pairs[ordinal]
 		result.RawUnion++
@@ -383,7 +388,7 @@ func studyAccountDay(in studyInput, pairs map[int64]*studyPair, candidate studyC
 					ep = &studyEpisodeCell{CoveredR1: true, CoveredR2: true, Joint: true}
 					spillovers[cell][on.EpisodeID] = ep
 				}
-				studyAccountEpisode(ep, off, on, cell)
+				studyAccountEpisode(ep, off, on, cell, offIdentities)
 			}
 		}
 		cells := make(map[string]bool, 2)
@@ -405,7 +410,7 @@ func studyAccountDay(in studyInput, pairs map[int64]*studyPair, candidate studyC
 				ep = &studyEpisodeCell{CoveredR1: true, CoveredR2: true, Joint: true}
 				episodes[cell][anchor.EpisodeID] = ep
 			}
-			studyAccountEpisode(ep, off, on, cell)
+			studyAccountEpisode(ep, off, on, cell, offIdentities)
 			if bayesClass != "unchanged" && bayesClass != "hold" {
 				if crossCells[anchor.EpisodeID] == nil {
 					crossCells[anchor.EpisodeID] = make(map[string]bool, 2)

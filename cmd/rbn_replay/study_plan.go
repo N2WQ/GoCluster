@@ -184,7 +184,7 @@ func validateStudyPlan(p studyPlan) error {
 			if training.After(exposure) {
 				exposure = training
 			}
-			if exposure.Add(time.Duration(p.EmbargoSeconds) * time.Second).After(day.Add(time.Duration(p.WarmupSeconds) * time.Second)) {
+			if !exposure.Before(day) || exposure.Add(time.Duration(p.EmbargoSeconds)*time.Second).After(day.Add(time.Duration(p.WarmupSeconds)*time.Second)) {
 				return errors.New("holdout overlaps training/tuning labels or frozen selection embargo")
 			}
 		default:
@@ -199,11 +199,17 @@ func studyValidateArms(arms []studyArm) error {
 		return errors.New("study requires shipped, repaired_off and repaired_on arms")
 	}
 	seen := make(map[string]bool, 3)
+	var repairedOff, repairedOn studyArm
 	for _, a := range arms {
 		if (a.Name != "shipped" && a.Name != "repaired_off" && a.Name != "repaired_on") || seen[a.Name] {
 			return errors.New("invalid or duplicate study arm")
 		}
 		seen[a.Name] = true
+		if a.Name == "repaired_off" {
+			repairedOff = a
+		} else if a.Name == "repaired_on" {
+			repairedOn = a
+		}
 		if !studyValidSHA(a.ExecutableSHA256) || len(a.SourceRevision) != 40 || a.ConfigDir == "" || len(a.ConfigFiles) < 1 || len(a.ConfigFiles) > 256 || len(a.Assets) > 64 {
 			return errors.New("arm requires executable/source/config fingerprints and bounded asset manifest")
 		}
@@ -220,6 +226,12 @@ func studyValidateArms(arms []studyArm) error {
 			}
 			paths[strings.ToLower(key)] = true
 		}
+	}
+	if !strings.EqualFold(repairedOff.ExecutableSHA256, repairedOn.ExecutableSHA256) || repairedOff.SourceRevision != repairedOn.SourceRevision {
+		return errors.New("study repaired OFF/ON arms must use identical executable and source revision")
+	}
+	if studyAssetDigest(repairedOff.Assets) != studyAssetDigest(repairedOn.Assets) {
+		return errors.New("study repaired OFF/ON arms must use identical asset path/content bindings")
 	}
 	return nil
 }
@@ -250,6 +262,9 @@ func studyValidateCandidate(c studyCandidate) error {
 	var typed config.CallCorrectionBayesBonusConfig
 	if err := studyDecodeJSON(c.Parameters, &typed); err != nil || !typed.Enabled {
 		return errors.New("complete candidate parameters require typed values and Enabled=true")
+	}
+	if err := studyValidateBayesScalarDomain(typed); err != nil {
+		return err
 	}
 	if c.ModeDistances == nil {
 		return errors.New("mode_distances must be an explicit complete map; {} means no cells")

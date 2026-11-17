@@ -202,7 +202,7 @@ func studyTestParameters(t *testing.T) json.RawMessage {
 	t.Helper()
 	// This is schema scaffolding, not a model arithmetic oracle. Semantic
 	// expectations in the reference and metric tests are hand-literal.
-	value := config.CallCorrectionBayesBonusConfig{Enabled: true}
+	value := studyTestBayesBaseline()
 	data, err := json.Marshal(value)
 	if err != nil {
 		t.Fatal(err)
@@ -217,4 +217,17 @@ func studyTestParameters(t *testing.T) json.RawMessage {
 		t.Fatal(err)
 	}
 	return data
+}
+
+func studyTestBayesBaseline() config.CallCorrectionBayesBonusConfig {
+	return config.CallCorrectionBayesBonusConfig{
+		Enabled: true, WeightDistance1Milli: 350, WeightDistance2Milli: 200,
+		WeightedSmoothingMilli: 1000, RecentSmoothing: 2,
+		ObsLogCapMilli: 350, PriorLogMinMilli: -200, PriorLogMaxMilli: 600,
+		ReportThresholdDistance1Milli: 450, ReportThresholdDistance2Milli: 650,
+		AdvantageThresholdDistance1Milli: 700, AdvantageThresholdDistance2Milli: 950,
+		AdvantageMinWeightedDeltaDistance1Milli: 200, AdvantageMinWeightedDeltaDistance2Milli: 300,
+		AdvantageExtraConfidenceDistance1: 3, AdvantageExtraConfidenceDistance2: 5,
+		RequireCandidateValidated: true, RequireSubjectUnvalidatedDistance2: true,
+	}
 }

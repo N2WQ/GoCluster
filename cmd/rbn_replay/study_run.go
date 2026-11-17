@@ -81,6 +81,9 @@ func runCCV2Study(req studyCLIRequest) error {
 	if err := studyCheckConfigFiles(*arm); err != nil {
 		return err
 	}
+	if err := studyApplyCandidate(cfg, *arm, candidate); err != nil {
+		return err
+	}
 	maskSchema, err := studyValidateRuntimeConfig(cfg, *arm, candidate, p)
 	if err != nil {
 		return err
@@ -167,75 +170,6 @@ func studyCheckConfigFiles(arm studyArm) error {
 	return nil
 }
 
-func studyValidateRuntimeConfig(cfg *config.Config, arm studyArm, candidate studyCandidate, p studyPlan) (bool, error) {
-	if cfg == nil || !cfg.CallCorrection.Enabled {
-		return false, errors.New("study requires enabled call correction")
-	}
-	cc := cfg.CallCorrection
-	if p.WarmupSeconds < max(studyEpisodeSeconds, cc.RecencySeconds, cc.RecencySecondsCW, cc.RecencySecondsRTTY) {
-		return false, errors.New("study warmup does not cover effective local resolver recency/reference context")
-	}
-	checks := max(cc.StabilizerMaxChecks, cc.StabilizerPDelayMaxChecks, cc.StabilizerAmbiguousMaxChecks, cc.StabilizerEditNeighborMaxChecks)
-	budget := 0
-	if cc.StabilizerEnabled {
-		budget += max(1, checks) * cc.StabilizerDelaySeconds
-	}
-	if cc.TemporalDecoder.Enabled {
-		budget += cc.TemporalDecoder.MaxWaitSeconds
-	}
-	if budget > p.DecisionCutoffSeconds {
-		return false, errors.New("study fixed decision cutoff does not cover configured temporal/stabilizer budgets")
-	}
-	var actual, expected map[string]json.RawMessage
-	if err := studyDecodeJSON(candidate.Parameters, &expected); err != nil {
-		return false, err
-	}
-	data, err := json.Marshal(cc.BayesBonus)
-	if err != nil {
-		return false, err
-	}
-	if err := studyDecodeJSON(data, &actual); err != nil {
-		return false, err
-	}
-	mask, maskSchema := actual["EnabledDistancesByMode"]
-	delete(actual, "EnabledDistancesByMode")
-	if arm.Name != "shipped" {
-		actual["Enabled"] = json.RawMessage("true")
-		if !studyEqualJSON(actual, expected) {
-			return maskSchema, errors.New("study arm differs from complete frozen Bayes parameter vector")
-		}
-		if cc.BayesBonus.Enabled != (arm.Name == "repaired_on") {
-			return maskSchema, errors.New("study repaired arm Bayes enabled state is incorrect")
-		}
-	}
-	if arm.Name == "repaired_on" {
-		var effective map[string][]int
-		if maskSchema && !bytesEqualNull(mask) {
-			if err := studyDecodeJSON(mask, &effective); err != nil {
-				return maskSchema, err
-			}
-		} else {
-			effective = map[string][]int{"CW": {1, 2}, "RTTY": {1, 2}}
-		}
-		if !reflect.DeepEqual(studySortedCells(effective), studySortedCells(candidate.ModeDistances)) {
-			return maskSchema, errors.New("study executable/config does not apply the exact frozen mode/distance map")
-		}
-	}
-	return maskSchema, nil
-}
-
-func bytesEqualNull(data []byte) bool { return strings.TrimSpace(string(data)) == "null" }
-
-func studyEqualJSON(a, b any) bool {
-	x, errA := json.Marshal(a)
-	y, errB := json.Marshal(b)
-	var left, right any
-	if errA != nil || errB != nil || json.Unmarshal(x, &left) != nil || json.Unmarshal(y, &right) != nil {
-		return false
-	}
-	return reflect.DeepEqual(left, right)
-}
-
 func studyCheckAssets(arm studyArm, cfg *config.Config) error {
 	files := make(map[string]studyFile, len(arm.Assets))
 	for _, file := range arm.Assets {
@@ -299,9 +233,10 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 		return err
 	}
 	ccFingerprint := hashAnyStable(cfg.CallCorrection)
-	ccWithoutBayes := cfg.CallCorrection
-	ccWithoutBayes.BayesBonus = config.CallCorrectionBayesBonusConfig{}
-	pipelineFingerprint := hashAnyStable(ccWithoutBayes)
+	pipelineFingerprint, err := studyPipelineFingerprint(cfg)
+	if err != nil {
+		return err
+	}
 	if err := studySnapshotAssets(arm, r); err != nil {
 		return err
 	}
@@ -422,10 +357,27 @@ func studySnapshotAssets(arm studyArm, r *replayRunner) error {
 }
 
 func studyAssetDigest(assets []studyFile) string {
-	values := make([]string, 0, len(assets))
+	values := make([]studyFile, 0, len(assets))
 	for _, a := range assets {
-		values = append(values, strings.ToLower(a.SHA256))
+		values = append(values, studyFile{Path: filepath.ToSlash(filepath.Clean(a.Path)), SHA256: strings.ToLower(a.SHA256)})
 	}
-	sort.Strings(values)
+	sort.Slice(values, func(i, j int) bool { return values[i].Path < values[j].Path })
 	return hashAnyStable(values)
+}
+
+// Licensing, CTY, geography and every other effective setting are part of the
+// paired contract. LoadedFrom is only the source-directory label; source files
+// have their own frozen digest. Capture before study-owned asset path rewrites.
+func studyPipelineFingerprint(cfg *config.Config) (string, error) {
+	if cfg == nil {
+		return "", errors.New("study cannot fingerprint nil effective configuration")
+	}
+	effective := *cfg
+	effective.LoadedFrom = ""
+	effective.CallCorrection.BayesBonus = config.CallCorrectionBayesBonusConfig{}
+	data, err := json.Marshal(effective)
+	if err != nil {
+		return "", fmt.Errorf("study effective configuration fingerprint: %w", err)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(data)), nil
 }
