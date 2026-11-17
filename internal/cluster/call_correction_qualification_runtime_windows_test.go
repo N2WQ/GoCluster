@@ -69,9 +69,10 @@ func ccQualRun(t *testing.T, opts ccQualOptions, assets *ccQualAssets, result *c
 		Inputs  []ccQualInput
 	}{"paced_v1", ccQualSeed, inputs})
 	rate := opts.TypicalRate
-	if result.Name == "dense_canonical" {
+	switch result.Name {
+	case "dense_canonical":
 		rate = opts.DenseRate
-	} else if result.Name == "drain_recovery" {
+	case "drain_recovery":
 		rate = opts.DrainRate
 	}
 	warmCount := uint64(opts.Warmup) * uint64(rate) / uint64(time.Second)

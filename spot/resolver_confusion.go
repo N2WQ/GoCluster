@@ -81,6 +81,7 @@ func prepareResolverConfusionBins(cohort []rankedResolverCandidate, mode string,
 	return modeIndex, workspace.binWeights, true
 }
 
+//nolint:unparam // Current direct-score fixtures use CW; preserve the same mode-aware preparation as production.
 func resolverConfusionAggregateScore(candidate rankedResolverCandidate, cohort []rankedResolverCandidate, mode string, model *ConfusionModel, workspace *confusionAlignmentWorkspace) float64 {
 	if model == nil || len(cohort) <= 1 {
 		return 0

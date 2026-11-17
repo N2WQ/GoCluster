@@ -302,7 +302,6 @@ type rankedResolverCandidate struct {
 	lastSeen             time.Time
 	lastReport           int
 	lastHasReport        bool
-	lastFreqKHz          float64
 	reporters            map[string]resolverReporterObservation
 	receivers            []ResolverReceiverObservation // Immutable rows for this evaluation.
 	identity             correctionCallIdentity
@@ -1209,22 +1208,6 @@ func runnerForResolverCall(candidates []rankedResolverCandidate, winner string) 
 	return "", 0, 0
 }
 
-func timedReporterSetOverlapCount(left, right map[string]resolverReporterObservation) int {
-	if len(left) == 0 || len(right) == 0 {
-		return 0
-	}
-	if len(left) > len(right) {
-		left, right = right, left
-	}
-	overlap := 0
-	for reporter := range left {
-		if _, ok := right[reporter]; ok {
-			overlap++
-		}
-	}
-	return overlap
-}
-
 func chooseResolverCandidateEviction(candidates map[string]*resolverCandidate) (string, bool) {
 	if len(candidates) == 0 {
 		return "", false
@@ -1343,22 +1326,6 @@ func totalUniqueResolverReporterWeightMilli(candidates []rankedResolverCandidate
 			seen[reporter] = struct{}{}
 			total += resolverReliabilityScale
 		}
-	}
-	return total
-}
-
-func weightedSupportForResolverCandidate(candidate *resolverCandidate, refs map[string]resolverReporterRef) int {
-	if candidate == nil || len(candidate.reporters) == 0 {
-		return 0
-	}
-	total := 0
-	for reporter := range candidate.reporters {
-		ref, ok := refs[reporter]
-		if ok {
-			total += ref.weightMilli
-			continue
-		}
-		total += resolverReliabilityScale
 	}
 	return total
 }

@@ -88,7 +88,7 @@ func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups
 	// equal-raw competitor must still satisfy the same narrow witnesses/exceptions.
 	for _, candidate := range snap.CandidateRanks {
 		if candidate.Identity() != call && candidate.Support == left.support &&
-			neighborhoodPairAmbiguous(call, candidate.Identity(), snap.Key.Mode, groups, sources, admitted, cfg) {
+			neighborhoodPairAmbiguous(call, candidate.Identity(), snap.Key.Mode, groups, cfg) {
 			return pending, true
 		}
 	}
@@ -96,7 +96,7 @@ func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups
 }
 
 func neighborhoodPairAmbiguous(call, runner, mode string, groups map[string]*neighborhoodCandidate,
-	sources [5]spot.ResolverSnapshot, admitted [5]bool, cfg config.CallCorrectionConfig) bool {
+	cfg config.CallCorrectionConfig) bool {
 	call, runner = spot.CorrectionVoteKey(call), spot.CorrectionVoteKey(runner)
 	left, right := groups[call], groups[runner]
 	if left == nil || right == nil {

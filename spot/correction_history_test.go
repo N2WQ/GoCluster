@@ -211,7 +211,9 @@ func TestResolverGateHistorySharedBaseAndRequirements(t *testing.T) {
 		}
 		assertResolverHistoryQueryContext(t, probe.queries, "custom", "20m", "CW", now, loose)
 		fresh := newResolverGateHistory(settings, "40m", "RTTY", now.Add(time.Second))
-		if fresh.support(call, "K1ABC") != 0 || fresh.support(call, "K1ABC") != 0 || len(probe.queries) != 2 {
+		first := fresh.support(call, "K1ABC")
+		repeat := fresh.support(call, "K1ABC")
+		if first != 0 || repeat != 0 || len(probe.queries) != 2 {
 			t.Fatalf("new requirements or zero-result capture reused another decision: %+v", probe.queries)
 		}
 		assertResolverHistoryQueryContext(t, probe.queries[1:], "custom", "40m", "RTTY", now.Add(time.Second), settings.RecentBandCustomSCPRequirements)

@@ -3758,7 +3758,11 @@ func mergeYAMLMaps(dst, src map[string]any) map[string]any {
 		// Capture and restore also preserves the source when callers share the
 		// parent map. The explicit source path guarantees mapping parents here.
 		parent, _ := yamlValueAt(merged, "call_correction", "bayes_bonus")
-		parent.(map[string]any)["enabled_distances_by_mode"] = incomingMask
+		parentMap, ok := parent.(map[string]any)
+		if !ok {
+			panic("merged Bayes mask lost its mapping parent")
+		}
+		parentMap["enabled_distances_by_mode"] = incomingMask
 	}
 	return merged
 }

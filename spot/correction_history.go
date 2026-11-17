@@ -32,7 +32,9 @@ func newResolverGateHistory(cfg CorrectionSettings, band, mode string, now time.
 	history := resolverGateHistory{store: cfg.RecentBandStore, requirements: cfg.RecentBandCustomSCPRequirements,
 		band: band, mode: mode, now: now}
 	if cfg.RecentBandCustomSCPEnabled {
-		history.custom, _ = cfg.RecentBandStore.(customSCPRequirementCounter)
+		if custom, ok := cfg.RecentBandStore.(customSCPRequirementCounter); ok {
+			history.custom = custom
+		}
 	}
 	return history
 }

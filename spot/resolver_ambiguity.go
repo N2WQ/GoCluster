@@ -63,8 +63,9 @@ func (r *SignalResolver) ProposalHasAmbiguousRawTie(snapshot ResolverSnapshot, p
 }
 
 func resolverEvidenceHasFrequencyConflict(view *ResolverEvidenceView) bool {
-	for _, candidate := range canonicalResolverCandidates(view) {
-		for _, row := range candidate.receivers {
+	candidates := canonicalResolverCandidates(view)
+	for i := range candidates {
+		for _, row := range candidates[i].receivers {
 			if row.FrequencyConflict {
 				return true
 			}

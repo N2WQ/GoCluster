@@ -84,8 +84,8 @@ func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time
 	fresh.canonical = buildCanonicalResolverCandidates(fresh.candidates)
 	projected.receiverEvidence = fresh
 	receivers := make(map[string]int, fresh.count)
-	for _, group := range fresh.canonical {
-		for _, row := range group.receivers {
+	for i := range fresh.canonical {
+		for _, row := range fresh.canonical[i].receivers {
 			if previous, ok := receivers[row.Receiver]; !ok || row.WeightMilli > previous {
 				receivers[row.Receiver] = row.WeightMilli
 			}
@@ -124,8 +124,8 @@ func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time
 		var workspace confusionAlignmentWorkspace
 		applyResolverConfusionTieBreak(ranked, snap.Key.Mode, r.cfg.ConfusionModel, r.cfg.ConfusionWeight, &workspace)
 		projected.CandidateRanks = make([]ResolverCandidateSupport, 0, len(ranked))
-		for _, candidate := range ranked {
-			projected.CandidateRanks = append(projected.CandidateRanks, resolverRankSupport(candidate))
+		for i := range ranked {
+			projected.CandidateRanks = append(projected.CandidateRanks, resolverRankSupport(ranked[i]))
 		}
 	}
 	return r.projectResolverAuthority(projected, snap)

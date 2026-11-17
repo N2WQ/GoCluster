@@ -197,7 +197,9 @@ func (v *ResolverEvidenceView) RangeCanonical(visit func(identity, display strin
 	if visit == nil {
 		return
 	}
-	for _, group := range canonicalResolverCandidates(v) {
+	groups := canonicalResolverCandidates(v)
+	for i := range groups {
+		group := &groups[i]
 		for _, row := range group.receivers {
 			if !visit(group.identity.VoteKey, group.display, row) {
 				return
@@ -211,7 +213,8 @@ func (v *ResolverEvidenceView) RangeCanonical(visit func(identity, display strin
 func (v *ResolverEvidenceView) CanonicalSupport(slashThreshold int) []ResolverCandidateSupport {
 	groups := canonicalResolverCandidates(v)
 	ranks := make([]ResolverCandidateSupport, 0, len(groups))
-	for _, group := range groups {
+	for i := range groups {
+		group := &groups[i]
 		ranks = append(ranks, ResolverCandidateSupport{Call: group.display, VoteKey: group.identity.VoteKey,
 			ObservedCalls: group.variants, Support: len(group.receivers), WeightedSupportMilli: group.weighted})
 	}
@@ -249,7 +252,9 @@ func MergeResolverEvidenceViews(views ...*ResolverEvidenceView) *ResolverEvidenc
 		}
 		merged.candidates = append(merged.candidates, view.candidates...)
 		merged.count += view.count
-		for _, group := range canonicalResolverCandidates(view) {
+		groups := canonicalResolverCandidates(view)
+		for i := range groups {
+			group := &groups[i]
 			merged.frequencyWitnesses = append(merged.frequencyWitnesses, resolverEvidenceCandidate{call: group.identity.VoteKey, receivers: group.receivers})
 		}
 	}
@@ -291,7 +296,9 @@ func MergeResolverEvidenceViews(views ...*ResolverEvidenceView) *ResolverEvidenc
 }
 func resolverCanonicalRows(view *ResolverEvidenceView, call string) []ResolverReceiverObservation {
 	identity := CorrectionVoteKey(call)
-	for _, group := range canonicalResolverCandidates(view) {
+	groups := canonicalResolverCandidates(view)
+	for i := range groups {
+		group := &groups[i]
 		if group.identity.VoteKey == identity {
 			return group.receivers
 		}
@@ -321,7 +328,8 @@ func resolverFrequencyRows(view *ResolverEvidenceView, call string) []ResolverRe
 
 func rankedCanonicalResolverCandidates(view *ResolverEvidenceView, into []rankedResolverCandidate, threshold int) []rankedResolverCandidate {
 	groups := canonicalResolverCandidates(view)
-	for i, group := range groups {
+	for i := range groups {
+		group := &groups[i]
 		into = append(into, rankedResolverCandidate{call: group.display, support: len(group.receivers), weightedSupportMilli: group.weighted,
 			lastSeen: group.lastSeen, receivers: group.receivers, identity: group.identity, callRunes: group.runes,
 			observedCalls: group.variants, replacementBlocked: resolverCanonicalBlocked(groups, i, threshold)})
@@ -337,7 +345,8 @@ func resolverCanonicalBlocked(groups []resolverCanonicalCandidate, index, thresh
 	if identity.HasSlash {
 		return false
 	}
-	for _, group := range groups {
+	for i := range groups {
+		group := &groups[i]
 		if group.identity.HasSlash && group.identity.BaseKey == identity.BaseKey && len(group.receivers) >= threshold {
 			return true
 		}
@@ -375,9 +384,9 @@ func resolverRankIdentity(candidate rankedResolverCandidate) string {
 }
 
 func resolverRankDisplay(ranked []rankedResolverCandidate, identity string) string {
-	for _, candidate := range ranked {
-		if resolverRankIdentity(candidate) == identity {
-			return candidate.call
+	for i := range ranked {
+		if resolverRankIdentity(ranked[i]) == identity {
+			return ranked[i].call
 		}
 	}
 	return ""

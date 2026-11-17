@@ -56,13 +56,14 @@ func BenchmarkResolverPrimaryHistory(b *testing.B) {
 					}
 				}
 				var store RecentSupportStore
-				if backend == "legacy" {
+				switch backend {
+				case "legacy":
 					recent := NewRecentBandStore(time.Hour)
 					for _, row := range rows {
 						recent.RecordAt(row.call, "20m", "CW", row.receiver, row.seen, now)
 					}
 					store = recent
-				} else if backend == "custom" {
+				case "custom":
 					store = b13FamilyStore(b, rows, 8)
 				}
 				settings := resolverHistoryBenchmarkSettings(store, backend == "custom")
