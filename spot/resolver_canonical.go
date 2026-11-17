@@ -5,6 +5,7 @@
 package spot
 
 import (
+	"math/bits"
 	"sort"
 	"time"
 )
@@ -17,7 +18,6 @@ type resolverCanonicalCandidate struct {
 	lastSeen  time.Time
 	weighted  int
 	runes     []rune
-	borrowed  bool
 }
 
 // Identity returns the semantic voting identity while Call remains an observed
@@ -132,7 +132,6 @@ func buildCanonicalResolverCandidates(raw []resolverEvidenceCandidate) []resolve
 		if len(members[i]) == 1 {
 			member := &raw[members[i][0]]
 			group.display, group.receivers = member.call, member.receivers
-			group.borrowed = true
 		} else {
 			receivers := make(map[string]ResolverReceiverObservation)
 			for _, index := range members[i] {
@@ -241,11 +240,19 @@ func applyResolverSlashPrecedence(ranks []ResolverCandidateSupport, threshold in
 	}
 }
 
-// MergeResolverEvidenceViews combines the selector's at-most-five admitted raw
-// publications. Its temporary rows/maps are bounded by their admitted raw caps;
-// callers do not retain this view in synthesized or compact temporal snapshots.
+type resolverCanonicalMergeSource struct {
+	group *resolverCanonicalCandidate
+	raw   []resolverEvidenceCandidate
+}
+
+// MergeResolverEvidenceViews combines the selector's at-most-five admitted
+// publications. Merge their already sorted canonical rows rather than rebuilding
+// receiver maps from raw spellings on each read. Raw rows and every source's
+// frequency witnesses remain borrowed, immutable provenance. Only multi-source
+// canonical unions allocate receiver backing; compact snapshots retain none.
 func MergeResolverEvidenceViews(views ...*ResolverEvidenceView) *ResolverEvidenceView {
 	merged := &ResolverEvidenceView{}
+	var sources []resolverCanonicalMergeSource
 	for _, view := range views {
 		if view == nil {
 			continue
@@ -255,44 +262,297 @@ func MergeResolverEvidenceViews(views ...*ResolverEvidenceView) *ResolverEvidenc
 		groups := canonicalResolverCandidates(view)
 		for i := range groups {
 			group := &groups[i]
+			sources = append(sources, resolverCanonicalMergeSource{group: group, raw: view.candidates})
 			merged.frequencyWitnesses = append(merged.frequencyWitnesses, resolverEvidenceCandidate{call: group.identity.VoteKey, receivers: group.receivers})
 		}
 	}
-	merged.canonical = buildCanonicalResolverCandidates(merged.candidates)
-	for i := range merged.canonical {
-		group := &merged.canonical[i]
-		if group.borrowed {
-			group.receivers = append([]ResolverReceiverObservation(nil), group.receivers...)
-			group.borrowed = false
+	// Stable source ordering preserves the first raw identity's metadata; voting
+	// order itself remains lexical and every join is timestamp/receipt independent.
+	sort.SliceStable(sources, func(i, j int) bool { return sources[i].group.identity.VoteKey < sources[j].group.identity.VoteKey })
+	merged.canonical = make([]resolverCanonicalCandidate, 0, len(sources))
+	for first := 0; first < len(sources); {
+		end := first + 1
+		for end < len(sources) && sources[end].group.identity.VoteKey == sources[first].group.identity.VoteKey {
+			end++
 		}
-		// Receiver/candidate frequency conflicts remain scoped to their source
-		// bucket. Different bucket observations retain their actual witnesses;
-		// their frequency difference alone is not a new global split rule.
-		for j := range group.receivers {
-			row := &group.receivers[j]
-			row.FrequencyConflict = false
-			chosen := false
-			for _, source := range merged.frequencyWitnesses {
-				if source.call != group.identity.VoteKey {
-					continue
+		group := *sources[first].group
+		if end-first > 1 {
+			group.receivers = mergeResolverCanonicalRows(sources[first:end])
+			group.weighted, group.lastSeen = 0, time.Time{}
+			for _, row := range group.receivers {
+				group.weighted += row.WeightMilli
+				if row.ObservedAt.After(group.lastSeen) {
+					group.lastSeen = row.ObservedAt
 				}
-				index := sort.Search(len(source.receivers), func(k int) bool { return source.receivers[k].Receiver >= row.Receiver })
-				if index == len(source.receivers) || source.receivers[index].Receiver != row.Receiver {
-					continue
-				}
-				original := source.receivers[index]
-				if !original.ObservedAt.Equal(row.ObservedAt) {
-					continue
-				}
-				row.FrequencyConflict = row.FrequencyConflict || original.FrequencyConflict
-				if !chosen || original.FrequencyKHz < row.FrequencyKHz {
-					row.FrequencyKHz = original.FrequencyKHz
-					chosen = true
+			}
+			group.display, group.variants = mergedResolverObservedVariants(group, sources[first:end])
+		}
+		merged.canonical = append(merged.canonical, group)
+		first = end
+	}
+	return merged
+}
+
+func mergeResolverCanonicalRows(sources []resolverCanonicalMergeSource) []ResolverReceiverObservation {
+	positions := make([]int, len(sources))
+	capacity := 0
+	for _, source := range sources {
+		capacity = max(capacity, len(source.group.receivers))
+	}
+	// Repeated receivers across buckets are common. Starting at the largest
+	// source avoids retaining five copies' worth of backing for one union.
+	rows := make([]ResolverReceiverObservation, 0, capacity)
+	for {
+		receiver, found := "", false
+		for i, source := range sources {
+			if positions[i] < len(source.group.receivers) {
+				next := source.group.receivers[positions[i]].Receiver
+				if !found || next < receiver {
+					receiver, found = next, true
 				}
 			}
 		}
+		if !found {
+			return rows
+		}
+		var joined ResolverReceiverObservation
+		var latest time.Time
+		frequency, conflict, have := 0.0, false, false
+		for i, source := range sources {
+			if positions[i] == len(source.group.receivers) || source.group.receivers[positions[i]].Receiver != receiver {
+				continue
+			}
+			row := source.group.receivers[positions[i]]
+			positions[i]++
+			if !have {
+				joined = row
+			} else {
+				joined = joinResolverReceiverObservation(joined, row)
+			}
+			// Equal-time SNR joins across sources, but a frequency disagreement
+			// across buckets does not invent a source-local conflict. Preserve
+			// the original min-frequency/OR rule at the global newest timestamp.
+			if !have || row.ObservedAt.After(latest) {
+				latest, frequency, conflict = row.ObservedAt, row.FrequencyKHz, row.FrequencyConflict
+			} else if row.ObservedAt.Equal(latest) {
+				if row.FrequencyKHz < frequency {
+					frequency = row.FrequencyKHz
+				}
+				conflict = conflict || row.FrequencyConflict
+			}
+			have = true
+		}
+		joined.FrequencyKHz, joined.FrequencyConflict = frequency, conflict
+		rows = append(rows, joined)
 	}
-	return merged
+}
+
+// Display support belongs to raw spellings at each receiver's global newest
+// timestamp. Per-source display winners alone cannot establish that support.
+// Raw spelling rows and canonical rows are sorted; each spelling needs only a
+// moving receiver cursor and a bounded source list, never another receiver map.
+func mergedResolverObservedVariants(group resolverCanonicalCandidate, sources []resolverCanonicalMergeSource) (string, []string) {
+	variants := make(map[string][][]ResolverReceiverObservation)
+	for _, source := range sources {
+		for _, raw := range source.raw {
+			observed := raw.call == source.group.display
+			for _, call := range source.group.variants {
+				observed = observed || raw.call == call
+			}
+			// A locally superseded spelling cannot become current in a larger
+			// union: its global newest timestamp is at least the local newest.
+			if observed && len(raw.receivers) > 0 {
+				variants[raw.call] = append(variants[raw.call], raw.receivers)
+			}
+		}
+	}
+	var observed []string
+	display, bestSupport := "", -1
+	var bestAt time.Time
+	for call, parts := range variants {
+		positions := make([]int, len(parts))
+		support, canonicalIndex := 0, 0
+		var latest time.Time
+		for {
+			receiver, found := "", false
+			for i, rows := range parts {
+				if positions[i] < len(rows) && (!found || rows[positions[i]].Receiver < receiver) {
+					receiver, found = rows[positions[i]].Receiver, true
+				}
+			}
+			if !found {
+				break
+			}
+			var observedAt time.Time
+			haveTime := false
+			for i, rows := range parts {
+				if positions[i] < len(rows) && rows[positions[i]].Receiver == receiver {
+					at := rows[positions[i]].ObservedAt
+					positions[i]++
+					if !haveTime || at.After(observedAt) {
+						observedAt, haveTime = at, true
+					}
+				}
+			}
+			for canonicalIndex < len(group.receivers) && group.receivers[canonicalIndex].Receiver < receiver {
+				canonicalIndex++
+			}
+			if canonicalIndex < len(group.receivers) && group.receivers[canonicalIndex].Receiver == receiver && group.receivers[canonicalIndex].ObservedAt.Equal(observedAt) {
+				support++
+				if observedAt.After(latest) {
+					latest = observedAt
+				}
+			}
+		}
+		if support == 0 {
+			continue
+		}
+		observed = append(observed, call)
+		if support > bestSupport || support == bestSupport && (latest.After(bestAt) || latest.Equal(bestAt) && call < display) {
+			display, bestSupport, bestAt = call, support, latest
+		}
+	}
+	sort.Strings(observed)
+	return display, observed
+}
+
+// ReceiverTotals counts each receiver once across semantic candidates, using
+// its maximum weight. Sorted immutable rows avoid per-read receiver set maps.
+// Conflicts remain candidate-specific and do not disappear behind another call.
+func (v *ResolverEvidenceView) ReceiverTotals() (count, weighted int, frequencyConflict bool) {
+	groups := canonicalResolverCandidates(v)
+	if len(groups) > 16 {
+		return resolverReceiverTotalsHeap(groups)
+	}
+	positions := make([]int, len(groups))
+	for {
+		receiver, found := "", false
+		for i := range groups {
+			if positions[i] < len(groups[i].receivers) {
+				next := groups[i].receivers[positions[i]].Receiver
+				if !found || next < receiver {
+					receiver, found = next, true
+				}
+			}
+		}
+		if !found {
+			return count, weighted, frequencyConflict
+		}
+		weight, haveWeight := 0, false
+		for i := range groups {
+			if positions[i] < len(groups[i].receivers) && groups[i].receivers[positions[i]].Receiver == receiver {
+				row := groups[i].receivers[positions[i]]
+				positions[i]++
+				if !haveWeight || row.WeightMilli > weight {
+					weight, haveWeight = row.WeightMilli, true
+				}
+				frequencyConflict = frequencyConflict || row.FrequencyConflict
+			}
+		}
+		count++
+		weighted += weight
+	}
+}
+
+type resolverReceiverCursor struct {
+	rows  []ResolverReceiverObservation
+	index int
+}
+
+// A five-key neighborhood can contain 80 distinct identities. Repeatedly
+// scanning all heads per unique receiver is costly for disjoint populations.
+// Keep the cheap small-cohort scan above and merge large cohorts with one local
+// heap of slice cursors, without receiver maps or per-receiver allocations.
+func resolverReceiverTotalsHeap(groups []resolverCanonicalCandidate) (count, weighted int, frequencyConflict bool) {
+	heads := make([]resolverReceiverCursor, 0, len(groups))
+	for i := range groups {
+		if len(groups[i].receivers) > 0 {
+			heads = append(heads, resolverReceiverCursor{rows: groups[i].receivers})
+		}
+	}
+	for i := len(heads)/2 - 1; i >= 0; i-- {
+		siftResolverReceiverCursors(heads, i)
+	}
+	for len(heads) > 0 {
+		first := heads[0].rows[heads[0].index]
+		receiver, weight := first.Receiver, first.WeightMilli
+		count++
+		// Many identities can share every receiver. Repeated heap repair for
+		// the same key would lose the small scan's advantage in that shape.
+		// Heap order lets this bounded probe prune any nonmatching subtree.
+		depth := bits.Len(uint(len(heads)))
+		threshold := max(2, (len(heads)+depth-1)/depth)
+		if equalResolverReceiverHeads(heads, 0, receiver, threshold) >= threshold {
+			for i := 0; i < len(heads); {
+				row := heads[i].rows[heads[i].index]
+				if row.Receiver != receiver {
+					i++
+					continue
+				}
+				weight = max(weight, row.WeightMilli)
+				frequencyConflict = frequencyConflict || row.FrequencyConflict
+				heads[i].index++
+				if heads[i].index == len(heads[i].rows) {
+					heads[i] = heads[len(heads)-1]
+					heads = heads[:len(heads)-1]
+				} else {
+					i++
+				}
+			}
+			for i := len(heads)/2 - 1; i >= 0; i-- {
+				siftResolverReceiverCursors(heads, i)
+			}
+		} else {
+			for len(heads) > 0 && heads[0].rows[heads[0].index].Receiver == receiver {
+				row := heads[0].rows[heads[0].index]
+				weight = max(weight, row.WeightMilli)
+				frequencyConflict = frequencyConflict || row.FrequencyConflict
+				heads[0].index++
+				if heads[0].index == len(heads[0].rows) {
+					heads[0] = heads[len(heads)-1]
+					heads = heads[:len(heads)-1]
+				}
+				if len(heads) > 0 {
+					siftResolverReceiverCursors(heads, 0)
+				}
+			}
+		}
+		weighted += weight
+	}
+	return count, weighted, frequencyConflict
+}
+
+func equalResolverReceiverHeads(heads []resolverReceiverCursor, index int, receiver string, limit int) int {
+	if limit <= 0 || index >= len(heads) || heads[index].rows[heads[index].index].Receiver != receiver {
+		return 0
+	}
+	count := 1
+	count += equalResolverReceiverHeads(heads, 2*index+1, receiver, limit-count)
+	count += equalResolverReceiverHeads(heads, 2*index+2, receiver, limit-count)
+	return count
+}
+
+func siftResolverReceiverCursors(heads []resolverReceiverCursor, parent int) {
+	for {
+		child := 2*parent + 1
+		if child >= len(heads) {
+			return
+		}
+		if child+1 < len(heads) && heads[child+1].rows[heads[child+1].index].Receiver < heads[child].rows[heads[child].index].Receiver {
+			child++
+		}
+		if heads[parent].rows[heads[parent].index].Receiver <= heads[child].rows[heads[child].index].Receiver {
+			return
+		}
+		heads[parent], heads[child] = heads[child], heads[parent]
+		parent = child
+	}
+}
+
+// ReceiverOverlap intersects canonical candidate memberships without copying or
+// retaining a receiver set. It does not change either candidate's denominator.
+func (v *ResolverEvidenceView) ReceiverOverlap(left, right string) int {
+	return resolverReceiverOverlap(resolverCanonicalRows(v, left), resolverCanonicalRows(v, right))
 }
 func resolverCanonicalRows(view *ResolverEvidenceView, call string) []ResolverReceiverObservation {
 	identity := CorrectionVoteKey(call)

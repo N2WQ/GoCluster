@@ -2,6 +2,8 @@
 
 Authority: [approved Scope Ledger v3](call-correction-v2-scope-ledger-v3.md).
 Owner authorization: exact `Approved v3`, 2026-11-17.
+Study-input amendment: [approved Scope Ledger v4](call-correction-v2-scope-ledger-v4.md),
+exact `Approved v4`, 2026-11-17; v3 runtime and final validation boundaries remain.
 Branch: `call-correctionv2`; baseline `3fd37c6cb48d2028756ca18184d4f18a8dc95bb0`.
 Active execution worktree: `C:\src\gocluster-call-correctionv2`.
 
@@ -36,14 +38,15 @@ these failure mechanisms and be recorded with executed results.
 | Unit | Implementation | Validation |
 | --- | --- | --- |
 | S0 evaluation foundation/provenance | Legacy compatibility, frozen baselines, strict paired-study CLI and native paced fixture complete | 13 compatibility + 112 final study cases passed; native paced baseline passed; archive/candidate qualification pending |
+| S0b conditional study geography | Explicit schema-2 CTY/H3 scenario, study-only derived receiver inputs and all-focal-row provenance/coverage implemented | Ordinary and race study checks passed 158 cases each; detached comparator passed 156 compatible cases, all zero skips; schema-2 control freeze complete, official tuning underway |
 | S1a legacy report parsing | Removed substring SNR fallback; whole integer grammar and human rules retained | 139 native parser/display/RBN cases passed; 20s grammar + 20s legacy differential fuzz passed (unguided prepared binary) |
 | S1b harmonic presence | Missing incoming reports neither compare nor seed harmonic evidence; measured cross-receiver/mode policy preserved | 33 native presence/threshold/expiry/maintenance/delivery cases passed, including TCP and reopened archive |
 | S2 neighborhood admission | Only admitted comparable adjacent populations set neighborhood use | 13 selection/accounting + 7 native delivery cases passed; immediate/temporal/stabilizer exact distance-2/3 recovery |
 | S3 receiver SNR | Receiver timestamp/conflict join, immutable SNR rows, top-cohort bin scoring and fresh reranking complete | 1068-case spot pass before final scoring extraction; targeted final checks + 11 native race cases passed; modeled shape benches executed, final resource qualification pending |
 | S4 canonical slash authority | Immutable canonical receiver union, observed display, independent threshold and identity-consistent consumers complete | Full spot (1087) and flow (202) passed; 14 native delivery, 144 replay/selection, 23 race cases passed; legacy fixture corrections passed 116 cases; final frequency scratch checks passed 63 cases |
 | S5 per-decision history | Fixed eight-entry first-read capture shared by validation/recent+1/Bayes, fresh next gate | 40 gate/capture + 32 actual backend/consumer cases passed, zero skips; independent source review and paired native benchmarks completed |
-| S6 Bayesian retention/study/activation | Runtime rail separation and complete cell-map/config/capacity contract complete; empirical activation pending | 253 focused native cases plus 70 replay/legacy-config cases passed, zero skips; separate arithmetic oracle and adversarial code reviews completed; archive geography limitation under investigation |
-| S7 final integration/resource/docs/lane | Pending | Not qualified |
+| S6 Bayesian retention/study/activation | Runtime rail separation and complete cell-map/config/capacity contract complete; empirical activation pending | 253 focused native cases plus 70 replay/legacy-config cases passed, zero skips; separate arithmetic oracle and adversarial code reviews completed; conditional archive-geography follow-up recorded in S0b |
+| S7 final integration/resource/docs/lane | In progress; qualification draft and provenance/accounting updated | Full ordinary pre-S0b: 14,057 passed/99 skipped; full race: 14,101/99 with identical skip names; latest study 163 ordinary + 163 race, zero skips; connected CustomSCP and guided fuzz passed. Paced gate, complete six-candidate study, selection, holdouts and final selected-state lane pending; not qualified |
 
 ## Baseline and study artifacts
 
@@ -156,7 +159,8 @@ slice backing and overlapping immutable generations require profile accounting.
 Reusable owner SNR-bin scratch is bounded by admitted tied-candidate count times
 the immutable model bin count; fresh readers use local scratch. There is no
 second receiver registry or lifetime pair cache. All-fresh reads remain zero
-allocation, and the no-model partial branch retains its previous allocation path.
+allocation. Partial projection additionally derives canonical evidence; its total
+cost must be measured rather than inferred from the model branch alone.
 The independent S3 source review found no remaining production correctness issue
 and identified the missing modeled capped benchmark; that case was added using
 the actual checked-in model. Native race checks include simultaneous modeled
@@ -201,9 +205,11 @@ review then found that ordinary CSV replay supplies no DE grid to its empty
 Custom SCP history, so positive geographic requirements cannot qualify. A
 header-only inspection of the tuning archive confirmed no receiver coordinates.
 Frozen CTY supplies representative prefix coordinates, not verified station
-locations. Whether a study using the existing live CTY fallback can support the
-intended conditional claims requires scientific disposition before any study
-verdict or Bayesian activation. No history threshold/backend was relaxed.
+locations. At that point, the input assumption remained unresolved and blocked a
+study verdict or Bayesian activation. The later S0b amendment below records its
+conditional disposition; this earlier readiness finding and the six-vector
+predeclaration remain historical evidence. No history threshold/backend was
+relaxed.
 
 S4 derives canonical groups from the admitted raw rows without another lifetime
 registry. One key retains at most 16 x 64 incidences and a five-key neighborhood
@@ -252,3 +258,199 @@ from 291 to 402 ns. Custom-history bare/slash/shared-base medians fell from
 4217/8413/3341 to 1854/5112/2416 ns with unchanged allocation counts. Legacy
 repeated-query cases also reduced allocations. Component logs preserve all nine
 shapes and do not replace the final paced CPU/input comparison.
+
+## S0b study-input amendment
+
+The owner selected frozen CTY representative receiver locations and authorized
+the additive v4 scope with exact `Approved v4`. Separate scientific review and
+scope/test challenge preceded that approval. CTY input uncertainty is explicitly
+distinct from the earlier accepted RBN reference-label uncertainty. This is a
+conditional input scenario, not reconstructed historical station geography,
+reported receiver grids, live enrichment timing, site independence or RF truth.
+
+`study_geography.go` implements the selected `cty_representative_v1` hook from the
+already frozen CTY image, using live receiver normalization and portable CTY
+precedence. Known four-character grids carry derived provenance. Missing matches,
+invalid coordinates and empty receivers remain unknown; valid zero coordinates
+are accepted. The hook runs only on focal-A inputs before activity/history/
+learning and adds no receiver registry. Withheld B input, raw row hashes, episode
+IDs, R1 and R2Frozen remain unchanged. Terminal R2 retains its existing decision
+cutoff. Ordinary no-study replay/server behavior and history requirements remain.
+
+Version-2 plans/reports/comparisons require an explicit `input_scenario` binding
+CTY, H3 res1 and H3 res2 digest roles to every arm's actual configured paths and
+manifest. Run-owned copies are verified and loaded before raw archive parsing.
+Old/missing schema, scenario/asset/role drift, corrupt/missing setup inputs and
+an empty CTY image fail setup rather than becoming row-level unknowns. Failed
+runs cannot publish a qualifying completion report.
+
+Each terminal focal-A decision carries receiver-location lookup, matched prefix,
+derived grid and known/unknown reason. Complete coverage counts every focal-A
+row, including warmup, suppressed and license-rejected outcomes; known plus
+unknown reconciles with focal and terminal totals. Comparisons reconcile those
+counts against decision streams and reject changed paired input covariates.
+Unknown input locations stay in the population rather than being filtered out.
+
+The captured native receipt
+`.tmp/call-correctionv2/s0b-study-followup-all.txt` reports one package, 158 passed
+cases, zero skips, ordinary/non-race execution. It covers literal CTY points,
+portable precedence, known zero/invalid coordinates, real CSV-to-resolver-V-to-
+CustomSCP learning without seeded DE grids/history, two-cell versus same-cell/
+unknown controls, ordinary no-study behavior, all-terminal-status/warmup coverage,
+unchanged frozen references, and actual-command schema/scenario refusals. The
+actual mapped four-receiver/two-cell consumer qualifies only the constructed
+two-cell CSV control; these are tool contract tests, not official archive results.
+
+The initial `.tmp/call-correctionv2/s0b-study-targeted.txt` run timed out after six
+minutes in the new CSV integration fixture. That fixture called row processing
+directly with an uninitialized sample clock, causing minute-by-minute catch-up
+from zero time. The revised fixture uses ordinary `replayDay`, which initializes
+the clock and services scheduled/EOF work. The separate CSV follow-up passed five
+cases, then the complete 158-case follow-up passed. The failed receipt remains
+preserved and is not counted as a pass or a production performance finding.
+
+Prior manifests, binaries, schema-1 artifacts and the original six predeclared
+candidate vectors are retained. Schema-2 study checks also passed 158 native race
+cases; the detached original-core comparator passed 156 compatible ordinary
+cases, all with zero skips. The original production correction code and pre-mask
+instrumentation seam remain in that comparator.
+
+Schema-2 tuning controls were frozen at 2026-11-17T19:26:55Z, before official
+evaluation, in `.tmp/call-correctionv2/tuning-plan-v2.json`, SHA256
+`8cdba5fde284f8bf7ad34ede758afc9bcd3856bbf99a44c9321376f868864c42`.
+The shipped executable SHA256 is
+`c2f827138c87d14754d93abe835a1a13a059e6cbebbe063125e06a69ee63c80b`;
+the identical repaired OFF/ON executable SHA256 is
+`3088e921d31d8dcc51b39633f79e3b23a3e80b7e910b129322701d2a4611c679`.
+Their source revisions are respectively `4395eb31` and `00061b22`; the separate
+freeze manifest records actual executable bytes, dirty-file hashes and full Go
+build information. A revision alone does not identify an instrumented build.
+All arms use the same owned 20-file configuration and ten hashed assets.
+
+Official tuning is underway. No complete empirical verdict, final resource
+qualification, activation, runtime asset installation, deployment or push is
+claimed here. Both final holdout contents remain sealed. A separate non-steered
+review confirms that CSV replay retains measured zero reports while full live
+RBN input discards them; this is another declared archive/live population limit,
+alongside A-only input, empty daily history and representative CTY geography.
+
+## S7 evidence checkpoint at 669dccfd
+
+The durable [qualification draft](call-correction-v2-qualification.md) is
+**in progress**. Runtime prediction remains frozen at `00061b22`; later changes
+repair descriptive inactive-cell support-net analysis plus comments/tests, not
+runtime correction predicates. The separate analysis freeze is
+`analysis-freeze-v2.json`, SHA256
+`3e5fb816237afee15c404e5346625200d40a0b12d650790e742e488ab69eb814`;
+analysis executable SHA256 is
+`e1fd712c86c4dd1a3a32ef7aa12aa156a5c17120da2dd156732eaab6c9f4c75e`.
+Original comparisons remain preserved. Corrected comparison proofs require
+identical active-cell/gate statistics and paired-outcome SHA256; only inactive
+support-net fields and output paths may differ.
+
+At this checkpoint three complete CW/2 configurations each show 146 incremental
+episode IDs, three jointly strong, 8.219% R1 and 15.753% R2 coverage, and no new
+strong contradiction. These observations fail the strict evidence floors. The
+six-candidate study is incomplete; no final candidate/policy is selected and
+final holdout contents remain unopened. A separate non-steered empirical oracle
+recounted the first candidate's six streams and passed 19 numerical checks while
+confirming the floor failure.
+
+An independent repair adversary found 2,244 changed final/status receipts across
+1,340,516 focal-A IDs. Among 74 changes with both references agreeing, 58 new
+agreements span 53 episode IDs and 16 new disagreements span 11. Four full-day
+mechanism traces retain exact original decision-stream SHA256 and unchanged
+snapshot-read metrics. They expose one supported recovery and three regressions
+from removal of the old pre-admission neighborhood flag's accidental restriction;
+no new coding defect was identified. Counts, receipt/episode distinctions and
+source-specific limits are retained in the draft, without calling artifact tags
+RF errors or reclassifying unknown/conflicting references.
+
+Native `s7-race-full.txt` reports 14,101 passes, 99 skips, 76 packages with 61
+executed and 15 build-only; the skip-name audit matches the earlier ordinary
+14,057-pass/99-skip lane exactly. Latest study checks after the metadata repair
+passed 163 ordinary and 163 race cases with zero skips. Connected CustomSCP
+ordinary/race handoffs passed. Guided fuzz receipts record 422,237 grammar and
+95,100 legacy-parity executions; earlier unguided receipts are separate history.
+Repository vet/Staticcheck/lint cleanup passed before the metadata repair, with
+focused replay vet/lint afterward. This is not a completed final selected-state
+lane or a performance verdict.
+
+Source review additionally confirms that resolver evidence takes its supplied
+`now`: live initial output supplies admission/evaluation UTC while replay supplies
+the archive row time. Same-second archive conflicts need not reproduce live
+clock ties. The frozen rule remains, and claims remain conditional alongside the
+CTY-derived geography and measured-zero population differences.
+
+The matched performance worktree is prepared at `669dccfd`; the actual Go config
+probe verifies identical legacy settings with only the new omitted/null mask type
+field added. Shared final fixture bytes match each other, not necessarily older
+raw baseline hashes with their line-ending/style differences. The preregistered
+`paced-final-protocol.json` requires both matched-setting and actual final-policy
+candidate runs to meet the <=1.10 typical CPU/input gate against each original,
+quiet-repeat and forthcoming fresh baseline, without added loss/backlog and with
+profiles. No candidate measurements exist at this checkpoint. Final resource,
+candidate/policy/holdout and complete final selected-state validation remain
+pending.
+
+## S7 resource failure and local merge repair
+
+The final-fixture original-core control passed all three paced cases, with
+371,093.75 ns per accepted typical input, no input refusals or archive loss,
+natural drains and joined owners. This adds a tighter denominator to the two
+earlier controls; the preregistered gate still requires each candidate to pass
+against every control.
+
+The first matched-settings candidate at `669dccfd` **failed**. Typical cost was
+432,291.67 ns/input, above 1.10 times that fresh control. Dense input refused
+13,214 of 60,000 offered receipts, filled the 20,000-entry output queue and did
+not naturally drain within 90 seconds. Its final forced shutdown did eventually
+join; that does not turn the natural-drain failure into a pass. The captured
+executable, transcript, result and profiles remain in the performance worktree's
+`paced-final-matched-current-fixture/`. No holdout content was opened.
+
+The whole invocation sampled 279.41 CPU seconds and 74,858 MB of cumulative
+allocation churn, not live heap. Canonical rebuilding accounted for 57.83% of
+allocation bytes and preliminary neighborhood receiver maps for 36.74%.
+Cumulative CPU figures overlap: merging included 89.71 seconds and canonical
+construction included 66.52 seconds, so they are not additive costs.
+
+The local repair remains inside S3/S4/S7 and preserves selection semantics:
+
+- Delay aggregate derivation until after the exact-only return. Capture only
+  source nominee/best-snapshot headers, including every canonical member of
+  an admitted settled source, rather than building and discarding row maps.
+- Merge already sorted per-publication canonical rows. Keep raw incidence
+  counts/provenance, maximum weights, newest/equal-time SNR joins and all original
+  source-bucket frequency witnesses. Recompute display support from distinct raw
+  spelling receivers at their global newest timestamps; locally superseded
+  spellings cannot become eligible in a larger union.
+- Read sorted memberships for overlap and population totals. Small cohorts use
+  head scans; large cohorts use one local cursor heap, batching repeated receiver
+  keys. This avoids both per-receiver set maps and quadratic disjoint-head scans.
+  No registry, retained cache, ingest barrier, new owner or lock is added.
+
+A separate source/shape reviewer independently challenged the candidate and
+identified the need to measure 80 distinct identities, not only two large alias
+groups. That check found the draft linear reduction's 3.84-4.02 ms disjoint cost;
+the first heap draft instead penalized complete overlap. The final batched
+cursor design measures 234-270 us for 80 disjoint groups and 104-124 us for
+complete overlap, with about 2.7 KB/one allocation in each shape. The corresponding
+map reference measures 672-674 us/436 KB/46 allocations and 123-132 us/6.7 KB/nine
+allocations. These are local component observations, not a passed paced gate.
+
+The three-source overlapping merge fell from 1.75-1.86 ms/677 KB/498 allocations
+to 326-381 us/92.8 KB/74 allocations. The five-source disjoint merge fell from
+6.13-6.31 ms/2.70 MB/756 allocations to 1.61-2.01 ms/1.09 MB/119 allocations.
+The same merge-only fixture builds against both production revisions; changing
+normalization/variant work explains the later allocation-count improvement.
+
+The independent map construction checks complete rows, identities, display and
+variant headers, raw counts, source frequency rows, overall weights/conflicts
+and all candidate-pair intersections. It includes 128 deterministic mixed cases,
+global alias supersession with an older retained frequency witness, 80-group
+disjoint/overlap controls and ragged partial overlap with a conflict on a
+lower-weight membership. Targeted ordinary/race and full consumer qualification
+are recorded separately as they complete. Frozen tuning predictions/selection
+remain preserved; untouched confirmation requires a fresh executable freeze and
+actual tuning-stream parity before any holdout inspection.

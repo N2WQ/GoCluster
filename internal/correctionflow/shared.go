@@ -268,8 +268,6 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		return selection
 	}
 
-	aggregates := make(map[string]*neighborhoodCandidate, (radius*2)+1)
-	receivers := make(map[string]int)
 	var admitted [5]bool
 	var admittedViews [5]*spot.ResolverEvidenceView
 	viewCount := 0
@@ -279,7 +277,6 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		if !ok {
 			continue
 		}
-		settled := snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable
 		winner := snap.Winner
 		if incumbent, _, pending := snap.PendingTransition(); winner == "" && pending {
 			winner = incumbent
@@ -319,33 +316,29 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		} else if basis != incomingBasis {
 			basis = spot.ResolverSupportBasisUnavailable
 		}
-		addNeighborhoodEvidence(aggregates, receivers, snap, settled)
 	}
 
 	if !selection.UsedNeighborhood && exactOK {
 		return selection
 	}
+	// Exact-only reads reuse their publication without deriving receiver sets.
+	// For a real union, retain source nomination/best metadata independently of
+	// the one merged population used for counts, dissent and frequency witnesses.
+	aggregates := make(map[string]*neighborhoodCandidate, (radius*2)+1)
+	for slot := range snapshots {
+		if admitted[slot] {
+			addNeighborhoodNominees(aggregates, snapshots[slot], cfg.FamilyPolicy.SlashPrecedenceMinReports)
+		}
+	}
 	union := spot.MergeResolverEvidenceViews(admittedViews[:viewCount]...)
 	unionRanks := union.CanonicalSupport(cfg.FamilyPolicy.SlashPrecedenceMinReports)
-	clear(receivers)
 	for _, candidate := range unionRanks {
 		if group := aggregates[candidate.Identity()]; group != nil {
 			group.call, group.rank, group.evidence = candidate.Call, candidate, union
 			group.support, group.weighted = candidate.Support, candidate.WeightedSupportMilli
-			clear(group.receivers)
 		}
 	}
-	unionConflict := false
-	union.RangeCanonical(func(identity, _ string, row spot.ResolverReceiverObservation) bool {
-		if group := aggregates[identity]; group != nil {
-			group.receivers[row.Receiver] = struct{}{}
-		}
-		if previous, ok := receivers[row.Receiver]; !ok || row.WeightMilli > previous {
-			receivers[row.Receiver] = row.WeightMilli
-		}
-		unionConflict = unionConflict || row.FrequencyConflict
-		return true
-	})
+	totalReceivers, totalWeighted, unionConflict := union.ReceiverTotals()
 	if len(aggregates) == 0 {
 		if exactOK {
 			return selection
@@ -378,10 +371,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		// No settled population supplied a replacement nominee. Keep the admitted
 		// union visible for confidence without inventing settled authority.
 		selection.Snapshot = spot.ResolverSnapshot{Key: key, State: spot.ResolverStateUncertain,
-			SupportBasis: basis, TotalReporters: len(receivers), CandidateRanks: allCandidates}
-		for _, weight := range receivers {
-			selection.Snapshot.TotalWeightedSupportMilli += weight
-		}
+			SupportBasis: basis, TotalReporters: totalReceivers, TotalWeightedSupportMilli: totalWeighted, CandidateRanks: allCandidates}
 		selection.SnapshotOK, selection.CandidateCount = true, len(allCandidates)
 		selection.replacementCalls = []string{}
 		return selection
@@ -411,12 +401,9 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 	synth.Winner = top.call
 	synth.WinnerSupport = top.support
 	synth.WinnerWeightedSupportMilli = top.weighted
-	synth.TotalReporters = len(receivers)
+	synth.TotalReporters = totalReceivers
 	synth.SupportBasis = basis
-	synth.TotalWeightedSupportMilli = 0
-	for _, weight := range receivers {
-		synth.TotalWeightedSupportMilli += weight
-	}
+	synth.TotalWeightedSupportMilli = totalWeighted
 	synth.CandidateRanks = allCandidates
 	synth.State = classifyTemporalSnapshotState(synth)
 	if unionConflict {

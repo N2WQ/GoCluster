@@ -1,5 +1,6 @@
 // File role: Conserves receiver incidence during bounded neighborhood selection.
-// Scratch maps live for one selection (at most five buckets); no history cache.
+// Candidate metadata lives for one selection (at most five buckets); immutable
+// sorted receiver rows supply population and overlap without rebuilding sets.
 package correctionflow
 
 import (
@@ -11,7 +12,6 @@ type neighborhoodCandidate struct {
 	call              string
 	support, weighted int
 	best              spot.ResolverSnapshot
-	receivers         map[string]struct{}
 	nominee           bool // Only an already-admitted settled population may nominate.
 	rank              spot.ResolverCandidateSupport
 	evidence          *spot.ResolverEvidenceView
@@ -32,35 +32,27 @@ func (s ResolverPrimarySelection) allowsReplacement(call string) bool {
 	return false
 }
 
-// addNeighborhoodEvidence admits every candidate in an already admitted bucket.
-// Replacement comparability is separate: ineligible dissent still contributes
-// to the distinct receiver denominator and its own candidate tally.
-func addNeighborhoodEvidence(groups map[string]*neighborhoodCandidate, receivers map[string]int, snap spot.ResolverSnapshot, nominate bool) {
-	snap.ReceiverEvidence().RangeCanonical(func(identity, call string, observation spot.ResolverReceiverObservation) bool {
-		if _, exists := receivers[observation.Receiver]; !exists {
-			receivers[observation.Receiver] = observation.WeightMilli
-		}
+// addNeighborhoodNominees captures only source authority. The merged evidence
+// supplies tallies once, after admission; every canonical member of a settled
+// source may nominate, including members below that source's winner.
+func addNeighborhoodNominees(groups map[string]*neighborhoodCandidate, snap spot.ResolverSnapshot, slashThreshold int) {
+	for _, candidate := range snap.ReceiverEvidence().CanonicalSupport(slashThreshold) {
+		identity := candidate.Identity()
 		group := groups[identity]
 		if group == nil {
-			group = &neighborhoodCandidate{call: call, best: snap, receivers: make(map[string]struct{})}
+			group = &neighborhoodCandidate{call: candidate.Call, best: snap}
 			groups[identity] = group
 		}
-		group.nominee = group.nominee || nominate
-		if _, exists := group.receivers[observation.Receiver]; !exists {
-			group.receivers[observation.Receiver] = struct{}{}
-			group.support++
-			group.weighted += observation.WeightMilli
-		}
+		group.nominee = group.nominee || snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable
 		if resolverSnapshotBeats(snap, group.best) {
 			group.best = snap
 		}
-		return true
-	})
+	}
 }
 
 // neighborhoodProposalBlocked uses only this selection's five admitted sources.
 // Expired transition endpoints no longer compete; observing that fact does not
-// settle their bucket. Scratch receiver sets retain dissent after demotion.
+// settle their bucket. The immutable receiver union retains demoted dissent.
 func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups map[string]*neighborhoodCandidate,
 	sources [5]spot.ResolverSnapshot, admitted [5]bool, cfg config.CallCorrectionConfig) (pending, tied bool) {
 	for slot := range sources {
@@ -109,15 +101,9 @@ func neighborhoodPairAmbiguous(call, runner, mode string, groups map[string]*nei
 	if !spot.RejectResolverAmbiguity(in) {
 		return false
 	}
-	for receiver := range left.receivers {
-		if _, ok := right.receivers[receiver]; ok {
-			in.OverlapCount++
-			// Overlap only increases. Once the shared predicate excludes this
-			// pair, scanning more repeated receivers cannot restore a veto.
-			if !spot.RejectResolverAmbiguity(in) {
-				return false
-			}
-		}
+	in.OverlapCount = left.evidence.ReceiverOverlap(call, runner)
+	if !spot.RejectResolverAmbiguity(in) {
+		return false
 	}
 	policy := spot.CorrectionFamilyPolicy{Configured: true,
 		TruncationEnabled:          cfg.FamilyPolicy.Truncation.Enabled,

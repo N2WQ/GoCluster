@@ -59,6 +59,14 @@ func BenchmarkSupportBasisHelpers(b *testing.B) {
 }
 
 func BenchmarkSupportBasisExactSelection(b *testing.B) {
+	benchmarkSupportBasisExactSelection(b, false)
+}
+
+func BenchmarkCCV2ExactNeighborhoodSelection(b *testing.B) {
+	benchmarkSupportBasisExactSelection(b, true)
+}
+
+func benchmarkSupportBasisExactSelection(b *testing.B, neighborhood bool) {
 	r := spot.NewSignalResolver(spot.SignalResolverConfig{QueueSize: 8, HysteresisWindows: 1, EvalMinInterval: time.Nanosecond})
 	b.Cleanup(r.Stop)
 	driver, err := spot.NewSignalResolverDriver(r)
@@ -73,7 +81,7 @@ func BenchmarkSupportBasisExactSelection(b *testing.B) {
 		}
 	}
 	driver.Step(at.Add(time.Millisecond))
-	now, cfg := at.Add(time.Second), config.CallCorrectionConfig{}
+	now, cfg := at.Add(time.Second), config.CallCorrectionConfig{ResolverNeighborhoodEnabled: neighborhood}
 	selected := SelectResolverPrimarySnapshotForCallAt(r, key, cfg, "K1ABC", now)
 	if percent, ok := ResolverCallConfidencePercent(selected.Snapshot, "K1ABC"); !ok || percent != 66 || !selected.SnapshotOK || selected.UsedNeighborhood || selected.Snapshot.ReceiverEvidence() == nil {
 		b.Fatal("exact selection benchmark failed its real A2/B1 evidence control")
