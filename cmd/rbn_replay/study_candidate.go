@@ -8,15 +8,15 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"dxcluster/config"
 	"dxcluster/spot"
 )
 
 // Only study-owned repaired configs receive the selected complete vector. The
-// frozen source files and shipped arm remain unchanged. Presence-preserving
-// reflection is limited to the explicit pre-S6 mask schema seam.
+// frozen source files and shipped arm remain unchanged. The repaired executable
+// applies the complete typed mask; old frozen shipped binaries keep their own
+// pre-S6 instrumentation and report schema.
 func studyApplyCandidate(cfg *config.Config, arm studyArm, candidate studyCandidate) error {
 	if arm.Name == "shipped" {
 		return nil
@@ -35,18 +35,9 @@ func studyApplyCandidate(cfg *config.Config, arm studyArm, candidate studyCandid
 		return err
 	}
 	selected.Enabled = arm.Name == "repaired_on"
-	field := reflect.ValueOf(&selected).Elem().FieldByName("EnabledDistancesByMode")
-	if field.IsValid() {
-		if !field.CanSet() || field.Type() != reflect.TypeFor[map[string][]int]() {
-			return errors.New("study cannot apply unsupported enabled_distances_by_mode schema")
-		}
-		mask := make(map[string][]int, len(candidate.ModeDistances))
-		for mode, distances := range candidate.ModeDistances {
-			mask[mode] = append([]int{}, distances...)
-		}
-		field.Set(reflect.ValueOf(mask))
-	} else if selected.Enabled && !reflect.DeepEqual(studySortedCells(candidate.ModeDistances), []string{"CW/1", "CW/2", "RTTY/1", "RTTY/2"}) {
-		return errors.New("study executable without mask schema cannot apply a restricted candidate map")
+	selected.EnabledDistancesByMode = make(map[string][]int, len(candidate.ModeDistances))
+	for mode, distances := range candidate.ModeDistances {
+		selected.EnabledDistancesByMode[mode] = append([]int{}, distances...)
 	}
 	cfg.CallCorrection.BayesBonus = selected
 	return nil
@@ -153,7 +144,7 @@ func studyValidateRuntimeConfig(cfg *config.Config, arm studyArm, candidate stud
 	if err := studyDecodeJSON(data, &actual); err != nil {
 		return false, err
 	}
-	mask, maskSchema := actual["EnabledDistancesByMode"]
+	const maskSchema = true // This executable has the typed mask field.
 	delete(actual, "EnabledDistancesByMode")
 	if arm.Name != "shipped" {
 		actual["Enabled"] = json.RawMessage("true")
@@ -165,13 +156,16 @@ func studyValidateRuntimeConfig(cfg *config.Config, arm studyArm, candidate stud
 		}
 	}
 	if arm.Name == "repaired_on" {
-		var effective map[string][]int
-		if maskSchema && !bytesEqualNull(mask) {
-			if err := studyDecodeJSON(mask, &effective); err != nil {
-				return maskSchema, err
+		if cc.BayesBonus.EnabledDistancesByMode == nil {
+			return maskSchema, errors.New("study repaired arm requires its explicit frozen mode/distance map")
+		}
+		effective := make(map[string][]int, len(cc.BayesBonus.EnabledDistancesByMode))
+		for mode := range cc.BayesBonus.EnabledDistancesByMode {
+			for distance := 1; distance <= 2; distance++ {
+				if config.BayesBonusCellEnabled(cc.BayesBonus.Enabled, cc.BayesBonus.EnabledDistancesByMode, mode, distance, cc.MaxEditDistance) {
+					effective[mode] = append(effective[mode], distance)
+				}
 			}
-		} else {
-			effective = map[string][]int{"CW": {1, 2}, "RTTY": {1, 2}}
 		}
 		if !reflect.DeepEqual(studySortedCells(effective), studySortedCells(candidate.ModeDistances)) {
 			return maskSchema, errors.New("study executable/config does not apply the exact frozen mode/distance map")
@@ -188,8 +182,6 @@ func studyValidateRuntimeConfig(cfg *config.Config, arm studyArm, candidate stud
 	}
 	return maskSchema, nil
 }
-
-func bytesEqualNull(data []byte) bool { return strings.TrimSpace(string(data)) == "null" }
 
 func studyEqualJSON(a, b any) bool {
 	x, errA := json.Marshal(a)

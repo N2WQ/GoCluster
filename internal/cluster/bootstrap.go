@@ -2226,7 +2226,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		RecentBandStore: recentBandStore,
 	})
 	gateOptions := spot.ResolverPrimaryGateOptions{}
-	if cfg.ResolverRecentPlus1Enabled || cfg.BayesBonus.Enabled {
+	if cfg.ResolverRecentPlus1Enabled || config.BayesBonusModeEnabled(cfg.BayesBonus.Enabled, cfg.BayesBonus.EnabledDistancesByMode, subjectMode, cfg.MaxEditDistance) {
 		if spot.ResolverSnapshotHasComparableEditNeighbor(snapshot, winnerCall, subjectMode, cfg.DistanceModelCW, cfg.DistanceModelRTTY) {
 			gateOptions.RecentPlus1DisallowReason = resolverRecentPlus1DisallowEditNeighborGate
 		}

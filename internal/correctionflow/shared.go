@@ -812,6 +812,7 @@ func BuildCorrectionSettings(in BuildSettingsInput) spot.CorrectionSettings {
 		BayesBonusPolicy: spot.CorrectionBayesBonusPolicy{
 			Configured:                              true,
 			Enabled:                                 cfg.BayesBonus.Enabled,
+			EnabledDistancesByMode:                  cfg.BayesBonus.EnabledDistancesByMode,
 			WeightDistance1Milli:                    cfg.BayesBonus.WeightDistance1Milli,
 			WeightDistance2Milli:                    cfg.BayesBonus.WeightDistance2Milli,
 			WeightedSmoothingMilli:                  cfg.BayesBonus.WeightedSmoothingMilli,

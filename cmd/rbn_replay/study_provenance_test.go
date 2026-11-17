@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -178,11 +177,12 @@ func TestCCV2StudyDistinctCandidateExecution(t *testing.T) {
 	if _, err := studyValidateRuntimeConfig(probe, p.Arms[2], p.Candidates[0], p); err == nil {
 		t.Fatal("effective candidate bypassed the existing pre-owner CustomSCP capacity validator")
 	}
-	mask := reflect.ValueOf(config.CallCorrectionBayesBonusConfig{}).FieldByName("EnabledDistancesByMode")
 	restricted := p.Candidates[0]
 	restricted.ModeDistances = map[string][]int{"CW": {1}}
-	err = studyApplyCandidate(&config.Config{CallCorrection: config.CallCorrectionConfig{BayesBonus: studyTestBayesBaseline()}}, p.Arms[2], restricted)
-	if !mask.IsValid() && err == nil || mask.IsValid() && err != nil {
-		t.Fatalf("mask schema absence/presence was silently simulated: present=%v err=%v", mask.IsValid(), err)
+	typed := &config.Config{CallCorrection: config.CallCorrectionConfig{BayesBonus: studyTestBayesBaseline()}}
+	err = studyApplyCandidate(typed, p.Arms[2], restricted)
+	if err != nil || !config.BayesBonusCellEnabled(typed.CallCorrection.BayesBonus.Enabled, typed.CallCorrection.BayesBonus.EnabledDistancesByMode, "CW", 1, -1) ||
+		config.BayesBonusCellEnabled(typed.CallCorrection.BayesBonus.Enabled, typed.CallCorrection.BayesBonus.EnabledDistancesByMode, "RTTY", 1, -1) {
+		t.Fatalf("typed restricted mask was not applied exactly: %+v err=%v", typed.CallCorrection.BayesBonus, err)
 	}
 }

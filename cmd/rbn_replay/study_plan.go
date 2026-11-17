@@ -241,9 +241,8 @@ func studyValidateCandidate(c studyCandidate) error {
 	if err := studyDecodeJSON(c.Parameters, &fields); err != nil || fields == nil {
 		return errors.New("parameters must contain the complete BayesBonus Go JSON object")
 	}
-	// This narrow reflection seam allows the instrumented shipped executable to
-	// read the same vector before S6 adds EnabledDistancesByMode. Every scalar
-	// field is still mandatory. The separately declared mask is never inferred.
+	// Reflect only to require every scalar in the complete vector. The typed
+	// mode/distance mask is declared separately and is never inferred from it.
 	typ := reflect.TypeFor[config.CallCorrectionBayesBonusConfig]()
 	for i := 0; i < typ.NumField(); i++ {
 		name := typ.Field(i).Name

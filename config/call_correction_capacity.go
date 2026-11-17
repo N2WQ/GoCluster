@@ -13,6 +13,9 @@ import "fmt"
 // defaults and does not constrain score units or the separate FT history store.
 // Ownership: this is a pure startup check; it creates no runtime state.
 func (c CallCorrectionConfig) ValidateCustomSCPCapacity() error {
+	if err := c.BayesBonus.ValidateEnabledDistancesByMode(); err != nil {
+		return err
+	}
 	if !c.Enabled || !c.CustomSCP.Enabled {
 		return nil
 	}
@@ -47,12 +50,14 @@ func (c CallCorrectionConfig) ValidateCustomSCPCapacity() error {
 	}
 	distance1Allowed := c.MaxEditDistance < 0 || c.MaxEditDistance >= 1
 	distance2Allowed := c.MaxEditDistance < 0 || c.MaxEditDistance >= 2
+	bayesDistance1 := c.bayesBonusDistanceEnabled(1)
+	bayesDistance2 := c.bayesBonusDistanceEnabled(2)
 	validation := (distance1Allowed && customSCPTruncationValidationEnabled(c.FamilyPolicy.Truncation, distance2Allowed)) ||
-		(c.BayesBonus.Enabled && ((distance1Allowed && c.BayesBonus.RequireCandidateValidated) ||
-			(distance2Allowed && c.BayesBonus.RequireSubjectUnvalidatedDistance2)))
+		((bayesDistance1 || bayesDistance2) && c.BayesBonus.RequireCandidateValidated) ||
+		(bayesDistance2 && c.BayesBonus.RequireSubjectUnvalidatedDistance2)
 	// Plain/slash identities can differ at distance zero, so Plus1 remains a
 	// consumer there. Bayes requires distance 1/2; truncation requires at least 1.
-	counts := c.ResolverRecentPlus1Enabled || (c.BayesBonus.Enabled && distance1Allowed)
+	counts := c.ResolverRecentPlus1Enabled || bayesDistance1 || bayesDistance2
 	if counts || validation {
 		if err := check("call_correction.custom_scp.resolver_min_unique_h3_cells", c.CustomSCP.ResolverMinUniqueH3Cells); err != nil {
 			return err

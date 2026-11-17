@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dxcluster/config"
 	"dxcluster/strutil"
 
 	lev "github.com/agnivade/levenshtein"
@@ -46,6 +47,9 @@ type CorrectionBayesBonusPolicy struct {
 	// Configured distinguishes explicit runtime wiring from zero-value tests.
 	Configured bool
 	Enabled    bool
+	// Nil preserves legacy cells; nonnil maps explicitly select mode/distances.
+	// Loaded configuration is immutable for the lifetime of these settings.
+	EnabledDistancesByMode map[string][]int
 
 	WeightDistance1Milli int
 	WeightDistance2Milli int
@@ -349,7 +353,7 @@ func EvaluateResolverPrimaryGates(
 	}
 
 	bayes := normalizeCorrectionBayesBonusPolicy(cfg.BayesBonusPolicy)
-	if bayes.Enabled && distance >= 1 && distance <= 2 {
+	if config.BayesBonusCellEnabled(bayes.Enabled, bayes.EnabledDistancesByMode, subjectMode, distance, cfg.MaxEditDistance) {
 		weightDistance := bayes.WeightDistance1Milli
 		reportThreshold := bayes.ReportThresholdDistance1Milli
 		advantageThreshold := bayes.AdvantageThresholdDistance1Milli
@@ -382,21 +386,23 @@ func EvaluateResolverPrimaryGates(
 		bayesScoreMilli := obsTermMilli + int(math.Round(float64(weightDistance*priorTermMilli)/1000.0))
 		result.BayesScoreMilli = bayesScoreMilli
 
+		// Both bounded rails require the same usable, stronger history. Advantage
+		// eligibility is independent of whether a report bonus was needed/applied;
+		// separating it must not bypass qualifications formerly inherited from it.
+		historyReject := options.RecentPlus1DisallowReason
+		if historyReject == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
+			historyReject = "winner_recent_insufficient"
+		}
+		if historyReject == "" && winnerRecent <= subjectRecent {
+			historyReject = "subject_not_weaker"
+		}
+		if historyReject == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
+			historyReject = "candidate_unvalidated"
+		}
+
 		if effectiveSupport == minReports-1 {
 			result.BayesReportBonusConsidered = true
-			rejectReason := ""
-			if options.RecentPlus1DisallowReason != "" {
-				rejectReason = options.RecentPlus1DisallowReason
-			}
-			if rejectReason == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
-				rejectReason = "winner_recent_insufficient"
-			}
-			if rejectReason == "" && winnerRecent <= subjectRecent {
-				rejectReason = "subject_not_weaker"
-			}
-			if rejectReason == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
-				rejectReason = "candidate_unvalidated"
-			}
+			rejectReason := historyReject
 			if rejectReason == "" && bayesScoreMilli < reportThreshold {
 				rejectReason = "score_below_threshold"
 			}
@@ -408,10 +414,10 @@ func EvaluateResolverPrimaryGates(
 			}
 		}
 
-		if result.BayesReportBonusApplied && winnerSupport == subjectSupport {
+		if winnerSupport == subjectSupport {
 			result.BayesAdvantageConsidered = true
-			rejectReason := ""
-			if bayesScoreMilli < advantageThreshold {
+			rejectReason := historyReject
+			if rejectReason == "" && bayesScoreMilli < advantageThreshold {
 				rejectReason = "score_below_threshold"
 			}
 			if rejectReason == "" && (winnerWeightedSupportMilli-subjectWeightedSupportMilli) < minWeightedDelta {
@@ -419,9 +425,6 @@ func EvaluateResolverPrimaryGates(
 			}
 			if rejectReason == "" && winnerConfidence < minConf+extraConfidence {
 				rejectReason = "confidence_insufficient"
-			}
-			if rejectReason == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
-				rejectReason = "candidate_unvalidated"
 			}
 			if rejectReason == "" && distance == 2 && bayes.RequireSubjectUnvalidatedDistance2 && resolveSubjectValidated() {
 				rejectReason = "subject_validated"

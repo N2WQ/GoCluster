@@ -697,7 +697,7 @@ func evaluateResolverPrimaryDecision(
 		RecentBandStore: st.recentBand,
 	})
 	gateOptions := spot.ResolverPrimaryGateOptions{}
-	if st.cfg.CallCorrection.ResolverRecentPlus1Enabled || st.cfg.CallCorrection.BayesBonus.Enabled {
+	if st.cfg.CallCorrection.ResolverRecentPlus1Enabled || config.BayesBonusModeEnabled(st.cfg.CallCorrection.BayesBonus.Enabled, st.cfg.CallCorrection.BayesBonus.EnabledDistancesByMode, subjectMode, st.cfg.CallCorrection.MaxEditDistance) {
 		if spot.ResolverSnapshotHasComparableEditNeighbor(snapshot, winnerCall, subjectMode, st.cfg.CallCorrection.DistanceModelCW, st.cfg.CallCorrection.DistanceModelRTTY) {
 			gateOptions.RecentPlus1DisallowReason = resolverRecentPlus1DisallowEditNeighborGate
 		}

@@ -42,7 +42,7 @@ these failure mechanisms and be recorded with executed results.
 | S3 receiver SNR | Receiver timestamp/conflict join, immutable SNR rows, top-cohort bin scoring and fresh reranking complete | 1068-case spot pass before final scoring extraction; targeted final checks + 11 native race cases passed; modeled shape benches executed, final resource qualification pending |
 | S4 canonical slash authority | Immutable canonical receiver union, observed display, independent threshold and identity-consistent consumers complete | Full spot (1087) and flow (202) passed; 14 native delivery, 144 replay/selection, 23 race cases passed; legacy fixture corrections passed 116 cases; final frequency scratch checks passed 63 cases |
 | S5 per-decision history | Fixed eight-entry first-read capture shared by validation/recent+1/Bayes, fresh next gate | 40 gate/capture + 32 actual backend/consumer cases passed, zero skips; independent source review and paired native benchmarks completed |
-| S6 Bayesian retention/study/activation | Pending | Not qualified |
+| S6 Bayesian retention/study/activation | Runtime rail separation and complete cell-map/config/capacity contract complete; empirical activation pending | 253 focused native cases plus 70 replay/legacy-config cases passed, zero skips; separate arithmetic oracle and adversarial code reviews completed; archive geography limitation under investigation |
 | S7 final integration/resource/docs/lane | Pending | Not qualified |
 
 ## Baseline and study artifacts
@@ -163,6 +163,47 @@ the actual checked-in model. Native race checks include simultaneous modeled
 partial projections. Bench artifacts are component evidence; final quiet paced
 comparison and full lanes remain required, and intermediate CPU timings are not
 the release performance verdict.
+
+S6 preserves the capped log-support/history arithmetic and evaluates the report
+and advantage bonuses independently. The latter explicitly inherits the former
+history/contested-neighbor/candidate qualifications; distance-2 subject validation,
+weighted delta, extra confidence and all final ordinary gates still apply. It
+does not stack another report on recent +1. A separate non-steered scientific
+review derived literal score ranges, partial-history vectors and conditional
+consumer witnesses before root implementation tests. The current old thresholds
+remain bootable; their distance-2 report and both advantage cutoffs exceed the
+corresponding score maxima (470 and 560/470).
+
+Native tests demonstrate conditional reachability of report and full-report-tie
+advantage rails through real admitted receiver rows, V-only Custom SCP history,
+two real H3 cells, CTY/licensing and immediate/temporal/stabilizer TCP/peer/archive
+paths. Master-on empty masks and bare distance-1 contested ties are negative
+controls. Replay has separate immediate/temporal positive/off/empty controls.
+These constructed histories establish wiring and arithmetic, not the availability
+of those inputs in real archive replay or their RF correctness. Development runs
+corrected fixture source-path ownership, canonical historical query spelling and
+the existing confidence/percentage oracle; production behavior was not changed to
+make those fixtures pass.
+
+The optional cell map preserves nil legacy eligibility for CW/RTTY/USB/LSB,
+explicit empty/no-distances semantics, raw-null rejection and normalized
+duplicate/domain bounds. Only this complete mask replaces its previous value
+across merged runtime files; all other maps retain deep merge. Settings and all
+diagnostic/capacity consumers share one config-owned structural predicate.
+Unreachable thresholds and zero weights do not erase actual history demand.
+Independent code review found no remaining material gate/config issue.
+
+Six complete tuning vectors/maps were predeclared before official-archive
+evaluation at `.tmp/call-correctionv2/tuning-predeclaration-v1.json`, SHA256
+`e6aa0e9a916390654087c9f9af539c0d2825106ee20f7d7f145731bb61bcdf41`.
+The two final holdout ZIP contents remain sealed. A full-day source-readiness
+review then found that ordinary CSV replay supplies no DE grid to its empty
+Custom SCP history, so positive geographic requirements cannot qualify. A
+header-only inspection of the tuning archive confirmed no receiver coordinates.
+Frozen CTY supplies representative prefix coordinates, not verified station
+locations. Whether a study using the existing live CTY fallback can support the
+intended conditional claims requires scientific disposition before any study
+verdict or Bayesian activation. No history threshold/backend was relaxed.
 
 S4 derives canonical groups from the admitted raw rows without another lifetime
 registry. One key retains at most 16 x 64 incidences and a five-key neighborhood

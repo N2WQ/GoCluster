@@ -354,6 +354,24 @@ func TestBuildCorrectionSettingsPreservesBayesNeutralZeros(t *testing.T) {
 	}
 }
 
+func TestCCV2BuildSettingsPreservesBayesMaskPresence(t *testing.T) {
+	for _, mask := range []map[string][]int{nil, {}, {"CW": nil}, {"CW": {1}, "RTTY": {2}}} {
+		cfg := config.CallCorrectionConfig{MaxEditDistance: 2, BayesBonus: config.CallCorrectionBayesBonusConfig{Enabled: true, EnabledDistancesByMode: mask}}
+		got := BuildCorrectionSettings(BuildSettingsInput{Cfg: cfg}).BayesBonusPolicy
+		if (got.EnabledDistancesByMode == nil) != (mask == nil) || len(got.EnabledDistancesByMode) != len(mask) {
+			t.Fatalf("mapping collapsed mask presence: source=%#v mapped=%#v", mask, got.EnabledDistancesByMode)
+		}
+		for _, mode := range []string{"CW", "RTTY", "USB", "LSB"} {
+			for distance := 1; distance <= 2; distance++ {
+				if config.BayesBonusCellEnabled(got.Enabled, got.EnabledDistancesByMode, mode, distance, cfg.MaxEditDistance) !=
+					config.BayesBonusCellEnabled(true, mask, mode, distance, cfg.MaxEditDistance) {
+					t.Fatalf("mapping changed %s/%d", mode, distance)
+				}
+			}
+		}
+	}
+}
+
 type selectionSnapshotExpectation struct {
 	Key              spot.ResolverSignalKey
 	Winner           string
