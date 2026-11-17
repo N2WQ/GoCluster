@@ -320,9 +320,6 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 			continue
 		}
 
-		if offset != 0 {
-			selection.UsedNeighborhood = true
-		}
 		// The exact population belongs to this request even while contested. A
 		// neighboring population still needs its published authority/owner incumbent
 		// to pass the existing whole-bucket comparability rail.
@@ -338,6 +335,9 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 				selection.NeighborhoodExcludedUnrelated++
 			}
 			continue
+		}
+		if offset != 0 {
+			selection.UsedNeighborhood = true
 		}
 		selection.generationWitnesses[offset+2] = snap.Generation
 		admitted[offset+2] = true
