@@ -1,13 +1,14 @@
 package spot
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 // Frozen pre-v8 oracle from spot/comment_parser.go, SHA256
 // 26B0F348FE844938258A9AA94B2F7B077246641B5D882F091DEEB7D936A4B5E6.
-// Only names have changed. Keep the original tokenizer, match collection/index,
+// Only names and a fallback-use observation have changed. Keep the original tokenizer, match collection/index,
 // and parser control flow independent of the replacement. Unchanged report,
 // event, time and taxonomy helpers remain shared; the scanner constructor is
 // deliberately unchanged by v8. This reference is test-only and is not a
@@ -151,10 +152,19 @@ func legacyCommentTokenize(comment string) []commentToken {
 	return tokens
 }
 
+var legacySNRPattern = regexp.MustCompile(`(?i)([-+]?\d{1,3})\s*dB`)
+
 func legacyCommentParse(comment string, freq float64) CommentParseResult {
+	result, _ := legacyCommentParseWithFallbackTrace(comment, freq)
+	return result
+}
+
+// The trace marks only the historical fallback; it does not implement the new
+// grammar. Differential checks still compare every unaffected field.
+func legacyCommentParseWithFallbackTrace(comment string, freq float64) (CommentParseResult, bool) {
 	comment = strings.TrimSpace(comment)
 	if comment == "" {
-		return CommentParseResult{}
+		return CommentParseResult{}, false
 	}
 
 	tokens := legacyCommentTokenize(comment)
@@ -267,11 +277,13 @@ func legacyCommentParse(comment string, freq float64) CommentParseResult {
 	}
 
 	cleaned := buildComment(tokens, consumed)
+	fallbackUsed := false
 	if !hasReport && cleaned != "" {
-		if m := snrPattern.FindStringSubmatch(cleaned); len(m) == 2 {
+		if m := legacySNRPattern.FindStringSubmatch(cleaned); len(m) == 2 {
 			if v, err := strconv.Atoi(m[1]); err == nil {
 				report = v
 				hasReport = true
+				fallbackUsed = true
 			}
 		}
 	}
@@ -291,5 +303,5 @@ func legacyCommentParse(comment string, freq float64) CommentParseResult {
 		TimeToken: timeToken,
 		Comment:   cleaned,
 		Events:    events,
-	}
+	}, fallbackUsed
 }

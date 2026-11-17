@@ -27,7 +27,7 @@ these failure mechanisms and be recorded with executed results.
 | Unit | Implementation | Validation |
 | --- | --- | --- |
 | S0 evaluation foundation/provenance | Legacy compatibility, frozen baselines, strict paired-study CLI and native paced fixture complete | 13 compatibility + 33 study cases passed; native paced baseline passed; archive/candidate qualification pending |
-| S1a legacy report parsing | Pending | Not run |
+| S1a legacy report parsing | Removed substring SNR fallback; whole integer grammar and human rules retained | 139 native parser/display/RBN cases passed; 20s grammar + 20s legacy differential fuzz passed (unguided prepared binary) |
 | S1b harmonic presence | Pending | Not run |
 | S2 neighborhood admission | Pending | Not run |
 | S3 receiver SNR | Pending | Not run |
@@ -116,3 +116,14 @@ checks and a tiny real-runner integration, not held-out empirical qualification.
 
 No new model has been qualified; no production accuracy, capacity, deployment,
 hosted CI, final-lane pass or task completion is claimed by this record.
+
+S1a's frozen legacy parser retains its original substring regex in test-only
+code, with an observation of fallback use. Differential checks exclude only the
+intentionally retired report/presence result and still compare all other fields.
+Separate literal grammar vectors and integer/malformed-token fuzzing establish
+the changed contract. The first RBN consumer fixture omitted mandatory CQ class
+and expected zero reports to be delivered; correcting that fixture preserved the
+existing source policy (missing/zero dropped). The final selected group passed
+139 cases without skips. Prepared-binary fuzzing executed 2,716,179 grammar and
+2,376,232 differential inputs without failure; the tool explicitly reported no
+coverage instrumentation, so these are unguided fuzz results.

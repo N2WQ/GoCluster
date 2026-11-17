@@ -122,7 +122,12 @@ func TestCommentParserLegacyDifferential(t *testing.T) {
 
 func checkCommentParserDifferential(t testing.TB, comment string, frequency float64) {
 	t.Helper()
-	want := legacyCommentParse(comment, frequency)
+	want, fallback := legacyCommentParseWithFallbackTrace(comment, frequency)
+	if fallback {
+		// S1a intentionally retires the substring fallback. Keep comparing all
+		// other fields to the frozen algorithm; grammar vectors own this change.
+		want.Report, want.HasReport = 0, false
+	}
 	if got := ParseSpotComment(comment, frequency); got != want {
 		t.Fatalf("comment bytes=%d prefix=%q frequency=%v: got %+v, legacy %+v", len(comment), comment[:min(len(comment), 128)], frequency, got, want)
 	}

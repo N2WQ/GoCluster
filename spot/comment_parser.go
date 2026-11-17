@@ -4,7 +4,6 @@
 package spot
 
 import (
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -258,8 +257,6 @@ func commentTokenCount(comment string) int {
 	}
 	return count
 }
-
-var snrPattern = regexp.MustCompile(`(?i)([-+]?\d{1,3})\s*dB`)
 
 func parseSignedInt(tok string) (int, bool) {
 	// Purpose: Parse a signed integer token with sanity bounds.
@@ -611,14 +608,9 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 		}
 		cleaned = strings.Join(parts, " ")
 	}
-	if !human && !hasReport && cleaned != "" {
-		if m := snrPattern.FindStringSubmatch(cleaned); len(m) == 2 {
-			if v, err := strconv.Atoi(m[1]); err == nil {
-				report = v
-				hasReport = true
-			}
-		}
-	}
+	// Reports are recognized only by the bounded whole-token grammar above.
+	// Searching the leftover text can turn "1.5dB" into 5, or a suffix of an
+	// out-of-range report into a fabricated measurement. Human rules are separate.
 	if !human && speedValue != "" && speedUnit != "" {
 		speedLabel := speedValue + " " + speedUnit
 		if cleaned != "" {
