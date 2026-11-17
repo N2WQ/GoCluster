@@ -281,7 +281,7 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionWinnerMissing, 1)
 		return outcome
 	}
-	if strings.EqualFold(winnerCall, preCorrectionCall) {
+	if spot.CorrectionVoteKey(winnerCall) == spot.CorrectionVoteKey(preCorrectionCall) {
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionSameCall, 1)
 		return outcome
 	}
@@ -394,7 +394,7 @@ func evaluateResolverPrimaryGateReplay(
 		return spot.ResolverPrimaryGateResult{}, false
 	}
 	winner := snap.Winner
-	if winner == "" || winner == preCall {
+	if winner == "" || spot.CorrectionVoteKey(winner) == spot.CorrectionVoteKey(preCall) {
 		return spot.ResolverPrimaryGateResult{}, false
 	}
 

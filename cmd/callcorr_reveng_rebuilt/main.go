@@ -667,7 +667,7 @@ func evaluateResolverPrimaryDecision(
 		incrementCount(st.counters.RejectedReasonCounts, "resolver_winner_missing")
 		return resolverDecision{Reason: "resolver_winner_missing"}
 	}
-	if strings.EqualFold(winnerCall, preCall) {
+	if spot.CorrectionVoteKey(winnerCall) == spot.CorrectionVoteKey(preCall) {
 		st.counters.Rejected++
 		st.counters.RejectedSameCall++
 		incrementCount(st.counters.RejectedReasonCounts, "resolver_same_call")

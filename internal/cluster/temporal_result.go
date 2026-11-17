@@ -20,7 +20,7 @@ type runtimeTemporalResult struct {
 // Another actual mutation on a later retry counts separately; an unchanged
 // retry cannot count again. Confirmation is distinct from downstream delivery.
 func (r *runtimeTemporalResult) confirm(before, after string) {
-	if r == nil || spot.NormalizeSpotDXCallsign(before) == spot.NormalizeSpotDXCallsign(after) {
+	if r == nil || spot.CorrectionVoteKey(before) == spot.CorrectionVoteKey(after) {
 		return
 	}
 	switched := r.decoder.ConfirmCorrection(r.key, after)

@@ -19,7 +19,7 @@ func applyResolverConfusionTieBreak(ranked []rankedResolverCandidate, mode strin
 	top := ranked[0]
 	for tieEnd < len(ranked) {
 		next := ranked[tieEnd]
-		if next.weightedSupportMilli != top.weightedSupportMilli || next.support != top.support {
+		if top.replacementBlocked || next.replacementBlocked || next.weightedSupportMilli != top.weightedSupportMilli || next.support != top.support {
 			break
 		}
 		tieEnd++
@@ -103,7 +103,7 @@ func scoreResolverConfusionCohort(candidate rankedResolverCandidate, cohort []ra
 	score := 0.0
 	for i := range cohort {
 		observed := &cohort[i]
-		if len(observed.callRunes) == 0 || strings.EqualFold(observed.call, candidate.call) {
+		if len(observed.callRunes) == 0 || strings.EqualFold(resolverRankIdentity(*observed), resolverRankIdentity(candidate)) {
 			continue
 		}
 		rowWeights := weights[i*bins : (i+1)*bins]
@@ -117,7 +117,14 @@ func scoreResolverConfusionCohort(candidate rankedResolverCandidate, cohort []ra
 		if !anyMeasured {
 			continue
 		}
-		ops := alignConfusionCallsWithWorkspace(candidate.callRunes, observed.callRunes, workspace)
+		trueRunes, observedRunes := candidate.callRunes, observed.callRunes
+		if candidate.identity.VoteKey == "" && strings.Contains(candidate.call, "/") {
+			trueRunes = []rune(resolverRankIdentity(candidate))
+		}
+		if observed.identity.VoteKey == "" && strings.Contains(observed.call, "/") {
+			observedRunes = []rune(resolverRankIdentity(*observed))
+		}
+		ops := alignConfusionCallsWithWorkspace(trueRunes, observedRunes, workspace)
 		// Ascending bin reduction is deterministic, including multiple SNRs on
 		// the same call. Own matches contribute zero; zero weights stay zero.
 		for bin, weight := range rowWeights {

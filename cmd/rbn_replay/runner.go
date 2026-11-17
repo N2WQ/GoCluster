@@ -326,6 +326,7 @@ func (r *replayRunner) buildReplayRuntime() error {
 		EvalMinInterval:           shadowResolverEvalMinInterval,
 		SweepInterval:             shadowResolverSweepInterval,
 		HysteresisWindows:         shadowResolverHysteresisWindows,
+		SlashPrecedenceMinReports: cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports,
 		FreqGuardMinSeparationKHz: cfg.CallCorrection.FreqGuardMinSeparationKHz,
 		FreqGuardRunnerUpRatio:    cfg.CallCorrection.FreqGuardRunnerUpRatio,
 		MaxEditDistance:           cfg.CallCorrection.MaxEditDistance,

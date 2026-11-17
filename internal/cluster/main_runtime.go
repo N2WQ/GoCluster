@@ -727,6 +727,7 @@ func (r *clusterRuntime) initializeSignalResolverAndRecentStore() bool {
 			EvalMinInterval:           shadowResolverEvalMinInterval,
 			SweepInterval:             shadowResolverSweepInterval,
 			HysteresisWindows:         shadowResolverHysteresisWindows,
+			SlashPrecedenceMinReports: r.cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports,
 			FreqGuardMinSeparationKHz: r.cfg.CallCorrection.FreqGuardMinSeparationKHz,
 			FreqGuardRunnerUpRatio:    r.cfg.CallCorrection.FreqGuardRunnerUpRatio,
 			MaxEditDistance:           r.cfg.CallCorrection.MaxEditDistance,

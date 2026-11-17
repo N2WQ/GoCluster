@@ -40,7 +40,7 @@ these failure mechanisms and be recorded with executed results.
 | S1b harmonic presence | Missing incoming reports neither compare nor seed harmonic evidence; measured cross-receiver/mode policy preserved | 33 native presence/threshold/expiry/maintenance/delivery cases passed, including TCP and reopened archive |
 | S2 neighborhood admission | Only admitted comparable adjacent populations set neighborhood use | 13 selection/accounting + 7 native delivery cases passed; immediate/temporal/stabilizer exact distance-2/3 recovery |
 | S3 receiver SNR | Receiver timestamp/conflict join, immutable SNR rows, top-cohort bin scoring and fresh reranking complete | 1068-case spot pass before final scoring extraction; targeted final checks + 11 native race cases passed; modeled shape benches executed, final resource qualification pending |
-| S4 canonical slash authority | Pending | Not run |
+| S4 canonical slash authority | Immutable canonical receiver union, observed display, independent threshold and identity-consistent consumers complete | Full spot (1087) and flow (202) passed; 14 native delivery, 144 replay/selection, 23 race cases passed; legacy fixture corrections passed 116 cases; final frequency scratch checks passed 63 cases |
 | S5 per-decision history | Pending | Not run |
 | S6 Bayesian retention/study/activation | Pending | Not qualified |
 | S7 final integration/resource/docs/lane | Pending | Not qualified |
@@ -163,3 +163,37 @@ the actual checked-in model. Native race checks include simultaneous modeled
 partial projections. Bench artifacts are component evidence; final quiet paced
 comparison and full lanes remain required, and intermediate CPU timings are not
 the release performance verdict.
+
+S4 derives canonical groups from the admitted raw rows without another lifetime
+registry. One key retains at most 16 x 64 incidences and a five-key neighborhood
+at most 5120; receiver overlap is deduplicated for votes and dissent. Raw caps and
+loss protection remain authoritative. Snapshot winners and delivered spellings
+are observed displays; transitions, support and correction accounting use full
+semantic identity. The separate slash minimum remains two; ordinary gates and
+bare dissent remain in force. Native delivery covers immediate, temporal and
+stabilized paths, current display after expiry, license checks, TCP/DIAG,
+original peer, ring and reopened archive. Replay checks its actual emitted
+fields; replay does not populate the live confidence-percentage field.
+
+Independent source review found and closed a borrowed-slice mutation in merged
+frequency evidence. Cross-bucket witnesses retain their original bucket scope;
+equal-time conflicts within a bucket remain conflicts. Concurrent readers and
+literal exhaustive binary64 frequency oracles exercise actual 512-row canonical
+groups and five-view 2560-row groups, including strict boundary and noninitial
+interior minima. A final scratch refinement copies only frequency values rather
+than complete receiver rows. Three local benchmark samples measured 57.5-60.4 us,
+about 41.4 KiB and 12 allocations for the largest pair, versus 335-601 us and
+about 976 KiB before that refinement. Frequency-value backing across a distinct
+candidate pair is bounded by 5120 values (40 KiB), plus normal runtime overhead.
+The ordinary 3/64-row cases retain zero allocations. These are component results,
+not the final paced resource gate.
+
+The broad five-package S4 run passed spot and flow, but identified legacy cluster
+fixtures that expected candidate-wide SNR clearing and literal-alias-only family
+percentages. Those expectations contradicted the approved receiver-specific and
+canonical contracts. Fixtures now assert the surviving receiver measurements,
+absorbing equal-time conflicts, canonical percentage and independently admitted
+literal display lanes; 116 affected cases passed. The two replay/evaluator
+packages separately passed 541 cases with one intentional subprocess-helper skip.
+The failed broad cluster run is not counted as a full-package pass. Final ordinary
+and race lanes on the completed relevant state remain mandatory.

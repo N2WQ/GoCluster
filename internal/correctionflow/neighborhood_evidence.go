@@ -3,8 +3,6 @@
 package correctionflow
 
 import (
-	"math"
-
 	"dxcluster/config"
 	"dxcluster/spot"
 )
@@ -15,14 +13,19 @@ type neighborhoodCandidate struct {
 	best              spot.ResolverSnapshot
 	receivers         map[string]struct{}
 	nominee           bool // Only an already-admitted settled population may nominate.
+	rank              spot.ResolverCandidateSupport
+	evidence          *spot.ResolverEvidenceView
 }
 
 func (s ResolverPrimarySelection) allowsReplacement(call string) bool {
+	if !s.Snapshot.AllowsReplacement(call) {
+		return false
+	}
 	if s.replacementCalls == nil {
 		return true
 	}
 	for _, permitted := range s.replacementCalls {
-		if permitted == call {
+		if spot.CorrectionVoteKey(permitted) == spot.CorrectionVoteKey(call) {
 			return true
 		}
 	}
@@ -33,14 +36,14 @@ func (s ResolverPrimarySelection) allowsReplacement(call string) bool {
 // Replacement comparability is separate: ineligible dissent still contributes
 // to the distinct receiver denominator and its own candidate tally.
 func addNeighborhoodEvidence(groups map[string]*neighborhoodCandidate, receivers map[string]int, snap spot.ResolverSnapshot, nominate bool) {
-	snap.ReceiverEvidence().Range(func(call string, observation spot.ResolverReceiverObservation) bool {
+	snap.ReceiverEvidence().RangeCanonical(func(identity, call string, observation spot.ResolverReceiverObservation) bool {
 		if _, exists := receivers[observation.Receiver]; !exists {
 			receivers[observation.Receiver] = observation.WeightMilli
 		}
-		group := groups[call]
+		group := groups[identity]
 		if group == nil {
 			group = &neighborhoodCandidate{call: call, best: snap, receivers: make(map[string]struct{})}
-			groups[call] = group
+			groups[identity] = group
 		}
 		group.nominee = group.nominee || nominate
 		if _, exists := group.receivers[observation.Receiver]; !exists {
@@ -76,6 +79,7 @@ func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups
 			break
 		}
 	}
+	call = spot.CorrectionVoteKey(call)
 	left := groups[call]
 	if left == nil {
 		return pending, false
@@ -83,8 +87,8 @@ func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups
 	// A differently weighted candidate can sit below the weighted runner. Every
 	// equal-raw competitor must still satisfy the same narrow witnesses/exceptions.
 	for _, candidate := range snap.CandidateRanks {
-		if candidate.Call != call && candidate.Support == left.support &&
-			neighborhoodPairAmbiguous(call, candidate.Call, snap.Key.Mode, groups, sources, admitted, cfg) {
+		if candidate.Identity() != call && candidate.Support == left.support &&
+			neighborhoodPairAmbiguous(call, candidate.Identity(), snap.Key.Mode, groups, sources, admitted, cfg) {
 			return pending, true
 		}
 	}
@@ -93,6 +97,7 @@ func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups
 
 func neighborhoodPairAmbiguous(call, runner, mode string, groups map[string]*neighborhoodCandidate,
 	sources [5]spot.ResolverSnapshot, admitted [5]bool, cfg config.CallCorrectionConfig) bool {
+	call, runner = spot.CorrectionVoteKey(call), spot.CorrectionVoteKey(runner)
 	left, right := groups[call], groups[runner]
 	if left == nil || right == nil {
 		return false
@@ -127,31 +132,7 @@ func neighborhoodPairAmbiguous(call, runner, mode string, groups map[string]*nei
 	if !spot.RejectResolverAmbiguity(in) {
 		return false
 	}
-	minimum := math.Inf(1)
-	for i := range sources {
-		if !admitted[i] {
-			continue
-		}
-		source := &sources[i]
-		source.ReceiverEvidence().Range(func(leftCall string, a spot.ResolverReceiverObservation) bool {
-			if leftCall != call {
-				return true
-			}
-			for j := range sources {
-				if !admitted[j] {
-					continue
-				}
-				other := &sources[j]
-				other.ReceiverEvidence().Range(func(rightCall string, b spot.ResolverReceiverObservation) bool {
-					if rightCall == runner && math.Abs(a.FrequencyKHz-b.FrequencyKHz) < minimum {
-						minimum = math.Abs(a.FrequencyKHz - b.FrequencyKHz)
-						in.WinnerFrequencyKHz, in.RunnerFrequencyKHz = a.FrequencyKHz, b.FrequencyKHz
-					}
-					return true
-				})
-			}
-			return true
-		})
-	}
-	return !math.IsInf(minimum, 1) && spot.RejectResolverAmbiguity(in)
+	var witnessed bool
+	in.WinnerFrequencyKHz, in.RunnerFrequencyKHz, witnessed = left.evidence.ClosestFrequencyPair(call, runner)
+	return witnessed && spot.RejectResolverAmbiguity(in)
 }

@@ -2193,7 +2193,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionWinnerMissing, 1)
 		return false
 	}
-	if strings.EqualFold(winnerCall, preCorrectionCall) {
+	if spot.CorrectionVoteKey(winnerCall) == spot.CorrectionVoteKey(preCorrectionCall) {
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionSameCall, 1)
 		return false
 	}

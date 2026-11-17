@@ -114,6 +114,9 @@ func BenchmarkResolverClosestFrequencyPair(b *testing.B) {
 				view.candidates[0].receivers[i].FrequencyKHz = 7009.8
 				view.candidates[1].receivers[i].FrequencyKHz = 7010.11
 			}
+			// Actual owner publications cache canonical groups before a guard
+			// reads them. Keep this comparison on that same steady read path.
+			view.canonical = buildCanonicalResolverCandidates(view.candidates)
 			a, c, ok := closestResolverFrequencyPair(view, "K1ABC", "K1ABD")
 			if !ok || a != 7009.8 || c != 7010.11 {
 				b.Fatal("frequency witnesses lost")

@@ -173,7 +173,7 @@ func (d *TemporalDecoder) ConfirmCorrection(key spot.ResolverSignalKey, winner s
 	if d == nil || !d.active || d.cfg.MaxActiveKeys <= 0 || strings.TrimSpace(key.Band) == "" || strings.TrimSpace(key.Mode) == "" {
 		return false
 	}
-	winner = spot.NormalizeSpotDXCallsign(winner)
+	winner = spot.CorrectionVoteKey(spot.NormalizeSpotDXCallsign(winner))
 	if winner == "" {
 		return false
 	}
@@ -256,7 +256,7 @@ func (d *TemporalDecoder) Observe(obs TemporalObservation) (bool, string) {
 	if obs.ID == 0 {
 		return false, "invalid_id"
 	}
-	subject := spot.NormalizeSpotDXCallsign(obs.SubjectCall)
+	subject := spot.CorrectionVoteKey(spot.NormalizeSpotDXCallsign(obs.SubjectCall))
 	if subject == "" {
 		return false, "missing_subject"
 	}
@@ -505,6 +505,10 @@ func selectionForTemporalWinner(base ResolverPrimarySelection, winner string) Re
 	if winner == "" {
 		return base
 	}
+	winner = base.Snapshot.DisplayForCall(winner)
+	if winner == "" {
+		return base
+	}
 	if !base.allowsReplacement(winner) {
 		return base
 	}
@@ -537,7 +541,7 @@ func runnerForTemporalSnapshot(snap spot.ResolverSnapshot, winner string) (strin
 	bestWeighted := 0
 	for _, candidate := range snap.CandidateRanks {
 		call := candidate.Call
-		if call == "" || call == winner {
+		if call == "" || candidate.Identity() == spot.CorrectionVoteKey(winner) || candidate.ReplacementBlocked {
 			continue
 		}
 		if candidate.WeightedSupportMilli > bestWeighted {
@@ -640,6 +644,7 @@ func (d *TemporalDecoder) candidatesForEvent(event temporalEvent, fallbackSubjec
 	out := make([]string, 0, d.cfg.MaxObsCandidates+2)
 
 	appendStoredCall := func(call string) {
+		call = spot.CorrectionVoteKey(call)
 		if call == "" {
 			return
 		}
@@ -717,7 +722,7 @@ func (d *TemporalDecoder) transitionScore(prevCall, nextCall, mode string) int {
 	if prevCall == "" || nextCall == "" {
 		return -d.cfg.SwitchPenalty
 	}
-	if prevCall == nextCall {
+	if spot.CorrectionVoteKey(prevCall) == spot.CorrectionVoteKey(nextCall) {
 		return d.cfg.StayBonus
 	}
 	penalty := d.cfg.SwitchPenalty

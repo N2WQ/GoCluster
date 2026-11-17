@@ -74,7 +74,7 @@ func TestResolverSweepPreparedEvaluation(t *testing.T) {
 				}
 			}
 			s := lossTestSnapshot(t, r, st.key)
-			wantRanks := []ResolverCandidateSupport{{Call: "K1ABC", Support: 2, WeightedSupportMilli: 2000}, {Call: "K1ABD", Support: 1, WeightedSupportMilli: 1000}}
+			wantRanks := []ResolverCandidateSupport{{Call: "K1ABC", VoteKey: "K1ABC", Support: 2, WeightedSupportMilli: 2000}, {Call: "K1ABD", VoteKey: "K1ABD", Support: 1, WeightedSupportMilli: 1000}}
 			if s.Key != st.key || s.Generation != 1 || s.EvaluatedAt != at || s.State != ResolverStateConfident ||
 				s.Winner != "K1ABC" || s.RunnerUp != "K1ABD" || s.WinnerSupport != 2 || s.RunnerSupport != 1 ||
 				s.Margin != 1 || s.TotalReporters != 3 || s.WinnerWeightedSupportMilli != 2000 ||

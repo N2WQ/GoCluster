@@ -104,9 +104,11 @@ type resolverEvidenceCandidate struct {
 // Its rows are bounded by MaxCandidatesPerKey * MaxReportersPerCand; deletion
 // and eviction are coupled to the owner's existing key/candidate/receiver paths.
 type ResolverEvidenceView struct {
-	window     time.Duration
-	count      int
-	candidates []resolverEvidenceCandidate
+	window             time.Duration
+	count              int
+	candidates         []resolverEvidenceCandidate
+	canonical          []resolverCanonicalCandidate
+	frequencyWitnesses []resolverEvidenceCandidate // Selection-local source-bucket rows only.
 }
 
 // ReceiverEvidence returns the immutable current observations, or nil for a
@@ -176,6 +178,7 @@ func publishedResolverEvidence(st *resolverKeyState) *ResolverEvidenceView {
 		view.count += len(rows)
 	}
 	sort.Slice(view.candidates, func(i, j int) bool { return view.candidates[i].call < view.candidates[j].call })
+	view.canonical = buildCanonicalResolverCandidates(view.candidates)
 	st.publishedReceiverEvidence = view
 	st.receiverEvidenceDirty = false
 	return view

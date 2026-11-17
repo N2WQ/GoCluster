@@ -30,6 +30,7 @@ func newRevengHistoryOwners(c config.CallCorrectionConfig, reliability, cw, rtty
 		EvalMinInterval:           resolverEvalMinInterval,
 		SweepInterval:             resolverSweepInterval,
 		HysteresisWindows:         resolverHysteresisWindows,
+		SlashPrecedenceMinReports: c.FamilyPolicy.SlashPrecedenceMinReports,
 		FreqGuardMinSeparationKHz: c.FreqGuardMinSeparationKHz,
 		FreqGuardRunnerUpRatio:    c.FreqGuardRunnerUpRatio,
 		MaxEditDistance:           c.MaxEditDistance,
