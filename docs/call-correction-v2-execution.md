@@ -4,6 +4,8 @@ Authority: [approved Scope Ledger v3](call-correction-v2-scope-ledger-v3.md).
 Owner authorization: exact `Approved v3`, 2026-11-17.
 Study-input amendment: [approved Scope Ledger v4](call-correction-v2-scope-ledger-v4.md),
 exact `Approved v4`, 2026-11-17; v3 runtime and final validation boundaries remain.
+Method investigation: [approved Scope Ledger v5](call-correction-v2-scope-ledger-v5.md),
+exact `Approved v5`, 2026-11-18; the E0/E2 evidence follow-up is recorded below.
 Branch: `call-correctionv2`; baseline `3fd37c6cb48d2028756ca18184d4f18a8dc95bb0`.
 Active execution worktree: `C:\src\gocluster-call-correctionv2`.
 
@@ -668,8 +670,8 @@ The [qualification report](call-correction-v2-qualification.md#owner-requested-s
 records complete daily results, estimator semantics, provenance, pairing and
 limitations. This supplementary S0/S6 evidence is recorded under the already
 approved S7 documentation unit. No frozen artifact, prediction, configuration,
-activation requirement or failed verdict changes. The proposed v5 diagnostic
-implementation still requires exact `Approved v5`; no new diagnostic interface,
+activation requirement or failed verdict changes. At that checkpoint, the proposed
+v5 diagnostic implementation still required exact `Approved v5`; no new diagnostic interface,
 model, runtime method or production activation is implemented by this update.
 November 17 contents remain unopened by the follow-up analysis.
 
@@ -677,3 +679,96 @@ The change is ordinary qualification/execution documentation. Existing support
 routing still points to these reports; no operator command, runtime contract,
 support-map entry, ADR or TSR changes. Use the documentation-only validation
 lane; existing Go evidence remains at its recorded source boundaries.
+
+## Approved v5: reproducible receipt audit and preliminary method evidence
+
+The owner supplied exact `Approved v5`. E0 adds the isolated audit CLI in
+`cmd/rbn_replay/main.go` and the cohesive `study_audit.go`,
+`study_audit_plan.go`, `study_audit_counts.go`, `study_audit_writer.go` owners.
+Their four behavior test files plus `v5_audit_cli_test.go` cover archive binding,
+literal receipt oracles, full-ID pairing, fractions, strict inputs, output
+budgets, write/finalization failures and actual CLI isolation. Shared/runtime
+correction packages and live settings are untouched by this unit.
+
+A separate source/code-quality reviewer challenged the implementation.
+Dispositioned findings added rejection of overlapping archives across distinct
+plans, explicit added/lost stability fractions, separate semantic/literal/key
+change counters and a useful accepted-plan fuzz oracle. The reviewer found no
+remaining material source issue after rechecking those fixes. The lead also
+walked file ownership/closure and quota paths; fault tests establish local
+failure behavior, not a long-running OS-handle or RSS guarantee.
+
+The actual frozen audit completed in `v5-audit-current-final-v1/` under the local
+evidence root. Its plan SHA256 is
+`81cddeefe4da2d77959bb5906091c3d2855109f06d2bf4b786f479ad1bcdc591`;
+the executable SHA256 is
+`9450ca7127fde17bb48ab274c49afefaf9ec4de78d8f0bf4b98ea1c3b4dda8c0`.
+Each date's three historical integer totals reconciled before that date's
+current scoring; completion required all twelve to pass. The new result matches
+the preceding separate raw-archive recount:
+2,364,930 paired IDs, 110,528 applied receipts over three arms, 309 ON-only
+receipts/250 stable, zero lost/common-retargeted/common-retimed corrections.
+Output is 2,439,273,725 bytes, below the literal 4 GiB run-output bound.
+Completion SHA256 is
+`5ccb7fe8f66282636fb8326f4d78bcbde18b70ff6625e0ee26106a0a3458ec0d`.
+
+The lead's separate streaming output checker verified hashes, increasing
+archive-bound immutable IDs, receipt order, every arm/date/mode count and all
+paired classes. It did not reuse the predictor or scorer and did not re-score
+raw sightings. `v5-e0-independent-output-check-v1.json` has SHA256
+`fa6bad4ca5fa98e4406acc763b8b4c2acb46712e77a4a99c30bca52aeec19ca4`.
+This checker is lead-owned, not a separate-context review. Literal scalar tests
+and the earlier separate raw recount supply the independent scoring evidence.
+
+An initial pre-refinement capture was interrupted and retained without COMPLETE;
+it is not evidence. The completed capture predates only mechanical range-copy
+lint fixes and improved FAILED-marker error reporting/tests. These do not change
+successful scoring, receipt bytes or accounting. Affected package checks must
+run on the final source; no second archive capture is needed for those changes.
+
+The full per-ID R1/R2 labels, unknown reasons and covariates remain in the
+hash-bound original terminal exports named by each audit day. The unchanged
+`study-v2/cw2_r450_a100_d0-tuning-comparison-corrected/` and
+`study-v2-holdout/comparison-corrected/` comparison artifacts retain their
+reference/unknown denominators and activation verdicts. The latter comparison
+SHA256 remains
+`6d4142ebc98439cdfd7cef305c30ffd6e05ab0d73d2cb08eb99ce8e775503d7c`.
+Read these alongside the [qualification reference controls](call-correction-v2-qualification.md#owner-requested-stability-reanalysis),
+including the stable `YO9KWC -> YO9CMC` receipt that contradicts its strong R2.
+No reference or failure is relabeled to improve the stability result.
+
+E2 preliminary accounting and the frozen 1,038-case diagnostic selection are
+recorded in the [method investigation](call-correction-v2-method-investigation.md).
+It preserves correct matches, discordant/unavailable references, canonical alias
+changes and alignment-dependent operation counts. It is not a fitted model or
+feasibility verdict. E1 is stopped at the [storage guarantee gap](call-correction-v2-scope-ledger-v5.md#post-approval-material-finding-e1-storage-ceiling).
+The owner has selected evidence/asset capping with separate scratch accounting;
+the [reviewed amendment](call-correction-v2-scope-ledger-v6.md) still requires exact
+`Approved v6`. No shared diagnostic interface or successor runtime method has
+been implemented. November 17 contents
+remain unopened.
+
+Support-agent docs impact: **Required**. The replay audit adds a diagnostic CLI;
+its authoritative [runbook](rbn_replay.md#frozen-receipt-stability-audit) and
+`customgpt/source-map.md` routing are updated. No ADR is added because this unit
+implements the already approved estimator/evidence contract; no durable runtime
+or model decision changes. No new TSR is needed for this bounded tool addition.
+
+Final E0 validation covers all 76 packages, with 61 executed and 15 build-only:
+
+| Evidence | Observed result and source boundary |
+| --- | --- |
+| Ordinary | Successful full run: 14,330 passed cases/99 skips. Replace its replay-package result with the final entire-package rerun: 529 passes/zero skips. Exact reconciliation gives 14,334 final-source cases and the same 99 skips; four newly added boundary cases are explicit. |
+| Race | The original default-10-minute invocation failed the cumulative `internal/cluster` package timeout; its active test had run three seconds, and no assertion failure or race report preceded the timeout. Preserve only the 38 fully completed packages. An unchanged-source 25-minute continuation passed the failed package and all 37 unfinished packages: 10,329 passes/88 skips. Combined coverage is 14,334 passes/99 skips over all 76 packages. The original invocation remains failed. |
+| Case accounting | `v5-e0-validation-coverage-v1.json`, SHA256 `f8c2b94e1302f15626a7bd4ea04b8f48186ea49a2a50fa80bf264f7cbb5afbdd`, binds all four logs. All skip identities and common case identities reconcile. The existing peer handshake case embeds UTC seconds in its name; normalization is restricted to that source-proven field. Existing `!race` full-topology and `race` smaller-topology tests remain separate required lane-specific cases, not identical workloads. |
+| Analyzers | `go vet ./...`, `staticcheck ./...` and full lint passed; affected replay-package checks passed again after the final failure-only change. Initial lint findings were fixed, not suppressed. Go 1.27.1, Staticcheck 2026.2.1 and golangci-lint 2.14.0 were observed. |
+| Fuzz | A saved native image compiled with `go test -c -fuzz=^FuzzStudyAuditPlan$` under the runner lock completed 31,200 coverage-guided executions in 21 seconds, with two workers, 52 new interesting inputs and no failure. The later UTF-8 change touches only failure-marker output, outside this target. |
+| Actual audit | Four exposed dates, twelve legacy reconciliations, complete paired/receipt streams and the separate lead-owned output check passed, as bound above. No prediction/model rerun or November 17 inspection occurred. |
+
+Native commands use `scripts/test-windows.ps1`; the continuation selects the
+frozen 38-package list in `v5-e0-race-continuation-packages-v1.json` with
+`-Race -Timeout 25m`. No test assertion, product timeout or qualification floor
+was relaxed. The final ordinary replay command uses `-Packages
+@('./cmd/rbn_replay') -Timeout 180s`. This is functional/source validation of E0,
+not a new production performance or resource-qualification pass. Hosted CI,
+merge, push, deployment and service restart are not claimed.

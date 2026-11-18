@@ -15,6 +15,9 @@ No deployment is authorized or claimed.
 Authority: [approved v3](call-correction-v2-scope-ledger-v3.md) and the additive
 [approved v4 input scenario](call-correction-v2-scope-ledger-v4.md). Implementation
 and earlier receipts remain in the [execution record](call-correction-v2-execution.md).
+The subsequent [approved v5 investigation](call-correction-v2-scope-ledger-v5.md)
+adds reproducible receipt auditing and preliminary method evidence without
+changing the original activation verdict.
 Local evidence paths below are relative to `.tmp/call-correctionv2/`; ignored
 artifacts are retained locally, not represented as published evidence.
 
@@ -376,6 +379,33 @@ non-steered scientific reviewer derived the estimator contract and its limits.
 No new saved computation receipt or executable is claimed. November 17 contents
 were not inspected by this reanalysis and remain reserved for future frozen
 confirmation.
+
+### Reproducible v5 receipt audit
+
+After exact `Approved v5`, the new audit CLI completed the same four exposed
+dates. Each date's three old 60/2/1000 integer totals reconciled before that
+date's current 15/3/500 scoring; completion required all twelve to pass.
+Its counts exactly match the table and paired decomposition
+above. The complete output includes all 2,364,930 focal IDs and 110,528 applied
+receipts over the three arms; total output is 2,439,273,725 bytes, within the
+literal 4 GiB quota. A separate lead-owned streaming reader verifies the output
+hashes, ordered ID union and every arm/date/mode count. This supplements the
+prior separate raw-archive recount rather than substituting rounded percentages
+or reusing model outputs as independent truth.
+
+The local `v5-audit-current-final-v1/COMPLETE.json` SHA256 is
+`5ccb7fe8f66282636fb8326f4d78bcbde18b70ff6625e0ee26106a0a3458ec0d`.
+It binds aggregate, per-applied and full-pair output hashes. Each day's original
+decision bindings preserve the complete R1/R2 labels and unknown reasons; the
+unchanged tuning and confirmation comparison artifacts above retain reference
+coverage and contradiction verdicts. The [execution record](call-correction-v2-execution.md#approved-v5-reproducible-receipt-audit-and-preliminary-method-evidence)
+records plan/executable/proof hashes, review and source boundaries.
+
+The [preliminary method investigation](call-correction-v2-method-investigation.md)
+records the full eligible match/error accounting and 75 nearby misses. No new
+method has been qualified. The owner selected evidence/asset capping with
+separate scratch accounting; the [v6 amendment](call-correction-v2-scope-ledger-v6.md)
+requires exact approval before dependent E1 diagnostics proceed.
 
 ## Validation reached, with state boundaries
 

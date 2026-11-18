@@ -255,6 +255,60 @@ inherits that evidence. No study qualification or activation follows from this
 documentation; the [execution record](call-correction-v2-execution.md) owns the
 current empirical disposition.
 
+### Frozen receipt stability audit
+
+The separate audit entry point re-scores existing frozen
+shipped/repaired-OFF/repaired-ON terminal receipts. Use it for the
+exposed-data investigation authorized by [v5](call-correction-v2-scope-ledger-v5.md).
+It never downloads archives, opens a predictor database, loads a historical
+model or changes an original study artifact.
+
+Supply only these flags; ordinary replay/study flags and positional arguments
+are refused:
+
+| Flag | Value |
+| --- | --- |
+| `-study-audit-plan` | Local, already-frozen audit JSON path |
+| `-study-audit-freeze` | Its externally recorded SHA256, checked before decoding |
+| `-study-audit-out` | New local directory whose parent already exists |
+
+The strict audit schema is version 1 with `frozen: true`, `exposed: true`, and
+explicit `stability` values `window_minutes: 15`, `min_follow_on: 3`,
+`freq_tolerance_hz: 500`. Each `groups` entry declares a hash-bound original
+`plan`, a `phase` (`tuning` or `holdout`), a `candidate` ID and `reports`.
+Each report entry binds both the original completion `report` and its adjacent
+`manifest` using `path`/`sha256`. Every selected original phase/date requires
+all three arms. The total is at most 32 phase/date instances; reused archives
+or duplicated phase/date instances are refused rather than pooled twice.
+
+The audit verifies archive ordinals, raw payloads, receiver families, episodes,
+terminal coverage and historical provenance. Every old 60-minute/two-row/1,000-Hz
+integer total must reconcile before the corresponding date is scored at
+15/3/500. The evidence population remains accepted A-only raw rows, including
+beacon evidence before its later focal exclusion. Scoring retains literal
+normalization, decision timestamps, inclusive endpoints, repeated-row counting
+and the original day-end boundary; no extra mode/band filter is added.
+
+The new directory contains `applied_receipts.jsonl`, `paired_union.jsonl`,
+`aggregates.json` and a final `COMPLETE.json`. Pairing covers every immutable
+focal raw ID; delayed streams are not zipped by position. Compact receipts join
+by raw ID to the hash-bound original decision exports, which retain R1/R2
+reference labels, unknown reasons and covariates. Aggregates report exact
+fractions, added/lost receipts, semantic/literal/scorer-key changes, retiming,
+stability transitions, date/mode and status counts. A zero denominator is
+undefined. These are descriptive stability results, not RF truth or a new
+activation qualification; retain the [reference evidence and its limitations](call-correction-v2-qualification.md).
+
+Run-owned output bytes share a literal 4 GiB quota, with space reserved for
+metadata/failure reporting. Labels are limited to 1,024 bytes, encoded rows to
+64 KiB and records to 8 MiB, with preallocation checks. Day-owned archive and
+pairing state retains the original 8,000,000-row/512 MiB decoded-CSV limits;
+these do not establish a process-RSS limit. All output must flush, sync, close
+and hash successfully before completion is published. Malformed, integrity,
+budget and storage failures return an error without `COMPLETE.json`; partial
+files remain and `FAILED.json` is best effort. Treat only a valid completion
+binding as usable evidence.
+
 ## Output artifacts
 
 Outputs:

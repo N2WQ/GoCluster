@@ -31,8 +31,27 @@ func main() {
 		studyPhase       = flag.String("study-phase", "holdout", "Study population: tuning or holdout")
 		studyOut         = flag.String("study-out", "", "New study output directory (must not exist)")
 		studyCompare     = flag.String("study-compare", "", "Comma-separated complete study report paths to compare")
+		auditPlan        = flag.String("study-audit-plan", "", "Frozen v5 audit JSON for existing study predictions only")
+		auditFreeze      = flag.String("study-audit-freeze", "", "SHA256 of the frozen audit plan")
+		auditOut         = flag.String("study-audit-out", "", "New audit evidence directory (must not exist)")
 	)
 	flag.Parse()
+	auditRequested := false
+	var auditOverrides []string
+	flag.Visit(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "study-audit-") {
+			auditRequested = true
+		} else {
+			auditOverrides = append(auditOverrides, f.Name)
+		}
+	})
+	if auditRequested {
+		if len(auditOverrides) > 0 || len(flag.Args()) > 0 {
+			must(errors.New("audit uses only its frozen plan inputs; replay/study overrides and positional arguments are not allowed"))
+		}
+		must(runCCV2Audit(*auditPlan, *auditFreeze, *auditOut))
+		return
+	}
 	studyRequested := false
 	var replayOverrides []string
 	flag.Visit(func(f *flag.Flag) {
