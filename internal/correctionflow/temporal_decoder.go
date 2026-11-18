@@ -311,56 +311,88 @@ func (d *TemporalDecoder) Observe(obs TemporalObservation) (bool, string) {
 // Evaluate computes one temporal decision for request id at time now. When
 // force=true, confidence gates no longer defer and fallback is applied.
 func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) TemporalDecision {
+	return d.evaluateDiagnostics(id, now, force, nil)
+}
+
+func (d *TemporalDecoder) evaluateDiagnostics(id uint64, now time.Time, force bool, diagnostics *TemporalEvaluateDiagnostics) TemporalDecision {
 	decision := TemporalDecision{
 		ID:     id,
 		Action: TemporalDecisionActionBypass,
 		Reason: "decoder_disabled",
 	}
 	if d == nil || !d.active {
-		return decision
+		return finishTemporalDiagnostic(diagnostics, decision)
 	}
 	now = now.UTC()
 	if now.IsZero() {
 		now = time.Now().UTC()
+		if diagnostics != nil {
+			diagnostics.ClockRead = true
+		}
+	}
+	if diagnostics != nil {
+		diagnostics.EffectiveAt = now
+		diagnostics.MaxObsCandidates, diagnostics.MaxEventsPerKey = d.cfg.MaxObsCandidates, d.cfg.MaxEventsPerKey
+		if d.cfg.MaxObsCandidates < 0 || d.cfg.MaxObsCandidates > 8 || d.cfg.MaxEventsPerKey > 32 {
+			diagnostics.budget.fail("unsupported diagnostic temporal configuration bounds")
+		}
 	}
 
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	req, ok := d.requests[id]
+	if diagnostics != nil {
+		diagnostics.RequestFound = ok
+	}
 	if !ok {
 		decision.Reason = "missing_request"
-		return decision
+		return finishTemporalDiagnostic(diagnostics, decision)
 	}
 	decision.Key = req.key
 	decision.CommitLatency = clampDurationNonNegative(now.Sub(req.observedAt))
 
 	lagAt := req.observedAt.Add(d.LagDuration())
 	maxAt := req.observedAt.Add(d.MaxWaitDuration())
+	if diagnostics != nil {
+		diagnostics.Key = cloneDiagnosticKey(&diagnostics.budget, req.key)
+		diagnostics.RequestObservedAt = req.observedAt.UTC()
+		diagnostics.LagAt = lagAt
+		diagnostics.MaxAt = maxAt
+	}
 	if !force && now.Before(lagAt) {
 		decision.Action = TemporalDecisionActionDefer
 		decision.Reason = "lag_pending"
-		return decision
+		return finishTemporalDiagnostic(diagnostics, decision)
 	}
 
 	st := d.keyStates[req.key]
+	if diagnostics != nil {
+		diagnostics.KeyStateFound = st != nil
+	}
 	if st == nil {
 		decision.Action = d.fallbackActionLocked()
 		decision.Reason = "missing_key_state"
 		d.retireRequestLocked(req)
-		return decision
+		return finishTemporalDiagnostic(diagnostics, decision)
 	}
 	startIdx := findTemporalEventIndex(st.events, req.id)
+	if diagnostics != nil {
+		diagnostics.StartEventFound = startIdx >= 0
+	}
 	if startIdx < 0 {
 		decision.Action = d.fallbackActionLocked()
 		decision.Reason = "event_evicted"
 		d.retireRequestLocked(req)
-		return decision
+		return finishTemporalDiagnostic(diagnostics, decision)
 	}
 
 	endTime := now
 	if endTime.After(maxAt) {
 		endTime = maxAt
+	}
+	if diagnostics != nil {
+		diagnostics.WindowEnd = endTime
 	}
 	endIdx := startIdx
 	for i := startIdx + 1; i < len(st.events); i++ {
@@ -374,12 +406,18 @@ func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) Tempora
 	for i := startIdx; i <= endIdx; i++ {
 		window = append(window, st.events[i])
 	}
-	winner, bestScore, marginScore, candidateCount := d.decodeWindowLocked(window, req.subject, req.key.Mode)
+	winner, bestScore, marginScore, candidateCount := d.decodeWindowDiagnosticsLocked(window, req.subject, req.key.Mode, diagnostics)
 	decision.BestScore = bestScore
 	decision.MarginScore = marginScore
 	decision.CandidateCount = candidateCount
 	decision.Winner = winner
-	decision.Selection = selectionForTemporalWinner(window[0].selection, winner)
+	var transform *DiagnosticTransform
+	var budget *diagnosticBudget
+	if diagnostics != nil {
+		transform = &diagnostics.Transform
+		budget = &diagnostics.budget
+	}
+	decision.Selection = selectionForTemporalWinnerDiagnostics(window[0].selection, winner, transform, budget)
 	if decision.Selection.Snapshot.Key.Band == "" || decision.Selection.Snapshot.Key.Mode == "" {
 		decision.Selection.Snapshot.Key = req.key
 	}
@@ -391,21 +429,26 @@ func (d *TemporalDecoder) Evaluate(id uint64, now time.Time, force bool) Tempora
 
 	thresholdPass := winner != "" && bestScore >= d.cfg.MinScore && marginScore >= d.cfg.MinMarginScore
 	timedOut := force || !now.Before(maxAt)
+	if diagnostics != nil {
+		diagnostics.ThresholdChecked = true
+		diagnostics.ThresholdPass = thresholdPass
+		diagnostics.TimedOut = timedOut
+	}
 	if !thresholdPass && !timedOut {
 		decision.Action = TemporalDecisionActionDefer
 		decision.Reason = temporalGateReason(winner, bestScore, marginScore, d.cfg.MinScore, d.cfg.MinMarginScore)
-		return decision
+		return finishTemporalDiagnostic(diagnostics, decision)
 	}
 	if thresholdPass {
 		decision.Action = TemporalDecisionActionApply
 		decision.Reason = "proposal"
 		d.retireRequestLocked(req)
-		return decision
+		return finishTemporalDiagnostic(diagnostics, decision)
 	}
 	decision.Action = d.fallbackActionLocked()
 	decision.Reason = temporalGateReason(winner, bestScore, marginScore, d.cfg.MinScore, d.cfg.MinMarginScore)
 	d.retireRequestLocked(req)
-	return decision
+	return finishTemporalDiagnostic(diagnostics, decision)
 }
 
 // retireRequestLocked couples every terminal request to its event-key owner.
@@ -490,33 +533,59 @@ func temporalGateReason(winner string, bestScore int, marginScore int, minScore 
 }
 
 func selectionForTemporalWinner(base ResolverPrimarySelection, winner string) ResolverPrimarySelection {
+	return selectionForTemporalWinnerDiagnostics(base, winner, nil, nil)
+}
+
+func selectionForTemporalWinnerDiagnostics(base ResolverPrimarySelection, winner string, diagnostics *DiagnosticTransform, budget *diagnosticBudget) ResolverPrimarySelection {
+	if diagnostics != nil {
+		diagnostics.SnapshotChecked = true
+	}
 	if !base.SnapshotOK {
-		return base
+		return finishTransformDiagnostic(diagnostics, base, "missing_snapshot")
+	}
+	if diagnostics != nil {
+		diagnostics.LossChecked = true
 	}
 	if base.Snapshot.EvidenceLoss {
 		base.Snapshot.State = spot.ResolverStateUncertain
-		return base
+		return finishTransformDiagnostic(diagnostics, base, "evidence_loss")
+	}
+	if diagnostics != nil {
+		diagnostics.SplitChecked = true
 	}
 	if base.NeighborhoodSplit || base.Snapshot.State == spot.ResolverStateSplit {
 		base.Snapshot.State = spot.ResolverStateSplit
 		base.Snapshot.Winner = ""
-		return base
+		return finishTransformDiagnostic(diagnostics, base, "split")
+	}
+	if diagnostics != nil {
+		diagnostics.WinnerChecked = true
 	}
 	if winner == "" {
-		return base
+		return finishTransformDiagnostic(diagnostics, base, "winner_missing")
 	}
 	winner = base.Snapshot.DisplayForCall(winner)
+	if diagnostics != nil {
+		diagnostics.DisplayChecked = true
+		setDiagnosticTransformDisplay(diagnostics, budget, winner)
+	}
 	if winner == "" {
-		return base
+		return finishTransformDiagnostic(diagnostics, base, "display_missing")
+	}
+	if diagnostics != nil {
+		diagnostics.EligibilityChecked = true
 	}
 	if !base.allowsReplacement(winner) {
-		return base
+		return finishTransformDiagnostic(diagnostics, base, "replacement_denied")
+	}
+	if diagnostics != nil {
+		diagnostics.PendingChecked = true
 	}
 	if incumbent, challenger, pending := base.Snapshot.PendingTransition(); pending &&
 		ResolverSupportForCall(base.Snapshot, incumbent) > 0 && ResolverSupportForCall(base.Snapshot, challenger) > 0 {
 		// Exact uncertain snapshots cannot acquire settled authority merely by
 		// reclassifying a decoder proposal. Fresh neighborhood selection owns recovery.
-		return base
+		return finishTransformDiagnostic(diagnostics, base, "pending_transition")
 	}
 	snap := base.Snapshot
 	snap.Winner = winner
@@ -532,7 +601,10 @@ func selectionForTemporalWinner(base ResolverPrimarySelection, winner string) Re
 	}
 	snap.State = classifyTemporalSnapshotState(snap)
 	base.Snapshot = snap
-	return base
+	if diagnostics != nil {
+		diagnostics.Applied = true
+	}
+	return finishTransformDiagnostic(diagnostics, base, "transformed")
 }
 
 func runnerForTemporalSnapshot(snap spot.ResolverSnapshot, winner string) (string, int, int) {
@@ -580,13 +652,22 @@ func classifyTemporalSnapshotState(snap spot.ResolverSnapshot) spot.ResolverStat
 	}
 }
 
-func (d *TemporalDecoder) decodeWindowLocked(events []temporalEvent, fallbackSubject string, mode string) (string, int, int, int) {
+func (d *TemporalDecoder) decodeWindowDiagnosticsLocked(events []temporalEvent, fallbackSubject string, mode string, diagnostics *TemporalEvaluateDiagnostics) (string, int, int, int) {
 	if len(events) == 0 {
 		return "", 0, 0, 0
 	}
+	if diagnostics != nil {
+		diagnostics.window(events)
+	}
 	candidateSets := make([][]string, 0, len(events))
 	for i := range events {
-		candidateSets = append(candidateSets, d.candidatesForEvent(events[i], fallbackSubject))
+		var capture *DiagnosticTemporalEvent
+		var budget *diagnosticBudget
+		if diagnostics != nil {
+			capture = diagnostics.event(i)
+			budget = &diagnostics.budget
+		}
+		candidateSets = append(candidateSets, d.candidatesForEventDiagnostics(events[i], fallbackSubject, capture, budget))
 	}
 	startCandidates := candidateSets[0]
 	if len(startCandidates) == 0 {
@@ -628,6 +709,9 @@ func (d *TemporalDecoder) decodeWindowLocked(events []temporalEvent, fallbackSub
 		}
 		return perStart[i].call < perStart[j].call
 	})
+	if diagnostics != nil {
+		diagnostics.scores(perStart)
+	}
 	if len(perStart) == 0 {
 		return "", 0, 0, 0
 	}
@@ -640,6 +724,10 @@ func (d *TemporalDecoder) decodeWindowLocked(events []temporalEvent, fallbackSub
 }
 
 func (d *TemporalDecoder) candidatesForEvent(event temporalEvent, fallbackSubject string) []string {
+	return d.candidatesForEventDiagnostics(event, fallbackSubject, nil, nil)
+}
+
+func (d *TemporalDecoder) candidatesForEventDiagnostics(event temporalEvent, fallbackSubject string, capture *DiagnosticTemporalEvent, budget *diagnosticBudget) []string {
 	set := make(map[string]struct{}, d.cfg.MaxObsCandidates+2)
 	out := make([]string, 0, d.cfg.MaxObsCandidates+2)
 
@@ -658,22 +746,34 @@ func (d *TemporalDecoder) candidatesForEvent(event temporalEvent, fallbackSubjec
 		appendStoredCall(spot.NormalizeSpotDXCallsign(value))
 	}
 
+	admitted := 0
 	if event.selection.SnapshotOK {
-		admitted := 0
-		for _, candidate := range event.selection.Snapshot.CandidateRanks {
-			if !event.selection.allowsReplacement(candidate.Call) {
+		for index, candidate := range event.selection.Snapshot.CandidateRanks {
+			allowed := event.selection.allowsReplacement(candidate.Call)
+			if !allowed {
+				diagnosticTemporalRankStatus(capture, index, false, false, false, false)
 				continue
 			}
 			if admitted >= d.cfg.MaxObsCandidates {
+				diagnosticTemporalRankStatus(capture, index, true, false, false, true)
 				break
 			}
 			admitted++
+			before := len(out)
 			appendStoredCall(candidate.Call)
+			diagnosticTemporalRankStatus(capture, index, true, true, len(out) == before, false)
 		}
+		before := len(out)
 		appendStoredCall(event.selection.Snapshot.Winner)
+		diagnosticTemporalExtra(capture, budget, "winner", event.selection.Snapshot.Winner, len(out) > before)
 	}
+	before := len(out)
 	appendStoredCall(event.subject)
+	diagnosticTemporalExtra(capture, budget, "event_subject", event.subject, len(out) > before)
+	before = len(out)
 	appendInputCall(fallbackSubject)
+	diagnosticTemporalExtra(capture, budget, "fallback_subject", fallbackSubject, len(out) > before)
+	diagnosticTemporalCandidates(capture, budget, out, admitted)
 	return out
 }
 

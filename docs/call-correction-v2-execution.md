@@ -741,11 +741,11 @@ E2 preliminary accounting and the frozen 1,038-case diagnostic selection are
 recorded in the [method investigation](call-correction-v2-method-investigation.md).
 It preserves correct matches, discordant/unavailable references, canonical alias
 changes and alignment-dependent operation counts. It is not a fitted model or
-feasibility verdict. E1 is stopped at the [storage guarantee gap](call-correction-v2-scope-ledger-v5.md#post-approval-material-finding-e1-storage-ceiling).
+feasibility verdict. E1 originally stopped at the [storage guarantee gap](call-correction-v2-scope-ledger-v5.md#post-approval-material-finding-e1-storage-ceiling).
 The owner has selected evidence/asset capping with separate scratch accounting;
-the [reviewed amendment](call-correction-v2-scope-ledger-v6.md) still requires exact
-`Approved v6`. No shared diagnostic interface or successor runtime method has
-been implemented. November 17 contents
+the [reviewed amendment](call-correction-v2-scope-ledger-v6.md) received exact
+`Approved v6`. Its construction/test gate preceded the shared unit recorded
+below; no successor runtime method has been implemented. November 17 contents
 remain unopened.
 
 Support-agent docs impact: **Required**. The replay audit adds a diagnostic CLI;
@@ -772,3 +772,143 @@ was relaxed. The final ordinary replay command uses `-Packages
 @('./cmd/rbn_replay') -Timeout 180s`. This is functional/source validation of E0,
 not a new production performance or resource-qualification pass. Hosted CI,
 merge, push, deployment and service restart are not claimed.
+
+## Approved v6 shared diagnostic checkpoint
+
+The first E1 unit adds owned, bounded selector/release/Evaluate captures in
+`internal/correctionflow`; existing callers and Observe keep their public
+signatures. [Method notes](call-correction-v2-method-investigation.md#shared-diagnostic-checkpoint)
+describe actual-consumption, provenance, branch, ordering and claim boundaries.
+The detailed post-approval test-strategy review and frozen pre-change behavior/
+allocation fixtures preceded core edits. Separate source-quality review and
+the lead's final pass found no remaining material shared-unit issue.
+
+Final targeted commands use `scripts/test-windows.ps1 -Packages
+@('./internal/correctionflow') -Timeout 180s`, ordinary and `-Race`:
+275 cases passed in each, zero skips. Targeted vet, Staticcheck and lint passed.
+The final source is bound by `v6-e1-shared-source-freeze-v2.json`; the frozen
+old-API fixture remained unchanged. `v6-e1-shared-bench-v3.log` and allocation
+receipt SHA256 `a87c7495430866ca0b25b25862e8a4f82119fed2bb7f20d39df07bd3bec14bc9`
+bind 22 benchmark shapes × three repetitions with no measured allocation-count
+increase. The native image ran under the runner lock with `-test.run=^$`,
+`-test.benchmem -test.benchtime=250ms -test.count=3` and the exact selector,
+neighborhood, retirement and frozen diagnostic-baseline benchmark names.
+Allocated-byte differences and absence of CPU/resource qualification are
+explicit in the method notes.
+
+Initial checks exposed two test-fixture faults: a singleton's optional alias
+list was legitimately nil, and a quota fixture evaluated one millisecond before
+its lag. The fixes retain actual nested ownership coverage and assert that
+decoding reaches its 32-event window before exercising the quota. A lint finding
+removed an obsolete private test-only forwarding helper; independent-oracle
+expected values were unchanged. Final affected checks passed after these fixes.
+Intermediate allocation receipt v1 collected source hashes after a subsequent
+diagnostic-only refinement and is explicitly superseded by its retained erratum
+and final v3 receipt; it is not final-source evidence.
+
+The next narrow unit implements only run-owned artifact/scratch primitives,
+following a separate 12-row detailed test-strategy review. All four checker
+refinements were adopted: exclusive synchronous ownership, complete failure
+latching, destination containment and checked copy finalization. Actual replay
+wiring, backend applicability, cleanup/COMPLETE ordering and real-run accounting
+remain dependent work. A complete final E1 lane, capture results, fitting,
+activation and deployment are not claimed at this checkpoint.
+
+The artifact/scratch primitives then passed their separate intermediate gate:
+`scripts/test-windows.ps1 -Packages @('./cmd/rbn_replay') -Timeout 180s`, ordinary
+and race, each passed 696 cases with zero skips. Exact required parents cover
+all twelve planned failure mechanisms, the production budget constructor and
+active JSONv2 hook regressions. Targeted vet, Staticcheck and lint passed.
+`v6-e1-primitives-checkpoint-v1.json` SHA256
+`bcc76e59f3433af81d91ab88b7c0fa8960f30508109bccafebdb7f5bb220c964`
+binds final source freeze v4, ordinary v5/race v3 logs and analyzer v2 logs.
+
+Separate source review caught unsupported custom encoding and tag paths,
+root-path preflight ordering and an incomplete destination-copy oracle. The
+lead also required unexported embedded-field and active JSONv2 map-key/hook
+coverage. Those were fixed with a closed encoder subset and independent
+boundary fixtures. A failed literal test assumed inactive legacy tag fallback;
+installed Go 1.27.1's default JSONv2 backend explained the difference. Its
+oracle was corrected to explicit reflected tag bytes and supported/refused
+behavior. Earlier ordinary/race and analyzer failures remain retained; final
+checks passed after test-only analyzer refinements, without suppressions.
+
+The [method record](call-correction-v2-method-investigation.md#artifact-primitives-checkpoint)
+states primitive limits. All-writer wiring, actual backend applicability,
+cleanup/completion order and real-run accounting are still unverified. The
+revised wiring plan passed a separate 17-row detailed test-strategy review;
+its checker refinements preserve ordinary calls, complete observed mappings,
+field/number fidelity and actual failure boundaries. Foundation code precedes
+existing caller integration. This approval does not activate a new correction
+method or permit a clock change.
+
+The following foundation unit adds closed, bounded selection/journal decoding,
+actual-attempt joins and typed trace flattening. A separate source review
+required collection admission before typed allocation, exact required/non-null
+facts, original UTF-8 validation, and focal/increasing-ordinal journal checks.
+Those source fixes passed `^TestDiagnostic` with 299 ordinary and 299 race
+cases, zero skips, plus package vet, Staticcheck and lint. Review then identified
+one overflow test whose empty reader failed for an unrelated missing-count
+reason. A complete `MaxUint64` row now falsifies that guard directly and passed
+its separate ordinary rerun; the combined integration run will cover the revised
+fixture again in both lanes. A coverage-guided saved native image completed
+3,670 selection-fuzz executions in 16 seconds without failure. Two earlier
+fuzz harness invocations failed argument/cache setup and are not successful
+fuzz evidence. Source quality review found no remaining foundation blocker.
+
+The same reviewed wiring boundary adds exact-root-child scratch exclusion and
+first-party writer refusal for that reserved child. Literal totals, sibling,
+nested-name, link/topology and entry-budget checks passed in the 299-case
+selections above. Later IO review corrected the diagnostic `Name()` adapter to
+return the actual resolved owned path. Those adapter and complete collector
+checks remain pending the current integration unit; intermediate source gates
+do not establish complete captured evidence or ordinary-run parity.
+
+The replay integration then passed its complete package checkpoint: ordinary
+v2 and race v3 each passed 915 cases, zero skips. Source freeze v3 binds the
+final Go files. Ordinary v2 precedes only the stronger processed/empty-queue
+test assertion; that updated root and its three subcases separately passed an
+ordinary v3 run. A separate source-quality review and lead pass dispositioned
+the open-handle and Step-oracle findings. The first native run's single
+`still_open` test failure remains retained: cleanup made inventory hashable, but
+the first refusal still blocked COMPLETE. The corrected test checks that actual
+contract instead of requiring a later read-only inventory call to fail.
+
+Targeted vet/Staticcheck passed and lint passed after documenting the legitimate
+optional absent-request nil/no-error sentinel, following existing optional model
+loading. The complete repository vet, Staticcheck and lint commands also passed.
+Report-marker fuzzing through a saved instrumented native image completed
+55,524 executions in 21 seconds with two workers, without failure. Its fixture
+tests and fuzz oracle require refusal by marker presence before any value is
+parsed. Actual exposed captures remain pending; these results do not claim empirical
+capture parity or release qualification.
+
+`v6-e1-integration-checkpoint-v1.json` SHA256
+`dd56e7a529a47edc55ac0d4426860c34bc3e08ed99a438be0fb0d5a2d39dc4a3`
+binds intermediate source and logs. Support-agent documentation impact remains
+**Required**: [bounded diagnostic replay](rbn_replay.md#bounded-exposed-diagnostic-replay)
+and the source-map route cover new flags, evidence limits, non-qualification and
+separate scratch accounting. No new runtime/model policy, deployment or durable
+operational decision is made by these implementation checkpoints.
+
+The complete final E1 native ordinary and race lanes subsequently passed on
+unchanged source freeze v3. Each covered all 76 packages, 61 executed and 15
+build-only, with 14,786 passes and 99 skips. `v6-e1-final-validation-v1.json`,
+SHA256 `71b133c0b3efdc58954dbeeace14d05cfda6d54b1b900af7334e30860f5323f4`,
+binds both full logs, source, analyzers, marker fuzz and documentation checks.
+Skip identities match retained E0 exactly; common case identities reconcile
+with only the existing peer UTC-second name and explicit differing topology
+workloads normalized. No failure or timeout occurred in either final E1 lane.
+
+Full vet/Staticcheck/lint and code-map generation/freshness passed. The current
+seven changed Markdown files passed 162 local-link checks. An earlier helper
+retained a historical base commit and reported 190 links in an unchanged
+generated map; the failure and current-HEAD disposition are retained rather
+than repaired outside this scope. The final source diff and substantive new
+files received separate unit reviews and a fresh lead pass. The study
+orchestrator stays linear so its shared cleanup owner and completion order can
+be audited directly; collector and file-inventory mechanics remain separate.
+
+This closes source/functional E1 validation before executable freezing. It does
+not close exposed old/new stream parity, final accounting, E2 interpretation or
+the deferred original production resource/activation gates.

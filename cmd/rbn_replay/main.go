@@ -19,21 +19,23 @@ import (
 
 func main() {
 	var (
-		dateFlag         = flag.String("date", "", "UTC date to replay (YYYY-MM-DD or YYYYMMDD)")
-		replayConfigFlag = flag.String("replay-config", defaultReplayConfigPath, "Replay config YAML path")
-		configDirFlag    = flag.String("config", "", "Cluster config directory override (defaults to replay config, DXC_CONFIG_PATH, or data/config)")
-		archiveDirFlag   = flag.String("archive-dir", "", "Archive directory override (defaults to replay config)")
-		forceDownload    = flag.Bool("force-download", false, "Force re-download of the RBN history zip (overrides replay config)")
-		studyPlan        = flag.String("study-plan", "", "Frozen CCv2 study JSON (local archives only)")
-		studyFreeze      = flag.String("study-freeze", "", "SHA256 of the already frozen study plan")
-		studyArm         = flag.String("study-arm", "", "Study arm: shipped, repaired_off, or repaired_on")
-		studyCandidate   = flag.String("study-candidate", "", "Complete predeclared study candidate ID")
-		studyPhase       = flag.String("study-phase", "holdout", "Study population: tuning or holdout")
-		studyOut         = flag.String("study-out", "", "New study output directory (must not exist)")
-		studyCompare     = flag.String("study-compare", "", "Comma-separated complete study report paths to compare")
-		auditPlan        = flag.String("study-audit-plan", "", "Frozen v5 audit JSON for existing study predictions only")
-		auditFreeze      = flag.String("study-audit-freeze", "", "SHA256 of the frozen audit plan")
-		auditOut         = flag.String("study-audit-out", "", "New audit evidence directory (must not exist)")
+		dateFlag            = flag.String("date", "", "UTC date to replay (YYYY-MM-DD or YYYYMMDD)")
+		replayConfigFlag    = flag.String("replay-config", defaultReplayConfigPath, "Replay config YAML path")
+		configDirFlag       = flag.String("config", "", "Cluster config directory override (defaults to replay config, DXC_CONFIG_PATH, or data/config)")
+		archiveDirFlag      = flag.String("archive-dir", "", "Archive directory override (defaults to replay config)")
+		forceDownload       = flag.Bool("force-download", false, "Force re-download of the RBN history zip (overrides replay config)")
+		studyPlan           = flag.String("study-plan", "", "Frozen CCv2 study JSON (local archives only)")
+		studyFreeze         = flag.String("study-freeze", "", "SHA256 of the already frozen study plan")
+		studyArm            = flag.String("study-arm", "", "Study arm: shipped, repaired_off, or repaired_on")
+		studyCandidate      = flag.String("study-candidate", "", "Complete predeclared study candidate ID")
+		studyPhase          = flag.String("study-phase", "holdout", "Study population: tuning or holdout")
+		studyOut            = flag.String("study-out", "", "New study output directory (must not exist)")
+		studyCompare        = flag.String("study-compare", "", "Comma-separated complete study report paths to compare")
+		diagnosticSelection = flag.String("study-diagnostic-selection", "", "Frozen exposed diagnostic case selection (not qualification)")
+		diagnosticFreeze    = flag.String("study-diagnostic-freeze", "", "SHA256 of the frozen diagnostic case selection")
+		auditPlan           = flag.String("study-audit-plan", "", "Frozen v5 audit JSON for existing study predictions only")
+		auditFreeze         = flag.String("study-audit-freeze", "", "SHA256 of the frozen audit plan")
+		auditOut            = flag.String("study-audit-out", "", "New audit evidence directory (must not exist)")
 	)
 	flag.Parse()
 	auditRequested := false
@@ -53,20 +55,44 @@ func main() {
 		return
 	}
 	studyRequested := false
+	diagnosticRequested, compareRequested := false, false
 	var replayOverrides []string
 	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "study-diagnostic-selection" || f.Name == "study-diagnostic-freeze" {
+			diagnosticRequested = true
+		}
+		if f.Name == "study-compare" {
+			compareRequested = true
+		}
 		if strings.HasPrefix(f.Name, "study-") {
 			studyRequested = true
 		} else if f.Name != "date" {
 			replayOverrides = append(replayOverrides, f.Name)
 		}
 	})
+	// Flag parsing stops at the first positional argument. A diagnostic flag
+	// stranded after it still identifies a refused study invocation; it must
+	// not let ordinary replay reach archive discovery or download.
+	for _, argument := range flag.Args() {
+		if studyDiagnosticCLIFlag(argument) {
+			diagnosticRequested, studyRequested = true, true
+		}
+	}
 	if studyRequested {
 		if len(replayOverrides) > 0 || len(flag.Args()) > 0 {
 			must(errors.New("study uses only frozen plan inputs; ordinary replay overrides and positional arguments are not allowed"))
 		}
-		must(runCCV2Study(studyCLIRequest{Plan: *studyPlan, Freeze: *studyFreeze, Arm: *studyArm,
-			Candidate: *studyCandidate, Phase: *studyPhase, Output: *studyOut, Compare: *studyCompare, Date: *dateFlag}))
+		if diagnosticRequested && (*diagnosticSelection == "" || *diagnosticFreeze == "") {
+			must(errors.New("diagnostic selection and frozen SHA256 must be supplied together and nonempty"))
+		}
+		if diagnosticRequested && compareRequested {
+			must(errors.New("diagnostic capture cannot be used for study comparison"))
+		}
+		req := studyCLIRequest{Plan: *studyPlan, Freeze: *studyFreeze, Arm: *studyArm,
+			Candidate: *studyCandidate, Phase: *studyPhase, Output: *studyOut, Compare: *studyCompare, Date: *dateFlag,
+			DiagnosticSelection: *diagnosticSelection, DiagnosticFreeze: *diagnosticFreeze}
+		must(studyDiagnosticValidateRequest(req))
+		must(runCCV2Study(req))
 		return
 	}
 	must(runReplay(replayRequest{

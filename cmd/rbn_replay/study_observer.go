@@ -59,40 +59,41 @@ type studyDecision struct {
 }
 
 type studyReport struct {
-	SchemaVersion              int                    `json:"schema_version"`
-	InputScenario              studyInputScenario     `json:"input_scenario"`
-	InputCoverage              studyInputCoverage     `json:"input_coverage"`
-	Complete                   bool                   `json:"complete"`
-	PlanSHA256                 string                 `json:"plan_sha256"`
-	ReferenceVersion           string                 `json:"reference_version"`
-	Arm                        string                 `json:"arm"`
-	Candidate                  string                 `json:"candidate"`
-	CandidateSHA256            string                 `json:"candidate_sha256"`
-	DateUTC                    string                 `json:"date_utc"`
-	Phase                      string                 `json:"phase"`
-	SourceRevision             string                 `json:"source_revision"`
-	ExecutableSHA256           string                 `json:"executable_sha256"`
-	AssetsSHA256               string                 `json:"assets_sha256"`
-	ConfigFilesSHA256          string                 `json:"config_files_sha256"`
-	CallCorrectionSHA256       string                 `json:"call_correction_sha256"`
-	PipelineWithoutBayesSHA256 string                 `json:"pipeline_without_bayes_sha256"`
-	MaskSchemaPresent          bool                   `json:"mask_schema_present"`
-	Decisions                  studyFile              `json:"decisions"`
-	RawRows                    int                    `json:"raw_rows"`
-	FocalRows                  int                    `json:"focal_rows"`
-	TerminalRows               int                    `json:"terminal_rows"`
-	PendingHighWater           int                    `json:"pending_high_water"`
-	PendingBound               int                    `json:"pending_bound"`
-	MaxRows                    int                    `json:"max_rows"`
-	MaxCSVBytes                uint64                 `json:"max_csv_bytes"`
-	WarmupSeconds              int                    `json:"warmup_seconds"`
-	References                 studyReferenceCoverage `json:"reference_coverage"`
-	SampledMaxHeapAllocBytes   uint64                 `json:"sampled_max_heap_alloc_bytes"`
-	HeapSampling               string                 `json:"heap_sampling"`
-	LicenseInputs              replayLicenseInputs    `json:"license_inputs"`
-	Population                 string                 `json:"population"`
-	LegacyStatistics           string                 `json:"legacy_statistics"`
-	ClaimLimits                []string               `json:"claim_limits"`
+	SchemaVersion              int                      `json:"schema_version"`
+	InputScenario              studyInputScenario       `json:"input_scenario"`
+	InputCoverage              studyInputCoverage       `json:"input_coverage"`
+	Complete                   bool                     `json:"complete"`
+	PlanSHA256                 string                   `json:"plan_sha256"`
+	ReferenceVersion           string                   `json:"reference_version"`
+	Arm                        string                   `json:"arm"`
+	Candidate                  string                   `json:"candidate"`
+	CandidateSHA256            string                   `json:"candidate_sha256"`
+	DateUTC                    string                   `json:"date_utc"`
+	Phase                      string                   `json:"phase"`
+	SourceRevision             string                   `json:"source_revision"`
+	ExecutableSHA256           string                   `json:"executable_sha256"`
+	AssetsSHA256               string                   `json:"assets_sha256"`
+	ConfigFilesSHA256          string                   `json:"config_files_sha256"`
+	CallCorrectionSHA256       string                   `json:"call_correction_sha256"`
+	PipelineWithoutBayesSHA256 string                   `json:"pipeline_without_bayes_sha256"`
+	MaskSchemaPresent          bool                     `json:"mask_schema_present"`
+	Decisions                  studyFile                `json:"decisions"`
+	RawRows                    int                      `json:"raw_rows"`
+	FocalRows                  int                      `json:"focal_rows"`
+	TerminalRows               int                      `json:"terminal_rows"`
+	PendingHighWater           int                      `json:"pending_high_water"`
+	PendingBound               int                      `json:"pending_bound"`
+	MaxRows                    int                      `json:"max_rows"`
+	MaxCSVBytes                uint64                   `json:"max_csv_bytes"`
+	WarmupSeconds              int                      `json:"warmup_seconds"`
+	References                 studyReferenceCoverage   `json:"reference_coverage"`
+	SampledMaxHeapAllocBytes   uint64                   `json:"sampled_max_heap_alloc_bytes"`
+	HeapSampling               string                   `json:"heap_sampling"`
+	LicenseInputs              replayLicenseInputs      `json:"license_inputs"`
+	Population                 string                   `json:"population"`
+	LegacyStatistics           string                   `json:"legacy_statistics"`
+	ClaimLimits                []string                 `json:"claim_limits"`
+	Diagnostics                *studyDiagnosticManifest `json:"diagnostics,omitempty"`
 }
 
 type studyReferenceCoverage struct {
@@ -113,7 +114,7 @@ type studyObserver struct {
 	terminal      int
 	checked       int64
 	lastReasons   map[string]uint64
-	file          *os.File
+	file          studyAuditSink
 	encoder       *json.Encoder
 	path          string
 	err           error
@@ -121,13 +122,14 @@ type studyObserver struct {
 	coverage      studyReferenceCoverage
 	ctyDB         *cty.CTYDatabase
 	inputCoverage studyInputCoverage
+	diagnostics   *studyDiagnosticRun
 }
 
 func newStudyObserver(day *studyRawDay, r *replayRunner, path string) (*studyObserver, error) {
 	if err := studyValidateCTYImage(r.ctyDB); err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	file, err := r.openReplayArtifact(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return nil, err
 	}
@@ -136,7 +138,7 @@ func newStudyObserver(day *studyRawDay, r *replayRunner, path string) (*studyObs
 		bound += r.cfg.CallCorrection.TemporalDecoder.MaxPending
 	}
 	observer := &studyObserver{day: day, pending: make(map[*spot.Spot]*studyDecision),
-		pendingCap: bound, lastReasons: make(map[string]uint64), file: file, encoder: json.NewEncoder(file), path: path, ctyDB: r.ctyDB}
+		pendingCap: bound, lastReasons: make(map[string]uint64), file: file, encoder: json.NewEncoder(file), path: path, ctyDB: r.ctyDB, diagnostics: r.diagnostics}
 	observer.coverage.R1Unknown, observer.coverage.R2Unknown = make(map[string]int), make(map[string]int)
 	for i := range day.Rows {
 		if studyFocalRow(day.Rows[i]) {
@@ -191,6 +193,9 @@ func (o *studyObserver) begin(s *spot.Spot, ordinal int64) error {
 		R1:              o.day.reference(raw, false), R2: r2, R2Frozen: r2,
 		FocalSNRPresent: true, SNRCoverageScope: "focal parsed input only; candidate measurement coverage is not inferred"}
 	o.highWater = max(o.highWater, len(o.pending))
+	if diagnostic := o.diagnostics; diagnostic != nil {
+		diagnostic.seen(o.pending[s])
+	}
 	return nil
 }
 
@@ -209,9 +214,16 @@ func (o *studyObserver) noteStabilizer(s *spot.Spot, decision correctionflow.Sta
 }
 
 func (o *studyObserver) finish(s *spot.Spot, outcome replayResolverApplyOutcome, now time.Time, status string, r *replayRunner) {
+	o.finishWithDiagnostics(s, outcome, now, status, r, nil)
+}
+
+func (o *studyObserver) finishWithDiagnostics(s *spot.Spot, outcome replayResolverApplyOutcome, now time.Time, status string, r *replayRunner, execution *studyDiagnosticExecution) {
 	pending, ok := o.pending[s]
 	if !ok {
 		o.err = errors.Join(o.err, errors.New("study terminal outcome has no original row context"))
+		if r.diagnostics != nil {
+			r.diagnostics.latch(o.err)
+		}
 		return
 	}
 	delete(o.pending, s)
@@ -249,6 +261,23 @@ func (o *studyObserver) finish(s *spot.Spot, outcome replayResolverApplyOutcome,
 	}
 	if pending.R1.Strong && pending.R2.Strong && pending.R1.Identity != pending.R2.Identity {
 		o.coverage.StrongLabelDisagreements++
+	}
+	if r.diagnostics != nil {
+		o.terminal++
+		r.diagnostics.terminal(pending, s, outcome, execution)
+		if r.diagnostics.owner.Err() == nil {
+			data, err := r.diagnostics.owner.jsonBytes(pending, studyAuditRowBytes-1)
+			if err == nil {
+				data = append(data, '\n')
+				_, err = o.file.Write(data)
+			}
+			if err != nil {
+				o.err = errors.Join(o.err, err)
+			}
+		} else {
+			o.err = errors.Join(o.err, r.diagnostics.owner.Err())
+		}
+		return
 	}
 	if err := o.encoder.Encode(pending); err != nil {
 		o.err = errors.Join(o.err, err)

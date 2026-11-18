@@ -309,6 +309,55 @@ budget and storage failures return an error without `COMPLETE.json`; partial
 files remain and `FAILED.json` is best effort. Treat only a valid completion
 binding as usable evidence.
 
+### Bounded exposed diagnostic replay
+
+The E1 investigation under [approved v5/v6](call-correction-v2-scope-ledger-v6.md)
+adds optional consumed-evidence capture to a frozen study replay. Supply both
+`-study-diagnostic-selection <local-schema-2-selection.json>` and
+`-study-diagnostic-freeze <externally-recorded-SHA256>` alongside the normal
+study plan, arm, candidate, phase, date and new-output flags. Explicitly empty
+or incomplete pairs, comparison/audit use, ordinary replay overrides and
+positional arguments are refused. Diagnostic dates are restricted to the
+already exposed November 7, 14, 15 and 16, 2026, in study `YYYY-MM-DD` form.
+This path never downloads an archive or activates a correction method.
+
+Selection files are at most 4 MiB and must declare all four exposed dates,
+`schema_version: 2`, `exposed: true` and `max_selected_per_date: 512`.
+Operative facts use exact required names and non-null values. The reader
+checks collection limits before typed allocation and binds selected raw IDs,
+ordinals and row hashes to the actual focal-A archive population. Research
+metadata supplies no prediction. Capture is limited to 512 incoming IDs/date
+and 64 detailed logical records/ID; each encoded row includes its newline in
+the 64 KiB limit, with an 8 MiB limit per logical record and 1,024-byte labels.
+
+The traces describe actual selector reads, receiver evidence, candidate ranks,
+executed rules and temporal windows. They do not repeat a lookup or execute a
+skipped branch for explanation. Observed temporal IDs are joined through a
+complete checked attempt journal, including rejected and unselected attempts.
+Receiver publications do not expose originating archive IDs; those origins
+remain unavailable. A reached learning helper does not prove a committed
+database write. Only the existing ordinary execution supplies decisions.
+
+Every run-owned evidence write and frozen asset copy shares one cumulative
+4 GiB budget, with 16 MiB reserved from data writes for metadata/failure.
+Deletion does not refund bytes, and rename does not debit them again. The
+inherited `custom_scp_runtime` database is excluded and separately measured
+after existing cleanup returns. Its unobserved Close errors remain explicit;
+the final logical file lengths prove neither peak disk use nor durable closure.
+Disabled or legacy backends are explicitly not applicable. Expected missing,
+linked, unsupported or unreadable scratch trees invalidate the capture.
+
+Charged bytes, reserved capacity and retained file bytes name their accounting
+stage; final external reconciliation includes report/completion bytes. Budget,
+copy, mapping, integrity, write/Sync/Close or measurement failure prevents
+`complete.json`; partial output and best-effort `FAILED.json` are troubleshooting
+evidence only. A diagnostic completion report carries a `diagnostics` marker,
+and qualification readers reject any top-level spelling of that marker,
+regardless of its value. Completion establishes evidence completeness, not RF
+accuracy, a fitted model, resource qualification or production readiness.
+The [execution record](call-correction-v2-execution.md) distinguishes completed
+checks from unfinished wiring and captures.
+
 ## Output artifacts
 
 Outputs:

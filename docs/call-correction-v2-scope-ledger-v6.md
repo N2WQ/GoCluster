@@ -1,6 +1,6 @@
 # Call Correction v2 Scope Ledger v6
 
-Status: Proposed storage-boundary amendment; implementation awaits exact approval.
+Status: Approved by the owner with exact `Approved v6`, 2026-11-18.
 Base authority: [approved v5](call-correction-v2-scope-ledger-v5.md).
 
 ## Objective and owner decision

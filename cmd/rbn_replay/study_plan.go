@@ -34,6 +34,7 @@ const (
 
 type studyCLIRequest struct {
 	Plan, Freeze, Arm, Candidate, Phase, Output, Compare, Date string
+	DiagnosticSelection, DiagnosticFreeze                      string
 }
 
 type studyFile struct {

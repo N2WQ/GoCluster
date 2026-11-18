@@ -58,7 +58,7 @@ func TestCCV2TemporalIndependentFinitePathOracle(t *testing.T) {
 			if bestA != tc.wantBest || bestA-bestB != tc.wantMargin {
 				t.Fatal("independent all-path table is inconsistent")
 			}
-			winner, best, margin, count := d.decodeWindowLocked(events, tc.a, "USB")
+			winner, best, margin, count := d.decodeWindowDiagnosticsLocked(events, tc.a, "USB", nil)
 			if winner != tc.a || best != tc.wantBest || margin != tc.wantMargin || count != 2 {
 				t.Fatalf("returned terminal identity or changed objective: winner%s score%d margin%d count%d", winner, best, margin, count)
 			}
@@ -78,7 +78,7 @@ func TestCCV2TemporalIndependentLateOnlyOracle(t *testing.T) {
 	if d.emissionScore(events[1], a, 2) != 9 || d.emissionScore(events[1], b, 2) != 9 || d.emissionScore(events[1], c, 2) != 9990 {
 		t.Fatal("late-only emission or absence smoothing changed")
 	}
-	winner, best, margin, count := d.decodeWindowLocked(events, a, "USB")
+	winner, best, margin, count := d.decodeWindowDiagnosticsLocked(events, a, "USB", nil)
 	if winner != a || best != 17328 || margin != 4997 || count != 2 {
 		t.Fatalf("late-only identity became a start or objective drifted: %s %d %d %d", winner, best, margin, count)
 	}
@@ -90,7 +90,7 @@ func TestCCV2TemporalIndependentEquivalentSlashOracle(t *testing.T) {
 		ccv2TemporalOracleEvent("KH6/W1AW", 1000, spot.ResolverCandidateSupport{Call: "KH6/W1AW", Support: 1, WeightedSupportMilli: 1000}),
 		ccv2TemporalOracleEvent("W1AW/KH6", 1000, spot.ResolverCandidateSupport{Call: "W1AW/KH6", Support: 1, WeightedSupportMilli: 1000}),
 	}
-	winner, best, margin, count := d.decodeWindowLocked(events, "KH6/W1AW", "USB")
+	winner, best, margin, count := d.decodeWindowDiagnosticsLocked(events, "KH6/W1AW", "USB", nil)
 	if winner != "W1AW/KH6" || best != 20120 || margin != 20120 || count != 1 {
 		t.Fatalf("alias spelling changed identity, smoothing or stay reward: %s %d %d %d", winner, best, margin, count)
 	}

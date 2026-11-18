@@ -209,6 +209,17 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	now time.Time,
 	selectionOverride *correctionflow.ResolverPrimarySelection,
 ) replayResolverApplyOutcome {
+	return maybeApplyResolverCorrectionReplayDiagnosticCore(spotEntry, resolver, evidence, hasEvidence, cfg, ctyDB, tracker, adaptive, recentBandStore, now, selectionOverride, nil)
+}
+
+// The optional call destination observes the same execution after the existing
+// early guards. Nil wrappers construct no trace and retain their old outcomes.
+func maybeApplyResolverCorrectionReplayDiagnosticCore(
+	spotEntry *spot.Spot, resolver *spot.SignalResolver, evidence spot.ResolverEvidence, hasEvidence bool,
+	cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, tracker *stats.Tracker, adaptive *spot.AdaptiveMinReports,
+	recentBandStore spot.RecentSupportStore, now time.Time, selectionOverride *correctionflow.ResolverPrimarySelection,
+	capture *studyDiagnosticSelectorCall,
+) replayResolverApplyOutcome {
 	outcome := replayResolverApplyOutcome{}
 	if spotEntry == nil {
 		return outcome
@@ -243,7 +254,12 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	if selectionOverride != nil {
 		outcome.Selection = *selectionOverride
 	} else if hasEvidence && resolver != nil {
-		outcome.Selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, evidence.Key, cfg, preCorrectionCall)
+		if capture == nil {
+			outcome.Selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, evidence.Key, cfg, preCorrectionCall)
+		} else {
+			capture.Called = true
+			outcome.Selection, capture.Err = correctionflow.SelectResolverPrimarySnapshotForCallWithDiagnostics(resolver, evidence.Key, cfg, preCorrectionCall, time.Time{}, &capture.Data)
+		}
 	}
 	snapshot := outcome.Selection.Snapshot
 	spotEntry.Confidence = correctionflow.ResolverConfidenceGlyphForCall(snapshot, outcome.Selection.SnapshotOK, preCorrectionCall)

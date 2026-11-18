@@ -194,8 +194,12 @@ func SelectResolverPrimarySnapshotForCallAt(resolver *spot.SignalResolver, key s
 }
 
 func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, now time.Time) ResolverPrimarySelection {
+	return selectResolverPrimarySnapshotForCallDiagnostics(resolver, key, cfg, anchorCall, now, nil)
+}
+
+func selectResolverPrimarySnapshotForCallDiagnostics(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, now time.Time, diagnostics *ResolverSelectionDiagnostics) ResolverPrimarySelection {
 	if resolver == nil {
-		return ResolverPrimarySelection{}
+		return finishSelectionDiagnostic(diagnostics, ResolverPrimarySelection{}, "nil_resolver")
 	}
 	lookup := func(k spot.ResolverSignalKey) (spot.ResolverSnapshot, bool) {
 		if now.IsZero() {
@@ -203,15 +207,22 @@ func selectResolverPrimarySnapshotForCall(resolver *spot.SignalResolver, key spo
 		}
 		return resolver.LookupEligible(k, now)
 	}
-	return selectResolverPrimarySnapshotFromLookup(key, cfg, anchorCall, lookup)
+	return selectResolverPrimarySnapshotFromLookupDiagnostics(key, cfg, anchorCall, lookup, diagnostics)
 }
 
 // selectResolverPrimarySnapshotFromLookup keeps the production arbitration in
 // one bounded pass. The private boundary also permits explicit raw populations
 // to exercise the same rules without introducing a runtime unweighted switch.
 func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, lookup func(spot.ResolverSignalKey) (spot.ResolverSnapshot, bool)) ResolverPrimarySelection {
+	return selectResolverPrimarySnapshotFromLookupDiagnostics(key, cfg, anchorCall, lookup, nil)
+}
+
+func selectResolverPrimarySnapshotFromLookupDiagnostics(key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, anchorCall string, lookup func(spot.ResolverSignalKey) (spot.ResolverSnapshot, bool), diagnostics *ResolverSelectionDiagnostics) ResolverPrimarySelection {
 	selection := ResolverPrimarySelection{}
 	exact, exactOK := lookup(key)
+	if diagnostics != nil {
+		diagnostics.read(2, 0, key, exact, exactOK)
+	}
 	selection.Snapshot = exact
 	selection.SnapshotOK = exactOK
 	selection.exactWinner = spot.CorrectionVoteKey(exact.Winner)
@@ -236,6 +247,9 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		neighborKey := key
 		neighborKey.Bucket += int64(offset)
 		snap, ok := lookup(neighborKey)
+		if diagnostics != nil {
+			diagnostics.read(offset+2, lenDiagnosticReadPrefix(diagnostics), neighborKey, snap, ok)
+		}
 		snapshots[offset+2], present[offset+2] = snap, ok
 		if ok && snap.EvidenceLoss {
 			lost = true
@@ -248,24 +262,31 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		selection.Snapshot.State = spot.ResolverStateUncertain
 		selection.Snapshot.Winner = ""
 		selection.SnapshotOK = true
-		return selection
+		return finishSelectionDiagnostic(diagnostics, selection, "evidence_loss")
 	}
 	// A qualifying exact split protects its own population. Neighboring bucket
 	// winners cannot discard that dissent; a later owner publication reevaluates
 	// protection when exact eligible evidence changes, so this is not a latch.
 	if exactOK && exact.State == spot.ResolverStateSplit {
-		return selection
+		return finishSelectionDiagnostic(diagnostics, selection, "exact_split")
 	}
 	if !cfg.ResolverNeighborhoodEnabled {
-		return selection
+		return finishSelectionDiagnostic(diagnostics, selection, "neighborhood_disabled")
 	}
 	anchor := spot.NormalizeSpotDXCallsign(anchorCall)
 	if anchor == "" && exactOK {
 		anchor = spot.NormalizeSpotDXCallsign(exact.Winner)
+		if diagnostics != nil {
+			diagnostics.AnchorFromExact = true
+		}
+	}
+	if diagnostics != nil {
+		diagnostics.EffectiveAnchorChecked = true
+		diagnostics.EffectiveAnchor = diagnostics.budget.text(anchor)
 	}
 	if anchor == "" {
 		selection.NeighborhoodExcludedAnchorMissing = 1
-		return selection
+		return finishSelectionDiagnostic(diagnostics, selection, "anchor_missing")
 	}
 
 	var admitted [5]bool
@@ -275,6 +296,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 	for offset := -radius; offset <= radius; offset++ {
 		snap, ok := snapshots[offset+2], present[offset+2]
 		if !ok {
+			diagnostics.admission(offset+2, "missing_snapshot", false, false, false, "")
 			continue
 		}
 		winner := snap.Winner
@@ -282,6 +304,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 			winner = incumbent
 		}
 		if snap.ReceiverEvidence().Len() == 0 {
+			diagnostics.admission(offset+2, "no_receiver_evidence", false, false, false, "")
 			continue
 		}
 
@@ -289,6 +312,8 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		// neighboring population still needs its published authority/owner incumbent
 		// to pass the existing whole-bucket comparability rail.
 		comparable, rejectReason := resolverNeighborhoodComparable(anchor, winner, key.Mode, cfg)
+		comparisonResult := comparable
+		diagnostics.admission(offset+2, "not_admitted", true, comparable, offset == 0, rejectReason)
 		if offset == 0 {
 			comparable = true
 		}
@@ -304,6 +329,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		if offset != 0 {
 			selection.UsedNeighborhood = true
 		}
+		diagnostics.admission(offset+2, "admitted", true, comparisonResult, offset == 0, rejectReason)
 		selection.generationWitnesses[offset+2] = snap.Generation
 		admitted[offset+2] = true
 		admittedViews[viewCount] = snap.ReceiverEvidence()
@@ -319,7 +345,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 	}
 
 	if !selection.UsedNeighborhood && exactOK {
-		return selection
+		return finishSelectionDiagnostic(diagnostics, selection, "exact_only")
 	}
 	// Exact-only reads reuse their publication without deriving receiver sets.
 	// For a real union, retain source nomination/best metadata independently of
@@ -327,11 +353,16 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 	aggregates := make(map[string]*neighborhoodCandidate, (radius*2)+1)
 	for slot := range snapshots {
 		if admitted[slot] {
-			addNeighborhoodNominees(aggregates, snapshots[slot], cfg.FamilyPolicy.SlashPrecedenceMinReports)
+			addNeighborhoodNomineesDiagnostics(aggregates, snapshots[slot], cfg.FamilyPolicy.SlashPrecedenceMinReports, slot, diagnostics)
 		}
 	}
 	union := spot.MergeResolverEvidenceViews(admittedViews[:viewCount]...)
 	unionRanks := union.CanonicalSupport(cfg.FamilyPolicy.SlashPrecedenceMinReports)
+	if diagnostics != nil {
+		diagnostics.Merged = true
+		diagnostics.MergedCandidates = cloneDiagnosticCandidates(&diagnostics.budget, unionRanks)
+		diagnostics.CanonicalRows = diagnosticRows(&diagnostics.budget, union, true)
+	}
 	for _, candidate := range unionRanks {
 		if group := aggregates[candidate.Identity()]; group != nil {
 			group.call, group.rank, group.evidence = candidate.Call, candidate, union
@@ -339,11 +370,17 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		}
 	}
 	totalReceivers, totalWeighted, unionConflict := union.ReceiverTotals()
+	if diagnostics != nil {
+		diagnostics.UnionTotalsChecked = true
+		diagnostics.UnionReceivers = totalReceivers
+		diagnostics.UnionWeighted = totalWeighted
+		diagnostics.UnionConflict = unionConflict
+	}
 	if len(aggregates) == 0 {
 		if exactOK {
-			return selection
+			return finishSelectionDiagnostic(diagnostics, selection, "empty_aggregate_exact")
 		}
-		return ResolverPrimarySelection{}
+		return finishSelectionDiagnostic(diagnostics, ResolverPrimarySelection{}, "empty_aggregate")
 	}
 
 	ranked := make([]neighborhoodCandidate, 0, len(aggregates))
@@ -353,8 +390,18 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 			continue
 		}
 		allCandidates = append(allCandidates, group.rank)
-		if comparable, _ := resolverNeighborhoodComparable(anchor, group.call, key.Mode, cfg); comparable && group.nominee && !group.rank.ReplacementBlocked {
-			ranked = append(ranked, *group)
+		comparable, reason := resolverNeighborhoodComparable(anchor, group.call, key.Mode, cfg)
+		diagnostics.rule("candidate_comparable", -1, anchor, group.call, comparable, reason, spot.ResolverAmbiguityInput{})
+		if comparable {
+			nominee := group.nominee
+			diagnostics.rule("candidate_nominee", -1, group.call, "", nominee, "", spot.ResolverAmbiguityInput{})
+			if nominee {
+				unblocked := !group.rank.ReplacementBlocked
+				diagnostics.rule("candidate_precedence", -1, group.call, "", unblocked, "", spot.ResolverAmbiguityInput{})
+				if unblocked {
+					ranked = append(ranked, *group)
+				}
+			}
 		}
 	}
 	sort.Slice(allCandidates, func(i, j int) bool {
@@ -374,7 +421,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 			SupportBasis: basis, TotalReporters: totalReceivers, TotalWeightedSupportMilli: totalWeighted, CandidateRanks: allCandidates}
 		selection.SnapshotOK, selection.CandidateCount = true, len(allCandidates)
 		selection.replacementCalls = []string{}
-		return selection
+		return finishSelectionDiagnostic(diagnostics, selection, "no_settled_nominee")
 	}
 	sort.Slice(ranked, func(i, j int) bool {
 		if ranked[i].weighted != ranked[j].weighted {
@@ -420,6 +467,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		synth.Margin = synth.WinnerSupport - synth.RunnerSupport
 
 		comparable, rejectReason := resolverNeighborhoodComparable(top.call, runner.call, key.Mode, cfg)
+		diagnostics.rule("runner_comparable", -1, top.call, runner.call, comparable, rejectReason, spot.ResolverAmbiguityInput{})
 		if !comparable {
 			switch rejectReason {
 			case "distance":
@@ -438,6 +486,11 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 				conflict = float64(synth.RunnerWeightedSupportMilli) >= ratioThreshold*float64(synth.WinnerWeightedSupportMilli)
 			case synth.WinnerSupport > 0 && synth.RunnerSupport > 0:
 				conflict = float64(synth.RunnerSupport) >= ratioThreshold*float64(synth.WinnerSupport)
+			}
+			if diagnostics != nil {
+				diagnostics.RunnerConflictChecked = true
+				diagnostics.RunnerConflict = conflict
+				diagnostics.RunnerRatioThreshold = ratioThreshold
 			}
 			if conflict {
 				synth.State = spot.ResolverStateSplit
@@ -461,7 +514,9 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 	selection.replacementCalls = make([]string, 0, len(ranked))
 	for i := range ranked {
 		candidate := &ranked[i]
-		pending, tied := neighborhoodProposalBlocked(candidate.call, synth, aggregates, snapshots, admitted, cfg)
+		pending, tied := neighborhoodProposalBlockedDiagnostics(candidate.call, synth, aggregates, snapshots, admitted, cfg, diagnostics)
+		diagnostics.rule("replacement_pending", -1, candidate.call, "", pending, "", spot.ResolverAmbiguityInput{})
+		diagnostics.rule("replacement_tied", -1, candidate.call, "", tied, "", spot.ResolverAmbiguityInput{})
 		if !pending && !tied {
 			selection.replacementCalls = append(selection.replacementCalls, candidate.rank.Identity())
 		}
@@ -482,6 +537,7 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 		}
 		if exactWinner != "" && exactWinner != spot.CorrectionVoteKey(synth.Winner) {
 			comparable, rejectReason := resolverNeighborhoodComparable(exactWinner, synth.Winner, key.Mode, cfg)
+			diagnostics.rule("final_exact_comparable", 2, exactWinner, synth.Winner, comparable, rejectReason, spot.ResolverAmbiguityInput{})
 			if !comparable {
 				switch rejectReason {
 				case "distance":
@@ -493,39 +549,124 @@ func selectResolverPrimarySnapshotFromLookup(key spot.ResolverSignalKey, cfg con
 				selection.SnapshotOK = exactOK
 				selection.replacementCalls = nil
 				selection.WinnerOverride = false
-				return selection
+				return finishSelectionDiagnostic(diagnostics, selection, "exact_fallback")
 			}
 			selection.WinnerOverride = true
 		}
 	}
-	return selection
+	return finishSelectionDiagnostic(diagnostics, selection, "selected")
 }
 
 // SelectTemporalReleaseSnapshot treats the decoded identity as a proposal.
 // Current eligible, settled evidence supplies all counts and ambiguity gates;
 // an unsupported proposal falls back to the current ordinary selection.
 func SelectTemporalReleaseSnapshot(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, subject string, decision TemporalDecision, now time.Time) ResolverPrimarySelection {
-	selection := SelectResolverPrimarySnapshotForCallAt(resolver, key, cfg, subject, now)
-	if decision.Action != TemporalDecisionActionApply || !selection.SnapshotOK || selection.Snapshot.EvidenceLoss || selection.NeighborhoodSplit ||
-		(selection.Snapshot.State != spot.ResolverStateConfident && selection.Snapshot.State != spot.ResolverStateProbable) {
-		return selection
+	return selectTemporalReleaseSnapshotDiagnostics(resolver, key, cfg, subject, decision, now, nil)
+}
+
+func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, subject string, decision TemporalDecision, now time.Time, diagnostics *TemporalReleaseDiagnostics) ResolverPrimarySelection {
+	var selectionDiagnostics *ResolverSelectionDiagnostics
+	if diagnostics != nil {
+		selectionDiagnostics = &diagnostics.Selection
 	}
-	if !resolverGenerationWitnessesCurrent(resolver, key, decision.Selection) {
-		return selection
+	selection := selectResolverPrimarySnapshotForCallDiagnostics(resolver, key, cfg, subject, now, selectionDiagnostics)
+	if diagnostics != nil {
+		diagnostics.budget = diagnostics.Selection.budget
+		diagnostics.budget.take(diagnosticScaffoldBytes)
+		diagnostics.ProposedAction = TemporalDecisionAction(diagnostics.budget.text(string(decision.Action)))
+		diagnostics.ProposedWinner = diagnostics.budget.text(decision.Winner)
+		diagnostics.SavedSelection = cloneDiagnosticSelection(&diagnostics.budget, decision.Selection)
+	}
+	if diagnostics != nil {
+		diagnostics.OrdinaryGuardChecks = 1
+	}
+	if decision.Action != TemporalDecisionActionApply {
+		return finishReleaseGuard(diagnostics, selection, "action")
+	}
+	if diagnostics != nil {
+		diagnostics.OrdinaryGuardChecks = 2
+	}
+	if !selection.SnapshotOK {
+		return finishReleaseGuard(diagnostics, selection, "missing_snapshot")
+	}
+	if diagnostics != nil {
+		diagnostics.OrdinaryGuardChecks = 3
+	}
+	if selection.Snapshot.EvidenceLoss {
+		return finishReleaseGuard(diagnostics, selection, "evidence_loss")
+	}
+	if diagnostics != nil {
+		diagnostics.OrdinaryGuardChecks = 4
+	}
+	if selection.NeighborhoodSplit {
+		return finishReleaseGuard(diagnostics, selection, "neighborhood_split")
+	}
+	if diagnostics != nil {
+		diagnostics.OrdinaryGuardChecks = 5
+	}
+	if selection.Snapshot.State != spot.ResolverStateConfident && selection.Snapshot.State != spot.ResolverStateProbable {
+		return finishReleaseGuard(diagnostics, selection, "state")
+	}
+	current := resolverGenerationWitnessesCurrentDiagnostics(resolver, key, decision.Selection, diagnostics)
+	if diagnostics != nil {
+		diagnostics.GenerationResultChecked = true
+		diagnostics.GenerationCurrent = current
+	}
+	if !current {
+		return finishReleaseDiagnostic(diagnostics, selection, "generation_refused")
 	}
 	winner := spot.CorrectionVoteKey(decision.Winner)
-	if winner == "" || !selection.allowsReplacement(winner) || ResolverSupportForCall(selection.Snapshot, winner) == 0 {
-		return selection
+	if diagnostics != nil {
+		diagnostics.WinnerChecked = true
 	}
-	if selection.replacementCalls == nil && resolver.ProposalHasAmbiguousRawTie(selection.Snapshot, winner) {
-		return selection
+	if winner == "" {
+		return finishReleaseDiagnostic(diagnostics, selection, "winner_missing")
 	}
-	if selection.replacementCalls != nil && selection.exactWinner != "" && selection.exactWinner != winner {
-		if comparable, _ := resolverNeighborhoodComparable(selection.exactWinner, winner, key.Mode, cfg); !comparable {
-			return selection
+	eligible := selection.allowsReplacement(winner)
+	if diagnostics != nil {
+		diagnostics.EligibilityChecked = true
+		diagnostics.Eligible = eligible
+	}
+	if !eligible {
+		return finishReleaseDiagnostic(diagnostics, selection, "replacement_denied")
+	}
+	support := ResolverSupportForCall(selection.Snapshot, winner)
+	if diagnostics != nil {
+		diagnostics.SupportChecked = true
+		diagnostics.ProposalSupport = support
+	}
+	if support == 0 {
+		return finishReleaseDiagnostic(diagnostics, selection, "proposal_unsupported")
+	}
+	if selection.replacementCalls == nil {
+		tied := resolver.ProposalHasAmbiguousRawTie(selection.Snapshot, winner)
+		if diagnostics != nil {
+			diagnostics.OpaqueTieChecked = true
+			diagnostics.OpaqueTie = tied
+			diagnostics.OpaqueTieInternals = "private_internals_not_exposed"
+		}
+		if tied {
+			return finishReleaseDiagnostic(diagnostics, selection, "opaque_raw_tie")
 		}
 	}
-	return selectionForTemporalWinner(selection, winner)
+	if selection.replacementCalls != nil && selection.exactWinner != "" && selection.exactWinner != winner {
+		comparable, _ := resolverNeighborhoodComparable(selection.exactWinner, winner, key.Mode, cfg)
+		if diagnostics != nil {
+			diagnostics.ExactComparabilityChecked = true
+			diagnostics.ExactComparable = comparable
+		}
+		if !comparable {
+			return finishReleaseDiagnostic(diagnostics, selection, "exact_comparability_refused")
+		}
+	}
+	var transform *DiagnosticTransform
+	var budget *diagnosticBudget
+	if diagnostics != nil {
+		transform = &diagnostics.Transform
+		budget = &diagnostics.budget
+	}
+	selection = selectionForTemporalWinnerDiagnostics(selection, winner, transform, budget)
+	return finishReleaseDiagnostic(diagnostics, selection, "transformed")
 }
 
 func resolverNeighborhoodComparable(anchorCall, candidateCall, mode string, cfg config.CallCorrectionConfig) (bool, string) {

@@ -166,10 +166,10 @@ document. The unchanged alternative requires an explicitly approved strict
 filesystem-quota design. Original activation and resource gates remain unmet.
 
 The owner subsequently selected “Cap evidence and assets; report scratch usage
-separately.” The [proposed v6 amendment](call-correction-v2-scope-ledger-v6.md)
+separately.” The [approved v6 amendment](call-correction-v2-scope-ledger-v6.md)
 records that policy and its implementation/validation boundary. The original
-v5 guarantee is not silently changed: E1 dependent implementation still awaits
-the reviewed amendment's exact `Approved v6` authorization.
+v5 guarantee is not silently changed: the owner subsequently provided exact
+`Approved v6`, authorizing that reviewed E1 amendment.
 
 ## Implementation checkpoint
 
@@ -177,6 +177,11 @@ E0 is implemented and its actual four-date audit and selected validation lanes
 have completed; the [execution record](call-correction-v2-execution.md#approved-v5-reproducible-receipt-audit-and-preliminary-method-evidence)
 records source boundaries, full package/case reconciliation, original race
 timeout and successful continuation. E2's exposed-only accounting and case
-selection are preliminary, not a feasibility verdict. E1 remains unimplemented
-pending the reviewed storage amendment's exact approval. E3 has produced that
-bounded amendment and construction planning, not an active correction method.
+selection are preliminary, not a feasibility verdict. E1's shared diagnostic
+unit is implemented and has passed its targeted checks; the [method record](call-correction-v2-method-investigation.md#shared-diagnostic-checkpoint)
+states their boundaries. Replay storage/wiring is also implemented and locally
+checked; the [integration checkpoint](call-correction-v2-method-investigation.md#replay-integration-checkpoint)
+separates those results from the remaining full lane and actual captures.
+V6 and the shared-unit construction/test gate were satisfied before code;
+each later unit retains its detailed gate. E3 has produced the bounded amendment
+and construction planning, not an active correction method.

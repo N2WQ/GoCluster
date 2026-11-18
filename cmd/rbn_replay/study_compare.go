@@ -214,6 +214,9 @@ func studyReadReports(p studyPlan, digest string, req studyCLIRequest, candidate
 		if err != nil {
 			return nil, err
 		}
+		if err := studyDiagnosticRejectReportMarker(data); err != nil {
+			return nil, err
+		}
 		var report studyReport
 		if err := studyDecodeJSON(data, &report); err != nil {
 			return nil, err

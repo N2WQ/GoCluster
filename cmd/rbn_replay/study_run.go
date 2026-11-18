@@ -24,6 +24,9 @@ import (
 func studySHA256Bytes(data []byte) [32]byte { return sha256.Sum256(data) }
 
 func runCCV2Study(req studyCLIRequest) error {
+	if err := studyDiagnosticValidateRequest(req); err != nil {
+		return err
+	}
 	p, digest, err := loadStudyPlan(req.Plan, req.Freeze)
 	if err != nil {
 		return err
@@ -90,10 +93,20 @@ func runCCV2Study(req studyCLIRequest) error {
 	if err := studyValidateGeographyAssets(p.InputScenario, *arm, cfg); err != nil {
 		return err
 	}
+	prepared, err := prepareStudyDiagnostics(req)
+	if err != nil {
+		return err
+	}
+	if prepared != nil {
+		req.Output, err = filepath.Abs(req.Output)
+		if err != nil {
+			return err
+		}
+	}
 	if err := os.Mkdir(req.Output, 0o700); err != nil {
 		return fmt.Errorf("study output must be a new directory: %w", err)
 	}
-	return studyRunDay(p, digest, req, *arm, candidate, *input, cfg, nil, maskSchema)
+	return studyRunDayPrepared(p, digest, req, *arm, candidate, *input, cfg, nil, maskSchema, prepared)
 }
 
 func studySelectCandidate(p studyPlan, req studyCLIRequest) (studyCandidate, error) {
@@ -212,16 +225,50 @@ func studyCheckAssets(arm studyArm, cfg *config.Config) error {
 
 func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, candidate studyCandidate,
 	in studyInput, cfg *config.Config, day *studyRawDay, maskSchema bool) (err error) {
+	prepared, err := prepareStudyDiagnostics(req)
+	if err != nil {
+		return err
+	}
+	return studyRunDayPrepared(p, digest, req, arm, candidate, in, cfg, day, maskSchema, prepared)
+}
+
+func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm studyArm, candidate studyCandidate,
+	in studyInput, cfg *config.Config, day *studyRawDay, maskSchema bool, prepared *studyDiagnosticPrepared) (err error) {
+	if prepared != nil {
+		req.Output, err = filepath.Abs(req.Output)
+		if err != nil {
+			return err
+		}
+	}
 	r := newReplayRunner(replayRequest{dateValue: in.DateUTC})
 	r.cfg, r.replayCfg, r.outDir = cfg, defaultReplayConfig(), req.Output
 	r.archiveDir, r.zipPath = req.Output, in.Archive.Path
 	r.zipResult.Meta.SHA256 = in.Archive.SHA256
+	if prepared != nil {
+		r.diagnostics, err = newStudyDiagnosticRun(req.Output, prepared)
+		if err != nil {
+			return err
+		}
+		req.Output = r.diagnostics.owner.root
+		r.outDir, r.archiveDir = req.Output, req.Output
+	}
+	var observer *studyObserver
 	defer func() {
+		if observer != nil {
+			err = errors.Join(err, observer.close())
+		}
 		err = errors.Join(err, r.closeWithError())
+		if r.diagnostics != nil {
+			err = errors.Join(err, r.diagnostics.closeStreams())
+		}
 		if err != nil {
 			// A failed run never publishes complete.json. Partial legacy files
 			// and decision streams are explicitly unusable for qualification.
-			err = errors.Join(err, writeJSONAtomic(filepath.Join(req.Output, "FAILED.json"), map[string]string{"error": err.Error()}))
+			if r.diagnostics != nil {
+				err = errors.Join(err, r.diagnostics.failure(err))
+			} else {
+				err = errors.Join(err, writeJSONAtomic(filepath.Join(req.Output, "FAILED.json"), map[string]string{"error": err.Error()}))
+			}
 		}
 	}()
 	if err := r.resolveDay(); err != nil {
@@ -238,6 +285,11 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 	if err := studySnapshotAssets(arm, r); err != nil {
 		return err
 	}
+	if r.diagnostics != nil {
+		if err := r.diagnostics.verifyCopies(false); err != nil {
+			return err
+		}
+	}
 	if err := pathreliability.InitRequiredH3Mappings(cfg.H3TablePath); err != nil {
 		return err
 	}
@@ -249,6 +301,14 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 	}
 	if err := r.buildReplayRuntime(); err != nil {
 		return err
+	}
+	if r.diagnostics != nil {
+		if err := r.diagnostics.verifyCopies(false); err != nil {
+			return err
+		}
+		if err := r.diagnosticBoundary(); err != nil {
+			return err
+		}
 	}
 	// Asset/schema/setup failures must not inspect raw archive contents or be
 	// converted into per-row unknown locations. Tests may supply a private day;
@@ -266,15 +326,19 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 			return err
 		}
 	}
+	if r.diagnostics != nil {
+		if err := r.diagnostics.bindDay(in, day, r.temporalNextID); err != nil {
+			return err
+		}
+	}
 	if err := r.openReplayOutputs(); err != nil {
 		return err
 	}
-	observer, err := newStudyObserver(day, r, filepath.Join(req.Output, "decisions.jsonl"))
+	observer, err = newStudyObserver(day, r, filepath.Join(req.Output, "decisions.jsonl"))
 	if err != nil {
 		return err
 	}
 	r.study = observer
-	defer func() { err = errors.Join(err, observer.close()) }()
 	if err := r.replayDay(); err != nil {
 		return err
 	}
@@ -292,6 +356,11 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 	if err := studyCheckFile(in.Archive); err != nil {
 		return err
 	}
+	if r.diagnostics != nil {
+		if err := r.diagnostics.beforeCleanup(r.licenseInputsDir); err != nil {
+			return err
+		}
+	}
 	if err := r.closeWithError(); err != nil {
 		return err
 	}
@@ -303,6 +372,14 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 	report.Decisions = studyFile{Path: observer.path, SHA256: decisionSHA}
 	report.CallCorrectionSHA256, report.PipelineWithoutBayesSHA256 = ccFingerprint, pipelineFingerprint
 	report.LicenseInputs = r.licenseInputs
+	if r.diagnostics != nil {
+		report.Diagnostics, err = r.diagnostics.complete(r.temporalNextID)
+		if err != nil {
+			return err
+		}
+		report.ClaimLimits = append(report.ClaimLimits, "This exposed diagnostic capture is non-qualification evidence; it cannot authorize activation, model fitting or deployment")
+		return r.diagnostics.owner.atomicJSON(filepath.Join(req.Output, "complete.json"), report)
+	}
 	return writeJSONAtomic(filepath.Join(req.Output, "complete.json"), report)
 }
 
@@ -321,7 +398,7 @@ func studySnapshotAssets(arm studyArm, r *replayRunner) error {
 		if err != nil {
 			return err
 		}
-		err = errors.Join(copyFrozenLicenseFile(source, destination, &input), source.Close())
+		err = errors.Join(r.copyFrozenLicenseFile(source, destination, &input), source.Close())
 		if err != nil {
 			return err
 		}
@@ -361,8 +438,15 @@ func studySnapshotAssets(arm studyArm, r *replayRunner) error {
 		if !ok || filepath.Dir(path) != root {
 			return errors.New("study geography is not owned by the frozen asset directory")
 		}
-		if err := os.Rename(path, filepath.Join(geography, name)); err != nil {
-			return err
+		destination := filepath.Join(geography, name)
+		if r.diagnostics != nil {
+			if err := r.diagnostics.renameAsset(path, destination); err != nil {
+				return err
+			}
+		} else {
+			if err := os.Rename(path, destination); err != nil {
+				return err
+			}
 		}
 	}
 	cfg.H3TablePath = geography

@@ -404,8 +404,8 @@ records plan/executable/proof hashes, review and source boundaries.
 The [preliminary method investigation](call-correction-v2-method-investigation.md)
 records the full eligible match/error accounting and 75 nearby misses. No new
 method has been qualified. The owner selected evidence/asset capping with
-separate scratch accounting; the [v6 amendment](call-correction-v2-scope-ledger-v6.md)
-requires exact approval before dependent E1 diagnostics proceed.
+separate scratch accounting and approved the [v6 amendment](call-correction-v2-scope-ledger-v6.md).
+Its construction/test gate precedes E1 diagnostics.
 
 ## Validation reached, with state boundaries
 
@@ -729,8 +729,9 @@ entry cap. The presence repair introduces no new harmonic registry.
 ## Remaining qualification work
 
 1. Continue the correction-method investigation with the owner-requested
-   stability estimate. New diagnostic interfaces and proposal behavior remain
-   behind approval of the separately proposed v5 scope.
+   stability estimate under approved v5/v6. The shared diagnostic unit has
+   targeted validation; replay capture and causal investigation remain.
+   New active proposal behavior requires its own reviewed scope and approval.
 2. Resource optimization is deferred by the owner. When that work resumes,
    resolve the acceptance-policy question and qualify resource behavior under
    the controlling requirement. The existing strict CPU rule remains controlling

@@ -35,37 +35,53 @@ func (s ResolverPrimarySelection) allowsReplacement(call string) bool {
 // addNeighborhoodNominees captures only source authority. The merged evidence
 // supplies tallies once, after admission; every canonical member of a settled
 // source may nominate, including members below that source's winner.
-func addNeighborhoodNominees(groups map[string]*neighborhoodCandidate, snap spot.ResolverSnapshot, slashThreshold int) {
+func addNeighborhoodNomineesDiagnostics(groups map[string]*neighborhoodCandidate, snap spot.ResolverSnapshot, slashThreshold, slot int, diagnostics *ResolverSelectionDiagnostics) {
 	for _, candidate := range snap.ReceiverEvidence().CanonicalSupport(slashThreshold) {
 		identity := candidate.Identity()
 		group := groups[identity]
+		created := group == nil
 		if group == nil {
 			group = &neighborhoodCandidate{call: candidate.Call, best: snap}
 			groups[identity] = group
 		}
 		group.nominee = group.nominee || snap.State == spot.ResolverStateConfident || snap.State == spot.ResolverStateProbable
-		if resolverSnapshotBeats(snap, group.best) {
+		updated := resolverSnapshotBeats(snap, group.best)
+		if updated {
 			group.best = snap
 		}
+		diagnostics.nomination(slot, candidate, snap.State, group.nominee, created, updated)
 	}
 }
 
 // neighborhoodProposalBlocked uses only this selection's five admitted sources.
 // Expired transition endpoints no longer compete; observing that fact does not
 // settle their bucket. The immutable receiver union retains demoted dissent.
-func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups map[string]*neighborhoodCandidate,
-	sources [5]spot.ResolverSnapshot, admitted [5]bool, cfg config.CallCorrectionConfig) (pending, tied bool) {
+func neighborhoodProposalBlockedDiagnostics(call string, snap spot.ResolverSnapshot, groups map[string]*neighborhoodCandidate,
+	sources [5]spot.ResolverSnapshot, admitted [5]bool, cfg config.CallCorrectionConfig, diagnostics *ResolverSelectionDiagnostics) (pending, tied bool) {
 	for slot := range sources {
 		if !admitted[slot] {
 			continue
 		}
 		source := &sources[slot]
 		incumbent, challenger, ok := source.PendingTransition()
-		if !ok || ResolverSupportForCall(*source, incumbent) == 0 || ResolverSupportForCall(*source, challenger) == 0 {
+		diagnostics.rule("pending_transition", slot, incumbent, challenger, ok, "", spot.ResolverAmbiguityInput{})
+		if !ok {
 			continue
 		}
-		left, _ := resolverNeighborhoodComparable(call, incumbent, snap.Key.Mode, cfg)
-		right, _ := resolverNeighborhoodComparable(call, challenger, snap.Key.Mode, cfg)
+		incumbentSupport := ResolverSupportForCall(*source, incumbent)
+		diagnostics.rule("pending_incumbent_support", slot, call, incumbent, incumbentSupport != 0, "", spot.ResolverAmbiguityInput{WinnerSupport: incumbentSupport})
+		if incumbentSupport == 0 {
+			continue
+		}
+		challengerSupport := ResolverSupportForCall(*source, challenger)
+		diagnostics.rule("pending_challenger_support", slot, call, challenger, challengerSupport != 0, "", spot.ResolverAmbiguityInput{WinnerSupport: challengerSupport})
+		if challengerSupport == 0 {
+			continue
+		}
+		left, leftReason := resolverNeighborhoodComparable(call, incumbent, snap.Key.Mode, cfg)
+		right, rightReason := resolverNeighborhoodComparable(call, challenger, snap.Key.Mode, cfg)
+		diagnostics.rule("pending_incumbent_comparable", slot, call, incumbent, left, leftReason, spot.ResolverAmbiguityInput{})
+		diagnostics.rule("pending_challenger_comparable", slot, call, challenger, right, rightReason, spot.ResolverAmbiguityInput{})
 		if left && right {
 			pending = true
 			break
@@ -80,15 +96,15 @@ func neighborhoodProposalBlocked(call string, snap spot.ResolverSnapshot, groups
 	// equal-raw competitor must still satisfy the same narrow witnesses/exceptions.
 	for _, candidate := range snap.CandidateRanks {
 		if candidate.Identity() != call && candidate.Support == left.support &&
-			neighborhoodPairAmbiguous(call, candidate.Identity(), snap.Key.Mode, groups, cfg) {
+			neighborhoodPairAmbiguousDiagnostics(call, candidate.Identity(), snap.Key.Mode, groups, cfg, diagnostics) {
 			return pending, true
 		}
 	}
 	return pending, false
 }
 
-func neighborhoodPairAmbiguous(call, runner, mode string, groups map[string]*neighborhoodCandidate,
-	cfg config.CallCorrectionConfig) bool {
+func neighborhoodPairAmbiguousDiagnostics(call, runner, mode string, groups map[string]*neighborhoodCandidate,
+	cfg config.CallCorrectionConfig, diagnostics *ResolverSelectionDiagnostics) bool {
 	call, runner = spot.CorrectionVoteKey(call), spot.CorrectionVoteKey(runner)
 	left, right := groups[call], groups[runner]
 	if left == nil || right == nil {
@@ -98,11 +114,15 @@ func neighborhoodPairAmbiguous(call, runner, mode string, groups map[string]*nei
 		MinSeparationKHz: cfg.FreqGuardMinSeparationKHz, RunnerUpRatio: cfg.FreqGuardRunnerUpRatio,
 		MaxEditDistance: cfg.MaxEditDistance}
 	// Check cheap support/overlap exceptions before distance or frequency scans.
-	if !spot.RejectResolverAmbiguity(in) {
+	reject := spot.RejectResolverAmbiguity(in)
+	diagnostics.rule("ambiguity_support", -1, call, runner, reject, "", in)
+	if !reject {
 		return false
 	}
 	in.OverlapCount = left.evidence.ReceiverOverlap(call, runner)
-	if !spot.RejectResolverAmbiguity(in) {
+	reject = spot.RejectResolverAmbiguity(in)
+	diagnostics.rule("ambiguity_overlap", -1, call, runner, reject, "", in)
+	if !reject {
 		return false
 	}
 	policy := spot.CorrectionFamilyPolicy{Configured: true,
@@ -115,10 +135,18 @@ func neighborhoodPairAmbiguous(call, runner, mode string, groups map[string]*nei
 	in.Distance = spot.CallDistance(call, runner, mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
 	// Check cheap support/overlap/family exceptions before frequency scans. Dense
 	// capped populations often share all receivers and need no pair scan at all.
-	if !spot.RejectResolverAmbiguity(in) {
+	reject = spot.RejectResolverAmbiguity(in)
+	diagnostics.rule("ambiguity_family_distance", -1, call, runner, reject, "", in)
+	if !reject {
 		return false
 	}
 	var witnessed bool
 	in.WinnerFrequencyKHz, in.RunnerFrequencyKHz, witnessed = left.evidence.ClosestFrequencyPair(call, runner)
-	return witnessed && spot.RejectResolverAmbiguity(in)
+	diagnostics.rule("ambiguity_frequency_witness", -1, call, runner, witnessed, "", in)
+	if !witnessed {
+		return false
+	}
+	reject = spot.RejectResolverAmbiguity(in)
+	diagnostics.rule("ambiguity_frequency", -1, call, runner, reject, "", in)
+	return reject
 }
