@@ -924,3 +924,29 @@ records exact bytes and claim limits. Proof
 This closes E1 empirical parity/accounting, not E2 interpretation, active method
 qualification or the deferred resource gates. The first analysis reader's
 support-basis schema refusal is retained; it produced no partial study output.
+
+E2 subsequently completed the four-date consumed/control analysis and causal
+raw-history comparison. All 1,107 selected IDs and 75 mandatory cases remain.
+The per-date consumed study totals 15,596,031 bytes; COMPLETE SHA256 is
+`94c1795845ec33af4859c0837a6e1f1cd973ceae75c643fea6f41b0d901a9f0c`.
+All 75 selector facts reconcile against a separately written path scanner.
+An additional independent flat scan matches the practical initial-SNR counts:
+18,194 raw incidences, 200 unknown/conflicted SNR incidences across 167 cases.
+The [method record](call-correction-v2-method-investigation.md#practical-retained-snr-coverage-and-controls)
+keeps source hashes, overlapping denominators, controls and scientific limits.
+
+The global-report-size refusal and initial size-only tamper test are retained
+and dispositioned. A reviewed per-date layout and same-length SHA-tamper oracle
+passed 58 literal checks before successful execution; no cases were dropped.
+This is analysis/script/documentation work over unchanged Go source, not another
+native full-lane run or a new correction-method evaluation.
+
+The owner resolved signal-specific gate populations and frequency-required
+active separation. Fresh non-steered scientific and design reviews support the
+bounded next investigation and reject calibrated RF-probability claims. A v7
+replay-only method draft has received an independent initial scope challenge;
+the objective/arbitration/freshness refinements are included and its independent
+focused source recheck found no remaining material scope or pre-approval
+falsifiability issue. The [proposed v7 ledger](call-correction-v2-scope-ledger-v7.md)
+awaits its matching exact token. V5/v6 do not authorize its implementation or
+model fitting.

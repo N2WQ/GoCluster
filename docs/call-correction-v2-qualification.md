@@ -401,11 +401,14 @@ unchanged tuning and confirmation comparison artifacts above retain reference
 coverage and contradiction verdicts. The [execution record](call-correction-v2-execution.md#approved-v5-reproducible-receipt-audit-and-preliminary-method-evidence)
 records plan/executable/proof hashes, review and source boundaries.
 
-The [preliminary method investigation](call-correction-v2-method-investigation.md)
-records the full eligible match/error accounting and 75 nearby misses. No new
-method has been qualified. The owner selected evidence/asset capping with
+The [method investigation](call-correction-v2-method-investigation.md)
+records full match/error accounting, completed consumed-evidence and causal
+studies, and the 75 nearby misses. No new method has been qualified. The owner
+selected evidence/asset capping with
 separate scratch accounting and approved the [v6 amendment](call-correction-v2-scope-ledger-v6.md).
-Its construction/test gate precedes E1 diagnostics.
+E1/E2 are complete within their stated evidence boundaries. The
+[proposed v7 experiment](call-correction-v2-scope-ledger-v7.md) awaits exact
+authorization; its frequency/Bayesian method is not implemented or activated.
 
 ## Validation reached, with state boundaries
 
@@ -730,8 +733,10 @@ entry cap. The presence repair introduces no new harmonic registry.
 
 1. Continue the correction-method investigation with the owner-requested
    stability estimate under approved v5/v6. E1 has completed its full functional
-   validation and four-date exposed capture parity/accounting; causal evidence
-   interpretation and the resulting method scope remain.
+   validation and four-date exposed capture parity/accounting. E2's bounded
+   consumed/control and causal studies are complete, with independent factual
+   and scientific review. The resulting v7 replay-only method scope awaits its
+   matching authorization; it establishes no method improvement yet.
    New active proposal behavior requires its own reviewed scope and approval.
 2. Resource optimization is deferred by the owner. When that work resumes,
    resolve the acceptance-policy question and qualify resource behavior under

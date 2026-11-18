@@ -506,3 +506,251 @@ separate source reviewer confirmed the enum fix and child order. The corrected
 reader passed 49 literal checks, including zero/nonzero enum values and
 text/bool/range refusals. Its actual full-stream analysis remains in progress;
 these source checks are not an interpreted study result.
+
+## Consumed near-miss facts and causal history
+
+A separate path-focused scanner, without importing the consumed-evidence
+reader, checked all 75 mandatory cases against the complete original source
+streams and their conditional R1/R2 references. Source hashes and row totals,
+trace hashes/frame totals and actual per-stage call coverage reconcile. The
+scanner distinguishes literal raw rows, explicit Call/VoteKey/ObservedCalls
+association, consulted missing views, unavailable raw evidence and unread slots.
+
+| Actual selector stage | Selected cases executing it | Reference literal raw rows observed | Selector winner equals reference |
+| --- | ---: | ---: | ---: |
+| Initial | 75 | 70 | 24 |
+| Pipeline | 57 | 52 | 24 |
+| Release | 18 | 18 | 0 |
+
+Stages overlap and are not independent trials. Every selector frame has two
+unread slots; none of these 150 frames has a present snapshot with unavailable
+raw evidence. Call and VoteKey association counts equal literal raw presence;
+ObservedCalls literal association is zero in this selected set. Across the 75
+cases, 70 have an observed literal reference row in at least one selector, and
+24 select it. The remaining 46 observed-target cases do not establish eligible
+alternatives or attainable gains. The five without an observed literal target
+are November 7 ordinals 38985, 135429, 425623, 485661 and 719242; unread or missing
+views prevent interpreting this as global absence.
+
+The scanner receipt `v6-e2-independent-75-trace-facts-v1.json` has SHA256
+`2e395ccfe319893b7720e3d0d482b054756e84075a19f2e8d04719e76fcc90c5`;
+its independent path scanner has SHA256
+`28e0fe4228d9297daf4d817dc1995eb67c0b4a5d8b5e11e6426bdc1345613a66`.
+The broader reader's initial global 8 MiB report ceiling refused safely with no
+output. Its reviewed per-date layout then completed all four dates, preserving
+every case and frame: 15,596,031 dated-report bytes, each file below 8 MiB, and
+a final 4,786-byte all-date completion manifest. Source review corrected a
+tamper fixture that initially exercised only file-size refusal; its replacement
+changes a literal byte without changing size and directly falsifies missing
+SHA verification. All 58 literal reader/layout checks passed before execution.
+
+The completed manifest `v6-e2-consumed-candidate-study-v4/COMPLETE.json` has
+SHA256 `94c1795845ec33af4859c0837a6e1f1cd973ceae75c643fea6f41b0d901a9f0c`.
+The lead reconciled all 75 cases' actual calls, bindings, selector exits,
+literal/header association, winner and unread/unavailable facts against the
+separate path scanner. All match. The complete study has 1,107 initial,
+985 pipeline, 122 Evaluate and 122 release frames. Among the 462 known-reference
+cases, 429 have initial literal target rows and 299 select that target; the
+645 unknown/discordant references remain explicit. A fresh non-steered scientific
+reviewer independently counted those totals and verified all four dated hashes.
+The lead reconciliation is `v6-e2-consumed-reconciliation-v1.json`, SHA256
+`0b3e6fe409f536161d5bf9edb14d4448ec64ff3f5aec0a2cdf4a3a7ec329006a`.
+
+The causal raw-history reader did complete all four exposed dates and all 1,107
+selected IDs. Its 2,409 known and 912 unknown role slots remain separate. Only
+462 reference roles are known; the other 645 selected reference roles are unknown.
+These are outcome-selected controls, not a representative calibration set.
+The reader uses exact exported subject identities, Raw.Band/Mode equality and
+an inclusive 500 Hz window, with incoming ordinal/time cuts or the declared
+delayed-terminal cut. It excludes the focal row, preserves day-only coverage
+limits and counts raw rows, distinct receiver labels and distinct family labels
+separately. Those are not retained votes, Custom SCP counts or V-only learning.
+
+| Reference-history scope for the 75 mandatory cases | Cases with at least one raw row | Cases with at least three distinct family labels |
+| --- | ---: | ---: |
+| Earlier incoming reports since UTC day start | 74 | 62 |
+| Earlier incoming reports in trailing 15 minutes | 73 | 61 |
+| Earlier terminal-cut reports since UTC day start | 74 | 62 |
+| Earlier terminal-cut reports in trailing 15 minutes | 73 | 61 |
+
+Among the five cases without an observed initial target row, IS0ZOD, S52F and
+K4XU have preceding trailing-15-minute raw reports in the specified export/window.
+N5GW has only older same-day reports; EA6BB has neither. The differing raw versus
+consumed scopes, 300-second publication windows, key boundaries, admission and
+retention prohibit treating these rows as missing live votes or recoverable
+corrections. History-only active replacements remain disallowed.
+
+`v6-e2-causal-raw-history-v1.json` is 3,104,433 bytes, SHA256
+`2147f16b517b9d9d23e29778781d1f0fa50b324a359409b1bbe654d6268f3a23`.
+The lead's ID-bound descriptive join with the separate 75-case scanner is
+`v6-e2-causal-retained-join-v1.json`, SHA256
+`b018108e8d2a4156c61f59ffd596900780262035abc4ec8236ed14ad3812787b`.
+A fresh non-steered scientific reviewer independently counted the causal
+report and confirmed the 74/73 counts and five-case distinctions, without
+seeing a preferred method, implementation plan or draft successor ledger.
+
+## Two current-evidence distinctions and gate-population resolution
+
+A separate bounded flat-row extraction verified four actual frames for two
+November 7 cases. Initial and pipeline frames repeat the same population in
+each case; they are not four independent examples. All described rows have
+measured SNR and no frequency/SNR conflict. Originating archive IDs of retained
+receiver rows remain unavailable.
+
+| Case | Lower-ranked reference-named call | Ordinary winner | Descriptive distinction |
+| --- | --- | --- | --- |
+| 174575, R9AA | R9AAB: 4 receiver rows, 09:14:18–25 UTC, 14005.9–14006.0 kHz | M7MNM: 14 rows, 09:10:44–09:11:03 UTC, 14006.0–14006.1 kHz | Reporting episodes have a 195-second gap; frequencies overlap. Three receiver labels are shared. |
+| 520537, DL3VWF | DL3KWF: 14 receiver rows, 7021.0–7021.1 kHz | DL3DRN: 34 rows, 7021.3–7021.4 kHz | All 14 lower-rank receivers also report the winner, with paired differences of about 200–300 Hz. One receiver reports both at the identical second, 300 Hz apart. |
+
+The receipt `v6-e2-nov7-two-raw-witnesses-v1.json` has SHA256
+`7ad413a6429f6f6dce638b0a5f9265d4051444b83328bfada703bcc7fd9cdc1b`.
+The lead checked its hash, extraction procedure and direct source row counts.
+The fresh scientific reviewer separately checked the artifact/script/trace
+bindings and distinguished reporting-time turnover from frequency-group evidence.
+A reporting gap does not establish that the earlier transmitter stopped.
+Same-receiver frequency differences strengthen association evidence but establish
+neither RF truth nor a universal separation threshold. Receiver overlap alone
+does not prove one signal.
+
+Source tracing also refines the nomination diagnosis: every canonical member
+of an admitted settled neighborhood source can already nominate, including
+lower ranks (`neighborhood_evidence.go`). Whole-neighbor admission still uses
+the published winner; exact-only selection and release retain their state,
+comparability and ambiguity rails. A winner-only source-nomination diagnosis
+would be incorrect.
+
+Both example alternatives are already exposed in their exact buckets. Their
+captured weighted shares are 3,864/14,455 (26 percent after integer calculation)
+and 13,445/32,708 (41 percent). The existing minimum confidence is 45 percent;
+the Bayes report/advantage rails do not waive it. Reranking these captured
+populations alone therefore cannot deliver either example through that gate.
+This is a necessary inequality, not a complete eligibility recomputation.
+
+The owner subsequently explicitly selected signal-specific gates when separation
+is supported, retaining ambiguous dissent and other guards/history/licensing.
+The first active method must have frequency evidence; time-gap-only proposals
+stay offline. These resolve the newly concrete consequences of the earlier
+signal-separation choice. Ambiguous/unassigned evidence cannot silently
+disappear; public confidence, loss protection, lifecycle and learning meanings
+remain constraints. An independent RF-identity oracle is missing.
+
+## Current consumer boundary for a successor method
+
+The Go blast-radius audit used `rg`, isolated-checkout `gopls references -d`
+and `go list -deps -test -json ./...` with `jq`. The connected gopls service
+reported the primary checkout despite an isolated-directory request; its
+file-local results were not accepted as a workspace-wide caller inventory.
+The CLI queries ran in `gocluster-call-correctionv2` and found the cross-package
+references described here. No analysis tool mutated Go source.
+
+The shared primary selector feeds live bootstrap/correction, initial temporal
+holding and immediate output, as well as replay and the reverse-engineering
+command. Clock-qualified selection also feeds delayed delivery, stabilizer
+retry and temporal-overflow handling. Temporal release has live and replay
+callers, while its decoder retains compact selection values rather than full
+receiver publications. Those paths must be accounted for together when a
+successor scope is selected.
+
+`ResolverCallConfidencePercent` currently serves public confidence, family
+suppression, stabilizer checks and temporal scoring. It preserves the snapshot's
+declared weighted or receiver denominator and dissent. A changed population
+therefore has consequences beyond candidate ranking. The direct package
+consumers of `internal/correctionflow` are `internal/cluster`, `cmd/rbn_replay`
+and `cmd/callcorr_reveng_rebuilt`, plus their test variants. This current-source
+map is evidence for later scope, not authorization to change any of those
+consumers or a claim of whole-program behavioral equivalence.
+
+## Practical retained-SNR coverage and controls
+
+A second standalone flat-row scanner checked all four complete trace hashes,
+selected bindings and frame totals without importing the consumed reader or
+lead reconciliation. It counted only actual initial-selector raw rows from
+consulted, present, raw-available views; canonical, pipeline and release copies
+are excluded. Its counts exactly match the lead's independently calculated
+summary aggregates.
+
+| Initial consumed raw receiver incidence | Count |
+| --- | ---: |
+| Total | 18,194 |
+| Measured SNR | 17,994 |
+| Unknown SNR | 200 |
+| SNR-conflict flag | 200 |
+| Frequency-conflict flag | 120 |
+| Measured numeric zero / negative | 11 / 23 |
+
+Unknown/conflicted SNR occurs in 167 of the 1,107 selected cases; frequency
+conflict occurs in 113. These are repeated candidate/receiver/key incidences,
+not independent votes or population prevalence. Every case has unread slots;
+952 have a consulted missing snapshot. No present raw-unavailable view occurs
+in these initial reads. The 200 unknown SNR rows still represent call reports;
+they cannot become numeric zero or disappear from support. This confirms a
+practical conflict population beyond the focal-input SNR census.
+
+The independent receipt is `v6-e2-independent-initial-snr-v1.json`, SHA256
+`391176f3f10b6ac65b86b70d4d7746e2c09fb93f0acfd98b2e61410c5a33cdb5`;
+its scanner SHA256 is
+`bb1fd7a0a2fa067b6f77e55f49ac8a4fa0d55745b53ebe8ff18359253567b5ed`.
+
+Three frozen controls constrain a new method:
+
+- November 7 ordinal 432308: the input/reference is SN31ROT at 3538.0 kHz;
+  the method applied M1ROT. The captured exact population has M1ROT support 2
+  versus SN31ROT support 1, with both at that same reported frequency. This is
+  a known-reference contradiction, not proof that one spelling is a decoder
+  error or that the groups can be separated by frequency.
+- November 14 ordinal 250208: RTTY input/reference DL1QW became DL1Q, with
+  supports 3 versus 5 and overlapping reported frequencies. Truncation and
+  majority support alone do not establish RF truth.
+- November 7 ordinal 480813: N2QLV has one canonical candidate and 14 receiver
+  rows, but one carries both SNR and frequency conflict. Actual state is split.
+  Split is protection for uncertain evidence here, not proof of two distinct
+  named stations. Deleting that row to manufacture authority is invalid.
+
+## E3 design and scientific disposition
+
+Two separate non-steered scientific contexts reviewed the actual evidence and
+the mathematical model alternatives. They received neutral constraints/source
+and descriptive counts, without a preferred model, intended architecture,
+draft successor ledger or implementation-derived expected values. A separate
+non-steered design comparison examined reranking, request-local dual evidence
+and owner-maintained tracks. It initially corrected the source-nomination
+diagnosis, then revisited the design after the owner's population/frequency
+choices. The lead verified the material source, arithmetic and bindings.
+
+The chosen next investigation is request-local proposal/gate assessment beside
+ordinary evidence, without new tracks. The Bayesian role is posterior-mean
+estimation of algorithmically assigned edit-event frequencies for an explicitly
+ordinal nomination score. It is not a full-call likelihood, Bayes factor or
+calibrated RF posterior. Matches and their opportunities must be counted.
+Missing/conflicted SNR, unknown reference, outside-candidate reference and
+absent current support remain different states.
+
+A proper observation channel would require coherent sampling/acceptance and
+length semantics and summation over its modeled alternative edit explanations.
+Normalizing scores across candidates does not supply that channel. The primary
+[string-edit model](https://arxiv.org/pdf/cmp-lg/9610005) distinguishes edit-path
+weights from string probabilities. For independently supplied toy constants,
+the reviewer derived `Q(A|AA)=0.083456`, while one declared minimum path weighs
+`0.04096`. The lead verified seven full-channel cases by exact rational
+enumeration of latent outcomes, separately from a proposed implementation.
+Those channel probabilities are not the new ordinal ranker's expected scores.
+
+The first fresh scientific review's lead-retained record is
+`v6-e2-scientific-review-record-v1.md`, SHA256
+`e89aec198489feefc733b8a740426067cc60f3e08464edbb07127f7c6bbaff7f`.
+The mathematical crosscheck is `v7-independent-math-lead-verification-v1.json`,
+SHA256 `b352984ed4cc03ccf87ec25c51e200327526af016d99440b2025b0b48e20c9bd`.
+The later independent channel review adds normalization, acceptance, direction,
+length, opportunity and missing-stratum limits; no material scientific
+disagreement remains. RF identity and safe operating thresholds still have an
+independent-oracle gap. The operational study makes no stronger claim.
+
+The [proposed v7 ledger](call-correction-v2-scope-ledger-v7.md) defines a complete
+bounded replay-only experiment, with frequency-only nomination, geometry/Bayes paired
+variants, ordinary-first rescue, fresh source assessment and exact confirmation
+criteria. An independent scope/falsifiability challenge required explicit
+confirmation stability, deterministic arbitration, lifecycle-versus-row freshness,
+and score-direction/sparse-coverage tests. They are incorporated; the separate
+reviewer's focused source recheck found no remaining material scope or
+pre-approval falsifiability issue. No v7 implementation, fitting, new prediction,
+live wiring or model installation is authorized by completion of E1/E2.

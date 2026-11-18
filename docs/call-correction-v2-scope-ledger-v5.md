@@ -191,3 +191,11 @@ four exposed diagnostic captures. Exact complete decision-stream parity and
 external cumulative artifact accounting passed; the [capture reconciliation](call-correction-v2-method-investigation.md#completed-exposed-capture-reconciliation)
 records the proof and limits. E2 interpretation and E3's successor method scope
 remain; no new active method follows from capture completion alone.
+
+E2 subsequently completed all 1,107 selected consumed-evidence cases and the
+causal raw-history comparison, including independent factual crosschecks and
+fresh non-steered scientific/design reviews. The owner resolved signal-specific
+gate populations and frequency-required active separation. E3 has produced the
+independently challenged [proposed v7 replay-only method ledger](call-correction-v2-scope-ledger-v7.md).
+Its implementation/fitting/prediction requires the new matching token; v5/v6
+remain evidence/design authority only for that new method.
