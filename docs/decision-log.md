@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0358 | Custom SCP Capacity Index | Accepted | 2026-11-18 | bounded capacity eviction, Pebble ownership, diagnostics | none | none | [ADR-0358](decisions/ADR-0358-custom-scp-capacity-index.md) |
 | ADR-0357 | IPinfo Verification And Download Integrity | Accepted | 2026-11-17 | snapshot freshness, fallback, retained bytes and replacement | refines ADR-0355 lookup precedence and negative results | none | [ADR-0357](decisions/ADR-0357-ipinfo-verification-and-download-integrity.md) |
 | ADR-0356 | Fixed Meta Bands And Shared Physical Catalogue | Accepted | 2026-11-17 | six meta memberships, shared ranges, 4m, bounded CC selection, HELP | none; refines native DXBM capability only | none | [ADR-0356](decisions/ADR-0356-fixed-meta-bands-and-shared-physical-catalogue.md) |
 | ADR-0355 | Shared Reputation Lookup Retention | Accepted | 2026-11-15 | combined cache cap, FIFO, owned payload and diagnostics | none | lookup precedence and negative results refined by ADR-0357 | [ADR-0355](decisions/ADR-0355-shared-reputation-lookup-retention.md) |

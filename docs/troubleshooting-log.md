@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0137 | Custom SCP Capacity Eviction and Pebble Ownership | Monitoring | 2026-11-18 | Custom SCP, Pebble, capacity and delivery latency | ADR-0358 | `docs/troubleshooting/TSR-0137-custom-scp-capacity-eviction-and-pebble-ownership.md` |
 | TSR-0136 | IPinfo And Download Integrity | Monitoring | 2026-11-17 | reputation, shared downloads and filesystem publication | ADR-0357 | `docs/troubleshooting/TSR-0136-ipinfo-and-download-integrity.md` |
 | TSR-0135 | CI Fixture Inputs and Synchronization | Monitoring | 2026-11-16 | geography priors, scheduler ownership, VOACAP worker gating, controlled Windows ACLs, Linux identity widths, native-seven command fixtures and resource oracles | none | `docs/troubleshooting/TSR-0135-ci-fixture-inputs-and-synchronization.md` |
 | TSR-0134 | Reputation Lookup Cap and Overflow | Monitoring | 2026-11-15 | combined cache cardinality, overflow work and string ownership | ADR-0355 | `docs/troubleshooting/TSR-0134-reputation-lookup-cap-and-overflow.md` |

@@ -95,6 +95,7 @@ type customSCPEntry struct {
 	spotters       []customSCPSpotterEntry
 	lastSeen       int64
 	oldestSeenUnix int64
+	evictionSlot   int // One-based position; zero means the entry is not indexed.
 }
 
 // CustomSCPOptions configures runtime and persistence behavior. The max/horizon
@@ -143,6 +144,9 @@ type CustomSCPStatsSnapshot struct {
 	InternedRefs               int
 	InternReleaseMisses        uint64
 	EntryExpiryItems           int
+	EvictionIndexItems         int
+	EvictionIndexSlots         int
+	LiveKeyEvictions           uint64
 	StaticExpiryItems          int
 	OversizedKeysSeenOnLoad    uint64
 	OverflowObservationsPruned uint64
@@ -151,6 +155,7 @@ type CustomSCPStatsSnapshot struct {
 }
 
 type customSCPDiagnostics struct {
+	liveKeyEvictions           uint64
 	oversizedKeysSeenOnLoad    uint64
 	overflowObservationsPruned uint64
 	staleObservationsPruned    uint64
@@ -169,6 +174,7 @@ type CustomSCPStore struct {
 
 	entries      map[customSCPKey]*customSCPEntry
 	entryExpiry  customSCPEntryExpiryQueue
+	eviction     customSCPEvictionHeap
 	static       map[string]int64
 	staticExpiry customSCPStaticExpiryQueue
 	active       activeBandCallCounter
@@ -293,10 +299,12 @@ func OpenCustomSCPStore(opts CustomSCPOptions) (*CustomSCPStore, error) {
 		}
 	}
 	db, err := pebble.Open(opts.Path, pebbleOpts)
+	// Open holds a separate reference for the DB on success. Release ours
+	// on either outcome, before loading any persisted evidence.
+	if pebbleOpts.Cache != nil {
+		pebbleOpts.Cache.Unref()
+	}
 	if err != nil {
-		if pebbleOpts.Cache != nil {
-			pebbleOpts.Cache.Unref()
-		}
 		return nil, fmt.Errorf("custom_scp: open: %w", err)
 	}
 	store := &CustomSCPStore{
@@ -584,8 +592,8 @@ func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spott
 	entry := s.entries[key]
 	wasActive := customSCPEntryActive(entry)
 	if entry == nil {
-		if len(s.entries) >= s.opts.MaxKeys {
-			s.evictOldestKeyLocked()
+		if len(s.entries) >= s.opts.MaxKeys && s.evictOldestKeyLocked() {
+			s.diag.liveKeyEvictions++
 		}
 		if len(s.entries) >= s.opts.MaxKeys {
 			return
@@ -716,6 +724,9 @@ func (s *CustomSCPStore) StatsSnapshot() CustomSCPStatsSnapshot {
 		InternedRefs:               s.interner.totalRefs,
 		InternReleaseMisses:        s.interner.releaseMisses,
 		EntryExpiryItems:           s.entryExpiry.Len(),
+		EvictionIndexItems:         len(s.eviction),
+		EvictionIndexSlots:         cap(s.eviction),
+		LiveKeyEvictions:           s.diag.liveKeyEvictions,
 		StaticExpiryItems:          s.staticExpiry.Len(),
 		OversizedKeysSeenOnLoad:    s.diag.oversizedKeysSeenOnLoad,
 		OverflowObservationsPruned: s.diag.overflowObservationsPruned,
@@ -953,6 +964,11 @@ func (s *CustomSCPStore) loadFromDB() error {
 		for i := range pendingEntry.spotters {
 			pendingEntry.spotters[i].spotter = s.retainInternedStringLocked(pendingEntry.spotters[i].spotter)
 		}
+		// Distinct raw key groups can resolve to the same normalized key.
+		// Replace its index owner when the primary entry is replaced.
+		if replaced := s.entries[retainedKey]; replaced != nil {
+			s.eviction.remove(replaced)
+		}
 		s.entries[retainedKey] = pendingEntry
 		s.active.Add(retainedKey.call, retainedKey.band)
 		s.observationSpotters += len(pendingEntry.spotters)
@@ -1049,22 +1065,14 @@ func (s *CustomSCPStore) persistObservationLocked(key customSCPKey, spotter stri
 	ignoreCustomSCPDiskError(s.db.Set([]byte(observationKeyString(key, spotter)), value, pebble.NoSync))
 }
 
-func (s *CustomSCPStore) evictOldestKeyLocked() {
-	var victim customSCPKey
-	set := false
-	var oldest int64
-	for key, entry := range s.entries {
-		if !set || entry.lastSeen < oldest || (entry.lastSeen == oldest && customSCPKeyLess(key, victim)) {
-			victim = key
-			oldest = entry.lastSeen
-			set = true
-		}
+func (s *CustomSCPStore) evictOldestKeyLocked() bool {
+	if len(s.eviction) == 0 {
+		return false
 	}
-	if !set {
-		return
-	}
+	victim := s.eviction[0].key
 	s.deleteEntryLocked(victim)
 	s.deleteObservationPrefixLocked(victim)
+	return true
 }
 
 func (s *CustomSCPStore) retainInternedStringLocked(value string) string {
@@ -1213,6 +1221,7 @@ func (s *CustomSCPStore) deleteEntryWithExpiryLocked(key customSCPKey, deleteExp
 	if entry == nil {
 		return
 	}
+	s.eviction.remove(entry)
 	if deleteExpiry {
 		s.deleteEntryExpiryLocked(key)
 	}

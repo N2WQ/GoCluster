@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `58468ca87195904c`
+- Source fingerprint: `ed21c8268b1a9202`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -14,7 +14,7 @@
 | `dxcluster/commands` | `commands` | 15 | 26 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 57 | 211 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
-| `dxcluster/spot` | `spot` | 41 | 71 |
+| `dxcluster/spot` | `spot` | 42 | 72 |
 | `dxcluster/telnet` | `telnet` | 83 | 179 |
 
 ## In-Scope Package Edges
@@ -641,6 +641,7 @@ Source files:
 - `spot/confusion_model.go`
 - `spot/correction.go`
 - `spot/custom_scp_cleanup.go`
+- `spot/custom_scp_eviction.go`
 - `spot/custom_scp_expiry.go`
 - `spot/custom_scp_spotters.go`
 - `spot/custom_scp_store.go`
@@ -694,6 +695,7 @@ Test files:
 - `spot/correction_family_test.go`
 - `spot/custom_scp_cleanup_helpers_test.go`
 - `spot/custom_scp_cleanup_test.go`
+- `spot/custom_scp_eviction_test.go`
 - `spot/custom_scp_fixture_test.go`
 - `spot/custom_scp_freshness_test.go`
 - `spot/custom_scp_lifecycle_test.go`

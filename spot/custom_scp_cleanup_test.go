@@ -169,14 +169,15 @@ func TestCustomSCPCleanupOverflowChunks(t *testing.T) {
 }
 
 func TestCustomSCPCleanupEvictsOversizedPrimaryView(t *testing.T) {
-	store := newCustomSCPCleanupTestStore(t, CustomSCPOptions{MaxKeys: 2})
-	now := freshCustomSCPTestTime()
 	const keys = customSCPCleanupChunkSize + 7
+	store := newCustomSCPCleanupTestStore(t, CustomSCPOptions{MaxKeys: keys})
+	now := freshCustomSCPTestTime()
 	for i := 0; i < keys; i++ {
 		seedCustomSCPCleanupEntry(t, store, customSCPKey{call: fmt.Sprintf("K1CAP%04d", i), band: "40m", bucket: "cw"}, map[string]customSCPSpotterObs{
 			"N0CAP": {seenUnix: now.Add(time.Duration(i) * time.Second).Unix(), cellRes1: 101},
 		})
 	}
+	store.opts.MaxKeys = 2
 	store.cleanup(now)
 	for i := 0; i < keys-2; i++ {
 		key := customSCPKey{call: fmt.Sprintf("K1CAP%04d", i), band: "40m", bucket: "cw"}

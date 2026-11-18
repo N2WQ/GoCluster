@@ -5302,7 +5302,7 @@ func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Pred
 				log.Printf("Adaptive activity: bands=%d reporters=%d (retained; window/cadence expiry)", bands, reporters)
 			}
 
-			log.Printf("Map sizes: stats sources=%d source-modes=%d; dedup primary=%d secondary fast=%d med=%d slow=%d; path buckets=%d; custom_scp static=%d keys=%d spotters=%d interned=%d intern_refs=%d intern_release_misses=%d entry_expiry=%d static_expiry=%d load_oversized=%d overflow_pruned=%d stale_obs_pruned=%d stale_static_pruned=%d",
+			log.Printf("Map sizes: stats sources=%d source-modes=%d; dedup primary=%d secondary fast=%d med=%d slow=%d; path buckets=%d; custom_scp static=%d keys=%d spotters=%d interned=%d intern_refs=%d intern_release_misses=%d entry_expiry=%d static_expiry=%d load_oversized=%d overflow_pruned=%d stale_obs_pruned=%d stale_static_pruned=%d eviction_items=%d eviction_slots=%d live_key_evictions=%d",
 				sourceCount,
 				sourceModeCount,
 				primarySize,
@@ -5321,7 +5321,10 @@ func maybeStartMapLogger(tracker *stats.Tracker, predictor *pathreliability.Pred
 				customSCP.OversizedKeysSeenOnLoad,
 				customSCP.OverflowObservationsPruned,
 				customSCP.StaleObservationsPruned,
-				customSCP.StaleStaticPruned)
+				customSCP.StaleStaticPruned,
+				customSCP.EvictionIndexItems,
+				customSCP.EvictionIndexSlots,
+				customSCP.LiveKeyEvictions)
 		}
 	}()
 }

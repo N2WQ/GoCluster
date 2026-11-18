@@ -196,7 +196,7 @@ call_correction:
     # Enabled consumed receiver/cell minima must fit this cap; impossible gates fail startup/replay.
     # Disabled unused gates and separate FT storage are not constrained by this cap.
     max_spotters_per_key: 12         # Hard cap on retained spotter evidence per key
-    max_db_bytes: 4294967296         # Approximate Pebble size cap before cleanup pressure
+    max_db_bytes: 4294967296         # Legacy setting accepted for compatibility. GoCluster does not use it to limit Custom SCP disk usage.
     cleanup_interval_seconds: 601    # Background cleanup cadence
     block_cache_mb: 32               # Pebble block cache size
     bloom_filter_bits: 10            # Bloom filter bits/key

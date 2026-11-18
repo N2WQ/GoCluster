@@ -340,6 +340,10 @@ func (s *CustomSCPStore) upsertEntryExpiryLocked(key customSCPKey, entry *custom
 	}
 	s.entryExpiry.ensureIndexes()
 	if idx, ok := s.entryExpiry.indexes[key]; ok {
+		// Warm reads and same-second refreshes commonly preserve both ranks.
+		if s.entryExpiry.items[idx].dueUnix == dueUnix {
+			return
+		}
 		s.entryExpiry.items[idx].dueUnix = dueUnix
 		s.entryExpiry.fix(idx)
 		return
@@ -361,14 +365,17 @@ func (s *CustomSCPStore) deleteEntryExpiryLocked(key customSCPKey) {
 	s.entryExpiry.remove(idx)
 }
 
-// markEntryForCleanupLocked refreshes age metadata before updating the expiry
-// heap so cleanup decisions are based on the current retained spotter set.
+// markEntryForCleanupLocked refreshes age metadata shared by the two indexes.
+// Cleanup uses the oldest retained receiver and capacity eviction the newest.
 func (s *CustomSCPStore) markEntryForCleanupLocked(key customSCPKey, entry *customSCPEntry) {
 	if s == nil {
 		return
 	}
 	s.refreshEntryAgesLocked(entry)
 	s.upsertEntryExpiryLocked(key, entry)
+	if entry != nil && len(entry.spotters) > 0 {
+		s.eviction.upsert(key, entry, s.opts.MaxKeys)
+	}
 }
 
 // popDueEntryExpiryLocked returns one currently due primary entry and discards
