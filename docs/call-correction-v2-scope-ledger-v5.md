@@ -185,3 +185,9 @@ separates those results from the remaining full lane and actual captures.
 V6 and the shared-unit construction/test gate were satisfied before code;
 each later unit retains its detailed gate. E3 has produced the bounded amendment
 and construction planning, not an active correction method.
+
+E1 subsequently completed its final native ordinary/race/static lanes and all
+four exposed diagnostic captures. Exact complete decision-stream parity and
+external cumulative artifact accounting passed; the [capture reconciliation](call-correction-v2-method-investigation.md#completed-exposed-capture-reconciliation)
+records the proof and limits. E2 interpretation and E3's successor method scope
+remain; no new active method follows from capture completion alone.

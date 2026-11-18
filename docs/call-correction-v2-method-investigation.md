@@ -335,10 +335,11 @@ Local evidence is under `.tmp/call-correctionv2/`:
 The owner resolved the [storage guarantee gap](call-correction-v2-scope-ledger-v5.md#post-approval-material-finding-e1-storage-ceiling)
 and approved its [v6 amendment](call-correction-v2-scope-ledger-v6.md). E1 has
 resumed. Its shared diagnostic unit and replay storage/wiring are implemented
-and checked through the complete final functional lane; actual captures remain. No candidate
+and checked through the complete final functional lane; all four exposed captures
+have now reconciled as recorded below. No candidate
 generator, fitted model or active correction-method change is implemented
 under v5/v6. The retained-versus-history study and E3 method recommendation
-still depend on successful capture.
+now proceed from those verified captures.
 
 ## Shared diagnostic checkpoint
 
@@ -464,3 +465,44 @@ passed. Source freeze v3 still matches every checked Go file. Final proof
 `71b133c0b3efdc58954dbeeace14d05cfda6d54b1b900af7334e30860f5323f4`.
 These functional checks precede real exposed capture parity and accounting;
 they establish no RF accuracy, model activation or production resource verdict.
+
+## Completed exposed capture reconciliation
+
+The frozen diagnostic executable was built from clean source commit
+`d55e183117873a877760cb8e5defd32ecb41f575`. Its SHA256 is
+`1de9afa7da7dbc20b51232636294cf1da6212e6e9642f6412cf3c1b915f4ea34`;
+the exposed-only plan has SHA256
+`3515b1444a25351ce6a2cac9f2b620a91877f06671a8778d514f295eb547ef36`.
+All four invocations completed. A separate lead-owned checker verified exact
+hash identity of their complete decision streams against the frozen old
+streams, scanned every decision row and reconciled counters, selected coverage,
+actual per-stage trace calls, closed-output hashes and final file accounting.
+This checker is a separate implementation, not an independent scientific review.
+
+| Date | Identical decision rows | Logical trace frames | Cumulative charged artifact bytes | Final retained artifact bytes | Post-cleanup scratch bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| November 7 | 458,495 | 621 | 979,859,734 | 857,381,053 | 15,114,866 |
+| November 14 | 882,021 | 693 | 1,621,112,363 | 1,498,633,682 | 51,377,831 |
+| November 15 | 793,630 | 515 | 1,480,948,553 | 1,358,469,872 | 41,920,619 |
+| November 16 | 230,784 | 507 | 629,757,788 | 507,279,107 | 18,531,976 |
+
+Every invocation retained 24 artifact files and used the actual
+`custom_scp_runtime` backend. Charged totals include the final report and
+COMPLETE; deleted license snapshots remain charged. Each invocation stayed
+within its cumulative 4 GiB evidence/assets cap. Scratch totals follow existing
+cleanup and do not establish peak disk use or successful durable database
+closure. Exact stream identity establishes functional parity for these exposed
+runs, not RF correctness, fitted-model benefit or resource qualification.
+
+The external proof is `v6-e1-exposed-validation-v1.json`, SHA256
+`ce0a42d4d1d6d74806b2e29f05c218068b1951e97b3689d1b2dcb599bf2b1d23`.
+The 1,107 selected IDs and all 75 mandatory misses remain frozen. November 17
+contents remain unopened. The first consumed-evidence analysis reader safely
+refused before output because it misclassified the numeric support-basis enum
+as a string; the capture and source were unchanged. The failed invocation is
+retained. Corrected v2 sources preserve the executed v1 files. All 18 captured
+DTO shapes and 173 scalar fields were checked against Go declarations; a
+separate source reviewer confirmed the enum fix and child order. The corrected
+reader passed 49 literal checks, including zero/nonzero enum values and
+text/bool/range refusals. Its actual full-stream analysis remains in progress;
+these source checks are not an interpreted study result.

@@ -151,4 +151,15 @@ The only new implementation authority is artifact-budget coverage and separate
 final scratch accounting described above. Detailed construction and targeted
 checks remain subject to the post-approval test-strategy gate before E1 code.
 
+## Implemented amendment checkpoint
+
+The amended E1 implementation and final selected functional validation are
+complete. All four exposed captures passed complete decision-stream parity,
+actual trace-call coverage and separate external final accounting. Each stayed
+within the cumulative evidence/assets cap; post-existing-cleanup scratch bytes
+were measured and reported separately. The [capture reconciliation](call-correction-v2-method-investigation.md#completed-exposed-capture-reconciliation)
+binds exact source, plan, executable, bytes and proof. No peak disk, durable
+database closure, RF-accuracy, active-method or resource qualification is inferred.
+E2/E3 remain under their original boundaries.
+
 Exact authorization required before implementation: Approved v6

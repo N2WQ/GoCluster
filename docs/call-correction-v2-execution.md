@@ -912,3 +912,15 @@ be audited directly; collector and file-inventory mechanics remain separate.
 This closes source/functional E1 validation before executable freezing. It does
 not close exposed old/new stream parity, final accounting, E2 interpretation or
 the deferred original production resource/activation gates.
+
+The subsequent four exposed diagnostic invocations completed from clean commit
+`d55e183117873a877760cb8e5defd32ecb41f575`. Their full 2,364,930 decision rows
+are byte-identical to the frozen comparison streams; 2,336 logical trace frames
+reconcile to actual calls. Final external hash, coverage and cumulative artifact
+accounting checks passed for every date. The [capture reconciliation](call-correction-v2-method-investigation.md#completed-exposed-capture-reconciliation)
+records exact bytes and claim limits. Proof
+`v6-e1-exposed-validation-v1.json` has SHA256
+`ce0a42d4d1d6d74806b2e29f05c218068b1951e97b3689d1b2dcb599bf2b1d23`.
+This closes E1 empirical parity/accounting, not E2 interpretation, active method
+qualification or the deferred resource gates. The first analysis reader's
+support-basis schema refusal is retained; it produced no partial study output.

@@ -729,8 +729,9 @@ entry cap. The presence repair introduces no new harmonic registry.
 ## Remaining qualification work
 
 1. Continue the correction-method investigation with the owner-requested
-   stability estimate under approved v5/v6. The shared diagnostic unit has
-   targeted validation; replay capture and causal investigation remain.
+   stability estimate under approved v5/v6. E1 has completed its full functional
+   validation and four-date exposed capture parity/accounting; causal evidence
+   interpretation and the resulting method scope remain.
    New active proposal behavior requires its own reviewed scope and approval.
 2. Resource optimization is deferred by the owner. When that work resumes,
    resolve the acceptance-policy question and qualify resource behavior under
