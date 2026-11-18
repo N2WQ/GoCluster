@@ -950,3 +950,12 @@ focused source recheck found no remaining material scope or pre-approval
 falsifiability issue. The [proposed v7 ledger](call-correction-v2-scope-ledger-v7.md)
 awaits its matching exact token. V5/v6 do not authorize its implementation or
 model fitting.
+
+While v7 authorization remains pending, a further v5 E2 direct-character census
+reconciled the two complete training-exposure streams and the previously counted
+pair, character and gap totals. CW above 6 dB has at least 50 opportunities for
+every alphabet symbol; CW (0,6] lacks that coverage for slash, and the lowest
+band is broadly sparse. The [opportunity table](call-correction-v2-method-investigation.md#character-opportunities-by-focal-snr)
+records the counts and limits. It computes no new alignment, fitted parameters,
+candidate eligibility or corrections. No v7 implementation or activation is
+inferred from this additional data census.

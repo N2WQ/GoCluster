@@ -706,6 +706,50 @@ Three frozen controls constrain a new method:
   Split is protection for uncertain evidence here, not proof of two distinct
   named stations. Deleting that row to manufacture authority is invalid.
 
+## Character opportunities by focal SNR
+
+An additional approved E2 census counts source characters directly from the
+complete November 7/14 exports, conditional on the same strong-agree R1/R2
+predicate. It performs no new alignment, fitted parameter estimation, candidate
+generation or prediction. Complete source hashes and 1,340,516 focal rows
+reconcile, as do 138,330 strong-agree pairs, 137,115 full matches, 675,647 source
+characters, 675,405 subject characters and 813,977 reference gap opportunities.
+All conditional pairs are within the proposed 37-symbol/32-character domain;
+that does not establish domain coverage of unknown-reference or live inputs.
+
+| Mode | Focal SNR interval, dB | Strong-agree pairs | Source characters | Alphabet symbols with at least 50 opportunities |
+| --- | --- | ---: | ---: | ---: |
+| CW | (−999,0] | 177 | 849 | 1/37 |
+| CW | (0,6] | 8,192 | 40,299 | 36/37 |
+| CW | (6,12] | 23,998 | 118,212 | 37/37 |
+| CW | (12,18] | 27,478 | 135,648 | 37/37 |
+| CW | (18,24] | 24,612 | 121,546 | 37/37 |
+| CW | (24,999] | 39,578 | 193,916 | 37/37 |
+| RTTY | (−999,0] | 3 | 14 | 0/37 |
+| RTTY | (0,6] | 125 | 573 | 0/37 |
+| RTTY | (6,12] | 1,747 | 8,148 | 36/37 |
+| RTTY | (12,18] | 3,421 | 15,722 | 36/37 |
+| RTTY | (18,24] | 3,213 | 14,646 | 36/37 |
+| RTTY | (24,999] | 5,786 | 26,074 | 36/37 |
+
+Slash is the sparse symbol in CW (0,6] and RTTY above 6 dB. The lowest bins
+remain substantially sparse even when aggregate character/gap totals are large.
+Missing/out-of-domain focal-SNR cells contain zero conditional pairs here;
+that supplies no empirical missing-SNR model. These descriptive exposure counts
+help check the proposed per-character sparse rule. They neither calibrate its
+50-opportunity convention nor establish scoring availability for an actual
+candidate population, independent error events or correction gains. The
+proposed CW-only study scope is unchanged.
+
+The census is `v5-e2-character-opportunities-by-snr-v1.json`, SHA256
+`fd027ddb383c63007141bb3dd14c5ce2dea18a4948557e78452aa0daf3053dda`.
+Its direct character/gap counts agree with the earlier separately implemented
+alignment/SNR census on all 48 pair/character/gap scalar comparisons across
+16 mode/SNR cells, including empty missing/outside cells. The lead-owned
+reconciliation is `v5-e2-character-opportunities-reconciliation-v1.json`, SHA256
+`e079f6bb1c797c1c6df2081040a3d76699967c1b365cbcd1fc70f7c4cccfa17c`.
+This is further evidence under v5 E2, not execution of v7's model builder.
+
 ## E3 design and scientific disposition
 
 Two separate non-steered scientific contexts reviewed the actual evidence and
