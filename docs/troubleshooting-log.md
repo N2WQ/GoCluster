@@ -14,6 +14,8 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0138 | Neighborhood Read Amplification and Recovery Coverage | Monitoring | 2026-11-17 | immutable sorted evidence, bounded derivation, shape benchmarks, invocation recovery coverage | ADR-0358 | `docs/troubleshooting/TSR-0138-neighborhood-read-amplification-and-recovery-coverage.md` |
+| TSR-0137 | Study Geography and Replay Clock Fixtures | Monitoring | 2026-11-17 | schema-2 CTY/H3 inputs, complete row coverage, fixture sample-clock initialization | ADR-0358 | `docs/troubleshooting/TSR-0137-study-geography-and-replay-clock-fixtures.md` |
 | TSR-0135 | CI Fixture Inputs and Synchronization | Monitoring | 2026-11-16 | geography priors, scheduler ownership, VOACAP worker gating, controlled Windows ACLs, Linux identity widths, native-seven command fixtures and resource oracles | none | `docs/troubleshooting/TSR-0135-ci-fixture-inputs-and-synchronization.md` |
 | TSR-0134 | Reputation Lookup Cap and Overflow | Monitoring | 2026-11-15 | combined cache cardinality, overflow work and string ownership | ADR-0355 | `docs/troubleshooting/TSR-0134-reputation-lookup-cap-and-overflow.md` |
 | TSR-0133 | Flood Configuration Contract | Monitoring | 2026-11-14 | flood YAML scalars, source-key normalization, arithmetic bounds | none | `docs/troubleshooting/TSR-0133-flood-configuration-contract.md` |

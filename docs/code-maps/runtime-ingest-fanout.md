@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `93428feef34baa39`
+- Source fingerprint: `963df41c41ca1f94`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 14 | 24 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 211 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 220 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
-| `dxcluster/spot` | `spot` | 40 | 70 |
+| `dxcluster/spot` | `spot` | 43 | 83 |
 | `dxcluster/telnet` | `telnet` | 83 | 177 |
 
 ## In-Scope Package Edges
@@ -221,6 +221,14 @@ Test files:
 - `internal/cluster/async_v7_identity_test.go`
 - `internal/cluster/boolean_defaults_test.go`
 - `internal/cluster/bulletin_ingress_test.go`
+- `internal/cluster/call_correction_qualification_assets_windows_test.go`
+- `internal/cluster/call_correction_qualification_coverage_windows_test.go`
+- `internal/cluster/call_correction_qualification_recovery_windows_test.go`
+- `internal/cluster/call_correction_qualification_runtime_windows_test.go`
+- `internal/cluster/call_correction_qualification_windows_test.go`
+- `internal/cluster/call_correction_v2_canonical_delivery_test.go`
+- `internal/cluster/call_correction_v2_harmonic_delivery_test.go`
+- `internal/cluster/call_correction_v2_neighborhood_delivery_test.go`
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
 - `internal/cluster/confidence_attribution_delivery_test.go`
@@ -228,6 +236,7 @@ Test files:
 - `internal/cluster/corrected_grid_counter_test.go`
 - `internal/cluster/corrected_grid_delivery_test.go`
 - `internal/cluster/correction_ambiguity_delivery_test.go`
+- `internal/cluster/correction_bayes_delivery_test.go`
 - `internal/cluster/correction_decision_cost_summary_test.go`
 - `internal/cluster/correction_decision_delivery_helpers_test.go`
 - `internal/cluster/correction_decision_delivery_test.go`
@@ -637,6 +646,7 @@ Source files:
 - `spot/comment_parser.go`
 - `spot/confusion_model.go`
 - `spot/correction.go`
+- `spot/correction_history.go`
 - `spot/custom_scp_cleanup.go`
 - `spot/custom_scp_expiry.go`
 - `spot/custom_scp_spotters.go`
@@ -656,6 +666,8 @@ Source files:
 - `spot/recent_support_store.go`
 - `spot/reliability.go`
 - `spot/resolver_ambiguity.go`
+- `spot/resolver_canonical.go`
+- `spot/resolver_confusion.go`
 - `spot/resolver_evidence.go`
 - `spot/resolver_fresh.go`
 - `spot/resolver_loss.go`
@@ -677,6 +689,16 @@ Test files:
 - `spot/adaptive_activity_test.go`
 - `spot/bands_test.go`
 - `spot/bounded_store_bench_test.go`
+- `spot/call_correction_v2_canonical_bench_test.go`
+- `spot/call_correction_v2_canonical_test.go`
+- `spot/call_correction_v2_frequency_test.go`
+- `spot/call_correction_v2_harmonics_test.go`
+- `spot/call_correction_v2_merge_bench_test.go`
+- `spot/call_correction_v2_merge_test.go`
+- `spot/call_correction_v2_parser_test.go`
+- `spot/call_correction_v2_receiver_totals_test.go`
+- `spot/call_correction_v2_snr_bench_test.go`
+- `spot/call_correction_v2_snr_test.go`
 - `spot/callsign_test.go`
 - `spot/cleanup_runner_test.go`
 - `spot/comment_display_trace_test.go`
@@ -686,8 +708,11 @@ Test files:
 - `spot/comment_parser_test.go`
 - `spot/confusion_model_test.go`
 - `spot/confusion_snr_domain_test.go`
+- `spot/correction_bayes_rails_test.go`
 - `spot/correction_distance_test.go`
 - `spot/correction_family_test.go`
+- `spot/correction_history_bench_test.go`
+- `spot/correction_history_test.go`
 - `spot/custom_scp_cleanup_helpers_test.go`
 - `spot/custom_scp_cleanup_test.go`
 - `spot/custom_scp_fixture_test.go`

@@ -171,7 +171,7 @@ combination; see [replay evidence limits](../../docs/rbn_replay.md#bayes-evaluat
 
 Deploy the mask with its supporting executable: an older executable can ignore
 the new key. The existing master `enabled: false` remains the whole-block off
-switch. See [ADR-0357](../../docs/decisions/ADR-0357-call-correction-v2-evidence-and-bounded-bonuses.md)
+switch. See [ADR-0358](../../docs/decisions/ADR-0358-call-correction-v2-evidence-and-bounded-bonuses.md)
 and the [correction contract](../../spot/README.md#bounded-historical-bonuses).
 
 ### Flood configuration

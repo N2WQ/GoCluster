@@ -7,13 +7,17 @@ import (
 
 func TestCCV2LegacySNRConsumers(t *testing.T) {
 	for _, tc := range []struct {
-		payload string
-		report  int
-		present bool
+		payload  string
+		report   int
+		present  bool
+		wireTime string
 	}{
-		{"CW -1250dB", 0, false}, {"CW 1.5dB", 0, false},
-		{"CW -200 dB", -200, true}, {"CW 0dB", 0, true},
-		{"1200Z-14dB CW", -14, true},
+		{"CW -1250dB", 0, false, ""}, {"CW 1.5dB", 0, false, ""},
+		{"CW -200 dB", -200, true, ""}, {"CW 0dB", 0, true, ""},
+		// Both times satisfy today's-date/two-minute-skew policy at every UTC
+		// clock. Distinct minutes keep a shared "now" fallback from passing both.
+		{"0000Z-14dB CW", -14, true, "0000Z"},
+		{"0002Z-14dB CW", -14, true, "0002Z"},
 	} {
 		t.Run(tc.payload, func(t *testing.T) {
 			c := NewClient("example.com", 0, "N0FT", "UPSTREAM", nil, false, 2)
@@ -35,8 +39,8 @@ func TestCCV2LegacySNRConsumers(t *testing.T) {
 			if tc.present && !strings.Contains(s.FormatDXClusterCW(false), "dB") {
 				t.Fatal("measured SNR disappeared from formatted wire")
 			}
-			if tc.payload == "1200Z-14dB CW" && s.Time.UTC().Format("1504Z") != "1200Z" {
-				t.Fatal("fused source timestamp was not retained")
+			if tc.wireTime != "" && s.Time.UTC().Format("1504Z") != tc.wireTime {
+				t.Fatalf("fused source timestamp=%s want %s", s.Time.UTC().Format("1504Z"), tc.wireTime)
 			}
 		})
 	}

@@ -3,6 +3,10 @@
 - Status: Accepted
 - Date: 2026-10-11
 - Decision Origin: Design
+- Superseded in part: [ADR-0358](ADR-0358-call-correction-v2-evidence-and-bounded-bonuses.md)
+  replaces candidate-representative SNR and equal-time later-receipt selection.
+  The original decision below is preserved; presence/domain and CSV conversion
+  clauses remain accepted.
 
 ## Context
 

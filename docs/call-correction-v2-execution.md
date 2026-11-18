@@ -17,6 +17,16 @@ without including them in source commits. No model installation was performed.
 
 ## Evidence status
 
+Latest checkpoint: final selected-state ordinary tests, vet, Staticcheck, lint
+and connected ordinary/race CustomSCP regressions pass. The actual Bayes-off
+release capture completes all 90,000 inputs and deliveries but **fails** the
+frozen typical CPU gate at 437,500 ns/input. Complete race package coverage
+passes after a documented test-only clock repair and affected continuation.
+This is not a completed or production-qualified delivery. See the
+[qualification report](call-correction-v2-qualification.md) for the preserved
+failed gate, diagnostic comparison and remaining obligations; earlier entries
+below retain their chronological state boundaries.
+
 Before implementation, separate scientific reviews and an independent scope
 adversary challenged the original and materially revised designs. The final v3
 challenge had no unresolved material scope blocker. The postapproval detailed
@@ -37,16 +47,16 @@ these failure mechanisms and be recorded with executed results.
 
 | Unit | Implementation | Validation |
 | --- | --- | --- |
-| S0 evaluation foundation/provenance | Legacy compatibility, frozen baselines, strict paired-study CLI and native paced fixture complete | 13 compatibility + 112 final study cases passed; native paced baseline passed; archive/candidate qualification pending |
-| S0b conditional study geography | Explicit schema-2 CTY/H3 scenario, study-only derived receiver inputs and all-focal-row provenance/coverage implemented | Ordinary and race study checks passed 158 cases each; detached comparator passed 156 compatible cases, all zero skips; schema-2 control freeze complete, official tuning underway |
-| S1a legacy report parsing | Removed substring SNR fallback; whole integer grammar and human rules retained | 139 native parser/display/RBN cases passed; 20s grammar + 20s legacy differential fuzz passed (unguided prepared binary) |
-| S1b harmonic presence | Missing incoming reports neither compare nor seed harmonic evidence; measured cross-receiver/mode policy preserved | 33 native presence/threshold/expiry/maintenance/delivery cases passed, including TCP and reopened archive |
-| S2 neighborhood admission | Only admitted comparable adjacent populations set neighborhood use | 13 selection/accounting + 7 native delivery cases passed; immediate/temporal/stabilizer exact distance-2/3 recovery |
-| S3 receiver SNR | Receiver timestamp/conflict join, immutable SNR rows, top-cohort bin scoring and fresh reranking complete | 1068-case spot pass before final scoring extraction; targeted final checks + 11 native race cases passed; modeled shape benches executed, final resource qualification pending |
-| S4 canonical slash authority | Immutable canonical receiver union, observed display, independent threshold and identity-consistent consumers complete | Full spot (1087) and flow (202) passed; 14 native delivery, 144 replay/selection, 23 race cases passed; legacy fixture corrections passed 116 cases; final frequency scratch checks passed 63 cases |
-| S5 per-decision history | Fixed eight-entry first-read capture shared by validation/recent+1/Bayes, fresh next gate | 40 gate/capture + 32 actual backend/consumer cases passed, zero skips; independent source review and paired native benchmarks completed |
-| S6 Bayesian retention/study/activation | Runtime rail separation and complete cell-map/config/capacity contract complete; empirical activation pending | 253 focused native cases plus 70 replay/legacy-config cases passed, zero skips; separate arithmetic oracle and adversarial code reviews completed; conditional archive-geography follow-up recorded in S0b |
-| S7 final integration/resource/docs/lane | In progress; qualification draft and provenance/accounting updated | Full ordinary pre-S0b: 14,057 passed/99 skipped; full race: 14,101/99 with identical skip names; latest study 163 ordinary + 163 race, zero skips; connected CustomSCP and guided fuzz passed. Paced gate, complete six-candidate study, selection, holdouts and final selected-state lane pending; not qualified |
+| S0 evaluation foundation/provenance | `cmd/rbn_replay/study_*` and `cmd/callcorr_reveng_rebuilt/evaluation_contract.go`: legacy numeric compatibility, frozen provenance, paired episodes/unknowns and missed opportunities | Actual 36 tuning arms/six whole candidates, six held-out arms, two analysis engines, exact parity and separate 32-check held-out stream audit; all activation floors retained |
+| S0b conditional study geography | `cmd/rbn_replay/study_geography.go`: schema-2 frozen CTY/H3 scenario and complete focal-row coverage | Actual CSV-to-history plus unknown/same-cell controls; study 163 ordinary/163 race cases after analysis repair, detached compatible comparator checks, exact cross-arm covariate bindings |
+| S1a legacy report parsing | `spot/comment_parser.go`: removed substring fallback, retained whole-integer grammar and separate human rules | Parser/display/RBN consumers, literal grammar, 422,237 guided grammar and 95,100 guided legacy-parity fuzz executions; earlier unguided runs remain separately labeled |
+| S1b harmonic presence | `spot/harmonics.go`: missing reports neither compare nor seed; measured cross-receiver/mode policy retained | 33 presence/boundary/maintenance/native-delivery cases, including present zero, actual TCP and reopened archive |
+| S2 neighborhood admission | `internal/correctionflow/shared.go`: only actually admitted adjacent populations set neighborhood use | Exact distance-2/3 immediate/temporal/stabilizer witnesses and negative dissent/loss/nomination controls; four mechanism traces preserve full official decision SHA |
+| S3 receiver SNR | `spot/resolver_evidence.go`, `resolver_confusion.go`, `resolver_fresh.go`, `signal_resolver.go`: bounded receiver joins and fresh optional ordering | Permutations/conflicts/expiry/immutable readers, direct-versus-binned scoring, modeled capped benchmarks, exact whole tuning-stream parity and passed matched resource gate |
+| S4 canonical slash authority | `spot/resolver_canonical.go`, flow and native family/display consumers: receiver unions, semantic state, observed display and independent slash threshold | Native licensed delivery, lifecycle/race checks, exhaustive binary64 witnesses, 128 map-derived merge cases, large/overlap/ragged population oracles and shape benchmarks; no hidden merged-64 recap |
+| S5 per-decision history | `spot/correction_history.go` and `correction.go`: eight first-read alias entries, fresh next gate | Changing-store/alias-max/zero/requirement and real backend consumer checks; independent source review and nine paired benchmark shapes |
+| S6 Bayesian retention/study/activation | `spot/correction.go`, `config/call_correction_bayes.go`, capacity validators and live/replay/evaluator mapping: independent capped rails and complete masks | Separate arithmetic oracle and real consumer reachability; omission/empty/null/merge/capacity checks; untouched zero-contradiction/sample/coverage failure selects implemented whole-off fallback, with no retuning |
+| S7 final integration/resource/docs/lane | Native paced/integration fixtures, config/spot/replay/support docs, ADR-0358 and TSR-0137/0138 | One matched capture passed all four controls; ordinary/static/connected checks and complete race package coverage pass; actual release capture has zero loss but fails CPU, so resource qualification remains unmet; final supporting receipts are below |
 
 ## Baseline and study artifacts
 
@@ -555,3 +565,76 @@ inheriting the new explicit empty sample mask; only that owned fixture now
 removes the seeded mask to exercise its stated legacy policy. No production
 capacity check was weakened. Final complete lanes and the separate actual
 release-policy paced capture remain mandatory.
+
+## S7 final functional coverage and unresolved resource gate
+
+The selected release-off state passes the complete native ordinary lane:
+14,253 test pass events, 99 skips, 61 executed/15 build-only packages across 76.
+The subsequent full race attempt reaches RBN with every earlier package passing,
+then exposes the new clock-dependent noon fixture described in
+[TSR-0137](troubleshooting/TSR-0137-study-geography-and-replay-clock-fixtures.md#follow-up-a-clock-dependent-wire-fixture).
+Only that test changes, to distinct always-admissible `0000Z`/`0002Z` inputs.
+RBN's full ordinary rerun passes 129 cases without skips. The race continuation
+passes all 11 unfinished packages, 4,512 native pass events and five skips.
+`s7-final-race-coverage-audit.json` verifies the successful unchanged prefix plus
+continuation covers all 76 packages, 61 executed/15 build-only, with exactly the
+same 99 skip identities as ordinary. The failed original invocation remains
+failed; no fabricated single full-run pass or summed authenticated event count
+is reported. The localized test fix does not invalidate other package results.
+
+Complete final vet/Staticcheck/lint and connected ordinary/race CustomSCP
+producer-to-consumer checks pass. RBN vet/Staticcheck/lint pass again after the
+test-only clock repair. Guided parser fuzzing, independent temporal vectors,
+bounded shape benchmarks, native original-peer/normal/DIAG delivery, reopened
+archive and earlier unit-specific receipts remain valid at their recorded
+source boundaries. Exact final receipts include `s7-final-ordinary-full.txt`,
+`s7-final-race-full.txt`, `s7-final-race-continuation.txt`,
+`s7-final-rbn-clock-ordinary.txt`, `s7-final-rbn-clock-{vet,staticcheck,lint}.txt`,
+and `s7-final-customscp-connected{,-race}.txt`.
+
+The actual release-policy three-case capture completes every one of 90,000
+inputs and each TCP delivery, 90,003 reopened archive rows including markers,
+natural recovery and all owner/barrier joins, without recorded loss. It still
+**fails** the frozen typical CPU gate: 437,500 ns/input exceeds two retained
+controls. The comparison receipt is `paced-final-release-gate-v1.json`.
+Its failed verdict is not superseded by diagnostic cases, cycle counts,
+post-hoc averages or favorable repeats.
+
+Separate independent counter reviews verify the same-image profiler crossover,
+exact kernel/user/cycle phase arithmetic and the original-core counterpart.
+The unchanged original's two unprofiled CPU totals vary 41.57% while cycles vary
+2.23%. These observations do not identify a code defect or harmless accounting
+cause. WPR refuses the owned kernel-trace probe with policy error `0xc5585011`;
+no recording remains. The full [qualification report](call-correction-v2-qualification.md)
+retains all figures, provenance, precision limits, pending-work/recovery
+differences and the copied baseline-plan prose discrepancy. All temporary
+instrumentation is archived and restored byte-for-byte in both owned comparison
+checkouts; their standard ordinary images are re-prepared. No instrumentation
+or policy change is applied to the release source.
+
+A fresh lead-owned source pass rechecks the approved parser/harmonic behavior,
+receiver joins/cohort reduction, canonical identity/display/frequency witnesses,
+fresh authority, admission/nomination, gate-local history, configuration presence
+and capacity consumers, and actual mutation/accounting callers. No additional
+runtime defect is identified. `resolver_canonical.go` remains one cohesive file:
+publication construction and read merging use the same private canonical form,
+join/display rules and capped rows, with small focused helpers. Separating those
+derivations would obscure direct comparison of their shared invariants. The
+long selection routine remains a bounded linear admission/priority/synthesis
+flow, keeping its five source witnesses and early-return ordering together.
+This source pass is lead-owned, distinct from the separate source/shape,
+scientific, test-strategy and empirical recount reviews.
+
+Final supporting receipts are `s7-closeout-{tsr-check,yaml-rigor,crawler-check}.txt`,
+`s7-closeout-markdown-links.json`, `s7-closeout-codemap-{generate,check}.txt` and
+`s7-closeout-diff-check.txt`. Map generation is the final source/document write;
+checks and direct final-diff review follow it. ADR/TSR identifiers were adjusted
+before commit because the concurrent primary-checkout task occupied ADR-0357
+and TSR-0136. This branch uses ADR-0358 and TSR-0137/0138, without editing the
+other task's checkout.
+
+S0–S6 and the conditional study-input unit are implemented. S7 remains incomplete
+at its CPU qualification obligation. The owner decision on retaining strict
+EACH-control comparisons versus planning a new uncertainty-aware average-cost
+study is pending. No new interpretation, scope or authorization is inferred.
+No push, model installation, merge, production deployment or restart occurs.

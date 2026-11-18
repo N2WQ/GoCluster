@@ -8,6 +8,12 @@ Decision Origin: Design
 Troubleshooting Record(s): none
 Tags: resolver-primary, recall, conservative-rails, replay-parity
 
+Current implementation refinement:
+[ADR-0358](ADR-0358-call-correction-v2-evidence-and-bounded-bonuses.md) records
+independent bounded report/advantage eligibility, decision-local history capture
+and complete optional mode/distance masks. The original decision and rollout
+history below remain; they do not certify current empirical activation.
+
 ## Context
 - Resolver-primary already uses conservative hard gates and reliability-weighted support, but still misses some likely-correct 1-2 character differences near thresholds.
 - Existing `resolver_recent_plus1` helps one-short min-reports cases, but does not address all tie-like advantage misses.

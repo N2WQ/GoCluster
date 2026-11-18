@@ -55,6 +55,12 @@ Replay config:
   CustomSCP retains its separate historical clock/maintenance contract.
 - Replay fails fast on timestamp regressions, out-of-day records, resolver enqueue failures, and resolver hard-drop counters.
 
+These guarantees concern fixed ordered replay input and evaluation clocks.
+Receiver SNR joins are order-independent for the same retained timestamped
+reports, but live ingestion still reads the latest asynchronous publication
+without waiting for the current receipt. Replay does not promise to reconstruct
+live arrival scheduling or every already emitted live outcome.
+
 With identical target reports, unrelated traffic must not change a held spot's
 scheduled release time or correction outcome when that traffic neither triggers
 capacity limits nor changes relevant evidence. Correct deadline handling can
@@ -146,6 +152,108 @@ Integer parsing remains first; the float fallback keeps its existing
 precision. Both offline tools check the transformed value before conversion.
 Resolver model scoring omits missing or out-of-domain SNR without removing its
 receiver support; valid bins remain `(lower, upper]`.
+
+Each receiver's newest SNR is retained separately. Equal-time numeric or
+presence disagreement stays unknown until a strictly newer report supersedes
+it. Canonical slash permutations share a distinct-receiver voting identity,
+while mutations use a current observed display spelling. Alias-only changes do
+not count as corrections or temporal switches. Fresh temporal release regroups
+eligible published rows and can retain or revoke settled authority, without
+settling a new winner. See the [shared evidence contract](../spot/README.md#resolver-capable-modes).
+
+## Bayes evaluation and evidence limits
+
+Replay and the offline evaluator use the same independent bounded report and
+advantage rails, ordinary guards and typed cell mask as live correction. The
+score remains a capped weighted-support/history heuristic, not a calibrated
+probability or a full generative RF model. The report rail does not stack another
+report on a floor already filled by ordinary recent +1. The advantage rail can
+qualify an already full-report raw tie, with its own extra checks. Mask omission
+preserves runtime CW/RTTY/USB/LSB eligibility; explicit `{}` enables none.
+The archive study's declared maps remain CW/RTTY only. See the
+[mask and capacity contract](../data/config/README.md#call-correction-bayes-cells).
+
+Within one gate, at most eight subject/candidate alias counts are captured once
+and reused across the historical qualifiers. Separate alias keys need not come
+from one atomic store publication. Later correction and temporal/stabilizer
+retries query afresh; no historical count cache survives the decision.
+
+The public full-history CSV projection currently carries receiver calls and
+SNR, but no DE grid or receiver coordinates, and `newReplaySpot` supplies no
+geographic enrichment in ordinary replay. Loading H3 tables alone cannot supply
+a receiver's cell. The owner separately accepted the frozen CTY-derived study
+scenario in [approved v4](call-correction-v2-scope-ledger-v4.md). This accepts
+representative prefix locations as conditional study inputs, independently of
+the already accepted uncertainty in RBN reference labels. It does not establish
+historical receiver sites, reported grids, station independence or live location
+availability/timing. Common imputation can overstate or understate geographic
+diversity; using it in every arm does not cancel nonlinear eligibility errors.
+
+CSV replay also retains a parsed numeric 0 dB report as a measured value. The
+full live RBN client currently discards that report. This existing population
+difference can affect support, correction and subsequent learning; identical
+archive input between arms does not establish full live-input equivalence.
+
+### Explicit study input scenario (schema 2)
+
+Study plans, completion reports and comparisons now require `schema_version: 2`
+and an explicit `input_scenario`:
+
+| Field | Required meaning |
+| --- | --- |
+| `receiver_geography` | `cty_representative_v1` |
+| `cty_sha256` | Frozen CTY image digest |
+| `h3_res1_sha256` | Frozen `res1.bin` digest |
+| `h3_res2_sha256` | Frozen `res2.bin` digest |
+
+These are semantic roles bound to each arm's actual configured paths and asset
+manifest, rather than an unordered set of hashes. The CLI validates the schema,
+scenario and frozen inputs, copies verified assets into run-owned storage, loads
+a nonempty CTY image and initializes H3 before parsing raw archive contents.
+Missing, corrupt, mismatched or wrongly bound assets are setup failures, not
+unknown receiver locations. An invalid run never publishes `complete.json`;
+partial/`FAILED.json` evidence cannot qualify a candidate.
+
+Only the study hook derives a four-character receiver grid from the frozen CTY
+image, before focal-A activity/history/learning. It uses the live receiver
+normalization and portable CTY precedence, preserving location segments such as
+`K1ABC/DL-#` while removing the final hyphen suffix. Known grids are marked
+derived. A missing match, invalid coordinates or empty receiver remains unknown;
+legitimate zero coordinates are valid. The identical rule and CTY/H3 inputs apply
+to shipped, repaired-off and repaired-on arms. Ordinary replay/server behavior
+and history minima are unchanged; no receiver-location registry is added.
+
+Every focal-A decision records `receiver_location` with `lookup_call`,
+`cty_prefix`, `grid`, `known`, `derived` and `reason`. Report `input_coverage`
+reconciles `known_derived_grid`, `unknown_cty_match`,
+`unknown_invalid_coordinates` and `unknown_empty_receiver` with
+`all_focal_a_rows`, `focal_rows` and `terminal_rows`. Coverage includes warmup,
+suppressed and license-rejected outcomes; unknown locations are not filtered
+from the population. Withheld B rows remain raw reference inputs and do not
+enter predictor learning.
+
+Comparison validates complete coverage against decision streams and binds the
+same per-row location covariates across arms alongside raw hashes, episode IDs,
+R1 and R2Frozen. Terminal R2 still follows the existing 75-second decision cutoff.
+Old/missing schemas, scenario drift, asset drift and paired-covariate drift are
+refused. Earlier artifacts remain historical evidence; schema-1 reports cannot
+be mixed into a schema-2 comparison. Comparator binaries, configurations, assets,
+candidates and maps must be frozen again for the selected input scenario.
+
+Constructed seeded-cell reachability tests establish their own wiring. Separate
+CSV-to-resolver-V-to-CustomSCP tests now exercise the study hook without manually
+seeded DE grids/history: four receivers across two derived cells meet the mapped
+four-receiver/two-cell gate, while same-cell and unknown controls do not. Neither
+test establishes real archive coverage or empirical qualification.
+
+Constructed tests establish reachable branches and accounting, not archive
+accuracy, RF truth, production performance or empirical activation. Qualification
+must cover the exact scalar vector and complete active-cell combination with
+untouched reference evidence, including incremental reference-supported corrected
+cases and wrong renames. Neither legacy defaults nor arbitrary operator tuning
+inherits that evidence. No study qualification or activation follows from this
+documentation; the [execution record](call-correction-v2-execution.md) owns the
+current empirical disposition.
 
 ## Output artifacts
 
