@@ -63,6 +63,16 @@ Tags: custom_scp, pebble, eviction, retained state, delivery latency
 - The first-party Custom SCP constructor released its reference on open error
   and omitted it on success before the patch.
 - A bounded capacity index needs an explicit owner and backing-size contract.
+- A follow-up review reproduced a startup bookkeeping defect at edeb4cfb
+  and 242a0c6f. Separate raw groups that normalized to one observation key
+  left one displaced receiver and its key references counted after reopen.
+  The distinct active-call totals could look correct until the final
+  retained observation expired.
+- Approved v2 reuses the store's in-memory deletion path before installing
+  the replacement. Startup still applies capacity selection first. The
+  replacement does not delete either raw group from Pebble. Regression
+  cases check exact raw survivors and complete ownership after reopen and
+  after expiry, both at and below capacity.
 
 ## Decision Linkage
 - ADR created/updated: ADR-0358.

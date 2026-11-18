@@ -170,18 +170,54 @@ func TestCustomSCPEvictionReopenUsesSequentialAdmission(t *testing.T) {
 }
 
 func TestCustomSCPEvictionReopenReplacesNormalizedOwner(t *testing.T) {
-	s := newCustomSCPCleanupTestStore(t, CustomSCPOptions{MaxKeys: 2})
-	now := freshCustomSCPTestTime()
-	putCustomSCPCleanupRaw(t, s, "o|K1AAA|20m|cw|N0A", customSCPCleanupObservationBytes(now.Add(-time.Hour).Unix(), 101))
-	putCustomSCPCleanupRaw(t, s, "o|K1BBB|20m|cw|N0B", customSCPCleanupObservationBytes(now.Add(-2*time.Hour).Unix(), 202))
-	putCustomSCPCleanupRaw(t, s, "o|k1aaa|20m|cw|N0C", customSCPCleanupObservationBytes(now.Unix(), 303))
-	reopened := reopenCustomSCPCleanupTestStore(t, s)
-	entry := reopened.entries[customSCPKey{"K1AAA", "20m", "cw"}]
-	if len(reopened.entries) != 1 || !entryHasSpotter(entry, "N0C") || entryHasSpotter(entry, "N0A") {
-		t.Fatal("expected the later raw group to own the normalized entry")
+	for _, tc := range []struct {
+		name  string
+		limit int
+		keys  int
+	}{
+		{name: "below_capacity", limit: 3, keys: 2},
+		{name: "at_capacity", limit: 2, keys: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newCustomSCPCleanupTestStore(t, CustomSCPOptions{MaxKeys: tc.limit})
+			now := freshCustomSCPTestTime()
+			const (
+				original    = "o|K1AAA|20m|cw|N0A"
+				other       = "o|K1BBB|20m|cw|N0B"
+				replacement = "o|k1aaa|20m|cw|N0C"
+			)
+			originalValue := customSCPCleanupObservationBytes(now.Add(-time.Hour).Unix(), 101)
+			otherValue := customSCPCleanupObservationBytes(now.Add(-2*time.Hour).Unix(), 202)
+			replacementValue := customSCPCleanupObservationBytes(now.Unix(), 303)
+			putCustomSCPCleanupRaw(t, s, original, originalValue)
+			putCustomSCPCleanupRaw(t, s, other, otherValue)
+			putCustomSCPCleanupRaw(t, s, replacement, replacementValue)
+
+			reopened := reopenCustomSCPCleanupTestStore(t, s)
+			entry := reopened.entries[customSCPKey{"K1AAA", "20m", "cw"}]
+			if len(reopened.entries) != tc.keys || !entryHasSpotter(entry, "N0C") || entryHasSpotter(entry, "N0A") {
+				t.Fatal("expected the later raw group to own the normalized entry")
+			}
+			requireCustomSCPCleanupRaw(t, reopened, original, originalValue)
+			requireCustomSCPCleanupRaw(t, reopened, replacement, replacementValue)
+			if tc.limit == 2 {
+				requireCustomSCPCleanupMissing(t, reopened, other)
+			} else {
+				requireCustomSCPCleanupRaw(t, reopened, other, otherValue)
+			}
+			assertCustomSCPEvictionIndex(t, reopened)
+			assertCustomSCPCleanupCoupling(t, reopened)
+
+			// A doubled active-call reference can still report the correct
+			// number of distinct calls until the last observation is removed.
+			reopened.cleanup(now.Add(26 * time.Hour))
+			if len(reopened.entries) != 0 {
+				t.Fatal("fixture did not expire all observations")
+			}
+			assertCustomSCPEvictionIndex(t, reopened)
+			assertCustomSCPCleanupCoupling(t, reopened)
+		})
 	}
-	requireCustomSCPCleanupMissing(t, reopened, "o|K1BBB|20m|cw|N0B")
-	assertCustomSCPEvictionIndex(t, reopened)
 }
 
 func TestCustomSCPOpenCacheLockedPathCanRetry(t *testing.T) {

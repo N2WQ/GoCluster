@@ -965,10 +965,8 @@ func (s *CustomSCPStore) loadFromDB() error {
 			pendingEntry.spotters[i].spotter = s.retainInternedStringLocked(pendingEntry.spotters[i].spotter)
 		}
 		// Distinct raw key groups can resolve to the same normalized key.
-		// Replace its index owner when the primary entry is replaced.
-		if replaced := s.entries[retainedKey]; replaced != nil {
-			s.eviction.remove(replaced)
-		}
+		// Retire the old in-memory owner after the existing capacity decision.
+		s.deleteEntryLocked(retainedKey)
 		s.entries[retainedKey] = pendingEntry
 		s.active.Add(retainedKey.call, retainedKey.band)
 		s.observationSpotters += len(pendingEntry.spotters)
