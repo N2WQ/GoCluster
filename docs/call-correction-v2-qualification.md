@@ -6,8 +6,10 @@ evaluation failed the frozen activation criteria; first-party Bayes policy is
 off. The actual release-policy capture completed every input and delivery but
 failed the CPU comparison. Ordinary/static checks and complete race package
 coverage pass, with the test-only clock repair and continuation documented
-below. Resource qualification remains unresolved; the owner decision below is
-pending. Supporting documentation/map receipts are listed in the execution record.
+below. Resource qualification remains unresolved. The owner has deferred resource
+optimization while the correction-method investigation continues; no failed
+qualification is waived. Supporting documentation/map receipts are listed in the
+execution record.
 No deployment is authorized or claimed.
 
 Authority: [approved v3](call-correction-v2-scope-ledger-v3.md) and the additive
@@ -292,6 +294,88 @@ No new coding defect was identified in this investigation. The approved current
 aggressiveness and deferred RF-association redesign retain the demonstrated risk.
 These are real conditional regression observations to review, not RF goldens or
 grounds to conceal disagreement, relabel it unknown or silently add a new guard.
+
+## Owner-requested stability reanalysis
+
+After the original confirmation results were exposed, the owner requested the
+existing replay stability method as the accuracy estimate. This supplementary
+analysis concerns the same frozen `cw2_r450_a100_d0` predictions. It does not
+change the original reference criteria, activation verdict, assets or outputs.
+It is S0/S6 evidence recorded under the approved S7 documentation scope, not
+implementation of the separately proposed diagnostic scope v5.
+
+The saved study uses `defaultReplayConfig`: 60 minutes, two raw follow-on rows,
+and 1,000 Hz tolerance. The checked-in `cmd/rbn_replay/replay.yaml` instead selects
+15 minutes, three rows and 500 Hz. Read-only postprocessing first reproduced
+all 12 saved 60/2/1000 stable/applied totals exactly, then scored the identical
+applied receipts with 15/3/500. No prediction was rerun or model fitted. Original
+manifests and qualification artifacts were not rewritten.
+
+The recount validated raw ZIP and decision-stream hashes, terminal counts,
+accepted raw-row counters and frozen receiver-family assignments. It paired all
+2,364,930 focal raw IDs without duplicates or unpaired rows. Stability evidence
+contains 2,432,921 accepted A-cohort raw observations, including 67,991 beacon
+observations absent from the focal decision exports. Withheld B receivers remain
+excluded from this scorer's input, exactly as in the saved study.
+
+Raw sightings use `NormalizeSpotDXCallsign`; applied winners use
+`NormalizeCallsign`. Scoring uses the actual output decision timestamp, including
+temporal release, and the correction frequency. Both time and frequency limits
+are inclusive, so same-second raw sightings count. The existing scorer counts
+rows, not distinct receivers, and does not additionally match mode or band.
+The day-end observation boundary is unchanged. These semantics estimate
+follow-on stability among applied receipts, not RF identity accuracy.
+
+| UTC date | Shipped stable/applied; percent | Repaired OFF | Repaired ON |
+| --- | --- | --- | --- |
+| November 7 | 4,814/6,603; 72.906% | 5,406/7,302; 74.035% | 5,468/7,383; 74.062% |
+| November 14 | 10,046/13,396; 74.993% | 11,181/14,774; 75.680% | 11,271/14,885; 75.721% |
+| November 15 | 8,654/11,626; 74.437% | 9,558/12,743; 75.006% | 9,634/12,833; 75.072% |
+| November 16 | 1,975/2,902; 68.057% | 2,054/3,027; 67.856% | 2,076/3,054; 67.976% |
+| Pooled | 25,489/34,527; 73.823% | 28,199/37,846; 74.510% | 28,449/38,155; 74.562% |
+
+Pooled percentages divide summed counts; they are not averages of daily rounded
+percentages. OFF-to-ON stability increases by 0.0518006704 percentage points.
+Repaired OFF remains below shipped on November 16, despite its pooled gain.
+No per-date or RF noninferiority claim follows from the pooled comparison.
+
+| OFF-to-ON paired outcome | Receipts | Stable OFF | Stable ON |
+| --- | ---: | ---: | ---: |
+| Both applied, same semantic/literal target and exact decision time | 37,846 | 28,199 | 28,199 |
+| ON only | 309 | Not applicable | 250 |
+| OFF only | 0 | 0 | Not applicable |
+| Retargeted or retimed common corrections | 0 | 0 | 0 |
+| Neither applied | 2,326,775 | Not applicable | Not applicable |
+
+The gain is entirely additional ON-only receipts, all CW: 250 stable and 59
+unstable, or 80.906% stability among additions. Existing common corrections
+have unchanged stability: 28,199 stable in both and 9,647 unstable in both.
+Of the additions, 287 were uncorrected outputs under OFF and 22 changed from
+OFF `license_rejected` to ON output. There are no suppressed rows or applied
+non-output exceptions. These receipt counts must not be substituted for the
+original normalized-episode activation denominators. The decomposition excludes
+changed common targets or timing as contributors to this measured gain; it does
+not prove that all internal state was identical.
+
+The requested stability estimate and the reference controls can disagree. Of
+the four November 15 contradictory ON receipts listed earlier, AI5II, S51KA and
+UT5NS are unstable under 15/3/500. `YO9KWC -> YO9CMC` at ordinal 1643834 is
+stable, while its saved R2 strongly names `BD9MI` with seven families. Neither
+observation establishes RF truth. The original failed whole-Bayes activation
+verdict remains unchanged.
+
+Sources are the six tuning arm directories under
+`study-v2/cw2_r450_a100_d0-<date>-<arm>/` and six already-exposed confirmation
+directories under `study-v2-holdout/<date>-<arm>/`, with their existing
+`complete.json`, `manifest.json` and `decisions.jsonl` bindings. The stability
+collector, shared scorer, CSV parser and callsign-normalization Git blobs are
+identical across the recorded shipped, tuning, confirmation and `583fa8a`
+analysis boundaries. A separate empirical reviewer performed the complete
+recount; the lead checked source semantics and aggregate arithmetic. A separate
+non-steered scientific reviewer derived the estimator contract and its limits.
+No new saved computation receipt or executable is claimed. November 17 contents
+were not inspected by this reanalysis and remain reserved for future frozen
+confirmation.
 
 ## Validation reached, with state boundaries
 
@@ -593,14 +677,17 @@ the predeclared hashes. Both owned worktrees were then restored to exact
 pre-diagnostic bytes and their standard ordinary fixture images re-prepared.
 The active release source never received this instrumentation.
 
-The owner has been asked whether to retain the existing strict EACH-control
+The owner was asked whether to retain the existing strict EACH-control
 CPU-time rule or permit planning a fresh repeated study of average CPU cost
 and uncertainty, still with the ten-percent target and all loss/recovery gates.
 An individual high measurement could be accepted under the latter semantics;
 that is an explicit policy difference, not an engineering reinterpretation of
-the failed gate. No answer, revised scope, new acceptance method or authorization
-has been inferred. A new study would require independent review and exact
-reapproval before execution; exposed diagnostic results cannot become its
+the failed gate. The owner subsequently prioritized correction-method work and
+deferred CPU, heap and allocation optimization. That response selects neither
+resource acceptance alternative and waives no failed gate. No revised resource
+scope, acceptance method or authorization has been inferred. A new resource
+study would require independent review and exact reapproval before execution;
+exposed diagnostic results cannot become its
 confirmation data.
 
 This fixture measures a post-primary-dedupe, two-client component population;
@@ -611,9 +698,13 @@ entry cap. The presence repair introduces no new harmonic registry.
 
 ## Remaining qualification work
 
-1. Obtain the owner's explicit resource-policy decision. The existing strict
-   CPU rule remains controlling until a revision is approved.
-2. Resolve and qualify resource behavior under the controlling requirement.
+1. Continue the correction-method investigation with the owner-requested
+   stability estimate. New diagnostic interfaces and proposal behavior remain
+   behind approval of the separately proposed v5 scope.
+2. Resource optimization is deferred by the owner. When that work resumes,
+   resolve the acceptance-policy question and qualify resource behavior under
+   the controlling requirement. The existing strict CPU rule remains controlling
+   until a revision is approved.
    A usable scheduler trace or controlled environment remains an alternative;
    the current Windows trace-policy refusal is not evidence of a harmless cause.
 

@@ -638,3 +638,42 @@ at its CPU qualification obligation. The owner decision on retaining strict
 EACH-control comparisons versus planning a new uncertainty-aware average-cost
 study is pending. No new interpretation, scope or authorization is inferred.
 No push, model installation, merge, production deployment or restart occurs.
+
+## Follow-up: method priority and requested stability estimate
+
+The owner subsequently prioritized the correction method and deferred CPU, heap
+and allocation optimization. This does not choose the proposed average-cost
+alternative or waive the original failed resource gate. The owner requested
+the existing replay stability method as the accuracy estimate for more
+corrections with improved or unchanged estimated accuracy.
+
+Read-only postprocessing of the existing three frozen arms on November 7, 14,
+15 and 16 reproduced all 12 original 60-minute/two-row/1,000-Hz stability
+totals before rescoring the same predictions with the checked-in replay
+settings: 15 minutes, three raw rows and 500 Hz. All 2,364,930 focal raw IDs
+paired without duplicates or missing rows. Raw ZIP/decision hashes, admission
+counts and original applied/stable totals reconciled.
+
+The requested pooled estimate is shipped 25,489/34,527 (73.823%), repaired OFF
+28,199/37,846 (74.510%) and frozen ON 28,449/38,155 (74.562%). The ON gain is
+entirely 309 additional CW correction receipts, 250 stable and 59 unstable.
+All 37,846 existing corrections retain their semantic and literal target,
+decision time and stability result. No common correction is lost, retargeted
+or retimed. Twenty-two additions change an OFF license rejection into output.
+The stable `YO9KWC -> YO9CMC` receipt nevertheless disagrees with its strong
+saved R2 reference. Follow-on stability and reference agreement remain distinct
+proxy observations, not RF truth.
+
+The [qualification report](call-correction-v2-qualification.md#owner-requested-stability-reanalysis)
+records complete daily results, estimator semantics, provenance, pairing and
+limitations. This supplementary S0/S6 evidence is recorded under the already
+approved S7 documentation unit. No frozen artifact, prediction, configuration,
+activation requirement or failed verdict changes. The proposed v5 diagnostic
+implementation still requires exact `Approved v5`; no new diagnostic interface,
+model, runtime method or production activation is implemented by this update.
+November 17 contents remain unopened by the follow-up analysis.
+
+The change is ordinary qualification/execution documentation. Existing support
+routing still points to these reports; no operator command, runtime contract,
+support-map entry, ADR or TSR changes. Use the documentation-only validation
+lane; existing Go evidence remains at its recorded source boundaries.
