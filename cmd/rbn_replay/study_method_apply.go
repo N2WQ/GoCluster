@@ -26,6 +26,19 @@ type studyMethodGateTrial struct {
 	Gate     spot.ResolverPrimaryGateResult   `json:"gate"`
 }
 
+// Keep common geometry once in the receipt. B adds owned scalar compatibility
+// diagnostics, not a second copy of every proposal or any receiver backing.
+type studyCompatibilityReceipt struct {
+	Available   bool                                        `json:"available"`
+	Reason      string                                      `json:"reason"`
+	Hypotheses  []correctionflow.ReceiverCompatibilityScore `json:"hypotheses"`
+	Selected    correctionflow.FrequencyProposal            `json:"selected"`
+	SelectedOK  bool                                        `json:"selected_ok"`
+	ScoreCalls  int                                         `json:"score_calls"`
+	Tolerance   float64                                     `json:"tolerance"`
+	Denominator float64                                     `json:"denominator"`
+}
+
 type studyMethodReceipt struct {
 	RawID                        string                                     `json:"raw_id"`
 	ObservedAt                   time.Time                                  `json:"observed_at"`
@@ -36,6 +49,7 @@ type studyMethodReceipt struct {
 	LifecycleCurrent             bool                                       `json:"lifecycle_current"`
 	Assessment                   correctionflow.FrequencyAssessment         `json:"assessment"`
 	SelectiveDeclines            []correctionflow.SelectiveFrequencyDecline `json:"selective_declines,omitempty"`
+	Compatibility                *studyCompatibilityReceipt                 `json:"receiver_compatibility,omitempty"`
 	OrdinalAvailable             bool                                       `json:"ordinal_available"`
 	Trials                       []studyMethodGateTrial                     `json:"trials"`
 	Applied                      bool                                       `json:"applied"`
@@ -74,19 +88,38 @@ func (r *replayRunner) applyMethodRescue(s *spot.Spot, evidence spot.ResolverEvi
 		receipt.Assessment.Reason = "lifecycle_changed"
 	} else {
 		options := correctionflow.FrequencyProposalOptions{GapHz: candidate.GapHz, MaxWitnessSeparation: time.Duration(candidate.MaxWitnessSeconds) * time.Second, MaxDistance: maxDistance}
-		if r.method.prepared.Plan.SchemaVersion == 2 {
+		compatibility := r.method.prepared.Plan.SchemaVersion == 2 && candidate.Ranking == "receiver_compatibility"
+		var proposals []correctionflow.FrequencyProposal
+		if compatibility {
+			b := correctionflow.AssessReceiverCompatibilityProposals(evidence.Key, subject, s.Frequency, outcome.Selection, sources, r.cfg.CallCorrection, options, r.method.prepared.Model)
+			receipt.Assessment, receipt.SelectiveDeclines = b.FrequencyAssessment, b.Declines
+			receipt.Compatibility = &studyCompatibilityReceipt{Available: b.Available, Reason: b.CompatibilityReason,
+				Hypotheses: b.Hypotheses, Selected: b.Selected, SelectedOK: b.SelectedOK, ScoreCalls: b.ScoreCalls,
+				Tolerance: b.Tolerance, Denominator: b.Denominator}
+			receipt.OrdinalAvailable = b.Available
+			if b.SelectedOK {
+				proposals = []correctionflow.FrequencyProposal{b.Selected}
+			}
+		} else if r.method.prepared.Plan.SchemaVersion == 2 {
 			selective := correctionflow.AssessSelectiveFrequencyProposals(evidence.Key, subject, s.Frequency, outcome.Selection, sources, r.cfg.CallCorrection, options)
 			receipt.Assessment, receipt.SelectiveDeclines = selective.FrequencyAssessment, selective.Declines
+			proposals = receipt.Assessment.Proposals
 		} else {
 			receipt.Assessment = correctionflow.AssessFrequencyProposals(evidence.Key, subject, s.Frequency, outcome.Selection, sources, r.cfg.CallCorrection, options)
+			proposals = receipt.Assessment.Proposals
 		}
-		proposals := receipt.Assessment.Proposals
 		if permitted != "" {
-			proposals = nil
-			for _, p := range receipt.Assessment.Proposals {
+			// Apply the existing release identity after B's full-population winner
+			// selection. Never promote a permitted runner-up by pruning opponents.
+			var eligible []correctionflow.FrequencyProposal
+			for _, p := range proposals {
 				if p.Identity == spot.CorrectionVoteKey(permitted) {
-					proposals = append(proposals, p)
+					eligible = append(eligible, p)
 				}
+			}
+			proposals = eligible
+			if compatibility && receipt.Compatibility.SelectedOK && len(proposals) == 0 {
+				outcome.methodReason = "compatibility_temporal_identity"
 			}
 		}
 		if candidate.Ranking == "ordinal" {
@@ -120,6 +153,9 @@ func (r *replayRunner) applyMethodRescue(s *spot.Spot, evidence spot.ResolverEvi
 	}
 	if outcome.methodReason == "" {
 		outcome.methodReason = "frequency_" + receipt.Assessment.Reason
+		if receipt.Compatibility != nil {
+			outcome.methodReason = "compatibility_" + receipt.Compatibility.Reason
+		}
 		if len(receipt.Trials) > 0 {
 			outcome.methodReason = "frequency_gate_" + outcome.Gate.Reason
 		}

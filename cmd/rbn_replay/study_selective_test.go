@@ -33,9 +33,12 @@ func TestCCV2V8MethodPlan(t *testing.T) {
 		plan.Enabled = enabled
 		req, arm := methodTestRequest(t, plan)
 		req.Date = "2026-11-07"
-		got, err := prepareStudyMethod(req, arm)
-		if err != nil || got == nil || got.Plan.SchemaVersion != 2 || got.Candidate.Ranking != "selective" {
-			t.Fatalf("explicit v2 enabled=%t: %v", enabled, err)
+		for _, candidate := range plan.Candidates {
+			req.MethodCandidate = candidate.ID
+			got, err := prepareStudyMethod(req, arm)
+			if err != nil || got == nil || got.Plan.SchemaVersion != 2 || got.Candidate.Ranking != candidate.Ranking {
+				t.Fatalf("explicit v2 enabled=%t candidate=%s: %v", enabled, candidate.ID, err)
+			}
 		}
 		for _, date := range []string{"2026-11-15", "2026-11-16"} {
 			req.Date = date

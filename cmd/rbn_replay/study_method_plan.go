@@ -86,9 +86,6 @@ func prepareStudyMethod(req studyCLIRequest, arm studyArm) (*studyMethodPrepared
 	if candidate.ID == "" {
 		return nil, errors.New("method candidate is not in the complete frozen grid")
 	}
-	if plan.SchemaVersion == 2 && plan.Enabled && candidate.Ranking == "receiver_compatibility" {
-		return nil, errors.New("receiver compatibility execution is not available")
-	}
 	model, err := studyLoadOrdinalModel(plan.Model)
 	if err != nil {
 		return nil, err
