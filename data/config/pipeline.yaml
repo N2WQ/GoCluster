@@ -22,6 +22,7 @@
 #       their bounded corroboration knobs live in this section.
 ################################################################################
 call_correction:
+  selective_rescue_enabled: false
   # ---------------------------------------------------------------------------
   # 1) Enablement
   # Purpose: Turn resolver-primary correction on/off.

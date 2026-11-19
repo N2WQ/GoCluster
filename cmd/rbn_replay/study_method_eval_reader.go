@@ -127,7 +127,7 @@ func studyMethodEvalWire(d *json.Decoder, t reflect.Type, depth int) error {
 		case reflect.TypeFor[studyDiagnosticCopyRecord]():
 			limit = 128
 		case reflect.TypeFor[int]():
-			limit = 2
+			limit = 3 // V2's exact [1,2,3]; V1 values remain bound to its validated candidate.
 		}
 		if t.Kind() == reflect.Array {
 			limit = t.Len()
@@ -282,7 +282,7 @@ func (p *studyMethodEvalPrepared) readReport(binding studyMethodEvalBinding, inp
 	if enabled {
 		planRef = p.Plan.MethodPlan
 	}
-	if marker.SchemaVersion != 1 || !marker.Experimental || marker.Enabled != enabled || marker.Plan.SHA256 != planRef.SHA256 || marker.Model.SHA256 != method.Model.SHA256 || id != "" && marker.CandidateID != id {
+	if marker.SchemaVersion != method.SchemaVersion || !marker.Experimental || marker.Enabled != enabled || marker.Plan.SHA256 != planRef.SHA256 || marker.Model.SHA256 != method.Model.SHA256 || id != "" && marker.CandidateID != id {
 		return nil, manifest, errors.New("experimental marker plan/model/candidate binding differs")
 	}
 	if _, ok := p.methodCandidate(marker.CandidateID); !ok {
@@ -310,7 +310,7 @@ func (p *studyMethodEvalPrepared) checkMethodEvidence(binding studyMethodEvalBin
 		return err
 	}
 	candidate, ok := p.methodCandidate(marker.CandidateID)
-	if !ok || evidence.SchemaVersion != 1 || !evidence.Experimental || evidence.Enabled != marker.Enabled || !reflect.DeepEqual(evidence.Candidate, candidate) || !studyMethodEvalSameFile(evidence.Plan, marker.Plan) || !studyMethodEvalSameFile(evidence.Model, marker.Model) || !studyMethodEvalSameFile(evidence.OriginalPlan, planRef) || !studyMethodEvalSameFile(evidence.OriginalModel, method.Model) {
+	if !ok || evidence.SchemaVersion != method.SchemaVersion || !evidence.Experimental || evidence.Enabled != marker.Enabled || !reflect.DeepEqual(evidence.Candidate, candidate) || !studyMethodEvalSameFile(evidence.Plan, marker.Plan) || !studyMethodEvalSameFile(evidence.Model, marker.Model) || !studyMethodEvalSameFile(evidence.OriginalPlan, planRef) || !studyMethodEvalSameFile(evidence.OriginalModel, method.Model) {
 		return errors.New("method report disagrees with frozen manifest/plan/model")
 	}
 	return studyMethodEvalCheckInventory(root, binding.Complete, marker.Report, evidence, report.Decisions)

@@ -914,6 +914,9 @@ const (
 // CallCorrectionConfig controls resolver-primary DX call correction behavior.
 type CallCorrectionConfig struct {
 	Enabled bool `yaml:"enabled"`
+	// SelectiveRescueEnabled admits additional C rescues after an ordinary
+	// nonterminal failure. False is omitted from historical effective JSON hashes.
+	SelectiveRescueEnabled bool `yaml:"selective_rescue_enabled" json:"SelectiveRescueEnabled,omitempty"`
 	// BandStateOverrides allows per-band, per-activity-state tuning of frequency tolerance.
 	// Values fall back to the global defaults when omitted.
 	BandStateOverrides []BandStateOverride `yaml:"band_state_overrides"`

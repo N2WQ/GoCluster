@@ -1,6 +1,7 @@
 // File role: Admit a finite experimental evaluation slice before reading archives.
-// A tuning slice owns one geometry/ordinal pair on four exposed dates; holdout
-// owns only the frozen selection on two declared dates. It never selects a winner.
+// V1 tuning owns one geometry/ordinal pair on four dates; holdout owns the frozen
+// selection. V2 owns C/B on November 7/14 plus all four disabled parity streams.
+// Neither format selects a winner or grants live activation authority.
 package main
 
 import (
@@ -114,6 +115,9 @@ func prepareStudyMethodEvaluationWithAuthority(path, frozenSHA string, authority
 	if !method.Enabled || control.Enabled {
 		return nil, errors.New("evaluation requires enabled method and explicit disabled control")
 	}
+	if method.SchemaVersion != plan.SchemaVersion || control.SchemaVersion != plan.SchemaVersion {
+		return nil, errors.New("evaluation and method schema versions differ")
+	}
 	a, b := method, control
 	a.Enabled, b.Enabled, a.SelectedCandidate, b.SelectedCandidate = false, false, "", ""
 	if !reflect.DeepEqual(a, b) {
@@ -143,10 +147,19 @@ func prepareStudyMethodEvaluationWithAuthority(path, frozenSHA string, authority
 		}
 		prepared.Variants = append(prepared.Variants, entry)
 	}
-	sort.Slice(prepared.Variants, func(i, j int) bool { return prepared.Variants[i].Ranking < prepared.Variants[j].Ranking })
+	sort.Slice(prepared.Variants, func(i, j int) bool {
+		if plan.SchemaVersion == 2 {
+			return prepared.Variants[i].Ranking == "selective" && prepared.Variants[j].Ranking != "selective"
+		}
+		return prepared.Variants[i].Ranking < prepared.Variants[j].Ranking
+	})
 	if plan.Phase == "tuning" {
 		a, b := prepared.Variants[0], prepared.Variants[1]
-		if a.Ranking != "geometry" || b.Ranking != "ordinal" || a.GapHz != b.GapHz || a.MaxWitnessSeconds != b.MaxWitnessSeconds || !reflect.DeepEqual(a.CWDistances, b.CWDistances) {
+		left, right := "geometry", "ordinal"
+		if plan.SchemaVersion == 2 {
+			left, right = "selective", "receiver_compatibility"
+		}
+		if a.Ranking != left || b.Ranking != right || a.GapHz != b.GapHz || a.MaxWitnessSeconds != b.MaxWitnessSeconds || !reflect.DeepEqual(a.CWDistances, b.CWDistances) {
 			return nil, errors.New("evaluation requires one otherwise identical geometry/ordinal pair")
 		}
 	} else if method.SelectedCandidate == "" || control.SelectedCandidate != method.SelectedCandidate || prepared.Variants[0].ID != method.SelectedCandidate {
@@ -168,7 +181,7 @@ func prepareStudyMethodEvaluationWithAuthority(path, frozenSHA string, authority
 	}
 	declared := 0
 	for _, input := range capture.Inputs {
-		if input.Phase == plan.Phase {
+		if input.Phase == plan.Phase && (plan.SchemaVersion == 1 || input.DateUTC == "2026-11-07" || input.DateUTC == "2026-11-14") {
 			declared++
 		}
 	}
@@ -188,8 +201,11 @@ func prepareStudyMethodEvaluationWithAuthority(path, frozenSHA string, authority
 }
 
 func validateStudyMethodEvaluationPlan(p studyMethodEvaluationPlan) error {
-	if p.SchemaVersion != 1 || !p.Experimental || (p.Phase != "tuning" && p.Phase != "holdout") {
-		return errors.New("evaluation requires experimental schema 1 and tuning/holdout phase")
+	if (p.SchemaVersion != 1 && p.SchemaVersion != 2) || !p.Experimental || (p.Phase != "tuning" && p.Phase != "holdout") {
+		return errors.New("evaluation requires experimental schema 1/2 and tuning/holdout phase")
+	}
+	if p.SchemaVersion == 2 && p.Phase != "tuning" {
+		return errors.New("evaluation v2 is development-only and cannot claim confirmation")
 	}
 	for _, file := range []studyFile{p.CapturePlan, p.MethodPlan, p.ControlPlan, p.ParityCapturePlan, p.ParityControlPlan} {
 		if err := studyAuditFile(file); err != nil {
@@ -217,6 +233,9 @@ func validateStudyMethodEvaluationPlan(p studyMethodEvaluationPlan) error {
 		exposed[parity.DateUTC] = true
 	}
 	wantGroups, wantVariants := 4, 2
+	if p.SchemaVersion == 2 {
+		wantGroups = 2
+	}
 	if p.Phase == "holdout" {
 		wantGroups, wantVariants = 2, 1
 	}
@@ -232,6 +251,9 @@ func validateStudyMethodEvaluationPlan(p studyMethodEvaluationPlan) error {
 		if p.Phase == "tuning" {
 			if !exposed[group.DateUTC] {
 				return errors.New("tuning must use exactly the four exposed dates")
+			}
+			if p.SchemaVersion == 2 && group.DateUTC != "2026-11-07" && group.DateUTC != "2026-11-14" {
+				return errors.New("evaluation v2 permits development on November 7/14 only")
 			}
 		} else if !day.After(time.Date(2026, 11, 16, 0, 0, 0, 0, time.UTC)) {
 			return errors.New("confirmation cannot reuse exposed dates")

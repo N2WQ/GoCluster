@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Freeze the complete exposed v7 replay grid without executing predictions.
+"""Freeze the v1 grid or v2 development pair without executing predictions.
 
 Actual preparation requires a clean call-correctionv2 checkout and an unmodified
 native executable from its HEAD. Only four already-exposed dates are admitted.
@@ -238,7 +238,15 @@ def verify_originals(plan):
     return originals
 
 
-def plans(template, revision, executable_sha, timestamp):
+def development_pair():
+    return [{"id": "c_f150_t60_d3", "gap_hz": 150, "max_witness_seconds": 60,
+             "ranking": "selective", "cw_distances": [1, 2, 3]},
+            {"id": "b_f150_t60_d3", "gap_hz": 150, "max_witness_seconds": 60,
+             "ranking": "receiver_compatibility", "cw_distances": [1, 2, 3]}]
+
+
+def plans(template, revision, executable_sha, timestamp, method_version=1):
+    require(method_version in (1, 2), "unsupported method version")
     capture = copy.deepcopy(template)
     capture["frozen_at_utc"] = capture["selected_at_utc"] = timestamp
     capture["tuning_through_utc"] = "2026-11-16T23:59:59Z"
@@ -247,10 +255,10 @@ def plans(template, revision, executable_sha, timestamp):
             arm["source_revision"], arm["executable_sha256"] = revision, executable_sha
     for entry in capture["inputs"]:
         entry["phase"] = "tuning"
-    method = {"schema_version": 1, "experimental": True, "enabled": True,
+    method = {"schema_version": method_version, "experimental": True, "enabled": True,
               "source_revision": revision, "reference_version": REFERENCE,
               "model": {"path": str(MODEL), "sha256": MODEL_SHA},
-              "selected_candidate": "", "candidates": method_grid()}
+              "selected_candidate": "", "candidates": method_grid() if method_version == 1 else development_pair()}
     disabled = copy.deepcopy(method)
     disabled["enabled"] = False
     return {"capture-plan.json": capture, "enabled-method-plan.json": method,
@@ -261,13 +269,17 @@ def file_ref(path, data):
     return {"path": str(path), "sha256": digest(data), "bytes": len(data)}
 
 
-def run_list(out, executable, plan_refs, originals):
+def run_list(out, executable, plan_refs, originals, method_version=1):
+    require(method_version in (1, 2), "unsupported method version")
     runs = []
-    families = [("control", "disabled-method-plan.json", method_grid()[0]["id"])]
-    families += [(entry["id"], "enabled-method-plan.json", entry["id"]) for entry in method_grid()]
+    candidates = method_grid() if method_version == 1 else development_pair()
+    families = [("control", "disabled-method-plan.json", candidates[0]["id"])]
+    families += [(entry["id"], "enabled-method-plan.json", entry["id"]) for entry in candidates]
     for family, method_name, method_id in families:
         for original in originals:
             date = original["date_utc"]
+            if method_version == 2 and family != "control" and date not in ("2026-11-07", "2026-11-14"):
+                continue
             destination = out / "captures" / family / date.replace("-", "")
             capture, method = plan_refs["capture-plan.json"], plan_refs[method_name]
             arguments = [str(executable), "-study-plan", capture["path"], "-study-freeze", capture["sha256"],
@@ -277,8 +289,9 @@ def run_list(out, executable, plan_refs, originals):
             runs.append({"role": "control" if family == "control" else "candidate", "date_utc": date,
                          "id": family, "method_candidate_id": method_id, "argv": arguments,
                          "output": str(destination), "control_original_binding": original})
-    require(len(runs) == 68 and len({entry["output"] for entry in runs}) == 68, "run inventory is not complete/distinct")
-    return {"schema_version": 1, "experimental": True, "phase": "tuning", "runs": runs}
+    expected = 68 if method_version == 1 else 8
+    require(len(runs) == expected and len({entry["output"] for entry in runs}) == expected, "run inventory is not complete/distinct")
+    return {"schema_version": method_version, "experimental": True, "phase": "tuning", "runs": runs}
 
 
 def write_verified(path, data):
@@ -303,7 +316,7 @@ def publish(path, data):
         raise
 
 
-def prepare(executable, out):
+def prepare(executable, out, method_version=1):
     revision = checkout()  # Refuse dirty/new-code runs before touching any inputs/output.
     out = safe_path(out, EVIDENCE)
     require(out.parent == EVIDENCE.resolve() and not out.exists(), "output must be a new direct child of evidence root")
@@ -321,32 +334,34 @@ def prepare(executable, out):
     originals = verify_originals(template)
     require(checkout() == revision and hash_file(executable) == executable_ref, "checkout/executable changed during verification")
     timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-    values = plans(template, revision, executable_ref["sha256"], timestamp)
+    values = plans(template, revision, executable_ref["sha256"], timestamp, method_version)
     encoded = {name: encode(value, sort_keys=name != "capture-plan.json") for name, value in values.items()}
     require(digest(encode(decode(encoded["capture-plan.json"])["candidates"][0], sort_keys=False).rstrip(b"\n")) == ORDINARY_SHA,
             "capture serialization changed the ordinary candidate")
     references = {name: file_ref(out / name, data) for name, data in encoded.items()}
-    runs = run_list(out, executable, references, originals)
+    runs = run_list(out, executable, references, originals, method_version)
     encoded["runs.json"] = encode(runs)
     references["runs.json"] = file_ref(out / "runs.json", encoded["runs.json"])
-    freeze = {"schema_version": 1, "experimental": True, "complete": True, "phase": "tuning",
+    freeze = {"schema_version": method_version, "experimental": True, "complete": True, "phase": "tuning",
               "exposed": True, "never_production_qualified": True, "frozen_at_utc": timestamp,
               "source_revision": revision, "branch": "call-correctionv2", "executable": executable_ref,
               "go_build_settings": settings, "go_build_info_sha256": digest(build_text.encode()),
               "script": hash_file(Path(__file__).resolve(), limit=METADATA_LIMIT), "model": model_ref,
               "template": file_ref(TEMPLATE, template_bytes), "files": references,
-              "verified_template_files": verified, "originals": originals, "run_count": 68,
+              "verified_template_files": verified, "originals": originals, "run_count": len(runs["runs"]),
               "selected_method_candidate": "", "ordinary_candidate": ORDINARY,
               "ordinary_previously_selected_at_utc": template["selected_at_utc"],
               "claim_limits": ["Four exposed UTC dates only; no untouched confirmation or production qualification.",
                                "No predictions executed and no method winner selected.",
                                "Original controls are bound to fixed ledger hashes; new disabled parity remains to be verified.",
                                "No prior equivalence proof is used as a substitute for full original stream verification."]}
+    if method_version == 2:
+        freeze["claim_limits"].append("V2 active C/B comparison uses November 7/14 only; November 15/16 are disabled parity only.")
     freeze_bytes = encode(freeze)
     require(sum(map(len, encoded.values())) + len(freeze_bytes) <= METADATA_LIMIT, "total frozen metadata exceeds 4 MiB")
     out.mkdir()
     (out / "captures").mkdir()
-    for family in ("control", *(entry["id"] for entry in method_grid())):
+    for family in ("control", *(entry["id"] for entry in values["enabled-method-plan.json"]["candidates"])):
         (out / "captures" / family).mkdir()
     for name, data in encoded.items():
         publish(out / name, data)
@@ -453,9 +468,19 @@ def selfcheck():
         runs = run_list(base, base / "replay.exe", fake_refs, originals)["runs"]
         require([run["role"] for run in runs[:4]] == ["control"] * 4 and all(run["role"] == "candidate" for run in runs[4:]), "controls must precede active grid")
         require(all(not Path(run["output"]).exists() for run in runs), "date output directories were prematurely created")
+        v2 = plans(template, "a" * 40, "b" * 64, "2026-11-19T12:00:00Z", 2)
+        require(v2["enabled-method-plan.json"]["schema_version"] == 2
+                and v2["enabled-method-plan.json"]["candidates"] == development_pair()
+                and v2["disabled-method-plan.json"]["enabled"] is False,
+                "v2 explicit schema/pair/off policy")
+        v2runs = run_list(base, base / "replay.exe", fake_refs, originals, 2)["runs"]
+        require(len(v2runs) == 8 and [r["role"] for r in v2runs[:4]] == ["control"] * 4
+                and {r["date_utc"] for r in v2runs[4:]} == {"2026-11-07", "2026-11-14"}
+                and {r["id"] for r in v2runs[4:]} == {"c_f150_t60_d3", "b_f150_t60_d3"},
+                "v2 must freeze four controls then exactly two methods on two development dates")
     return {"grid_candidates": 16, "dates": 4, "runs": 68, "original_rows": 2364930,
             "refusal_checks": len(rejected), "publication_positive_control": True,
-            "repository_or_archive_mutations": False}
+            "v2_methods": 2, "v2_runs": 8, "repository_or_archive_mutations": False}
 
 
 def main():
@@ -463,11 +488,13 @@ def main():
     parser.add_argument("--selfcheck", action="store_true")
     parser.add_argument("--executable", type=Path)
     parser.add_argument("--out", type=Path, help="new direct child of .tmp/call-correctionv2")
+    parser.add_argument("--method-version", type=int, choices=(1, 2), default=1,
+                        help="1: original sixteen-cell grid; 2: C/B development pair")
     args = parser.parse_args()
     require((args.selfcheck and args.executable is None and args.out is None)
             or (not args.selfcheck and args.executable is not None and args.out is not None),
             "choose --selfcheck or both --executable and --out")
-    result = selfcheck() if args.selfcheck else prepare(args.executable, args.out.resolve())
+    result = selfcheck() if args.selfcheck else prepare(args.executable, args.out.resolve(), args.method_version)
     print(json.dumps(result, sort_keys=True), flush=True)
 
 

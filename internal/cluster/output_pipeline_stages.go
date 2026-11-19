@@ -97,6 +97,7 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 	var resolverEvidence spot.ResolverEvidence
 	var hasResolverEvidence bool
 	skipResolverApply := false
+	rescue := selectiveRescueRequest{}
 	if temporalRelease != nil {
 		pending := temporalRelease.pending
 		resolverEvidence, hasResolverEvidence = pending.evidence, pending.hasEvidence
@@ -110,7 +111,21 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 			decoder = p.temporal.decoder
 		}
 		ctx.temporalResult = &runtimeTemporalResult{decoder: decoder, key: resolverEvidence.Key, tracker: p.tracker}
-		selection := correctionflow.SelectTemporalReleaseSnapshot(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(s), temporalRelease.decision, now)
+		var selection correctionflow.ResolverPrimarySelection
+		if p.correctionCfg.SelectiveRescueEnabled && temporalRelease.decision.Action == correctionflow.TemporalDecisionActionApply {
+			var admitted bool
+			selection, admitted = correctionflow.SelectTemporalReleaseSnapshotWithAuthority(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(s), temporalRelease.decision, now)
+			if admitted {
+				rescue = selectiveRescueRequest{authority: selectiveRescueHeldApply, permitted: temporalRelease.decision.Winner, saved: &pending.frequencyLifecycles}
+			}
+		} else {
+			selection = correctionflow.SelectTemporalReleaseSnapshot(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(s), temporalRelease.decision, now)
+			if p.correctionCfg.SelectiveRescueEnabled && temporalRelease.decision.Action == correctionflow.TemporalDecisionActionFallbackResolver {
+				// Only reentry from an admitted hold grants fresh fallback authority.
+				// Observe overflow uses the immediate branch below and grants none.
+				rescue.authority = selectiveRescueHeldFallback
+			}
+		}
 		ctx.resolverSelectionOverride, ctx.resolverReleaseAt = &selection, now
 		if temporalRelease.decision.Action == correctionflow.TemporalDecisionActionAbstain {
 			setResolverConfidence(s, selection.Snapshot, selection.SnapshotOK, normalizedDXCall(s))
@@ -124,11 +139,12 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 		if hasResolverEvidence {
 			ctx.stabilizerResolverKey, ctx.hasStabilizerResolverKey = resolverEvidence.Key, true
 		}
-		held, skip := p.maybeHoldTemporalSpot(ctx, now, resolverEvidence, hasResolverEvidence)
+		held, skip, authority := p.maybeHoldTemporalSpot(ctx, now, resolverEvidence, hasResolverEvidence)
 		if held {
 			return false
 		}
 		skipResolverApply = skip
+		rescue.authority = authority
 	}
 	selectionOverride := ctx.resolverSelectionOverride
 	if !skipResolverApply {
@@ -140,18 +156,13 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 			selected = correctionflow.SelectResolverPrimarySnapshotForCall(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(s))
 			selectionOverride = &selected
 		}
-		var suppress bool
-		if selectionOverride == nil {
-			suppress = maybeApplyResolverCorrection(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
-				p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
-				p.spotterReliability, p.spotterReliabilityCW, p.spotterReliabilityRTTY, p.confusionModel)
-		} else {
-			suppress = maybeApplyResolverCorrectionWithSelectionOverride(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
-				p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
-				p.spotterReliability, p.spotterReliabilityCW, p.spotterReliabilityRTTY, p.confusionModel,
-				selectionOverride, ctx.resolverReleaseAt, ctx.temporalResult)
+		outcome := applyResolverCorrection(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
+			p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
+			selectionOverride, ctx.resolverReleaseAt, ctx.temporalResult)
+		if p.correctionCfg.SelectiveRescueEnabled && !outcome.terminal() {
+			outcome = p.applySelectiveRescue(ctx, resolverEvidence, hasResolverEvidence, outcome, rescue, now)
 		}
-		if suppress {
+		if outcome.suppress {
 			return false
 		}
 	}
@@ -172,9 +183,9 @@ func (p *outputPipeline) maybeHoldTemporalSpot(
 	now time.Time,
 	resolverEvidence spot.ResolverEvidence,
 	hasResolverEvidence bool,
-) (bool, bool) {
+) (bool, bool, selectiveRescueAuthority) {
 	if !hasResolverEvidence || p.temporal == nil || !p.temporal.Enabled() {
-		return false, false
+		return false, false, selectiveRescueImmediate
 	}
 	subject := normalizedDXCall(ctx.spot)
 	selection := correctionflow.ResolverPrimarySelection{}
@@ -187,7 +198,11 @@ func (p *outputPipeline) maybeHoldTemporalSpot(
 		)
 	}
 	if !selection.SnapshotOK || !p.temporal.decoder.ShouldHoldSelection(selection) {
-		return false, false
+		return false, false, selectiveRescueImmediate
+	}
+	var lifecycles correctionflow.FrequencyLifecycleVector
+	if p.correctionCfg.SelectiveRescueEnabled && resolverEvidence.Key.Mode == "CW" {
+		lifecycles = correctionflow.FrequencySourceLifecycles(correctionflow.ReadFrequencySources(p.signalResolver, resolverEvidence.Key, p.correctionCfg, now))
 	}
 	accepted, id, reason := p.temporal.Observe(
 		now,
@@ -202,13 +217,14 @@ func (p *outputPipeline) maybeHoldTemporalSpot(
 			hasStabilizerResolverKey:   ctx.hasStabilizerResolverKey,
 			stabilizerEvidenceEnqueued: ctx.stabilizerEvidenceEnqueued,
 			selection:                  selection,
+			frequencyLifecycles:        lifecycles,
 		},
 	)
 	if accepted {
 		if p.tracker != nil {
 			p.tracker.IncrementTemporalPending()
 		}
-		return true, false
+		return true, false, selectiveRescueNone
 	}
 	overflowDecision := correctionflow.TemporalDecision{
 		ID:            id,
@@ -223,14 +239,14 @@ func (p *outputPipeline) maybeHoldTemporalSpot(
 		overflowDecision.Action = correctionflow.TemporalDecisionActionAbstain
 		p.recordRuntimeTemporalDecision(overflowDecision)
 		setResolverConfidence(ctx.spot, fresh.Snapshot, fresh.SnapshotOK, subject)
-		return false, true
+		return false, true, selectiveRescueNone
 	case "bypass":
 		overflowDecision.Action = correctionflow.TemporalDecisionActionBypass
 	default:
 		overflowDecision.Action = correctionflow.TemporalDecisionActionFallbackResolver
 	}
 	p.recordRuntimeTemporalDecision(overflowDecision)
-	return false, false
+	return false, false, selectiveRescueNone
 }
 
 // applyPostResolverAdjustments handles policy corrections that depend on the

@@ -104,6 +104,9 @@ func runCCV2Study(req studyCLIRequest) error {
 	if err != nil {
 		return err
 	}
+	if err := studyMethodRuntimeAuthority(cfg, method); err != nil {
+		return err
+	}
 	if prepared != nil || method != nil {
 		req.Output, err = filepath.Abs(req.Output)
 		if err != nil {
@@ -250,6 +253,9 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 
 func studyRunDayPreparedMethod(p studyPlan, digest string, req studyCLIRequest, arm studyArm, candidate studyCandidate,
 	in studyInput, cfg *config.Config, day *studyRawDay, maskSchema bool, prepared *studyDiagnosticPrepared, method *studyMethodPrepared) (err error) {
+	if err := studyMethodRuntimeAuthority(cfg, method); err != nil {
+		return err
+	}
 	if prepared != nil && method != nil {
 		return errors.New("method cannot masquerade as selected diagnostic capture")
 	}
@@ -421,6 +427,15 @@ func studyRunDayPreparedMethod(p studyPlan, digest string, req studyCLIRequest, 
 		return r.method.files.owner.atomicJSON(filepath.Join(req.Output, "complete.json"), report)
 	}
 	return writeJSONAtomic(filepath.Join(req.Output, "complete.json"), report)
+}
+
+// Experimental policy is owned by the frozen method plan. A live rescue flag
+// would introduce a second policy authority and invalidate disabled parity.
+func studyMethodRuntimeAuthority(cfg *config.Config, method *studyMethodPrepared) error {
+	if method != nil && cfg != nil && cfg.CallCorrection.SelectiveRescueEnabled {
+		return errors.New("experimental method requires call_correction.selective_rescue_enabled false")
+	}
+	return nil
 }
 
 // Stream-copy every frozen asset, verify the copy, then route consumers to

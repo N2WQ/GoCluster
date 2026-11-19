@@ -175,7 +175,7 @@ func (m *studyMethodRun) complete() (*studyMethodManifest, error) {
 	if err != nil {
 		return nil, owner.latch(err)
 	}
-	return &studyMethodManifest{SchemaVersion: 1, Experimental: true, Enabled: m.prepared.Plan.Enabled, Plan: m.plan, Model: m.model,
+	return &studyMethodManifest{SchemaVersion: m.prepared.Plan.SchemaVersion, Experimental: true, Enabled: m.prepared.Plan.Enabled, Plan: m.plan, Model: m.model,
 		CandidateID: m.prepared.Candidate.ID, Report: studyFile{Path: path, SHA256: digest}}, nil
 }
 
@@ -213,7 +213,7 @@ func (m *studyMethodRun) closedReport() (studyMethodRunReport, error) {
 	if err != nil {
 		return empty, err
 	}
-	return studyMethodRunReport{SchemaVersion: 1, Experimental: true, Enabled: m.prepared.Plan.Enabled, Candidate: m.prepared.Candidate,
+	return studyMethodRunReport{SchemaVersion: m.prepared.Plan.SchemaVersion, Experimental: true, Enabled: m.prepared.Plan.Enabled, Candidate: m.prepared.Candidate,
 		Plan: m.plan, Model: m.model, OriginalPlan: m.prepared.File, OriginalModel: m.prepared.Plan.Model,
 		Outputs: outputs, Copies: m.files.copies, Accounting: accounting, RetainedEvidence: measurement, Scratch: m.files.scratch,
 		DeletedCopyBytes: deleted, UnretainedChargedBytes: accounting.ChargedBytes - retained - deleted,

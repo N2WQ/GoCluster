@@ -14,8 +14,15 @@ import (
 // three raw follow-ons, including a same-second beacon and an RTTY end-boundary
 // beacon. The added second correction has none: 1/1 -> 1/2 is an exact decline.
 func methodEvalTestFixture(t *testing.T) (studyMethodEvaluationPlan, studyFile) {
+	return methodEvalTestFixtureVersion(t, 1)
+}
+
+func methodEvalTestFixtureVersion(t *testing.T, schema int) (studyMethodEvaluationPlan, studyFile) {
 	t.Helper()
 	method := methodTestPlan(t)
+	if schema == 2 {
+		method = methodTestPlanV2(t)
+	}
 	method.Enabled = true
 	methodFile := studyAuditTestJSON(t, filepath.Join(t.TempDir(), "method.json"), method)
 	control := method
@@ -34,7 +41,7 @@ func methodEvalTestFixture(t *testing.T) (studyMethodEvaluationPlan, studyFile) 
 		capture.Inputs = append(capture.Inputs, studyInput{DateUTC: date, Phase: "tuning", Archive: studyTestZIPDate(t, date, body), MaxRows: 16, MaxCSVBytes: 1 << 16})
 	}
 	captureFile := studyAuditTestJSON(t, filepath.Join(t.TempDir(), "capture.json"), capture)
-	plan := studyMethodEvaluationPlan{SchemaVersion: 1, Experimental: true, Phase: "tuning", CapturePlan: captureFile, MethodPlan: methodFile, ControlPlan: controlFile}
+	plan := studyMethodEvaluationPlan{SchemaVersion: schema, Experimental: true, Phase: "tuning", CapturePlan: captureFile, MethodPlan: methodFile, ControlPlan: controlFile}
 	plan.ParityCapturePlan, plan.ParityControlPlan = captureFile, controlFile
 	for _, input := range capture.Inputs {
 		day, err := loadStudyRawDay(input, nil, capture.WarmupSeconds)
@@ -42,10 +49,18 @@ func methodEvalTestFixture(t *testing.T) (studyMethodEvaluationPlan, studyFile) 
 			t.Fatal(err)
 		}
 		group := studyMethodEvalGroup{DateUTC: input.DateUTC}
-		for role := 0; role < 3; role++ {
+		roles := 3
+		if schema == 2 && input.DateUTC != "2026-11-07" && input.DateUTC != "2026-11-14" {
+			roles = 1 // The other exposed dates provide disabled parity only.
+		}
+		for role := 0; role < roles; role++ {
 			selected := method.Candidates[0]
 			if role == 2 {
-				selected = method.Candidates[2]
+				index := 2
+				if schema == 2 {
+					index = 1
+				}
+				selected = method.Candidates[index]
 			}
 			rootPlan, rootFile := method, methodFile
 			if role == 0 {
@@ -128,7 +143,9 @@ func methodEvalTestFixture(t *testing.T) (studyMethodEvaluationPlan, studyFile) 
 				group.Variants = append(group.Variants, studyMethodEvalVariant{CandidateID: selected.ID, Complete: binding.Complete, Manifest: binding.Manifest})
 			}
 		}
-		plan.Groups = append(plan.Groups, group)
+		if roles == 3 {
+			plan.Groups = append(plan.Groups, group)
+		}
 	}
 	return plan, studyAuditTestJSON(t, filepath.Join(t.TempDir(), "evaluation.json"), plan)
 }

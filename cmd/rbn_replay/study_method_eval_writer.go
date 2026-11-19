@@ -159,7 +159,7 @@ func runStudyMethodEvaluationWithAuthority(planPath, frozenSHA, out string, ops 
 		Aggregates     studyFile `json:"aggregates"`
 		Paired         studyFile `json:"full_paired_union"`
 		Receipts       studyFile `json:"applied_receipts"`
-	}{1, true, true, p.File, studyFile{Path: path, SHA256: sum}, result.Paired, result.Receipts})
+	}{p.Plan.SchemaVersion, true, true, p.File, studyFile{Path: path, SHA256: sum}, result.Paired, result.Receipts})
 }
 
 func studyMethodEvalRecheck(p *studyMethodEvalPrepared, groups []studyMethodEvalLoadedGroup) error {

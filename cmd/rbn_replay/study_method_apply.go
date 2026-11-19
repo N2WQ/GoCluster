@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"dxcluster/config"
 	"dxcluster/internal/correctionflow"
 	"dxcluster/spot"
 )
@@ -26,23 +27,24 @@ type studyMethodGateTrial struct {
 }
 
 type studyMethodReceipt struct {
-	RawID                        string                             `json:"raw_id"`
-	ObservedAt                   time.Time                          `json:"observed_at"`
-	DecisionAt                   time.Time                          `json:"decision_at"`
-	CandidateID                  string                             `json:"candidate_id"`
-	Subject                      string                             `json:"subject"`
-	PermittedTemporalIdentity    string                             `json:"permitted_temporal_identity"`
-	LifecycleCurrent             bool                               `json:"lifecycle_current"`
-	Assessment                   correctionflow.FrequencyAssessment `json:"assessment"`
-	OrdinalAvailable             bool                               `json:"ordinal_available"`
-	Trials                       []studyMethodGateTrial             `json:"trials"`
-	Applied                      bool                               `json:"applied"`
-	Suppress                     bool                               `json:"suppress"`
-	ReplacementRejected          bool                               `json:"replacement_rejected"`
-	FinalObserved                string                             `json:"final_observed"`
-	OrdinaryPublicPercent        int                                `json:"ordinary_public_percent"`
-	OrdinaryPublicPercentPresent bool                               `json:"ordinary_public_percent_present"`
-	OrdinaryGate                 spot.ResolverPrimaryGateResult     `json:"ordinary_gate"`
+	RawID                        string                                     `json:"raw_id"`
+	ObservedAt                   time.Time                                  `json:"observed_at"`
+	DecisionAt                   time.Time                                  `json:"decision_at"`
+	CandidateID                  string                                     `json:"candidate_id"`
+	Subject                      string                                     `json:"subject"`
+	PermittedTemporalIdentity    string                                     `json:"permitted_temporal_identity"`
+	LifecycleCurrent             bool                                       `json:"lifecycle_current"`
+	Assessment                   correctionflow.FrequencyAssessment         `json:"assessment"`
+	SelectiveDeclines            []correctionflow.SelectiveFrequencyDecline `json:"selective_declines,omitempty"`
+	OrdinalAvailable             bool                                       `json:"ordinal_available"`
+	Trials                       []studyMethodGateTrial                     `json:"trials"`
+	Applied                      bool                                       `json:"applied"`
+	Suppress                     bool                                       `json:"suppress"`
+	ReplacementRejected          bool                                       `json:"replacement_rejected"`
+	FinalObserved                string                                     `json:"final_observed"`
+	OrdinaryPublicPercent        int                                        `json:"ordinary_public_percent"`
+	OrdinaryPublicPercentPresent bool                                       `json:"ordinary_public_percent_present"`
+	OrdinaryGate                 spot.ResolverPrimaryGateResult             `json:"ordinary_gate"`
 }
 
 func (r *replayRunner) methodEnabled() bool { return r.method != nil && r.method.prepared.Plan.Enabled }
@@ -71,8 +73,13 @@ func (r *replayRunner) applyMethodRescue(s *spot.Spot, evidence spot.ResolverEvi
 		receipt.LifecycleCurrent = false
 		receipt.Assessment.Reason = "lifecycle_changed"
 	} else {
-		receipt.Assessment = correctionflow.AssessFrequencyProposals(evidence.Key, subject, s.Frequency, outcome.Selection, sources, r.cfg.CallCorrection,
-			correctionflow.FrequencyProposalOptions{GapHz: candidate.GapHz, MaxWitnessSeparation: time.Duration(candidate.MaxWitnessSeconds) * time.Second, MaxDistance: maxDistance})
+		options := correctionflow.FrequencyProposalOptions{GapHz: candidate.GapHz, MaxWitnessSeparation: time.Duration(candidate.MaxWitnessSeconds) * time.Second, MaxDistance: maxDistance}
+		if r.method.prepared.Plan.SchemaVersion == 2 {
+			selective := correctionflow.AssessSelectiveFrequencyProposals(evidence.Key, subject, s.Frequency, outcome.Selection, sources, r.cfg.CallCorrection, options)
+			receipt.Assessment, receipt.SelectiveDeclines = selective.FrequencyAssessment, selective.Declines
+		} else {
+			receipt.Assessment = correctionflow.AssessFrequencyProposals(evidence.Key, subject, s.Frequency, outcome.Selection, sources, r.cfg.CallCorrection, options)
+		}
 		proposals := receipt.Assessment.Proposals
 		if permitted != "" {
 			proposals = nil
@@ -98,6 +105,9 @@ func (r *replayRunner) applyMethodRescue(s *spot.Spot, evidence spot.ResolverEvi
 			outcome.Confidence.Final = normalizeConfidenceGlyph(s.Confidence)
 			if applied {
 				outcome.Winner = proposal.Call
+				if r.method.prepared.Plan.SchemaVersion == 2 {
+					s.ConfidencePercent, s.ConfidencePercentOK = correctionflow.ResolverCallConfidencePercent(outcome.Selection.Snapshot, proposal.Call)
+				}
 				if r.tracker != nil {
 					r.tracker.IncrementCallCorrections()
 				}
@@ -128,16 +138,22 @@ func (r *replayRunner) evaluateMethodGate(s *spot.Spot, subject string, p correc
 	runtime := correctionflow.ResolveRuntimeSettings(cfg, s, r.adaptiveMinReports, now, false)
 	settings := correctionflow.BuildCorrectionSettings(correctionflow.BuildSettingsInput{Cfg: cfg, MinReports: runtime.MinReports, Window: runtime.Window,
 		FreqToleranceHz: runtime.FreqToleranceHz, RecentBandStore: r.recentBandStore})
-	options := spot.ResolverPrimaryGateOptions{}
-	if cfg.ResolverRecentPlus1Enabled && p.ComparableEditNeighbor {
-		options.RecentPlus1DisallowReason = resolverRecentPlus1DisallowEditNeighborGate
-	}
 	band, mode := s.BandNorm, s.ModeNorm
 	if band == "" || band == "???" {
 		band = spot.FreqToBand(s.Frequency)
 	}
 	if mode == "" {
 		mode = s.Mode
+	}
+	options := spot.ResolverPrimaryGateOptions{}
+	// Preserve V1's frozen replay contract. New V2 consumers use the complete
+	// ordinary comparator restriction, including structurally enabled Bayes.
+	comparatorEnabled := cfg.ResolverRecentPlus1Enabled
+	if r.method != nil && r.method.prepared.Plan.SchemaVersion == 2 {
+		comparatorEnabled = comparatorEnabled || config.BayesBonusModeEnabled(cfg.BayesBonus.Enabled, cfg.BayesBonus.EnabledDistancesByMode, mode, cfg.MaxEditDistance)
+	}
+	if comparatorEnabled && p.ComparableEditNeighbor {
+		options.RecentPlus1DisallowReason = resolverRecentPlus1DisallowEditNeighborGate
 	}
 	return spot.EvaluateResolverPrimaryGates(subject, p.Call, band, mode, p.SubjectSupport, p.Support, p.ConfidencePercent,
 		p.SubjectWeightedSupportMilli, p.WeightedSupportMilli, settings, now, options)

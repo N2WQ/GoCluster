@@ -32,21 +32,22 @@ type studyMethodEvalVariantResult struct {
 	AllCellRenamePass   bool                              `json:"all_cells_strong_disagreeing_rename_gate_pass"`
 }
 type studyMethodEvaluationResult struct {
-	SchemaVersion     int                               `json:"schema_version"`
-	Experimental      bool                              `json:"experimental"`
-	Complete          bool                              `json:"complete"`
-	Phase             string                            `json:"phase"`
-	EvaluationPlan    studyFile                         `json:"evaluation_plan"`
-	Inputs            studyMethodEvaluationPlan         `json:"frozen_input_bindings"`
-	RoleOrder         []string                          `json:"role_order"`
-	CurrentStability  replayStabilityConfig             `json:"current_stability"`
-	Variants          []studyMethodEvalVariantResult    `json:"variants"`
-	OrdinalVsGeometry *studyMethodEvalVariantResult     `json:"ordinal_vs_geometry,omitempty"`
-	Paired            studyFile                         `json:"full_paired_union"`
-	Receipts          studyFile                         `json:"applied_receipts"`
-	Outputs           []studyDiagnosticOutputFile       `json:"closed_prior_outputs"`
-	Accounting        studyDiagnosticArtifactAccounting `json:"accounting"`
-	ClaimLimits       []string                          `json:"claim_limits"`
+	SchemaVersion            int                               `json:"schema_version"`
+	Experimental             bool                              `json:"experimental"`
+	Complete                 bool                              `json:"complete"`
+	Phase                    string                            `json:"phase"`
+	EvaluationPlan           studyFile                         `json:"evaluation_plan"`
+	Inputs                   studyMethodEvaluationPlan         `json:"frozen_input_bindings"`
+	RoleOrder                []string                          `json:"role_order"`
+	CurrentStability         replayStabilityConfig             `json:"current_stability"`
+	Variants                 []studyMethodEvalVariantResult    `json:"variants"`
+	OrdinalVsGeometry        *studyMethodEvalVariantResult     `json:"ordinal_vs_geometry,omitempty"`
+	CompatibilityVsSelective *studyMethodEvalVariantResult     `json:"compatibility_vs_selective,omitempty"`
+	Paired                   studyFile                         `json:"full_paired_union"`
+	Receipts                 studyFile                         `json:"applied_receipts"`
+	Outputs                  []studyDiagnosticOutputFile       `json:"closed_prior_outputs"`
+	Accounting               studyDiagnosticArtifactAccounting `json:"accounting"`
+	ClaimLimits              []string                          `json:"claim_limits"`
 }
 
 type studyMethodEvalTerminal struct {
@@ -78,7 +79,7 @@ type studyMethodEvalAppliedRecord struct {
 }
 
 func newStudyMethodEvaluationResult(p *studyMethodEvalPrepared) studyMethodEvaluationResult {
-	r := studyMethodEvaluationResult{SchemaVersion: 1, Experimental: true, Complete: true, Phase: p.Plan.Phase, EvaluationPlan: p.File, Inputs: p.Plan, RoleOrder: []string{"control"}, CurrentStability: replayStabilityConfig{WindowMinutes: 15, MinFollowOn: 3, FreqToleranceHz: 500},
+	r := studyMethodEvaluationResult{SchemaVersion: p.Plan.SchemaVersion, Experimental: true, Complete: true, Phase: p.Plan.Phase, EvaluationPlan: p.File, Inputs: p.Plan, RoleOrder: []string{"control"}, CurrentStability: replayStabilityConfig{WindowMinutes: 15, MinFollowOn: 3, FreqToleranceHz: 500},
 		ClaimLimits: []string{
 			"Experimental complete-candidate comparison; no global grid winner is selected here",
 			"Archive reference agreement and follow-on stability are not RF truth or calibrated probability",
@@ -94,9 +95,22 @@ func newStudyMethodEvaluationResult(p *studyMethodEvalPrepared) studyMethodEvalu
 		r.Variants = append(r.Variants, studyMethodEvalVariantResult{Candidate: candidate, Counts: studyMethodEvalNewCounts(), Modes: make(map[string]*studyMethodEvalCounts)})
 	}
 	if len(p.Variants) == 2 {
-		r.OrdinalVsGeometry = &studyMethodEvalVariantResult{Candidate: p.Variants[1], Counts: studyMethodEvalNewCounts(), Modes: make(map[string]*studyMethodEvalCounts)}
+		comparison := &studyMethodEvalVariantResult{Candidate: p.Variants[1], Counts: studyMethodEvalNewCounts(), Modes: make(map[string]*studyMethodEvalCounts)}
+		if p.Plan.SchemaVersion == 2 {
+			r.CompatibilityVsSelective = comparison
+			r.ClaimLimits = append(r.ClaimLimits, "V2 compares C and B on the exposed November 7/14 development dates only; eligibility and production activation are not assessed")
+		} else {
+			r.OrdinalVsGeometry = comparison
+		}
 	}
 	return r
+}
+
+func (r *studyMethodEvaluationResult) methodComparison() *studyMethodEvalVariantResult {
+	if r.SchemaVersion == 2 {
+		return r.CompatibilityVsSelective
+	}
+	return r.OrdinalVsGeometry
 }
 
 func studyMethodEvaluateDay(p *studyMethodEvalPrepared, loaded studyMethodEvalLoadedGroup, aliases map[string]string, result *studyMethodEvaluationResult, paired, receipts *studyMethodEvalWriter) error {
@@ -208,7 +222,7 @@ func studyMethodEvaluateDay(p *studyMethodEvalPrepared, loaded studyMethodEvalLo
 		}
 	}
 	if attribution != nil {
-		if err := studyMethodEvalAppendDay(result.OrdinalVsGeometry, attribution.finish()); err != nil {
+		if err := studyMethodEvalAppendDay(result.methodComparison(), attribution.finish()); err != nil {
 			return err
 		}
 	}
@@ -327,10 +341,10 @@ func studyMethodEvalAppendDay(result *studyMethodEvalVariantResult, day studyMet
 func studyMethodEvalFinish(result *studyMethodEvaluationResult, phase string) {
 	for i := range result.Variants {
 		variant := &result.Variants[i]
-		variant.EligibilityAssessed = true
+		variant.EligibilityAssessed = result.SchemaVersion != 2
 		variant.ObjectivePass = studyMethodEvalObjective(variant.Counts)
 		variant.AllCellRenamePass = variant.Counts.NewWrongR1 == 0 && variant.Counts.NewWrongR2 == 0
-		variant.Eligible = variant.ObjectivePass && variant.AllCellRenamePass
+		variant.Eligible = variant.EligibilityAssessed && variant.ObjectivePass && variant.AllCellRenamePass
 		for _, distance := range variant.Candidate.CWDistances {
 			cell := fmt.Sprintf("CW/%d", distance)
 			dates := make([]studyCellDate, 0, len(variant.Days))
@@ -348,8 +362,8 @@ func studyMethodEvalFinish(result *studyMethodEvaluationResult, phase string) {
 			}
 		}
 	}
-	if result.OrdinalVsGeometry != nil {
-		result.OrdinalVsGeometry.ObjectivePass = studyMethodEvalObjective(result.OrdinalVsGeometry.Counts)
-		result.OrdinalVsGeometry.AllCellRenamePass = result.OrdinalVsGeometry.Counts.NewWrongR1 == 0 && result.OrdinalVsGeometry.Counts.NewWrongR2 == 0
+	if comparison := result.methodComparison(); comparison != nil {
+		comparison.ObjectivePass = studyMethodEvalObjective(comparison.Counts)
+		comparison.AllCellRenamePass = comparison.Counts.NewWrongR1 == 0 && comparison.Counts.NewWrongR2 == 0
 	}
 }
