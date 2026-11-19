@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"dxcluster/config"
 	"dxcluster/strutil"
 
 	lev "github.com/agnivade/levenshtein"
@@ -46,6 +47,9 @@ type CorrectionBayesBonusPolicy struct {
 	// Configured distinguishes explicit runtime wiring from zero-value tests.
 	Configured bool
 	Enabled    bool
+	// Nil preserves legacy cells; nonnil maps explicitly select mode/distances.
+	// Loaded configuration is immutable for the lifetime of these settings.
+	EnabledDistancesByMode map[string][]int
 
 	WeightDistance1Milli int
 	WeightDistance2Milli int
@@ -175,6 +179,7 @@ func IsCallCorrectionCandidate(mode string) bool {
 //   - Pure function: no shared mutable state updates.
 //   - Applies max-edit rails before confidence/support gates.
 //   - Truncation-family relaxations never bypass confidence and advantage rails.
+//   - Historical aliases reuse their first count within this gate call only.
 func EvaluateResolverPrimaryGates(
 	subjectCall, winnerCall, subjectBand, subjectMode string,
 	subjectSupport, winnerSupport, winnerConfidence int,
@@ -223,6 +228,7 @@ func EvaluateResolverPrimaryGates(
 	}
 	familyPolicy := normalizeCorrectionFamilyPolicy(cfg.FamilyPolicy)
 	truncationAdvantagePolicy := normalizeCorrectionTruncationAdvantagePolicy(cfg.TruncationAdvantagePolicy)
+	history := newResolverGateHistory(cfg, subjectBand, subjectMode, now)
 
 	truncationRelation := false
 	candidateMoreSpecific := false
@@ -236,8 +242,8 @@ func EvaluateResolverPrimaryGates(
 		candidateMoreSpecific = len(winnerIdentity.VoteKey) > len(subjectIdentity.VoteKey)
 		if candidateMoreSpecific {
 			lengthDelta = len(winnerIdentity.VoteKey) - len(subjectIdentity.VoteKey)
-			candidateValidated = resolverCallValidated(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
-			subjectValidated = resolverCallValidated(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+			candidateValidated = history.validated(winnerIdentity, winnerCall, cfg.RecentBandRecordMinUniqueSpotters)
+			subjectValidated = history.validated(subjectIdentity, subjectCall, cfg.RecentBandRecordMinUniqueSpotters)
 			candidateValidatedKnown = true
 			subjectValidatedKnown = true
 		}
@@ -246,7 +252,7 @@ func EvaluateResolverPrimaryGates(
 		if candidateValidatedKnown {
 			return candidateValidated
 		}
-		candidateValidated = resolverCallValidated(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
+		candidateValidated = history.validated(winnerIdentity, winnerCall, cfg.RecentBandRecordMinUniqueSpotters)
 		candidateValidatedKnown = true
 		return candidateValidated
 	}
@@ -254,7 +260,7 @@ func EvaluateResolverPrimaryGates(
 		if subjectValidatedKnown {
 			return subjectValidated
 		}
-		subjectValidated = resolverCallValidated(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		subjectValidated = history.validated(subjectIdentity, subjectCall, cfg.RecentBandRecordMinUniqueSpotters)
 		subjectValidatedKnown = true
 		return subjectValidated
 	}
@@ -328,8 +334,8 @@ func EvaluateResolverPrimaryGates(
 		if rejectReason == "" && !distanceAllowed && !familyAllowed {
 			rejectReason = "distance_or_family"
 		}
-		winnerRecent := resolverCallRecentSupport(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
-		subjectRecent := resolverCallRecentSupport(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		winnerRecent := history.support(winnerIdentity, winnerCall)
+		subjectRecent := history.support(subjectIdentity, subjectCall)
 		result.RecentPlus1Winner = winnerRecent
 		result.RecentPlus1Subject = subjectRecent
 		if rejectReason == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
@@ -347,7 +353,7 @@ func EvaluateResolverPrimaryGates(
 	}
 
 	bayes := normalizeCorrectionBayesBonusPolicy(cfg.BayesBonusPolicy)
-	if bayes.Enabled && distance >= 1 && distance <= 2 {
+	if config.BayesBonusCellEnabled(bayes.Enabled, bayes.EnabledDistancesByMode, subjectMode, distance, cfg.MaxEditDistance) {
 		weightDistance := bayes.WeightDistance1Milli
 		reportThreshold := bayes.ReportThresholdDistance1Milli
 		advantageThreshold := bayes.AdvantageThresholdDistance1Milli
@@ -361,8 +367,8 @@ func EvaluateResolverPrimaryGates(
 			extraConfidence = bayes.AdvantageExtraConfidenceDistance2
 		}
 
-		winnerRecent := resolverCallRecentSupport(winnerIdentity, winnerCall, subjectBand, subjectMode, cfg, now)
-		subjectRecent := resolverCallRecentSupport(subjectIdentity, subjectCall, subjectBand, subjectMode, cfg, now)
+		winnerRecent := history.support(winnerIdentity, winnerCall)
+		subjectRecent := history.support(subjectIdentity, subjectCall)
 		result.BayesWinnerRecent = winnerRecent
 		result.BayesSubjectRecent = subjectRecent
 		result.BayesDistanceWeightMilli = weightDistance
@@ -380,21 +386,23 @@ func EvaluateResolverPrimaryGates(
 		bayesScoreMilli := obsTermMilli + int(math.Round(float64(weightDistance*priorTermMilli)/1000.0))
 		result.BayesScoreMilli = bayesScoreMilli
 
+		// Both bounded rails require the same usable, stronger history. Advantage
+		// eligibility is independent of whether a report bonus was needed/applied;
+		// separating it must not bypass qualifications formerly inherited from it.
+		historyReject := options.RecentPlus1DisallowReason
+		if historyReject == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
+			historyReject = "winner_recent_insufficient"
+		}
+		if historyReject == "" && winnerRecent <= subjectRecent {
+			historyReject = "subject_not_weaker"
+		}
+		if historyReject == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
+			historyReject = "candidate_unvalidated"
+		}
+
 		if effectiveSupport == minReports-1 {
 			result.BayesReportBonusConsidered = true
-			rejectReason := ""
-			if options.RecentPlus1DisallowReason != "" {
-				rejectReason = options.RecentPlus1DisallowReason
-			}
-			if rejectReason == "" && winnerRecent < cfg.ResolverRecentPlus1MinUniqueWinner {
-				rejectReason = "winner_recent_insufficient"
-			}
-			if rejectReason == "" && winnerRecent <= subjectRecent {
-				rejectReason = "subject_not_weaker"
-			}
-			if rejectReason == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
-				rejectReason = "candidate_unvalidated"
-			}
+			rejectReason := historyReject
 			if rejectReason == "" && bayesScoreMilli < reportThreshold {
 				rejectReason = "score_below_threshold"
 			}
@@ -406,10 +414,10 @@ func EvaluateResolverPrimaryGates(
 			}
 		}
 
-		if result.BayesReportBonusApplied && winnerSupport == subjectSupport {
+		if winnerSupport == subjectSupport {
 			result.BayesAdvantageConsidered = true
-			rejectReason := ""
-			if bayesScoreMilli < advantageThreshold {
+			rejectReason := historyReject
+			if rejectReason == "" && bayesScoreMilli < advantageThreshold {
 				rejectReason = "score_below_threshold"
 			}
 			if rejectReason == "" && (winnerWeightedSupportMilli-subjectWeightedSupportMilli) < minWeightedDelta {
@@ -417,9 +425,6 @@ func EvaluateResolverPrimaryGates(
 			}
 			if rejectReason == "" && winnerConfidence < minConf+extraConfidence {
 				rejectReason = "confidence_insufficient"
-			}
-			if rejectReason == "" && bayes.RequireCandidateValidated && !resolveCandidateValidated() {
-				rejectReason = "candidate_unvalidated"
 			}
 			if rejectReason == "" && distance == 2 && bayes.RequireSubjectUnvalidatedDistance2 && resolveSubjectValidated() {
 				rejectReason = "subject_validated"
@@ -450,48 +455,6 @@ func EvaluateResolverPrimaryGates(
 
 	result.Allow = true
 	return result
-}
-
-func resolverCallValidated(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) bool {
-	minUnique := cfg.RecentBandRecordMinUniqueSpotters
-	if minUnique <= 0 {
-		minUnique = 2
-	}
-	return resolverCallRecentSupport(identity, displayCall, subjectBand, subjectMode, cfg, now) >= minUnique
-}
-
-type customSCPRequirementCounter interface {
-	RecentSupportCountWithRequirements(call, band, mode string, requirements CustomSCPRequirements, now time.Time) int
-}
-
-func resolverCallRecentSupport(identity correctionCallIdentity, displayCall, subjectBand, subjectMode string, cfg CorrectionSettings, now time.Time) int {
-	if cfg.RecentBandStore == nil {
-		return 0
-	}
-	candidates := []string{identity.Raw, identity.VoteKey, identity.BaseKey, displayCall}
-	seenCalls := make(map[string]struct{}, len(candidates))
-	maxSupport := 0
-	for _, candidateCall := range candidates {
-		candidateCall = strings.TrimSpace(candidateCall)
-		if candidateCall == "" {
-			continue
-		}
-		upper := strutil.NormalizeUpper(candidateCall)
-		if _, exists := seenCalls[upper]; exists {
-			continue
-		}
-		seenCalls[upper] = struct{}{}
-		var support int
-		if queries, ok := cfg.RecentBandStore.(customSCPRequirementCounter); ok && cfg.RecentBandCustomSCPEnabled {
-			support = queries.RecentSupportCountWithRequirements(upper, subjectBand, subjectMode, cfg.RecentBandCustomSCPRequirements, now)
-		} else {
-			support = cfg.RecentBandStore.RecentSupportCount(upper, subjectBand, subjectMode, now)
-		}
-		if support > maxSupport {
-			maxSupport = support
-		}
-	}
-	return maxSupport
 }
 
 type correctionCallIdentity struct {
@@ -954,6 +917,12 @@ func callDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 // by resolver primary gating.
 func CallDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 	return callDistance(subject, candidate, mode, cwModel, rttyModel)
+}
+
+// CorrectionCandidateDistance includes the canonical identity/slash semantics
+// used by primary gates. CallDistance itself also serves literal-string callers.
+func CorrectionCandidateDistance(subject, candidate, mode, cwModel, rttyModel string) int {
+	return correctionDistance(normalizeCorrectionCallIdentity(subject), normalizeCorrectionCallIdentity(candidate), mode, cwModel, rttyModel)
 }
 
 // IsEditNeighborPair reports whether calls are distance-1 neighbors under the

@@ -119,7 +119,7 @@ func resolverSnapshotLossEligible(snapshot ResolverSnapshot, now time.Time) bool
 func (r *SignalResolver) publishKeySnapshot(st *resolverKeyState, snapshot ResolverSnapshot, now time.Time, ordinary bool) {
 	r.attachKeyGeneration(st)
 	if ordinary {
-		st.ordinaryWinner, st.ordinaryState = snapshot.Winner, snapshot.State
+		st.ordinaryWinner, st.ordinaryState = CorrectionVoteKey(snapshot.Winner), snapshot.State
 	}
 	snapshot.Generation = st.generation
 	snapshot.lossMinAt, snapshot.lossMaxAt, snapshot.lossWindow = st.lossMinAt, st.lossMaxAt, st.recencyWindow
@@ -149,25 +149,22 @@ func (r *SignalResolver) publishLossControl(st *resolverKeyState, now time.Time)
 		TotalReporters: len(st.reporterRefs), TotalWeightedSupportMilli: totalResolverReporterWeightMilli(st.reporterRefs)}
 	previousOrder := make(map[string]int, len(st.publishedCandidateRanks))
 	for i, previous := range st.publishedCandidateRanks {
-		previousOrder[previous.Call] = i
+		previousOrder[previous.Identity()] = i
 	}
-	snapshot.CandidateRanks = make([]ResolverCandidateSupport, 0, len(st.candidates))
-	for call, candidate := range st.candidates {
-		if candidate != nil && len(candidate.reporters) > 0 {
-			snapshot.CandidateRanks = append(snapshot.CandidateRanks, ResolverCandidateSupport{Call: call,
-				Support: len(candidate.reporters), WeightedSupportMilli: weightedSupportForResolverCandidate(candidate, st.reporterRefs)})
-		}
-	}
+	snapshot.CandidateRanks = view.CanonicalSupport(r.cfg.SlashPrecedenceMinReports)
 	sort.Slice(snapshot.CandidateRanks, func(i, j int) bool {
 		left, right := snapshot.CandidateRanks[i], snapshot.CandidateRanks[j]
+		if left.ReplacementBlocked != right.ReplacementBlocked {
+			return !left.ReplacementBlocked
+		}
 		if left.WeightedSupportMilli != right.WeightedSupportMilli {
 			return left.WeightedSupportMilli > right.WeightedSupportMilli
 		}
 		if left.Support != right.Support {
 			return left.Support > right.Support
 		}
-		a, aOK := previousOrder[left.Call]
-		b, bOK := previousOrder[right.Call]
+		a, aOK := previousOrder[left.Identity()]
+		b, bOK := previousOrder[right.Identity()]
 		if aOK != bOK {
 			return aOK
 		}

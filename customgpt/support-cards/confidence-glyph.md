@@ -38,13 +38,23 @@ not infer meanings from other cluster software.
   counts, invalid edges and overflowing totals are refused. Weight zero still
   requires a valid enabled model; disabled models ignore their path. Valid finite
   inputs retain existing clamps/ranking, without proving scientific validity.
-- Missing report metadata and SNR outside a model's `(lower, upper]` bins add no
-  confusion contribution but still count as receiver evidence. Reported zero is
-  present. The newest timestamped representative report is used, with later
-  receipt winning at equal timestamps; no newest-present fallback is invented.
-- Percentages describe the emitted call. A rejected candidate leaves `B` and
-  the retained call's own weighted share; no eligible support displays `--%`
-  in DIAG CONF. Accepted `C` output carries the replacement's share.
+- Each receiver/candidate membership owns its timestamped SNR. Newer reports
+  supersede older metadata; conflicting equal-time values or presence become
+  unknown until a newer report arrives. Reported zero is present. Ordinary
+  optional confusion omits missing/out-of-domain contributions while retaining
+  support; experimental receiver-compatibility B instead becomes unavailable
+  when a positive observation's own SNR is unusable. No newest-present fallback.
+- Percentages describe the emitted call. Base/CTY rejection in broadcast mode
+  leaves `B` and the original's share; replacement-license rejection can retain
+  its ordinary glyph. A glyph alone does not establish retry authority. No
+  eligible support displays `--%` in DIAG CONF. Accepted `C` carries the
+  replacement's ordinary share.
+- Optional `call_correction.selective_rescue_enabled` ships false. Enabled C
+  can add a frequency-backed current-supported CW rescue after ordinary failure;
+  credible unrelated competition may decline it. Existing gates remain, and
+  every stabilizer retry is ordinary-only. Its group support is not the public
+  percentage. B is replay-only, with no live asset setting. See the
+  [selective contract](../../spot/README.md#selective-current-signal-rescue).
 - Two zero-weight receivers for A against one positive-weight receiver for B
   give A `0%`. If the two-report minimum rejects replacing A with B, A displays
   `P/0%`. Zero display does not grant family hiding authority; positive usable

@@ -121,6 +121,7 @@ func BenchmarkV16HarmonicSteadyExpiry(b *testing.B) {
 	for i := range spots {
 		spots[i] = *NewSpotNormalized(fmt.Sprintf("K%dV", i), "W1AW", 7011, "CW")
 		spots[i].Report = 20
+		spots[i].HasReport = true
 	}
 	for i := 0; i < live; i++ {
 		now := base.Add(time.Duration(i) * 12 * time.Millisecond)
@@ -148,9 +149,11 @@ func BenchmarkV16HarmonicRefresh(b *testing.B) {
 	base := time.Unix(1_700_000_000, 0).UTC()
 	fundamental := NewSpotNormalized("W1AW", "K1V", 7011, "CW")
 	fundamental.Time, fundamental.Report = base, 20
+	fundamental.HasReport = true
 	detector.ShouldDrop(fundamental, base)
 	harmonic := NewSpotNormalized("W1AW", "K2V", 14022, "CW")
 	harmonic.Time, harmonic.Report = base.Add(time.Second), 10
+	harmonic.HasReport = true
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

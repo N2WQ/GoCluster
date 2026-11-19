@@ -41,13 +41,13 @@ func resolverProjectionBase(snapshot ResolverSnapshot) ResolverSnapshot {
 func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time.Time) ResolverSnapshot {
 	view := snap.receiverEvidence
 	cutoff := now.Add(-view.window)
-	eligible := func(row ResolverReceiverObservation) bool {
+	eligible := func(row *ResolverReceiverObservation) bool {
 		return !row.ObservedAt.Before(cutoff) && !row.ObservedAt.After(now)
 	}
 	count := 0
 	for _, candidate := range view.candidates {
-		for _, row := range candidate.receivers {
-			if eligible(row) {
+		for i := range candidate.receivers {
+			if eligible(&candidate.receivers[i]) {
 				count++
 			}
 		}
@@ -59,51 +59,74 @@ func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time
 	if count == 0 {
 		return projected
 	}
-	fresh := &ResolverEvidenceView{window: view.window, count: count,
-		candidates: make([]resolverEvidenceCandidate, 0, len(view.candidates))}
-	tallies := make(map[string]ResolverCandidateSupport, len(view.candidates))
-	receivers := make(map[string]int, count)
+	fresh := &ResolverEvidenceView{window: view.window, candidates: make([]resolverEvidenceCandidate, 0, len(view.candidates))}
 	for _, candidate := range view.candidates {
+		latest := resolverCanonicalRows(view, candidate.call)
 		rows := make([]ResolverReceiverObservation, 0, len(candidate.receivers))
-		tally := ResolverCandidateSupport{Call: candidate.call}
-		for _, row := range candidate.receivers {
+		for i := range candidate.receivers {
+			row := &candidate.receivers[i]
 			if !eligible(row) {
 				continue
 			}
-			rows = append(rows, row)
-			tally.Support++
-			tally.WeightedSupportMilli += row.WeightMilli
-			if previous, exists := receivers[row.Receiver]; !exists || row.WeightMilli > previous {
-				receivers[row.Receiver] = row.WeightMilli
+			// A newer observation on an equivalent spelling supersedes this row
+			// even when that newer observation lies after this release clock.
+			index := sort.Search(len(latest), func(i int) bool { return latest[i].Receiver >= row.Receiver })
+			if index == len(latest) || latest[index].Receiver != row.Receiver || !latest[index].ObservedAt.Equal(row.ObservedAt) {
+				continue
 			}
+			rows = append(rows, *row)
 		}
 		if len(rows) > 0 {
 			fresh.candidates = append(fresh.candidates, resolverEvidenceCandidate{call: candidate.call, receivers: rows})
-			tallies[candidate.call] = tally
+			fresh.count += len(rows)
 		}
 	}
+	fresh.canonical = buildCanonicalResolverCandidates(fresh.candidates)
 	projected.receiverEvidence = fresh
+	receivers := make(map[string]int, fresh.count)
+	for i := range fresh.canonical {
+		for _, row := range fresh.canonical[i].receivers {
+			if previous, ok := receivers[row.Receiver]; !ok || row.WeightMilli > previous {
+				receivers[row.Receiver] = row.WeightMilli
+			}
+		}
+	}
 	projected.TotalReporters = len(receivers)
 	for _, weight := range receivers {
 		projected.TotalWeightedSupportMilli += weight
 	}
-	// Preserve owner ranking (including confusion tie provenance) for equal
-	// filtered tallies. Never sort a published slice or use owner workspaces.
-	projected.CandidateRanks = make([]ResolverCandidateSupport, 0, len(tallies))
-	for _, previous := range snap.CandidateRanks {
-		if tally, exists := tallies[previous.Call]; exists {
-			projected.CandidateRanks = append(projected.CandidateRanks, tally)
+	if r.cfg.ConfusionModel == nil || r.cfg.ConfusionWeight <= 0 {
+		// Retain ordinary published tie provenance, while refreshing display and
+		// slash eligibility from the surviving canonical population.
+		current := fresh.CanonicalSupport(r.cfg.SlashPrecedenceMinReports)
+		projected.CandidateRanks = make([]ResolverCandidateSupport, 0, len(current))
+		for _, previous := range snap.CandidateRanks {
+			for _, candidate := range current {
+				if previous.Identity() == candidate.Identity() {
+					projected.CandidateRanks = append(projected.CandidateRanks, candidate)
+					break
+				}
+			}
 		}
-	}
-	sort.SliceStable(projected.CandidateRanks, func(i, j int) bool {
-		left, right := projected.CandidateRanks[i], projected.CandidateRanks[j]
-		if left.WeightedSupportMilli != right.WeightedSupportMilli {
-			return left.WeightedSupportMilli > right.WeightedSupportMilli
+		sort.SliceStable(projected.CandidateRanks, func(i, j int) bool {
+			a, b := projected.CandidateRanks[i], projected.CandidateRanks[j]
+			if a.ReplacementBlocked != b.ReplacementBlocked {
+				return !a.ReplacementBlocked
+			}
+			if a.WeightedSupportMilli != b.WeightedSupportMilli {
+				return a.WeightedSupportMilli > b.WeightedSupportMilli
+			}
+			return a.Support > b.Support
+		})
+	} else {
+		ranked := rankedCanonicalResolverCandidates(fresh, nil, r.cfg.SlashPrecedenceMinReports)
+		sort.Slice(ranked, func(i, j int) bool { return resolverCandidateRanksAhead(ranked[i], ranked[j]) })
+		var workspace confusionAlignmentWorkspace
+		applyResolverConfusionTieBreak(ranked, snap.Key.Mode, r.cfg.ConfusionModel, r.cfg.ConfusionWeight, &workspace)
+		projected.CandidateRanks = make([]ResolverCandidateSupport, 0, len(ranked))
+		for i := range ranked {
+			projected.CandidateRanks = append(projected.CandidateRanks, resolverRankSupport(ranked[i]))
 		}
-		return left.Support > right.Support
-	})
-	if len(projected.CandidateRanks) == 0 {
-		return projected
 	}
 	return r.projectResolverAuthority(projected, snap)
 }
@@ -117,6 +140,9 @@ func (r *SignalResolver) projectResolverAuthority(projected, previous ResolverSn
 	}
 	fresh := projected.ReceiverEvidence()
 	top := projected.CandidateRanks[0]
+	if top.ReplacementBlocked {
+		return projected
+	}
 	projected.WinnerSupport, projected.WinnerWeightedSupportMilli = top.Support, top.WeightedSupportMilli
 	projected.Margin = top.Support
 	split := resolverEvidenceHasFrequencyConflict(fresh)
@@ -128,15 +154,7 @@ func (r *SignalResolver) projectResolverAuthority(projected, previous ResolverSn
 		_, related := detectCorrectionFamilyByIdentity(left, right, r.cfg.FamilyPolicy)
 		a, b, witnessed := closestResolverFrequencyPair(fresh, top.Call, runner.Call)
 		overlap := 0
-		var leftRows, rightRows []ResolverReceiverObservation
-		for _, candidate := range fresh.candidates {
-			if candidate.call == top.Call {
-				leftRows = candidate.receivers
-			}
-			if candidate.call == runner.Call {
-				rightRows = candidate.receivers
-			}
-		}
+		leftRows, rightRows := resolverCanonicalRows(fresh, top.Identity()), resolverCanonicalRows(fresh, runner.Identity())
 		// Rows retain their receiver ordering, so intersection needs no map.
 		for i, j := 0, 0; i < len(leftRows) && j < len(rightRows); {
 			switch {
@@ -168,7 +186,7 @@ func (r *SignalResolver) projectResolverAuthority(projected, previous ResolverSn
 	if previous.ordinaryState != "" {
 		winner, state = previous.ordinaryWinner, previous.ordinaryState
 	}
-	if winner == top.Call {
+	if CorrectionVoteKey(winner) == top.Identity() {
 		projected.Winner = top.Call
 		if state == ResolverStateConfident || state == ResolverStateProbable {
 			projected.State = classifyResolverState(top.WeightedSupportMilli, projected.TotalWeightedSupportMilli)

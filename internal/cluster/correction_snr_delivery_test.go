@@ -36,9 +36,9 @@ func TestCorrectionSNRDeliveredPresenceAndDomain(t *testing.T) {
 		{name: "outer_upper_included", initialReport: 50, outputReport: 50, initialPresent: true, outputPresent: true, wantCall: "K1ABD", wantGlyph: "C", normalComment: "CW 50 dB", corrections: 1},
 		{name: "below_domain", initialReport: -51, outputReport: -51, initialPresent: true, outputPresent: true, wantCall: "K1ABC", wantGlyph: "P", normalComment: "CW -51 dB"},
 		{name: "above_domain", initialReport: 51, outputReport: 51, initialPresent: true, outputPresent: true, wantCall: "K1ABC", wantGlyph: "P", normalComment: "CW 51 dB"},
-		{name: "newest_missing_supersedes_present", initialPresent: true, update: "newer_missing", wantCall: "K1ABC", wantGlyph: "P", normalComment: "CW"},
-		{name: "equal_time_present_then_missing", initialPresent: true, update: "equal_missing", wantCall: "K1ABC", wantGlyph: "P", normalComment: "CW"},
-		{name: "equal_time_missing_then_present", update: "equal_present", outputPresent: true, wantCall: "K1ABD", wantGlyph: "C", normalComment: "CW 0 dB", corrections: 1},
+		{name: "newest_missing_supersedes_only_that_receiver", initialPresent: true, update: "newer_missing", wantCall: "K1ABD", wantGlyph: "C", normalComment: "CW", corrections: 1},
+		{name: "equal_time_present_then_missing", initialPresent: true, update: "equal_missing", wantCall: "K1ABD", wantGlyph: "C", normalComment: "CW", corrections: 1},
+		{name: "equal_time_missing_then_present", update: "equal_present", outputPresent: true, wantCall: "K1ABC", wantGlyph: "P", normalComment: "CW 0 dB"},
 		{name: "older_missing_does_not_supersede_present", initialPresent: true, update: "older_missing", outputPresent: true, wantCall: "K1ABD", wantGlyph: "C", normalComment: "CW 0 dB", corrections: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -113,6 +113,35 @@ func correctionSNRCheckDelivery(t *testing.T, tc correctionSNRDeliveryCase) {
 	}
 	if snapshot.ReceiverEvidence() == nil || snapshot.ReceiverEvidence().Len() != 4 || r.MetricsSnapshot().DropReliability != 0 {
 		t.Fatal("unavailable SNR must not remove receiver support or reject its weight")
+	}
+	// One receiver's missing/conflicted update cannot erase its peer's measured
+	// report. Literal scores retain the D hypothesis whenever at least the
+	// unchanged C/D pair is measured: log(101/153) > log(2/54).
+	wantMeasured := 0
+	if tc.initialPresent {
+		wantMeasured = 4
+	}
+	wantConflicts := 0
+	switch tc.update {
+	case "newer_missing":
+		wantMeasured = 2
+	case "equal_missing":
+		wantMeasured, wantConflicts = 2, 2
+	case "equal_present":
+		wantMeasured, wantConflicts = 0, 2
+	}
+	measured, conflicts := 0, 0
+	snapshot.ReceiverEvidence().Range(func(_ string, row spot.ResolverReceiverObservation) bool {
+		if row.HasReport && !row.SNRConflict {
+			measured++
+		}
+		if row.SNRConflict {
+			conflicts++
+		}
+		return true
+	})
+	if measured != wantMeasured || conflicts != wantConflicts {
+		t.Fatalf("receiver-bound presence/conflicts=%d/%d want %d/%d", measured, conflicts, wantMeasured, wantConflicts)
 	}
 	f := newAmbiguityDeliveryFixture(t, r, cfg)
 	f.pipeline.confusionModel = model

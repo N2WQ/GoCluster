@@ -84,6 +84,22 @@ Overlapping candidate shares can therefore sum to more than 100%. Weights
 900 and 950 supporting A against weight 1000 supporting B give A a displayed
 64% share, regardless of repeated buckets.
 
+Correction voting unions equivalent slash permutations, such as `LZ/K1ABC`
+and `K1ABC/LZ`, by canonical vote identity. Each receiver counts once in that
+candidate and once in the overall population. The display remains an actually
+observed spelling, selected by eligible distinct support, then recency, then
+lexical order. Equivalent display changes alone are not corrections, temporal
+switches or new hysteresis transitions. Removing one spelling preserves an
+identity supported by another; removing its final spelling revokes that state.
+
+`family_policy.slash_precedence_min_reports` is independent of the ordinary
+report floor; its existing fallback is two. A qualifying slash identity can
+exclude its bare counterpart from replacement eligibility, while bare support
+and dissent remain in the denominator. Ordinary correction gates still apply.
+All candidate members of an admitted settled population may nominate; this is
+not a winners-only nomination rule. Canonical union retains the existing raw
+owner caps rather than imposing a new 64-receiver cap on a merged identity.
+
 The percentage keeps the meaning of the supplied evidence:
 
 | Evidence | Percentage |
@@ -130,6 +146,14 @@ the inclusive recency cutoff and excludes future observations. Saved proposals
 carry no support authority. Current settled evidence and ordinary correction
 gates authorize a changed identity; confirmed history counts accepted changes.
 Fresh evidence in a key/window does not prove the same RF transmission episode.
+Partial-fresh projections also recompute optional confusion ordering from the
+surviving receiver SNR rows. They can retain the old settled identity only while
+it remains leading, or revoke its authority; a reader cannot settle a new winner
+or advance hysteresis. Superseded older alias rows do not reappear at a backward
+query clock. Compact temporal snapshots discard full receiver generations.
+Ingestion remains asynchronous and nonblocking: a read does not wait for the
+current receipt to be published, and these rules do not promise identical live
+arrival and replay outputs.
 The narrow ambiguity guard uses the closest eligible cross-candidate frequency
 pair, with its other support, overlap and family conditions unchanged. Conflicting
 equal-time frequency metadata causes abstention until superseded or expired.
@@ -219,17 +243,79 @@ and model weights are checked before clamps, while unused model weights remain
 unused. Borrowed reliability maps must remain immutable while a resolver uses
 them. See [ADR-0290](../docs/decisions/ADR-0290-correction-numerical-asset-integrity.md).
 
-Confusion scoring requires a present report within the model's SNR domain.
-Missing reports, nonfinite SNR and out-of-domain SNR add no model contribution;
-their receiver evidence still counts. Reported zero is present and contributes
-when it belongs to a configured `(lower, upper]` bin. The candidate's newest
-timestamped report remains its representative, with later receipt winning at
-equal timestamps; a missing newest report supersedes an earlier present one.
-No per-receiver SNR averaging or newest-present fallback is performed. See
-[ADR-0291](../docs/decisions/ADR-0291-correction-snr-presence-and-domain.md).
+Each receiver supplies its own timestamped SNR presence/value and reliability.
+The newest timestamp supersedes its older metadata. At equal timestamps,
+different numeric SNRs or present-versus-missing reports make SNR unknown until
+a strictly newer report replaces the conflict. That newer report's own presence
+still controls eligibility; there is no newest-present fallback or averaging.
+The join is independent of receipt order for the same retained reports.
+
+Only the eligible top cohort tied in both raw and weighted support supplies
+confusion hypotheses and observations. Canonical self-matches contribute zero.
+Missing/conflicted SNR, nonfinite or out-of-domain inputs, and zero receiver
+weight omit only the optional model contribution; support and denominators
+survive. Reported zero is present when it belongs to a configured `(lower,
+upper]` bin. Pair alignment and integer SNR-bin reductions are reused within the
+bounded evaluation, without a lifetime pair cache. See
+[ADR-0360](../docs/decisions/ADR-0360-call-correction-v2-evidence-and-bounded-bonuses.md).
+
+Harmonic filtering also requires a present report on both sides of its SNR
+comparison. A missing report neither seeds a fundamental nor supplies a weaker
+measurement; reported zero remains measured. Existing comparisons across
+receivers and eligible modes are unchanged. Harmonic retention remains based on
+its recency window without a hard total entry cap; this presence repair adds no
+registry or extra admissions.
 
 These checks establish input integrity. They do not establish training validity,
 field accuracy or calibrated probabilities.
+
+### Bounded historical bonuses
+
+The Bayesian-style score is a capped heuristic over weighted support and recent
+history, not a probability. Its report rail supplies at most one missing report;
+it does not add another report after ordinary recent +1 fills that floor. Its
+advantage rail independently considers a raw-support tie, including populations
+that already meet the report floor. Both require usable stronger winner history,
+the configured receiver minimum and candidate validation when requested.
+Advantage also retains its weighted-delta, extra-confidence and distance-2
+subject-validation requirements. Ambiguity, edit-neighbor, distance, frequency,
+family, confidence, CTY and license guards remain active.
+
+Optional `bayes_bonus.enabled_distances_by_mode` selects complete mode/distance
+cells. Omission preserves legacy eligibility; an explicit empty map selects
+none. See the [configuration contract](../data/config/README.md#call-correction-bayes-cells)
+for empty mode lists, null rejection, merge behavior and structural capacity
+checks. Enabling a cell or loading custom thresholds is not evidence that the
+configuration improves accuracy. Constructed reachability tests and archive
+qualification answer different questions.
+
+### Selective current-signal rescue
+
+Optional `call_correction.selective_rescue_enabled` ships false. Enabled C runs
+only after an ordinary nonterminal CW decision and can propose a currently
+supported lower-ranked call. It uses frequency-backed signal groups while
+retaining unknown/spanning dissent. A credible unrelated competing identity
+can decline the additional proposal. Configured distance three is bounded by
+the global cap; ordinary numerical, history, licensing, pending and loss gates
+remain. Frequency witnesses are conditional evidence, not proof of RF identity.
+
+Ordinary mutation, suppression and replacement-validation rejection are terminal.
+Immediate decisions and genuine held resolver fallback may assess fresh C.
+Held Apply is limited to its existing guard-admitted identity and a saved fixed
+lifecycle witness; equal generations still require fresh rows and clocks.
+Temporal abstain/bypass, all Observe overflows and all stabilizer retries gain
+no additional rescue. The explicit route/outcome governs this, never a glyph.
+
+Accepted C reuses the existing classification/grid/cache and final-validation
+owners. Public support is the ordinary snapshot's share for the emitted call,
+or unavailable when absent. Group percentages and model scores never replace
+that public population or promote C to V. CustomSCP's V-only learning and legacy
+accepted CW/RTTY history remain distinct. Live CW admission remains source
+agnostic; RBN archives do not establish performance on every live source.
+
+The separate receiver-compatibility B comparison is replay-only and has no live
+asset loader or policy setting. See [ADR-0361](../docs/decisions/ADR-0361-selective-current-signal-call-rescue.md)
+and [configuration](../data/config/README.md#selective-cw-rescue).
 
 ### The `S` floor
 
@@ -249,9 +335,10 @@ Two glyphs represent correction outcomes rather than raw confidence:
 - `C`: correction applied and validated
 - `B`: correction attempted, but the candidate failed base-call or CTY validation, so the original call stayed on the spot
 
-The percentage describes the call on that spot. A rejected replacement keeps
-`B` and the retained original's support share; an accepted `C` uses the new call's
-share. No eligible support means the percentage is unavailable (`--%` in DIAG
+The percentage describes the call on that spot. Base/CTY rejection in broadcast
+mode keeps `B` and the original's share; replacement-license rejection can keep
+its ordinary glyph. Accepted `C` uses the new call's ordinary share. No eligible
+support means the percentage is unavailable (`--%` in DIAG
 CONF). Equal weights with one receiver for the retained call and two for the
 rejected candidate give 33%; unequal weights use the retained call's weighted
 share. The glyph records the outcome separately from that support percentage.
@@ -433,6 +520,13 @@ add their own minima. Tightening the stabilizer does not raise resolver or FT
 requirements. Partial counts remain visible to the Bayesian prior and diagnostics;
 qualification gates still check their effective receiver minimum. Boolean store
 queries preserve the request instead of lowering it to the storage cap.
+
+One correction gate captures the first historical count for each of at most
+eight normalized alias lookup keys: raw, canonical vote, base and display for
+the subject and candidate. Report/advantage and validation checks reuse those
+counts, including zero. Different keys can observe different store publications;
+this is not a globally atomic history snapshot. Every later immediate, temporal
+or stabilizer retry captures fresh counts with its own clock and requirements.
 
 The custom S floor uses its dedicated exact/family thresholds. The independent
 FT recent floor uses the common receiver minimum without inheriting stabilizer

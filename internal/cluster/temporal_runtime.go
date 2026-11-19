@@ -24,7 +24,9 @@ type runtimeTemporalPending struct {
 	hasStabilizerResolverKey   bool
 	stabilizerEvidenceEnqueued bool
 	selection                  correctionflow.ResolverPrimarySelection
-	maxAt                      time.Time
+	// Fixed lifecycle presence/generation only; receiver rows stay request-local.
+	frequencyLifecycles correctionflow.FrequencyLifecycleVector
+	maxAt               time.Time
 }
 
 type runtimeTemporalRelease struct {

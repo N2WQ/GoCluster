@@ -19,13 +19,126 @@ import (
 
 func main() {
 	var (
-		dateFlag         = flag.String("date", "", "UTC date to replay (YYYY-MM-DD or YYYYMMDD)")
-		replayConfigFlag = flag.String("replay-config", defaultReplayConfigPath, "Replay config YAML path")
-		configDirFlag    = flag.String("config", "", "Cluster config directory override (defaults to replay config, DXC_CONFIG_PATH, or data/config)")
-		archiveDirFlag   = flag.String("archive-dir", "", "Archive directory override (defaults to replay config)")
-		forceDownload    = flag.Bool("force-download", false, "Force re-download of the RBN history zip (overrides replay config)")
+		dateFlag            = flag.String("date", "", "UTC date to replay (YYYY-MM-DD or YYYYMMDD)")
+		replayConfigFlag    = flag.String("replay-config", defaultReplayConfigPath, "Replay config YAML path")
+		configDirFlag       = flag.String("config", "", "Cluster config directory override (defaults to replay config, DXC_CONFIG_PATH, or data/config)")
+		archiveDirFlag      = flag.String("archive-dir", "", "Archive directory override (defaults to replay config)")
+		forceDownload       = flag.Bool("force-download", false, "Force re-download of the RBN history zip (overrides replay config)")
+		studyPlan           = flag.String("study-plan", "", "Frozen CCv2 study JSON (local archives only)")
+		studyFreeze         = flag.String("study-freeze", "", "SHA256 of the already frozen study plan")
+		studyArm            = flag.String("study-arm", "", "Study arm: shipped, repaired_off, or repaired_on")
+		studyCandidate      = flag.String("study-candidate", "", "Complete predeclared study candidate ID")
+		studyPhase          = flag.String("study-phase", "holdout", "Study population: tuning or holdout")
+		studyOut            = flag.String("study-out", "", "New study output directory (must not exist)")
+		studyCompare        = flag.String("study-compare", "", "Comma-separated complete study report paths to compare")
+		diagnosticSelection = flag.String("study-diagnostic-selection", "", "Frozen exposed diagnostic case selection (not qualification)")
+		diagnosticFreeze    = flag.String("study-diagnostic-freeze", "", "SHA256 of the frozen diagnostic case selection")
+		methodPlan          = flag.String("study-method-plan", "", "Frozen replay-only experimental method plan")
+		methodFreeze        = flag.String("study-method-freeze", "", "SHA256 of the frozen experimental method plan")
+		methodCandidate     = flag.String("study-method-candidate", "", "Complete predeclared experimental method candidate")
+		methodEvalPlan      = flag.String("study-method-eval-plan", "", "Frozen named-role experimental evaluation plan")
+		methodEvalFreeze    = flag.String("study-method-eval-freeze", "", "SHA256 of the frozen experimental evaluation plan")
+		methodEvalOut       = flag.String("study-method-eval-out", "", "New bounded experimental evaluation directory")
+		auditPlan           = flag.String("study-audit-plan", "", "Frozen v5 audit JSON for existing study predictions only")
+		auditFreeze         = flag.String("study-audit-freeze", "", "SHA256 of the frozen audit plan")
+		auditOut            = flag.String("study-audit-out", "", "New audit evidence directory (must not exist)")
 	)
 	flag.Parse()
+	auditRequested := false
+	var auditOverrides []string
+	flag.Visit(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "study-audit-") {
+			auditRequested = true
+		} else {
+			auditOverrides = append(auditOverrides, f.Name)
+		}
+	})
+	if auditRequested {
+		if len(auditOverrides) > 0 || len(flag.Args()) > 0 {
+			must(errors.New("audit uses only its frozen plan inputs; replay/study overrides and positional arguments are not allowed"))
+		}
+		must(runCCV2Audit(*auditPlan, *auditFreeze, *auditOut))
+		return
+	}
+	evaluationRequested := false
+	var evaluationOverrides []string
+	flag.Visit(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "study-method-eval-") {
+			evaluationRequested = true
+		} else {
+			evaluationOverrides = append(evaluationOverrides, f.Name)
+		}
+	})
+	for _, argument := range flag.Args() {
+		if studyMethodEvaluationCLIFlag(argument) {
+			evaluationRequested = true
+		}
+	}
+	if evaluationRequested {
+		if len(evaluationOverrides) > 0 || len(flag.Args()) > 0 {
+			must(errors.New("method evaluation uses only frozen plan inputs; overrides and positional arguments are not allowed"))
+		}
+		if *methodEvalPlan == "" || *methodEvalFreeze == "" || *methodEvalOut == "" {
+			must(errors.New("method evaluation plan, frozen SHA256 and output are required together and nonempty"))
+		}
+		must(runStudyMethodEvaluation(*methodEvalPlan, *methodEvalFreeze, *methodEvalOut))
+		return
+	}
+	studyRequested := false
+	diagnosticRequested, compareRequested := false, false
+	methodRequested := false
+	var replayOverrides []string
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "study-diagnostic-selection" || f.Name == "study-diagnostic-freeze" {
+			diagnosticRequested = true
+		}
+		if f.Name == "study-compare" {
+			compareRequested = true
+		}
+		if f.Name == "study-method-plan" || f.Name == "study-method-freeze" || f.Name == "study-method-candidate" {
+			methodRequested = true
+		}
+		if strings.HasPrefix(f.Name, "study-") {
+			studyRequested = true
+		} else if f.Name != "date" {
+			replayOverrides = append(replayOverrides, f.Name)
+		}
+	})
+	// Flag parsing stops at the first positional argument. A diagnostic flag
+	// stranded after it still identifies a refused study invocation; it must
+	// not let ordinary replay reach archive discovery or download.
+	for _, argument := range flag.Args() {
+		if studyDiagnosticCLIFlag(argument) {
+			diagnosticRequested, studyRequested = true, true
+		}
+		if studyMethodCLIFlag(argument) {
+			methodRequested, studyRequested = true, true
+		}
+	}
+	if studyRequested {
+		if len(replayOverrides) > 0 || len(flag.Args()) > 0 {
+			must(errors.New("study uses only frozen plan inputs; ordinary replay overrides and positional arguments are not allowed"))
+		}
+		if diagnosticRequested && (*diagnosticSelection == "" || *diagnosticFreeze == "") {
+			must(errors.New("diagnostic selection and frozen SHA256 must be supplied together and nonempty"))
+		}
+		if diagnosticRequested && compareRequested {
+			must(errors.New("diagnostic capture cannot be used for study comparison"))
+		}
+		if methodRequested && (*methodPlan == "" || *methodFreeze == "" || *methodCandidate == "") {
+			must(errors.New("method plan, frozen SHA256 and candidate must be supplied together and nonempty"))
+		}
+		if methodRequested && (diagnosticRequested || compareRequested) {
+			must(errors.New("experimental method execution cannot be combined with selected diagnostics or legacy comparison"))
+		}
+		req := studyCLIRequest{Plan: *studyPlan, Freeze: *studyFreeze, Arm: *studyArm,
+			Candidate: *studyCandidate, Phase: *studyPhase, Output: *studyOut, Compare: *studyCompare, Date: *dateFlag,
+			DiagnosticSelection: *diagnosticSelection, DiagnosticFreeze: *diagnosticFreeze,
+			MethodPlan: *methodPlan, MethodFreeze: *methodFreeze, MethodCandidate: *methodCandidate}
+		must(studyDiagnosticValidateRequest(req))
+		must(runCCV2Study(req))
+		return
+	}
 	must(runReplay(replayRequest{
 		dateValue:        *dateFlag,
 		replayConfigPath: *replayConfigFlag,

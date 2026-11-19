@@ -3,3 +3,6 @@ data/fcc/** filter=lfs diff=lfs merge=lfs -text
 data/rbn/** filter=lfs diff=lfs merge=lfs -text
 /go.mod text eol=lf
 /go.sum text eol=lf
+# Frozen experiment fixtures carry raw-byte SHA-256 bindings.
+/internal/correctionflow/testdata/frequency_consumed_v7.json text eol=lf
+/cmd/rbn_replay/testdata/ordinal_fitted_v7.json text eol=lf

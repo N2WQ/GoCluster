@@ -915,6 +915,9 @@ const (
 // CallCorrectionConfig controls resolver-primary DX call correction behavior.
 type CallCorrectionConfig struct {
 	Enabled bool `yaml:"enabled"`
+	// SelectiveRescueEnabled admits additional C rescues after an ordinary
+	// nonterminal failure. False is omitted from historical effective JSON hashes.
+	SelectiveRescueEnabled bool `yaml:"selective_rescue_enabled" json:"SelectiveRescueEnabled,omitempty"`
 	// BandStateOverrides allows per-band, per-activity-state tuning of frequency tolerance.
 	// Values fall back to the global defaults when omitted.
 	BandStateOverrides []BandStateOverride `yaml:"band_state_overrides"`
@@ -1127,6 +1130,9 @@ type CallCorrectionTemporalDecoderConfig struct {
 // resolver-primary gate bonus for distance-1/2 candidates.
 type CallCorrectionBayesBonusConfig struct {
 	Enabled bool `yaml:"enabled"`
+	// Nil preserves legacy mode/distance eligibility. An explicit empty map or
+	// a mode with no distances disables those cells; loaded maps are immutable.
+	EnabledDistancesByMode map[string][]int `yaml:"enabled_distances_by_mode"`
 
 	// Distance-specific prior scaling (permille). Example: 350 => 0.35.
 	WeightDistance1Milli int `yaml:"weight_distance1_milli"`
@@ -2094,6 +2100,9 @@ func normalizeCallCorrectionConfig(cfg *Config, presence loadRawPresence) error 
 	}
 	normalizeCallCorrectionResolverConfig(cfg, presence)
 	normalizeCallCorrectionBayesDefaultsConfig(cfg, presence)
+	if err := normalizeCallCorrectionBayesMaskConfig(cfg); err != nil {
+		return err
+	}
 	if err := normalizeCallCorrectionTemporalConfig(cfg); err != nil {
 		return err
 	}
@@ -3703,11 +3712,36 @@ func loadConfigDir(path string) (loadedConfigDir, LoadDiagnostics, error) {
 	}, diagnostics, nil
 }
 
-// Purpose: Deep-merge nested YAML maps.
-// Key aspects: Recurses into sub-maps; src overwrites non-map values.
+// Purpose: Merge runtime documents while preserving complete Bayes masks.
+// Key aspects: Other maps deep-merge; an explicitly supplied Bayes mask replaces
+// the whole previous mask, including when it is {}. Missing modes mean disabled
+// cells and must not inherit cells from an earlier runtime file or test overlay.
 // Upstream: loadConfigDir.
-// Downstream: None.
+// Downstream: deepMergeYAMLMaps.
 func mergeYAMLMaps(dst, src map[string]any) map[string]any {
+	incomingMask, hasMask := yamlValueAt(src, "call_correction", "bayes_bonus", "enabled_distances_by_mode")
+	if hasMask {
+		if previous, present := yamlValueAt(dst, "call_correction", "bayes_bonus"); present {
+			if previousMap, ok := previous.(map[string]any); ok {
+				delete(previousMap, "enabled_distances_by_mode")
+			}
+		}
+	}
+	merged := deepMergeYAMLMaps(dst, src)
+	if hasMask {
+		// Capture and restore also preserves the source when callers share the
+		// parent map. The explicit source path guarantees mapping parents here.
+		parent, _ := yamlValueAt(merged, "call_correction", "bayes_bonus")
+		parentMap, ok := parent.(map[string]any)
+		if !ok {
+			panic("merged Bayes mask lost its mapping parent")
+		}
+		parentMap["enabled_distances_by_mode"] = incomingMask
+	}
+	return merged
+}
+
+func deepMergeYAMLMaps(dst, src map[string]any) map[string]any {
 	if dst == nil {
 		dst = make(map[string]any)
 	}
@@ -3716,7 +3750,7 @@ func mergeYAMLMaps(dst, src map[string]any) map[string]any {
 			existingMap, okExisting := existing.(map[string]any)
 			incomingMap, okIncoming := val.(map[string]any)
 			if okExisting && okIncoming {
-				dst[key] = mergeYAMLMaps(existingMap, incomingMap)
+				dst[key] = deepMergeYAMLMaps(existingMap, incomingMap)
 				continue
 			}
 		}
@@ -4032,11 +4066,24 @@ func (c *Config) PrintTo(w io.Writer) {
 		c.CallCorrection.ResolverRecentPlus1MaxDistance,
 		c.CallCorrection.ResolverRecentPlus1AllowTruncation)
 	bayesStatus := "disabled"
-	if c.CallCorrection.BayesBonus.Enabled {
+	bayesCells := c.CallCorrection.bayesBonusEnabledCells()
+	if len(bayesCells) > 0 {
 		bayesStatus = "enabled"
+	} else if c.CallCorrection.BayesBonus.Enabled {
+		bayesStatus = "inactive"
 	}
-	fmt.Fprintf(w, "Call correction bayes bonus: %s (w_d1=%d w_d2=%d tau_w=%d alpha_recent=%d obs_cap=%d prior=[%d,%d] report_thr=[%d,%d] adv_thr=[%d,%d] adv_delta_w=[%d,%d] adv_conf=[%d,%d] require_candidate_validated=%t require_subject_unvalidated_d2=%t)\n",
+	bayesMask := "explicit"
+	if c.CallCorrection.BayesBonus.EnabledDistancesByMode == nil {
+		bayesMask = "legacy"
+	}
+	bayesCellText := "none"
+	if len(bayesCells) > 0 {
+		bayesCellText = strings.Join(bayesCells, ",")
+	}
+	fmt.Fprintf(w, "Call correction bayes bonus: %s (mask=%s cells=%s w_d1=%d w_d2=%d tau_w=%d alpha_recent=%d obs_cap=%d prior=[%d,%d] report_thr=[%d,%d] adv_thr=[%d,%d] adv_delta_w=[%d,%d] adv_conf=[%d,%d] require_candidate_validated=%t require_subject_unvalidated_d2=%t)\n",
 		bayesStatus,
+		bayesMask,
+		bayesCellText,
 		c.CallCorrection.BayesBonus.WeightDistance1Milli,
 		c.CallCorrection.BayesBonus.WeightDistance2Milli,
 		c.CallCorrection.BayesBonus.WeightedSmoothingMilli,

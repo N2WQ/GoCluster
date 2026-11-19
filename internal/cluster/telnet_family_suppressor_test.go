@@ -184,12 +184,12 @@ func TestTelnetFamilySuppressorExactWholePercentMath(t *testing.T) {
 		{"mixed_basis", "W1ABC", 3, 1000, []spot.ResolverCandidateSupport{{Call: "W1AB", Support: 1, WeightedSupportMilli: 1000}, {Call: "W1ABC", Support: 2}}, 0, false},
 		{"no_positive_support", "W1AB", 3, 1000, []spot.ResolverCandidateSupport{{Call: "W1AB", WeightedSupportMilli: 1000}}, 0, false},
 		{"no_total", "W1AB", 0, 0, []spot.ResolverCandidateSupport{{Call: "W1AB", Support: 1}}, 0, false},
-		{"literal_alias_not_pooled", "KP4/N2WQ", 3, 0, []spot.ResolverCandidateSupport{{Call: "N2WQ/KP4", Support: 2}}, 0, false},
+		{"canonical_alias_uses_union", "KP4/N2WQ", 3, 0, []spot.ResolverCandidateSupport{{Call: "N2WQ/KP4", Support: 2}}, 66, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			snapshot := spot.ResolverSnapshot{TotalReporters: tc.total, TotalWeightedSupportMilli: tc.weighted, CandidateRanks: tc.ranks,
 				Winner: "W9CONTROL", WinnerSupport: 3}
-			if tc.name == "raw_no_weighted_total" || tc.name == "absent_candidate" || tc.name == "literal_alias_not_pooled" {
+			if tc.name == "raw_no_weighted_total" || tc.name == "absent_candidate" || tc.name == "canonical_alias_uses_union" {
 				snapshot.SupportBasis = spot.ResolverSupportBasisReceivers
 			}
 			got, ok := familyPercent(snapshot, tc.call)
@@ -355,16 +355,26 @@ func TestTelnetFamilySuppressorLiteralWitnessPerLane(t *testing.T) {
 	telnetFamilyAdmit(t, s, "KP4/N2WQ", 7010, "CW", cfg, now, familyLanes{fast: true})
 	telnetFamilyAdmit(t, s, "N2WQ/KP4", 7010, "CW", cfg, now.Add(time.Second), familyLanes{med: true})
 	selection := telnetFamilyTestSelection(3,
-		spot.ResolverCandidateSupport{Call: "KP4/N2WQ", Support: 1, WeightedSupportMilli: 600},
-		spot.ResolverCandidateSupport{Call: "N2WQ", Support: 1, WeightedSupportMilli: 300},
-		spot.ResolverCandidateSupport{Call: "N2WQ/KP4", Support: 1, WeightedSupportMilli: 100})
+		spot.ResolverCandidateSupport{Call: "KP4/N2WQ", VoteKey: "N2WQ/KP4", ObservedCalls: []string{"KP4/N2WQ", "N2WQ/KP4"}, Support: 2, WeightedSupportMilli: 700},
+		spot.ResolverCandidateSupport{Call: "N2WQ", VoteKey: "N2WQ", Support: 1, WeightedSupportMilli: 300})
 	selection.Snapshot.TotalWeightedSupportMilli = 1000
-	telnetFamilyTestHandoff(t, s, spot.NewSpot("N2WQ", "W0TEST", 7010, "CW"), cfg, now.Add(2*time.Second), familyLanes{true, true, true}, selection, false, familyLanes{med: true, slow: true})
+	// Both independently admitted literals now share canonical support. Each
+	// still needs its own currently observed, successfully admitted lane witness.
+	telnetFamilyTestHandoff(t, s, spot.NewSpot("N2WQ", "W0TEST", 7010, "CW"), cfg, now.Add(2*time.Second), familyLanes{true, true, true}, selection, false, familyLanes{slow: true})
+	current := selection
+	current.Snapshot.CandidateRanks = append([]spot.ResolverCandidateSupport(nil), selection.Snapshot.CandidateRanks...)
+	current.Snapshot.CandidateRanks[0].ObservedCalls = []string{"KP4/N2WQ"}
+	// A new publication without the MED lane's literal cannot borrow FAST's
+	// witness, even though their semantic union still has strong support.
+	telnetFamilyTestHandoff(t, s, spot.NewSpot("N2WQ", "W0TEST", 7010, "CW"), cfg, now.Add(2*time.Second), familyLanes{true, true, true}, current, false, familyLanes{med: true, slow: true})
 	for _, entry := range telnetFamilyState(t, s, 1).entries {
 		if entry.lanes[0].call != "KP4/N2WQ" || entry.lanes[1].call != "N2WQ/KP4" || entry.lanes[2].call != "" {
 			t.Fatalf("literal witnesses pooled or crossed lanes: %+v", entry.lanes)
 		}
 	}
+	unadmitted := newTestTelnetFamilySuppressor()
+	telnetFamilyAdmit(t, unadmitted, "KP4/N2WQ", 7010, "CW", cfg, now, familyLanes{fast: true})
+	telnetFamilyTestHandoff(t, unadmitted, spot.NewSpot("N2WQ", "W0TEST", 7010, "CW"), cfg, now.Add(2*time.Second), familyLanes{true, true, true}, selection, false, familyLanes{med: true, slow: true})
 }
 
 func TestTelnetFamilySuppressorWinnerRunnerFallback(t *testing.T) {

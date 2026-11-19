@@ -55,6 +55,12 @@ Replay config:
   CustomSCP retains its separate historical clock/maintenance contract.
 - Replay fails fast on timestamp regressions, out-of-day records, resolver enqueue failures, and resolver hard-drop counters.
 
+These guarantees concern fixed ordered replay input and evaluation clocks.
+Receiver SNR joins are order-independent for the same retained timestamped
+reports, but live ingestion still reads the latest asynchronous publication
+without waiting for the current receipt. Replay does not promise to reconstruct
+live arrival scheduling or every already emitted live outcome.
+
 With identical target reports, unrelated traffic must not change a held spot's
 scheduled release time or correction outcome when that traffic neither triggers
 capacity limits nor changes relevant evidence. Correct deadline handling can
@@ -147,6 +153,211 @@ precision. Both offline tools check the transformed value before conversion.
 Resolver model scoring omits missing or out-of-domain SNR without removing its
 receiver support; valid bins remain `(lower, upper]`.
 
+Each receiver's newest SNR is retained separately. Equal-time numeric or
+presence disagreement stays unknown until a strictly newer report supersedes
+it. Canonical slash permutations share a distinct-receiver voting identity,
+while mutations use a current observed display spelling. Alias-only changes do
+not count as corrections or temporal switches. Fresh temporal release regroups
+eligible published rows and can retain or revoke settled authority, without
+settling a new winner. See the [shared evidence contract](../spot/README.md#resolver-capable-modes).
+
+## Bayes evaluation and evidence limits
+
+Replay and the offline evaluator use the same independent bounded report and
+advantage rails, ordinary guards and typed cell mask as live correction. The
+score remains a capped weighted-support/history heuristic, not a calibrated
+probability or a full generative RF model. The report rail does not stack another
+report on a floor already filled by ordinary recent +1. The advantage rail can
+qualify an already full-report raw tie, with its own extra checks. Mask omission
+preserves runtime CW/RTTY/USB/LSB eligibility; explicit `{}` enables none.
+The archive study's declared maps remain CW/RTTY only. See the
+[mask and capacity contract](../data/config/README.md#call-correction-bayes-cells).
+
+Within one gate, at most eight subject/candidate alias counts are captured once
+and reused across the historical qualifiers. Separate alias keys need not come
+from one atomic store publication. Later correction and temporal/stabilizer
+retries query afresh; no historical count cache survives the decision.
+
+The public full-history CSV projection currently carries receiver calls and
+SNR, but no DE grid or receiver coordinates, and `newReplaySpot` supplies no
+geographic enrichment in ordinary replay. Loading H3 tables alone cannot supply
+a receiver's cell. The owner separately accepted the frozen CTY-derived study
+scenario in [approved v4](call-correction-v2-scope-ledger-v4.md). This accepts
+representative prefix locations as conditional study inputs, independently of
+the already accepted uncertainty in RBN reference labels. It does not establish
+historical receiver sites, reported grids, station independence or live location
+availability/timing. Common imputation can overstate or understate geographic
+diversity; using it in every arm does not cancel nonlinear eligibility errors.
+
+CSV replay also retains a parsed numeric 0 dB report as a measured value. The
+full live RBN client currently discards that report. This existing population
+difference can affect support, correction and subsequent learning; identical
+archive input between arms does not establish full live-input equivalence.
+
+### Explicit study input scenario (schema 2)
+
+Study plans, completion reports and comparisons now require `schema_version: 2`
+and an explicit `input_scenario`:
+
+| Field | Required meaning |
+| --- | --- |
+| `receiver_geography` | `cty_representative_v1` |
+| `cty_sha256` | Frozen CTY image digest |
+| `h3_res1_sha256` | Frozen `res1.bin` digest |
+| `h3_res2_sha256` | Frozen `res2.bin` digest |
+
+These are semantic roles bound to each arm's actual configured paths and asset
+manifest, rather than an unordered set of hashes. The CLI validates the schema,
+scenario and frozen inputs, copies verified assets into run-owned storage, loads
+a nonempty CTY image and initializes H3 before parsing raw archive contents.
+Missing, corrupt, mismatched or wrongly bound assets are setup failures, not
+unknown receiver locations. An invalid run never publishes `complete.json`;
+partial/`FAILED.json` evidence cannot qualify a candidate.
+
+Only the study hook derives a four-character receiver grid from the frozen CTY
+image, before focal-A activity/history/learning. It uses the live receiver
+normalization and portable CTY precedence, preserving location segments such as
+`K1ABC/DL-#` while removing the final hyphen suffix. Known grids are marked
+derived. A missing match, invalid coordinates or empty receiver remains unknown;
+legitimate zero coordinates are valid. The identical rule and CTY/H3 inputs apply
+to shipped, repaired-off and repaired-on arms. Ordinary replay/server behavior
+and history minima are unchanged; no receiver-location registry is added.
+
+Every focal-A decision records `receiver_location` with `lookup_call`,
+`cty_prefix`, `grid`, `known`, `derived` and `reason`. Report `input_coverage`
+reconciles `known_derived_grid`, `unknown_cty_match`,
+`unknown_invalid_coordinates` and `unknown_empty_receiver` with
+`all_focal_a_rows`, `focal_rows` and `terminal_rows`. Coverage includes warmup,
+suppressed and license-rejected outcomes; unknown locations are not filtered
+from the population. Withheld B rows remain raw reference inputs and do not
+enter predictor learning.
+
+Comparison validates complete coverage against decision streams and binds the
+same per-row location covariates across arms alongside raw hashes, episode IDs,
+R1 and R2Frozen. Terminal R2 still follows the existing 75-second decision cutoff.
+Old/missing schemas, scenario drift, asset drift and paired-covariate drift are
+refused. Earlier artifacts remain historical evidence; schema-1 reports cannot
+be mixed into a schema-2 comparison. Comparator binaries, configurations, assets,
+candidates and maps must be frozen again for the selected input scenario.
+
+Constructed seeded-cell reachability tests establish their own wiring. Separate
+CSV-to-resolver-V-to-CustomSCP tests now exercise the study hook without manually
+seeded DE grids/history: four receivers across two derived cells meet the mapped
+four-receiver/two-cell gate, while same-cell and unknown controls do not. Neither
+test establishes real archive coverage or empirical qualification.
+
+Constructed tests establish reachable branches and accounting, not archive
+accuracy, RF truth, production performance or empirical activation. Qualification
+must cover the exact scalar vector and complete active-cell combination with
+untouched reference evidence, including incremental reference-supported corrected
+cases and wrong renames. Neither legacy defaults nor arbitrary operator tuning
+inherits that evidence. No study qualification or activation follows from this
+documentation; the [execution record](call-correction-v2-execution.md) owns the
+current empirical disposition.
+
+### Frozen receipt stability audit
+
+The separate audit entry point re-scores existing frozen
+shipped/repaired-OFF/repaired-ON terminal receipts. Use it for the
+exposed-data investigation authorized by [v5](call-correction-v2-scope-ledger-v5.md).
+It never downloads archives, opens a predictor database, loads a historical
+model or changes an original study artifact.
+
+Supply only these flags; ordinary replay/study flags and positional arguments
+are refused:
+
+| Flag | Value |
+| --- | --- |
+| `-study-audit-plan` | Local, already-frozen audit JSON path |
+| `-study-audit-freeze` | Its externally recorded SHA256, checked before decoding |
+| `-study-audit-out` | New local directory whose parent already exists |
+
+The strict audit schema is version 1 with `frozen: true`, `exposed: true`, and
+explicit `stability` values `window_minutes: 15`, `min_follow_on: 3`,
+`freq_tolerance_hz: 500`. Each `groups` entry declares a hash-bound original
+`plan`, a `phase` (`tuning` or `holdout`), a `candidate` ID and `reports`.
+Each report entry binds both the original completion `report` and its adjacent
+`manifest` using `path`/`sha256`. Every selected original phase/date requires
+all three arms. The total is at most 32 phase/date instances; reused archives
+or duplicated phase/date instances are refused rather than pooled twice.
+
+The audit verifies archive ordinals, raw payloads, receiver families, episodes,
+terminal coverage and historical provenance. Every old 60-minute/two-row/1,000-Hz
+integer total must reconcile before the corresponding date is scored at
+15/3/500. The evidence population remains accepted A-only raw rows, including
+beacon evidence before its later focal exclusion. Scoring retains literal
+normalization, decision timestamps, inclusive endpoints, repeated-row counting
+and the original day-end boundary; no extra mode/band filter is added.
+
+The new directory contains `applied_receipts.jsonl`, `paired_union.jsonl`,
+`aggregates.json` and a final `COMPLETE.json`. Pairing covers every immutable
+focal raw ID; delayed streams are not zipped by position. Compact receipts join
+by raw ID to the hash-bound original decision exports, which retain R1/R2
+reference labels, unknown reasons and covariates. Aggregates report exact
+fractions, added/lost receipts, semantic/literal/scorer-key changes, retiming,
+stability transitions, date/mode and status counts. A zero denominator is
+undefined. These are descriptive stability results, not RF truth or a new
+activation qualification; retain the [reference evidence and its limitations](call-correction-v2-qualification.md).
+
+Run-owned output bytes share a literal 4 GiB quota, with space reserved for
+metadata/failure reporting. Labels are limited to 1,024 bytes, encoded rows to
+64 KiB and records to 8 MiB, with preallocation checks. Day-owned archive and
+pairing state retains the original 8,000,000-row/512 MiB decoded-CSV limits;
+these do not establish a process-RSS limit. All output must flush, sync, close
+and hash successfully before completion is published. Malformed, integrity,
+budget and storage failures return an error without `COMPLETE.json`; partial
+files remain and `FAILED.json` is best effort. Treat only a valid completion
+binding as usable evidence.
+
+### Bounded exposed diagnostic replay
+
+The E1 investigation under [approved v5/v6](call-correction-v2-scope-ledger-v6.md)
+adds optional consumed-evidence capture to a frozen study replay. Supply both
+`-study-diagnostic-selection <local-schema-2-selection.json>` and
+`-study-diagnostic-freeze <externally-recorded-SHA256>` alongside the normal
+study plan, arm, candidate, phase, date and new-output flags. Explicitly empty
+or incomplete pairs, comparison/audit use, ordinary replay overrides and
+positional arguments are refused. Diagnostic dates are restricted to the
+already exposed November 7, 14, 15 and 16, 2026, in study `YYYY-MM-DD` form.
+This path never downloads an archive or activates a correction method.
+
+Selection files are at most 4 MiB and must declare all four exposed dates,
+`schema_version: 2`, `exposed: true` and `max_selected_per_date: 512`.
+Operative facts use exact required names and non-null values. The reader
+checks collection limits before typed allocation and binds selected raw IDs,
+ordinals and row hashes to the actual focal-A archive population. Research
+metadata supplies no prediction. Capture is limited to 512 incoming IDs/date
+and 64 detailed logical records/ID; each encoded row includes its newline in
+the 64 KiB limit, with an 8 MiB limit per logical record and 1,024-byte labels.
+
+The traces describe actual selector reads, receiver evidence, candidate ranks,
+executed rules and temporal windows. They do not repeat a lookup or execute a
+skipped branch for explanation. Observed temporal IDs are joined through a
+complete checked attempt journal, including rejected and unselected attempts.
+Receiver publications do not expose originating archive IDs; those origins
+remain unavailable. A reached learning helper does not prove a committed
+database write. Only the existing ordinary execution supplies decisions.
+
+Every run-owned evidence write and frozen asset copy shares one cumulative
+4 GiB budget, with 16 MiB reserved from data writes for metadata/failure.
+Deletion does not refund bytes, and rename does not debit them again. The
+inherited `custom_scp_runtime` database is excluded and separately measured
+after existing cleanup returns. Its unobserved Close errors remain explicit;
+the final logical file lengths prove neither peak disk use nor durable closure.
+Disabled or legacy backends are explicitly not applicable. Expected missing,
+linked, unsupported or unreadable scratch trees invalidate the capture.
+
+Charged bytes, reserved capacity and retained file bytes name their accounting
+stage; final external reconciliation includes report/completion bytes. Budget,
+copy, mapping, integrity, write/Sync/Close or measurement failure prevents
+`complete.json`; partial output and best-effort `FAILED.json` are troubleshooting
+evidence only. A diagnostic completion report carries a `diagnostics` marker,
+and qualification readers reject any top-level spelling of that marker,
+regardless of its value. Completion establishes evidence completeness, not RF
+accuracy, a fitted model, resource qualification or production readiness.
+The [execution record](call-correction-v2-execution.md) distinguishes completed
+checks from unfinished wiring and captures.
+
 ## Output artifacts
 
 Outputs:
@@ -227,3 +438,183 @@ Options:
 - `-Date YYYY-MM-DD`
 - `-RunIdA <id> -RunIdB <id>`
 - `-HistoryDir "archive data/rbn_replay_history"`
+
+## Experimental frequency and ordinal method
+
+The schema-1 [approved v7 experiment](call-correction-v2-scope-ledger-v7.md) changes
+actual replay predictions. Its sixteen-cell grid is not connected to live
+delivery or runtime YAML. The
+ordinary correction substage runs first; additional currently observed calls
+may then receive frequency-backed gate assessments. Ordinary successful
+corrections and replacement-validation failures are terminal. Ambiguous or
+unknown-frequency receivers remain dissent; time gaps alone do not separate
+signals. Group gate numbers never replace ordinary public/temporal populations.
+
+An explicit method plan enumerates all sixteen gap/time/ranking/CW-distance
+combinations, pins its source revision and model file, and carries a required
+`enabled` boolean. `false` is a real experimental parity run, not absent settings.
+Model loading is strict even when disabled. All four previously exposed November
+7/14/15/16 dates use newly frozen **tuning** capture metadata for the grid; old
+plans and their historical phase labels remain intact.
+
+The investigation-specific preparation command verifies a clean
+`call-correctionv2` checkout, a native replay executable from its exact HEAD,
+all frozen inputs and the four original complete streams. It writes the plans
+and 68 ordered run commands, then publishes `FREEZE.json` last. Preparation
+does not execute predictions or select a method. Its output must be a new direct
+child of `.tmp/call-correctionv2`:
+
+```powershell
+python scripts/prepare-call-correction-v7-study.py --selfcheck
+python scripts/prepare-call-correction-v7-study.py --executable <native-exe> `
+  --out .tmp/call-correctionv2/new-grid
+```
+
+```powershell
+rbn_replay.exe -study-plan capture-plan.json -study-freeze <capture-sha256> `
+  -study-arm repaired_off -study-candidate <ordinary-capture-candidate> `
+  -date 2026-11-15 -study-phase tuning -study-out new-run-directory `
+  -study-method-plan method-plan.json -study-method-freeze <method-sha256> `
+  -study-method-candidate f150_t60_ordinal_d2
+```
+
+The model contains Bayesian-smoothed edit-event estimates from complete frozen
+strong-agree RBN proxy pairs, including exact matches. It ranks one declared
+candidate-to-observation alignment using the focal report's own measured SNR.
+It is an ordinal score, not an RF posterior, Bayes factor or normalized call
+probability. Missing/outside SNR or sparse source-character/gap opportunities
+force geometry ordering for the **whole** decision before its eight gate trials.
+The ordinary Bayesian-style bonus remains off; Custom SCP remains gate/history
+context and its V-only learning rule is unchanged. Fit with:
+
+```powershell
+python scripts/fit-call-correction-ordinal.py --selfcheck
+python scripts/fit-call-correction-ordinal.py --out-prefix .tmp/call-correctionv2/new-fit
+```
+
+The fitter refuses existing outputs and pins November 7/14 inputs and census
+hashes. A final verified COMPLETE receipt is required; partial models/receipts
+are troubleshooting evidence. The native asset limit is 4 MiB with exact fixed
+dimensions, explicit priors/count invariants, source/reference binding and no
+silent missing-model fallback.
+
+Method runs freeze `method-plan.json` and `method-model.json`, write bounded
+`method-receipts.jsonl`, and publish `method-report.json` before final
+`complete.json`. They share the cumulative 4 GiB evidence/assets owner and finite
+file inventory; deletion never refunds charged bytes. Existing scratch state
+keeps its own key/receiver limits and is measured separately after cleanup.
+Inherited database Close errors remain unobserved. Any observed write, close,
+copy, integrity, budget or finalization failure prevents completion.
+
+Experimental marker **presence** disqualifies a report from legacy comparison
+and activation readers, even if its value is false, null or malformed. Do not
+strip the marker. The separate frozen evaluation entry is:
+
+```powershell
+rbn_replay.exe -study-method-eval-plan evaluation-plan.json `
+  -study-method-eval-freeze <evaluation-sha256> -study-method-eval-out new-evaluation
+```
+
+Evaluation retains named control/geometry/ordinal roles and every immutable
+incoming ID, including lost, suppressed, licensed, retargeted, retimed and
+unknown-reference outcomes. It reuses the unchanged 15-minute/three-row/500-Hz
+follow-on scorer and existing reference/episode floors. Eight separately bounded
+geometry/ordinal evaluation pairs avoid a single oversized sixteen-way artifact.
+After all eight complete tuning evaluations exist, the bounded selector requires
+all sixteen candidates and matching source/model/control/input bindings:
+
+```powershell
+python scripts/select-call-correction-v7-method.py --selfcheck
+python scripts/select-call-correction-v7-method.py --evaluations <eight-directories> `
+  --out .tmp/call-correctionv2/new-selection
+```
+
+It selects only an eligible complete candidate, ordered by most applied receipts,
+highest exact stability fraction, fewest affected baseline input IDs and lexical
+candidate ID. An input both retargeted and retimed counts once. It preserves
+`no_eligible_candidate` when none qualifies and publishes selection COMPLETE
+last. This does not execute confirmation or authorize live activation.
+Follow-on stability and RBN agreement remain conditional proxies. Untouched
+confirmation, live integration and production resource qualification are separate
+requirements; see the [construction evidence](call-correction-v2-v7-validation.md).
+
+The [executed v7 experiment](call-correction-v2-v7-results.md) ran the complete
+sixteen-candidate grid. All candidates gained corrections and pooled stability,
+but all failed the frozen reference-rename guard; the selector chose none.
+Ordinal ranking produced identical applied outputs to paired geometry ranking.
+Prospective confirmation was not started, and no live method is qualified.
+
+## Selective and receiver-compatibility development (v2)
+
+[Approved v8](call-correction-v2-scope-ledger-v8.md) adds an explicit schema-2
+development pair while retaining schema-1 admission and outputs. C uses selective
+current-signal proposals; B uses the same nomination authority with whole retained
+receiver-population ordinal compatibility. This is separate from the default-off
+live C setting; experimental runs reject a true live setting to avoid two policy
+authorities. There is no live B loader or model-path setting.
+
+V2 has exactly `c_f150_t60_d3` (`selective`) and `b_f150_t60_d3`
+(`receiver_compatibility`), each at 150 Hz, 60 seconds and CW distances [1,2,3]
+within the global cap. It admits active development only on exposed November
+7/14 and disabled parity on all four exposed dates. Phase remains `tuning`;
+`holdout` and a selected confirmation candidate are refused.
+
+Use the existing finite preparation owner with an explicit version:
+
+```powershell
+python scripts/prepare-call-correction-v7-study.py --method-version 2 `
+  --executable <native-exe> --out .tmp/call-correctionv2/new-development
+```
+
+It verifies the same clean checkout, exact native source/executable, frozen
+assets and four original full streams. `runs.json` contains four disabled
+controls followed by two methods on two dates: eight captures, with FREEZE-last.
+Omitting `--method-version` preserves the sixteen-cell/68-run v1 preparation.
+No predictions or method selection occur during preparation. Do not refit the
+frozen v7 ordinal asset for this comparison.
+
+C retains current matching support and all ordinary numerical/history/license,
+loss, pending and temporal restrictions. Direct frequency witnesses alone can
+exclude another group; unknown/spanning dissent remains. All retained identities
+participate in its credible-competition veto, including non-nominees. Credible
+unusable identities abstain before distance helpers. Gate failure may advance
+within C's existing eight-trial beam; the first allowance alone validates.
+
+B considers every retained observed identity, including zero-weight or
+C-disqualified opponents, plus incoming canonical KEEP once. More than eight
+observed identities abstains. Every hypothesis sees the same positive canonical
+memberships with each membership's own SNR. For a receiver, T is its summed
+membership weight and W its maximum; each membership receives W*w/T. The mean
+ordinal score uses sum(W) as denominator, including self terms. Explicit raw
+mode uses unit weights. Coefficients are binned into eight identities by six SNR
+cells: at most 432 Score calls across nine hypotheses.
+
+Missing/conflicting/out-of-domain SNR on a positive-weight scoring observation,
+unavailable opposing scores,
+nonfinite arithmetic or zero positive weight makes the whole B comparison
+unavailable. Deterministic compensated sums and the all-hypothesis deadband
+`1e-9 * max(1, max(abs(mean)))` govern unique selection. KEEP, ties and ineligible
+best hypotheses abstain. Temporal identity permission is intersected afterward.
+Only that selected hypothesis receives one ordinary gate trial, with no
+runner-up or C fallback after gate or replacement failure.
+
+These are descriptive Bayesian-derived ordinal scores, not normalized likelihoods,
+Bayes factors, independent-receiver odds or RF posteriors. Public confidence
+still uses ordinary evidence for the actual emitted identity. C does not become
+V; store-specific learning is unchanged. Ordinary successful corrections and
+replacement rejections remain terminal for both methods.
+
+V2 receipts retain common C geometry once and owned B scalar diagnostics under
+`receiver_compatibility`. The same 4-GiB evidence/assets owner, finite inventory,
+separately measured scratch and COMPLETE-last error behavior apply. V2 evaluation
+uses the existing immutable-ID join, exact stability fractions and R1/R2 facts
+with two active date groups and all four original parity bindings. It emits
+`compatibility_vs_selective`, marks eligibility unassessed/false, and selects no
+method. The v1 global selector and legacy activation readers grant it no authority.
+
+These exposed dates are development inputs, including model training inputs.
+Existing reference floors, untouched confirmation and production resource
+qualification remain unchanged. See [ADR-0361](decisions/ADR-0361-selective-current-signal-call-rescue.md).
+The completed [v8 comparison](call-correction-v2-v8-results.md) gained corrections
+but failed the unchanged stability objective and reference guard for both C and
+B. Neither method is qualified for production activation by those results.

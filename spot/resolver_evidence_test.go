@@ -217,7 +217,7 @@ func BenchmarkSignalResolverReceiverPublication(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
 					if dirty {
-						upsertResolverReporter(st, st.candidates["K1ABA"], "N0000", at.Add(time.Duration(i+1)), 7010, 1000)
+						upsertResolverReporter(st, st.candidates["K1ABA"], "N0000", at.Add(time.Duration(i+1)), 7010, 1000, 0, false)
 					}
 					r.evaluateKey(st, at)
 				}

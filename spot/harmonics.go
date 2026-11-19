@@ -1,3 +1,6 @@
+// File role: Compare measured reports against recent harmonic fundamentals.
+// Missing reports cannot seed or match evidence. Cross-receiver/mode comparisons
+// retain their configured policy; TTL expiry limits age, not entry cardinality.
 package spot
 
 import (
@@ -83,6 +86,11 @@ func (hd *HarmonicDetector) ShouldDrop(s *Spot, now time.Time) (bool, float64, i
 
 	hd.cleanup(now)
 	hd.prune(call, now)
+	// An absent report is not a zero-dB measurement. It can neither establish
+	// a fundamental nor supply the weaker side of a measured SNR comparison.
+	if !s.HasReport {
+		return false, 0, 0, 0
+	}
 	if fundamental, corroborators, delta := hd.detectHarmonic(call, s); fundamental > 0 {
 		return true, fundamental, corroborators, delta
 	}

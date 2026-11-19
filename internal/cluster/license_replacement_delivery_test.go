@@ -18,7 +18,7 @@ import (
 	"dxcluster/uls"
 )
 
-func replacementLicenseFixture(t *testing.T, candidateFound bool) {
+func replacementLicenseFixture(t *testing.T, candidateFound bool, additionalCalls ...string) {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "licenses.db")
 	db, err := sql.Open("sqlite", path)
@@ -30,6 +30,12 @@ CREATE INDEX idx_AM_call_sign ON AM(call_sign);
 INSERT INTO AM VALUES(1,'K1ABC','CA'),(2,'N0AAA','AP'); PRAGMA user_version=1;`)
 	if err == nil && candidateFound {
 		_, err = db.ExecContext(t.Context(), "INSERT INTO AM VALUES(3,'K1ABD','TX');")
+	}
+	for index, call := range additionalCalls {
+		if err != nil {
+			break
+		}
+		_, err = db.ExecContext(t.Context(), "INSERT INTO AM VALUES(?,?,'CA');", index+4, call)
 	}
 	closeErr := db.Close()
 	if err != nil || closeErr != nil {

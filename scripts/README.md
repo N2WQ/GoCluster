@@ -384,6 +384,16 @@ and checkpoint31 in the command-fix execution record for qualification and limit
   such as Graphviz `dot` and `goda`; summarize durable graph findings in
   `docs/code-maps/` when the custom GPT support agent should use them later.
 
+## Call-correction study preparation
+
+Call-correction study preparation reuses
+`prepare-call-correction-v7-study.py`. Default version 1 freezes the original
+sixteen-cell/68-capture grid. Explicit `--method-version 2` freezes four disabled
+controls plus C/B on November 7/14: eight captures. Both require a clean
+`call-correctionv2` checkout, exact native executable and frozen original streams,
+and publish FREEZE last without executing predictions. `--selfcheck` exercises
+both finite inventories. See the [replay contract](../docs/rbn_replay.md#selective-and-receiver-compatibility-development-v2).
+
 ## Header Standard
 
 Every tracked first-party `.ps1` script should start with PowerShell

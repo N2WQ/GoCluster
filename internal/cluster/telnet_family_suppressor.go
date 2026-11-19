@@ -152,7 +152,9 @@ func (s *telnetFamilySuppressor) compareLanesLocked(sp *spot.Spot, cfg config.Ca
 				continue
 			}
 			for lane, witness := range entry.lanes {
-				if !lanes[lane] || witness.call != literal || witness.at.IsZero() || witness.at.Before(cutoff) ||
+				// The stored literal itself must still be observed. A group's
+				// different display does not invent an admitted alias witness.
+				if !lanes[lane] || !snapshot.HasObservedCall(witness.call) || witness.at.IsZero() || witness.at.Before(cutoff) ||
 					math.Abs(witness.freqKHz-sp.Frequency) > toleranceKHz {
 					continue
 				}
@@ -183,21 +185,8 @@ func familyPercent(snapshot spot.ResolverSnapshot, literal string) (int, bool) {
 	if literal == "" || snapshot.TotalReporters <= 0 {
 		return 0, false
 	}
-	raw, weighted, found := 0, 0, false
-	for _, candidate := range snapshot.CandidateRanks {
-		if candidate.Call == literal {
-			raw, weighted, found = candidate.Support, candidate.WeightedSupportMilli, true
-			break
-		}
-	}
-	if !found {
-		switch literal {
-		case snapshot.Winner:
-			raw, weighted = snapshot.WinnerSupport, snapshot.WinnerWeightedSupportMilli
-		case snapshot.RunnerUp:
-			raw, weighted = snapshot.RunnerSupport, snapshot.RunnerWeightedSupportMilli
-		}
-	}
+	raw := correctionflow.ResolverSupportForCall(snapshot, literal)
+	weighted := correctionflow.ResolverWeightedSupportForCall(snapshot, literal)
 	if raw <= 0 {
 		return 0, false
 	}

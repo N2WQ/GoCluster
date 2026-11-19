@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `ed21c8268b1a9202`
+- Source fingerprint: `de64f34c6fd749d4`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 15 | 26 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 211 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 59 | 225 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
-| `dxcluster/spot` | `spot` | 42 | 72 |
+| `dxcluster/spot` | `spot` | 46 | 86 |
 | `dxcluster/telnet` | `telnet` | 83 | 179 |
 
 ## In-Scope Package Edges
@@ -190,9 +190,11 @@ Source files:
 - `internal/cluster/peer_publication.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/replacement_license.go`
+- `internal/cluster/resolver_correction_outcome.go`
 - `internal/cluster/root_open_linux.go`
 - `internal/cluster/root_open_other.go`
 - `internal/cluster/secondary_shadow_summary.go`
+- `internal/cluster/selective_rescue.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/stabilizer_confidence.go`
 - `internal/cluster/stabilizer_matrix.go`
@@ -224,6 +226,14 @@ Test files:
 - `internal/cluster/async_v7_identity_test.go`
 - `internal/cluster/boolean_defaults_test.go`
 - `internal/cluster/bulletin_ingress_test.go`
+- `internal/cluster/call_correction_qualification_assets_windows_test.go`
+- `internal/cluster/call_correction_qualification_coverage_windows_test.go`
+- `internal/cluster/call_correction_qualification_recovery_windows_test.go`
+- `internal/cluster/call_correction_qualification_runtime_windows_test.go`
+- `internal/cluster/call_correction_qualification_windows_test.go`
+- `internal/cluster/call_correction_v2_canonical_delivery_test.go`
+- `internal/cluster/call_correction_v2_harmonic_delivery_test.go`
+- `internal/cluster/call_correction_v2_neighborhood_delivery_test.go`
 - `internal/cluster/canadian_state_test.go`
 - `internal/cluster/confidence_attribution_controls_test.go`
 - `internal/cluster/confidence_attribution_delivery_test.go`
@@ -231,6 +241,7 @@ Test files:
 - `internal/cluster/corrected_grid_counter_test.go`
 - `internal/cluster/corrected_grid_delivery_test.go`
 - `internal/cluster/correction_ambiguity_delivery_test.go`
+- `internal/cluster/correction_bayes_delivery_test.go`
 - `internal/cluster/correction_decision_cost_summary_test.go`
 - `internal/cluster/correction_decision_delivery_helpers_test.go`
 - `internal/cluster/correction_decision_delivery_test.go`
@@ -380,6 +391,11 @@ Test files:
 - `internal/cluster/runtime_output_retirement_test.go`
 - `internal/cluster/secondary_frequency_delivery_test.go`
 - `internal/cluster/secondary_shadow_summary_test.go`
+- `internal/cluster/selective_rescue_delivery_test.go`
+- `internal/cluster/selective_rescue_license_test.go`
+- `internal/cluster/selective_rescue_metadata_test.go`
+- `internal/cluster/selective_rescue_rails_test.go`
+- `internal/cluster/selective_rescue_temporal_test.go`
 - `internal/cluster/short_portable_license_test.go`
 - `internal/cluster/stabilizer_confidence_test.go`
 - `internal/cluster/stabilizer_matrix_test.go`
@@ -640,6 +656,7 @@ Source files:
 - `spot/comment_parser.go`
 - `spot/confusion_model.go`
 - `spot/correction.go`
+- `spot/correction_history.go`
 - `spot/custom_scp_cleanup.go`
 - `spot/custom_scp_eviction.go`
 - `spot/custom_scp_expiry.go`
@@ -661,7 +678,10 @@ Source files:
 - `spot/recent_support_store.go`
 - `spot/reliability.go`
 - `spot/resolver_ambiguity.go`
+- `spot/resolver_canonical.go`
+- `spot/resolver_confusion.go`
 - `spot/resolver_evidence.go`
+- `spot/resolver_evidence_filter.go`
 - `spot/resolver_fresh.go`
 - `spot/resolver_loss.go`
 - `spot/secondary_dedupe.go`
@@ -682,6 +702,16 @@ Test files:
 - `spot/adaptive_activity_test.go`
 - `spot/bands_test.go`
 - `spot/bounded_store_bench_test.go`
+- `spot/call_correction_v2_canonical_bench_test.go`
+- `spot/call_correction_v2_canonical_test.go`
+- `spot/call_correction_v2_frequency_test.go`
+- `spot/call_correction_v2_harmonics_test.go`
+- `spot/call_correction_v2_merge_bench_test.go`
+- `spot/call_correction_v2_merge_test.go`
+- `spot/call_correction_v2_parser_test.go`
+- `spot/call_correction_v2_receiver_totals_test.go`
+- `spot/call_correction_v2_snr_bench_test.go`
+- `spot/call_correction_v2_snr_test.go`
 - `spot/callsign_test.go`
 - `spot/cleanup_runner_test.go`
 - `spot/comment_display_trace_test.go`
@@ -691,8 +721,11 @@ Test files:
 - `spot/comment_parser_test.go`
 - `spot/confusion_model_test.go`
 - `spot/confusion_snr_domain_test.go`
+- `spot/correction_bayes_rails_test.go`
 - `spot/correction_distance_test.go`
 - `spot/correction_family_test.go`
+- `spot/correction_history_bench_test.go`
+- `spot/correction_history_test.go`
 - `spot/custom_scp_cleanup_helpers_test.go`
 - `spot/custom_scp_cleanup_test.go`
 - `spot/custom_scp_eviction_test.go`
@@ -722,6 +755,7 @@ Test files:
 - `spot/recent_band_test.go`
 - `spot/reliability_integrity_fuzz_test.go`
 - `spot/resolver_ambiguity_population_test.go`
+- `spot/resolver_evidence_filter_test.go`
 - `spot/resolver_evidence_test.go`
 - `spot/resolver_fresh_projection_bench_test.go`
 - `spot/resolver_fresh_projection_test.go`
@@ -1020,6 +1054,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0359 | Accepted | 2026-11-19 | Telnet history and client compatibility | `area:telnet` |
 | ADR-0354 | Accepted | 2026-11-15 | peer FIFO, one verdict, original relay, retirement | `area:peer` |
 | ADR-0339 | Accepted | 2026-11-11 | telnet workers, ordering, session membership | `area:telnet` |
 | ADR-0338 | Accepted | 2026-11-11 | cluster runtime, grid lifecycle, maintenance, recovery, storage ownership | `area:internal/cluster` |

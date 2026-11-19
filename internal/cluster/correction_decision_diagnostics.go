@@ -5,7 +5,6 @@ package cluster
 import (
 	"fmt"
 	"log"
-	"strings"
 
 	"dxcluster/spot"
 	"dxcluster/ui"
@@ -22,7 +21,7 @@ func emitResolverDecision(dash ui.Surface, entry *spot.Spot, snapshot spot.Resol
 	if snapshot.EvidenceLoss {
 		outcome, basis = "retained", "unavailable_loss"
 	} else {
-		if !strings.EqualFold(call, input) {
+		if spot.CorrectionVoteKey(call) != spot.CorrectionVoteKey(input) {
 			outcome = "corrected"
 		}
 		if entry.ConfidencePercentOK {

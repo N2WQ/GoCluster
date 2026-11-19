@@ -203,7 +203,11 @@ func roundFloat(v float64, places int) float64 {
 // writeIntervalsCSV emits CSV instead of only JSON because operators often sort
 // and filter pressure intervals in spreadsheet tools during replay analysis.
 func writeIntervalsCSV(path string, rows []intervalRow) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	return writeIntervalsCSVWithDiagnostics(path, rows, nil)
+}
+
+func writeIntervalsCSVWithDiagnostics(path string, rows []intervalRow, owner *studyDiagnosticArtifacts) error {
+	f, err := openReplayArtifactWithDiagnostics(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644, owner)
 	if err != nil {
 		return err
 	}

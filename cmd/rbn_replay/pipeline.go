@@ -54,6 +54,11 @@ type replayResolverApplyOutcome struct {
 	Selection     correctionflow.ResolverPrimarySelection
 	Gate          spot.ResolverPrimaryGateResult
 	GateEvaluated bool
+	// A chosen replacement's final validation failure is terminal for rescue.
+	// This differs from the later license check of an unchanged subject.
+	replacementRejected bool
+	methodReason        string // Associated experimental substage, not a second ordinary execution.
+	methodWinner        string // Actual first gate-allowed experimental proposal, if any.
 	// Temporal output ownership lasts through this synchronous outcome only.
 	// No request-ID table or retained handoff marker is needed by replay.
 	temporal    bool
@@ -209,6 +214,17 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	now time.Time,
 	selectionOverride *correctionflow.ResolverPrimarySelection,
 ) replayResolverApplyOutcome {
+	return maybeApplyResolverCorrectionReplayDiagnosticCore(spotEntry, resolver, evidence, hasEvidence, cfg, ctyDB, tracker, adaptive, recentBandStore, now, selectionOverride, nil)
+}
+
+// The optional call destination observes the same execution after the existing
+// early guards. Nil wrappers construct no trace and retain their old outcomes.
+func maybeApplyResolverCorrectionReplayDiagnosticCore(
+	spotEntry *spot.Spot, resolver *spot.SignalResolver, evidence spot.ResolverEvidence, hasEvidence bool,
+	cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, tracker *stats.Tracker, adaptive *spot.AdaptiveMinReports,
+	recentBandStore spot.RecentSupportStore, now time.Time, selectionOverride *correctionflow.ResolverPrimarySelection,
+	capture *studyDiagnosticSelectorCall,
+) replayResolverApplyOutcome {
 	outcome := replayResolverApplyOutcome{}
 	if spotEntry == nil {
 		return outcome
@@ -243,7 +259,12 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	if selectionOverride != nil {
 		outcome.Selection = *selectionOverride
 	} else if hasEvidence && resolver != nil {
-		outcome.Selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, evidence.Key, cfg, preCorrectionCall)
+		if capture == nil {
+			outcome.Selection = correctionflow.SelectResolverPrimarySnapshotForCall(resolver, evidence.Key, cfg, preCorrectionCall)
+		} else {
+			capture.Called = true
+			outcome.Selection, capture.Err = correctionflow.SelectResolverPrimarySnapshotForCallWithDiagnostics(resolver, evidence.Key, cfg, preCorrectionCall, time.Time{}, &capture.Data)
+		}
 	}
 	snapshot := outcome.Selection.Snapshot
 	spotEntry.Confidence = correctionflow.ResolverConfidenceGlyphForCall(snapshot, outcome.Selection.SnapshotOK, preCorrectionCall)
@@ -281,7 +302,7 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionWinnerMissing, 1)
 		return outcome
 	}
-	if strings.EqualFold(winnerCall, preCorrectionCall) {
+	if spot.CorrectionVoteKey(winnerCall) == spot.CorrectionVoteKey(preCorrectionCall) {
 		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionSameCall, 1)
 		return outcome
 	}
@@ -308,40 +329,13 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 		return outcome
 	}
 
-	if shouldRejectCTYCall(winnerCall) {
-		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionInvalidBaseCall, 1)
-		if strings.EqualFold(cfg.InvalidAction, "suppress") {
-			outcome.Suppress = true
-			return outcome
-		}
-		spotEntry.Confidence = "B"
-		outcome.Confidence.Final = "B"
+	applied, suppress, reason := applyReplayReplacement(spotEntry, winnerCall, cfg, ctyDB, now)
+	if !applied {
+		outcome.Suppress, outcome.replacementRejected = suppress, true
+		outcome.Confidence.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+		observeResolverPrimaryDecision(tracker, "rejected", reason, 1)
 		return outcome
 	}
-
-	if ctyDB != nil {
-		if _, ok := ctyDB.LookupCallsignPortable(winnerCall); !ok {
-			observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionCTYMiss, 1)
-			if strings.EqualFold(cfg.InvalidAction, "suppress") {
-				outcome.Suppress = true
-				return outcome
-			}
-			spotEntry.Confidence = "B"
-			outcome.Confidence.Final = "B"
-			return outcome
-		}
-	}
-	// A replacement is a proposal until its own home-base authority permits it.
-	// Retaining the original preserves its confidence, metadata, observation
-	// time, and correction/temporal accounting; no runner-up search occurs.
-	if rejectReplayDXLicense(ctyDB, winnerCall, spotEntry.IsBeacon || spot.IsBeaconCall(winnerCall), now) {
-		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionLicenseReject, 1)
-		return outcome
-	}
-
-	spotEntry.DXCall = winnerCall
-	spotEntry.DXCallNorm = winnerCall
-	spotEntry.Confidence = "C"
 	outcome.Confidence.Final = "C"
 	outcome.Applied = true
 	outcome.Winner = winnerCall
@@ -352,6 +346,31 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	appliedReason := resolverAppliedDecisionReason(gate, outcome.Selection)
 	observeResolverPrimaryDecision(tracker, "applied", appliedReason, 1)
 	return outcome
+}
+
+// applyReplayReplacement is the final validation/mutation boundary shared by
+// ordinary and experimental proposals. Exactly one gate-allowed candidate may
+// enter it; validation failure is terminal, never a runner-up search signal.
+func applyReplayReplacement(s *spot.Spot, call string, cfg config.CallCorrectionConfig, db *cty.CTYDatabase, now time.Time) (applied, suppress bool, reason string) {
+	if shouldRejectCTYCall(call) {
+		reason = resolverDecisionInvalidBaseCall
+	} else if db != nil {
+		if _, ok := db.LookupCallsignPortable(call); !ok {
+			reason = resolverDecisionCTYMiss
+		}
+	}
+	if reason != "" {
+		if strings.EqualFold(cfg.InvalidAction, "suppress") {
+			return false, true, reason
+		}
+		s.Confidence = "B"
+		return false, false, reason
+	}
+	if rejectReplayDXLicense(db, call, s.IsBeacon || spot.IsBeaconCall(call), now) {
+		return false, false, resolverDecisionLicenseReject
+	}
+	s.DXCall, s.DXCallNorm, s.Confidence = call, call, "C"
+	return true, false, ""
 }
 
 // Replay checks only DX identity. DE admission, metadata enrichment, and other
@@ -394,7 +413,7 @@ func evaluateResolverPrimaryGateReplay(
 		return spot.ResolverPrimaryGateResult{}, false
 	}
 	winner := snap.Winner
-	if winner == "" || winner == preCall {
+	if winner == "" || spot.CorrectionVoteKey(winner) == spot.CorrectionVoteKey(preCall) {
 		return spot.ResolverPrimaryGateResult{}, false
 	}
 
@@ -423,7 +442,7 @@ func evaluateResolverPrimaryGateReplay(
 	})
 
 	gateOptions := spot.ResolverPrimaryGateOptions{}
-	if cfg.ResolverRecentPlus1Enabled || cfg.BayesBonus.Enabled {
+	if cfg.ResolverRecentPlus1Enabled || config.BayesBonusModeEnabled(cfg.BayesBonus.Enabled, cfg.BayesBonus.EnabledDistancesByMode, subjectMode, cfg.MaxEditDistance) {
 		if spot.ResolverSnapshotHasComparableEditNeighbor(snap, winner, subjectMode, cfg.DistanceModelCW, cfg.DistanceModelRTTY) {
 			gateOptions.RecentPlus1DisallowReason = resolverRecentPlus1DisallowEditNeighborGate
 		}

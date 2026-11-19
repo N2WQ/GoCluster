@@ -78,7 +78,7 @@ func TestB22ResolverSNRPresenceControlsOnlyObservedContribution(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			candidate := rankedResolverCandidate{call: "K1AAA", callRunes: []rune("K1AAA"), weightedSupportMilli: 1000}
 			observed := rankedResolverCandidate{call: "K1AAB", callRunes: []rune("K1AAB"),
-				lastReport: tc.report, lastHasReport: tc.present, weightedSupportMilli: 1000}
+				weightedSupportMilli: 1000, receivers: []ResolverReceiverObservation{{Receiver: "N0BBB", Report: tc.report, HasReport: tc.present, WeightMilli: 1000}}}
 			var workspace confusionAlignmentWorkspace
 			got := resolverConfusionAggregateScore(candidate, []rankedResolverCandidate{candidate, observed}, "CW", model, &workspace)
 			if math.IsNaN(got) || math.IsInf(got, 0) || math.Abs(got-tc.want) > 1e-12 {
@@ -147,7 +147,7 @@ func TestB22ResolverAdmissionPreservesSNRPresenceAndSupport(t *testing.T) {
 	}
 }
 
-func TestB22ResolverSNREqualTimeUsesLaterReceiptPresence(t *testing.T) {
+func TestB22ResolverSNREqualTimeConflictIsUnknown(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
 		firstReport int
@@ -157,7 +157,7 @@ func TestB22ResolverSNREqualTimeUsesLaterReceiptPresence(t *testing.T) {
 		winner      string
 	}{
 		{"present_then_missing", 0, true, 5, false, "K1AAA"},
-		{"missing_then_present_zero", 5, false, 0, true, "K1AAB"},
+		{"missing_then_present_zero", 5, false, 0, true, "K1AAA"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, d, key, at := b22SNRPresenceOwner(t)
@@ -166,9 +166,9 @@ func TestB22ResolverSNREqualTimeUsesLaterReceiptPresence(t *testing.T) {
 				b22SNRPresenceEvidence(key, "K1AAB", "N0BBB", at, tc.firstReport, tc.first, time.Minute),
 				b22SNRPresenceEvidence(key, "K1AAB", "N0BBB", at, tc.lastReport, tc.last, time.Minute))
 			b22SNRPresenceRequireTie(t, snapshot, tc.winner)
-			candidate := d.states[key].candidates["K1AAB"]
-			if candidate.lastReport != tc.lastReport || candidate.lastHasReport != tc.last || !candidate.lastSeen.Equal(at) {
-				t.Fatalf("equal-time representative did not follow later receipt: %+v", candidate)
+			row := d.states[key].candidates["K1AAB"].reporters["N0BBB"]
+			if row.hasReport || !row.snrConflict || row.report != 0 || !row.observedAt.Equal(at) {
+				t.Fatalf("equal-time receiver conflict retained SNR authority: %+v", row)
 			}
 		})
 	}

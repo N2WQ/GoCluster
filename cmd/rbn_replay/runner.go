@@ -71,7 +71,7 @@ type replayRunner struct {
 	driver             *spot.SignalResolverDriver
 
 	manifest           replayManifest
-	runbookSamplesFile *os.File
+	runbookSamplesFile replayRunbookFile
 	runbookSamplesPath string
 	csvParser          *rbnHistoryCSV
 	stabilityCollector *replayStabilityCollector
@@ -87,6 +87,11 @@ type replayRunner struct {
 	temporalNextID     uint64
 	temporalQueue      replayTemporalHeap
 	temporalPending    map[uint64]replayTemporalPending
+	// Non-nil only for the explicitly selected offline study. This observer
+	// owns row provenance and never supplies a prediction or gate decision.
+	study       *studyObserver
+	diagnostics *studyDiagnosticRun
+	method      *studyMethodRun // Explicit replay-only method; nil preserves ordinary execution.
 }
 
 // runReplay is the public orchestration entry point used by main and tests.
@@ -323,6 +328,7 @@ func (r *replayRunner) buildReplayRuntime() error {
 		EvalMinInterval:           shadowResolverEvalMinInterval,
 		SweepInterval:             shadowResolverSweepInterval,
 		HysteresisWindows:         shadowResolverHysteresisWindows,
+		SlashPrecedenceMinReports: cfg.CallCorrection.FamilyPolicy.SlashPrecedenceMinReports,
 		FreqGuardMinSeparationKHz: cfg.CallCorrection.FreqGuardMinSeparationKHz,
 		FreqGuardRunnerUpRatio:    cfg.CallCorrection.FreqGuardRunnerUpRatio,
 		MaxEditDistance:           cfg.CallCorrection.MaxEditDistance,
@@ -361,6 +367,7 @@ func (r *replayRunner) openRecentBandStore() error {
 		return err
 	}
 	if !cfg.CallCorrection.Enabled {
+		r.observeStudyScratch("correction_disabled", "", 0, 0)
 		return nil
 	}
 	if cfg.CallCorrection.CustomSCP.Enabled {
@@ -397,6 +404,7 @@ func (r *replayRunner) openRecentBandStore() error {
 		r.cleanupRecentBand = func() {
 			customSCPStore.Close()
 		}
+		r.observeStudyScratch("custom_scp_runtime", replayCustomSCPPath, customOpts.MaxKeys, customOpts.MaxSpottersPerKey)
 		return nil
 	}
 	if cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled {
@@ -406,6 +414,13 @@ func (r *replayRunner) openRecentBandStore() error {
 		}
 		legacyStore := spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
 		r.recentBandStore = legacyStore
+	}
+	if r.studyArtifactFiles() != nil {
+		backend := "no_support_history_backend"
+		if r.recentBandStore != nil {
+			backend = "legacy_recent_band"
+		}
+		r.observeStudyScratch(backend, "", 0, 0)
 	}
 	return nil
 }
@@ -428,7 +443,7 @@ func (r *replayRunner) maintainLegacyHistory(now time.Time) {
 // failed run still leaves the input/header context needed for troubleshooting.
 func (r *replayRunner) openReplayOutputs() error {
 	r.runbookSamplesPath = filepath.Join(r.outDir, "runbook_samples.log")
-	runbookSamplesFile, err := os.OpenFile(r.runbookSamplesPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	runbookSamplesFile, err := r.openReplayArtifact(r.runbookSamplesPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
 	}
@@ -476,7 +491,7 @@ func (r *replayRunner) replayDay() error {
 		return err
 	}
 	r.drainTemporal(eofAt, true)
-	return nil
+	return r.diagnosticBoundary()
 }
 
 // advanceReplayTime services scheduled events before the next validated row or
@@ -498,6 +513,9 @@ func (r *replayRunner) advanceReplayTime(until time.Time) error {
 		}
 		if temporalDue {
 			r.drainTemporal(r.temporalQueue[0].due, false)
+			if err := r.diagnosticBoundary(); err != nil {
+				return err
+			}
 			continue
 		}
 		return nil
@@ -509,6 +527,11 @@ func (r *replayRunner) advanceReplayTime(until time.Time) error {
 // misleading A/B metrics.
 func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 	r.recordsTotal++
+	if r.study != nil {
+		if err := r.study.checkRaw(row, ok, r.recordsTotal); err != nil {
+			return err
+		}
+	}
 	if !ok {
 		r.recordsSkippedBad++
 		return nil
@@ -524,6 +547,11 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 
 	if err := r.advanceReplayTime(row.Time); err != nil {
 		return err
+	}
+	// Withheld receivers never reach resolver, adaptive activity, history or
+	// learning. Their raw rows remain in the separate frozen reference input.
+	if r.study != nil && !r.study.predictor(row.Spotter) {
+		return nil
 	}
 
 	if !row.SpotClass.Accepted() {
@@ -548,6 +576,11 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 	if spotEntry.IsBeacon {
 		return nil
 	}
+	if r.study != nil {
+		if err := r.study.begin(spotEntry, r.recordsTotal); err != nil {
+			return err
+		}
+	}
 	correctionflow.ObserveResolverActivity(spotEntry, r.adaptiveMinReports, now)
 
 	resolverEvidence, hasResolverEvidence := buildResolverEvidenceSnapshot(spotEntry, r.cfg.CallCorrection, r.adaptiveMinReports, now)
@@ -557,26 +590,15 @@ func (r *replayRunner) processCSVRow(row rbnHistoryRow, ok bool) error {
 		}
 	}
 	if r.maybeHoldTemporal(spotEntry, resolverEvidence, hasResolverEvidence, now) {
-		return nil
+		return r.diagnosticBoundary()
 	}
 
-	outcome := maybeApplyResolverCorrectionReplay(
-		spotEntry,
-		r.resolver,
-		resolverEvidence,
-		hasResolverEvidence,
-		r.cfg.CallCorrection,
-		r.ctyDB,
-		r.tracker,
-		r.adaptiveMinReports,
-		r.recentBandStore,
-		now,
-	)
+	outcome := r.applyResolverOutcome(spotEntry, resolverEvidence, hasResolverEvidence, now)
 	r.processOutcome(spotEntry, outcome, now)
 
 	// Drain the evidence we enqueued for this spot after observation.
 	r.driver.Step(now)
-	return nil
+	return r.diagnosticBoundary()
 }
 
 // maybeHoldTemporal mirrors the runtime temporal decoder but records A/B
@@ -594,7 +616,7 @@ func (r *replayRunner) maybeHoldTemporal(
 	subject := normalizedDXCall(spotEntry)
 	selection := correctionflow.ResolverPrimarySelection{}
 	if subject != "" {
-		selection = correctionflow.SelectResolverPrimarySnapshotForCall(r.resolver, resolverEvidence.Key, r.cfg.CallCorrection, subject)
+		selection = r.selectTemporalInitial(spotEntry, resolverEvidence.Key, subject)
 	}
 	if !selection.SnapshotOK || !r.temporalDecoder.ShouldHoldSelection(selection) {
 		return false
@@ -602,6 +624,10 @@ func (r *replayRunner) maybeHoldTemporal(
 
 	id := r.temporalNextID
 	r.temporalNextID++
+	var frequencyLifecycles correctionflow.FrequencyLifecycleVector
+	if r.methodEnabled() {
+		frequencyLifecycles = correctionflow.FrequencySourceLifecycles(correctionflow.ReadFrequencySources(r.resolver, resolverEvidence.Key, r.cfg.CallCorrection, now))
+	}
 	selection.Snapshot = selection.Snapshot.Compact()
 	accepted, reason := r.temporalDecoder.Observe(correctionflow.TemporalObservation{
 		ID:          id,
@@ -610,14 +636,21 @@ func (r *replayRunner) maybeHoldTemporal(
 		SubjectCall: subject,
 		Selection:   selection,
 	})
+	if r.diagnostics != nil {
+		r.diagnostics.observeAttempt(r.study, spotEntry, id, resolverEvidence.Key, now, accepted, reason)
+	}
 	if accepted {
+		if r.study != nil {
+			r.study.noteTemporal(spotEntry, "held")
+		}
 		r.temporalPending[id] = replayTemporalPending{
-			id:          id,
-			spot:        spotEntry,
-			evidence:    resolverEvidence,
-			hasEvidence: hasResolverEvidence,
-			maxAt:       now.Add(r.temporalDecoder.MaxWaitDuration()),
-			selection:   selection,
+			id:                  id,
+			spot:                spotEntry,
+			evidence:            resolverEvidence,
+			hasEvidence:         hasResolverEvidence,
+			maxAt:               now.Add(r.temporalDecoder.MaxWaitDuration()),
+			selection:           selection,
+			frequencyLifecycles: frequencyLifecycles,
 		}
 		heap.Push(&r.temporalQueue, &replayTemporalItem{
 			id:  id,
@@ -647,6 +680,9 @@ func (r *replayRunner) maybeHoldTemporal(
 		overflowDecision.Action = correctionflow.TemporalDecisionActionFallbackResolver
 	}
 	r.abMetrics.Temporal.ObserveDecision(overflowDecision)
+	if r.study != nil {
+		r.study.noteTemporal(spotEntry, string(overflowDecision.Action))
+	}
 	outcome := r.temporalReleaseOutcome(spotEntry, resolverEvidence, hasResolverEvidence, overflowDecision, now)
 	r.processOutcome(spotEntry, outcome, now)
 	r.driver.Step(now)
@@ -677,7 +713,7 @@ func (r *replayRunner) emitSample(ts time.Time) error {
 	fmt.Fprintf(r.runbookSamplesFile, "%s %s\n", prefix, formatResolverSummaryFromMetrics(metrics))
 
 	r.samples = append(r.samples, resolverSample{TS: ts, Metrics: metrics})
-	return nil
+	return r.diagnosticBoundary()
 }
 
 // processOutcome feeds replay metrics and support-memory state from the same
@@ -686,12 +722,24 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 	if spotEntry == nil {
 		return
 	}
+	terminalStatus := "output"
+	var execution *studyDiagnosticExecution
+	if _, selected := r.diagnosticSelected(spotEntry); selected && r.diagnostics.owner.Err() == nil {
+		execution = &studyDiagnosticExecution{}
+	}
+	if r.study != nil {
+		defer func() { r.study.finishWithDiagnostics(spotEntry, outcome, now, terminalStatus, r, execution) }()
+	}
 	if outcome.Suppress {
+		terminalStatus = "suppressed"
 		return
 	}
 	if outcome.temporal {
 		if outcome.Applied {
 			switched := r.temporalDecoder.ConfirmCorrection(outcome.temporalKey, normalizedDXCall(spotEntry))
+			if execution != nil {
+				execution.ConfirmChecked, execution.ConfirmSwitched = true, switched
+			}
 			r.abMetrics.Temporal.ObserveAccepted(switched)
 		}
 		r.observeTemporalHistory()
@@ -700,7 +748,12 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 	// before final validation. Output metrics and learning require final DX
 	// acceptance; a drop does not undo the accepted identity history.
 	spotEntry.RefreshBeaconFlag()
-	if rejectReplayDXLicense(r.ctyDB, normalizedDXCall(spotEntry), spotEntry.IsBeacon, now) {
+	licenseRejected := rejectReplayDXLicense(r.ctyDB, normalizedDXCall(spotEntry), spotEntry.IsBeacon, now)
+	if execution != nil {
+		execution.FinalLicenseChecked, execution.FinalLicenseRejected = true, licenseRejected
+	}
+	if licenseRejected {
+		terminalStatus = "license_rejected"
 		return
 	}
 	if outcome.temporal {
@@ -721,11 +774,24 @@ func (r *replayRunner) processOutcome(spotEntry *spot.Spot, outcome replayResolv
 		r.stabilityCollector.ObserveApplied(now.Unix(), outcome.Winner, spotEntry.Frequency, band)
 	}
 
-	if stabilizerDelayProxyEligible(spotEntry, r.recentBandStore, r.cfg.CallCorrection) {
+	stabilizerEligible := stabilizerDelayProxyEligible(spotEntry, r.recentBandStore, r.cfg.CallCorrection)
+	if execution != nil {
+		execution.StabilizerEligibilityChecked, execution.StabilizerEligible = true, stabilizerEligible
+	}
+	if stabilizerEligible {
 		delayDecision := evaluateStabilizerDelay(spotEntry, r.recentBandStore, r.cfg.CallCorrection, now, outcome.Selection.Snapshot, outcome.Selection.SnapshotOK)
+		if execution != nil {
+			execution.StabilizerChecked, execution.StabilizerDelay, execution.StabilizerReason = true, delayDecision.ShouldDelay, delayDecision.Reason.String()
+		}
+		if r.study != nil {
+			r.study.noteStabilizer(spotEntry, delayDecision)
+		}
 		r.abMetrics.StabilizerDelayProxy.Observe(delayDecision)
 	}
 
+	if execution != nil {
+		execution.OuterLearningHelperReached = true
+	}
 	recordRecentBandObservation(spotEntry, r.recentBandStore, r.cfg.CallCorrection, now)
 }
 
@@ -745,7 +811,7 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 		if !ok || pending.spot == nil {
 			continue
 		}
-		decision := r.temporalDecoder.Evaluate(item.id, now, force)
+		decision := r.evaluateTemporal(item.id, pending.spot, now, force)
 		if decision.Action == correctionflow.TemporalDecisionActionDefer {
 			nextDue := pending.maxAt
 			if nextDue.Before(now) {
@@ -762,8 +828,11 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 
 		delete(r.temporalPending, item.id)
 		r.abMetrics.Temporal.ObserveDecision(decision)
+		if r.study != nil {
+			r.study.noteTemporal(pending.spot, string(decision.Action))
+		}
 
-		outcome := r.temporalReleaseOutcome(pending.spot, pending.evidence, pending.hasEvidence, decision, now)
+		outcome := r.temporalReleaseOutcomeMethod(pending.spot, pending.evidence, pending.hasEvidence, decision, now, &pending.frequencyLifecycles, true)
 		r.processOutcome(pending.spot, outcome, now)
 	}
 }
@@ -772,7 +841,19 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 // A saved Apply winner is a proposal; the shared selector admits it only from
 // current eligible settled evidence. Ordinary correction gates run once.
 func (r *replayRunner) temporalReleaseOutcome(s *spot.Spot, evidence spot.ResolverEvidence, hasEvidence bool, decision correctionflow.TemporalDecision, now time.Time) replayResolverApplyOutcome {
-	selection := correctionflow.SelectTemporalReleaseSnapshot(r.resolver, evidence.Key, r.cfg.CallCorrection, normalizedDXCall(s), decision, now)
+	// This entry also serves overflow routing, which never gains extra rescue.
+	return r.temporalReleaseOutcomeMethod(s, evidence, hasEvidence, decision, now, nil, false)
+}
+
+func (r *replayRunner) temporalReleaseOutcomeMethod(s *spot.Spot, evidence spot.ResolverEvidence, hasEvidence bool, decision correctionflow.TemporalDecision, now time.Time,
+	saved *correctionflow.FrequencyLifecycleVector, permitExtra bool) replayResolverApplyOutcome {
+	var selection correctionflow.ResolverPrimarySelection
+	proposalAllowed := false
+	if r.methodEnabled() && permitExtra && decision.Action == correctionflow.TemporalDecisionActionApply {
+		selection, proposalAllowed = correctionflow.SelectTemporalReleaseSnapshotWithAuthority(r.resolver, evidence.Key, r.cfg.CallCorrection, normalizedDXCall(s), decision, now)
+	} else {
+		selection = r.selectTemporalRelease(s, evidence.Key, decision, now)
+	}
 	var outcome replayResolverApplyOutcome
 	if decision.Action == correctionflow.TemporalDecisionActionAbstain {
 		s.Confidence = correctionflow.ResolverConfidenceGlyphForCall(selection.Snapshot, selection.SnapshotOK, normalizedDXCall(s))
@@ -781,6 +862,11 @@ func (r *replayRunner) temporalReleaseOutcome(s *spot.Spot, evidence spot.Resolv
 	} else {
 		outcome = maybeApplyResolverCorrectionReplayWithSelectionOverride(s, r.resolver, evidence, hasEvidence,
 			r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now, &selection)
+	}
+	if permitExtra && decision.Action == correctionflow.TemporalDecisionActionApply && proposalAllowed && saved != nil {
+		outcome = r.applyMethodRescue(s, evidence, hasEvidence, now, outcome, decision.Winner, saved)
+	} else if permitExtra && decision.Action == correctionflow.TemporalDecisionActionFallbackResolver {
+		outcome = r.applyMethodRescue(s, evidence, hasEvidence, now, outcome, "", nil)
 	}
 	outcome.temporal, outcome.temporalKey = true, decision.Key
 	return outcome
@@ -814,13 +900,13 @@ func (r *replayRunner) finalize() error {
 	stabilitySummary := r.stabilityCollector.Evaluate(r.dayStart.Unix())
 	gates.Overall.Stability = stabilitySummary
 	gates.Overall.ABMetrics = r.abMetrics
-	if err := writeIntervalsCSV(r.manifest.Outputs.IntervalsCSV, intervals); err != nil {
+	if err := writeIntervalsCSVWithDiagnostics(r.manifest.Outputs.IntervalsCSV, intervals, r.diagnosticArtifacts()); err != nil {
 		return err
 	}
-	if err := writeIntervalsCSV(r.manifest.Outputs.ThresholdHitsCSV, hits); err != nil {
+	if err := writeIntervalsCSVWithDiagnostics(r.manifest.Outputs.ThresholdHitsCSV, hits, r.diagnosticArtifacts()); err != nil {
 		return err
 	}
-	if err := writeJSONAtomic(r.manifest.Outputs.GatesJSON, gates); err != nil {
+	if err := r.writeReplayJSON(r.manifest.Outputs.GatesJSON, gates); err != nil {
 		return err
 	}
 
@@ -838,10 +924,10 @@ func (r *replayRunner) finalize() error {
 	r.manifest.Results.ABMetrics = r.abMetrics
 
 	r.manifest.FinishedAtUTC = time.Now().UTC().Format(time.RFC3339Nano)
-	if err := writeJSONAtomic(r.manifest.Outputs.ManifestJSON, r.manifest); err != nil {
+	if err := r.writeReplayJSON(r.manifest.Outputs.ManifestJSON, r.manifest); err != nil {
 		return err
 	}
-	return writeReplayRunHistory(r.archiveDir, r.request.replayConfigPath, r.cfg, r.manifest)
+	return writeReplayRunHistoryWithDiagnostics(r.archiveDir, r.request.replayConfigPath, r.cfg, r.manifest, r.diagnosticArtifacts())
 }
 
 func resolveReplayConfigDir(override string, replayCfg replayConfig, envValue string) string {

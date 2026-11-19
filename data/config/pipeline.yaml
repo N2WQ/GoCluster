@@ -22,6 +22,7 @@
 #       their bounded corroboration knobs live in this section.
 ################################################################################
 call_correction:
+  selective_rescue_enabled: false     # Optional extra CW rescues after ordinary failure; ship off (see README)
   # ---------------------------------------------------------------------------
   # 1) Enablement
   # Purpose: Turn resolver-primary correction on/off.
@@ -102,16 +103,19 @@ call_correction:
   resolver_recent_plus1_max_distance: 1 # Apply +1 only for close calls (distance <= this), unless truncation-family allowance applies
   resolver_recent_plus1_allow_truncation_family: true # Allow truncation-family relations to use +1 even when distance exceeds max_distance
 
-  # Conservative Bayesian-style bonus rail for distance-1/2 near-threshold
-  # winners. Default OFF; when enabled, caps remain strict (+1 report gate and
-  # +1 advantage tie-break only).
+  # Bounded Bayesian-style bonus for distance-1/2 near-threshold winners.
+  # Held-out RBN checks rejected activation; keep the complete block inactive.
+  # Ordinary gates and recent +1 stay active. Evidence and limits:
+  # docs/call-correction-v2-qualification.md.
   bayes_bonus:
     # Milli fields are fixed-point weights/thresholds. Distance1/Distance2
     # variants apply different strictness based on resolver edit distance.
     # Explicit 0 is only neutral for distance weights, prior_log_min_milli,
     # advantage weighted deltas, and extra confidence deltas; thresholds,
     # smoothing, and caps must stay positive.
-    enabled: true
+    enabled: false
+    # A complete empty mask selects no cells, including in later file overlays.
+    enabled_distances_by_mode: {}
     weight_distance1_milli: 350
     weight_distance2_milli: 200
     weighted_smoothing_milli: 1000

@@ -158,8 +158,8 @@ func TestB21ConfusionTieRejectsNonfiniteWeightWithoutMutation(t *testing.T) {
 	for _, weight := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
 		t.Run(fmt.Sprint(weight), func(t *testing.T) {
 			ranked := []rankedResolverCandidate{
-				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
-				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
+				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true, receivers: []ResolverReceiverObservation{{Receiver: "N0AAA", Report: 5, HasReport: true, WeightMilli: 1000}}},
+				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true, receivers: []ResolverReceiverObservation{{Receiver: "N0AAA", Report: 5, HasReport: true, WeightMilli: 1000}}},
 			}
 			before := append([]rankedResolverCandidate(nil), ranked...)
 			var workspace confusionAlignmentWorkspace
@@ -179,8 +179,8 @@ func TestB21ConfusionTiePreservesFiniteOrdering(t *testing.T) {
 	}{{-2, "AA1AA"}, {0, "AA1AA"}, {math.SmallestNonzeroFloat64, "ZZ1ZZ"}, {1, "ZZ1ZZ"}, {math.MaxFloat64, "ZZ1ZZ"}} {
 		t.Run(fmt.Sprint(query.weight), func(t *testing.T) {
 			ranked := []rankedResolverCandidate{
-				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
-				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true},
+				{call: "AA1AA", callRunes: []rune("AA1AA"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true, receivers: []ResolverReceiverObservation{{Receiver: "N0AAA", Report: 5, HasReport: true, WeightMilli: 1000}}},
+				{call: "ZZ1ZZ", callRunes: []rune("ZZ1ZZ"), support: 1, weightedSupportMilli: 1000, lastReport: 5, lastHasReport: true, receivers: []ResolverReceiverObservation{{Receiver: "N0AAA", Report: 5, HasReport: true, WeightMilli: 1000}}},
 			}
 			var workspace confusionAlignmentWorkspace
 			applyResolverConfusionTieBreak(ranked, "CW", model, query.weight, &workspace)

@@ -13,7 +13,7 @@ import (
 
 func v16HarmonicSpot(call string, frequency float64, report int, at time.Time) *Spot {
 	s := NewSpotNormalized(call, "W1AW", frequency, "CW")
-	s.Report, s.Time = report, at
+	s.Report, s.Time, s.HasReport = report, at, true
 	return s
 }
 

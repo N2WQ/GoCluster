@@ -1,3 +1,6 @@
+// File role: Records replay provenance in per-run snapshots and an append-only
+// index. Diagnostic runs route both writes through their bounded artifact owner;
+// ordinary replay retains its existing filesystem publication behavior.
 package main
 
 import (
@@ -39,6 +42,16 @@ func writeReplayRunHistory(
 	replayConfigPath string,
 	clusterCfg *config.Config,
 	manifest replayManifest,
+) error {
+	return writeReplayRunHistoryWithDiagnostics(archiveDir, replayConfigPath, clusterCfg, manifest, nil)
+}
+
+func writeReplayRunHistoryWithDiagnostics(
+	archiveDir string,
+	replayConfigPath string,
+	clusterCfg *config.Config,
+	manifest replayManifest,
+	owner *studyDiagnosticArtifacts,
 ) error {
 	record := replayRunRecord{
 		RunID:            buildReplayRunID(manifest),
@@ -84,12 +97,22 @@ func writeReplayRunHistory(
 	}
 
 	snapshotPath := filepath.Join(runsDir, fmt.Sprintf("%s_%s.json", record.DateUTC, record.RunID))
-	if err := writeJSONAtomic(snapshotPath, record); err != nil {
+	writeSnapshot := writeJSONAtomic
+	if owner != nil {
+		writeSnapshot = owner.atomicJSON
+	}
+	if err := writeSnapshot(snapshotPath, record); err != nil {
 		return fmt.Errorf("write run snapshot %s: %w", snapshotPath, err)
 	}
 
 	indexPath := filepath.Join(historyRoot, "runs.jsonl")
-	if err := appendJSONL(indexPath, record); err != nil {
+	var appendErr error
+	if owner == nil {
+		appendErr = appendJSONL(indexPath, record)
+	} else {
+		appendErr = appendJSONLWithDiagnostics(indexPath, record, owner)
+	}
+	if err := appendErr; err != nil {
 		return fmt.Errorf("append run index %s: %w", indexPath, err)
 	}
 	return nil
@@ -132,11 +155,26 @@ func hashAnyStable(v any) string {
 // appendJSONL keeps the run index append-only so failed or repeated replay
 // experiments do not overwrite historical evidence.
 func appendJSONL(path string, v any) error {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	return appendJSONLWithDiagnostics(path, v, nil)
+}
+
+func appendJSONLWithDiagnostics(path string, v any, owner *studyDiagnosticArtifacts) error {
+	f, err := openReplayArtifactWithDiagnostics(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644, owner)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+	if owner != nil {
+		data, err := owner.jsonBytes(v, studyAuditRowBytes-1)
+		if err != nil {
+			return err
+		}
+		data = append(data, '\n')
+		if _, err := f.Write(data); err != nil {
+			return err
+		}
+		return f.Sync()
+	}
 	enc := json.NewEncoder(f)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {

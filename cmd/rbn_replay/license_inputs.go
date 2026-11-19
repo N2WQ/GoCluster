@@ -169,7 +169,7 @@ func (r *replayRunner) freezeLicenseFile(path, name, setting string, required bo
 		return input, "", fmt.Errorf("%s missing/unreadable %s: %w", setting, abs, err)
 	}
 	destination := filepath.Join(r.licenseInputsDir, name)
-	copyErr := copyFrozenLicenseFile(source, destination, &input)
+	copyErr := r.copyFrozenLicenseFile(source, destination, &input)
 	closeErr := source.Close()
 	if err := errors.Join(copyErr, closeErr); err != nil {
 		return input, "", fmt.Errorf("freeze %s %s: %w", setting, abs, err)

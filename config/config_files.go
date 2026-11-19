@@ -206,6 +206,8 @@ var runtimePresenceExemptPaths = map[string]struct{}{
 	"dedup.secondary_window_seconds":                        {},
 	"dedup.secondary_prefer_stronger_snr":                   {},
 	"call_correction.slash_precedence_min_reports":          {},
+	"call_correction.selective_rescue_enabled":              {},
+	"call_correction.bayes_bonus.enabled_distances_by_mode": {},
 }
 
 var runtimeAllowEmptySettings = map[string]struct{}{
@@ -288,6 +290,12 @@ func mergedRuntimePresenceDiagnostics(raw map[string]any) []string {
 	diagnostics := make([]string, 0, 4)
 	collectStructPresenceDiagnostics(raw, reflect.TypeOf(Config{}), nil, &diagnostics)
 	diagnostics = append(diagnostics, humanTelnetPresenceDiagnostics(raw)...)
+	diagnostics = append(diagnostics, bayesBonusMaskPresenceDiagnostics(raw)...)
+	if value, present := yamlValueAt(raw, "call_correction", "selective_rescue_enabled"); present {
+		if _, ok := value.(bool); !ok {
+			diagnostics = append(diagnostics, `invalid YAML setting "call_correction.selective_rescue_enabled": must be a boolean, not null`)
+		}
+	}
 	sort.Strings(diagnostics)
 	return diagnostics
 }

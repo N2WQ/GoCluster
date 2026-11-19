@@ -23,6 +23,9 @@ type LegacyHistoryConsumers struct {
 // requirements do not apply to this store, but existing receiver-threshold
 // folding still applies when a tool passes a CustomSCP-enabled configuration.
 func (c CallCorrectionConfig) ValidateLegacyHistoryCapacity(store string, capacity int, consumers LegacyHistoryConsumers) error {
+	if err := c.BayesBonus.ValidateEnabledDistancesByMode(); err != nil {
+		return err
+	}
 	check := func(key string, requirement int) error {
 		if requirement > capacity {
 			return fmt.Errorf("%s: effective requirement %d exceeds %s receiver capacity=%d", key, requirement, store, capacity)
@@ -66,9 +69,11 @@ func (c CallCorrectionConfig) ValidateLegacyHistoryCapacity(store string, capaci
 	}
 	distance1Allowed := c.MaxEditDistance < 0 || c.MaxEditDistance >= 1
 	distance2Allowed := c.MaxEditDistance < 0 || c.MaxEditDistance >= 2
+	bayesDistance1 := c.bayesBonusDistanceEnabled(1)
+	bayesDistance2 := c.bayesBonusDistanceEnabled(2)
 	validation := (distance1Allowed && customSCPTruncationValidationEnabled(c.FamilyPolicy.Truncation, distance2Allowed)) ||
-		(c.BayesBonus.Enabled && ((distance1Allowed && c.BayesBonus.RequireCandidateValidated) ||
-			(distance2Allowed && c.BayesBonus.RequireSubjectUnvalidatedDistance2)))
+		((bayesDistance1 || bayesDistance2) && c.BayesBonus.RequireCandidateValidated) ||
+		(bayesDistance2 && c.BayesBonus.RequireSubjectUnvalidatedDistance2)
 	base, key := c.RecentBandRecordMinUniqueSpotters, commonKey
 	if c.CustomSCP.Enabled {
 		base = max(base, c.CustomSCP.ResolverMinUniqueSpotters)
@@ -86,7 +91,7 @@ func (c CallCorrectionConfig) ValidateLegacyHistoryCapacity(store string, capaci
 	// Plain/slash identities can differ at distance zero, so Plus1 remains a
 	// consumer there. Bayes consumes the report minimum at distance 1/2 even
 	// with zero scales. Raw legacy Plus1 zero has no Boolean-default fallback.
-	if c.ResolverRecentPlus1Enabled || (c.BayesBonus.Enabled && distance1Allowed) {
+	if c.ResolverRecentPlus1Enabled || bayesDistance1 || bayesDistance2 {
 		minimum := c.ResolverRecentPlus1MinUniqueWinner
 		key = "call_correction.resolver_recent_plus1_min_unique_winner"
 		if c.CustomSCP.Enabled {
