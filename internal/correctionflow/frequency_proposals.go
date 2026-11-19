@@ -1,4 +1,4 @@
-// File role: Request-local, replay-only frequency association and nomination.
+// File role: Request-local frequency association and nomination.
 // No view or receiver backing escapes in a proposal. Owner settlement and the
 // ordinary/public selection remain separate from the group numerical evidence.
 package correctionflow
@@ -17,7 +17,7 @@ import (
 // FrequencySource is one actual source read, including ordinary-excluded keys.
 // Evidence is separate to permit verified study imports without forging a
 // resolver publication. Snapshot ranks and pending endpoints retain owner order.
-// Inputs are borrowed only for the duration of AssessFrequencyProposals.
+// Inputs are borrowed only for the duration of a frequency assessment.
 type FrequencySource struct {
 	RequestedKey                        spot.ResolverSignalKey
 	Read, Present                       bool
@@ -74,33 +74,55 @@ type frequencyComponent struct {
 	receivers map[string][]time.Time
 }
 
+// The canonical view and rank backing are request-local. Only detached scalar
+// proposals or declines cross either public assessment boundary.
+type frequencyProposalContext struct {
+	union      *spot.ResolverEvidenceView
+	ranks      []spot.ResolverCandidateSupport
+	population spot.ResolverSnapshot
+	masks      map[string]uint16
+}
+
 // AssessFrequencyProposals is pure and CW-only. The caller supplies current
 // eligible reads, not an ingest barrier or a saved temporal score. Every raw
 // incidence is bounded before growth/alias folding; failure leaves ordinary
 // correction untouched. Generation witnesses identify lifecycles, not freshness.
 func AssessFrequencyProposals(key spot.ResolverSignalKey, subject string, focalKHz float64,
 	ordinary ResolverPrimarySelection, sources [5]FrequencySource, cfg config.CallCorrectionConfig, options FrequencyProposalOptions) FrequencyAssessment {
+	// V1's accepted option cells and scalar results are a replay contract.
+	if options.MaxDistance != 1 && options.MaxDistance != 2 {
+		return FrequencyAssessment{Reason: "unavailable", AssociatedComponent: -1}
+	}
+	out, context := prepareFrequencyProposals(key, subject, focalKHz, ordinary, sources, cfg, options)
+	if out.Reason == "assessed" {
+		nominateFrequencyProposals(subject, sources, cfg, options.MaxDistance, context, &out)
+	}
+	return out
+}
+
+func prepareFrequencyProposals(key spot.ResolverSignalKey, subject string, focalKHz float64,
+	ordinary ResolverPrimarySelection, sources [5]FrequencySource, cfg config.CallCorrectionConfig, options FrequencyProposalOptions) (FrequencyAssessment, frequencyProposalContext) {
 	out := FrequencyAssessment{Reason: "unavailable", AssociatedComponent: -1}
 	if key.Mode != "CW" || !frequencyModelCall(spot.CorrectionVoteKey(subject)) ||
 		(options.GapHz != 150 && options.GapHz != 250) ||
 		(options.MaxWitnessSeparation != time.Minute && options.MaxWitnessSeparation != 2*time.Minute) ||
-		(options.MaxDistance != 1 && options.MaxDistance != 2) || !positiveFrequency(focalKHz) {
-		return out
+		options.MaxDistance < 1 || options.MaxDistance > 3 || !positiveFrequency(focalKHz) {
+		return out, frequencyProposalContext{}
 	}
 	if ordinary.NeighborhoodSplit || ordinary.generationConflict || ordinary.Snapshot.EvidenceLoss ||
 		ordinary.SnapshotOK && (ordinary.Snapshot.State == spot.ResolverStateSplit || ordinary.Snapshot.State == spot.ResolverStateUncertain) {
 		out.Reason = "ordinary_protected"
-		return out
+		return out, frequencyProposalContext{}
 	}
 	rows, basis, reason := frequencySourceRows(key, sources, cfg, &out)
 	if reason != "" {
 		out.Reason = reason
-		return out
+		return out, frequencyProposalContext{}
 	}
 	components, masks, reason := partitionFrequencyRows(rows, focalKHz, options.GapHz, &out)
 	if reason != "" {
 		out.Reason = reason
-		return out
+		return out, frequencyProposalContext{}
 	}
 	var excluded [16]bool
 	for i := range components {
@@ -130,10 +152,18 @@ func AssessFrequencyProposals(key spot.ResolverSignalKey, subject string, focalK
 	total, weighted, conflict := union.ReceiverTotals()
 	if conflict {
 		out.Reason = "frequency_conflict"
-		return out
+		return out, frequencyProposalContext{}
 	}
 	population := spot.ResolverSnapshot{Key: key, SupportBasis: basis, CandidateRanks: ranks,
 		TotalReporters: total, TotalWeightedSupportMilli: weighted}
+	out.Reason = "assessed"
+	return out, frequencyProposalContext{union: union, ranks: ranks, population: population, masks: masks}
+}
+
+func nominateFrequencyProposals(subject string, sources [5]FrequencySource, cfg config.CallCorrectionConfig,
+	maxDistance int, context frequencyProposalContext, out *FrequencyAssessment) {
+	union, ranks, population := context.union, context.ranks, context.population
+	key, basis := population.Key, population.SupportBasis
 	groups := make(map[string]*neighborhoodCandidate, len(ranks))
 	for _, rank := range ranks {
 		groups[rank.Identity()] = &neighborhoodCandidate{call: rank.Call, support: rank.Support,
@@ -142,11 +172,11 @@ func AssessFrequencyProposals(key spot.ResolverSignalKey, subject string, focalK
 	for _, rank := range ranks {
 		identity := rank.Identity()
 		if rank.ReplacementBlocked || identity == spot.CorrectionVoteKey(subject) || !frequencyModelCall(identity) ||
-			masks[identity] != uint16(1)<<out.AssociatedComponent || !frequencyNomineeAuthority(identity, sources) {
+			context.masks[identity] != uint16(1)<<out.AssociatedComponent || !frequencyNomineeAuthority(identity, sources) {
 			continue
 		}
 		distance := spot.CorrectionCandidateDistance(subject, rank.Call, key.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)
-		if distance < 1 || distance > options.MaxDistance || cfg.MaxEditDistance >= 0 && distance > cfg.MaxEditDistance {
+		if distance < 1 || distance > maxDistance || cfg.MaxEditDistance >= 0 && distance > cfg.MaxEditDistance {
 			continue
 		}
 		if frequencyProposalPending(rank.Call, key.Mode, sources, cfg) {
@@ -167,13 +197,11 @@ func AssessFrequencyProposals(key spot.ResolverSignalKey, subject string, focalK
 		out.Proposals = append(out.Proposals, FrequencyProposal{Call: strings.Clone(rank.Call), Identity: strings.Clone(identity),
 			Support: rank.Support, WeightedSupportMilli: rank.WeightedSupportMilli,
 			SubjectSupport: ResolverSupportForCall(population, subject), SubjectWeightedSupportMilli: ResolverWeightedSupportForCall(population, subject),
-			TotalReporters: total, TotalWeightedSupportMilli: weighted, ConfidencePercent: confidence, SupportBasis: basis,
+			TotalReporters: population.TotalReporters, TotalWeightedSupportMilli: population.TotalWeightedSupportMilli, ConfidencePercent: confidence, SupportBasis: basis,
 			ComparableEditNeighbor: spot.ResolverSnapshotHasComparableEditNeighbor(population, rank.Call, key.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY)})
 	}
 	sort.Slice(out.Proposals, func(i, j int) bool { return frequencyGeometryAhead(out.Proposals[i], out.Proposals[j]) })
 	out.BeamLimited = len(out.Proposals) > 8
-	out.Reason = "assessed"
-	return out
 }
 
 func frequencyModelCall(call string) bool {

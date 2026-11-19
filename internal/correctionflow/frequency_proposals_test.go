@@ -19,7 +19,7 @@ func f0Row(call, receiver string, f float64, seconds int) spot.ResolverEvidenceR
 		Receiver: receiver, FrequencyKHz: f, ObservedAt: f0At.Add(time.Duration(seconds) * time.Second), WeightMilli: 1000, HasReport: true, Report: 0}}
 }
 
-func f0Fixture(t *testing.T, rows []spot.ResolverEvidenceRow) (spot.ResolverSignalKey, ResolverPrimarySelection, [5]FrequencySource, config.CallCorrectionConfig) {
+func f0Fixture(t testing.TB, rows []spot.ResolverEvidenceRow) (spot.ResolverSignalKey, ResolverPrimarySelection, [5]FrequencySource, config.CallCorrectionConfig) {
 	t.Helper()
 	key := spot.NewResolverSignalKey(7021, "40m", "CW", 500)
 	view, err := spot.NewStudyResolverEvidence(rows, 5*time.Minute)
