@@ -1,8 +1,12 @@
 # Call Correction v2 Method Investigation
 
 Authority: [approved v5](call-correction-v2-scope-ledger-v5.md), E0–E3.
-This is preliminary exposed-data evidence, not a completed feasibility verdict,
-selected replacement model, implementation approval or activation qualification.
+The E0–E3 entries below preserve their evidence boundaries. The subsequent
+[approved v7](call-correction-v2-scope-ledger-v7.md) implementation and complete
+sixteen-candidate experiment have now executed. See [v7 results](call-correction-v2-v7-results.md):
+all candidates gain corrections and pooled stability but fail the frozen
+reference-rename guard; Bayesian ranking changes no applied outcome compared
+with its paired geometry method. No candidate is selected or activated.
 
 ## What the evidence can establish so far
 

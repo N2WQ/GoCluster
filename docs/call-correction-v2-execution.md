@@ -19,7 +19,15 @@ without including them in source commits. No model installation was performed.
 
 ## Evidence status
 
-Latest checkpoint: final selected-state ordinary tests, vet, Staticcheck, lint
+Latest method checkpoint: approved v7 is implemented and all16 candidates
+executed on four exposed dates. Each gains corrections and pooled stability;
+all fail the frozen reference rename guard. The selector chose none, Bayesian
+ranking has no applied-output increment versus geometry, and prospective dates
+remain unopened. [Complete v7 results](call-correction-v2-v7-results.md) and
+[final validation](call-correction-v2-v7-validation.md#f4-final-verification-and-source-to-scope-mapping)
+supersede earlier in-progress construction entries below.
+
+Earlier release checkpoint: final selected-state ordinary tests, vet, Staticcheck, lint
 and connected ordinary/race CustomSCP regressions pass. The actual Bayes-off
 release capture completes all 90,000 inputs and deliveries but **fails** the
 frozen typical CPU gate at 437,500 ns/input. Complete race package coverage

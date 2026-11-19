@@ -1,7 +1,9 @@
 # Call Correction v2 Scope Ledger v7
 
 Status: Approved by the owner's exact `Approved v7` token on November 18, 2026;
-implementation and experiment execution in progress.
+F0–F4 implemented and executed. All sixteen tuning candidates failed the frozen
+reference-rename guard; none selected. Conditional prospective confirmation
+was not entered. See the [complete results](call-correction-v2-v7-results.md).
 Workspace: `C:/src/gocluster-call-correctionv2`, branch `call-correctionv2`.
 Base: approved [v5](call-correction-v2-scope-ledger-v5.md) and
 [v6](call-correction-v2-scope-ledger-v6.md), completed E1/E2 evidence.
@@ -430,6 +432,9 @@ vectors were derived earlier in separate non-steered contexts. The lead
 verified and dispositioned the findings. The owner subsequently supplied exact
 `Approved v7`; the detailed F0 construction/test gate has run and its findings
 are dispositioned in the [construction evidence](call-correction-v2-v7-validation.md).
-The approved sequential implementation queue is active.
+The approved sequential implementation queue has reached its measured
+failed-premise disposition. No eligible candidate remains for dependent
+confirmation or live integration; the broader correction-method objective is
+still unmet. New method behavior requires a later reviewed scope.
 
 Exact authorization required before implementation: Approved v7

@@ -536,3 +536,9 @@ last. This does not execute confirmation or authorize live activation.
 Follow-on stability and RBN agreement remain conditional proxies. Untouched
 confirmation, live integration and production resource qualification are separate
 requirements; see the [construction evidence](call-correction-v2-v7-validation.md).
+
+The [executed v7 experiment](call-correction-v2-v7-results.md) ran the complete
+sixteen-candidate grid. All candidates gained corrections and pooled stability,
+but all failed the frozen reference-rename guard; the selector chose none.
+Ordinal ranking produced identical applied outputs to paired geometry ranking.
+Prospective confirmation was not started, and no live method is qualified.

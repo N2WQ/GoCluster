@@ -12,6 +12,14 @@ qualification is waived. Supporting documentation/map receipts are listed in the
 execution record.
 No deployment is authorized or claimed.
 
+Subsequent method checkpoint: [approved v7](call-correction-v2-scope-ledger-v7.md)
+is implemented and its full sixteen-candidate experiment has executed.
+All candidates increase corrections and pooled follow-on stability but fail
+the frozen reference rename guard. None is selected; Bayesian ranking adds
+no applied-output change relative to geometry on these dates. See the
+[complete results](call-correction-v2-v7-results.md). Confirmation dates remain
+unopened. This does not supersede or waive the earlier resource failure.
+
 Authority: [approved v3](call-correction-v2-scope-ledger-v3.md) and the additive
 [approved v4 input scenario](call-correction-v2-scope-ledger-v4.md). Implementation
 and earlier receipts remain in the [execution record](call-correction-v2-execution.md).
@@ -407,8 +415,9 @@ studies, and the 75 nearby misses. No new method has been qualified. The owner
 selected evidence/asset capping with
 separate scratch accounting and approved the [v6 amendment](call-correction-v2-scope-ledger-v6.md).
 E1/E2 are complete within their stated evidence boundaries. The
-[proposed v7 experiment](call-correction-v2-scope-ledger-v7.md) awaits exact
-authorization; its frequency/Bayesian method is not implemented or activated.
+[approved v7 experiment](call-correction-v2-scope-ledger-v7.md) has subsequently
+been implemented and executed. Its [complete results](call-correction-v2-v7-results.md)
+select no candidate; no new live method is activated.
 
 ## Validation reached, with state boundaries
 
@@ -735,8 +744,11 @@ entry cap. The presence repair introduces no new harmonic registry.
    stability estimate under approved v5/v6. E1 has completed its full functional
    validation and four-date exposed capture parity/accounting. E2's bounded
    consumed/control and causal studies are complete, with independent factual
-   and scientific review. The resulting v7 replay-only method scope awaits its
-   matching authorization; it establishes no method improvement yet.
+   and scientific review. The resulting approved v7 replay-only method has
+   executed: all16 variants gain corrections and pooled stability but fail
+   reference eligibility; none proceeds to prospective confirmation.
+   The broader method objective remains unmet; a different method needs
+   a later reviewed scope, not retuning against unopened confirmation data.
    New active proposal behavior requires its own reviewed scope and approval.
 2. Resource optimization is deferred by the owner. When that work resumes,
    resolve the acceptance-policy question and qualify resource behavior under

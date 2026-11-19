@@ -4,6 +4,12 @@ Authority: exact `Approved v7`, November 18, 2026, in the isolated
 `call-correctionv2` checkout. This records construction and falsifiability;
 production qualification remains unchanged.
 
+Final checkpoint: F0–F4 are implemented and the sixteen-candidate experiment
+has executed. All candidates pass the pooled correction/stability objective
+and fail the frozen reference rename guard. No candidate is selected and no
+prospective confirmation was entered. [Executed results](call-correction-v2-v7-results.md)
+and the final section below supersede the chronological construction statuses.
+
 ## F0 detailed gate and implementation
 
 A separate read-only test-strategy reviewer inspected the approved contract,
@@ -309,3 +315,122 @@ pending-owner header. Local target existence checks passed 341 Markdown file
 references using the generator's repository-root convention for code-map links;
 this does not claim external URL or rendered-anchor validation. Both frozen
 staged fixture blobs retain their declared raw-byte hashes.
+
+## F4 final verification and source-to-scope mapping
+
+Predictions, model and native evaluators were frozen on clean commit
+`188c30af9632fae7ab8b7629298dd0f954d0341c`. Later changes are documentation of
+the observed experiment, not predictor/model/threshold changes. The complete
+result and hash-bound evidence index are in [v7 results](call-correction-v2-v7-results.md).
+
+| Approved item | Implemented locations | Distinguishing executed evidence |
+| --- | --- | --- |
+| F0 bounded frequency proposals and dual evidence | `internal/correctionflow/frequency_proposals.go`, `frequency_import.go`, `frequency_sources.go`; `spot/resolver_evidence_filter.go` and existing distance wrapper | Consumed DL3/R9/N2 fixtures; exact boundaries, raw conflicts, dissent, canonical union, lifecycle ownership, overflow and native/race tests described above |
+| F1 Bayesian event estimation and ordinal ranking | `ordinal_counts.go`, `ordinal_model.go`; replay `study_ordinal_asset.go`; `scripts/fit-call-correction-ordinal.py` | Complete 1,340,516 focal-receipt census; 138,330 strong-agree pairs across modes, 124,035 CW fit pairs; independent numeric/alignment vectors; strict asset refusal and whole-population sparse fallback; full actual 32-stream availability census |
+| F2 actual replay integration | `study_method_plan.go`, `study_method_apply.go`, `study_method_artifacts.go`, runner/pipeline/temporal/observer integration; shared `SelectTemporalReleaseSnapshotWithAuthority` | Four actual byte-identical disabled streams, 2,364,930 rows; actual ordinary-first/licensing/C-output/learning/release tests; terminal-marker and failure-path tests; 64 complete active captures |
+| F3 full fixed grid and selection | `study_method_eval*.go`, including `study_method_eval_entry.go`; `scripts/prepare-call-correction-v7-study.py`, `scripts/select-call-correction-v7-method.py` | Eight complete evaluations, all16 whole candidates, exact fractions and reference counters; selector no-eligible verdict; full ID pairing and old-manifest reconciliation; separate receipt arithmetic and direct ranking-pair cross-checks |
+| F4 final disposition and documentation | This record, v7 results, method investigation, execution/qualification reports, replay guide, support routing and generated code map | Complete ordinary/race/static lane, final claim/binding checks and fresh source/diff review; failed premise preserved, confirmation dates unopened, no live activation |
+
+### Final selected lane, with failures and skips preserved
+
+- Native ordinary coverage: 14,940 passing cases, 99 skips, all76 packages
+  (61 executed/15 build-only). The first invocation's three-minute cluster
+  package timeout was not an assertion failure and is not relabeled a pass.
+  The unchanged successful prefix covered 31 executed/seven build-only packages,
+  4,507 passing/11 skipped cases. The continuation from that package under the
+  normal ten-minute limit covered 30 executed/eight build-only packages,
+  10,433 passing/88 skipped cases. The disjoint union matches `go list ./...`.
+- Native race lane: one complete `scripts/test-windows.ps1 -Race -Timeout20m`
+  run passed 14,940 cases, 99 skips, 61 executed/15 build-only packages.
+- `go vet ./...`, `staticcheck ./...` and
+  `golangci-lint run ./... --config=.golangci.yaml` passed on frozen source;
+  lint reports zero issues. Logs are `v7-final-vet-all.log`,
+  `v7-final-staticcheck.log` and `v7-final-golangci.log` under the local evidence root.
+- Final method/evaluation wire fuzz: 57,730 executions, two workers, four
+  seeds, two new interesting inputs, PASS at about sixteen seconds.
+  `v7-method-fuzz-final.log` supersedes the earlier low-throughput attempt.
+  Literal malformed/null/duplicate/unknown and collection-bound tests remain
+  necessary; a short fuzz pass does not exhaust the parser state space.
+- The 99 skips remain explicit opt-in resource/soak/production/environment or
+  external fixture/helper cases. Passing ordinary/race lanes do not satisfy
+  the original production CPU/resource gate, which remains deferred/unwaived.
+
+The actual commands use the native Windows runner and its stable test images.
+No hosted CI, live service, production capacity, p99 or deployment verification
+is claimed. The source-quality reviews above followed actual implementation
+and error paths; test totals alone are not their completeness evidence.
+
+### Experiment arithmetic and independent-review boundaries
+
+The lead rechecked all29 selector metadata input bindings from bounded snapshots,
+all16 fixed identities, exact pooled objective fractions, nonzero R1/R2 failure
+counters, affected-input union and null-selection verdict. Coverage COMPLETE
+readback, all eight eligibility partitions/histograms/attempt totals and
+greater-than-99.6% availability claims also checked. No archive was opened by
+these checks. The separate final reviewer independently recomputed all32
+coverage run partitions and eight four-date pooled totals from the report.
+
+A separate reviewer originally received no native outcome totals and derived
+each primary arithmetic count before opening the corresponding native aggregate.
+It checked complete emitted paired streams, not raw RF truth or an independent
+stability rescore. Raw enum differences are retained: its `variant_lower`
+means native `control_higher`. They are reconciled by literal integer cross
+products rather than hidden by overwriting original proofs. The distinct direct
+geometry/ordinal cross-check verifies actual applied membership and six semantic
+fields; that reviewer had earlier native context, so this part is explicitly
+not pristine/blind. See the result's evidence index and final recount summary
+for its exact counts and limits.
+
+The all-eight summary binds 6,148/6,160 primary raw matches plus twelve explicit
+vocabulary differences (two in each of pairs four/six and eight in pair eight),
+with zero numeric/exact-order discrepancies. The separate direct cross-check
+matched all 2,240 checks. Its SHA-256 is
+`8936a2f73b886abc1869d687185c84c70863890cfbd8b6a429e3c798e3a33677`;
+summary COMPLETE SHA-256 is
+`3d049c45afb6d6bdcb5cb48ccf71ad0847895f0e243255edb269e728584a0c54`.
+The repeated settings sum to 18,919,440 paired rows over the same 2,364,930
+focal inputs, not that many independent RF observations. The lead verified the
+summary hash and matched its per-pair counts to the reported native results.
+
+A fresh separate final source/claim reviewer found reporting issues in the
+first draft: an associated-component index read as a count, focal receipts
+called fitted pairs, omitted all-mode date declines, and overly broad fallback
+attribution. All are corrected. That reviewer checked the selector's all29
+input hashes, all16 objective/reference/union verdicts, all32 coverage partitions,
+eight pooled histograms and all261 coverage metadata bindings. This is separate
+adversarial source/arithmetic review with the draft visible, not a blind model
+validation or independent RF adjudication.
+
+The v1 external execution controller's separate-read and late-COMPLETE defects
+were found and closed by the corrected verification-only v2; native predictions
+were unchanged. Its 60 worker captures verified against actual closed files;
+the lead checked the first four separately. The coverage helper's short-write/
+readback and plan assembler's assertion-side-effect issues were corrected and
+their explicit positive/fault checks rerun. Partial/old proof authority is not
+silently substituted for final COMPLETE-bound evidence.
+
+### Scope and remaining obligations
+
+The live pipeline has no caller of the extra study method; runtime YAML,
+defaults and production asset installation are outside this change. Existing
+shared operations preserve owned evidence and ordinary behavior; actual
+disabled parity passed. The scope's conditional confirmation obligation was
+not triggered because no candidate met tuning eligibility. This is a completed
+failed-premise experiment, not completion of the owner's broader improvement
+objective or Thursday qualification.
+
+Support-agent documentation impact: **support-critical scientific/operational
+claims changed**, with routing updated in `customgpt/source-map.md` to the
+executed verdict, attribution and qualification limits. Fresh final review
+closed all material findings. The lead checked the actual reporting diff,
+187 local Markdown file targets across eight reporting files, unchanged frozen
+Go/Python source and clean native build provenance. Final code-map generation,
+freshness check and `git diff --check` passed. External URL and rendered-anchor
+validation are not claimed. Documentation-only closeout does not invalidate the
+passed ordinary/race/static results on unchanged Go source.
+
+Decision-memory disposition: inspected ADR-0358 and TSR-0138. Their inactive
+first-party Bayes/failed production-resource policy is unchanged. This exposed
+experiment establishes a method-family failure, not a new durable activation
+decision or a newly diagnosed production incident. Its exact evidence belongs
+in this study record; no new ADR/TSR is created solely for task administration.
