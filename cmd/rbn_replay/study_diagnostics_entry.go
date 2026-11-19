@@ -12,6 +12,7 @@ import (
 )
 
 var errStudyDiagnosticReportMarker = errors.New("study comparison refuses diagnostic reports")
+var errStudyExperimentalReportMarker = errors.New("experimental method report is not a legacy activation input")
 
 // Main must separately retain flag presence: an explicitly supplied empty pair
 // is an invalid diagnostic request, while an absent pair preserves ordinary use.
@@ -63,6 +64,9 @@ func studyDiagnosticRejectReportMarker(data []byte) error {
 		}
 		if strings.EqualFold(key, "diagnostics") {
 			return errStudyDiagnosticReportMarker
+		}
+		if strings.EqualFold(key, "experimental") {
+			return errStudyExperimentalReportMarker
 		}
 		if err := studyDiagnosticSkipReportValue(decoder, 1); err != nil {
 			return err

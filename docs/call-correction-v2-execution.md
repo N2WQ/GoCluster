@@ -959,3 +959,49 @@ band is broadly sparse. The [opportunity table](call-correction-v2-method-invest
 records the counts and limits. It computes no new alignment, fitted parameters,
 candidate eligibility or corrections. No v7 implementation or activation is
 inferred from this additional data census.
+
+## Approved v7 execution
+
+The owner supplied exact `Approved v7` on November 18, 2026. The isolated
+`call-correctionv2` work queue is now active; the preceding pending-authorization
+paragraphs describe the earlier checkpoint. F0 implements the pure frequency
+association/proposal core, bounded raw import/filter and verified consumed-DTO
+adapter. A separate detailed test-plan gate preceded code; a separate source
+review found three defects, all fixed and rechecked. Complete native ordinary
+and race checks for `spot` and `internal/correctionflow` each passed 1,563 cases
+with zero skips. The [construction evidence](call-correction-v2-v7-validation.md)
+records actual frozen-case results, bounds, failed test oracles and their fixes.
+F1 proceeds next; no live activation or new applied-correction result is claimed.
+
+F1 subsequently fitted the frozen event asset from all 1,340,516 November 7/14
+receipts, reconciling the complete all-mode census and retaining 124,035 CW
+pairs. The 21,373-byte asset SHA is
+`968caf263f3bf44c13509ded8b5e48faf0bd39b1d7cc42dcd9d1e6c0a45e5e1a`.
+The strict native loader/ranker, whole-decision sparse fallback, immutable tables
+and fitter failure paths are implemented and source-reviewed. Native ordinary
+and race correctionflow/replay lanes each passed 1,230 cases, zero skips; vet
+passed, with the limited bounded fuzz result recorded in construction evidence.
+F2 is now integrating actual replay gates, mutation, licensing, temporal release
+and cumulative artifact ownership. No new full-stream outcome has been used to
+select a method, and November 17+ contents remain unopened.
+
+F2's real replay integration is implemented. Separate source review found no
+material remaining integration issue; actual consumer/ownership/CLI tests and
+the complete ordinary/race correctionflow+replay lanes passed (1,299 cases each,
+zero skips), followed by four ordinary/four race actual-study-run cases. The
+new experimental marker cannot enter legacy activation readers, including when
+disabled. Ordinary correction/validation remains terminal; extra gate numbers
+stay beside ordinary public/temporal evidence. The detailed construction record
+preserves failed fixture assumptions and reruns. F3 now builds the common
+bounded three-role evaluation; the final tie-break interpretation has been
+asked separately and no global selection is implemented while it is unresolved.
+
+The owner subsequently selected the affected-input union for that existing
+tertiary tie-break. F3 now includes a bounded eight-evaluation/sixteen-candidate
+selector using applied receipts, exact stability, that union and lexical ID.
+Its synthetic ordering, fraction-decline, metadata/integrity and publication
+failure checks pass. Complete-repository vet, Staticcheck and lint pass. Native
+method-wire fuzzing passed with limited throughput; the detailed record states
+its limits. The full ordinary suite's three-minute cluster-package timeout is
+being rerun under the normal ten-minute limit, with earlier packages retained.
+No new candidate outcome or November 17+ content has been inspected.

@@ -1,3 +1,6 @@
+// File role: Own bounded held replay observations and deterministic retirement.
+// Experimental holds retain only source lifecycle scalars; release rereads current
+// evidence rather than carrying frequency groups or gate counts across the wait.
 package main
 
 import (
@@ -13,12 +16,13 @@ import (
 // comes from current eligible publications. Cardinality is bounded by decoder
 // MaxPending, and each owned request has one heap item until final release.
 type replayTemporalPending struct {
-	id          uint64
-	spot        *spot.Spot
-	evidence    spot.ResolverEvidence
-	hasEvidence bool
-	maxAt       time.Time
-	selection   correctionflow.ResolverPrimarySelection
+	id                  uint64
+	spot                *spot.Spot
+	evidence            spot.ResolverEvidence
+	hasEvidence         bool
+	maxAt               time.Time
+	selection           correctionflow.ResolverPrimarySelection
+	frequencyLifecycles correctionflow.FrequencyLifecycleVector
 }
 
 // replayTemporalItem orders pending temporal observations by release time and

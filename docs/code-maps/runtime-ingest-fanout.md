@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `963df41c41ca1f94`
+- Source fingerprint: `1f5a383383a77864`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -14,7 +14,7 @@
 | `dxcluster/commands` | `commands` | 14 | 24 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 57 | 220 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
-| `dxcluster/spot` | `spot` | 43 | 83 |
+| `dxcluster/spot` | `spot` | 44 | 84 |
 | `dxcluster/telnet` | `telnet` | 83 | 177 |
 
 ## In-Scope Package Edges
@@ -669,6 +669,7 @@ Source files:
 - `spot/resolver_canonical.go`
 - `spot/resolver_confusion.go`
 - `spot/resolver_evidence.go`
+- `spot/resolver_evidence_filter.go`
 - `spot/resolver_fresh.go`
 - `spot/resolver_loss.go`
 - `spot/secondary_dedupe.go`
@@ -740,6 +741,7 @@ Test files:
 - `spot/recent_band_test.go`
 - `spot/reliability_integrity_fuzz_test.go`
 - `spot/resolver_ambiguity_population_test.go`
+- `spot/resolver_evidence_filter_test.go`
 - `spot/resolver_evidence_test.go`
 - `spot/resolver_fresh_projection_bench_test.go`
 - `spot/resolver_fresh_projection_test.go`

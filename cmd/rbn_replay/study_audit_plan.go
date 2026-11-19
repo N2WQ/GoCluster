@@ -285,6 +285,11 @@ func studyAuditReadJSON(file studyFile, dst any) error {
 	if err != nil {
 		return err
 	}
+	if _, report := dst.(*studyReport); report {
+		if err := studyDiagnosticRejectReportMarker(data); err != nil {
+			return err
+		}
+	}
 	if err := studyDecodeJSON(data, dst); err != nil {
 		return err
 	}

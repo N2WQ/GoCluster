@@ -919,6 +919,12 @@ func CallDistance(subject, candidate, mode, cwModel, rttyModel string) int {
 	return callDistance(subject, candidate, mode, cwModel, rttyModel)
 }
 
+// CorrectionCandidateDistance includes the canonical identity/slash semantics
+// used by primary gates. CallDistance itself also serves literal-string callers.
+func CorrectionCandidateDistance(subject, candidate, mode, cwModel, rttyModel string) int {
+	return correctionDistance(normalizeCorrectionCallIdentity(subject), normalizeCorrectionCallIdentity(candidate), mode, cwModel, rttyModel)
+}
+
 // IsEditNeighborPair reports whether calls are distance-1 neighbors under the
 // mode-aware distance model. Slash variants are excluded.
 func IsEditNeighborPair(left, right, mode, cwModel, rttyModel string) bool {

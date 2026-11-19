@@ -24,6 +24,9 @@ import (
 func studySHA256Bytes(data []byte) [32]byte { return sha256.Sum256(data) }
 
 func runCCV2Study(req studyCLIRequest) error {
+	if (req.MethodPlan != "" || req.MethodFreeze != "" || req.MethodCandidate != "") && (req.Compare != "" || req.DiagnosticSelection != "" || req.DiagnosticFreeze != "") {
+		return errors.New("experimental method cannot use legacy comparison or selected diagnostics")
+	}
 	if err := studyDiagnosticValidateRequest(req); err != nil {
 		return err
 	}
@@ -97,7 +100,11 @@ func runCCV2Study(req studyCLIRequest) error {
 	if err != nil {
 		return err
 	}
-	if prepared != nil {
+	method, err := prepareStudyMethod(req, *arm)
+	if err != nil {
+		return err
+	}
+	if prepared != nil || method != nil {
 		req.Output, err = filepath.Abs(req.Output)
 		if err != nil {
 			return err
@@ -106,7 +113,7 @@ func runCCV2Study(req studyCLIRequest) error {
 	if err := os.Mkdir(req.Output, 0o700); err != nil {
 		return fmt.Errorf("study output must be a new directory: %w", err)
 	}
-	return studyRunDayPrepared(p, digest, req, *arm, candidate, *input, cfg, nil, maskSchema, prepared)
+	return studyRunDayPreparedMethod(p, digest, req, *arm, candidate, *input, cfg, nil, maskSchema, prepared, method)
 }
 
 func studySelectCandidate(p studyPlan, req studyCLIRequest) (studyCandidate, error) {
@@ -234,7 +241,19 @@ func studyRunDay(p studyPlan, digest string, req studyCLIRequest, arm studyArm, 
 
 func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm studyArm, candidate studyCandidate,
 	in studyInput, cfg *config.Config, day *studyRawDay, maskSchema bool, prepared *studyDiagnosticPrepared) (err error) {
-	if prepared != nil {
+	method, err := prepareStudyMethod(req, arm)
+	if err != nil {
+		return err
+	}
+	return studyRunDayPreparedMethod(p, digest, req, arm, candidate, in, cfg, day, maskSchema, prepared, method)
+}
+
+func studyRunDayPreparedMethod(p studyPlan, digest string, req studyCLIRequest, arm studyArm, candidate studyCandidate,
+	in studyInput, cfg *config.Config, day *studyRawDay, maskSchema bool, prepared *studyDiagnosticPrepared, method *studyMethodPrepared) (err error) {
+	if prepared != nil && method != nil {
+		return errors.New("method cannot masquerade as selected diagnostic capture")
+	}
+	if prepared != nil || method != nil {
 		req.Output, err = filepath.Abs(req.Output)
 		if err != nil {
 			return err
@@ -252,6 +271,14 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 		req.Output = r.diagnostics.owner.root
 		r.outDir, r.archiveDir = req.Output, req.Output
 	}
+	if method != nil {
+		r.method, err = newStudyMethodRun(req.Output, method)
+		if err != nil {
+			return err
+		}
+		req.Output = r.method.files.owner.root
+		r.outDir, r.archiveDir = req.Output, req.Output
+	}
 	var observer *studyObserver
 	defer func() {
 		if observer != nil {
@@ -261,11 +288,16 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 		if r.diagnostics != nil {
 			err = errors.Join(err, r.diagnostics.closeStreams())
 		}
+		if r.method != nil {
+			err = errors.Join(err, r.method.closeStreams(), r.method.files.owner.Err())
+		}
 		if err != nil {
 			// A failed run never publishes complete.json. Partial legacy files
 			// and decision streams are explicitly unusable for qualification.
 			if r.diagnostics != nil {
 				err = errors.Join(err, r.diagnostics.failure(err))
+			} else if r.method != nil {
+				err = errors.Join(err, r.method.failure(err))
 			} else {
 				err = errors.Join(err, writeJSONAtomic(filepath.Join(req.Output, "FAILED.json"), map[string]string{"error": err.Error()}))
 			}
@@ -285,8 +317,8 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 	if err := studySnapshotAssets(arm, r); err != nil {
 		return err
 	}
-	if r.diagnostics != nil {
-		if err := r.diagnostics.verifyCopies(false); err != nil {
+	if files := r.studyArtifactFiles(); files != nil {
+		if err := files.verifyCopies(false); err != nil {
 			return err
 		}
 	}
@@ -302,8 +334,8 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 	if err := r.buildReplayRuntime(); err != nil {
 		return err
 	}
-	if r.diagnostics != nil {
-		if err := r.diagnostics.verifyCopies(false); err != nil {
+	if files := r.studyArtifactFiles(); files != nil {
+		if err := files.verifyCopies(false); err != nil {
 			return err
 		}
 		if err := r.diagnosticBoundary(); err != nil {
@@ -356,8 +388,8 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 	if err := studyCheckFile(in.Archive); err != nil {
 		return err
 	}
-	if r.diagnostics != nil {
-		if err := r.diagnostics.beforeCleanup(r.licenseInputsDir); err != nil {
+	if files := r.studyArtifactFiles(); files != nil {
+		if err := files.beforeCleanup(r.licenseInputsDir); err != nil {
 			return err
 		}
 	}
@@ -379,6 +411,14 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 		}
 		report.ClaimLimits = append(report.ClaimLimits, "This exposed diagnostic capture is non-qualification evidence; it cannot authorize activation, model fitting or deployment")
 		return r.diagnostics.owner.atomicJSON(filepath.Join(req.Output, "complete.json"), report)
+	}
+	if r.method != nil {
+		report.Experimental, err = r.method.complete()
+		if err != nil {
+			return err
+		}
+		report.ClaimLimits = append(report.ClaimLimits, "Experimental method replay; legacy activation readers refuse marker presence, including disabled parity; no live activation or RF-probability claim")
+		return r.method.files.owner.atomicJSON(filepath.Join(req.Output, "complete.json"), report)
 	}
 	return writeJSONAtomic(filepath.Join(req.Output, "complete.json"), report)
 }
@@ -439,8 +479,8 @@ func studySnapshotAssets(arm studyArm, r *replayRunner) error {
 			return errors.New("study geography is not owned by the frozen asset directory")
 		}
 		destination := filepath.Join(geography, name)
-		if r.diagnostics != nil {
-			if err := r.diagnostics.renameAsset(path, destination); err != nil {
+		if files := r.studyArtifactFiles(); files != nil {
+			if err := files.renameAsset(path, destination); err != nil {
 				return err
 			}
 		} else {

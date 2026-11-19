@@ -438,3 +438,101 @@ Options:
 - `-Date YYYY-MM-DD`
 - `-RunIdA <id> -RunIdB <id>`
 - `-HistoryDir "archive data/rbn_replay_history"`
+
+## Experimental frequency and ordinal method
+
+The [approved v7 experiment](call-correction-v2-scope-ledger-v7.md) changes actual
+replay predictions. It is not connected to live delivery or runtime YAML. The
+ordinary correction substage runs first; additional currently observed calls
+may then receive frequency-backed gate assessments. Ordinary successful
+corrections and replacement-validation failures are terminal. Ambiguous or
+unknown-frequency receivers remain dissent; time gaps alone do not separate
+signals. Group gate numbers never replace ordinary public/temporal populations.
+
+An explicit method plan enumerates all sixteen gap/time/ranking/CW-distance
+combinations, pins its source revision and model file, and carries a required
+`enabled` boolean. `false` is a real experimental parity run, not absent settings.
+Model loading is strict even when disabled. All four previously exposed November
+7/14/15/16 dates use newly frozen **tuning** capture metadata for the grid; old
+plans and their historical phase labels remain intact.
+
+The investigation-specific preparation command verifies a clean
+`call-correctionv2` checkout, a native replay executable from its exact HEAD,
+all frozen inputs and the four original complete streams. It writes the plans
+and 68 ordered run commands, then publishes `FREEZE.json` last. Preparation
+does not execute predictions or select a method. Its output must be a new direct
+child of `.tmp/call-correctionv2`:
+
+```powershell
+python scripts/prepare-call-correction-v7-study.py --selfcheck
+python scripts/prepare-call-correction-v7-study.py --executable <native-exe> `
+  --out .tmp/call-correctionv2/new-grid
+```
+
+```powershell
+rbn_replay.exe -study-plan capture-plan.json -study-freeze <capture-sha256> `
+  -study-arm repaired_off -study-candidate <ordinary-capture-candidate> `
+  -date 2026-11-15 -study-phase tuning -study-out new-run-directory `
+  -study-method-plan method-plan.json -study-method-freeze <method-sha256> `
+  -study-method-candidate f150_t60_ordinal_d2
+```
+
+The model contains Bayesian-smoothed edit-event estimates from complete frozen
+strong-agree RBN proxy pairs, including exact matches. It ranks one declared
+candidate-to-observation alignment using the focal report's own measured SNR.
+It is an ordinal score, not an RF posterior, Bayes factor or normalized call
+probability. Missing/outside SNR or sparse source-character/gap opportunities
+force geometry ordering for the **whole** decision before its eight gate trials.
+The ordinary Bayesian-style bonus remains off; Custom SCP remains gate/history
+context and its V-only learning rule is unchanged. Fit with:
+
+```powershell
+python scripts/fit-call-correction-ordinal.py --selfcheck
+python scripts/fit-call-correction-ordinal.py --out-prefix .tmp/call-correctionv2/new-fit
+```
+
+The fitter refuses existing outputs and pins November 7/14 inputs and census
+hashes. A final verified COMPLETE receipt is required; partial models/receipts
+are troubleshooting evidence. The native asset limit is 4 MiB with exact fixed
+dimensions, explicit priors/count invariants, source/reference binding and no
+silent missing-model fallback.
+
+Method runs freeze `method-plan.json` and `method-model.json`, write bounded
+`method-receipts.jsonl`, and publish `method-report.json` before final
+`complete.json`. They share the cumulative 4 GiB evidence/assets owner and finite
+file inventory; deletion never refunds charged bytes. Existing scratch state
+keeps its own key/receiver limits and is measured separately after cleanup.
+Inherited database Close errors remain unobserved. Any observed write, close,
+copy, integrity, budget or finalization failure prevents completion.
+
+Experimental marker **presence** disqualifies a report from legacy comparison
+and activation readers, even if its value is false, null or malformed. Do not
+strip the marker. The separate frozen evaluation entry is:
+
+```powershell
+rbn_replay.exe -study-method-eval-plan evaluation-plan.json `
+  -study-method-eval-freeze <evaluation-sha256> -study-method-eval-out new-evaluation
+```
+
+Evaluation retains named control/geometry/ordinal roles and every immutable
+incoming ID, including lost, suppressed, licensed, retargeted, retimed and
+unknown-reference outcomes. It reuses the unchanged 15-minute/three-row/500-Hz
+follow-on scorer and existing reference/episode floors. Eight separately bounded
+geometry/ordinal evaluation pairs avoid a single oversized sixteen-way artifact.
+After all eight complete tuning evaluations exist, the bounded selector requires
+all sixteen candidates and matching source/model/control/input bindings:
+
+```powershell
+python scripts/select-call-correction-v7-method.py --selfcheck
+python scripts/select-call-correction-v7-method.py --evaluations <eight-directories> `
+  --out .tmp/call-correctionv2/new-selection
+```
+
+It selects only an eligible complete candidate, ordered by most applied receipts,
+highest exact stability fraction, fewest affected baseline input IDs and lexical
+candidate ID. An input both retargeted and retimed counts once. It preserves
+`no_eligible_candidate` when none qualifies and publishes selection COMPLETE
+last. This does not execute confirmation or authorize live activation.
+Follow-on stability and RBN agreement remain conditional proxies. Untouched
+confirmation, live integration and production resource qualification are separate
+requirements; see the [construction evidence](call-correction-v2-v7-validation.md).

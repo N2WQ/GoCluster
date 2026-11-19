@@ -94,6 +94,7 @@ type studyReport struct {
 	LegacyStatistics           string                   `json:"legacy_statistics"`
 	ClaimLimits                []string                 `json:"claim_limits"`
 	Diagnostics                *studyDiagnosticManifest `json:"diagnostics,omitempty"`
+	Experimental               *studyMethodManifest     `json:"experimental,omitempty"`
 }
 
 type studyReferenceCoverage struct {
@@ -230,6 +231,9 @@ func (o *studyObserver) finishWithDiagnostics(s *spot.Spot, outcome replayResolv
 	pending.FinalObserved = normalizedDXCall(s)
 	pending.FinalIdentity = spot.CorrectionVoteKey(pending.FinalObserved)
 	pending.ProposedIdentity = spot.CorrectionVoteKey(outcome.Selection.Snapshot.Winner)
+	if outcome.methodWinner != "" {
+		pending.ProposedIdentity = spot.CorrectionVoteKey(outcome.methodWinner)
+	}
 	pending.Status, pending.DecisionAtUTC, pending.Applied = status, now.UTC(), outcome.Applied
 	pending.IdentityCorrection = outcome.Applied && pending.SubjectIdentity != pending.FinalIdentity
 	pending.DecisionAfterCutoff = now.After(pending.Raw.Time.Add(studyDecisionSeconds * time.Second))
@@ -279,6 +283,18 @@ func (o *studyObserver) finishWithDiagnostics(s *spot.Spot, outcome replayResolv
 		}
 		return
 	}
+	if owner := r.diagnosticArtifacts(); owner != nil {
+		data, err := owner.jsonBytes(pending, studyAuditRowBytes-1)
+		if err == nil {
+			data = append(data, '\n')
+			_, err = o.file.Write(data)
+		}
+		if err != nil {
+			o.err = errors.Join(o.err, err)
+		}
+		o.terminal++
+		return
+	}
 	if err := o.encoder.Encode(pending); err != nil {
 		o.err = errors.Join(o.err, err)
 	}
@@ -287,6 +303,13 @@ func (o *studyObserver) finishWithDiagnostics(s *spot.Spot, outcome replayResolv
 
 func (o *studyObserver) terminalReason(r *replayRunner, outcome replayResolverApplyOutcome, action string) string {
 	current := r.tracker.CorrectionDecisionReasons()
+	if outcome.methodReason != "" {
+		// The receipt associates the ordinary rejection and optional rescue with
+		// this same immutable input. Do not mistake its two substages for two
+		// unassociated ordinary decisions, or relabel an accepted rescue rejected.
+		o.lastReasons = current
+		return outcome.methodReason
+	}
 	if len(current) > 128 {
 		o.err = errors.Join(o.err, errors.New("study decision reason cardinality exceeds bounded vocabulary"))
 		return "unavailable_reason"

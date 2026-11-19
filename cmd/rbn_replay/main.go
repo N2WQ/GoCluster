@@ -33,6 +33,12 @@ func main() {
 		studyCompare        = flag.String("study-compare", "", "Comma-separated complete study report paths to compare")
 		diagnosticSelection = flag.String("study-diagnostic-selection", "", "Frozen exposed diagnostic case selection (not qualification)")
 		diagnosticFreeze    = flag.String("study-diagnostic-freeze", "", "SHA256 of the frozen diagnostic case selection")
+		methodPlan          = flag.String("study-method-plan", "", "Frozen replay-only experimental method plan")
+		methodFreeze        = flag.String("study-method-freeze", "", "SHA256 of the frozen experimental method plan")
+		methodCandidate     = flag.String("study-method-candidate", "", "Complete predeclared experimental method candidate")
+		methodEvalPlan      = flag.String("study-method-eval-plan", "", "Frozen named-role experimental evaluation plan")
+		methodEvalFreeze    = flag.String("study-method-eval-freeze", "", "SHA256 of the frozen experimental evaluation plan")
+		methodEvalOut       = flag.String("study-method-eval-out", "", "New bounded experimental evaluation directory")
 		auditPlan           = flag.String("study-audit-plan", "", "Frozen v5 audit JSON for existing study predictions only")
 		auditFreeze         = flag.String("study-audit-freeze", "", "SHA256 of the frozen audit plan")
 		auditOut            = flag.String("study-audit-out", "", "New audit evidence directory (must not exist)")
@@ -54,8 +60,33 @@ func main() {
 		must(runCCV2Audit(*auditPlan, *auditFreeze, *auditOut))
 		return
 	}
+	evaluationRequested := false
+	var evaluationOverrides []string
+	flag.Visit(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "study-method-eval-") {
+			evaluationRequested = true
+		} else {
+			evaluationOverrides = append(evaluationOverrides, f.Name)
+		}
+	})
+	for _, argument := range flag.Args() {
+		if studyMethodEvaluationCLIFlag(argument) {
+			evaluationRequested = true
+		}
+	}
+	if evaluationRequested {
+		if len(evaluationOverrides) > 0 || len(flag.Args()) > 0 {
+			must(errors.New("method evaluation uses only frozen plan inputs; overrides and positional arguments are not allowed"))
+		}
+		if *methodEvalPlan == "" || *methodEvalFreeze == "" || *methodEvalOut == "" {
+			must(errors.New("method evaluation plan, frozen SHA256 and output are required together and nonempty"))
+		}
+		must(runStudyMethodEvaluation(*methodEvalPlan, *methodEvalFreeze, *methodEvalOut))
+		return
+	}
 	studyRequested := false
 	diagnosticRequested, compareRequested := false, false
+	methodRequested := false
 	var replayOverrides []string
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "study-diagnostic-selection" || f.Name == "study-diagnostic-freeze" {
@@ -63,6 +94,9 @@ func main() {
 		}
 		if f.Name == "study-compare" {
 			compareRequested = true
+		}
+		if f.Name == "study-method-plan" || f.Name == "study-method-freeze" || f.Name == "study-method-candidate" {
+			methodRequested = true
 		}
 		if strings.HasPrefix(f.Name, "study-") {
 			studyRequested = true
@@ -77,6 +111,9 @@ func main() {
 		if studyDiagnosticCLIFlag(argument) {
 			diagnosticRequested, studyRequested = true, true
 		}
+		if studyMethodCLIFlag(argument) {
+			methodRequested, studyRequested = true, true
+		}
 	}
 	if studyRequested {
 		if len(replayOverrides) > 0 || len(flag.Args()) > 0 {
@@ -88,9 +125,16 @@ func main() {
 		if diagnosticRequested && compareRequested {
 			must(errors.New("diagnostic capture cannot be used for study comparison"))
 		}
+		if methodRequested && (*methodPlan == "" || *methodFreeze == "" || *methodCandidate == "") {
+			must(errors.New("method plan, frozen SHA256 and candidate must be supplied together and nonempty"))
+		}
+		if methodRequested && (diagnosticRequested || compareRequested) {
+			must(errors.New("experimental method execution cannot be combined with selected diagnostics or legacy comparison"))
+		}
 		req := studyCLIRequest{Plan: *studyPlan, Freeze: *studyFreeze, Arm: *studyArm,
 			Candidate: *studyCandidate, Phase: *studyPhase, Output: *studyOut, Compare: *studyCompare, Date: *dateFlag,
-			DiagnosticSelection: *diagnosticSelection, DiagnosticFreeze: *diagnosticFreeze}
+			DiagnosticSelection: *diagnosticSelection, DiagnosticFreeze: *diagnosticFreeze,
+			MethodPlan: *methodPlan, MethodFreeze: *methodFreeze, MethodCandidate: *methodCandidate}
 		must(studyDiagnosticValidateRequest(req))
 		must(runCCV2Study(req))
 		return

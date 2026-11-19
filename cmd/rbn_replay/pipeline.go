@@ -54,6 +54,11 @@ type replayResolverApplyOutcome struct {
 	Selection     correctionflow.ResolverPrimarySelection
 	Gate          spot.ResolverPrimaryGateResult
 	GateEvaluated bool
+	// A chosen replacement's final validation failure is terminal for rescue.
+	// This differs from the later license check of an unchanged subject.
+	replacementRejected bool
+	methodReason        string // Associated experimental substage, not a second ordinary execution.
+	methodWinner        string // Actual first gate-allowed experimental proposal, if any.
 	// Temporal output ownership lasts through this synchronous outcome only.
 	// No request-ID table or retained handoff marker is needed by replay.
 	temporal    bool
@@ -324,40 +329,13 @@ func maybeApplyResolverCorrectionReplayDiagnosticCore(
 		return outcome
 	}
 
-	if shouldRejectCTYCall(winnerCall) {
-		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionInvalidBaseCall, 1)
-		if strings.EqualFold(cfg.InvalidAction, "suppress") {
-			outcome.Suppress = true
-			return outcome
-		}
-		spotEntry.Confidence = "B"
-		outcome.Confidence.Final = "B"
+	applied, suppress, reason := applyReplayReplacement(spotEntry, winnerCall, cfg, ctyDB, now)
+	if !applied {
+		outcome.Suppress, outcome.replacementRejected = suppress, true
+		outcome.Confidence.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+		observeResolverPrimaryDecision(tracker, "rejected", reason, 1)
 		return outcome
 	}
-
-	if ctyDB != nil {
-		if _, ok := ctyDB.LookupCallsignPortable(winnerCall); !ok {
-			observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionCTYMiss, 1)
-			if strings.EqualFold(cfg.InvalidAction, "suppress") {
-				outcome.Suppress = true
-				return outcome
-			}
-			spotEntry.Confidence = "B"
-			outcome.Confidence.Final = "B"
-			return outcome
-		}
-	}
-	// A replacement is a proposal until its own home-base authority permits it.
-	// Retaining the original preserves its confidence, metadata, observation
-	// time, and correction/temporal accounting; no runner-up search occurs.
-	if rejectReplayDXLicense(ctyDB, winnerCall, spotEntry.IsBeacon || spot.IsBeaconCall(winnerCall), now) {
-		observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionLicenseReject, 1)
-		return outcome
-	}
-
-	spotEntry.DXCall = winnerCall
-	spotEntry.DXCallNorm = winnerCall
-	spotEntry.Confidence = "C"
 	outcome.Confidence.Final = "C"
 	outcome.Applied = true
 	outcome.Winner = winnerCall
@@ -368,6 +346,31 @@ func maybeApplyResolverCorrectionReplayDiagnosticCore(
 	appliedReason := resolverAppliedDecisionReason(gate, outcome.Selection)
 	observeResolverPrimaryDecision(tracker, "applied", appliedReason, 1)
 	return outcome
+}
+
+// applyReplayReplacement is the final validation/mutation boundary shared by
+// ordinary and experimental proposals. Exactly one gate-allowed candidate may
+// enter it; validation failure is terminal, never a runner-up search signal.
+func applyReplayReplacement(s *spot.Spot, call string, cfg config.CallCorrectionConfig, db *cty.CTYDatabase, now time.Time) (applied, suppress bool, reason string) {
+	if shouldRejectCTYCall(call) {
+		reason = resolverDecisionInvalidBaseCall
+	} else if db != nil {
+		if _, ok := db.LookupCallsignPortable(call); !ok {
+			reason = resolverDecisionCTYMiss
+		}
+	}
+	if reason != "" {
+		if strings.EqualFold(cfg.InvalidAction, "suppress") {
+			return false, true, reason
+		}
+		s.Confidence = "B"
+		return false, false, reason
+	}
+	if rejectReplayDXLicense(db, call, s.IsBeacon || spot.IsBeaconCall(call), now) {
+		return false, false, resolverDecisionLicenseReject
+	}
+	s.DXCall, s.DXCallNorm, s.Confidence = call, call, "C"
+	return true, false, ""
 }
 
 // Replay checks only DX identity. DE admission, metadata enrichment, and other

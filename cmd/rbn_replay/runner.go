@@ -91,6 +91,7 @@ type replayRunner struct {
 	// owns row provenance and never supplies a prediction or gate decision.
 	study       *studyObserver
 	diagnostics *studyDiagnosticRun
+	method      *studyMethodRun // Explicit replay-only method; nil preserves ordinary execution.
 }
 
 // runReplay is the public orchestration entry point used by main and tests.
@@ -366,9 +367,7 @@ func (r *replayRunner) openRecentBandStore() error {
 		return err
 	}
 	if !cfg.CallCorrection.Enabled {
-		if r.diagnostics != nil {
-			r.diagnostics.scratchBackend("correction_disabled", "", 0, 0)
-		}
+		r.observeStudyScratch("correction_disabled", "", 0, 0)
 		return nil
 	}
 	if cfg.CallCorrection.CustomSCP.Enabled {
@@ -405,9 +404,7 @@ func (r *replayRunner) openRecentBandStore() error {
 		r.cleanupRecentBand = func() {
 			customSCPStore.Close()
 		}
-		if r.diagnostics != nil {
-			r.diagnostics.scratchBackend("custom_scp_runtime", replayCustomSCPPath, customOpts.MaxKeys, customOpts.MaxSpottersPerKey)
-		}
+		r.observeStudyScratch("custom_scp_runtime", replayCustomSCPPath, customOpts.MaxKeys, customOpts.MaxSpottersPerKey)
 		return nil
 	}
 	if cfg.CallCorrection.RecentBandBonusEnabled || cfg.CallCorrection.StabilizerEnabled {
@@ -418,12 +415,12 @@ func (r *replayRunner) openRecentBandStore() error {
 		legacyStore := spot.NewRecentBandStore(time.Duration(cfg.CallCorrection.RecentBandWindowSeconds) * time.Second)
 		r.recentBandStore = legacyStore
 	}
-	if r.diagnostics != nil {
+	if r.studyArtifactFiles() != nil {
 		backend := "no_support_history_backend"
 		if r.recentBandStore != nil {
 			backend = "legacy_recent_band"
 		}
-		r.diagnostics.scratchBackend(backend, "", 0, 0)
+		r.observeStudyScratch(backend, "", 0, 0)
 	}
 	return nil
 }
@@ -627,6 +624,10 @@ func (r *replayRunner) maybeHoldTemporal(
 
 	id := r.temporalNextID
 	r.temporalNextID++
+	var frequencyLifecycles correctionflow.FrequencyLifecycleVector
+	if r.methodEnabled() {
+		frequencyLifecycles = correctionflow.FrequencySourceLifecycles(correctionflow.ReadFrequencySources(r.resolver, resolverEvidence.Key, r.cfg.CallCorrection, now))
+	}
 	selection.Snapshot = selection.Snapshot.Compact()
 	accepted, reason := r.temporalDecoder.Observe(correctionflow.TemporalObservation{
 		ID:          id,
@@ -643,12 +644,13 @@ func (r *replayRunner) maybeHoldTemporal(
 			r.study.noteTemporal(spotEntry, "held")
 		}
 		r.temporalPending[id] = replayTemporalPending{
-			id:          id,
-			spot:        spotEntry,
-			evidence:    resolverEvidence,
-			hasEvidence: hasResolverEvidence,
-			maxAt:       now.Add(r.temporalDecoder.MaxWaitDuration()),
-			selection:   selection,
+			id:                  id,
+			spot:                spotEntry,
+			evidence:            resolverEvidence,
+			hasEvidence:         hasResolverEvidence,
+			maxAt:               now.Add(r.temporalDecoder.MaxWaitDuration()),
+			selection:           selection,
+			frequencyLifecycles: frequencyLifecycles,
 		}
 		heap.Push(&r.temporalQueue, &replayTemporalItem{
 			id:  id,
@@ -830,7 +832,7 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 			r.study.noteTemporal(pending.spot, string(decision.Action))
 		}
 
-		outcome := r.temporalReleaseOutcome(pending.spot, pending.evidence, pending.hasEvidence, decision, now)
+		outcome := r.temporalReleaseOutcomeMethod(pending.spot, pending.evidence, pending.hasEvidence, decision, now, &pending.frequencyLifecycles, true)
 		r.processOutcome(pending.spot, outcome, now)
 	}
 }
@@ -839,7 +841,19 @@ func (r *replayRunner) drainTemporal(now time.Time, force bool) {
 // A saved Apply winner is a proposal; the shared selector admits it only from
 // current eligible settled evidence. Ordinary correction gates run once.
 func (r *replayRunner) temporalReleaseOutcome(s *spot.Spot, evidence spot.ResolverEvidence, hasEvidence bool, decision correctionflow.TemporalDecision, now time.Time) replayResolverApplyOutcome {
-	selection := r.selectTemporalRelease(s, evidence.Key, decision, now)
+	// This entry also serves overflow routing, which never gains extra rescue.
+	return r.temporalReleaseOutcomeMethod(s, evidence, hasEvidence, decision, now, nil, false)
+}
+
+func (r *replayRunner) temporalReleaseOutcomeMethod(s *spot.Spot, evidence spot.ResolverEvidence, hasEvidence bool, decision correctionflow.TemporalDecision, now time.Time,
+	saved *correctionflow.FrequencyLifecycleVector, permitExtra bool) replayResolverApplyOutcome {
+	var selection correctionflow.ResolverPrimarySelection
+	proposalAllowed := false
+	if r.methodEnabled() && permitExtra && decision.Action == correctionflow.TemporalDecisionActionApply {
+		selection, proposalAllowed = correctionflow.SelectTemporalReleaseSnapshotWithAuthority(r.resolver, evidence.Key, r.cfg.CallCorrection, normalizedDXCall(s), decision, now)
+	} else {
+		selection = r.selectTemporalRelease(s, evidence.Key, decision, now)
+	}
 	var outcome replayResolverApplyOutcome
 	if decision.Action == correctionflow.TemporalDecisionActionAbstain {
 		s.Confidence = correctionflow.ResolverConfidenceGlyphForCall(selection.Snapshot, selection.SnapshotOK, normalizedDXCall(s))
@@ -848,6 +862,11 @@ func (r *replayRunner) temporalReleaseOutcome(s *spot.Spot, evidence spot.Resolv
 	} else {
 		outcome = maybeApplyResolverCorrectionReplayWithSelectionOverride(s, r.resolver, evidence, hasEvidence,
 			r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now, &selection)
+	}
+	if permitExtra && decision.Action == correctionflow.TemporalDecisionActionApply && proposalAllowed && saved != nil {
+		outcome = r.applyMethodRescue(s, evidence, hasEvidence, now, outcome, decision.Winner, saved)
+	} else if permitExtra && decision.Action == correctionflow.TemporalDecisionActionFallbackResolver {
+		outcome = r.applyMethodRescue(s, evidence, hasEvidence, now, outcome, "", nil)
 	}
 	outcome.temporal, outcome.temporalKey = true, decision.Key
 	return outcome

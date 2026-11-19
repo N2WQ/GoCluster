@@ -1,7 +1,7 @@
 # Call Correction v2 Scope Ledger v7
 
-Status: Proposed after independent scope challenge and focused recheck; awaiting
-exact owner authorization.
+Status: Approved by the owner's exact `Approved v7` token on November 18, 2026;
+implementation and experiment execution in progress.
 Workspace: `C:/src/gocluster-call-correctionv2`, branch `call-correctionv2`.
 Base: approved [v5](call-correction-v2-scope-ledger-v5.md) and
 [v6](call-correction-v2-scope-ledger-v6.md), completed E1/E2 evidence.
@@ -300,6 +300,11 @@ Retain date/mode and reference diagnostics; require no new strong-reference
 contradiction under either frozen control in the exposed comparison. Selection
 among eligible candidates is most applied receipts, then exact stability
 fraction, then fewer lost/retargeted/retimed baseline outcomes, then candidate ID.
+The owner's subsequent explicit clarification counts each affected incoming ID
+once in that third comparison: loss, retargeting and retiming form a union;
+retargeting plus retiming for the same input contributes one. Category counts
+and overlaps remain separately reported. This resolves the existing tie-break
+without changing candidate eligibility or the fixed grid.
 Training-date results remain exposed descriptive evidence, not clean tests.
 
 Freeze that one complete method/asset/map and confirmation contract before
@@ -422,7 +427,9 @@ rechecked the material revision against current source and found no remaining
 material scope or pre-approval falsifiability issue. That reviewer saw this
 draft and supplied adversarial findings; the mathematical contracts and toy
 vectors were derived earlier in separate non-steered contexts. The lead
-verified and dispositioned the findings. Detailed post-approval construction/
-test review remains required before F0 code. No implementation is authorized yet.
+verified and dispositioned the findings. The owner subsequently supplied exact
+`Approved v7`; the detailed F0 construction/test gate has run and its findings
+are dispositioned in the [construction evidence](call-correction-v2-v7-validation.md).
+The approved sequential implementation queue is active.
 
 Exact authorization required before implementation: Approved v7

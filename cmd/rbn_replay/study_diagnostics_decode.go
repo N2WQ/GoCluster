@@ -11,6 +11,8 @@ import (
 	"errors"
 	"io"
 	"unicode/utf8"
+
+	"dxcluster/internal/correctionflow"
 )
 
 var errStudyDiagnosticCollectionBound = errors.New("diagnostic wire collection exceeds structural limit")
@@ -35,6 +37,15 @@ const (
 	diagnosticWireBool
 	diagnosticWireInteger
 	diagnosticWireOpaque
+	diagnosticWireOrdinal
+	diagnosticWireOrdinalSource
+	diagnosticWireOrdinalCell
+	diagnosticWireOrdinalSources
+	diagnosticWireOrdinalCells
+	diagnosticWireOrdinalEdges
+	diagnosticWireOrdinalSymbols
+	diagnosticWireOrdinalEvents
+	diagnosticWireOrdinalOutcomes
 )
 
 type studyDiagnosticWireField struct {
@@ -43,7 +54,7 @@ type studyDiagnosticWireField struct {
 	required bool
 }
 
-// Only the two input destinations are admitted; this is not a generic decoder
+// Only the explicit study input destinations are admitted; this is not a generic decoder
 // or a custom-UnmarshalJSON callback seam. Preflight always precedes Decode.
 func studyDiagnosticDecode(data []byte, shape studyDiagnosticWire, destination any) error {
 	allowed := false
@@ -52,6 +63,8 @@ func studyDiagnosticDecode(data []byte, shape studyDiagnosticWire, destination a
 		allowed = target != nil && shape == diagnosticWireSelection
 	case *studyDiagnosticAttempt:
 		allowed = target != nil && shape == diagnosticWireAttempt
+	case *correctionflow.OrdinalAsset:
+		allowed = target != nil && shape == diagnosticWireOrdinal
 	}
 	if !allowed {
 		return errors.New("unsupported diagnostic wire destination")
@@ -102,7 +115,7 @@ func studyDiagnosticWireFields(shape studyDiagnosticWire) []studyDiagnosticWireF
 	case diagnosticWireKey:
 		return []studyDiagnosticWireField{{"Band", diagnosticWireText, true}, {"Mode", diagnosticWireText, true}, {"Bucket", diagnosticWireInteger, true}, {"ToleranceHz", diagnosticWireInteger, true}}
 	}
-	return nil
+	return studyOrdinalWireFields(shape)
 }
 
 func studyDiagnosticWireValue(decoder *json.Decoder, shape studyDiagnosticWire, depth int) error {
@@ -118,6 +131,23 @@ func studyDiagnosticWireValue(decoder *json.Decoder, shape studyDiagnosticWire, 
 	}
 	if token == nil {
 		return errors.New("diagnostic operative fact must not be null")
+	}
+	if count, child, ok := studyOrdinalWireArray(shape); ok {
+		if token != json.Delim('[') {
+			return errors.New("ordinal fixed array required")
+		}
+		for i := 0; i < count; i++ {
+			if !decoder.More() {
+				return errors.New("ordinal fixed array is short")
+			}
+			if err := studyDiagnosticWireValue(decoder, child, depth+1); err != nil {
+				return err
+			}
+		}
+		if decoder.More() {
+			return errors.New("ordinal fixed array has surplus values")
+		}
+		return studyDiagnosticWireClose(decoder, ']')
 	}
 	if fields := studyDiagnosticWireFields(shape); fields != nil {
 		if token != json.Delim('{') {

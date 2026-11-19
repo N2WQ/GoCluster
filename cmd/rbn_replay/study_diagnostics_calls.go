@@ -69,7 +69,8 @@ func (r *replayRunner) diagnosticSelected(s *spot.Spot) (studyDiagnosticRawBindi
 func (r *replayRunner) applyResolverOutcome(s *spot.Spot, evidence spot.ResolverEvidence, hasEvidence bool, now time.Time) replayResolverApplyOutcome {
 	binding, selected := r.diagnosticSelected(s)
 	if !selected || r.diagnostics.owner.Err() != nil {
-		return maybeApplyResolverCorrectionReplay(s, r.resolver, evidence, hasEvidence, r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now)
+		ordinary := maybeApplyResolverCorrectionReplay(s, r.resolver, evidence, hasEvidence, r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now)
+		return r.applyMethodRescue(s, evidence, hasEvidence, now, ordinary, "", nil)
 	}
 	var capture studyDiagnosticSelectorCall
 	outcome := maybeApplyResolverCorrectionReplayDiagnosticCore(s, r.resolver, evidence, hasEvidence, r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now, nil, &capture)
@@ -116,8 +117,8 @@ func (r *replayRunner) selectTemporalRelease(s *spot.Spot, key spot.ResolverSign
 }
 
 func (r *replayRunner) diagnosticBoundary() error {
-	if r.diagnostics == nil {
-		return nil
+	if owner := r.diagnosticArtifacts(); owner != nil {
+		return owner.Err()
 	}
-	return r.diagnostics.owner.Err()
+	return nil
 }

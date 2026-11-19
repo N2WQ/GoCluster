@@ -564,7 +564,18 @@ func SelectTemporalReleaseSnapshot(resolver *spot.SignalResolver, key spot.Resol
 	return selectTemporalReleaseSnapshotDiagnostics(resolver, key, cfg, subject, decision, now, nil)
 }
 
+// SelectTemporalReleaseSnapshotWithAuthority exposes only the existing release
+// guard result. It does not change decoder emissions or choose another identity.
+func SelectTemporalReleaseSnapshotWithAuthority(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, subject string, decision TemporalDecision, now time.Time) (ResolverPrimarySelection, bool) {
+	return selectTemporalReleaseSnapshotAuthority(resolver, key, cfg, subject, decision, now, nil)
+}
+
 func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, subject string, decision TemporalDecision, now time.Time, diagnostics *TemporalReleaseDiagnostics) ResolverPrimarySelection {
+	selection, _ := selectTemporalReleaseSnapshotAuthority(resolver, key, cfg, subject, decision, now, diagnostics)
+	return selection
+}
+
+func selectTemporalReleaseSnapshotAuthority(resolver *spot.SignalResolver, key spot.ResolverSignalKey, cfg config.CallCorrectionConfig, subject string, decision TemporalDecision, now time.Time, diagnostics *TemporalReleaseDiagnostics) (ResolverPrimarySelection, bool) {
 	var selectionDiagnostics *ResolverSelectionDiagnostics
 	if diagnostics != nil {
 		selectionDiagnostics = &diagnostics.Selection
@@ -581,31 +592,31 @@ func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key
 		diagnostics.OrdinaryGuardChecks = 1
 	}
 	if decision.Action != TemporalDecisionActionApply {
-		return finishReleaseGuard(diagnostics, selection, "action")
+		return finishReleaseGuard(diagnostics, selection, "action"), false
 	}
 	if diagnostics != nil {
 		diagnostics.OrdinaryGuardChecks = 2
 	}
 	if !selection.SnapshotOK {
-		return finishReleaseGuard(diagnostics, selection, "missing_snapshot")
+		return finishReleaseGuard(diagnostics, selection, "missing_snapshot"), false
 	}
 	if diagnostics != nil {
 		diagnostics.OrdinaryGuardChecks = 3
 	}
 	if selection.Snapshot.EvidenceLoss {
-		return finishReleaseGuard(diagnostics, selection, "evidence_loss")
+		return finishReleaseGuard(diagnostics, selection, "evidence_loss"), false
 	}
 	if diagnostics != nil {
 		diagnostics.OrdinaryGuardChecks = 4
 	}
 	if selection.NeighborhoodSplit {
-		return finishReleaseGuard(diagnostics, selection, "neighborhood_split")
+		return finishReleaseGuard(diagnostics, selection, "neighborhood_split"), false
 	}
 	if diagnostics != nil {
 		diagnostics.OrdinaryGuardChecks = 5
 	}
 	if selection.Snapshot.State != spot.ResolverStateConfident && selection.Snapshot.State != spot.ResolverStateProbable {
-		return finishReleaseGuard(diagnostics, selection, "state")
+		return finishReleaseGuard(diagnostics, selection, "state"), false
 	}
 	current := resolverGenerationWitnessesCurrentDiagnostics(resolver, key, decision.Selection, diagnostics)
 	if diagnostics != nil {
@@ -613,14 +624,14 @@ func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key
 		diagnostics.GenerationCurrent = current
 	}
 	if !current {
-		return finishReleaseDiagnostic(diagnostics, selection, "generation_refused")
+		return finishReleaseDiagnostic(diagnostics, selection, "generation_refused"), false
 	}
 	winner := spot.CorrectionVoteKey(decision.Winner)
 	if diagnostics != nil {
 		diagnostics.WinnerChecked = true
 	}
 	if winner == "" {
-		return finishReleaseDiagnostic(diagnostics, selection, "winner_missing")
+		return finishReleaseDiagnostic(diagnostics, selection, "winner_missing"), false
 	}
 	eligible := selection.allowsReplacement(winner)
 	if diagnostics != nil {
@@ -628,7 +639,7 @@ func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key
 		diagnostics.Eligible = eligible
 	}
 	if !eligible {
-		return finishReleaseDiagnostic(diagnostics, selection, "replacement_denied")
+		return finishReleaseDiagnostic(diagnostics, selection, "replacement_denied"), false
 	}
 	support := ResolverSupportForCall(selection.Snapshot, winner)
 	if diagnostics != nil {
@@ -636,7 +647,7 @@ func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key
 		diagnostics.ProposalSupport = support
 	}
 	if support == 0 {
-		return finishReleaseDiagnostic(diagnostics, selection, "proposal_unsupported")
+		return finishReleaseDiagnostic(diagnostics, selection, "proposal_unsupported"), false
 	}
 	if selection.replacementCalls == nil {
 		tied := resolver.ProposalHasAmbiguousRawTie(selection.Snapshot, winner)
@@ -646,7 +657,7 @@ func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key
 			diagnostics.OpaqueTieInternals = "private_internals_not_exposed"
 		}
 		if tied {
-			return finishReleaseDiagnostic(diagnostics, selection, "opaque_raw_tie")
+			return finishReleaseDiagnostic(diagnostics, selection, "opaque_raw_tie"), false
 		}
 	}
 	if selection.replacementCalls != nil && selection.exactWinner != "" && selection.exactWinner != winner {
@@ -656,7 +667,7 @@ func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key
 			diagnostics.ExactComparable = comparable
 		}
 		if !comparable {
-			return finishReleaseDiagnostic(diagnostics, selection, "exact_comparability_refused")
+			return finishReleaseDiagnostic(diagnostics, selection, "exact_comparability_refused"), false
 		}
 	}
 	var transform *DiagnosticTransform
@@ -666,7 +677,7 @@ func selectTemporalReleaseSnapshotDiagnostics(resolver *spot.SignalResolver, key
 		budget = &diagnostics.budget
 	}
 	selection = selectionForTemporalWinnerDiagnostics(selection, winner, transform, budget)
-	return finishReleaseDiagnostic(diagnostics, selection, "transformed")
+	return finishReleaseDiagnostic(diagnostics, selection, "transformed"), true
 }
 
 func resolverNeighborhoodComparable(anchorCall, candidateCall, mode string, cfg config.CallCorrectionConfig) (bool, string) {
