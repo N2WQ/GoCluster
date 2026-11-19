@@ -213,9 +213,10 @@ func TestSignalResolverResourceCaps(t *testing.T) {
 		FreqGuardMinSeparationKHz: 1.0,
 		FreqGuardRunnerUpRatio:    0.6,
 	})
-	resolver.Start()
-	t.Cleanup(resolver.Stop)
-
+	driver, err := NewSignalResolverDriver(resolver)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now().UTC()
 	key1 := NewResolverSignalKey(7010.0, "40m", "CW", 500)
 	key2 := NewResolverSignalKey(7020.0, "40m", "CW", 500)
@@ -227,11 +228,13 @@ func TestSignalResolverResourceCaps(t *testing.T) {
 		{ObservedAt: now, Key: key1, DXCall: "DL6LN", Spotter: "K1AAE", FrequencyKHz: 7010.1, RecencyWindow: 30 * time.Second}, // max reporters
 	}
 	for _, ev := range evs {
-		resolver.Enqueue(ev)
+		if !resolver.Enqueue(ev) {
+			t.Fatal("failed to enqueue resource-cap evidence")
+		}
 	}
-	waitForResolverSnapshotState(t, resolver, key1, 500*time.Millisecond, func(s ResolverSnapshot) bool {
-		return s.Winner != ""
-	})
+	if got := driver.Step(now); got != len(evs) {
+		t.Fatalf("processed %d evidence items, want %d", got, len(evs))
+	}
 	metrics := resolver.MetricsSnapshot()
 	if metrics.DropMaxKeys == 0 {
 		t.Fatalf("expected max-keys drops > 0")

@@ -21,22 +21,26 @@ func diagnosticAttachReplay(t *testing.T, r *replayRunner, day *studyRawDay, ops
 	if err != nil {
 		t.Fatal(err)
 	}
-	r.outDir, r.archiveDir, r.diagnostics = out, out, d
+	t.Cleanup(func() {
+		var observerErr error
+		if r.study != nil {
+			observerErr = r.study.close()
+		}
+		if err := errors.Join(observerErr, r.closeWithError(), d.closeStreams()); err != nil {
+			t.Error(err)
+		}
+	})
+	r.outDir, r.archiveDir, r.diagnostics = d.owner.root, d.owner.root, d
 	r.dayStart, r.dayEnd = day.Start, day.End
 	r.nextSampleAt = day.End.Add(time.Hour)
 	r.ctyDB = studyTestCTY(t, studyTestCTYPoints())
 	if err := d.bindDay(studyInput{DateUTC: day.Start.Format("2006-01-02"), Archive: studyFile{Path: "synthetic-unused.zip", SHA256: day.InputSHA256}}, day, r.temporalNextID); err != nil {
 		t.Fatal(err)
 	}
-	r.study, err = newStudyObserver(day, r, filepath.Join(out, "decisions.jsonl"))
+	r.study, err = newStudyObserver(day, r, filepath.Join(d.owner.root, "decisions.jsonl"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := errors.Join(r.study.close(), r.closeWithError(), d.closeStreams()); err != nil {
-			t.Error(err)
-		}
-	})
 	return d
 }
 

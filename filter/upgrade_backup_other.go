@@ -12,7 +12,7 @@ func publishUserBackup(source, target string) error {
 }
 
 func syncUserBackupDirectory(path string) error {
-	dir, err := os.Open(path)
+	dir, err := os.Open(path) // #nosec G703 -- Directory of the validated user-record or preset backup path.
 	if err != nil {
 		return err
 	}

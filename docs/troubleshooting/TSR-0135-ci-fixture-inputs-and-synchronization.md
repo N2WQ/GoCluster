@@ -10,6 +10,26 @@ Led To ADR(s): none
 
 ## RCA Summary
 
+### 2026-11-19 follow-up
+
+Hosted run 44606340988 exposed replay diagnostic fixtures that supplied the
+unresolved Windows temporary path after the diagnostic owner had resolved its
+root. On the hosted runner this included a short-name path; a separate relative
+path fixture assumed the checkout and temporary directory shared a drive. A
+scratch provenance assertion also compared the unresolved root. Setup failure
+before cleanup registration left diagnostic streams open. The fixtures now
+use the owned root, create the relative-path fixture on the checkout volume,
+and register cleanup immediately after acquiring the streams. Containment
+checks remain in force.
+
+Nightly run 44568056161 exposed a different ordering issue: observing a resolver
+winner did not prove that the remaining resource-cap evidence was processed.
+The test now drains its admitted evidence synchronously before reading metrics.
+The Linux lint job also reported G703 at two private filter filesystem helpers;
+their paths originate in validated user-record or preset paths and a sibling
+temporary file. Narrow annotations document that ownership. These changes do
+not alter operator behavior. Hosted confirmation requires a subsequent run.
+
 - What happened: hosted CI failed geography startup on Linux and Windows and
   CTY permission restoration on Windows. An earlier nightly race run also
   failed corrected-grid scheduler and VOACAP persistence assertions. Follow-up

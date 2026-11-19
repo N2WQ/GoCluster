@@ -141,7 +141,23 @@ func TestDiagnosticRunActualReplayParityAndComplete(t *testing.T) {
 		plan := studyTestPlan(t)
 		studyTestBindGeography(t, &plan, cfg, studyTestCTYPoints())
 		plan.Arms[0].Assets = append(plan.Arms[0].Assets, studyFile{Path: licenseSource, SHA256: licenseSHA})
-		out := filepath.Join(t.TempDir(), "run")
+		base := t.TempDir()
+		if diagnostic {
+			cwd, err := os.Getwd()
+			if err != nil {
+				t.Fatal(err)
+			}
+			base, err = os.MkdirTemp(cwd, ".diagnostic-test-")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := os.RemoveAll(base); err != nil {
+					t.Error(err)
+				}
+			})
+		}
+		out := filepath.Join(base, "run")
 		if err := os.Mkdir(out, 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -274,11 +290,15 @@ func TestDiagnosticRunActualScratchAfterCleanup(t *testing.T) {
 	diagnosticReadJSONFile(t, filepath.Join(out, "complete.json"), &complete)
 	var report studyDiagnosticRunReport
 	diagnosticReadJSONFile(t, complete.Diagnostics.Report.Path, &report)
-	if !report.Scratch.Applicable || report.Scratch.Backend != "custom_scp_runtime" || report.Scratch.Path != filepath.Join(out, studyDiagnosticScratchChild) || report.Scratch.MaxKeys != 8 || report.Scratch.MaxSpottersPerKey != 8 || report.Scratch.Measurement == nil || !report.Scratch.Measurement.Complete || report.Scratch.Measurement.RegularFileBytes == 0 || report.Scratch.Measurement.Stage != "post_existing_cleanup_with_unobserved_database_close_errors" {
+	resolvedOut, err := filepath.EvalSymlinks(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Scratch.Applicable || report.Scratch.Backend != "custom_scp_runtime" || report.Scratch.Path != filepath.Join(resolvedOut, studyDiagnosticScratchChild) || report.Scratch.MaxKeys != 8 || report.Scratch.MaxSpottersPerKey != 8 || report.Scratch.Measurement == nil || !report.Scratch.Measurement.Complete || report.Scratch.Measurement.RegularFileBytes == 0 || report.Scratch.Measurement.Stage != "post_existing_cleanup_with_unobserved_database_close_errors" {
 		t.Fatal("actual constructed backend/post-cleanup scratch provenance missing")
 	}
 	for _, output := range report.Outputs {
-		rel, err := filepath.Rel(out, output.File.Path)
+		rel, err := filepath.Rel(resolvedOut, output.File.Path)
 		if err != nil {
 			t.Fatal(err)
 		}
