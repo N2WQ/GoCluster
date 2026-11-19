@@ -179,6 +179,28 @@ for evidence boundaries and interpretation.
 
 ## Release Preparation
 
+`create-release.ps1 -BaseReleaseTag 261016r429e` prepares a release with an
+upgrade report from that baseline. Choose the baseline deliberately and fetch
+its tag. Publication verifies the release and tag on the selected repository.
+Keep the reviewed operator explanation in `docs/release/from-<baseline-tag>.md`
+in the candidate commit. Put required actions first and state why each matters.
+Use `docs/...` as the Markdown link target for repository documents. The
+renderer verifies those file paths and links to their candidate-commit copies.
+
+Install the Windows build of [dyff 1.12.0](https://github.com/homeport/dyff/releases/tag/v1.12.0)
+on the maintainer's PATH for report generation. The release package contains
+`UPGRADE.md`, the same report sent to GitHub, and `CONFIG-DIFF.md`, the
+public YAML appendix. Review the explained operator actions and source
+comparison before publishing. A text change with no reported structural
+difference can be a comment or formatting change. Use the source comparison
+to see that text.
+
+Use `-PackageOnly -BaseReleaseTag 261016r429e` to rehearse the full report from
+a clean checkout and locally available tag. Rehearsal uses the configured
+remote URL for links without contacting GitHub. A plain `-PackageOnly` build
+omits the report and still produces `data/config-bundle.json`.
+`-PackageOnly -AllowDirty` marks a dirty bundle with `dirty_preview: true`.
+
 `create-release.ps1` builds the cluster executable itself. A manual `go build` is not a
 prerequisite. Normal releases require clean committed source and fresh module
 files/code maps; a refusal includes the repository and offending Git paths.

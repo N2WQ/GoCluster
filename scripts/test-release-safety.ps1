@@ -48,10 +48,12 @@ function New-ReleaseFixture {
     $repo = Join-Path $script:FixtureRoot ([guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path (Join-Path $repo 'scripts') -Force | Out-Null
     Copy-Item -LiteralPath $script:Source -Destination (Join-Path $repo 'scripts/create-release.ps1')
-    Write-FixtureFile (Join-Path $repo '.gitignore') ".tmp/`nready_to_run/`ngocluster-windows-amd64.zip`n"
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'release-upgrade.ps1') -Destination (Join-Path $repo 'scripts/release-upgrade.ps1')
+    Write-FixtureFile (Join-Path $repo '.gitignore') ".tmp/`nready_to_run/`ngocluster-windows-amd64.zip`ndata/config.local/`n"
     Write-FixtureFile (Join-Path $repo 'main.go') "package main`nfunc main() {}`n"
     Write-FixtureFile (Join-Path $repo 'go.mod') "module example.test/releasefixture`n`ngo 1.26`n"
     Write-FixtureFile (Join-Path $repo 'data/config/app.yaml') 'node_id: "N0CALL-1"'
+    Write-FixtureFile (Join-Path $repo 'data/config/legacy.yml') 'example: false'
     Write-FixtureFile (Join-Path $repo 'data/config/ingest.yaml') "callsign: `"N0CALL-2`"`nhost: `"telnet.reversebeacon.net`"`n"
     Write-FixtureFile (Join-Path $repo 'data/config/peering.yaml') "local_callsign: `"N0CALL-3`"`nenabled: false`nhost: `"peer1.example.invalid`"`npassword: `"`"`nlogin_callsign: `"N0CALL-4`"`nremote_callsign: `"N0PEER-1`"`n"
     Write-FixtureFile (Join-Path $repo 'data/config/reputation.yaml') "ipinfo_download_enabled: false`nipinfo_download_token: `"REPLACE_WITH_IPINFO_TOKEN`"`nipinfo_api_enabled: false`nipinfo_api_token: `"`"`n"
@@ -66,6 +68,10 @@ function New-ReleaseFixture {
     Invoke-FixtureGit $repo @('config', 'core.autocrlf', 'false') | Out-Null
     Invoke-FixtureGit $repo @('add', '.') | Out-Null
     Invoke-FixtureGit $repo @('commit', '-q', '-m', 'isolated fixture') | Out-Null
+    Invoke-FixtureGit $repo @('tag', '261016r429e') | Out-Null
+    Write-FixtureFile (Join-Path $repo 'docs/release/from-261016r429e.md') "## Required actions`n`nFixture upgrade. [Operator guide](docs/OPERATOR_GUIDE.md)`n"
+    Invoke-FixtureGit $repo @('add', '.') | Out-Null
+    Invoke-FixtureGit $repo @('commit', '-q', '-m', 'review fixture notes') | Out-Null
     Invoke-FixtureGit $repo @('remote', 'add', 'origin', 'https://github.com/fixture/target.git') | Out-Null
     return $repo
 }
@@ -77,6 +83,8 @@ function Reset-ReleaseNative([string]$Repo, [string]$Fault = '') {
         Calls = [Collections.Generic.List[object]]::new(); SuccessStderr = $false
         LocalCode = 2; RemoteCode = 2; Listing = 'absent'; Permission = 'WRITE'
         Drift = ''; FinalDrift = ''; HeadCalls = 0; BuildSerial = [guid]::NewGuid().ToString('N')
+        BaseCommit = Invoke-FixtureGit $Repo @('rev-parse', '261016r429e')
+        RemoteBase = 'matching'; NotesBytes = ''
     }
 }
 function New-LegacyReleaseOutputs([string]$Repo, [string]$Shape) {
@@ -114,15 +122,21 @@ function global:git {
     if ($operationArgs.Count -ge 2 -and $operationArgs[0] -eq '-C') { $operationArgs = @($operationArgs | Select-Object -Skip 2) }
     $op = switch ($operationArgs[0]) {
         'show-ref' { 'git-local' }
-        'ls-remote' { 'git-remote' }
+        'ls-remote' {
+            if ($operationArgs -contains 'refs/tags/261016r429e^{}') { 'git-baseline-remote' } else { 'git-remote' }
+        }
         'tag' { 'git-tag' }
         'push' { 'git-push' }
         'status' { 'git-status' }
         'ls-files' { 'git-files' }
         'remote' { 'git-target' }
+        'merge-base' { 'git-ancestor' }
+        'archive' { 'git-archive' }
+        'cat-file' { 'git-object' }
         'rev-parse' {
             if ($operationArgs -contains '--show-toplevel') { 'git-root' }
             elseif ($operationArgs -contains '--short=12') { 'git-abbrev' }
+            elseif ($operationArgs[-1] -like 'refs/tags/*') { 'git-baseline-local' }
             else {
                 $state.HeadCalls++
                 if ($state.HeadCalls -eq 3 -and $state.FinalDrift) {
@@ -142,9 +156,22 @@ function global:git {
     }
     if ($op -eq 'git-local') { Invoke-ReleaseNativeStatus $op $nativeArgs $state.LocalCode; return }
     if ($op -eq 'git-remote') { Invoke-ReleaseNativeStatus $op $nativeArgs $state.RemoteCode; return }
+    if ($op -eq 'git-baseline-remote') {
+        $commit = if ($state.RemoteBase -eq 'matching') { $state.BaseCommit } else { 'f' * 40 }
+        Invoke-ReleaseNativeStatus $op $nativeArgs 0 ("$commit" + [char]9 + 'refs/tags/261016r429e')
+        return
+    }
     if ($op -in @('git-tag', 'git-push') -or $state.Fault -ceq $op) { Invoke-ReleaseNativeStatus $op $nativeArgs; return }
     $state.Calls.Add([pscustomobject]@{ Operation = $op; Arguments = $nativeArgs; GOOS = $env:GOOS; GOARCH = $env:GOARCH; CGO = $env:CGO_ENABLED })
     & $state.RealGit @nativeArgs
+}
+function global:dyff {
+    $nativeArgs = @($args | ForEach-Object { [string]$_ })
+    if ($nativeArgs[0] -eq 'version') {
+        Invoke-ReleaseNativeStatus 'dyff-version' $nativeArgs 0 'dyff.exe version 1.12.0'
+    } else {
+        Invoke-ReleaseNativeStatus 'dyff-between' $nativeArgs 1 'fixture structural change'
+    }
 }
 function global:go {
     $nativeArgs = @($args | ForEach-Object { [string]$_ })
@@ -191,7 +218,10 @@ function global:gh {
         'api' {
             $page = if ($nativeArgs[-1] -match 'page=(\d+)$') { [int]$Matches[1] } else { throw 'Missing explicit listing page.' }
             switch ($state.Listing) {
-                'absent' { $output = '[]' }
+                'absent' { $output = '[{"tag_name":"261016r429e","draft":false,"prerelease":false}]' }
+                'missing-baseline' { $output = '[]' }
+                'draft-baseline' { $output = '[{"tag_name":"261016r429e","draft":true,"prerelease":false}]' }
+                'prerelease-baseline' { $output = '[{"tag_name":"261016r429e","draft":false,"prerelease":true}]' }
                 'duplicate' { $output = '[{"tag_name":"' + $state.ReleaseTag + '","draft":false}]' }
                 'draft' { $output = '[{"tag_name":"' + $state.ReleaseTag + '","draft":true}]' }
                 'late-draft' {
@@ -204,7 +234,10 @@ function global:gh {
             }
             "gh-page$page"
         }
-        'release' { 'gh-create' }
+        'release' {
+            $state.NotesBytes = [Convert]::ToBase64String([IO.File]::ReadAllBytes($nativeArgs[-1]))
+            'gh-create'
+        }
         default { throw "Unplanned GitHub operation: $($nativeArgs -join ' ')" }
     }
     Invoke-ReleaseNativeStatus $op $nativeArgs 0 $output
@@ -217,6 +250,10 @@ function global:Compress-Archive {
     Microsoft.PowerShell.Archive\Compress-Archive -LiteralPath $LiteralPath -DestinationPath $DestinationPath
 }
 function Invoke-ActualRelease([string]$Repo, [hashtable]$Parameters, [string]$ExpectedFailure = '') {
+    $Parameters = $Parameters.Clone()
+    if (-not $Parameters['PackageOnly'] -and -not $Parameters.ContainsKey('BaseReleaseTag')) {
+        $Parameters.BaseReleaseTag = '261016r429e'
+    }
     $beforeLocation = (Get-Location).Path
     $beforeOS = $env:GOOS; $beforeArch = $env:GOARCH; $beforeCGO = $env:CGO_ENABLED
     $beforeOSExists = Test-Path Env:GOOS; $beforeArchExists = Test-Path Env:GOARCH
@@ -317,7 +354,7 @@ try {
         $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $repo 'gocluster-windows-amd64.zip'))
         try {
             $names = @($zip.Entries | ForEach-Object { $_.FullName.Replace('\', '/') })
-            foreach ($required in @('ready_to_run/gocluster.exe', 'ready_to_run/binaries.json', 'ready_to_run/README.md', 'ready_to_run/docs/OPERATOR_GUIDE.md')) {
+            foreach ($required in @('ready_to_run/gocluster.exe', 'ready_to_run/binaries.json', 'ready_to_run/data/config-bundle.json', 'ready_to_run/README.md', 'ready_to_run/docs/OPERATOR_GUIDE.md')) {
                 Assert-Fixture ($names -contains $required) "Missing archive payload: $required"
             }
             Assert-Fixture (-not ($names -contains 'ready_to_run/peerdiag.exe')) 'Obsolete companion entered the ZIP.'
@@ -343,6 +380,100 @@ try {
         $build = @($calls | Where-Object Operation -eq 'go-build-main')[0]
         Assert-Fixture (($build.Arguments -join '|') -match ('main.Commit=' + $head.Substring(0,12))) 'Displayed commit stamp changed.'
         Assert-Fixture (Test-Path -LiteralPath (Join-Path $repo 'custom-out/asset[two].zip')) 'Custom literal ZIP was not created.'
+        $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $repo 'custom-out/asset[two].zip'))
+        try {
+            $entry = @($zip.Entries | Where-Object { $_.FullName.Replace('\', '/') -ceq 'package[one]/UPGRADE.md' })[0]
+            $stream = [IO.MemoryStream]::new()
+            try {
+                $entryStream = $entry.Open()
+                try { $entryStream.CopyTo($stream) } finally { $entryStream.Dispose() }
+                $bytes = $stream.ToArray()
+                Assert-Fixture ([Convert]::ToBase64String($bytes) -ceq $global:ReleaseSafetyFixture.NotesBytes) 'GitHub notes and ZIP report differ.'
+                $report = [Text.Encoding]::UTF8.GetString($bytes)
+                Assert-Fixture ($report.Contains("https://github.com/fixture/target/blob/$head/docs/OPERATOR_GUIDE.md")) 'Report link is not commit pinned.'
+                Assert-Fixture ($report.Contains("https://github.com/fixture/target/compare/$($global:ReleaseSafetyFixture.BaseCommit)...$head")) 'Report range is wrong.'
+            } finally { $stream.Dispose() }
+        } finally { $zip.Dispose() }
+    }
+    Run-ReleaseCase 'baseline refusal and dirty preview labeling' {
+        $repo = New-ReleaseFixture
+        Reset-ReleaseNative $repo
+        Invoke-ActualRelease $repo @{ BaseReleaseTag = '' } 'requires -BaseReleaseTag'
+        Invoke-ActualRelease $repo @{ BaseReleaseTag = 'does-not-exist' } 'Cannot resolve baseline'
+        Invoke-FixtureGit $repo @('tag', 'candidate-itself') | Out-Null
+        Invoke-ActualRelease $repo @{ BaseReleaseTag = 'candidate-itself' } 'strict ancestor'
+        foreach ($listing in @('missing-baseline', 'draft-baseline', 'prerelease-baseline')) {
+            Reset-ReleaseNative $repo
+            $global:ReleaseSafetyFixture.Listing = $listing
+            Invoke-ActualRelease $repo @{} 'published'
+            Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -in @('go-build-main', 'git-tag', 'git-push', 'gh-create')).Count -eq 0) 'Invalid baseline reached build or publication.'
+        }
+        Reset-ReleaseNative $repo
+        $global:ReleaseSafetyFixture.RemoteBase = 'moved'
+        Invoke-ActualRelease $repo @{} 'does not match local commit'
+        [IO.File]::AppendAllText((Join-Path $repo 'data/config/app.yaml'), "`r`n# private preview edit`r`n")
+        Invoke-ActualRelease $repo @{ PackageOnly = $true; AllowDirty = $true; BaseReleaseTag = '261016r429e' } 'clean worktree'
+        Invoke-ActualRelease $repo @{ PackageOnly = $true; AllowDirty = $true }
+        $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $repo 'gocluster-windows-amd64.zip'))
+        try {
+            $entries = @{}
+            foreach ($entry in $zip.Entries) { $entries[$entry.FullName.Replace('\', '/')] = $entry }
+            $reader = [IO.StreamReader]::new($entries['ready_to_run/data/config-bundle.json'].Open())
+            try { $bundle = $reader.ReadToEnd() | ConvertFrom-Json } finally { $reader.Dispose() }
+            Assert-Fixture ($bundle.dirty_preview -and $bundle.format_version -eq 1 -and $bundle.source_commit -ceq (Invoke-FixtureGit $repo @('rev-parse', 'HEAD'))) 'Wrong dirty preview identity.'
+            $yamlNames = @($entries.Keys | Where-Object { $_ -like 'ready_to_run/data/config/*' -and $_ -match '\.ya?ml$' } | Sort-Object)
+            Assert-Fixture ((($bundle.files | ForEach-Object { 'ready_to_run/' + $_.path }) -join '|') -ceq ($yamlNames -join '|')) 'Manifest YAML inventory differs from the ZIP.'
+            $sha = [Security.Cryptography.SHA256]::Create()
+            try {
+                foreach ($file in $bundle.files) {
+                    $stream = $entries['ready_to_run/' + $file.path].Open()
+                    try { $computed = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '').ToLowerInvariant() }
+                    finally { $stream.Dispose() }
+                    Assert-Fixture ($computed -ceq $file.sha256) "Wrong staged-byte hash for $($file.path)."
+                }
+            } finally { $sha.Dispose() }
+            Assert-Fixture (-not $entries.ContainsKey('ready_to_run/UPGRADE.md')) 'Dirty preview shipped a release report.'
+        } finally { $zip.Dispose() }
+    }
+    Run-ReleaseCase 'report requires committed notes and resolvable source links' {
+        $repo = New-ReleaseFixture
+        Reset-ReleaseNative $repo
+        $notes = 'docs/release/from-261016r429e.md'
+        Invoke-FixtureGit $repo @('rm', '--', $notes) | Out-Null
+        Invoke-FixtureGit $repo @('commit', '-q', '-m', 'remove notes from release source') | Out-Null
+        Reset-ReleaseNative $repo
+        Invoke-ActualRelease $repo @{} 'Cannot read docs/release/from-261016r429e.md'
+        Write-FixtureFile (Join-Path $repo $notes) '[Missing decision](docs/decisions/no-such-decision.md)'
+        Invoke-FixtureGit $repo @('add', '--', $notes) | Out-Null
+        Invoke-FixtureGit $repo @('commit', '-q', '-m', 'add unresolved release link') | Out-Null
+        Reset-ReleaseNative $repo
+        Invoke-ActualRelease $repo @{} 'link to missing file'
+        Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -in @('archive', 'git-tag', 'git-push', 'gh-create')).Count -eq 0) 'Invalid notes reached archive or publication.'
+    }
+    Run-ReleaseCase 'YAML additions removals and failed comparison preserve previous ZIP' {
+        $repo = New-ReleaseFixture
+        Reset-ReleaseNative $repo
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
+        $zipPath = Join-Path $repo 'gocluster-windows-amd64.zip'
+        $priorHash = (Get-FileHash -LiteralPath $zipPath).Hash
+        # The staged Go loader is mocked here so additions/removals can exercise
+        # report wiring independently of the runtime filename registry.
+        Write-FixtureFile (Join-Path $repo 'data/config/new.yml') 'example: true'
+        Remove-Item -LiteralPath (Join-Path $repo 'data/config/legacy.yml')
+        [IO.File]::AppendAllText((Join-Path $repo 'data/config/app.yaml'), "`nfixture: changed`n")
+        Invoke-FixtureGit $repo @('add', '.') | Out-Null
+        Invoke-FixtureGit $repo @('commit', '-q', '-m', 'change public YAML') | Out-Null
+        Reset-ReleaseNative $repo 'dyff-between'
+        Invoke-ActualRelease $repo @{} 'dyff could not compare'
+        Assert-Fixture ((Get-FileHash -LiteralPath $zipPath).Hash -ceq $priorHash) 'Failed diff replaced the previous ZIP.'
+        Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -in @('archive', 'git-tag', 'git-push', 'gh-create')).Count -eq 0) 'Failed diff reached archive or publication.'
+        Reset-ReleaseNative $repo
+        Write-FixtureFile (Join-Path $repo 'data/config.local/peering.yaml') 'fixture_password: private-test-value'
+        Invoke-ActualRelease $repo @{ PackageOnly = $true; BaseReleaseTag = '261016r429e' }
+        $diff = [IO.File]::ReadAllText((Join-Path $repo 'ready_to_run/CONFIG-DIFF.md'))
+        Assert-Fixture ($diff.Contains('data/config/new.yml') -and $diff.Contains('Added') -and $diff.Contains('fixture structural change')) 'YAML appendix omitted addition or structural change.'
+        Assert-Fixture ($diff -match '(?s)## data/config/legacy\.yml\s+Removed') 'YAML appendix omitted removal.'
+        Assert-Fixture (-not $diff.Contains('private-test-value') -and -not (Test-Path -LiteralPath (Join-Path $repo 'ready_to_run/data/config.local'))) 'Private config reached the release.'
     }
     Run-ReleaseCase 'custom package rebuild with explicit dirty bypass and absolute output' {
         $repo = New-ReleaseFixture
@@ -796,7 +927,7 @@ try {
         if ($null -eq $entry[1]) { Remove-Item ('Env:' + $entry[0]) -ErrorAction SilentlyContinue }
         else { Set-Item ('Env:' + $entry[0]) $entry[1] }
     }
-    Remove-Item Function:git, Function:go, Function:gh, Function:Compress-Archive -ErrorAction SilentlyContinue
+    Remove-Item Function:git, Function:go, Function:gh, Function:dyff, Function:Compress-Archive -ErrorAction SilentlyContinue
     Remove-Variable ReleaseSafetyFixture -Scope Global -ErrorAction SilentlyContinue
     # The root is a fresh absolute path created by this harness, never a caller
     # parameter. Junction fixtures are detached before recursive fixture cleanup.

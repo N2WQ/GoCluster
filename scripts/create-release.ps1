@@ -26,6 +26,9 @@
 .PARAMETER Remote
 	Git remote used to resolve the release repository. Defaults to origin.
 
+.PARAMETER BaseReleaseTag
+    Exact published baseline tag for upgrade notes. Required for publication;
+    optional for a clean package-only rehearsal.
 .PARAMETER SkipCodeMapCheck
 	Skip the generated code-map freshness check. Only allowed with -PackageOnly
 	for local package testing.
@@ -53,11 +56,13 @@ param(
     [string]$PackageName = "gocluster-windows-amd64",
     [string]$PackageDirectoryName = "ready_to_run",
     [string]$Remote = "origin",
-    [switch]$SkipCodeMapCheck
+    [switch]$SkipCodeMapCheck,
+    [string]$BaseReleaseTag
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot 'release-upgrade.ps1')
 
 function Resolve-RepoRoot {
     $result = Invoke-NativeResult -CommandName 'git' -Arguments @('-C', (Join-Path $PSScriptRoot '..'), 'rev-parse', '--show-toplevel')
@@ -165,7 +170,8 @@ function Assert-GitHubCliReady {
 function Assert-ReleaseTargetsAvailable {
     param(
         [object]$Target,
-        [string]$Version
+        [string]$Version,
+        [string]$BaseTag
     )
 
     $local = Invoke-NativeResult -CommandName 'git' -Arguments @('show-ref', '--exists', "refs/tags/$Version")
@@ -186,6 +192,7 @@ function Assert-ReleaseTargetsAvailable {
         throw 'Release repository identity or draft visibility could not be verified.'
     }
     $page = 1
+    $publishedBase = $false
     do {
         $response = Invoke-NativeResult -CommandName 'gh' -Arguments @('api', '--hostname', $Target.HostName, '--method', 'GET',
             "repos/$($Target.NameWithOwner)/releases?per_page=100&page=$page")
@@ -202,9 +209,18 @@ function Assert-ReleaseTargetsAvailable {
                 throw 'Invalid GitHub release entry.'
             }
             if ($release.tag_name -ceq $Version) { throw "GitHub Release $Version already exists." }
+            if ($BaseTag -and $release.tag_name -ceq $BaseTag) {
+                if ($release.prerelease -isnot [bool] -or $release.draft -or $release.prerelease) {
+                    throw "Baseline $BaseTag must be a published, non-prerelease GitHub Release."
+                }
+                $publishedBase = $true
+            }
         }
         $page++
     } while ($releases.Count -eq 100)
+    if ($BaseTag -and -not $publishedBase) {
+        throw "Baseline $BaseTag is not a published GitHub Release on $($Target.Repository)."
+    }
 }
 
 function Resolve-PublicationTarget {
@@ -474,11 +490,17 @@ function New-ReleaseNotes {
         [string]$Version,
         [string]$ReleaseTag,
         [string]$Commit,
-        [string]$BuildTime
+        [string]$BuildTime,
+        [string]$BaseTag,
+        [string]$BaseCommit,
+        [string]$CommitId,
+        [string]$RepositoryUrl,
+        [string]$Explanation,
+        [string]$YamlSummary
     )
 
     return @"
-GoCluster $Version
+# GoCluster $Version
 
 IMPORTANT DOWNLOAD NOTE
 
@@ -494,6 +516,21 @@ downloads unless you want the developer source tree.
 - Asset: $PackageName.zip
 
 Extract the asset and open the $PackageDirectoryName directory.
+
+## Upgrade from $BaseTag to $ReleaseTag
+
+- Baseline commit: $BaseCommit
+- Candidate commit: $CommitId
+- [Full source comparison]($RepositoryUrl/compare/$BaseCommit...$CommitId)
+
+$Explanation
+
+## Shipped YAML changes
+
+$YamlSummary
+
+See CONFIG-DIFF.md in the release ZIP for the YAML comparison and
+data/config-bundle.json for the public YAML inventory and checksums.
 "@
 }
 
@@ -745,15 +782,16 @@ function Assert-ReleaseSourceUnchanged {
 
 function Publish-GitHubRelease {
     param(
-        [string]$Version,
         [string]$ReleaseTag,
-        [string]$Commit,
         [string]$CommitId,
         [string]$ZipPath,
         [object]$Target,
-        [string]$BuildTime
+        [string]$NotesPath
     )
 
+    if (-not (Test-Path -LiteralPath $NotesPath -PathType Leaf)) {
+        throw 'The verified release stage is missing UPGRADE.md.'
+    }
     Invoke-CheckedCommand -CommandName "git" `
         -Arguments @("tag", "-a", $ReleaseTag, $CommitId, "-m", "Release $ReleaseTag") `
         -FailureMessage "Failed to create tag $ReleaseTag."
@@ -762,29 +800,21 @@ function Publish-GitHubRelease {
             -Arguments @("push", $Target.PushUrl, "refs/tags/${ReleaseTag}:refs/tags/$ReleaseTag") `
             -FailureMessage "Failed to push tag $ReleaseTag to $($Target.Repository)."
 
-        $notes = New-ReleaseNotes -Version $Version -ReleaseTag $ReleaseTag -Commit $Commit -BuildTime $BuildTime
-        $notesPath = [IO.Path]::GetTempFileName()
-        try {
-            Set-Content -LiteralPath $notesPath -Value $notes -Encoding UTF8
-            Invoke-CheckedCommand -CommandName "gh" `
-                -Arguments @(
-                    "release",
-                    "create",
-                    $ReleaseTag,
-                    $ZipPath,
-                    "--repo",
-                    $Target.Repository,
-                    "--verify-tag",
-                    "--title",
-                    $ReleaseTag,
-                    "--notes-file",
-                    $notesPath
-                ) `
-                -FailureMessage "Failed to create GitHub Release $ReleaseTag."
-        }
-        finally {
-            Remove-Item -LiteralPath $notesPath -Force -ErrorAction SilentlyContinue
-        }
+        Invoke-CheckedCommand -CommandName "gh" `
+            -Arguments @(
+                "release",
+                "create",
+                $ReleaseTag,
+                $ZipPath,
+                "--repo",
+                $Target.Repository,
+                "--verify-tag",
+                "--title",
+                $ReleaseTag,
+                "--notes-file",
+                $NotesPath
+            ) `
+            -FailureMessage "Failed to create GitHub Release $ReleaseTag."
     }
     catch {
         Write-Warning "Release publishing failed after creating local tag $ReleaseTag. Inspect local/remote tag state before retrying."
@@ -806,7 +836,13 @@ $runRoot = $null
 $script:retainRunRoot = $false
 Push-Location $repoRoot
 try {
-    Assert-CleanWorktree -RepoRoot $repoRoot -AllowDirty:$AllowDirty | Out-Null
+    $dirtyPreview = @(Assert-CleanWorktree -RepoRoot $repoRoot -AllowDirty:$AllowDirty).Count -gt 0
+    if (-not $PackageOnly -and -not $BaseReleaseTag) {
+        throw 'Publishing requires -BaseReleaseTag and reviewed upgrade notes.'
+    }
+    if ($BaseReleaseTag -and $dirtyPreview) {
+        throw 'Upgrade reports require a clean worktree. Omit -BaseReleaseTag for a dirty package-only preview.'
+    }
     Assert-GoModulesTidy
     if ($SkipCodeMapCheck) {
         Write-Warning "Skipping generated code-map freshness check for package-only testing."
@@ -826,10 +862,15 @@ try {
     $paths = Get-ReleasePaths -RepoRoot $repoRoot -OutputDir $OutputDir -PackageName $PackageName -PackageDirectoryName $PackageDirectoryName
     Assert-OwnedReleaseOutputs $paths -AllowLegacy | Out-Null
     $target = $null
-    if (-not $PackageOnly) {
+    $baseCommit = $null
+    if ($BaseReleaseTag) {
+        $baseCommit = Resolve-UpgradeBaseline -Tag $BaseReleaseTag -CommitId $commitId
         $target = Resolve-PublicationTarget $Remote
+    }
+    if (-not $PackageOnly) {
         Assert-GitHubCliReady -HostName $target.HostName
-        Assert-ReleaseTargetsAvailable -Target $target -Version $releaseTag
+        Assert-ReleaseTargetsAvailable -Target $target -Version $releaseTag -BaseTag $BaseReleaseTag
+        Assert-RemoteUpgradeBaseline $target $BaseReleaseTag $baseCommit
     }
 
     # One run directory on the repository's volume permits directory promotion
@@ -864,6 +905,18 @@ try {
         -DestinationRelativePath "licenses/go-LICENSE.txt"
     Assert-PublicReleaseConfig -StageRoot $stageRoot
     Assert-ForbiddenPayloadAbsent -StageRoot $stageRoot
+    $yaml = Get-StagedReleaseYaml $stageRoot
+    Write-ReleaseConfigBundle $stageRoot $yaml $releaseTag $commitId $dirtyPreview
+    if ($baseCommit) {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $repoUrl = "https://$($target.Repository)"
+        $explanation = Read-UpgradeExplanation $commitId $BaseReleaseTag $runRoot $repoUrl
+        $yamlSummary = Write-ReleaseYamlDiff $stageRoot $runRoot $yaml $baseCommit $commitId
+        $notes = New-ReleaseNotes -Version $version -ReleaseTag $releaseTag -Commit $commit -BuildTime $buildTime `
+            -BaseTag $BaseReleaseTag -BaseCommit $baseCommit -CommitId $commitId -RepositoryUrl $repoUrl `
+            -Explanation $explanation -YamlSummary $yamlSummary
+        [IO.File]::WriteAllText((Join-Path $stageRoot 'UPGRADE.md'), $notes + [Environment]::NewLine)
+    }
 
     $exePath = Join-Path $stageRoot "gocluster.exe"
     $ldflags = "-X main.Version=$version -X main.ReleaseTag=$releaseTag -X main.Commit=$commit -X main.BuildTime=$buildTime"
@@ -893,7 +946,8 @@ try {
         $generatedPaths = @($PackageDirectoryName)
         if (Test-PathWithin $zipPath $repoRoot) { $generatedPaths += $zipPath.Substring($repoRoot.Length + 1).Replace('\', '/') }
         Assert-ReleaseSourceUnchanged -RepoRoot $repoRoot -CommitId $commitId -GeneratedPaths $generatedPaths
-        Publish-GitHubRelease -Version $version -ReleaseTag $releaseTag -Commit $commit -CommitId $commitId -ZipPath $zipPath -Target $target -BuildTime $buildTime
+        Publish-GitHubRelease -ReleaseTag $releaseTag -CommitId $commitId -ZipPath $zipPath -Target $target `
+            -NotesPath (Join-Path $paths.StageRoot 'UPGRADE.md')
         Write-Host "Published GitHub Release: $releaseTag"
     }
 }

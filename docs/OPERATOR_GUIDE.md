@@ -8,9 +8,9 @@ DX-cluster user. For implementation details, use the package READMEs linked
 from the repository root.
 
 > [!IMPORTANT]
-> The current checkout is the test-only Boolean-filter MVP. Use isolated user and
-> archive paths; schema 5 does not convert old profiles or presets. Production
-> rollout and local-cluster acceptance are separate gates.
+> Read the release's upgrade report before opening existing profiles or
+> preset libraries with a new executable. Schema 7 upgrades reset earlier
+> filters and presets. Keep stopped-service backups for rollback.
 
 ## Get A Binary
 
@@ -29,6 +29,25 @@ Linux operators currently build from source:
 ```sh
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
 ```
+
+## Upgrade A Node
+
+1. Open `UPGRADE.md` in the release ZIP or on the GitHub release page. Check
+   that its baseline matches the version you are replacing. If you are on
+   an older release, review the intervening upgrade instructions too.
+2. Stop the old cluster and keep its executable, private config, and any
+   state backups called out by the report. Apply the required edits to a
+   copy of your complete private config. Keep local settings such as
+   callsigns, peer credentials, ports, and storage paths.
+3. Deploy the new executable with its matching public reference files.
+   Point `DXC_CONFIG_PATH` at the updated private copy and review the
+   startup logs before putting the node back into service.
+
+`CONFIG-DIFF.md` shows what changed in the shipped YAML.
+`data/config-bundle.json` identifies the original public config in this ZIP
+and records its file checksums. Keep the manifest or the ZIP so you can
+identify the baseline later. Changes you make to the private copy will
+naturally change its checksums.
 
 ## IPinfo Refresh And Recovery
 
