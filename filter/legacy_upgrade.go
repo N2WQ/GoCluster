@@ -4,11 +4,9 @@
 package filter
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"reflect"
 
@@ -169,7 +167,7 @@ func upgradeLibraryFailure(record *UserRecord, version int, stage string, cause 
 }
 
 func readUpgradeFile(path string, limit int) ([]byte, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G703 -- Internal upgrade path uses a validated callsign under the operator's user directory.
 	if err != nil {
 		return nil, err
 	}
@@ -272,74 +270,4 @@ func decodeUpgradeV6Preset(node *yaml.Node, state *storageDecodeState) (*V6Saved
 		return nil, err
 	}
 	return set.Clone()
-}
-
-// An exclusive fixed-name backup never replaces a different original. Failed
-// writes remove their own partial file. Retry verifies the complete bounded bytes
-// and syncs the existing file, including a previous interrupted durability step.
-func writeLegacyOriginalBackup(path string, original []byte) error {
-	return writeLegacyOriginalBackupWithStages(path, original, atomicUserFileStages{
-		write: writeUserFileBytes, sync: (*os.File).Sync, close: (*os.File).Close,
-	})
-}
-
-func writeLegacyOriginalBackupWithStages(path string, original []byte, stages atomicUserFileStages) error {
-	if len(original) > maxPresetCollectionBytes {
-		return storageAdmissionf("original backup exceeds byte limit")
-	}
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		info, statErr := os.Lstat(path)
-		if statErr != nil {
-			return statErr
-		}
-		if !info.Mode().IsRegular() {
-			return errors.New("original backup is not a regular file")
-		}
-		saved, readErr := readUpgradeFile(path, maxPresetCollectionBytes)
-		if readErr != nil {
-			return readErr
-		}
-		if !bytes.Equal(saved, original) {
-			return errors.New("existing original backup differs; refusing replacement")
-		}
-		file, err = os.OpenFile(path, os.O_WRONLY, 0)
-		if err != nil {
-			return err
-		}
-		syncErr := stages.sync(file)
-		closeErr := stages.close(file)
-		_ = file.Close()
-		return errors.Join(syncErr, closeErr)
-	}
-	if err != nil {
-		return err
-	}
-	complete := false
-	defer func() {
-		_ = file.Close()
-		if !complete {
-			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-				log.Printf("Warning: failed to remove incomplete original backup: %v", err)
-			}
-		}
-	}()
-	if err := stages.write(file, original); err != nil {
-		return err
-	}
-	if err := stages.sync(file); err != nil {
-		return err
-	}
-	if err := stages.close(file); err != nil {
-		return err
-	}
-	saved, err := readUpgradeFile(path, maxPresetCollectionBytes)
-	if err != nil {
-		return err
-	}
-	if !bytes.Equal(saved, original) {
-		return errors.New("new original backup verification failed")
-	}
-	complete = true
-	return nil
 }

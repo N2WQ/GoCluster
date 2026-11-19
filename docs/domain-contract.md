@@ -1053,7 +1053,9 @@ notice retries preserve newly created presets. A completed reset is never inferr
 from successful notice delivery, and failed notice acknowledgement never repeats it.
 
 Each eligible upgrade replacement is admitted and its original backup verified
-before replacing that file. When both files are eligible both backups precede
+before replacing that file. Backups are staged, verified and published without
+replacing an existing backup. See [ADR-0363](decisions/ADR-0363-filter-upgrade-backup-publication.md).
+When both files are eligible both backups precede
 library then profile writes. Separate commits retain independent failure outcomes;
 an independently safe profile reset may finish while preset reset remains pending.
 Only initial authoritative profile absence permits new-user creation. Malformed,

@@ -5,6 +5,10 @@ package filter
 import "golang.org/x/sys/windows"
 
 func replaceUserFile(source, target string) error {
+	return moveUserFile(source, target, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+}
+
+func moveUserFile(source, target string, flags uint32) error {
 	sourcePtr, err := windows.UTF16PtrFromString(source)
 	if err != nil {
 		return err
@@ -13,5 +17,5 @@ func replaceUserFile(source, target string) error {
 	if err != nil {
 		return err
 	}
-	return windows.MoveFileEx(sourcePtr, targetPtr, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	return windows.MoveFileEx(sourcePtr, targetPtr, flags)
 }

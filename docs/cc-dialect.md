@@ -215,3 +215,16 @@ across affected SSIDs. Do not relabel version fields to force an older reader.
 See [ADR-0330](decisions/ADR-0330-native-cc-banks-and-generation-seven.md) and
 the [approved contract](cc-dialect-v4-scope-ledger.md). CC User compatibility
 remains an explicitly unverified follow-up.
+
+#### Recovering an interrupted upgrade backup
+
+The upgrade verifies a private staging file before publishing the final backup.
+A later attempt clears a regular staging file left by an interrupted process.
+If a login or preset operation repeatedly reports that an existing original
+backup differs, stop every writer for that user directory. Preserve copies of
+the original and the final backup and confirm which file was interrupted.
+Move only the confirmed interrupted backup aside, then restart and retry the
+affected login or preset command. Keep the preserved files for recovery. An
+unexplained mismatch requires investigation before moving either file.
+
+See [ADR-0363](decisions/ADR-0363-filter-upgrade-backup-publication.md).

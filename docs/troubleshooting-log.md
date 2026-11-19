@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0140 | Interrupted Filter Upgrade Backups | Monitoring | 2026-11-19 | filter storage, login and shared presets | ADR-0363 | `docs/troubleshooting/TSR-0140-interrupted-filter-upgrade-backups.md` |
 | TSR-0139 | Study Geography and Replay Clock Fixtures | Monitoring | 2026-11-17 | schema-2 CTY/H3 inputs, complete row coverage, fixture sample-clock initialization | ADR-0360 | `docs/troubleshooting/TSR-0139-study-geography-and-replay-clock-fixtures.md` |
 | TSR-0138 | Neighborhood Read Amplification and Recovery Coverage | Monitoring | 2026-11-17 | immutable sorted evidence, bounded derivation, shape benchmarks, invocation recovery coverage | ADR-0360 | `docs/troubleshooting/TSR-0138-neighborhood-read-amplification-and-recovery-coverage.md` |
 | TSR-0137 | Custom SCP Capacity Eviction and Pebble Ownership | Monitoring | 2026-11-18 | Custom SCP, Pebble, capacity and delivery latency | ADR-0358 | `docs/troubleshooting/TSR-0137-custom-scp-capacity-eviction-and-pebble-ownership.md` |
