@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `1f5a383383a77864`
+- Source fingerprint: `b504f8edb03bc0d6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 14 | 24 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 57 | 220 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 59 | 225 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
 | `dxcluster/spot` | `spot` | 44 | 84 |
 | `dxcluster/telnet` | `telnet` | 83 | 177 |
@@ -187,9 +187,11 @@ Source files:
 - `internal/cluster/peer_publication.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/replacement_license.go`
+- `internal/cluster/resolver_correction_outcome.go`
 - `internal/cluster/root_open_linux.go`
 - `internal/cluster/root_open_other.go`
 - `internal/cluster/secondary_shadow_summary.go`
+- `internal/cluster/selective_rescue.go`
 - `internal/cluster/stabilizer.go`
 - `internal/cluster/stabilizer_confidence.go`
 - `internal/cluster/stabilizer_matrix.go`
@@ -386,6 +388,11 @@ Test files:
 - `internal/cluster/runtime_output_retirement_test.go`
 - `internal/cluster/secondary_frequency_delivery_test.go`
 - `internal/cluster/secondary_shadow_summary_test.go`
+- `internal/cluster/selective_rescue_delivery_test.go`
+- `internal/cluster/selective_rescue_license_test.go`
+- `internal/cluster/selective_rescue_metadata_test.go`
+- `internal/cluster/selective_rescue_rails_test.go`
+- `internal/cluster/selective_rescue_temporal_test.go`
 - `internal/cluster/short_portable_license_test.go`
 - `internal/cluster/stabilizer_confidence_test.go`
 - `internal/cluster/stabilizer_matrix_test.go`

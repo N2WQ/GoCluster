@@ -1,9 +1,13 @@
 # Call Correction v2 Scope Ledger v8
 
 Status: approved by the owner's exact `Approved v8` on November 19, 2026.
-Implementation in progress in `C:/src/gocluster-call-correctionv2`, branch
+All four implementation/evaluation units completed in `C:/src/gocluster-call-correctionv2`, branch
 `call-correctionv2`, starting from clean `21c763e5f35a28e22c21f0f9a82622daaca13e7d`.
 This records the scope presented in the conversation before authorization.
+The native study uses code freeze `cc225f08`; both methods failed the agreed
+development objective and reference guard. C remains default-off and B remains
+replay-only. See [results](call-correction-v2-v8-results.md) and
+[scope-to-evidence mapping](call-correction-v2-v8-validation.md).
 
 ## Objective and authority
 

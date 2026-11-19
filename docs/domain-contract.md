@@ -13,6 +13,27 @@ mixed control/data traffic. The system must stay bounded, predictable, and
 operable under normal load, reconnect churn, malformed input, and slow-client
 pressure.
 
+## Optional selective call rescue
+
+- `call_correction.selective_rescue_enabled` is an optional boolean shipping
+  false. Present null/nonboolean is invalid. It adds only current-supported CW
+  proposals after ordinary nonterminal failure; ordinary success, suppression
+  and replacement rejection remain terminal.
+- Current frequency witnesses can establish conditional group exclusions.
+  Unknown/spanning dissent survives; credible unrelated competition can decline
+  extras. Retain the shared five-source/80-slot/5,120-incidence bounds and all
+  ordinary gate/history/license/pending/loss restrictions.
+- Temporal Apply keeps existing admitted identity authority plus a fixed saved
+  lifecycle vector and freshly read rows/clocks. Genuine held fallback may
+  assess fresh C. Abstain/bypass, every overflow and all stabilizer retries gain
+  no extra rescue. No views/scores or new state owner are retained.
+- Public C support uses ordinary emitted-call evidence. Group/model values do
+  not become public confidence or V-only CustomSCP learning. Receiver-label
+  diversity and frequency witnesses do not prove distinct sites or RF identity.
+- Receiver-compatibility B is pure experimental replay code. Its bounded
+  all-opponent, own-SNR weighted ordinal mean is descriptive, not a posterior.
+  There is no live B model path. See [ADR-0359](decisions/ADR-0359-selective-current-signal-call-rescue.md).
+
 ## Live stabilizer output boundary
 
 - For an unchanged admitted identity, retain the strongest terminal ordinary

@@ -441,8 +441,9 @@ Options:
 
 ## Experimental frequency and ordinal method
 
-The [approved v7 experiment](call-correction-v2-scope-ledger-v7.md) changes actual
-replay predictions. It is not connected to live delivery or runtime YAML. The
+The schema-1 [approved v7 experiment](call-correction-v2-scope-ledger-v7.md) changes
+actual replay predictions. Its sixteen-cell grid is not connected to live
+delivery or runtime YAML. The
 ordinary correction substage runs first; additional currently observed calls
 may then receive frequency-backed gate assessments. Ordinary successful
 corrections and replacement-validation failures are terminal. Ambiguous or
@@ -542,3 +543,78 @@ sixteen-candidate grid. All candidates gained corrections and pooled stability,
 but all failed the frozen reference-rename guard; the selector chose none.
 Ordinal ranking produced identical applied outputs to paired geometry ranking.
 Prospective confirmation was not started, and no live method is qualified.
+
+## Selective and receiver-compatibility development (v2)
+
+[Approved v8](call-correction-v2-scope-ledger-v8.md) adds an explicit schema-2
+development pair while retaining schema-1 admission and outputs. C uses selective
+current-signal proposals; B uses the same nomination authority with whole retained
+receiver-population ordinal compatibility. This is separate from the default-off
+live C setting; experimental runs reject a true live setting to avoid two policy
+authorities. There is no live B loader or model-path setting.
+
+V2 has exactly `c_f150_t60_d3` (`selective`) and `b_f150_t60_d3`
+(`receiver_compatibility`), each at 150 Hz, 60 seconds and CW distances [1,2,3]
+within the global cap. It admits active development only on exposed November
+7/14 and disabled parity on all four exposed dates. Phase remains `tuning`;
+`holdout` and a selected confirmation candidate are refused.
+
+Use the existing finite preparation owner with an explicit version:
+
+```powershell
+python scripts/prepare-call-correction-v7-study.py --method-version 2 `
+  --executable <native-exe> --out .tmp/call-correctionv2/new-development
+```
+
+It verifies the same clean checkout, exact native source/executable, frozen
+assets and four original full streams. `runs.json` contains four disabled
+controls followed by two methods on two dates: eight captures, with FREEZE-last.
+Omitting `--method-version` preserves the sixteen-cell/68-run v1 preparation.
+No predictions or method selection occur during preparation. Do not refit the
+frozen v7 ordinal asset for this comparison.
+
+C retains current matching support and all ordinary numerical/history/license,
+loss, pending and temporal restrictions. Direct frequency witnesses alone can
+exclude another group; unknown/spanning dissent remains. All retained identities
+participate in its credible-competition veto, including non-nominees. Credible
+unusable identities abstain before distance helpers. Gate failure may advance
+within C's existing eight-trial beam; the first allowance alone validates.
+
+B considers every retained observed identity, including zero-weight or
+C-disqualified opponents, plus incoming canonical KEEP once. More than eight
+observed identities abstains. Every hypothesis sees the same positive canonical
+memberships with each membership's own SNR. For a receiver, T is its summed
+membership weight and W its maximum; each membership receives W*w/T. The mean
+ordinal score uses sum(W) as denominator, including self terms. Explicit raw
+mode uses unit weights. Coefficients are binned into eight identities by six SNR
+cells: at most 432 Score calls across nine hypotheses.
+
+Missing/conflicting/out-of-domain SNR on a positive-weight scoring observation,
+unavailable opposing scores,
+nonfinite arithmetic or zero positive weight makes the whole B comparison
+unavailable. Deterministic compensated sums and the all-hypothesis deadband
+`1e-9 * max(1, max(abs(mean)))` govern unique selection. KEEP, ties and ineligible
+best hypotheses abstain. Temporal identity permission is intersected afterward.
+Only that selected hypothesis receives one ordinary gate trial, with no
+runner-up or C fallback after gate or replacement failure.
+
+These are descriptive Bayesian-derived ordinal scores, not normalized likelihoods,
+Bayes factors, independent-receiver odds or RF posteriors. Public confidence
+still uses ordinary evidence for the actual emitted identity. C does not become
+V; store-specific learning is unchanged. Ordinary successful corrections and
+replacement rejections remain terminal for both methods.
+
+V2 receipts retain common C geometry once and owned B scalar diagnostics under
+`receiver_compatibility`. The same 4-GiB evidence/assets owner, finite inventory,
+separately measured scratch and COMPLETE-last error behavior apply. V2 evaluation
+uses the existing immutable-ID join, exact stability fractions and R1/R2 facts
+with two active date groups and all four original parity bindings. It emits
+`compatibility_vs_selective`, marks eligibility unassessed/false, and selects no
+method. The v1 global selector and legacy activation readers grant it no authority.
+
+These exposed dates are development inputs, including model training inputs.
+Existing reference floors, untouched confirmation and production resource
+qualification remain unchanged. See [ADR-0359](decisions/ADR-0359-selective-current-signal-call-rescue.md).
+The completed [v8 comparison](call-correction-v2-v8-results.md) gained corrections
+but failed the unchanged stability objective and reference guard for both C and
+B. Neither method is qualified for production activation by those results.

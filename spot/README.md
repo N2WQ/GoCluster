@@ -289,6 +289,34 @@ checks. Enabling a cell or loading custom thresholds is not evidence that the
 configuration improves accuracy. Constructed reachability tests and archive
 qualification answer different questions.
 
+### Selective current-signal rescue
+
+Optional `call_correction.selective_rescue_enabled` ships false. Enabled C runs
+only after an ordinary nonterminal CW decision and can propose a currently
+supported lower-ranked call. It uses frequency-backed signal groups while
+retaining unknown/spanning dissent. A credible unrelated competing identity
+can decline the additional proposal. Configured distance three is bounded by
+the global cap; ordinary numerical, history, licensing, pending and loss gates
+remain. Frequency witnesses are conditional evidence, not proof of RF identity.
+
+Ordinary mutation, suppression and replacement-validation rejection are terminal.
+Immediate decisions and genuine held resolver fallback may assess fresh C.
+Held Apply is limited to its existing guard-admitted identity and a saved fixed
+lifecycle witness; equal generations still require fresh rows and clocks.
+Temporal abstain/bypass, all Observe overflows and all stabilizer retries gain
+no additional rescue. The explicit route/outcome governs this, never a glyph.
+
+Accepted C reuses the existing classification/grid/cache and final-validation
+owners. Public support is the ordinary snapshot's share for the emitted call,
+or unavailable when absent. Group percentages and model scores never replace
+that public population or promote C to V. CustomSCP's V-only learning and legacy
+accepted CW/RTTY history remain distinct. Live CW admission remains source
+agnostic; RBN archives do not establish performance on every live source.
+
+The separate receiver-compatibility B comparison is replay-only and has no live
+asset loader or policy setting. See [ADR-0359](../docs/decisions/ADR-0359-selective-current-signal-call-rescue.md)
+and [configuration](../data/config/README.md#selective-cw-rescue).
+
 ### The `S` floor
 
 `S` is not produced by `FormatConfidence`.
@@ -307,9 +335,10 @@ Two glyphs represent correction outcomes rather than raw confidence:
 - `C`: correction applied and validated
 - `B`: correction attempted, but the candidate failed base-call or CTY validation, so the original call stayed on the spot
 
-The percentage describes the call on that spot. A rejected replacement keeps
-`B` and the retained original's support share; an accepted `C` uses the new call's
-share. No eligible support means the percentage is unavailable (`--%` in DIAG
+The percentage describes the call on that spot. Base/CTY rejection in broadcast
+mode keeps `B` and the original's share; replacement-license rejection can keep
+its ordinary glyph. Accepted `C` uses the new call's ordinary share. No eligible
+support means the percentage is unavailable (`--%` in DIAG
 CONF). Equal weights with one receiver for the retained call and two for the
 rejected candidate give 33%; unequal weights use the retained call's weighted
 share. The glyph records the outcome separately from that support percentage.

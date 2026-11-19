@@ -22,7 +22,7 @@
 #       their bounded corroboration knobs live in this section.
 ################################################################################
 call_correction:
-  selective_rescue_enabled: false
+  selective_rescue_enabled: false     # Optional extra CW rescues after ordinary failure; ship off (see README)
   # ---------------------------------------------------------------------------
   # 1) Enablement
   # Purpose: Turn resolver-primary correction on/off.

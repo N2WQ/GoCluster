@@ -19,7 +19,22 @@ without including them in source commits. No model installation was performed.
 
 ## Evidence status
 
-Latest method checkpoint: approved v7 is implemented and all16 candidates
+Current method implementation: [approved v8](call-correction-v2-scope-ledger-v8.md)
+implements shared selective C, default-off live C integration and experimental
+receiver-compatibility B. Source freeze `cc225f08` has 15,152 ordinary and 15,152
+race passes, 99 skips in each lane across 76 packages, plus passed
+vet/Staticcheck/lint. All eight bounded captures and native development evaluation
+completed. C adds 445 net corrections and B adds 367, but pooled follow-on
+stability declines from 75.135894% to 74.903423% and 74.949873%, respectively;
+both fail the unchanged reference guard. All four disabled streams match their
+original hashes/counts. C remains default-off and B replay-only; there was no
+production activation. [Complete v8 results](call-correction-v2-v8-results.md),
+[validation](call-correction-v2-v8-validation.md) and
+[ADR-0359](decisions/ADR-0359-selective-current-signal-call-rescue.md) record the
+completed work and failed empirical objective. Production qualification remains
+incomplete.
+
+Previous method checkpoint: approved v7 is implemented and all16 candidates
 executed on four exposed dates. Each gains corrections and pooled stability;
 all fail the frozen reference rename guard. The selector chose none, Bayesian
 ranking has no applied-output increment versus geometry, and prospective dates

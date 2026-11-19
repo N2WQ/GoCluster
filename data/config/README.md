@@ -174,6 +174,36 @@ the new key. The existing master `enabled: false` remains the whole-block off
 switch. See [ADR-0358](../../docs/decisions/ADR-0358-call-correction-v2-evidence-and-bounded-bonuses.md)
 and the [correction contract](../../spot/README.md#bounded-historical-bonuses).
 
+### Selective CW rescue
+
+`pipeline.yaml` owns optional `call_correction.selective_rescue_enabled`.
+Omission or `false` preserves ordinary correction. Explicit null, strings,
+numbers, lists and mappings are rejected. The supplied value is `false`; this
+setting does not activate the experimental receiver-compatibility model.
+
+When enabled, C can consider a currently supported lower-ranked call after an
+ordinary nonterminal failure. Frequency witnesses must support any signal
+exclusion; unresolved dissent remains. A credible unrelated competing identity
+can block an additional proposal. C permits configured CW distance up
+to three within `max_edit_distance`, keeping all ordinary report, advantage,
+confidence, history, licensing, pending and loss restrictions. It can miss real
+repairs and can still rename a genuine station.
+
+Ordinary successful correction and replacement-validation rejection are terminal.
+Temporal Apply requires fresh evidence for its existing permitted identity;
+genuine held fallback may assess fresh C. Temporal abstain/bypass, Observe
+overflow and every stabilizer retry gain no extra rescue. The public glyph stays
+`C`, with the ordinary evidence share for the emitted call, not a group/model
+percentage. CustomSCP remains V-only; legacy history keeps its different rules.
+
+This is separate from `bayes_bonus.*`. Existing release/reference/resource
+requirements remain; configuration availability is not qualification. See
+[ADR-0359](../../docs/decisions/ADR-0359-selective-current-signal-call-rescue.md)
+and the [live contract](../../spot/README.md#selective-current-signal-rescue).
+The initial [v8 archive comparison](../../docs/call-correction-v2-v8-results.md)
+failed the agreed improvement objective and reference guard. Keep this setting
+false on that evidence.
+
 ### Flood configuration
 
 `floodcontrol.yaml` is loaded with the merged runtime configuration at startup.

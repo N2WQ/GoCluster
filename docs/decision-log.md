@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0359 | Selective Current-Signal Call Rescue | Accepted | 2026-11-19 | optional live C, temporal authority, receiver-compatibility B, bounded development replay | none; extends ordinary method | none | [ADR-0359](decisions/ADR-0359-selective-current-signal-call-rescue.md) |
 | ADR-0358 | Call-Correction V2 Evidence And Bounded Bonuses | Accepted | 2026-11-17 | receiver SNR, canonical display, decision-local history, complete Bayes cell masks | ADR-0291 candidate-representative SNR and equal-time receipt selection only | none | [ADR-0358](decisions/ADR-0358-call-correction-v2-evidence-and-bounded-bonuses.md) |
 | ADR-0355 | Shared Reputation Lookup Retention | Accepted | 2026-11-15 | combined cache cap, FIFO, owned payload and diagnostics | none | none | [ADR-0355](decisions/ADR-0355-shared-reputation-lookup-retention.md) |
 | ADR-0354 | Peer Flood Verdict And Retirement | Accepted | 2026-11-15 | peer FIFO, one verdict, original relay, retirement | ADR-0239 initial-enqueue boundary only | none | [ADR-0354](decisions/ADR-0354-peer-flood-verdict-and-retirement.md) |
