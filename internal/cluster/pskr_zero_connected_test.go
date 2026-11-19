@@ -137,31 +137,19 @@ func TestPSKRZeroConnectedRoutes(t *testing.T) {
 		pathPredictor: predictor, pathReport: metrics, allowedBands: allowed, spotPolicy: policy}
 	host, port := broker.Endpoint()
 	client := pskreporter.NewClient(host, port, []string{"s5/reports"}, "S5-loopback", 1, 1, 64, 0, nil, nil, false, 64, 0)
-	var clientStop sync.Once
-	stopClient := func() { clientStop.Do(client.Stop) }
-	// Public output channels are client-owned and never closed by this fixture.
-	// Relays own separate channels that can close after Stop and quiescent drain.
-	relayCtx, stopRelays := context.WithCancel(ctx)
-	drain := make(chan struct{})
-	var drainOnce, ingestClose sync.Once
-	normal, pathOnly := make(chan *spot.Spot, 64), make(chan *spot.Spot, 64)
-	var relays sync.WaitGroup
-	for _, route := range []struct {
-		in  <-chan *spot.Spot
-		out chan *spot.Spot
-	}{{client.GetSpotChannel(), normal}, {client.GetPathOnlyChannel(), pathOnly}} {
-		relays.Go(func() { pskrZeroRelay(relayCtx, drain, route.in, route.out) })
-	}
-	relayDone := make(chan struct{})
-	go func() { relays.Wait(); close(relayDone) }()
+	stopClient := client.Stop
+	var ingestClose sync.Once
 	ingest := make(chan *spot.Spot, 64)
 	forwardDone, pathDone, outputDone, normalFence := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
 	var normalRecords []*spot.Spot // output owner writes; lead reads after join.
 	var fenceOnce sync.Once
-	go func() { defer close(forwardDone); forwardSpots(normal, ingest, "S5-PSKR", policy, nil) }()
+	go func() {
+		defer close(forwardDone)
+		forwardSpots(client.GetSpotChannel(), ingest, "S5-PSKR", policy, nil)
+	}()
 	go func() {
 		defer close(pathDone)
-		processPSKRPathOnlyChannel(pathOnly, predictor, metrics, pathStats, policy, allowed)
+		processPSKRPathOnlyChannel(client.GetPathOnlyChannel(), predictor, metrics, pathStats, policy, allowed)
 	}()
 	go func() {
 		defer close(outputDone)
@@ -175,9 +163,6 @@ func TestPSKRZeroConnectedRoutes(t *testing.T) {
 	}()
 	t.Cleanup(func() {
 		stopClient()
-		stopRelays()
-		drainOnce.Do(func() { close(drain) })
-		pskrZeroCleanupWait(t, relayDone, "relay retirement")
 		if pskrZeroCleanupWait(t, forwardDone, "forward retirement") {
 			ingestClose.Do(func() { close(ingest) })
 		}
@@ -185,9 +170,7 @@ func TestPSKRZeroConnectedRoutes(t *testing.T) {
 		pskrZeroCleanupWait(t, outputDone, "output retirement")
 	})
 	mqttBaseline := pskrZeroMQTTOwners(t)
-	if err := client.Connect(); err != nil {
-		t.Fatal(err)
-	}
+	client.Start(ctx, nil)
 	select {
 	case <-normalFence:
 	case <-ctx.Done():
@@ -206,8 +189,6 @@ func TestPSKRZeroConnectedRoutes(t *testing.T) {
 	if client.HealthSnapshot().Connected {
 		t.Fatal("MQTT client remained connected after Stop")
 	}
-	drainOnce.Do(func() { close(drain) })
-	pskrZeroWait(t, relayDone, "quiescent relay drain")
 	pskrZeroWait(t, forwardDone, "normal forward completion")
 	pskrZeroWait(t, pathDone, "path-only completion")
 	manual := spot.NewSpot("K1BAR", "N1MAN", 14020, "CW")
@@ -291,42 +272,8 @@ func TestPSKRZeroConnectedRoutes(t *testing.T) {
 	if a := predictor.AdmissionStats(); a != (pathreliability.AdmissionStats{}) {
 		t.Fatalf("valid learning reports rejected: %+v", a)
 	}
-	stopRelays()
 	pskrZeroExport(t, cfgPath, corpus, observed, broadcasts)
 	t.Logf("S5 connected exact ingress/learning/archive/peer evidence passed; fixture=%s", dir)
-}
-
-func pskrZeroRelay(ctx context.Context, drain <-chan struct{}, in <-chan *spot.Spot, out chan<- *spot.Spot) {
-	defer close(out)
-	emit := func(s *spot.Spot) bool {
-		select {
-		case out <- s:
-			return true
-		case <-ctx.Done():
-			return false
-		}
-	}
-	for {
-		select {
-		case s := <-in:
-			if !emit(s) {
-				return
-			}
-		case <-drain:
-			for {
-				select {
-				case s := <-in:
-					if !emit(s) {
-						return
-					}
-				default:
-					return
-				}
-			}
-		case <-ctx.Done():
-			return
-		}
-	}
 }
 
 func pskrZeroWait(t *testing.T, done <-chan struct{}, owner string) {

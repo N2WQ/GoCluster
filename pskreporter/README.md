@@ -59,3 +59,21 @@ Under pressure:
 - QoS1 and QoS2 disconnect after the configured enqueue timeout
 
 For the operator-facing summary, see [`../README.md`](../README.md). For path scoring details, see [`../pathreliability/README.md`](../pathreliability/README.md).
+
+## Connection and health
+
+The optional feed starts in the background. If connection or subscription
+fails, PSKReporter retires the attempt and retries with jittered backoff.
+Repeated failures increase the delay up to a one-minute cap. Both ordinary
+spots and path-only observations resume when the broker recovers.
+
+The feed is connected in health output once the current open MQTT session has
+accepted every requested subscription. A ready feed can be idle. Check the
+payload age to distinguish an idle feed from recent traffic. A missing or
+rejected SUBACK keeps the feed unready and triggers a retry. The periodic
+failure log identifies the endpoint, failure phase and next retry delay.
+Check broker reachability for connect failures and topic permissions for a
+broker subscription rejection.
+
+See [ADR-0364](../docs/decisions/ADR-0364-pskreporter-session-recovery.md) and
+[TSR-0141](../docs/troubleshooting/TSR-0141-pskreporter-startup-and-subscription-recovery.md).

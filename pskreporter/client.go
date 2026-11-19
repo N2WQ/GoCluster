@@ -3,7 +3,6 @@
 package pskreporter
 
 import (
-	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -16,7 +15,6 @@ import (
 	"dxcluster/internal/ratelimit"
 	"dxcluster/skew"
 	"dxcluster/spot"
-	"dxcluster/strutil"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	jsoniter "github.com/json-iterator/go"
@@ -53,7 +51,7 @@ type Client struct {
 	port         int
 	topics       []string
 	name         string
-	client       mqtt.Client
+	lifecycle    mqttLifecycle
 	spotChan     chan *spot.Spot
 	pathOnlyChan chan *spot.Spot
 	shutdown     chan struct{}
@@ -242,134 +240,6 @@ func (c *Client) SetBadCallReporter(reporter BadCallReporter) {
 	c.badCallReporterMu.Lock()
 	c.badCallReporter = reporter
 	c.badCallReporterMu.Unlock()
-}
-
-// Connect connects to the PSKReporter MQTT broker and starts workers.
-// Key aspects: Configures reconnect/keepalive and sets handlers.
-// Upstream: main.go startup or reconnect flows.
-// Downstream: startWorkerPool, mqtt.Client.Connect.
-func (c *Client) Connect() error {
-	enablePahoDebugLogging()
-	c.startWorkerPool()
-	// Create MQTT client options
-	opts := mqtt.NewClientOptions()
-	brokerURL := fmt.Sprintf("tcp://%s:%d", c.broker, c.port)
-	opts.AddBroker(brokerURL)
-
-	// Set client ID with timestamp for uniqueness
-	clientID := fmt.Sprintf("gocluster-%d", time.Now().UTC().Unix())
-	opts.SetClientID(clientID)
-
-	// Set keep alive and timeouts
-	opts.SetKeepAlive(60 * time.Second)
-	opts.SetPingTimeout(10 * time.Second)
-	opts.SetConnectTimeout(10 * time.Second)
-	opts.SetCleanSession(true)
-	opts.SetOrderMatters(false)
-
-	mqttWorkers := c.mqttInboundWorkers
-	if mqttWorkers <= 0 {
-		mqttWorkers = c.workers
-	}
-	if mqttWorkers <= 0 {
-		mqttWorkers = defaultPSKReporterWorkers()
-	}
-	queueDepth := c.mqttInboundQueueDepth
-	if queueDepth <= 0 {
-		queueDepth = mqttWorkers * mqttInboundQueuePerWorker
-		if queueDepth > mqttInboundQueueDepthCap {
-			queueDepth = mqttInboundQueueDepthCap
-		}
-	}
-	if c.mqttQoS12EnqueueTimeout < 0 {
-		c.mqttQoS12EnqueueTimeout = 0
-	}
-	c.mqttInboundWorkers = mqttWorkers
-	c.mqttInboundQueueDepth = queueDepth
-	opts.SetInboundPublishWorkers(mqttWorkers)
-	opts.SetInboundPublishQueueDepth(uint(queueDepth))
-	opts.SetInboundPublishEnqueueTimeout(c.mqttQoS12EnqueueTimeout)
-	log.Printf("PSKReporter: MQTT inbound queue depth=%d workers=%d qos12_timeout=%s", queueDepth, mqttWorkers, c.mqttQoS12EnqueueTimeout)
-
-	// Set auto-reconnect
-	opts.SetAutoReconnect(true)
-	opts.SetMaxReconnectInterval(1 * time.Minute)
-
-	// Set connection handlers
-	opts.SetOnConnectHandler(c.onConnect)
-	opts.SetConnectionLostHandler(c.onConnectionLost)
-
-	// Create MQTT client
-	c.client = mqtt.NewClient(opts)
-
-	topicDesc := strings.Join(c.topics, ",")
-	if topicDesc == "" {
-		topicDesc = "<none>"
-	}
-	if c.name != "" {
-		log.Printf("Connecting to %s MQTT broker at %s (topics=%s)...", c.name, brokerURL, topicDesc)
-	} else {
-		log.Printf("Connecting to PSKReporter MQTT broker at %s (topics=%s)...", brokerURL, topicDesc)
-	}
-
-	// Connect to broker
-	token := c.client.Connect()
-	if token.Wait() && token.Error() != nil {
-		return fmt.Errorf("failed to connect to PSKReporter: %w", token.Error())
-	}
-
-	log.Println("Connected to PSKReporter MQTT broker")
-
-	return nil
-}
-
-// Purpose: Subscribe to configured topics on connect.
-// Key aspects: Logs subscription results and aborts on failure.
-// Upstream: MQTT on-connect callback.
-// Downstream: client.Subscribe, messageHandler.
-func (c *Client) onConnect(client mqtt.Client) {
-	log.Printf("PSKReporter: Connected, subscribing to %d topic(s)", len(c.topics))
-	for _, topic := range c.topics {
-		token := client.Subscribe(topic, 0, c.messageHandler)
-		if token.Wait() && token.Error() != nil {
-			log.Printf("PSKReporter: Failed to subscribe to %s: %v", topic, token.Error())
-			return
-		}
-		log.Printf("PSKReporter: Subscribed to %s", topic)
-	}
-
-	log.Println("PSKReporter: Successfully subscribed, receiving spots...")
-}
-
-// Purpose: Log connection loss events.
-// Key aspects: Relies on MQTT auto-reconnect for recovery.
-// Upstream: MQTT connection-lost callback.
-// Downstream: None.
-func (c *Client) onConnectionLost(client mqtt.Client, err error) {
-	snap := c.HealthSnapshot()
-	now := time.Now().UTC()
-	log.Printf("PSKReporter: Connection lost: %v (last_payload=%s last_spot=%s last_parse_err=%s processing=%d/%d mqtt_q=%d/%d spot_queue=%d/%d path_only_q=%d/%d drops payload=%d oversize=%d spot=%d path_only=%d parse=%d mqtt_drop=%d mqtt_qos12_timeout=%d mqtt_qos12_disconnect=%d)",
-		err,
-		strutil.FormatAge(now, snap.LastPayloadAt),
-		strutil.FormatAge(now, snap.LastSpotAt),
-		strutil.FormatAge(now, snap.LastParseErrAt),
-		snap.ProcessingQueueLen,
-		snap.ProcessingQueueCap,
-		snap.MQTTInboundQueueLen,
-		snap.MQTTInboundQueueCap,
-		snap.SpotQueueLen,
-		snap.SpotQueueCap,
-		snap.PathOnlyQueueLen,
-		snap.PathOnlyQueueCap,
-		snap.PayloadDrops,
-		snap.PayloadTooLarge,
-		snap.SpotDrops,
-		snap.PathOnlyDrops,
-		snap.ParseErrors,
-		snap.MQTTInboundDropsQoS0,
-		snap.MQTTInboundQoS12Timeouts,
-		snap.MQTTInboundQoS12Disconnects)
-	log.Println("PSKReporter: Will attempt to reconnect...")
 }
 
 // Purpose: Initialize a bounded payload buffer pool to reduce per-message allocs.
@@ -873,33 +743,6 @@ func (c *Client) GetPathOnlyChannel() <-chan *spot.Spot {
 	return c.pathOnlyChan
 }
 
-// IsConnected reports whether the MQTT client is connected.
-// Key aspects: Safe when client is nil.
-// Upstream: Diagnostics or health checks.
-// Downstream: mqtt.Client.IsConnected.
-func (c *Client) IsConnected() bool {
-	return c.client != nil && c.client.IsConnected()
-}
-
-func (c *Client) Endpoint() string {
-	if c == nil {
-		return ""
-	}
-	return fmt.Sprintf("%s:%d", c.broker, c.port)
-}
-
-func (c *Client) mqttInboundStats() mqtt.InboundPublishStats {
-	if c == nil || c.client == nil {
-		return mqtt.InboundPublishStats{}
-	}
-	stats, ok := c.client.(mqtt.InboundPublishStatsProvider)
-	if !ok || stats == nil {
-		return mqtt.InboundPublishStats{}
-	}
-	return stats.InboundPublishStats()
-}
-
-// HealthSnapshot reports recent activity and queue state for diagnostics.
 type HealthSnapshot struct {
 	Connected                   bool
 	LastPayloadAt               time.Time
@@ -931,8 +774,9 @@ func (c *Client) HealthSnapshot() HealthSnapshot {
 	if c == nil {
 		return HealthSnapshot{}
 	}
+	ready, mqttStats := c.lifecycle.health()
 	snap := HealthSnapshot{
-		Connected:    c.IsConnected(),
+		Connected:    ready,
 		SpotQueueLen: len(c.spotChan),
 		SpotQueueCap: cap(c.spotChan),
 		PathOnlyQueueLen: func() int {
@@ -953,7 +797,6 @@ func (c *Client) HealthSnapshot() HealthSnapshot {
 		PathOnlyDrops:   c.pathOnlyDropCounter.Total(),
 		ParseErrors:     c.parseErrorCounter.Total(),
 	}
-	mqttStats := c.mqttInboundStats()
 	snap.MQTTInboundQueueLen = mqttStats.QueueLen
 	snap.MQTTInboundQueueCap = mqttStats.QueueCap
 	snap.MQTTInboundDropsQoS0 = mqttStats.DroppedQoS0
@@ -976,27 +819,4 @@ func (c *Client) HealthSnapshot() HealthSnapshot {
 		snap.ProcessingQueueCap = cap(processing)
 	}
 	return snap
-}
-
-// Stop stops the PSKReporter client and worker pool.
-// Key aspects: Unsubscribes, disconnects, and signals shutdown.
-// Upstream: main.go shutdown.
-// Downstream: stopWorkerPool, mqtt.Client.Disconnect.
-func (c *Client) Stop() {
-	log.Println("Stopping PSKReporter client...")
-
-	if c.client != nil && c.client.IsConnected() {
-		// Unsubscribe
-		if len(c.topics) > 0 {
-			c.client.Unsubscribe(c.topics...)
-		}
-
-		// Disconnect (wait up to 250ms for clean disconnect)
-		c.client.Disconnect(250)
-	}
-
-	close(c.shutdown)
-
-	c.stopWorkerPool()
-	log.Println("PSKReporter client stopped")
 }

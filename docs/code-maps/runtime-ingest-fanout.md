@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `de64f34c6fd749d4`
+- Source fingerprint: `1b9b13ced1467c13`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,7 +12,7 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 15 | 26 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 59 | 225 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 59 | 226 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
 | `dxcluster/spot` | `spot` | 46 | 86 |
 | `dxcluster/telnet` | `telnet` | 83 | 179 |
@@ -382,6 +382,7 @@ Test files:
 - `internal/cluster/peer_spot_admission_test.go`
 - `internal/cluster/prop_report_rooted_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
+- `internal/cluster/pskr_recovery_test.go`
 - `internal/cluster/pskr_zero_connected_test.go`
 - `internal/cluster/pskr_zero_mqtt_retirement_test.go`
 - `internal/cluster/pskr_zero_protocol_test.go`

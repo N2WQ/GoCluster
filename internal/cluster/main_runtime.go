@@ -177,6 +177,7 @@ type clusterRuntime struct {
 
 	dxsummitClient *dxsummit.Client
 	pskrClient     *pskreporter.Client
+	pskrConsumers  sync.WaitGroup
 	pskrTopics     []string
 }
 
@@ -1534,7 +1535,7 @@ func (r *clusterRuntime) connectDXSummitFeed() {
 }
 
 func (r *clusterRuntime) connectPSKReporterFeed() {
-	if !r.cfg.PSKReporter.Enabled {
+	if !r.cfg.PSKReporter.Enabled || r.pskrClient != nil {
 		return
 	}
 	r.pskrTopics = r.cfg.PSKReporter.SubscriptionTopics()
@@ -1556,14 +1557,26 @@ func (r *clusterRuntime) connectPSKReporterFeed() {
 		r.cfg.PSKReporter.MaxPayloadBytes,
 	)
 	r.pskrClient.SetBadCallReporter(r.reportBadCallDrop)
-	if err := r.pskrClient.Connect(); err != nil {
-		log.Printf("Warning: Failed to connect to PSKReporter: %v", err)
-		r.logIngestConnectionEvent(ingestSourceName(r.cfg.PSKReporter.Name, "PSKReporter"), "failed", r.pskrClient.Endpoint(), err.Error(), "disconnected")
-		return
+	// Wire both consumers once. Client-owned channels remain stable across
+	// broker sessions and close after the producer retires.
+	r.pskrConsumers.Go(func() {
+		forwardSpots(r.pskrClient.GetSpotChannel(), r.ingestInput, "PSKReporter", r.cfg.SpotPolicy, nil)
+	})
+	r.pskrConsumers.Go(func() {
+		processPSKRPathOnlySpots(r.pskrClient, r.pathPredictor, r.pathReport, r.pskrPathOnlyStats, r.cfg.SpotPolicy, r.allowedBandSet)
+	})
+	name := ingestSourceName(r.cfg.PSKReporter.Name, "PSKReporter")
+	endpoint := r.pskrClient.Endpoint()
+	r.pskrClient.Start(r.ctx, func(err error) {
+		r.logIngestConnectionEvent(name, "failed", endpoint, err.Error(), "disconnected")
+	})
+}
+
+func (r *clusterRuntime) stopPSKReporterFeed() {
+	if r.pskrClient != nil {
+		r.pskrClient.Stop()
+		r.pskrConsumers.Wait()
 	}
-	go forwardSpots(r.pskrClient.GetSpotChannel(), r.ingestInput, "PSKReporter", r.cfg.SpotPolicy, nil)
-	go processPSKRPathOnlySpots(r.pskrClient, r.pathPredictor, r.pathReport, r.pskrPathOnlyStats, r.cfg.SpotPolicy, r.allowedBandSet)
-	log.Println("PSKReporter client feeding spots into unified dedup engine")
 }
 
 func (r *clusterRuntime) startMonitors() {
@@ -1643,7 +1656,7 @@ func (r *clusterRuntime) logStartup() {
 		if topicList == "" {
 			topicList = "<none>"
 		}
-		log.Printf("Receiving digital mode spots from PSKReporter (topics: %s)...", topicList)
+		log.Printf("PSKReporter configured (topics: %s)", topicList)
 	}
 	for i := range r.humanTelnetFeeds {
 		feed := &r.humanTelnetFeeds[i]
@@ -1707,6 +1720,7 @@ func (r *clusterRuntime) waitForShutdown() error {
 }
 
 func (r *clusterRuntime) shutdown() {
+	r.stopPSKReporterFeed()
 	r.retireOutputPipeline()
 	// Withdraw while current local membership and the parent context still
 	// exist; Manager.Stop owns its bounded drain and worker join.
@@ -1737,9 +1751,6 @@ func (r *clusterRuntime) shutdown() {
 		r.rbnDigitalClient.Stop()
 	}
 	r.stopHumanTelnetFeeds()
-	if r.pskrClient != nil {
-		r.pskrClient.Stop()
-	}
 	if r.dxsummitClient != nil {
 		r.dxsummitClient.Stop()
 	}
@@ -1764,6 +1775,7 @@ func (r *clusterRuntime) stopIngestPipeline() {
 }
 
 func (r *clusterRuntime) close() {
+	r.stopPSKReporterFeed()
 	r.retireOutputPipeline()
 	r.stopSecondaryDedupers()
 	// close also runs after partial startup. Idempotent network stops release

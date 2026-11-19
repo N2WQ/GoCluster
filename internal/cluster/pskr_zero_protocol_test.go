@@ -43,7 +43,7 @@ type pskrZeroSocket struct {
 	watchOnce            sync.Once
 }
 
-func newPSKRZeroSocket(ctx context.Context) (*pskrZeroSocket, error) {
+func newPSKRZeroSocket(ctx context.Context, port int) (*pskrZeroSocket, error) {
 	if ctx == nil {
 		return nil, errors.New("protocol owner requires a finite context deadline")
 	}
@@ -54,7 +54,7 @@ func newPSKRZeroSocket(ctx context.Context) (*pskrZeroSocket, error) {
 	if !ok || !deadline.After(time.Now()) {
 		return nil, errors.New("protocol owner requires a live finite context deadline")
 	}
-	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
 	if err != nil {
 		return nil, err
 	}
@@ -144,6 +144,10 @@ type pskrZeroBroker struct {
 }
 
 func startPSKRZeroBroker(ctx context.Context, topic string, corpus [][]byte) (*pskrZeroBroker, error) {
+	return startPSKRZeroBrokerOnPort(ctx, topic, corpus, 0)
+}
+
+func startPSKRZeroBrokerOnPort(ctx context.Context, topic string, corpus [][]byte, port int) (*pskrZeroBroker, error) {
 	if topic == "" || len(topic) > 128 || len(corpus) == 0 || len(corpus) > pskrZeroFrameLimit {
 		return nil, errors.New("invalid bounded MQTT topic/corpus")
 	}
@@ -156,7 +160,7 @@ func startPSKRZeroBroker(ctx context.Context, topic string, corpus [][]byte) (*p
 		}
 		owned[i] = bytes.Clone(payload)
 	}
-	socket, err := newPSKRZeroSocket(ctx)
+	socket, err := newPSKRZeroSocket(ctx, port)
 	if err != nil {
 		return nil, err
 	}
@@ -208,8 +212,7 @@ func (b *pskrZeroBroker) clientShutdown(err error) bool {
 	b.socket.mu.Lock()
 	forced := b.socket.closed
 	b.socket.mu.Unlock()
-	// Client.Stop does not await UNSUBACK, and Paho closes TCP immediately or
-	// after its bounded best-effort quiesce. The fixture separately proves Stop
+	// Client.Stop gives unsubscribe a bounded opportunity, then closes TCP. The fixture separately proves Stop
 	// and owner retirement; it does not require a graceful FIN or DISCONNECT.
 	// Accept only EOF or Windows WSAECONNABORTED/WSAECONNRESET (10053/10054),
 	// never timeouts or arbitrary errors. These Go errno names are Windows-only.
@@ -295,8 +298,8 @@ func (b *pskrZeroBroker) serve() error {
 // Neither is manufactured by cancellation, timeouts or fixture-forced teardown.
 func (b *pskrZeroBroker) Close() (pskrZeroBrokerResult, error) {
 	b.closeOnce.Do(func() {
-		// Disconnect(250) can return just before the broker reads its queued
-		// DISCONNECT. Allow natural completion before closing the fake socket.
+		// Allow the broker to observe the client's natural close before
+		// forcing fixture teardown.
 		timer := time.NewTimer(pskrZeroJoinLimit)
 		var completionErr error
 		select {
@@ -337,7 +340,7 @@ type pskrZeroPeer struct {
 }
 
 func startPSKRZeroPeer(ctx context.Context) (*pskrZeroPeer, error) {
-	socket, err := newPSKRZeroSocket(ctx)
+	socket, err := newPSKRZeroSocket(ctx, 0)
 	if err != nil {
 		return nil, err
 	}
