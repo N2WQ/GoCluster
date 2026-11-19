@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0360 | Versioned Public Config and Upgrade Reports | Accepted | 2026-11-19 | public YAML provenance, upgrade reporting, release packaging | none | none | [ADR-0360](decisions/ADR-0360-versioned-config-release-report.md) |
 | ADR-0359 | Plain NEXT for Telnet History | Accepted | 2026-11-19 | Telnet history and client compatibility | refines ADR-0251 continuation input and presentation | none | [ADR-0359](decisions/ADR-0359-plain-next-for-telnet-history.md) |
 | ADR-0358 | Custom SCP Capacity Index | Accepted | 2026-11-18 | bounded capacity eviction, Pebble ownership, diagnostics | none | none | [ADR-0358](decisions/ADR-0358-custom-scp-capacity-index.md) |
 | ADR-0357 | IPinfo Verification And Download Integrity | Accepted | 2026-11-17 | snapshot freshness, fallback, retained bytes and replacement | refines ADR-0355 lookup precedence and negative results | none | [ADR-0357](decisions/ADR-0357-ipinfo-verification-and-download-integrity.md) |

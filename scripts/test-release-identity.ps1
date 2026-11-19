@@ -54,6 +54,7 @@ function Get-IdentityAssignment([string]$Name) {
     return [scriptblock]::Create($assignment[0].Extent.Text)
 }
 $commit = '3d8c007ae164'
+$BaseReleaseTag = ''
 $buildTime = '2026-10-03T16:42:10Z'
 foreach ($vector in @(
     @{ CommitId = '3d8c007ae164012345678901234567890123459abc'; Tag = '261003r9abc' },
@@ -128,6 +129,12 @@ $zipPath = 'fixture.zip'
 $publish = $ast.Find({ param($node)
     $node -is [Management.Automation.Language.CommandAst] -and $node.GetCommandName() -eq 'Publish-GitHubRelease'
 }, $true)
+$paths = [pscustomobject]@{ StageRoot = Join-Path ([IO.Path]::GetTempPath()) ('release-notes-' + [guid]::NewGuid().ToString('N')) }
+[void][IO.Directory]::CreateDirectory($paths.StageRoot)
+$notesPath = Join-Path $paths.StageRoot 'UPGRADE.md'
+try {
+$expectedNotes = New-ReleaseNotes -Version $version -ReleaseTag $releaseTag -Commit $commit -BuildTime $buildTime
+[IO.File]::WriteAllText($notesPath, $expectedNotes)
 $calls.Clear()
 . ([scriptblock]::Create($publish.Extent.Text))
 if ($calls.Count -ne 3 -or ($calls[0].Arguments -join '|') -cne "tag|-a|261003r9abc|$commitId|-m|Release 261003r9abc" -or
@@ -135,9 +142,9 @@ if ($calls.Count -ne 3 -or ($calls[0].Arguments -join '|') -cne "tag|-a|261003r9
     $calls[2].Arguments[2] -cne '261003r9abc' -or $calls[2].Arguments[8] -cne '261003r9abc' -or
     $calls[2].Arguments[5] -cne 'github.com/fixture/release' -or $calls[2].Arguments[6] -cne '--verify-tag' -or
     $calls[2].Arguments[-2] -cne '--notes-file' -or
-    $calls[2].Notes -notmatch 'Product version: 261003' -or
+    $calls[2].Notes -cne $expectedNotes -or $calls[2].Notes -notmatch 'Product version: 261003' -or
     $calls[2].Notes -notmatch 'Release tag: 261003r9abc' -or
-    (Test-Path -LiteralPath $calls[2].Arguments[-1])) { throw 'Publishing identity, release notes, or notes cleanup drifted' }
+    $calls[2].Arguments[-1] -cne $notesPath) { throw 'Publishing identity or staged release notes drifted' }
 $failPush = $true
 $calls.Clear()
 $refused = $false
@@ -150,8 +157,12 @@ $calls.Clear()
 $refused = $false
 try { . ([scriptblock]::Create($publish.Extent.Text)) }
 catch { if ($_.Exception.Message -notmatch 'Failed to create GitHub Release 261003r9abc') { throw }; $refused = $true }
-if (-not $refused -or $calls.Count -ne 3 -or (Test-Path -LiteralPath $calls[2].Arguments[-1])) {
-    throw 'Release failure did not propagate or clean up notes'
+if (-not $refused -or $calls.Count -ne 3 -or -not (Test-Path -LiteralPath $notesPath)) {
+    throw 'Release failure did not propagate or preserve staged notes'
+}
+} finally {
+    Remove-Item -LiteralPath $notesPath -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $paths.StageRoot
 }
 # Deliberate native-command failures above are successful negative fixtures.
 $global:LASTEXITCODE = 0
