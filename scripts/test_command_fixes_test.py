@@ -51,16 +51,22 @@ def cc_help_literal(verb):
     return lines
 
 
-def cc_help_wire(lines, query="HELP SET/FILTER", seconds=30, count=None):
-    footer = f"Live spots paused for {seconds}s after {len(lines) if count is None else count} output rows. Type RESUME to resume now."
-    return (query + "\r\n" + "\r\n".join(lines + [footer, "Missed spots are not replayed."]) + "\r\n").encode("ascii")
+PAUSE_FOOTER_END = "Type RESUME to restart now, or SHOW HOLD to check the pause."
 
 
-def routing_help_wire(lines, query="HELP SH BUILD EXTRA", pause=False, echo=True, seconds=30, count=None):
+def pause_lines(seconds=30):
+    unit = "second" if seconds == 1 else "seconds"
+    return [f"Live spots paused for {seconds} {unit}. Missed spots aren't replayed.", PAUSE_FOOTER_END]
+
+
+def cc_help_wire(lines, query="HELP SET/FILTER", seconds=30, pause=True):
+    return routing_help_wire(lines, query, pause=pause, seconds=seconds)
+
+
+def routing_help_wire(lines, query="HELP SH BUILD EXTRA", pause=False, echo=True, seconds=30):
     body = list(lines)
     if pause:
-        body += [f"Live spots paused for {seconds}s after {len(lines) if count is None else count} output rows. Type RESUME to resume now.",
-                 "Missed spots are not replayed."]
+        body += pause_lines(seconds)
     return ((query + "\r\n" if echo else "") + "\r\n".join(body) + "\r\n").encode("ascii")
 
 
@@ -96,12 +102,13 @@ def task_help_literal(topic, dialect):
     # Short, literal pages deliberately differ from the rendered layout.
     # Their facts and commands are independent of the harness's task oracle.
     if topic == "FILTERS":
-        lines = ["Choose which spots you receive:",
-                 "  SHOW FILTER" if dialect == "go" else "  SHOW/FILTER",
-                 "  This pauses live spots. Type RESUME when ready.",
-                 "  HELP FILTER EXAMPLES   Try a complete filter setup.",
-                 "  HELP PRESETS           Save and switch between setups."]
-        terminal = "  HELP PASS" if dialect == "go" else "  HELP SET/NOFILTER"
+        if dialect == "go":
+            return ["SHOW FILTER shows your active rules.",
+                    "A matching REJECT rule blocks a spot, even if a PASS rule matches.",
+                    "HELP RULE explains the syntax. HELP FILTER EXAMPLES shows complete setups."]
+        return ["SHOW/FILTER shows your active filters.",
+                "Band, mode, source, country, and state filters all apply together.",
+                "HELP SET/FILTER lists the options. HELP FILTER EXAMPLES shows complete setups."]
     elif topic == "FILTER EXAMPLES":
         if dialect == "go":
             lines = ["Human-reported CW and FT8 spots on 20m and 40m:",
@@ -118,11 +125,9 @@ def task_help_literal(topic, dialect):
         terminal = "  HELP PRESETS"
     else:
         assert topic == "PRESETS"
-        lines = ["Save your current setup:", "  Saving an existing name replaces that saved preset.",
-                 "  SAVE PRESET DAY", "  SAVE PRESET NIGHT", "  LIST PRESET",
-                 "  Loading also saves settings for future logins with this callsign and SSID.",
-                 "  LOAD PRESET DAY", "  LOAD PRESET NIGHT", "  DELETE PRESET NIGHT", "  HELP LOAD PRESET"]
-        terminal = "  HELP DELETE PRESET"
+        return ["A preset saves your active GO or CC filters and shared settings.",
+                "  SAVE PRESET DAY", "  LIST PRESET", "  LOAD PRESET DAY", "  DELETE PRESET DAY",
+                "Your callsign's numeric SSIDs share the same presets."]
     while len(lines) < 10:
         lines.append("  Independent receipt filler.")
     return [*lines, terminal]
@@ -133,14 +138,11 @@ def discovery_help_literal(key, dialect):
         return task_help_literal(key, dialect)
     if key == "OVERVIEW":
         show, readback = ("SHOW DX", "SHOW FILTER") if dialect == "go" else ("SHOW/DX", "SHOW/FILTER")
-        return ["Try these commands:", "  " + show + " 10", "  " + readback, "  SHOW SETTINGS",
-                "Call confidence:", "  ?  One reporter; no added support for the call.",
-                "  S  One reporter; stored or recent reports support the call.",
-                "  P  Several reporters support the call.", "  V  Several reporters provide stronger support.",
-                "  C  The cluster corrected the call.", "  B  A correction failed checks; the original call remains.",
-                "What would you like to do?", "  HELP SPOTS", "  HELP FILTERS", "  HELP SETTINGS",
-                "  HELP PRESETS", "  HELP SYMBOLS", "  HELP TROUBLE", "  HELP COMMANDS",
-                "For help with one command, type HELP before its name:", "  HELP " + show]
+        return ["Getting help", "  HELP COMMANDS", "  HELP <command>", "  HELP SYMBOLS", "  HELP TROUBLE",
+                "Showing archive spots", "  " + show + " 10", "  HELP " + show,
+                "Managing filters", "  " + readback, "  HELP FILTERS", "  SHOW SETTINGS",
+                "Managing presets", "  LIST PRESET", "  SAVE PRESET DAY", "  LOAD PRESET DAY",
+                "  HELP PRESETS     Learn how to manage saved setups."]
     # Deliberately distinct layout from generated HELP; literal semantic facts.
     if key == "DX":
         lines = ["DX - Post a spot (human entry).", "Usage: DX <freq_khz> <callsign> [comment]",
@@ -772,11 +774,13 @@ class DriverControls(unittest.TestCase):
         contract = driver.help_route_contract("FILTERS", "go")
         lines = discovery_help_literal("FILTERS", "go")
         body = lines
-        self.assertEqual(driver.decode_help_routing(routing_help_wire(body, query, pause=True), query,
-                                                   contract, 10, 30, True), (body, True))
+        self.assertEqual(driver.decode_help_routing(routing_help_wire(body, query), query,
+                                                   contract, 10, 30, True), (body, False))
+        with self.assertRaisesRegex(ValueError, "row threshold"):
+            driver.decode_help_routing(routing_help_wire(body, query, pause=True), query, contract, 10, 30, True)
         for rejection in ("Unknown help topic: FILTERS", "Unknown state input", "Unknown prefixes", "Invalid configuration", "Usage: Invalid"):
             with self.assertRaisesRegex(ValueError, "rejection feedback"):
-                driver.decode_help_routing(routing_help_wire([*body, rejection], query, pause=True), query,
+                driver.decode_help_routing(routing_help_wire([*body[:-1], rejection, body[-1]], query), query,
                                            contract, 10, 30, True)
         other = discovery_help_literal("DX", "go")
         with self.assertRaisesRegex(ValueError, "rejection feedback"):
@@ -903,8 +907,10 @@ class DriverControls(unittest.TestCase):
                 lines = discovery_help_literal(key, dialect)
                 topic, query = ("" if key == "OVERVIEW" else key), ("HELP " + ("" if key == "OVERVIEW" else key)).rstrip()
                 contract = driver.help_route_contract(key, dialect)
-                decoded, paused = driver.decode_help_routing(routing_help_wire(lines, query, pause=True), query, contract, 10, 30, True)
-                self.assertTrue(paused)
+                expected_paused = len(lines) >= 10
+                decoded, paused = driver.decode_help_routing(routing_help_wire(lines, query, pause=expected_paused),
+                                                            query, contract, 10, 30, True)
+                self.assertEqual(paused, expected_paused)
                 driver.require_discovery_help(decoded, key, dialect)
                 claim = "Spot queued guarantees delivery." if key == "DX" else "show FCC mailing-address codes" if key.startswith("SHOW") else "RESET MODE"
                 with self.assertRaises(ValueError):
@@ -913,7 +919,7 @@ class DriverControls(unittest.TestCase):
                             ("PASS enables; REJECT disables.", "Boolean rule edits require GO;") if key in ("PASS", "REJECT") else
                             ("Shows canonical numbered rules",) if key == "SHOW FILTER" else
                             ("Shows exact native selections", "Band INHERIT") if key == "SHOW/FILTER" else
-                            ("HELP SPOTS", "Call confidence:") if key == "OVERVIEW" else
+                            ("HELP SYMBOLS", "Showing archive spots") if key == "OVERVIEW" else
                             ("station reputation admission", "Spot queued confirms", "Comment: ASCII") if key == "DX" else ())
                 for phrase in required:
                     with self.assertRaises(ValueError):
@@ -1054,14 +1060,14 @@ class DriverControls(unittest.TestCase):
             driver.decode_help_routing(routing_help_wire([*bye[:-1], "Aliases: QUIT, EXIT, SH BYE"], "HELP EXIT EXTRA", echo=False),
                                        "HELP EXIT EXTRA", driver.help_route_contract("BYE", "cc"), 10, 30)
 
-    def test_help_routing_long_response_requires_conditional_complete_counted_pause_footer(self):
+    def test_help_routing_long_response_requires_complete_thresholded_pause_footer(self):
         query, lines = "HELP PASS BAND 40 EXTRA", discovery_help_literal("PASS", "go")
         contract = driver.help_route_contract("PASS", "go")
         raw = routing_help_wire(lines, query, pause=True)
         self.assertEqual(driver.decode_help_routing(raw, query, contract, 10, 30, True), (lines, True))
-        for fault in (routing_help_wire(lines, query), raw.replace(b"Missed spots are not replayed.\r\n", b""),
-                      routing_help_wire(lines, query, pause=True, count=len(lines)+1), routing_help_wire(lines, query, pause=True, seconds=29),
-                      raw + b"TRAILING\r\n", routing_help_wire(lines + ["Missed spots are not replayed."], query, pause=True),
+        for fault in (routing_help_wire(lines, query), raw.replace((PAUSE_FOOTER_END + "\r\n").encode(), b""),
+                      routing_help_wire(lines, query, pause=True, seconds=29),
+                      raw + b"TRAILING\r\n", routing_help_wire(lines + pause_lines(), query, pause=True),
                       routing_help_wire(["REJECT - Wrong header.", *lines[1:]], query, pause=True)):
             with self.assertRaises(ValueError):
                 driver.decode_help_routing(fault, query, contract, 10, 30, True)
@@ -1264,10 +1270,10 @@ class DriverControls(unittest.TestCase):
         self.assertEqual(driver.decode_cc_help(raw, "HELP SET/FILTER", 10, 30), lines)
         for changed in (raw.replace(b"\r\n", b"\n"), raw + b"LEAK\r\n", raw[:-2],
                         raw.replace(b"native CC", b"native\x01CC"), cc_help_wire(lines, seconds=29),
-                        cc_help_wire(lines, count=len(lines) + 1), cc_help_wire(lines, count=0),
+                        cc_help_wire(lines, pause=False), cc_help_wire(lines, seconds=0),
                         cc_help_wire(["X" * 79] + lines), cc_help_wire(["HELP SET/FILTER"] + lines),
                         cc_help_wire(["WRONG - header"] + lines[1:]),
-                        raw.replace(b"Missed spots are not replayed.\r\n", b""), b"\r\n" * 32769 + raw):
+                        raw.replace((PAUSE_FOOTER_END + "\r\n").encode(), b""), b"\r\n" * 32769 + raw):
             with self.assertRaises(ValueError):
                 driver.decode_cc_help(changed, "HELP SET/FILTER", 10, 30)
 
@@ -1291,12 +1297,12 @@ class DriverControls(unittest.TestCase):
             lines = task_help_literal(topic, "cc")
             query = "HELP " + topic
             driver.require_cc_help_grammar(lines, topic)
-            self.assertEqual(driver.decode_cc_help(cc_help_wire(lines, query), query, 10, 30), lines)
+            self.assertEqual(driver.decode_cc_help(cc_help_wire(lines, query, pause=len(lines) >= 10), query, 10, 30), lines)
             for changed in (["Filter reference:", *lines[1:]], lines[:-1],
                             [line for line in lines if "SHOW/FILTER" not in line] if topic != "PRESETS" else
-                            [line for line in lines if "LOAD PRESET NIGHT" not in line]):
+                            [line for line in lines if "LOAD PRESET DAY" not in line]):
                 with self.assertRaises(ValueError):
-                    decoded = driver.decode_cc_help(cc_help_wire(changed, query), query, 10, 30)
+                    decoded = driver.decode_cc_help(cc_help_wire(changed, query, pause=len(changed) >= 10), query, 10, 30)
                     driver.require_cc_help_grammar(decoded, topic)
 
     def test_cc_help_receipt_precedes_barrier_and_rejects_hidden_suffix(self):
@@ -1398,26 +1404,82 @@ class DriverControls(unittest.TestCase):
 
     def test_history_alias_pages_require_complete_framing_and_continuation(self):
         query = "SHOW DX 1 MODE COMMENT COMMENT LABEL"
-        token = "H1" + "A" * 32
-        footer = "Continue older history: SHOW DX NEXT " + token + "\r\n"
+        footer = "Type SHOW DX NEXT to search older spots.\r\n"
+        cutoff = "Older archive spots haven't been checked yet.\r\n"
         raw = (query + "\r\n" + HISTORY_ROW + "\r\n" + footer).encode()
-        self.assertEqual(driver.decode_history_alias_page(raw, query, False), ([HISTORY_ROW], token))
+        self.assertEqual(driver.decode_history_alias_page(raw, query, False), ([HISTORY_ROW], True, False))
         older = ("Older retained history page:\r\n" + HISTORY_ROW + "\r\n" + footer).encode()
-        self.assertEqual(driver.decode_history_alias_page(older, query, True), ([HISTORY_ROW], token))
+        self.assertEqual(driver.decode_history_alias_page(older, query, True), ([HISTORY_ROW], True, False))
+        self.assertEqual(driver.decode_history_alias_page((cutoff + footer).encode(), query, False), ([], True, True))
         self.assertEqual(driver.decode_history_alias_page(b"Older retained history page:\r\nEnd of retained history search.\r\n",
-                                                        query, True), ([], None))
+                                                        query, True), ([], False, False))
         faults = ((raw.replace(b"\r\n", b"\n"), False),
                   (raw + b"LEAK\r\n", False), (raw + footer.encode(), False),
                   ((query + "\r\n").encode() + raw, False),
-                  (raw.replace(token.encode(), b"H1BAD"), False),
+                  (raw.replace(footer.encode(), b"Type SHOW DX NEXT to search older spots. EXTRA\r\n"), False),
                   (footer.encode(), False), (b"End of retained history search.\r\n", False),
                   (older, False), (raw, True),
                   (b"Older retained history page:\r\nNo matching retained spots.\r\n", True),
-                  (raw.replace(footer.encode(), b"Search work limit reached; this page is incomplete.\r\n"), False),
+                  (raw.replace(footer.encode(), cutoff.encode()), False),
+                  ((cutoff + "No matching retained spots.\r\n").encode(), False),
                   (raw[:-len(footer)], False))
         for data, continuation in faults:
             with self.assertRaises(ValueError):
                 driver.decode_history_alias_page(data, query, continuation)
+
+    def test_archive_pages_send_plain_next_until_exhausted_and_refuse_no_progress(self):
+        query = "SHOW DX W6ABC 10 COMMENT LABEL"
+        first = (b"Older archive spots haven't been checked yet.\r\n",
+                 b"Type SHOW DX NEXT to search older spots.\r\n")
+        heading = b"Older retained history page:\r\n"
+        row = (HISTORY_ROW + "\r\n").encode()
+        for defect in (None, "duplicate", "page_budget", "time_budget"):
+            with self.subTest(defect=defect):
+                session = mock.Mock()
+                session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+                session.reader.buffer = bytearray()
+                if defect == "duplicate":
+                    lines = (row, *first, heading, row, b"End of retained history search.\r\n")
+                elif defect == "page_budget":
+                    lines = (*first, *((heading, *first) * (driver.harness.HISTORY_MAX_PAGES - 1)))
+                elif defect == "time_budget":
+                    lines = first
+                else:
+                    lines = (*first, heading, row, b"End of retained history search.\r\n")
+                session.reader.line.side_effect = lines
+                with mock.patch.object(driver, "complete_reply_config"):
+                    if defect == "time_budget":
+                        with mock.patch.object(driver.time, "monotonic", side_effect=[0, 0, 120]):
+                            with self.assertRaisesRegex(ValueError, "time budget"):
+                                driver.archive_rows(session, "LABEL")
+                        self.assertEqual(session.send.call_args_list, [mock.call(query + "\r\n")])
+                        continue
+                    if defect:
+                        with self.assertRaisesRegex(ValueError, "repeated a row|page budget"):
+                            driver.archive_rows(session, "LABEL")
+                    else:
+                        self.assertEqual(driver.archive_rows(session, "LABEL"), [HISTORY_ROW])
+                continuations = driver.harness.HISTORY_MAX_PAGES - 1 if defect == "page_budget" else 1
+                self.assertEqual(session.send.call_args_list, [mock.call(query + "\r\n")] +
+                                 [mock.call("SHOW DX NEXT\r\n")] * continuations)
+
+    def test_history_alias_paging_sends_plain_show_mydx_next(self):
+        query = "SHOW MYDX NEXT"
+        session = mock.Mock()
+        session.call, session.suite.log = "N0CALL-1", io.BytesIO()
+        session.reader.buffer = bytearray()
+        session.reader.line.side_effect = [
+            b"Older retained history page:\r\n",
+            b"Older archive spots haven't been checked yet.\r\n",
+            b"Type SHOW DX NEXT to search older spots.\r\n",
+            b"Older retained history page:\r\n",
+            (HISTORY_ROW + "\r\n").encode(),
+            b"End of retained history search.\r\n",
+        ]
+        with mock.patch.object(driver, "complete_reply_config", return_value={}):
+            self.assertEqual(list(driver.history_pages(session, query, query)),
+                             [([], True, True, {}), ([HISTORY_ROW], False, False, {})])
+        self.assertEqual(session.send.call_args_list, [mock.call("SHOW MYDX NEXT\r\n")] * 2)
 
     def test_history_alias_rows_require_exact_literal_fields_and_count(self):
         phrase = "C16LABEL:  UP5!"
@@ -1452,7 +1514,7 @@ class DriverControls(unittest.TestCase):
             current.frame.return_value = (copy.deepcopy(readback), prefix)
             return current
 
-        self.assertEqual(driver.history_alias_page(session(command), query), ([HISTORY_ROW], None, document))
+        self.assertEqual(driver.history_alias_page(session(command), query), ([HISTORY_ROW], False, False, document))
         for prefix in (b"LEAK\r\n" + command, command + b"LEAK\r\n", command + command,
                        b"\n" + command, b"\r\n" * 32769 + command):
             with self.assertRaises(ValueError):
@@ -1567,12 +1629,12 @@ class DriverControls(unittest.TestCase):
     def test_large_dedupe_oracle_requires_lossless_value_reason_and_footer(self):
         text = ('Dedupe: "XX"\n        + "XX"; effective MED (grid2)\n'
                 '        (fast=on med=on slow=on)\n        Configured choice is unrecognized\n'
-                'Live spots paused for 30s after 4 output rows. Type RESUME to resume now.\nMissed spots are not replayed.')
+                + "\n".join(pause_lines()))
         driver.require_large_dedupe_output(text, "XXXX")
         for old, new in (("; effective MED", "; effective FAST"), ('+ "XX"', '+ "X"'),
                          ("Configured choice is unrecognized", "Configured choice is unavailable"),
-                         ("Missed spots are not replayed.", "")):
-            with self.assertRaisesRegex(ValueError, "large DEDUPE output lost"):
+                         (PAUSE_FOOTER_END, "")):
+            with self.assertRaises(ValueError):
                 driver.require_large_dedupe_output(text.replace(old, new), "XXXX")
 
     def test_large_dedupe_live_restart_distinguishes_admitted_value_from_protected_login(self):
@@ -1612,13 +1674,13 @@ class DriverControls(unittest.TestCase):
                     sessions.append(session)
                 text = ('Dedupe: "' + "X" * 40000 + '"; effective MED (grid2)\n'
                         '(fast=on med=on slow=on)\nConfigured choice is unrecognized\n'
-                        'Type RESUME to resume now.\nMissed spots are not replayed.')
+                        + "\n".join(pause_lines()))
                 with mock.patch.object(driver, "fixture_session", side_effect=sessions), \
                      mock.patch.object(driver, "large_dedupe_reply", return_value=(text, documents[0])) as positive, \
                      mock.patch.object(driver, "exact_human_reply", return_value=("bounded fallback", documents[1])) as fallback:
                     if fault is None:
                         driver.large_dedupe_cases(mock.Mock(), root, 1)
-                        positive.assert_called_once_with(sessions[0], "Missed spots are not replayed.")
+                        positive.assert_called_once_with(sessions[0], PAUSE_FOOTER_END)
                         fallback.assert_called_once_with(sessions[1], "SHOW DEDUPE", "Dedupe: SLOW (cqzone) (fast=on med=on slow=on)")
                     else:
                         with self.assertRaises(ValueError):
@@ -1654,7 +1716,7 @@ class DriverControls(unittest.TestCase):
         current.reader.remote_echo, current.reader.buffer = True, b""
         document = dict(resource="CONFIG", schema_version=7, request_id="BARRIER13", configuration={}, status={}, revision="r13")
         echo = b"GET YAML CONFIG SCHEMA 7 ID BARRIER13\r\n"
-        for final in ("Readback failed: response exceeds 65,536 bytes.", "Missed spots are not replayed."):
+        for final in ("Readback failed: response exceeds 65,536 bytes.", PAUSE_FOOTER_END):
             for prefix in (b'        + "LEAKED"\r\n', b"\r\n" * 32768, b"bad\n", b"\r\r\n", echo + echo):
                 with self.subTest(final=final, prefix=prefix[:80]):
                     current.reader.line.side_effect = [final.encode("ascii") + b"\r\n"]
@@ -2239,8 +2301,7 @@ class DriverControls(unittest.TestCase):
         lines = ['Dedupe: "' + chunks[0] + '"'] + ['        + "' + value + '"' for value in chunks[1:]]
         lines[-1] += "; effective MED (grid2)"
         lines += ["        (fast=on med=on slow=on)", "        Configured choice is unrecognized"]
-        lines += [f"Live spots paused for 30s after {len(lines)} output rows. Type RESUME to resume now.",
-                  "Missed spots are not replayed."]
+        lines += pause_lines()
         fit = ("\r\n".join(lines) + "\r\n").encode()
         over = b"Readback failed: response exceeds 65,536 bytes.\r\n"
         receipt = dict(artifacts={"fit.txt": fit, "over.txt": over}, measurements={
@@ -2269,7 +2330,7 @@ class DriverControls(unittest.TestCase):
                 elif fault == "width":
                     wire = b"A" * 79 + b"\r\n" + wire
                 else:
-                    wire = wire.replace(b"Missed spots are not replayed.\r\n", b"")
+                    wire = wire.replace((PAUSE_FOOTER_END + "\r\n").encode(), b"")
                 changed["artifacts"][key] = wire
                 changed["measurements"][key]["frame_bytes"] = len(wire)
             with self.subTest(fault=fault), self.assertRaises(ValueError):

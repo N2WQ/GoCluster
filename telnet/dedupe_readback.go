@@ -8,7 +8,9 @@ import "fmt"
 // sendCommandResponse may append its existing footer after this formatter.
 // Reserve CRLF bytes for the longest signed integer seconds and for at most
 // 65,536 rows. This bounds the final message without extending a pause here.
-const dedupeReadPauseFooterBytes = len("Live spots paused for -9223372036854775808s after 65536 output rows. Type RESUME to resume now.\r\nMissed spots are not replayed.\r\n")
+const dedupeReadPauseFooterBytes = len("Live spots paused for 9223372036854775807 seconds. Missed spots aren't replayed.\r\nType RESUME to restart now, or SHOW HOLD to check the pause.\r\n")
+
+const legacyReadPauseFooterBytes = len("Live spots paused for -9223372036854775808s after 65536 output rows. Type RESUME to resume now.\r\nMissed spots are not replayed.\r\n")
 
 func (s *Server) formatDedupeStatus(client *Client) string {
 	if client == nil || s == nil {

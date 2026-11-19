@@ -18,6 +18,10 @@ unnecessary for this contract. TSR-0041 records the diagnosis.
 
 ## Decision
 
+Ordinary Telnet now displays and accepts `SHOW DX NEXT` without a token.
+See [ADR-0359](ADR-0359-plain-next-for-telnet-history.md) for this refinement.
+The cursor ownership, bounds and publication rules below still apply.
+
 Classify supplied selectors in this order:
 
 1. An unambiguous exact CTY canonical label selects its ADIF entity. Conflicts

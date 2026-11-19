@@ -3,6 +3,7 @@
 package commands
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 )
@@ -49,26 +50,15 @@ func installTaskHelp(catalog *helpCatalog, dialect string) {
 			"", "Reading settings pauses live spots. Use RESUME when ready.",
 		}},
 		{"FILTER EXAMPLES", "Try a complete filter setup.", filterExampleHelpLines(dialect)},
+		{"FILTERS", "Learn how to change which spots you receive.", filterGuideHelpLines(dialect)},
 		{"PRESETS", "Save or load your settings.", presetGuideHelpLines()},
 		{"TROUBLE", "Find help when something goes wrong.", []string{
-			"Find help when something goes wrong:",
-			"  SHOW HOLD", "  Check whether live spots are paused.",
-			"  RESUME", "  End the pause when you are ready.",
-			"  Spots missed during a pause are not replayed.",
-			"", "Too few or too many spots:", "  " + readback,
-			"  Inspect your filters before changing them.",
-			"  Showing these settings pauses live spots. Use RESUME when ready.",
-			"  HELP FILTERS", "  Check which spots your filters allow or block.",
-			"  HELP SHOW DEDUPE", "  Check how repeated spots are hidden.",
-			"", "Missing path ratings:", "  SHOW SETTINGS",
-			"  Check your grid square and settings.",
-			"  Showing these settings pauses live spots. Use RESUME when ready.",
-			"  HELP SET GRID", "  HELP SYMBOLS",
-			"", "Command rejected:", "  HELP " + show,
-			"  Type HELP before the command you tried.",
-			"  HELP DIALECT", "  Check which command style you use.",
-			"", "Server details:", "  SHOW BUILD",
-			"  Keep the exact error and server version when asking for help.",
+			"Live spots stopped? Type SHOW HOLD to check. Type RESUME to restart.",
+			"Missed spots are not replayed.",
+			"Too few or too many spots? Check " + readback + " and SHOW DEDUPE.",
+			"No path ratings? Check your grid in SHOW SETTINGS. See HELP SET GRID.",
+			"Command rejected? Type HELP before the command you tried.",
+			"Reporting a problem? Include the exact error and the output of SHOW BUILD.",
 		}},
 	}
 	for _, page := range pages {
@@ -78,32 +68,25 @@ func installTaskHelp(catalog *helpCatalog, dialect string) {
 
 func presetGuideHelpLines() []string {
 	return []string{
-		"Save your current setup:",
-		"  Saving an existing name replaces that saved preset.",
-		"  SAVE PRESET DAY",
-		"", "Create another setup:",
-		"  Use HELP FILTER EXAMPLES to choose different filters.",
-		"  Then save that setup with another name:",
-		"  SAVE PRESET NIGHT",
-		"", "See your saved setups:", "  LIST PRESET",
-		"", "Switch between setups:",
-		"  Loading replaces the saved style's filters and your shared",
-		"  settings. It also switches to that GO or CC command style.",
-		"  Your filters for the other style stay unchanged.",
-		"  The loaded settings are saved for future logins using",
-		"  your current callsign and SSID.",
-		"", "  Load the setup you want:",
-		"  LOAD PRESET DAY", "    Use your DAY setup.",
-		"  LOAD PRESET NIGHT", "    Use your NIGHT setup.",
-		"", "Delete a saved setup:",
-		"  This deletes the preset. Your current settings stay unchanged.",
-		"  DELETE PRESET NIGHT",
-		"", "A preset saves your current GO or CC filters and settings,",
-		"including your grid square and duplicate-spot settings.",
-		"Presets are shared across your callsign's numeric SSIDs.",
-		"For example, K1ABC-1 and K1ABC-2 can load the same presets.",
-		"", "More help:",
-		"  HELP SAVE PRESET", "  HELP LOAD PRESET", "  HELP DELETE PRESET",
+		"A preset saves your active GO or CC filters and shared settings.",
+		"  LIST PRESET        List your saved presets.",
+		"  SAVE PRESET DAY    Save your current setup. Replaces DAY if it exists.",
+		"  LOAD PRESET DAY    Apply DAY and save it for future logins.",
+		"  DELETE PRESET DAY  Remove DAY without changing your active settings.",
+		"Loading a preset switches to its dialect and replaces that dialect's filters",
+		"and your shared settings. The other dialect's filters stay unchanged.",
+		"Your callsign's numeric SSIDs share the same presets.",
+	}
+}
+
+func archiveHelpExamples(show string) []string {
+	return []string{
+		"Example: " + show + " 10 - Show up to 10 recent spots that match your filters.",
+		fmt.Sprintf("  %-29sSearch for a callsign.", show+" K1ABC 10"),
+		fmt.Sprintf("  %-29sSearch for CW spots on 20m.", show+" 10 BAND 20 MODE CW"),
+		fmt.Sprintf("  %-29sFind spots with CQ in the comment.", show+" 10 COMMENT CQ"),
+		"These searches don't change your saved filters.",
+		"",
 	}
 }
 
@@ -111,22 +94,30 @@ func presetGuideHelpLines() []string {
 // machine commands omitted from the landing page. Sorting makes output stable.
 // Aliases remain in command-specific help; this index creates no executable aliases.
 func commandIndexHelpLines(catalog helpCatalog) []string {
-	topics := make([]string, 0, len(catalog.entries))
+	special := map[string]string{
+		"COMMANDS": "List all commands and help topics.",
+		"SYMBOLS":  "Explain symbols on spot lines.",
+	}
+	topics := make([]string, 0, len(catalog.entries)+len(special))
 	for topic := range catalog.entries {
 		topics = append(topics, topic)
 	}
+	for topic := range special {
+		topics = append(topics, topic)
+	}
 	slices.Sort(topics)
-	lines := make([]string, 0, 11+2*len(topics))
-	lines = append(lines, "All commands and help topics:",
-		"  Type HELP before a name below for details.",
-		"  Some topics explain commands available only in the other command style.",
-		"", "Help topics:",
-		"  COMMANDS - See all commands and help topics.",
-		"  FILTERS - Choose which spots you receive.",
-		"  SYMBOLS - Read call confidence and path reliability.",
-		"", "Commands and guides:")
+	lines := []string{
+		"All commands and help topics",
+		"Type HELP before any name below for details. Example: HELP SHOW SETTINGS.",
+		"Some commands are only available in GO or CC.",
+		"",
+	}
+	lines = slices.Grow(lines, len(topics))
 	for _, topic := range topics {
-		description := strings.TrimPrefix(catalog.entries[topic].summary, topic+" - ")
+		description := special[topic]
+		if description == "" {
+			description = strings.TrimPrefix(catalog.entries[topic].summary, topic+" - ")
+		}
 		lines = append(lines, helpRowLines(helpRow{topic, description})...)
 	}
 	return lines

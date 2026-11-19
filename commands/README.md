@@ -530,11 +530,11 @@ non-consuming older lookahead. At most 199,999 records are consumed. The work
 limit reports incomplete search; reaching the requested count also offers a
 continuation when older search remains.
 
-Use the exact returned `SHOW DX NEXT H1...` command on the same connection.
-`H1...` denotes the supplied H1-plus-32-hex-digit token, not a literal command
-argument. Supported DX/MYDX aliases also accept NEXT. Each connection owns one
-search; successful page publication rotates its token, so an old token cannot
-be reused. Continued pages are marked as older history. Each page uses a fresh
+Type `SHOW DX NEXT` on the same connection to continue the current search.
+Supported DX/MYDX aliases also accept NEXT. Ordinary Telnet no longer displays
+a code; VE7CC still returns `SHOW DX NEXT H1...`. The coded form remains
+accepted. Successful page publication rotates the token, so an old token
+cannot be reused. Continued pages are marked as older history. Each page uses a fresh
 archive view and current cutoff, not a snapshot frozen across commands.
 
 Relevant filter/path-setting changes invalidate continuation, even if restored

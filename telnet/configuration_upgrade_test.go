@@ -170,7 +170,7 @@ func upgradeHumanCommand(t *testing.T, s *Server, call string, conn net.Conn, re
 	if _, err := io.WriteString(conn, command+"\r\n"); err != nil {
 		t.Fatal(err)
 	}
-	ending := "Type RESUME when ready. Missed spots are not replayed.\r\n"
+	ending := "Type RESUME to restart now, or SHOW HOLD to check the pause.\r\n"
 	if command == "RESUME" {
 		ending = "\r\n"
 	}
@@ -284,7 +284,7 @@ func TestOldProfileUpgradeActualTCPLoginAndReconnect(t *testing.T) {
 				}
 				conn, reader, done, greeting := connectUpgradeSession(t, s, call)
 				cfg, loginTail := upgradeWireGet(t, s, call, conn, reader, "")
-				if !strings.Contains(greeting+loginTail, "earlier upgrade reset your GO and CC filter banks") {
+				if !strings.Contains(greeting+loginTail, "Upgrade: Your GO and CC filters and delivery settings were reset to defaults.") {
 					t.Fatal("successful old-profile reset was not explained to the user")
 				}
 				if strings.Contains(greeting, "temporary defaults") {
@@ -416,8 +416,8 @@ func TestNewSSIDWithOldSharedPresetsCanSaveImmediately(t *testing.T) {
 	}
 	conn, reader, _, greeting := connectUpgradeSession(t, s, call)
 	cfg, tail := upgradeWireGet(t, s, call, conn, reader, "")
-	if !strings.Contains(strings.Join(strings.Fields(greeting+tail), " "), "old named presets were cleared") ||
-		strings.Contains(greeting+tail, "earlier upgrade reset your GO and CC filter banks") {
+	if !strings.Contains(greeting+tail, "The upgrade cleared presets saved in the old format.") ||
+		strings.Contains(greeting+tail, "Upgrade: Your GO and CC filters") {
 		t.Fatal("new SSID received a misleading filter-reset notice")
 	}
 	if !slices.Equal(cfg.Filters.GO.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW AND SOURCE=HUMAN"}}) {
@@ -466,12 +466,12 @@ func TestNewSSIDPresetCleanupFailureAndInitialCommitBoundary(t *testing.T) {
 				t.Fatalf("new-SSID failure changed normal creation: %+v", result)
 			}
 			if failCommit {
-				if strings.Contains(result.warning, "shared preset reset") ||
+				if strings.Contains(result.warning, "Preset upgrade is pending.") ||
 					!strings.Contains(result.warning, "starting settings are active but could not be saved") {
 					t.Fatal("failed initial profile commit reached library cleanup")
 				}
 			} else {
-				if !strings.Contains(result.warning, "shared preset reset is pending") {
+				if !strings.Contains(result.warning, "Preset upgrade is pending.") {
 					t.Fatal("bad library cleanup was not reported")
 				}
 				if err := c.saveFilter(); err != nil {
@@ -507,7 +507,7 @@ func TestCurrentProfileBadLibraryDoesNotResetOrProtectLogin(t *testing.T) {
 	}
 	c := configurationTestClient(s, call)
 	result := s.restoreClientRecordOwned(c, time.Now().UTC())
-	if c.recordProtected || result.loadError != nil || result.profileReset || !strings.Contains(result.warning, "preset reset is pending") ||
+	if c.recordProtected || result.loadError != nil || result.profileReset || !strings.Contains(result.warning, "Preset upgrade is pending.") ||
 		c.configuredSettings.Dialect != "go" || c.configuredSettings.Grid != "FN31" ||
 		!slices.Equal(c.filter.PreparedRules().Definitions(), f.PreparedRules().Definitions()) {
 		t.Fatalf("library-only failure damaged a current profile: %+v", result)

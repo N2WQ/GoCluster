@@ -42,6 +42,7 @@ type HistoryQuery struct {
 // HistoryCommand distinguishes a fresh search from a connection-local NEXT token.
 type HistoryCommand struct {
 	Query HistoryQuery
+	Next  bool
 	Token string
 }
 
@@ -72,10 +73,13 @@ func (p *Processor) ParseHistoryCommand(line, dialect string) (HistoryCommand, b
 		return HistoryCommand{}, false, ""
 	}
 	if len(args) > 0 && strings.EqualFold(args[0], "NEXT") {
+		if len(args) == 1 {
+			return HistoryCommand{Next: true}, true, ""
+		}
 		if len(args) != 2 || !ValidHistoryToken(strings.ToUpper(args[1])) {
 			return HistoryCommand{}, true, "Invalid history continuation. Start a fresh SHOW DX search.\n"
 		}
-		return HistoryCommand{Token: strings.ToUpper(args[1])}, true, ""
+		return HistoryCommand{Next: true, Token: strings.ToUpper(args[1])}, true, ""
 	}
 	// COMMENT consumes the original remainder, rather than Fields/Join, so
 	// interior spaces and literal punctuation survive unchanged. NEXT is handled
@@ -245,6 +249,15 @@ func RenderHistoryPage(page archive.HistoryPage, token string, older, unreadable
 // RenderHistoryPageWithFormatter formats each owned spot with the caller's
 // captured display settings; selection and continuation remain unchanged.
 func RenderHistoryPageWithFormatter(page archive.HistoryPage, token string, older, unreadable, hadMatches bool, format func(*spot.Spot) string) string {
+	return renderHistoryPage(page, token, older, unreadable, hadMatches, false, format)
+}
+
+// RenderHumanHistoryPage keeps the cursor on the connection rather than displaying its token.
+func RenderHumanHistoryPage(page archive.HistoryPage, token string, older, unreadable, hadMatches bool, format func(*spot.Spot) string) string {
+	return renderHistoryPage(page, token, older, unreadable, hadMatches, true, format)
+}
+
+func renderHistoryPage(page archive.HistoryPage, token string, older, unreadable, hadMatches, human bool, format func(*spot.Spot) string) string {
 	var result strings.Builder
 	if older {
 		result.WriteString(historyOlderHeading)
@@ -254,7 +267,14 @@ func RenderHistoryPageWithFormatter(page archive.HistoryPage, token string, olde
 		result.WriteString(format(page.Spots[i]))
 		result.WriteString("\r\n")
 	}
-	for _, line := range historyPageStatus(page, token, older, unreadable, hadMatches) {
+	status := historyPageStatus(page, token, older, unreadable, hadMatches)
+	if human && token != "" {
+		if page.End == archive.HistoryBudgetReached {
+			status[1].text = "Older archive spots haven't been checked yet."
+		}
+		status[2] = historyStatusLine{text: "Type SHOW DX NEXT to search older spots."}
+	}
+	for _, line := range status {
 		if line.text != "" {
 			result.WriteString(line.text)
 			result.WriteString(line.token)

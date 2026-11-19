@@ -154,7 +154,7 @@ func TestNativeCCDeliveryResumeDialectAndReconnectTCP(t *testing.T) {
 			if _, err := io.WriteString(conn, "SHOW/FILTER FULL\r\n"); err != nil {
 				t.Fatal(err)
 			}
-			readback := w.throughLine("Type RESUME when ready.")
+			readback := w.throughLine("Type RESUME to restart now, or SHOW HOLD to check the pause.")
 			if !strings.Contains(readback, "Active filter bank: CC") {
 				t.Fatal("real native readback reached the Boolean renderer")
 			}

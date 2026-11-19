@@ -41,10 +41,10 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"SH DXCC", "SHOW DXCC", "SHOW DXCC <prefix|callsign>"},
 		{"SHOW DXCC DL", "SHOW DXCC", "SHOW DXCC <prefix|callsign>"},
 		{"SH MYDX", "SHOW MYDX", "SHOW MYDX [count]"},
-		{"SH MYDX 5 MODE CW COMMENT CQ DX", "SHOW MYDX", "SHOW MYDX NEXT <cursor>"},
+		{"SH MYDX 5 MODE CW COMMENT CQ DX", "SHOW MYDX", "SHOW MYDX NEXT [cursor]"},
 		{"SHOW MYDX K1ABC 5", "SHOW MYDX", "SHOW MYDX <prefix|callsign> [count]"},
 		{"SH DX", history, history + " [count]"},
-		{"SH DX 5 BAND 20 MODE CW", history, history + " NEXT <cursor>"},
+		{"SH DX 5 BAND 20 MODE CW", history, history + " NEXT [cursor]"},
 		{"SHOW DX 5", history, history + " [count]"},
 		{"SHOW PROP FN31 20 CW", "SHOW PROP", "SHOW PROP <call|prefix|grid> [band] [mode]"},
 		{"SH PROP FN31 20 CW", "SHOW PROP", "SHOW PROP <call|prefix|grid> [band] [mode]"},
@@ -62,10 +62,10 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		{"SH/FILTER COMMENT", "SHOW FILTER COMMENT", "Usage: HELP RULE"},
 		{"SHOW SETTINGS", "SHOW SETTINGS", "Usage: SHOW SETTINGS"},
 		{"SHOW/SETTINGS", "SHOW SETTINGS", "Usage: SHOW SETTINGS"}, {"SH/SETTINGS EXTRA", "SHOW SETTINGS", "Usage: SHOW SETTINGS"},
-		{"RULE", "RULE", "Usage: HELP RULE"},
+		{"RULE", "RULE", "Start with SHOW FILTER to see your rules."},
 		{"PASS", "PASS", "PASS RULE <0..9> <expression>"}, {"REJECT", "REJECT", "REJECT RULE <0..9> <expression>"},
-		{"PASS RULE 0 MODE=CW", "PASS RULE", "PASS RULE <0..9> <expression>"},
-		{"REJECT RULE 9 SNR<10", "REJECT RULE", "REJECT RULE <0..9> <expression>"},
+		{"PASS RULE 0 MODE=CW", "PASS RULE", "PASS RULE <0-9> <expression>"},
+		{"REJECT RULE 9 SNR<10", "REJECT RULE", "REJECT RULE <0-9> <expression>"},
 		{"PASS BAND 20", "PASS", "HELP RULE"}, {"REJECT MODE FT8", "REJECT", "HELP RULE"},
 		{"PASS PC93 ALL", "PASS", "PC93 aliases ANNOUNCE."}, {"REJECT SELF", "REJECT", "SELF"},
 		{"PASS COMMENT CQ DX", "PASS COMMENT", "Usage: HELP RULE"},
@@ -117,7 +117,17 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 func assertHelpRouting(t testing.TB, p *Processor, dialect string, tc helpRoutingCase) {
 	t.Helper()
 	response := p.ProcessCommandForClient("HELP "+tc.topic, "W1ABC-18", "", nil, dialect)
-	if !strings.HasPrefix(response, tc.canonical+" - ") || !strings.Contains(response, tc.usage) {
+	canonical := p.ProcessCommandForClient("HELP "+tc.canonical, "W1ABC-18", "", nil, dialect)
+	identified := strings.HasPrefix(response, tc.canonical+" - ") || strings.Contains(response, "\n"+tc.canonical+" - ")
+	if dialect != "cc" {
+		switch tc.canonical {
+		case "RULE":
+			identified = strings.HasPrefix(response, "PASS and REJECT rules\n")
+		case "PASS RULE", "REJECT RULE":
+			identified = strings.HasPrefix(response, tc.canonical+" <0-9> <expression>\n")
+		}
+	}
+	if response != canonical || !identified || !strings.Contains(response, tc.usage) {
 		t.Fatalf("%s HELP %q did not select %s / %q: %q", dialect, tc.topic, tc.canonical, tc.usage, response)
 	}
 	for _, line := range strings.Split(response, "\n") {
@@ -151,7 +161,7 @@ func TestHelpRoutingDispatchDerivedFamilies(t *testing.T) {
 		assertHelpRouting(t, p, dialect, helpRoutingCase{"VALIDATE YAML CONFIG", "VALIDATE YAML CONFIG", "Usage: VALIDATE YAML CONFIG"})
 	}
 	for _, topic := range []string{"SHOW/DX 5", "SH/DX 5", "SH/DX NEXT H100000000000000000000000000000000"} {
-		assertHelpRouting(t, p, "cc", helpRoutingCase{topic, "SHOW/DX", "SHOW/DX NEXT <cursor>"})
+		assertHelpRouting(t, p, "cc", helpRoutingCase{topic, "SHOW/DX", "SHOW/DX NEXT [cursor]"})
 	}
 	for _, tc := range []helpRoutingCase{
 		{"SET/FILTER BEACON/ON", "SET/FILTER", "SET/FILTER <switch> [ALL]"},
@@ -171,7 +181,7 @@ func TestHelpRoutingUnknownHeadsAndDialectRestrictions(t *testing.T) {
 			"SHOW BUILDX", "SH BUILDX", "SHOW DXCCX DL", "SHOW MYDXX", "SHOW FILTERX", "SHOW SETTINGSX",
 			"SHOW WWVX", "SH WWVX", "SHOW WCYX", "SH WCYX", "SHOW/WWVX", "SH/WCYX", "SH/WWV/10",
 			"WHOSPOTSMEX", "NEARBYX", "RESUMED", "DIALECTX", "SET SOLARX 30", "SET GRIDX FN31", "SET PATHSAMPLESX DEFAULT",
-			"SAVE PRESETX CON", "GET YAML CONFIGX", "SET/NOFILTERX", "SHOW/PROPX FN31", "SH/PROPX FN31",
+			"SAVE PRESETX CON", "GET YAML CONFIGX", "SET/NOFILTERX", "SHOW/PROPX FN31", "SH/PROPX FN31", "FILTERX",
 		} {
 			want := "Unknown help topic: " + topic + "\nType HELP for available commands.\n"
 			if got := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect); got != want {
@@ -187,8 +197,7 @@ func TestHelpRoutingUnknownHeadsAndDialectRestrictions(t *testing.T) {
 }
 
 func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
-	// The literal executable-head allowlist must not grow when catalog aliases
-	// grow. New metadata therefore requires evidence from a dispatch owner.
+	// New aliases need a literal executable-head or Help-only contract.
 	common := map[string]string{
 		"H": "HELP", "SH": "SHOW", "QUIT": "BYE", "EXIT": "BYE", "REJECT NEARBY": "NEARBY", "PASS NEARBY": "NEARBY",
 		"SH BUILD": "SHOW BUILD", "SH OWN": "SHOW OWN", "SH DXCC": "SHOW DXCC", "SH MYDX": "SHOW MYDX",
@@ -197,6 +206,7 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 		"SH PROP": "SHOW PROP", "SHOW/PROP": "SHOW PROP", "SH/PROP": "SHOW PROP",
 		"SHOW/FILTER COMMENT": "SHOW FILTER COMMENT", "SH/FILTER COMMENT": "SHOW FILTER COMMENT",
 		"SHOW/SETTINGS": "SHOW SETTINGS", "SH/SETTINGS": "SHOW SETTINGS",
+		"FILTER": "FILTERS", // Help only; not an executable alias.
 	}
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
@@ -217,6 +227,9 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 			want, exists := allowed[alias]
 			if !exists || target != want {
 				t.Fatalf("%s catalog alias %q -> %q has no literal owner contract (want %q)", dialect, alias, target, want)
+			}
+			if alias == "FILTER" {
+				continue // The exact guide and alias are checked by TestHelpGuidePresentation.
 			}
 			assertHelpRouting(t, p, dialect, helpRoutingCase{alias, want, "Usage:"})
 		}

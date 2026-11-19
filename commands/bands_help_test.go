@@ -41,7 +41,7 @@ func TestMetaBandHelpDiscoveryAndMembership(t *testing.T) {
 				t.Fatalf("%s HELP %s members = %v, want %v", dialect, group.Name, got, group.Members)
 			}
 		}
-		for _, topic := range []string{"HELP COMMANDS", "HELP FILTERS", "HELP SPOTS"} {
+		for _, topic := range []string{"HELP COMMANDS", "HELP SPOTS"} {
 			navigation := p.ProcessCommandForClient(topic, "N0CALL", "", nil, dialect)
 			if !strings.Contains(navigation, "BANDS") {
 				t.Fatalf("%s %s does not discover band HELP", dialect, topic)

@@ -279,7 +279,9 @@ class HumanEchoFixtures(unittest.TestCase):
 
     def test_human_wire_anomaly_remains_failure_before_normalization(self):
         command = "HELP"
-        response = b"User          FIXTURE\r\r\nBands\r\r\n  PASS: ALL\r\r\nMissed spots are not replayed.\r\r\n"
+        response = (b"User          FIXTURE\r\r\nBands\r\r\n  PASS: ALL\r\r\n"
+                    b"Live spots paused for 30 seconds. Missed spots aren't replayed.\r\r\n"
+                    b"Type RESUME to restart now, or SHOW HOLD to check the pause.\r\r\n")
         value = self.session(response, remote_echo=False)
         value.call = "FIXTURE"
         value.suite.wire_failures = []
@@ -365,11 +367,17 @@ class QualificationAccountingFixtures(unittest.TestCase):
         value.token, value.args, value.deadline = "ABCDEF01", SimpleNamespace(call="K1ABC", timeout=1), time.monotonic() + 10
         selected = []
         value.case = lambda name, operation: selected.append(name) is None
-        text = "DX de K1ABC: 28201 VA3UXA TABCDEF01-0\nDX de K1ABC: 21201 VA3UXA TABCDEF01-1\nH1" + "A" * 32 + " Older retained history page:"
+        first = "DX de K1ABC: 21201 VA3UXA TABCDEF01-1"
+        older = "DX de K1ABC: 28201 VA3UXA TABCDEF01-0"
+        text = older + "\n" + first + "\nEnd of retained history search."
         configuration = {"configuration": {"settings": {"dialect": "go"}}, "revision": "fixed"}
         def human(command, expected=None):
             if command.startswith("DIALECT "):
                 configuration["configuration"]["settings"]["dialect"] = command.split()[1].lower()
+            elif command == "SHOW DX 1":
+                return first + "\nType SHOW DX NEXT to search older spots.", configuration
+            elif command == "SHOW DX NEXT":
+                return "Older retained history page:\n" + older + "\nEnd of retained history search.", configuration
             return text, configuration
         session = SimpleNamespace(human=human, get=lambda: configuration)
         inventory = HARNESS.required_live_cases(value.token, value.args.call)
@@ -403,9 +411,11 @@ class HelpTaskFixtures(unittest.TestCase):
         for dialect in ("GO", "CC"):
             show = "SHOW FILTER" if dialect == "GO" else "SHOW/FILTER"
             cases = {
-                "FILTERS": ("Choose which spots you receive:",
-                            "HELP PASS" if dialect == "GO" else "HELP SET/NOFILTER",
-                            [show, "HELP FILTER EXAMPLES", "HELP PRESETS"]),
+                "FILTERS": ("SHOW FILTER shows your active rules." if dialect == "GO" else "SHOW/FILTER shows your active filters.",
+                            "HELP RULE explains the syntax. HELP FILTER EXAMPLES shows complete setups." if dialect == "GO" else
+                            "HELP SET/FILTER lists the options. HELP FILTER EXAMPLES shows complete setups.",
+                            ["A matching REJECT rule blocks a spot, even if a PASS rule matches." if dialect == "GO" else
+                             "Band, mode, source, country, and state filters all apply together."]),
                 "FILTER EXAMPLES": (
                     "Human-reported CW and FT8 spots on 20m and 40m:" if dialect == "GO" else
                     "Select the 20m and 40m frequency ranges:", "HELP PRESETS",
@@ -415,13 +425,13 @@ class HelpTaskFixtures(unittest.TestCase):
                       "REJECT RULE 0 MODE=FT8", "RESET FILTER"] if dialect == "GO" else
                      ["SET/FILTER DXBM/OFF", "SET/FILTER DXBM/PASS 20,40",
                       "SET/FILTER DOC/PASS K,VE", "SET/NOFT8", "SET/NOFILTER"]) + [show, "RESUME"]),
-                "PRESETS": ("Save your current setup:", "HELP DELETE PRESET",
-                            ["SAVE PRESET DAY", "SAVE PRESET NIGHT", "LIST PRESET", "LOAD PRESET DAY",
-                             "LOAD PRESET NIGHT", "DELETE PRESET NIGHT", "HELP LOAD PRESET"]),
+                "PRESETS": ("A preset saves your active GO or CC filters and shared settings.",
+                            "Your callsign's numeric SSIDs share the same presets.",
+                            ["SAVE PRESET DAY", "LIST PRESET", "LOAD PRESET DAY", "DELETE PRESET DAY"]),
             }
             for topic, (header, terminal, commands) in cases.items():
                 with self.subTest(dialect=dialect, topic=topic):
-                    lines = [header, *("  " + command for command in commands), "  " + terminal]
+                    lines = [header, *("  " + command for command in commands), terminal]
                     HARNESS.require_help_task(lines, topic, dialect)
                     for fault in (lines[1:], lines[:-1], ["Filter reference:", *lines[1:]],
                                   [*lines[:-1], "Unknown help topic: " + topic, lines[-1]],
@@ -435,13 +445,13 @@ class HelpTaskFixtures(unittest.TestCase):
                         fault = [line for line in lines if line.strip() != command]
                         with self.assertRaises(ValueError):
                             HARNESS.require_help_task(fault, topic, dialect)
-                    footer = (f"Live spots paused for 30s after {len(lines)} output rows. "
-                              "Type RESUME to resume now.")
-                    paused = [*lines, footer, "Missed spots are not replayed."]
+                    footer = "Live spots paused for 30 seconds. Missed spots aren't replayed."
+                    paused = [*lines, footer, "Type RESUME to restart now, or SHOW HOLD to check the pause."]
                     HARNESS.require_help_task(paused, topic, dialect)
+                    HARNESS.require_help_task([*lines, footer.replace("30 seconds", "1 second"), paused[-1]], topic, dialect)
                     for fault in (paused[:-1], paused + ["hidden suffix"],
-                                  [*lines, footer.replace("30s", "0s"), paused[-1]],
-                                  [*lines, footer.replace(f"{len(lines)} output", "999 output"), paused[-1]]):
+                                  [*lines, footer.replace("30 seconds", "0 seconds"), paused[-1]],
+                                  [*lines, footer.replace("30 seconds", "1 seconds"), paused[-1]]):
                         with self.assertRaises(ValueError):
                             HARNESS.require_help_task(fault, topic, dialect)
 
@@ -475,7 +485,7 @@ class SyntheticHistorySession:
     }
 
     def __init__(self, defect=None):
-        self.defect, self.dialect, self.cursor = defect, "go", False
+        self.defect, self.dialect, self.pending = defect, "go", False
         self.configuration = {"blocked_band": False, "blocked_mode": False, "marker": 0}
         self.revision, self.commands = 0, []
 
@@ -484,7 +494,7 @@ class SyntheticHistorySession:
 
     def rows(self, indices):
         lines = [f"DX de W1AW: {28200 if index == 0 else 21200}.0 K1ABC TABCDEF01-{index} up-5?" for index in indices]
-        return "\n".join(lines) if lines else "No matching retained spots."
+        return "\n".join(lines + ["End of retained history search."]) if lines else "No matching retained spots."
 
     def human(self, command, expected=None):
         self.commands.append(command)
@@ -498,11 +508,11 @@ class SyntheticHistorySession:
             text = command
         elif command.startswith(("SHOW/DX", "SH/DX")) and self.dialect == "go":
             text = self.rows([0, 1]) if self.defect == "dialect_bypass" else "Use SHOW DX or SH DX for DX history."
-        elif " NEXT " in command:
-            if not self.cursor or self.defect == "invalid_clears_cursor":
-                text = "Invalid history continuation."
+        elif command in ("SHOW DX NEXT", "SHOW MYDX NEXT"):
+            if not self.pending or self.defect == "invalid_clears_pending":
+                text = "No archive search to continue. Start a fresh SHOW DX search."
             else:
-                self.cursor = False
+                self.pending = self.defect == "next_leaves_pending"
                 text = "Older retained history page:\n" + self.rows([1] if self.defect == "next_forgets_selection" else [0])
         else:
             _, args = command.split(" K1ABC ", 1)
@@ -524,11 +534,11 @@ class SyntheticHistorySession:
                     indices = [index for index in indices if index != 0]
                 if count == "1":
                     assert indices == [0, 1]
-                    self.cursor = True
+                    self.pending = True
                     indices = [1]
                 text = self.rows(indices)
                 if count == "1":
-                    text += "\nContinue older history: SHOW DX NEXT H1" + "A" * 32
+                    text = text.replace("End of retained history search.", "Type SHOW DX NEXT to search older spots.")
                 if self.defect == "mutate_preferences":
                     self.configuration["marker"] += 1
                 if self.defect == "wrong_frequency":
@@ -640,40 +650,48 @@ class HistoryOracleFixtures(unittest.TestCase):
             value.history_result(session, "SHOW DX", "VA3UXA", [28039, 21039], [0, 1])
 
     def test_v7_history_work_limit_requires_bounded_exact_continuation(self):
-        for defect in (None, "missing_token", "repeated_token", "duplicate", "unexpected", "never_finishes"):
+        for defect in (None, "missing_footer", "wrong_footer", "duplicate", "unexpected", "never_finishes", "deadline"):
             with self.subTest(defect=defect):
                 value = object.__new__(HARNESS.V7Suite)
                 value.token = "ABCDEF01"
                 document = {"configuration": {}, "revision": "fixture", "status": {"session": {"pause_active": True}}}
                 first = f"DX de W1AW: 28011.0 VA3UXA {value.history_label()}-0\n"
-                cursor = "H1" + "A" * 32
+                footer = "Type SHOW DX NEXT to search older spots.\n"
+                cutoff = "Older archive spots haven't been checked yet.\n"
+                heading = "Older retained history page:\n"
                 commands = []
 
                 def human(command):
                     commands.append(command)
                     if len(commands) == 1:
-                        text = first + "Search work limit reached; this page is incomplete.\n"
-                        if defect != "missing_token":
-                            text += f"Continue older history: SHOW DX NEXT {cursor}\n"
-                    elif defect in ("repeated_token", "never_finishes"):
-                        token = cursor if defect == "repeated_token" else "H1" + f"{len(commands):032X}"
-                        text = f"Search work limit reached; this page is incomplete.\nContinue older history: SHOW DX NEXT {token}\n"
+                        text = first + cutoff
+                        if defect == "wrong_footer":
+                            text += footer.rstrip() + " EXTRA\n"
+                        elif defect != "missing_footer":
+                            text += footer
+                    elif defect == "never_finishes":
+                        text = heading + cutoff + footer
                     elif defect == "duplicate":
-                        text = first + "End of retained history search.\n"
+                        text = heading + first + "End of retained history search.\n"
                     elif defect == "unexpected":
-                        text = f"DX de W1AW: 21011.0 VA3UXA {value.history_label()}-1\nEnd of retained history search.\n"
+                        text = heading + f"DX de W1AW: 21011.0 VA3UXA {value.history_label()}-1\nEnd of retained history search.\n"
                     else:
-                        text = "End of retained history search.\n"
+                        text = heading + "End of retained history search.\n"
                     return text, document
 
                 session = SimpleNamespace(get=lambda: document, human=human)
                 if defect is None:
                     value.history_result(session, "SHOW DX VA3UXA 2", "VA3UXA", [28011, 21011], [0])
-                    self.assertEqual(commands, ["SHOW DX VA3UXA 2", "SHOW DX NEXT " + cursor])
+                    self.assertEqual(commands, ["SHOW DX VA3UXA 2", "SHOW DX NEXT"])
                 elif defect == "never_finishes":
                     with self.assertRaises(HARNESS.BlockedPrerequisite):
                         value.history_result(session, "SHOW DX VA3UXA 2", "VA3UXA", [28011, 21011], [0])
                     self.assertEqual(len(commands), 64)
+                elif defect == "deadline":
+                    with patch.object(HARNESS.time, "monotonic", side_effect=[0, 0, 120]):
+                        with self.assertRaisesRegex(HARNESS.BlockedPrerequisite, "time budget"):
+                            value.history_result(session, "SHOW DX VA3UXA 2", "VA3UXA", [28011, 21011], [0])
+                    self.assertEqual(commands, ["SHOW DX VA3UXA 2"])
                 else:
                     with self.assertRaises(AssertionError):
                         value.history_result(session, "SHOW DX VA3UXA 2", "VA3UXA", [28011, 21011], [0])
@@ -682,15 +700,14 @@ class HistoryOracleFixtures(unittest.TestCase):
         value = object.__new__(HARNESS.V7Suite)
         value.token = "ABCDEF01"
         document = {"configuration": {}, "revision": "fixture", "status": {"session": {"pause_active": True}}}
-        cursor = "H1" + "B" * 32
-        pages = iter([f"Search work limit reached; this page is incomplete.\nContinue older history: SHOW DX NEXT {cursor}\n",
+        pages = iter(["Older archive spots haven't been checked yet.\nType SHOW DX NEXT to search older spots.\n",
                       "Older retained history page:\nEnd of retained history search.\n"])
         commands = []
         def human(command):
             commands.append(command)
             return next(pages), document
         value.history_result(SimpleNamespace(get=lambda: document, human=human), "SHOW DX VA3UXA 2", "VA3UXA", [28011, 21011], [])
-        self.assertEqual(commands, ["SHOW DX VA3UXA 2", "SHOW DX NEXT " + cursor])
+        self.assertEqual(commands, ["SHOW DX VA3UXA 2", "SHOW DX NEXT"])
 
     def test_selection_matrix_and_saved_filters_have_exact_positive_results(self):
         value, session = self.suite(), SyntheticHistorySession()
@@ -711,13 +728,14 @@ class HistoryOracleFixtures(unittest.TestCase):
     def test_selection_next_retains_identity_after_all_invalid_requests(self):
         value, session = self.suite(), SyntheticHistorySession()
         value.history_selection_next(session, "K1ABC", [28200, 21200])
-        rejected = [command for command in session.commands if " COMMENT " not in command and " NEXT " not in command]
+        self.assertEqual(session.commands[-2:], ["SHOW MYDX NEXT", "SHOW DX NEXT"])
+        rejected = [command for command in session.commands if " COMMENT " not in command and not command.endswith(" NEXT")]
         self.assertEqual(len(rejected), len(SyntheticHistorySession.invalid))
         self.assertTrue(any(command.startswith("SHOW/DX") for command in session.commands))
         self.assertTrue(any(command.startswith("SH/DX") for command in session.commands))
 
     def test_invalid_and_next_oracle_rejects_false_green_answers(self):
-        for defect in ("accept_invalid", "invalid_clears_cursor", "next_forgets_selection", "dialect_bypass"):
+        for defect in ("accept_invalid", "invalid_clears_pending", "next_forgets_selection", "next_leaves_pending", "dialect_bypass"):
             with self.subTest(defect=defect):
                 with self.assertRaises(AssertionError):
                     self.suite().history_selection_next(SyntheticHistorySession(defect), "K1ABC", [28200, 21200])
@@ -734,7 +752,8 @@ class HistoryOracleFixtures(unittest.TestCase):
         for response in ("Spot queued.", "No matching retained spots.",
                          "\n".join([SyntheticHistorySession().rows([0])] * 2),
                          "DX de W1AW: 28200.0 K1ABC unrelated", "DX de malformed",
-                         SyntheticHistorySession().rows([0, 1]) + "\nSearch work limit reached; this page is incomplete.",
+                         SyntheticHistorySession().rows([0, 1]).replace("End of retained history search.",
+                                                                        "Older archive spots haven't been checked yet."),
                          SyntheticHistorySession().rows([0, 1]) + "\nWarning: unreadable archive records were skipped;"):
             with self.subTest(response=response):
                 session = SyntheticHistorySession()

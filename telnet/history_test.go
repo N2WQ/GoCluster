@@ -54,11 +54,16 @@ func TestHistoryContinuationFailuresAndFreshReplacement(t *testing.T) {
 		return archive.HistoryPage{Before: position, End: archive.HistoryBudgetReached}, fault
 	})
 	first := runHistory(t, s, c, "SHOW DX K1ABC 20")
-	if !strings.Contains(first, "incomplete") || strings.Contains(first, "No matching") || c.historySearch == nil {
+	if !strings.Contains(first, "Older archive spots haven't been checked yet.") ||
+		!strings.Contains(first, "Type SHOW DX NEXT to search older spots.") ||
+		strings.Contains(first, "No matching") || c.historySearch == nil {
 		t.Fatal(first)
 	}
 	token := c.historySearch.token
-	for _, bad := range []string{"SHOW DX NEXT", "SHOW DX NEXT H1BAD", "SHOW DX 0", "SHOW DX BAD!", "SHOW DX NEXT H1" + strings.Repeat("A", 32)} {
+	if strings.Contains(first, token) {
+		t.Fatal("ordinary history published the code")
+	}
+	for _, bad := range []string{"SHOW DX NEXT EXTRA ARG", "SHOW DX NEXT H1BAD", "SHOW DX 0", "SHOW DX BAD!", "SHOW DX NEXT H1" + strings.Repeat("A", 32)} {
 		runHistory(t, s, c, bad)
 		if c.historySearch == nil || c.historySearch.token != token {
 			t.Fatalf("invalid input replaced search: %s", bad)
@@ -72,7 +77,7 @@ func TestHistoryContinuationFailuresAndFreshReplacement(t *testing.T) {
 		}
 	}
 	fault = nil
-	runHistory(t, s, c, "SH DX NEXT "+token)
+	runHistory(t, s, c, "SH DX NEXT")
 	if c.historySearch.token == token || !bytes.Equal(seen[len(seen)-1], position) {
 		t.Fatal("successful retry did not rotate same position")
 	}
@@ -83,6 +88,54 @@ func TestHistoryContinuationFailuresAndFreshReplacement(t *testing.T) {
 	}
 	if text := runHistory(t, s, c, "SHOW DX NEXT "+oldToken); !strings.Contains(text, "Invalid history continuation") {
 		t.Fatal(text)
+	}
+}
+
+func TestPlainHistoryNextAdvancesTheCurrentSearch(t *testing.T) {
+	for _, dialect := range []DialectName{DialectGo, DialectCC} {
+		t.Run(string(dialect), func(t *testing.T) {
+			s, c := historyTestSession(func(req archive.HistoryRequest) (archive.HistoryPage, error) {
+				row := func(call string) []*spot.Spot {
+					return []*spot.Spot{spot.NewSpot(call, "W1AAA", 14030, "CW")}
+				}
+				switch string(req.Before) {
+				case "":
+					return archive.HistoryPage{Spots: row("JA1AAA"), Before: []byte("first"), End: archive.HistoryCountReached}, nil
+				case "first":
+					return archive.HistoryPage{Spots: row("JA1BBB"), Before: []byte("second"), End: archive.HistoryCountReached}, nil
+				case "second":
+					return archive.HistoryPage{Spots: row("JA1CCC"), End: archive.HistoryExhausted}, nil
+				default:
+					t.Fatalf("unexpected position: %q", req.Before)
+					return archive.HistoryPage{}, nil
+				}
+			})
+			c.dialect = dialect
+			command := "SHOW DX"
+			if dialect == DialectCC {
+				command = "SHOW/DX"
+			}
+			const continuation = "Type SHOW DX NEXT to search older spots."
+			first := runHistory(t, s, c, command+" 1")
+			if c.historySearch == nil || !strings.Contains(first, "JA1AAA") || !strings.Contains(first, continuation) {
+				t.Fatal(first)
+			}
+			stale := c.historySearch.token
+			second := runHistory(t, s, c, command+" NEXT")
+			if !strings.Contains(second, "JA1BBB") || !strings.Contains(second, continuation) || strings.Contains(second, stale) {
+				t.Fatal(second)
+			}
+			if got := runHistory(t, s, c, command+" NEXT "+stale); !strings.Contains(got, "Invalid history continuation") {
+				t.Fatal(got)
+			}
+			last := runHistory(t, s, c, command+" NEXT")
+			if !strings.Contains(last, "JA1CCC") || strings.Contains(last, continuation) {
+				t.Fatal(last)
+			}
+			if got := runHistory(t, s, c, command+" NEXT"); !strings.Contains(got, "No archive search to continue.") {
+				t.Fatal(got)
+			}
+		})
 	}
 }
 

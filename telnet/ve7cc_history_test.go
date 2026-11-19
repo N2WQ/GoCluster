@@ -118,7 +118,7 @@ func TestVE7CCHistoryFinalWireLimitAndFooter(t *testing.T) {
 			})
 			if footer {
 				s.autoReadPauseMinRows, s.autoReadPauseDuration = 1, 30*time.Second
-				bodyBudget -= dedupeReadPauseFooterBytes
+				bodyBudget -= legacyReadPauseFooterBytes
 			}
 			sp.Comment += strings.Repeat("X", bodyBudget-len(ve7ccHistoryWire)-len(status))
 			ve7ccSelect(t, s, c, "SET/VE7CC")

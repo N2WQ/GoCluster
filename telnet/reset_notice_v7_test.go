@@ -193,7 +193,7 @@ func TestV7ResetNoticeWaitReleasesLeaseAndPreparation(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("notice was not queued")
 	}
-	if message.resetNotice == nil || !strings.Contains(string(message.raw), "earlier upgrade") {
+	if message.resetNotice == nil || !strings.Contains(string(message.raw), "Upgrade: Your GO and CC filters") {
 		t.Fatal("missing historical notice receipt/text")
 	}
 	_, output := configurationTransferBudgetStats()

@@ -115,7 +115,7 @@ func TestPendingReadbackManualControlPrecedence(t *testing.T) {
 	}{
 		{
 			line:     "PAUSE 5",
-			response: "Live spots paused for 5s. Type RESUME to resume now.\nMissed spots are not replayed.\n",
+			response: "Live spots paused for 5 seconds. Missed spots aren't replayed.\nType RESUME to restart now, or SHOW HOLD to check the pause.\n",
 			want:     readbackPauseTestState{until: 1700000015000000000, cutoff: 1700000015000000000, count: 3, epoch: 2},
 		},
 		{

@@ -13,9 +13,12 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"dxcluster/archive"
 	"dxcluster/bulletinhistory"
+	"dxcluster/commands"
 	"dxcluster/filter"
 	"dxcluster/pathreliability"
+	"dxcluster/spot"
 )
 
 // Read beyond the prompt: a test that stops at the prompt misses later startup
@@ -103,7 +106,7 @@ func TestShippedLoginStartupBeforePrompt(t *testing.T) {
 					opts.PathStatusMessage = "Path notice"
 				})
 				_, got := openStartupSession(t, s, "UTC>")
-				welcome, prompt := strings.Index(got, "Hello K1BUL"), strings.LastIndex(got, "K1BUL de N2WQ-2")
+				welcome, prompt := strings.Index(got, "Welcome to N2WQ-2, K1BUL."), strings.LastIndex(got, "K1BUL de N2WQ-2")
 				if welcome < 0 || prompt <= welcome || !strings.HasSuffix(strings.TrimSpace(got), "UTC>") || strings.Count(got, "UTC>") != 1 {
 					t.Fatalf("incorrect welcome/prompt transcript: %q", got)
 				}
@@ -114,8 +117,8 @@ func TestShippedLoginStartupBeforePrompt(t *testing.T) {
 				}
 				if records >= 0 {
 					for _, notice := range []string{"WWV history may be incomplete.", "WCY history may be incomplete."} {
-						if pos := strings.Index(got, notice); pos <= welcome || pos >= prompt {
-							t.Fatalf("%s not between welcome and prompt: %q", notice, got)
+						if strings.Contains(got, notice) {
+							t.Fatalf("%s should not appear at login: %q", notice, got)
 						}
 					}
 				}
@@ -124,6 +127,59 @@ func TestShippedLoginStartupBeforePrompt(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestStatusMessageWalkthroughTCP(t *testing.T) {
+	for _, dialect := range []string{"go", "cc"} {
+		t.Run(dialect, func(t *testing.T) {
+			s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
+				opts.LoginGreeting = shippedBooleanGreeting(t) + "READY\n"
+				opts.EchoMode = "off"
+				opts.AutoReadPauseMinRows = 10
+				opts.AutoReadPauseDuration = 30 * time.Second
+			})
+			s.processor = commands.NewProcessor(nil, historyReaderFunc(func(req archive.HistoryRequest) (archive.HistoryPage, error) {
+				if len(req.Before) == 0 {
+					return archive.HistoryPage{Before: []byte("first"), End: archive.HistoryBudgetReached}, nil
+				}
+				return archive.HistoryPage{End: archive.HistoryExhausted, Spots: []*spot.Spot{spot.NewSpot("JA1AAA", "W1AAA", 14030, "CW")}}, nil
+			}), nil, canonicalTestCTY, nil, nil)
+			const call = "LZ3NY-11"
+			cfg := currentV7GOTestConfiguration(t, nil, filter.SettingsConfiguration{Dialect: dialect})
+			saveCurrentV7TestRecord(t, call, &filter.V7UserRecord{Configuration: cfg})
+			conn, reader, _, greeting := connectUpgradeSession(t, s, call)
+			if !strings.Contains(greeting, "Saved settings loaded ("+strings.ToUpper(dialect)+").") {
+				t.Fatal(greeting)
+			}
+			send := func(command, marker string) string {
+				t.Helper()
+				if _, err := io.WriteString(conn, command+"\r\n"); err != nil {
+					t.Fatal(err)
+				}
+				return bulletinReadThrough(t, conn, reader, marker)
+			}
+			help := send("HELP", "SHOW HOLD to check the pause.")
+			if !strings.Contains(help, "Managing presets") || !strings.Contains(help, "Live spots paused for 30 seconds.") {
+				t.Fatal(help)
+			}
+			send("SHOW HOLD", "Suppressed spots: 0.")
+			send("RESUME", "Live spots resumed.")
+			show := "SHOW DX"
+			if dialect == "cc" {
+				show = "SHOW/DX"
+			}
+			// A count-only search uses the same continuation path without relying
+			// on the contents of the fixture's CTY prefix catalog.
+			page := send(show+" 1", "Type SHOW DX NEXT to search older spots.")
+			if !strings.Contains(page, "Older archive spots haven't been checked yet.") || strings.Contains(page, "H1") {
+				t.Fatal(page)
+			}
+			last := send(show+" NEXT", "End of retained history search.")
+			if !strings.Contains(last, "JA1AAA") {
+				t.Fatal(last)
+			}
+		})
 	}
 }
 

@@ -318,15 +318,20 @@ func (s *Store) Render(kind string, full bool, now time.Time) string {
 	if full {
 		limit = 0
 	}
-	return s.render(kind, limit, now)
+	return s.render(kind, limit, now, true)
+}
+
+// RenderLogin omits uncertain history warnings but still reports confirmed losses.
+func (s *Store) RenderLogin(kind string, now time.Time) string {
+	return s.render(kind, 1, now, false)
 }
 
 // RenderRecent returns the newest five bulletins in receipt order.
 func (s *Store) RenderRecent(kind string, now time.Time) string {
-	return s.render(kind, 5, now)
+	return s.render(kind, 5, now, true)
 }
 
-func (s *Store) render(kind string, limit int, now time.Time) string {
+func (s *Store) render(kind string, limit int, now time.Time, showUncertainty bool) string {
 	if s == nil {
 		return "Bulletin history is unavailable.\n"
 	}
@@ -367,7 +372,7 @@ func (s *Store) render(kind string, limit int, now time.Time) string {
 	}
 	if !lossAt.IsZero() && !lossAt.Before(effectiveNow.Add(-retention)) {
 		fmt.Fprintf(&b, "%s history is incomplete: one or more bulletins were lost.\n", kind)
-	} else if unknown {
+	} else if unknown && showUncertainty {
 		fmt.Fprintf(&b, "%s history may be incomplete.\n", kind)
 	}
 	return b.String()

@@ -12,7 +12,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const readbackFooterLiteral = "\r\nLive spots paused during delivery and for at least 30s afterward.\r\nType RESUME when ready. Missed spots are not replayed.\r\n"
+const readbackFooterLiteral = "\r\nLive spots paused for 30 seconds. Missed spots aren't replayed.\r\nType RESUME to restart now, or SHOW HOLD to check the pause.\r\n"
 
 func readbackTestClient() (*Server, *Client) {
 	s := &Server{nowFn: func() time.Time { return time.Unix(1700000000, 0) }}

@@ -87,6 +87,42 @@ func writeBooleanEditGuidance(h *humanResponse) error {
 	return nil
 }
 
+func loginSummary(data templateData, restored restoredLogin) string {
+	var b strings.Builder
+	unit := "users"
+	if data.userCount == 1 {
+		unit = "user"
+	}
+	fmt.Fprintf(&b, "Cluster: %d %s | Uptime: %s\n", data.userCount, unit, formatUptime(data.now, data.startTime))
+	if !data.lastLogin.IsZero() {
+		fmt.Fprintf(&b, "Last login: %s", data.lastLogin.UTC().Format("02-Jan-2006 15:04:05 UTC"))
+		if ip := strings.TrimSpace(data.lastIP); ip != "" {
+			fmt.Fprintf(&b, " from %s", ip)
+		}
+		b.WriteByte('\n')
+	}
+	if restored.loadError == nil {
+		switch {
+		case restored.created:
+			fmt.Fprintf(&b, "Starting filters are active (%s).\n", data.dialect)
+		case !restored.profileReset:
+			fmt.Fprintf(&b, "Saved settings loaded (%s).\n", data.dialect)
+		}
+	}
+	if data.grid == "unset" {
+		b.WriteString("Grid not set. Type SET GRID <grid>.\n")
+	}
+	b.WriteString(loginFilterCommand(data.dialect) + ": your filters | SHOW SETTINGS: your settings | HELP: commands")
+	return b.String()
+}
+
+func loginFilterCommand(dialect string) string {
+	if strings.EqualFold(dialect, string(DialectCC)) {
+		return "SHOW/FILTER"
+	}
+	return "SHOW FILTER"
+}
+
 // Rendering owns the same configuration lease as command readback. It does not
 // start a reading pause or publish defaults while describing restored state.
 func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, error) {

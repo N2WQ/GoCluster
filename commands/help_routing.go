@@ -13,7 +13,7 @@ import (
 
 func installHelpRoutingAliases(catalog *helpCatalog, dialect string) {
 	for alias, topic := range map[string]string{
-		"H": "HELP", "SH": "SHOW", "SH BUILD": "SHOW BUILD", "SH OWN": "SHOW OWN",
+		"H": "HELP", "SH": "SHOW", "SH BUILD": "SHOW BUILD", "SH OWN": "SHOW OWN", "FILTER": "FILTERS",
 		"SH DXCC": "SHOW DXCC", "SH MYDX": "SHOW MYDX", "REJECT NEARBY": "NEARBY", "PASS NEARBY": "NEARBY",
 		"SHOW/FILTER COMMENT": "SHOW FILTER COMMENT", "SH/FILTER COMMENT": "SHOW FILTER COMMENT",
 		"SHOW/SETTINGS": "SHOW SETTINGS", "SH/SETTINGS": "SHOW SETTINGS",

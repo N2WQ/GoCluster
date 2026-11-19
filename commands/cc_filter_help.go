@@ -85,12 +85,10 @@ func installNativeCCHelpBoundary(catalog *helpCatalog) {
 			"Switching banks preserves the other bank. Use HELP SET/FILTER or HELP FILTERS for native CC commands.",
 		})}
 	}
-	for _, verb := range []string{"PASS", "REJECT"} {
-		catalog.entries[verb] = helpEntry{summary: verb + " - Change separate delivery switches.", lines: helpEntryLines(verb+" - Change separate delivery switches.", []string{verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"}, nil, []string{
-			"PASS enables; REJECT disables. PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
-			"SELF controls spots of your own call. Native geography uses SET/FILTER category/PASS or /REJECT.",
-			"Boolean rule edits require GO; HELP SET/FILTER describes native CC selection.",
-		})}
+	for _, topic := range []string{"RULE", "PASS RULE", "REJECT RULE"} {
+		entry := catalog.entries[topic]
+		entry.lines = append([]string{"Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER.", ""}, entry.lines...)
+		catalog.entries[topic] = entry
 	}
 	for _, topic := range []string{"SHOW/FILTER", "SH/FILTER"} {
 		aliases := []string{"SHOW FILTER", "SH/FILTER"}

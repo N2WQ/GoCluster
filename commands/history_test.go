@@ -96,8 +96,8 @@ func FuzzHistoryCommand(f *testing.F) {
 		if !handled || errText != "" {
 			return
 		}
-		if command.Token != "" {
-			if !ValidHistoryToken(command.Token) {
+		if command.Next {
+			if command.Token != "" && !ValidHistoryToken(command.Token) {
 				t.Fatal("accepted invalid token")
 			}
 			return

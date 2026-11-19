@@ -226,7 +226,7 @@ func TestDedupeReadbackFinalSendBudget(t *testing.T) {
 			t.Fatal("writer transform differs from complete CRLF wire expectation")
 		}
 		assertHumanWire(t, wire)
-		if count == 49200 && !strings.Contains(wire, "Type RESUME to resume now.") {
+		if count == 49200 && !strings.Contains(wire, "Type RESUME to restart now, or SHOW HOLD to check the pause.") {
 			t.Fatal("positive send control bypassed automatic pause")
 		}
 	}

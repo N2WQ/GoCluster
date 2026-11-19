@@ -89,7 +89,7 @@ func helpTaskRun(t *testing.T, s *Server, c *Client, line string) string {
 			message.configurationReservation.Release()
 			c.completeHumanReadback(message.readback, s.now())
 			body := string(message.raw)
-			if !strings.Contains(body, "Missed spots are not replayed.") {
+			if !strings.Contains(body, "Missed spots aren't replayed.") {
 				t.Fatalf("%s lost complete readback: %q", line, body)
 			}
 			return body
@@ -271,15 +271,19 @@ func helpTaskPresetCommands(t *testing.T, s *Server, c *Client) map[string]strin
 	result := make(map[string]string)
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
+		command, _, _ := strings.Cut(line, "  ")
 		for _, verb := range []string{"SAVE", "LIST", "LOAD", "DELETE"} {
-			if strings.HasPrefix(line, verb+" PRESET") && line == strings.ToUpper(line) {
-				result[line] = line
+			if strings.HasPrefix(command, verb+" PRESET") && command == strings.ToUpper(command) {
+				result[command] = command
 			}
 		}
 	}
-	for _, line := range []string{"SAVE PRESET DAY", "SAVE PRESET NIGHT", "LIST PRESET", "LOAD PRESET DAY", "LOAD PRESET NIGHT", "DELETE PRESET NIGHT"} {
+	for _, line := range []string{"SAVE PRESET DAY", "LIST PRESET", "LOAD PRESET DAY", "DELETE PRESET DAY"} {
 		if result[line] == "" {
 			t.Fatalf("preset guide lost executable step %q", line)
+		}
+		for _, verb := range []string{"SAVE", "LOAD", "DELETE"} {
+			result[verb+" PRESET NIGHT"] = strings.ReplaceAll(result[verb+" PRESET DAY"], "DAY", "NIGHT")
 		}
 	}
 	return result

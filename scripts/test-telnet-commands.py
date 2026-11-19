@@ -245,13 +245,43 @@ def check(condition, message):
         raise ValueError(message)
 
 
+PAUSE_FOOTER_END = "Type RESUME to restart now, or SHOW HOLD to check the pause."
+
+
+def pause_footer(seconds):
+    unit = "second" if seconds == 1 else "seconds"
+    return f"Live spots paused for {seconds} {unit}. Missed spots aren't replayed.\n{PAUSE_FOOTER_END}"
+
+
+def split_auto_pause(lines, minimum_rows=None, minimum_seconds=1):
+    lines = list(lines)
+    paused = bool(lines and lines[-1] == PAUSE_FOOTER_END)
+    if paused:
+        match = re.fullmatch(r"Live spots paused for ([1-9][0-9]*) (second|seconds)\. Missed spots aren't replayed\.",
+                             lines[-2]) if len(lines) >= 3 else None
+        check(match is not None and int(match[1]) >= minimum_seconds and
+              (match[1] == "1") == (match[2] == "second"), "invalid automatic pause duration or incomplete footer")
+        lines = lines[:-2]
+    check(not any(line.startswith("Live spots paused for ") or
+                  line in (PAUSE_FOOTER_END, "Missed spots are not replayed.") for line in lines),
+          "duplicate or partial automatic pause footer")
+    if minimum_rows is not None:
+        check(paused == (minimum_rows > 0 and minimum_seconds > 0 and len(lines) >= minimum_rows),
+              "automatic pause footer disagrees with rendered row threshold")
+    return lines, paused
+
+
 def help_task_contract(topic, dialect):
     """Independent task-page boundaries and executable examples, not catalog text."""
     show = "SHOW FILTER" if dialect.lower() == "go" else "SHOW/FILTER"
     if topic == "FILTERS":
-        return ("Choose which spots you receive:",
-                "HELP PASS" if dialect.lower() == "go" else "HELP SET/NOFILTER",
-                (show, "HELP FILTER EXAMPLES", "HELP PRESETS"))
+        if dialect.lower() == "go":
+            return ("SHOW FILTER shows your active rules.",
+                    "HELP RULE explains the syntax. HELP FILTER EXAMPLES shows complete setups.",
+                    ("A matching REJECT rule blocks a spot, even if a PASS rule matches.",))
+        return ("SHOW/FILTER shows your active filters.",
+                "HELP SET/FILTER lists the options. HELP FILTER EXAMPLES shows complete setups.",
+                ("Band, mode, source, country, and state filters all apply together.",))
     if topic == "FILTER EXAMPLES":
         commands = (("RESET FILTER RULE ALL",
                      "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
@@ -263,31 +293,24 @@ def help_task_contract(topic, dialect):
                   "Select the 20m and 40m frequency ranges:")
         return header, "HELP PRESETS", (*commands, show, "RESUME", "HELP PRESETS")
     check(topic == "PRESETS", "unsupported task HELP oracle")
-    return ("Save your current setup:", "HELP DELETE PRESET",
-            ("SAVE PRESET DAY", "SAVE PRESET NIGHT", "LIST PRESET", "LOAD PRESET DAY",
-             "LOAD PRESET NIGHT", "DELETE PRESET NIGHT", "HELP LOAD PRESET"))
+    return ("A preset saves your active GO or CC filters and shared settings.",
+            "Your callsign's numeric SSIDs share the same presets.",
+            ("SAVE PRESET DAY", "LIST PRESET", "LOAD PRESET DAY", "DELETE PRESET DAY"))
 
 
-def require_help_task(lines, topic, dialect):
+def require_help_task(lines, topic, dialect, minimum_rows=None, minimum_seconds=1):
     header, terminal, commands = help_task_contract(topic, dialect)
     lines = list(lines)
     check(all(len(line) <= 78 and all(32 <= ord(char) <= 126 for char in line) for line in lines),
           "task HELP breaks width or printable ASCII")
     # A correlated barrier supplies the whole reply. Validate any automatic
     # pause footer without accepting a valid prefix followed by hidden content.
-    if lines and lines[-1] == "Missed spots are not replayed.":
-        check(len(lines) >= 3, "task HELP has an incomplete pause footer")
-        footer = re.fullmatch(r"Live spots paused for ([1-9][0-9]*)s after ([1-9][0-9]*) output rows\. "
-                              r"Type RESUME to resume now\.", lines[-2])
-        check(footer is not None and int(footer[2]) == len(lines) - 2,
-              "task HELP pause footer misstates its row count")
-        lines = lines[:-2]
+    lines, _ = split_auto_pause(lines, minimum_rows, minimum_seconds)
     check(lines and lines[0] == header and
           (lines[-1].strip() == terminal or lines[-1].strip().startswith(terminal + "  ")),
           "task HELP has the wrong topic or an incomplete ending")
-    check(not any(line.startswith(("Unknown ", "Invalid ", "Usage: Invalid", "Live spots paused for ")) or
-                  line == "Missed spots are not replayed." for line in lines),
-          "task HELP contains rejection feedback or a partial footer")
+    check(not any(line.startswith(("Unknown ", "Invalid ", "Usage: Invalid")) for line in lines),
+          "task HELP contains rejection feedback")
     for command in commands:
         check(any(line.strip() == command or line.strip().startswith(command + "  ") for line in lines),
               "task HELP omits command or link: " + command)
@@ -329,6 +352,16 @@ def remote_logout(session, verb):
 
 class BlockedPrerequisite(RuntimeError):
     """Required evidence is unavailable; this never qualifies as a pass."""
+
+
+HISTORY_NEXT = "Type SHOW DX NEXT to search older spots."
+HISTORY_PARTIAL = "Older archive spots haven't been checked yet."
+HISTORY_OLDER = "Older retained history page:"
+HISTORY_END = "End of retained history search."
+HISTORY_EMPTY = "No matching retained spots."
+HISTORY_NO_PENDING = "No archive search to continue. Start a fresh SHOW DX search."
+HISTORY_MAX_PAGES = 64
+HISTORY_MAX_SECONDS = 120
 
 
 def required_live_cases(token, call):
@@ -454,12 +487,13 @@ class Suite:
                     assert fields["comments"] == pa and fields["block_comments"] == re
                 self.case(f"{dialect} COMMENT step {step}", comment_rule)
             self.case(dialect + " COMMENT overlong", lambda: self.unchanged(a, "PASS COMMENT " + "A" * 65, "Usage:"))
-            for command, expected in (("HELP", "Try these commands:"), ("H", "Try these commands:"), ("DIALECT LIST", "GO"), ("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call: " + self.args.call.upper()), ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"), ("WHOSPOTSME", "WHOSPOTSME"), ("WHOSPOTSME 20M", "WHOSPOTSME")):
+            for command, expected in (("HELP", "Getting help"), ("H", "Getting help"), ("DIALECT LIST", "GO"), ("SHOW BUILD", "Build version:"), ("SHOW OWN", "Own call: " + self.args.call.upper()), ("SHOW DEDUPE", "Dedupe"), ("SHOW DXCC VE", "Canada"), ("WHOSPOTSME", "WHOSPOTSME"), ("WHOSPOTSME 20M", "WHOSPOTSME")):
                 self.case(dialect + " " + command, lambda c=command, e=expected: a.human(c, e))
             for category in ["", "FULL"] + CATEGORIES + ["CONF", "PC93"]:
                 command = ("SHOW FILTER" if dialect == "go" else "SHOW/FILTER") + (" " + category if category else "")
                 def human_view(c=command, cat=category):
-                    text, status = a.human(c, "Type RESUME when ready.")
+                    text, status = a.human(c)
+                    assert split_auto_pause(text.splitlines())[1], "filter readback lacks its complete pause footer"
                     assert status["status"]["session"]["pause_active"] is True
                     assert all(len(line) <= 78 and all(32 <= ord(ch) <= 126 for ch in line) for line in text.splitlines())
                     if cat == "FULL":
@@ -548,11 +582,12 @@ class Suite:
     def pause_and_machine(self, a):
         for command, seconds in (("PAUSE", 30), ("PAUSE 300", 300), ("PAUSE 1", 1)):
             def pause(c=command, n=seconds):
-                _, doc = a.human(c, f"paused for {n}s.")
+                text, doc = a.human(c)
+                assert text.strip() == pause_footer(n)
                 assert doc["status"]["session"]["pause_active"] is True
                 assert 0 < doc["status"]["session"]["pause_remaining_seconds"] <= n
             self.case(command, pause)
-        a.human("PAUSE 120", "paused for 120s.")
+        a.human("PAUSE 120", pause_footer(120))
         for command in ("PAUSE 0", "PAUSE 301", "PAUSE BAD", "PAUSE 3 EXTRA"):
             def bad_pause(c=command):
                 _, doc = a.human(c, "Usage: PAUSE")
@@ -692,25 +727,50 @@ class Suite:
     def history_label(self):
         return "T" + self.token
 
-    def history_result(self, a, command, target, frequencies, expected):
-        """Require exact labeled archive rows, never a queue ACK or empty PASS."""
-        before = a.get()
-        text, after = a.human(command)
-        assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"], "history search changed saved preferences"
-        assert "Warning: unreadable archive records" not in text and "Search work limit reached" not in text, "history coverage is incomplete: " + text[:1000]
-        actual = []
-        for line in text.splitlines():
-            if not line.startswith("DX de"):
-                continue
-            row = re.match(r"^DX de\s+\S+:\s+([0-9.]+)\s+(\S+)\s+", line)
-            labels = re.findall(r"\b" + re.escape(self.history_label()) + r"-([01])\b", line)
-            assert row and len(labels) == 1, "history returned malformed or unrelated row: " + line
-            actual.append((row.group(2), float(row.group(1)), int(labels[0])))
+    def history_result(self, a, command, target, frequencies, expected, *, stop_at_count=False):
+        """Check exact identities across pages, exhausting unless testing the count boundary."""
+        deadline = min(getattr(self, "deadline", float("inf")), time.monotonic() + HISTORY_MAX_SECONDS)
         wanted = [(target, float(frequencies[index]), index) for index in expected]
-        assert sorted(actual) == sorted(wanted), f"{command}: expected {wanted!r}, got {actual!r}"
-        if not expected:
-            assert "No matching retained spots." in text, "empty selection lacks exhausted-history status"
-        return text
+        actual = []
+        older = command.endswith(" NEXT")
+        for _ in range(HISTORY_MAX_PAGES):
+            if time.monotonic() >= deadline:
+                raise BlockedPrerequisite("history continuation time budget exhausted")
+            before = a.get()
+            self.check_history_hold(before, "before")
+            text, after = a.human(command)
+            self.check_history_hold(after, "during")
+            assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"], "history search changed saved preferences"
+            lines = [line for line in text.splitlines() if line]
+            assert lines and lines[-1] in (HISTORY_NEXT, HISTORY_END, HISTORY_EMPTY), "history page lacks an exact footer"
+            footer = lines.pop()
+            if older:
+                assert lines and lines.pop(0) == HISTORY_OLDER, "history page lacks continuation heading"
+            partial = bool(lines and lines[-1] == HISTORY_PARTIAL)
+            if partial:
+                lines.pop()
+                assert footer == HISTORY_NEXT, "early cutoff lacks continuation"
+            for line in lines:
+                row = re.match(r"^DX de\s+\S+:\s+([0-9.]+)\s+(\S+)\s+", line)
+                labels = re.findall(r"\b" + re.escape(self.history_label()) + r"-([01])\b", line)
+                assert row and len(labels) == 1, "history returned malformed or unrelated output: " + line
+                identity = (row.group(2), float(row.group(1)), int(labels[0]))
+                assert identity in wanted and identity not in actual, "unexpected or duplicate history row: " + line
+                actual.append(identity)
+            if footer == HISTORY_EMPTY:
+                assert not older and not actual, "empty history status contradicts the search"
+            elif footer == HISTORY_END:
+                assert older or actual, "fresh empty history page lacks no-match status"
+            elif not partial:
+                assert lines, "count-reached history page returned no rows"
+            if footer != HISTORY_NEXT or (stop_at_count and not partial):
+                assert sorted(actual) == sorted(wanted), f"{command}: expected {wanted!r}, got {actual!r}"
+                return text
+            command, older = "SHOW DX NEXT", True
+        raise BlockedPrerequisite("history continuation page budget exhausted")
+
+    def check_history_hold(self, document, phase):
+        pass
 
     def history_selections(self, a, target, frequencies):
         # Explicit mode tokens in the two DX stimuli establish CW/FT8 independently
@@ -749,9 +809,8 @@ class Suite:
     def history_selection_next(self, a, target, frequencies):
         label = "T" + self.token
         command = f"SHOW DX {target} 1 BAND 10,15 MODE CW, FT8 COMMENT {label}"
-        text = self.history_result(a, command, target, frequencies, [1])
-        cursor = re.search(r"H1[A-F0-9]{32}", text)
-        assert cursor, "selection NEXT unavailable: both labeled stimuli must survive admission"
+        text = self.history_result(a, command, target, frequencies, [1], stop_at_count=True)
+        assert HISTORY_NEXT in text.splitlines(), "selection NEXT unavailable: both labeled stimuli must survive admission"
         # The failing category may follow a valid clause. Assert its exact
         # diagnostic rather than assuming the first word owns every error.
         invalid = (
@@ -774,9 +833,8 @@ class Suite:
             assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"]
         for alias in ("SHOW/DX", "SH/DX"):
             self.unchanged(a, f"{alias} {target} 2 BAND 10,15 MODE CW, FT8 COMMENT {label}", "Use SHOW DX or SH DX")
-        older = self.history_result(a, "SHOW MYDX NEXT " + cursor.group(), target, frequencies, [0])
-        assert "Older retained history page:" in older
-        self.unchanged(a, "SHOW DX NEXT " + cursor.group(), "Invalid history continuation")
+        self.history_result(a, "SHOW MYDX NEXT", target, frequencies, [0])
+        self.unchanged(a, "SHOW DX NEXT", HISTORY_NO_PENDING)
 
     def history(self, a):
         a.human("DIALECT GO")
@@ -815,13 +873,11 @@ class Suite:
         self.history_selections(a, target, frequencies)
         self.case("history selection NEXT and invalid preservation", lambda: self.history_selection_next(a, target, frequencies))
         text, _ = a.human("SHOW DX 1", "DX de")
-        token = re.search(r"H1[A-F0-9]{32}", text)
-        assert token, "positive NEXT unavailable: insufficient retained matching rows"
-        first = token.group()
-        self.unchanged(a, "SHOW DX NEXT H1BAD", "Invalid history continuation")
-        older, _ = a.human("SHOW MYDX NEXT " + first, "Older retained history page:")
-        assert "DX de" in older
-        self.unchanged(a, "SHOW DX NEXT " + first, "Invalid history continuation")
+        assert HISTORY_NEXT in text.splitlines(), "positive NEXT unavailable: insufficient retained matching rows"
+        older, _ = a.human("SHOW DX NEXT", HISTORY_OLDER)
+        first_rows = [line for line in text.splitlines() if line.startswith("DX de ")]
+        older_rows = [line for line in older.splitlines() if line.startswith("DX de ")]
+        assert len(first_rows) == len(older_rows) == 1 and older_rows != first_rows, "unrestricted NEXT did not advance"
         for dialect in ("go", "cc"):
             a.human("DIALECT " + dialect)
             for command in ("SHOW DX 1", "SH DX 1", f"SHOW MYDX {target} 2", f"SH MYDX 2 {target}", f"SHOW DX {target_prefix} 1") + (("SHOW/DX 1", "SH/DX 1") if dialect == "cc" else ()):
@@ -1084,50 +1140,9 @@ class V7Suite(Suite):
         # retaining a bijective mapping of the original random hex token.
         return "T" + self.token.translate(str.maketrans({"B": "G", "D": "H"}))
 
-    def history_result(self, session, command, target, frequencies, expected):
-        # A work-limited page is partial evidence. Follow its cursor with a
-        # fixed page/time bound and keep the exact row oracle across all pages.
-        deadline = min(getattr(self, "deadline", float("inf")), time.monotonic() + 120)
-        wanted = [(target, float(frequencies[index]), index) for index in expected]
-        initial_cursor = re.search(r"\bNEXT\s+(H1[A-F0-9]{32})\b", command)
-        actual, seen_tokens = [], ({initial_cursor.group(1)} if initial_cursor else set())
-        for _ in range(64):
-            if time.monotonic() >= deadline:
-                raise BlockedPrerequisite("history continuation time budget exhausted")
-            before = session.get()
-            check(before["status"]["session"]["pause_active"] is True,
-                  "history delivery hold expired before query")
-            text, after = session.human(command)
-            check(after["status"]["session"]["pause_active"] is True,
-                  "history delivery hold expired during query")
-            assert before["configuration"] == after["configuration"] and before["revision"] == after["revision"], "history search changed saved preferences"
-            assert "Warning: unreadable archive records" not in text, "history contains unreadable records"
-            for line in text.splitlines():
-                if not line.startswith("DX de"):
-                    continue
-                row = re.match(r"^DX de\s+\S+:\s+([0-9.]+)\s+(\S+)\s+", line)
-                labels = re.findall(r"\b" + re.escape(self.history_label()) + r"-([01])\b", line)
-                assert row and len(labels) == 1, "history returned malformed or unrelated row: " + line
-                identity = (row.group(2), float(row.group(1)), int(labels[0]))
-                assert identity in wanted and identity not in actual, "unexpected or duplicate history row: " + line
-                actual.append(identity)
-            partial = "Search work limit reached; this page is incomplete." in text
-            exhausted = "End of retained history search." in text or "No matching retained spots." in text
-            cursors = re.findall(r"Continue older history: SHOW DX NEXT (H1[A-F0-9]{32})", text)
-            assert len(cursors) <= 1, "ambiguous history continuation"
-            assert not (exhausted and (partial or cursors)), "contradictory history completion status"
-            assert not ("No matching retained spots." in text and actual), "empty history status with rows"
-            if not partial:
-                assert exhausted or cursors, "history page lacks completion or continuation status"
-                assert wanted or exhausted, "empty result is not an exhausted search"
-                assert sorted(actual) == sorted(wanted), f"{command}: expected {wanted!r}, got {actual!r}"
-                return text
-            assert len(cursors) == 1, "work-limited page lacks continuation"
-            token = cursors[0]
-            assert token not in seen_tokens, "repeated history continuation"
-            seen_tokens.add(token)
-            command = "SHOW DX NEXT " + token
-        raise BlockedPrerequisite("history continuation page budget exhausted")
+    def check_history_hold(self, document, phase):
+        check(document["status"]["session"]["pause_active"] is True,
+              f"history delivery hold expired {phase} query")
 
     def __init__(self, args):
         super().__init__(args)
@@ -1496,8 +1511,8 @@ class V7Suite(Suite):
 
             def pause(command, seconds):
                 before = a.get()
-                text, after = a.human(command, f"paused for {seconds}s.")
-                check("Missed spots are not replayed." in text, "pause did not describe missed spots")
+                text, after = a.human(command)
+                check(text.strip() == pause_footer(seconds), "pause lacks its exact two-line response")
                 check(before["configuration"] == after["configuration"] and before["revision"] == after["revision"],
                       "pause changed saved preferences")
                 if seconds > 1:
@@ -1511,7 +1526,7 @@ class V7Suite(Suite):
                 self.case(dialect + " " + label, lambda c=command, n=duration: pause(c, n))
 
             def invalid_pauses():
-                a.human("PAUSE 120", "paused for 120s.")
+                a.human("PAUSE 120", pause_footer(120))
                 before = a.get()
                 for command in ("PAUSE 0", "PAUSE 301", "PAUSE BAD", "PAUSE 3 EXTRA"):
                     _, after = a.human(command, "Usage: PAUSE")
@@ -1580,10 +1595,12 @@ class V7Suite(Suite):
                 for topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
                     before = a.get()
                     response, after = a.human("HELP " + topic)
-                    require_help_task(response.splitlines(), topic, dialect)
+                    server = before["status"]["server"]
+                    require_help_task(response.splitlines(), topic, dialect, server["auto_read_pause_min_rows"],
+                                      server["auto_read_pause_seconds"])
                     check(after["configuration"] == before["configuration"] and
                           after["revision"] == before["revision"], "task HELP changed saved preferences")
-                a.human("HELP SYMBOLS", "Confidence glyphs:")
+                a.human("HELP SYMBOLS", "Call confidence")
                 for topic, expected in (("SHOW HOLD", "Usage: SHOW HOLD"),
                                         ("SET SOLAR", "SET SOLAR <15|30|60|OFF>"),
                                         ("SAVE PRESET", "SAVE PRESET <name>"),
@@ -1859,11 +1876,11 @@ class V7Suite(Suite):
                 self.history_result(a, f"{alias} {target} 2 COMMENT {label}", target, frequencies, [0, 1])
             self.unchanged(a, "SHOW DX " + target + " 2 BAND INVALID", "Invalid BAND selection")
         a.human("DIALECT GO")
-        first = self.history_result(a, f"SHOW DX {target} 1 COMMENT {label}", target, frequencies, [1])
-        cursor = re.search(r"H1[A-F0-9]{32}", first)
-        check(cursor is not None, "history continuation token absent")
+        first = self.history_result(a, f"SHOW DX {target} 1 COMMENT {label}", target, frequencies, [1], stop_at_count=True)
+        check(HISTORY_NEXT in first.splitlines(), "history continuation footer absent")
         self.unchanged(a, "SHOW DX " + target + " 1 BAND INVALID", "Invalid BAND selection")
-        self.history_result(a, "SHOW DX NEXT " + cursor.group(), target, frequencies, [0])
+        self.history_result(a, "SHOW MYDX NEXT", target, frequencies, [0])
+        self.unchanged(a, "SHOW DX NEXT", HISTORY_NO_PENDING)
 
     def run(self):
         required = v7_required_cases(getattr(self.args, "cc_shortcuts", ()))

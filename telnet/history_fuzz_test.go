@@ -171,7 +171,7 @@ func (s *cursorFuzzSession) apply(operation, argument byte) {
 			line = "SHOW DX NEXT H1" + strings.Repeat("F", 32)
 		}
 		if operation == cursorInvalid {
-			line = []string{"SHOW DX 0", "SHOW MYDX NEXT H1BAD", "SHOW DX K$", "SHOW MYDX NEXT"}[int(argument)%4]
+			line = []string{"SHOW DX 0", "SHOW MYDX NEXT H1BAD", "SHOW DX K$", "SHOW MYDX NEXT X Y"}[int(argument)%4]
 		}
 		s.reject(line)
 	default:
@@ -370,14 +370,16 @@ func (s *cursorFuzzSession) checkPublication(plan *cursorReadPlan, older bool, p
 		s.retire()
 		return
 	}
-	if plan.page.End == archive.HistoryBudgetReached && (!strings.Contains(response, "incomplete") || strings.Contains(response, "No matching")) {
+	if plan.page.End == archive.HistoryBudgetReached && (!strings.Contains(response, "Older archive spots haven't been checked yet.") || strings.Contains(response, "No matching")) {
 		s.t.Fatal("budget stop presented as complete")
 	}
-	_, suffix, found := strings.Cut(response, "Continue older history: SHOW DX NEXT ")
-	if !found {
+	if !strings.HasSuffix(response, "Type SHOW DX NEXT to search older spots.\n") || s.client.historySearch == nil {
 		s.t.Fatal("incomplete search omitted continuation")
 	}
-	token := strings.TrimSpace(suffix)
+	token := s.client.historySearch.token
+	if strings.Contains(response, token) {
+		s.t.Fatal("ordinary history displayed a code")
+	}
 	if len(token) != 34 || token[:2] != "H1" || token != strings.ToUpper(token) {
 		s.t.Fatalf("bad published token: %q", token)
 	}

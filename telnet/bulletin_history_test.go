@@ -45,7 +45,7 @@ func TestBulletinLoginAndShowBypassLiveFiltersTCP(t *testing.T) {
 	s.BroadcastWWVAt("WWV", "WWV de K1AAA: first-wwv", time.Now().Add(-time.Minute))
 	s.BroadcastWWVAt("WCY", "WCY de K1AAA: first-wcy", time.Now().Add(-time.Minute))
 	conn, reader, done, login := connectUpgradeSession(t, s, "K1BUL")
-	if !strings.Contains(login, "first-wwv") || !strings.Contains(login, "first-wcy") || !strings.Contains(login, "WCY history may be incomplete.") {
+	if !strings.Contains(login, "first-wwv") || !strings.Contains(login, "first-wcy") || strings.Contains(login, "WCY history may be incomplete.") {
 		t.Fatalf("login missing bulletin or warning: %q", login)
 	}
 	for _, kind := range []string{"WWV", "WCY"} {
@@ -57,7 +57,7 @@ func TestBulletinLoginAndShowBypassLiveFiltersTCP(t *testing.T) {
 	closeHandshakeTranscriptSession(t, conn, done)
 
 	conn2, reader2, _, login := connectUpgradeSession(t, s, "K1BUL")
-	if !strings.Contains(login, "first-wwv") || !strings.Contains(login, "first-wcy") || !strings.Contains(login, "WCY history may be incomplete.") {
+	if !strings.Contains(login, "first-wwv") || !strings.Contains(login, "first-wcy") || strings.Contains(login, "WCY history may be incomplete.") {
 		t.Fatalf("filtered login missing bulletin or warning: %q", login)
 	}
 	// Both are archived even though the user receives no live bulletin.
@@ -267,7 +267,7 @@ func TestBulletinFull48MaxUnicodeTCP(t *testing.T) {
 	if _, err := io.WriteString(conn, "SHOW/WWV FULL\r\n"); err != nil {
 		t.Fatal(err)
 	}
-	got := bulletinReadThrough(t, conn, reader, "Missed spots are not replayed.")
+	got := bulletinReadThrough(t, conn, reader, "Type RESUME to restart now, or SHOW HOLD to check the pause.")
 	if len(got) <= 30<<10 || len(got) > 60<<10 || strings.Count(got, "WWV received ") != 48 ||
 		strings.Count(got, "[truncated]") != 48 || strings.Contains(got, "B00000") ||
 		!strings.Contains(got, "WWV history is incomplete") || !strings.Contains(got, "Live spots paused") ||

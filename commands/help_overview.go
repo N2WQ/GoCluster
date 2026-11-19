@@ -30,41 +30,50 @@ func helpRowLines(rows ...helpRow) []string {
 	return lines
 }
 
-// helpOverviewLines renders the reviewed landing page. Symbols come from the same
-// startup snapshot as HELP SYMBOLS; no configuration or model state is changed.
-func helpOverviewLines(dialect string, path PathGlyphHelpConfig) []string {
+func helpOverviewLines(dialect string) []string {
 	show, readback := helpTaskCommands(dialect)
-	lines := []string{"Try these commands:"}
-	lines = append(lines,
-		"  "+show+" 10"+strings.Repeat(" ", 17-len(show+" 10"))+"Show 10 recent spots that match your filters.",
-		"  "+readback+strings.Repeat(" ", 17-len(readback))+"Show your current filters.",
-		"  SHOW SETTINGS    Show your settings.",
-		"", "Call confidence:",
+	return []string{
+		"Getting help",
+		"  HELP COMMANDS    List all commands.",
+		"  HELP <command>   Get help with one command.",
+		"  HELP SYMBOLS     Explain symbols on spot lines.",
+		"  HELP TROUBLE     Get help when something isn't working.",
+		"", "Showing archive spots",
+		fmt.Sprintf("  %-17sShow up to 10 recent spots that match your filters.", show+" 10"),
+		fmt.Sprintf("  %-17sLearn to search by call, band, mode, or comment.", "HELP "+show),
+		"", "Managing filters",
+		fmt.Sprintf("  %-17sSee your active filters.", readback),
+		"  HELP FILTERS     Learn how to change which spots you receive.",
+		"  SHOW SETTINGS    See your settings.",
+		"", "Managing presets",
+		"  LIST PRESET      List your saved presets.",
+		"  SAVE PRESET DAY  Save your current setup as DAY.",
+		"  LOAD PRESET DAY  Switch to your saved DAY setup.",
+		"  HELP PRESETS     Learn how to manage saved setups.",
+	}
+}
+
+func symbolHelpLines(path PathGlyphHelpConfig) []string {
+	lines := []string{
+		"Call confidence",
 		"  ?  One reporter; no added support for the call.",
 		"  S  One reporter; stored or recent reports support the call.",
 		"  P  Several reporters support the call.",
 		"  V  Several reporters provide stronger support.",
 		"  C  The cluster corrected the call.",
-		"  B  A correction failed checks; the original call remains.")
+		"  B  A correction failed checks; the original call remains.",
+	}
 	lines = append(lines, briefPathHelpLines(path)...)
-	return append(lines,
-		"", "What would you like to do?",
-		"  HELP SPOTS       Find spots or report a station.",
-		"  HELP FILTERS     Choose which spots you receive.",
-		"  HELP SETTINGS    Change your location and settings.",
-		"  HELP PRESETS     Save or load your settings.",
-		"  HELP SYMBOLS     Learn more about call confidence and path reliability.",
-		"  HELP TROUBLE     Find help when something goes wrong.",
-		"  HELP COMMANDS    See all commands.",
-		"", "For help with one command, type HELP before its name:",
-		"  HELP "+show)
+	lines = append(lines, "")
+	lines = append(lines, confidenceHelpLines()...)
+	return append(lines, pathGlyphHelpLines(path)...)
 }
 
 func briefPathHelpLines(cfg PathGlyphHelpConfig) []string {
 	if !pathHelpAvailable(cfg) {
 		return nil
 	}
-	lines := []string{"", "Path reliability:"}
+	lines := []string{"", "Path reliability"}
 	// Wrap configured symbols rather than assuming the shipped ASCII mapping.
 	row := "  " + cfg.High + " Favorable   " + cfg.Medium + " Workable   " + cfg.Low + " Weak   " + cfg.Unlikely + " Poor   " + cfg.Closed + " Closed"
 	if len(row) <= helpMaxWidth {

@@ -1,12 +1,102 @@
 package commands
 
 import (
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
+	"dxcluster/cty"
+	"dxcluster/filter"
 	"dxcluster/spot"
 )
+
+func loadHelpExampleTaxonomy(t *testing.T) {
+	t.Helper()
+	taxonomy, err := spot.LoadTaxonomyFile(filepath.Join("..", "data", "config", "spot_taxonomy.yaml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	previous := spot.CurrentTaxonomy()
+	spot.ConfigureTaxonomy(taxonomy)
+	t.Cleanup(func() { spot.ConfigureTaxonomy(previous) })
+}
+
+func TestHelpArchiveExamplesParse(t *testing.T) {
+	loadHelpExampleTaxonomy(t)
+	db := historyCanonicalCTY(t)
+	p := NewProcessor(nil, nil, nil, func() *cty.CTYDatabase { return db }, nil, nil)
+	for _, tc := range []struct{ dialect, topic string }{{"go", "SHOW DX"}, {"cc", "SHOW/DX"}} {
+		page := p.ProcessCommandForClient("HELP "+tc.topic, "N0CALL", "", nil, tc.dialect)
+		examples, _, found := strings.Cut(page, "\n\n")
+		if !found || !strings.HasPrefix(examples, "Example: "+tc.topic+" 10 - ") ||
+			!strings.Contains(page, "Type "+tc.topic+" NEXT to search older spots.") ||
+			!strings.Contains(page, tc.topic+" NEXT [cursor]") {
+			t.Fatalf("%s archive help lost the example-led introduction or continuation guidance", tc.dialect)
+		}
+		lines := strings.Split(examples, "\n")
+		if len(lines) != 5 {
+			t.Fatalf("%s archive introduction lost an example: %q", tc.dialect, examples)
+		}
+		for _, line := range lines[:4] {
+			text := strings.TrimSpace(strings.TrimPrefix(line, "Example: "))
+			command, _, _ := strings.Cut(text, " - ")
+			command, _, _ = strings.Cut(command, "   ")
+			parsed, handled, parseErr := p.ParseHistoryCommand(command, tc.dialect)
+			if !handled || parseErr != "" || parsed.Next || parsed.Query.count != 10 {
+				t.Fatalf("%s Help example %q: handled=%t error=%q query=%+v", tc.dialect, command, handled, parseErr, parsed)
+			}
+		}
+		parsed, handled, parseErr := p.ParseHistoryCommand(tc.topic+" NEXT", tc.dialect)
+		if !handled || parseErr != "" || !parsed.Next || parsed.Token != "" {
+			t.Fatalf("%s Help NEXT example doesn't parse without a cursor: %+v %q", tc.dialect, parsed, parseErr)
+		}
+	}
+}
+
+func TestHelpRuleExamplesAndDeliverySwitches(t *testing.T) {
+	loadHelpExampleTaxonomy(t)
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	table := "Delivery switches (GO and CC)\n" +
+		"  Switch     Turn on          Turn off\n" +
+		"  WWV        PASS WWV         REJECT WWV\n" +
+		"  WCY        PASS WCY         REJECT WCY\n" +
+		"  ANNOUNCE   PASS ANNOUNCE    REJECT ANNOUNCE\n" +
+		"  BEACON     PASS BEACON      REJECT BEACON\n"
+	for _, verb := range []string{"PASS", "REJECT"} {
+		topic := verb + " RULE"
+		goRule := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, "go")
+		_, example, found := strings.Cut(goRule, "\nExample: "+topic+" ")
+		if !found || !strings.HasPrefix(goRule, topic+" <0-9> <expression>\n") {
+			t.Fatalf("GO Help %s doesn't lead with its example: %q", topic, goRule)
+		}
+		example, _, _ = strings.Cut(example, "\n")
+		slotText, expression, _ := strings.Cut(example, " ")
+		slot, err := strconv.Atoi(slotText)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = filter.PrepareRuleSet([]filter.RuleDefinition{
+			{Slot: slot, Action: filter.RuleAction(strings.ToLower(verb)), Expr: expression},
+		})
+		if err != nil {
+			t.Fatalf("%s example cannot be compiled: %v", topic, err)
+		}
+		ccRule := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, "cc")
+		if !strings.HasPrefix(ccRule, "Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER.\n") ||
+			strings.Contains(ccRule, "\nExample: ") {
+			t.Fatalf("CC Help %s doesn't point to native filters: %q", topic, ccRule)
+		}
+		for _, dialect := range []string{"go", "cc"} {
+			page := p.ProcessCommandForClient("HELP "+verb, "N0CALL", "", nil, dialect)
+			if !strings.HasPrefix(page, "Spot rules (GO only)\n") || !strings.Contains(page, table) ||
+				!strings.Contains(page, "SELF and TOXIC are also separate switches, not rule fields.") {
+				t.Fatalf("%s Help %s doesn't distinguish spot rules from delivery switches", dialect, verb)
+			}
+		}
+	}
+}
 
 // Literal wording controls complement the executable admission and recipe
 // tests. Catalog enumeration and synchronized golden files are not the oracle.
@@ -98,10 +188,9 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 			assertHelpWidth(t, response)
 			flat := strings.Join(strings.Fields(response), " ")
 			for _, required := range []string{
-				"A spot must match at least one PASS rule, if you have any.",
-				"Any matching REJECT rule blocks it.",
-				"With no PASS rules, only REJECT rules restrict your selection.",
-				"Adding another PASS rule can allow more spots.",
+				"If you have PASS rules, a spot must match at least one of them.",
+				"A matching REJECT rule blocks a spot, even if a PASS rule matches.",
+				"Adding a PASS rule can let in more spots. Edit a rule to narrow it.",
 				"HELP FILTER EXAMPLES",
 			} {
 				if !strings.Contains(flat, required) {

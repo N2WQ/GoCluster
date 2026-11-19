@@ -49,7 +49,7 @@ func TestNativeCCReadbackDistinguishesInheritanceOffAndActiveBase(t *testing.T) 
 		"Active filter bank: CC", "DOC - spotter country", "Global: PASS", "ADIF values: 291",
 		"Band 20: OFF", "Band 40: REJECT", "Band 160: INHERIT global", "DXBM: ACTIVE; base ALLOW",
 		"20-CW: ALLOW (base)", "SELF: ON", "spots of your own call", "TOXIC still applies",
-		"GET YAML CONFIG SCHEMA 7", "schema 6 is not a complete backup", "Type RESUME", "Missed spots are not replayed",
+		"GET YAML CONFIG SCHEMA 7", "schema 6 is not a complete backup", "Type RESUME", "Missed spots aren't replayed",
 	} {
 		if !strings.Contains(strings.ToLower(flat), strings.ToLower(want)) {
 			t.Fatalf("native readback loses %q: %s", want, response)

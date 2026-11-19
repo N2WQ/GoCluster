@@ -608,14 +608,14 @@ func TestHelpPerDialect(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"classic", "go", "cc"} {
 		text := p.ProcessCommandForClient("HELP", "N2WQ", "", nil, dialect)
-		for _, want := range []string{"Try these commands:", "Call confidence:", "HELP COMMANDS", "HELP SYMBOLS"} {
+		for _, want := range []string{"Getting help", "Managing filters", "HELP COMMANDS", "HELP SYMBOLS"} {
 			if !strings.Contains(text, want) {
 				t.Fatalf("%s overview missing %q", dialect, want)
 			}
 		}
 		reference := p.ProcessCommandForClient("HELP FILTERS", "N2WQ", "", nil, dialect)
 		if dialect == "cc" {
-			for _, want := range []string{"HELP SET/FILTER", "HELP FILTER EXAMPLES", "SHOW/FILTER", "Band edits can keep earlier band choices."} {
+			for _, want := range []string{"HELP SET/FILTER", "HELP FILTER EXAMPLES", "SHOW/FILTER", "Replacing a country or state list removes its previous choices."} {
 				if !strings.Contains(reference, want) {
 					t.Fatalf("CC native reference missing %q", want)
 				}
@@ -626,7 +626,7 @@ func TestHelpPerDialect(t *testing.T) {
 			}
 			continue
 		}
-		for _, want := range []string{"HELP RULE", "HELP FILTER EXAMPLES", "PASS rules choose spots you want.", "Other settings can still hide spots."} {
+		for _, want := range []string{"HELP RULE", "HELP FILTER EXAMPLES", "a spot must match at least one of them.", "Other delivery settings still apply."} {
 			if !strings.Contains(reference, want) {
 				t.Fatalf("%s reference missing %q", dialect, want)
 			}

@@ -3,7 +3,6 @@ package telnet
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,8 +29,9 @@ func shippedBooleanGreeting(t *testing.T) string {
 	if err := yaml.Unmarshal(data, &document); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(document.Telnet.Greeting, "<SETTINGS_FILTERS>") != 1 {
-		t.Fatal("shipped greeting must place the settings/filter block exactly once")
+	if strings.Count(document.Telnet.Greeting, "<LOGIN_SUMMARY>") != 1 ||
+		strings.Count(document.Telnet.Greeting, "<UPGRADE_NOTICE>") != 1 {
+		t.Fatal("shipped greeting must place the login summary and upgrade notice exactly once")
 	}
 	return document.Telnet.Greeting
 }
@@ -94,24 +94,28 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 				conn, reader, _, transcript := connectUpgradeSession(t, s, call)
 				cfg, tail := upgradeWireGet(t, s, call, conn, reader, "")
 				assertHumanWire(t, transcript)
-				title := "Current settings and filters:"
+				title := "Saved settings loaded (GO)."
 				switch journey {
 				case "new":
-					title = "Default settings and filters:"
+					title = "Starting filters are active (GO)."
 				case "legacy":
-					title = "Current settings and native CC filters:"
+					title = "SHOW/FILTER: your filters"
 				}
-				if strings.Count(transcript, title) != 1 || strings.Contains(transcript, "<SETTINGS_FILTERS>") {
+				if strings.Count(transcript, title) != 1 || strings.Contains(transcript, "PASS RULE") || strings.Contains(transcript, "<LOGIN_SUMMARY>") {
 					t.Fatalf("wrong or repeated login block:\n%s", transcript)
 				}
-				reset := strings.Contains(transcript+tail, "earlier upgrade reset your GO and CC filter banks")
+				reset := strings.Contains(transcript, "Upgrade: Your GO and CC filters")
 				if reset != (journey == "legacy") {
 					t.Fatalf("profile reset confused with new-user/library-only login:\n%s", transcript)
 				}
-				first := journey == "new"
-				if strings.Contains(transcript, "To receive CW and FT8 from humans and skimmers:") != first {
-					t.Fatalf("first Boolean guidance has the wrong audience:\n%s", transcript)
+				if reset && strings.Index(transcript, "Upgrade:") > strings.Index(transcript, " UTC>") {
+					t.Fatal("reset notice followed the command prompt")
 				}
+				if strings.Contains(transcript, "The upgrade cleared presets saved in the old format.") != (journey == "library-only") ||
+					strings.Contains(tail, "The upgrade cleared presets") {
+					t.Fatal("wrong preset notice or notice followed the prompt")
+				}
+				first := journey == "new"
 				if first || journey == "legacy" {
 					want := []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW,FT8 AND SOURCE=HUMAN,SKIMMER"}}
 					if !slices.Equal(cfg.Filters.GO.Rules, want) || !slices.Equal(cfg.Filters.CC.Modes, []string{"CW", "FT8"}) ||
@@ -125,33 +129,14 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 					if len(cfg.Filters.GO.Rules) != 0 || strings.Contains(transcript, "PASS RULE 0") {
 						t.Fatal("returning empty rules were defaulted")
 					}
-				} else {
-					for _, rule := range complexRules {
-						label := fmt.Sprintf("%s RULE %d", strings.ToUpper(string(rule.Action)), rule.Slot)
-						if booleanDisplayedExpression(t, transcript, label) != rule.Expr {
-							t.Fatal("login lost a saved Boolean relationship or COMMENT byte")
-						}
-					}
+				} else if !slices.Equal(cfg.Filters.GO.Rules, complexRules) {
+					t.Fatal("login lost a saved Boolean relationship or COMMENT byte")
 				}
 				if journey != "legacy" && (strings.Contains(transcript, "Modes:") || strings.Contains(transcript, "Bands:")) {
 					t.Fatal("login flattened Boolean expressions")
 				}
-				if journey == "new" {
-					for _, want := range []string{"GO", "KN23 (callsign lookup)", "QUIET", "SLOW"} {
-						if !strings.Contains(transcript, want) {
-							t.Fatalf("actual default %q missing:\n%s", want, transcript)
-						}
-					}
-				} else {
-					dialect := "GO"
-					if journey == "legacy" {
-						dialect = "CC"
-					}
-					for _, want := range []string{dialect, "KN23", "URBAN", "MED"} {
-						if !strings.Contains(transcript, want) {
-							t.Fatalf("retained setting %q missing:\n%s", want, transcript)
-						}
-					}
+				if strings.Contains(transcript, "Grid not set.") {
+					t.Fatal("available grid reported missing")
 				}
 			})
 		}
@@ -378,7 +363,7 @@ func TestBooleanOnboardingPartialUpgradeNotice(t *testing.T) {
 	c := configurationTestClient(s, call)
 	result := s.restoreClientRecordOwned(c, time.Now().UTC())
 	if result.profileReset || !c.recordProtected || result.loadError == nil ||
-		!strings.Contains(result.warning, "could not be read, admitted or reset") ||
+		!strings.Contains(result.warning, "Could not load or upgrade your saved settings.") ||
 		strings.Contains(result.warning, "Boolean rules were kept") ||
 		strings.Contains(result.warning, "Your old filters were reset.") ||
 		!bytes.Equal(original, presetDiskBytes(t, path)) {

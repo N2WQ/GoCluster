@@ -24,7 +24,14 @@ func TestHelpGuidePresentation(t *testing.T) {
 					t.Fatal(err)
 				}
 				if got != strings.ReplaceAll(string(want), "\r\n", "\n") {
-					t.Fatal("guide differs from the reviewed screen")
+					t.Fatalf("guide differs from the reviewed screen: %q", got)
+				}
+				if page.topic == "FILTERS" {
+					for _, alias := range []string{"HELP FILTER", " help  FiLtEr "} {
+						if p.ProcessCommandForClient(alias, "N0CALL", "", nil, dialect) != got {
+							t.Fatalf("%q must open the same %s filter guide", alias, dialect)
+						}
+					}
 				}
 				assertHelpWidth(t, got)
 				assertHelpGuideWordLimits(t, got)
@@ -78,11 +85,12 @@ func helpGuideCommand(line string) bool {
 	return false
 }
 
-func TestHelpGuidesReachCoreAndWarnBeforeReplacement(t *testing.T) {
+func TestHelpGuidesReachCore(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
 		guide := p.ProcessCommandForClient("HELP FILTERS", "N0CALL", "", nil, dialect)
-		if lines := strings.Split(guide, "\n"); len(lines) < 2 || !helpGuideCommand(lines[1]) {
+		_, readback := helpTaskCommands(dialect)
+		if !strings.HasPrefix(guide, readback+" shows your active ") {
 			t.Fatal("filter guide delays its first useful command")
 		}
 		examples := p.ProcessCommandForClient("HELP FILTER EXAMPLES", "N0CALL", "", nil, dialect)
@@ -92,18 +100,6 @@ func TestHelpGuidesReachCoreAndWarnBeforeReplacement(t *testing.T) {
 		index := p.ProcessCommandForClient("HELP COMMANDS", "N0CALL", "", nil, dialect)
 		if !strings.Contains(index, "  FILTER EXAMPLES ") || !strings.Contains(guide, "HELP FILTER EXAMPLES") {
 			t.Fatal("new examples are not discoverable")
-		}
-		presets := p.ProcessCommandForClient("HELP PRESETS", "N0CALL", "", nil, dialect)
-		for _, pair := range [][2]string{
-			{"Saving an existing name replaces", "  SAVE PRESET DAY\n"},
-			{"Loading replaces the saved style's filters", "  LOAD PRESET DAY\n"},
-			{"your current callsign and SSID.", "  LOAD PRESET DAY\n"},
-			{"Your current settings stay unchanged.", "  DELETE PRESET NIGHT\n"},
-		} {
-			warning, command := strings.Index(presets, pair[0]), strings.Index(presets, pair[1])
-			if warning < 0 || command < 0 || warning >= command {
-				t.Fatalf("preset consequence must precede its command: %v", pair)
-			}
 		}
 		if dialect == "cc" && !strings.Contains(examples, "Requires the FT8 command to be enabled on this cluster.") {
 			t.Fatal("CC examples omit the operator-owned shortcut boundary")

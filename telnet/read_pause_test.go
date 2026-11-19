@@ -52,7 +52,7 @@ func TestSendCommandResponseStartsAutoReadPause(t *testing.T) {
 	}
 
 	msg := <-client.controlChan
-	if !strings.Contains(msg.line, "Live spots paused for 30s after 3 output rows.") {
+	if !strings.Contains(msg.line, "Live spots paused for 30 seconds. Missed spots aren't replayed.") {
 		t.Fatalf("expected read-pause footer in %q", msg.line)
 	}
 	active, remaining, suppressed := client.readPauseStatus(now)

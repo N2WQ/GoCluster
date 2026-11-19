@@ -332,7 +332,7 @@ func commandResourceDedupeFrames(t *testing.T) (map[string][]byte, map[string]co
 			if machineEchoCoveragePause(c) != pause || active || remaining != 0 || suppressed != 0 {
 				t.Fatal("dedupe refusal created automatic-pause effects")
 			}
-		} else if !active || remaining != 30*time.Second || suppressed != 0 || !strings.Contains(wire, "Type RESUME to resume now.") {
+		} else if !active || remaining != 30*time.Second || suppressed != 0 || !strings.Contains(wire, "Type RESUME to restart now, or SHOW HOLD to check the pause.") {
 			t.Fatal("fitting dedupe final send did not establish only the intended automatic pause")
 		}
 		m := commandResourceMeasure{RawBytes: count, CanonicalBytes: len(body), FrameBytes: len(wire), ReferenceBytes: len(reference), Admission: refused}

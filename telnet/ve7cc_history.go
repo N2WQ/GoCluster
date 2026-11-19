@@ -57,7 +57,7 @@ func (s *Server) publishHistoryOwned(c *Client, request historyRequest, next *hi
 		}
 	} else if success && request.presentation != nil {
 		page := request.presentation
-		response = commands.RenderHistoryPageWithFormatter(page.page, page.token, request.older, page.unreadable, page.hadMatches, func(sp *spot.Spot) string {
+		response = commands.RenderHumanHistoryPage(page.page, page.token, request.older, page.unreadable, page.hadMatches, func(sp *spot.Spot) string {
 			return sp.FormatDXClusterCW(request.cwSpeed && request.diag == diagModeOff)
 		})
 	}
@@ -79,7 +79,7 @@ func (s *Server) publishHistoryOwned(c *Client, request historyRequest, next *hi
 	if native && success {
 		// All body lines already have CRLF. Reserved footer headroom was
 		// admitted before any pause mutation, so this cannot grow the buffer.
-		footer := s.autoReadPauseFooter(c, bytes.Count(frame, []byte{'\n'}))
+		footer := s.autoReadPauseFooter(c, bytes.Count(frame, []byte{'\n'}), true)
 		frame = appendWriterNormalized(frame, footer)
 		message = controlMessage{raw: frame, configurationReservation: reservation}
 	} else {
@@ -107,7 +107,7 @@ func (s *Server) prepareVE7CCHistory(page *historyPagePresentation, older bool) 
 	}
 	budget := maxVE7CCRecordBytes
 	if s.autoReadPauseEnabled() {
-		budget -= dedupeReadPauseFooterBytes
+		budget -= legacyReadPauseFooterBytes
 	}
 	context := s.ve7ccContext(true)
 	// One fixed backing holds records, normalized statuses and the possible

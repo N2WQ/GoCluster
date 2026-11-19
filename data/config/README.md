@@ -378,16 +378,19 @@ Spot taxonomy:
 Telnet message tokens (usable in `runtime.yaml`):
 - Pre-login `welcome_message`, `login_prompt`, `login_empty_message`, `login_invalid_message`: `<CALL>`, `<CLUSTER>`, `<DATE>`, `<TIME>`, `<DATETIME>`, `<UPTIME>`, `<USER_COUNT>`, `<LAST_LOGIN>`, `<LAST_IP>`, `<DIALECT>`, `<DIALECT_SOURCE>`, `<DIALECT_DEFAULT>`, `<DEDUPE>`, `<GRID>`, `<NOISE>`.
 - Post-login `login_greeting`: same tokens as above (with real values after login),
-  plus `<SETTINGS_FILTERS>` for the bounded settings/rule block and first-time
-  guidance. The shipped greeting uses this token instead of duplicating
-  dialect/grid/noise/dedupe lines. Custom templates can place or omit the block.
+  plus `<LOGIN_SUMMARY>` for the shipped short login summary and
+  `<SETTINGS_FILTERS>` for the full settings/rule block and first-time guidance.
+  Custom templates can place or omit either block.
 - `<STARTUP_INFO>` places the startup notices and WWV/WCY history in the
   post-login greeting. Only its first occurrence displays the block; later
   occurrences are removed. The shipped greeting places it before the prompt.
   Without it, startup notices and history precede the complete greeting.
   Deploy the updated executable and greeting together. Before rolling back to
-  an older executable, remove this token from the active greeting; older
-  executables display it literally.
+  an older executable, restore the previous greeting; older executables may
+  display newer tokens literally.
+- Put `<UPGRADE_NOTICE>` after `<STARTUP_INFO>` (if used), immediately before
+  the first command prompt. The shipped greeting uses this placement. Custom
+  templates without the marker retain their existing placement.
 - Input guardrails `input_too_long_message`/`input_invalid_char_message`: `<CONTEXT>`, `<MAX_LEN>`, `<ALLOWED>`.
 - Dialect status `dialect_welcome_message`: `<DIALECT>`, `<DIALECT_SOURCE>`, `<DIALECT_DEFAULT>` (source labels come from `dialect_source_default_label`/`dialect_source_persisted_label`).
 - Path reliability `path_status_message`: `<GRID>`, `<NOISE>`.

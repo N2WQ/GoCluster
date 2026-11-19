@@ -223,7 +223,7 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 		if errText != "" {
 			return errText
 		}
-		if history.Token != "" {
+		if history.Next {
 			return "History continuation requires a connected client. Start a fresh SHOW DX search.\n"
 		}
 		return p.renderHistoryQuery(history.Query, filterFn)
@@ -280,15 +280,11 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 	dialect = normalizeDialectString(dialect)
 	catalog := buildHelpCatalog(dialect, p.dedupeHelp, p.whoSpotsMeHelp)
 	normalized := catalog.normalizeTopic(dialect, topic)
-	if normalized == "FILTERS" {
-		return strings.Join(filterGuideHelpLines(dialect), "\n") + "\n"
-	}
 	if normalized == "COMMANDS" {
 		return strings.Join(commandIndexHelpLines(catalog), "\n") + "\n"
 	}
 	if normalized == "SYMBOLS" {
-		lines := append(confidenceHelpLines(), pathGlyphHelpLines(p.pathGlyphHelp)...)
-		return strings.Join(lines, "\n") + "\n"
+		return strings.Join(symbolHelpLines(p.pathGlyphHelp), "\n") + "\n"
 	}
 	if normalized != "" {
 		if entry, ok := catalog.lookup(normalized); ok {
@@ -297,7 +293,7 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 		return fmt.Sprintf("Unknown help topic: %s\nType HELP for available commands.\n", normalized)
 	}
 
-	return strings.Join(helpOverviewLines(dialect, p.pathGlyphHelp), "\n") + "\n"
+	return strings.Join(helpOverviewLines(dialect), "\n") + "\n"
 }
 
 type helpEntry struct {
@@ -379,7 +375,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"SHOW MYDX [count]",
 			"SHOW MYDX <prefix|callsign> [count]",
 			"SHOW MYDX [count] <prefix|callsign>",
-			"SHOW MYDX NEXT <cursor>",
+			"SHOW MYDX NEXT [cursor]",
 			"SHOW MYDX [selector] [count] COMMENT <phrase>",
 			"SHOW MYDX [selector] [count] BAND <list> MODE <list>",
 		},
@@ -393,7 +389,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"Each page selects newest matches and displays them chronologically.",
 			"History excludes reports older than the configured retention cutoff.",
 			"Work limits may return zero spots with a continuation; this is incomplete.",
-			"Use NEXT with the returned cursor for progressively older pages.",
+			"Type SHOW MYDX NEXT to search older spots.",
 			"Matching settings changes require a fresh search; observations stay current.",
 			"A valid fresh search replaces the previous cursor even if its read fails.",
 			"A failed continuation retains its position unless independently invalidated.",
@@ -681,7 +677,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW/DX [count]",
 				"SHOW/DX <prefix|callsign> [count]",
 				"SHOW/DX [count] <prefix|callsign>",
-				"SHOW/DX NEXT <cursor>",
+				"SHOW/DX NEXT [cursor]",
 				"SHOW/DX [selector] [count] COMMENT <phrase>",
 				"SHOW/DX [selector] [count] BAND <list> MODE <list>",
 			},
@@ -693,7 +689,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Each page selects newest matches and displays them chronologically.",
 				"History excludes reports older than the configured retention cutoff.",
 				"Work limits may return zero spots with a continuation; this is incomplete.",
-				"Use NEXT with the returned cursor for progressively older pages.",
+				"Type SHOW/DX NEXT to search older spots.",
 				"Matching settings changes require a fresh search; observations stay current.",
 				"A valid fresh search replaces the previous cursor even if its read fails.",
 				"A failed continuation retains its position unless independently invalidated.",
@@ -701,7 +697,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Numeric arguments remain counts, not DXCC selectors.",
 			},
 		)
-		add("SHOW/DX", "SHOW/DX - Alias of SHOW MYDX.", showDXLines, "SH/DX")
+		add("SHOW/DX", "SHOW/DX - Alias of SHOW MYDX.", append(archiveHelpExamples("SHOW/DX"), showDXLines...), "SH/DX")
 		shDXLines := helpEntryLines(
 			"SH/DX - Alias of SHOW/DX.",
 			[]string{
@@ -836,7 +832,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"SHOW DX [count]",
 				"SHOW DX <prefix|callsign> [count]",
 				"SHOW DX [count] <prefix|callsign>",
-				"SHOW DX NEXT <cursor>",
+				"SHOW DX NEXT [cursor]",
 				"SHOW DX [selector] [count] COMMENT <phrase>",
 				"SHOW DX [selector] [count] BAND <list> MODE <list>",
 			},
@@ -848,7 +844,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Each page selects newest matches and displays them chronologically.",
 				"History excludes reports older than the configured retention cutoff.",
 				"Work limits may return zero spots with a continuation; this is incomplete.",
-				"Use NEXT with the returned cursor for progressively older pages.",
+				"Type SHOW DX NEXT to search older spots.",
 				"Matching settings changes require a fresh search; observations stay current.",
 				"A valid fresh search replaces the previous cursor even if its read fails.",
 				"A failed continuation retains its position unless independently invalidated.",
@@ -856,7 +852,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Numeric arguments remain counts, not DXCC selectors.",
 			},
 		)
-		add("SHOW DX", "SHOW DX - Alias of SHOW MYDX.", showDXLines, "SH DX")
+		add("SHOW DX", "SHOW DX - Alias of SHOW MYDX.", append(archiveHelpExamples("SHOW DX"), showDXLines...), "SH DX")
 		shDXLines := helpEntryLines(
 			"SH DX - Alias of SHOW DX.",
 			[]string{

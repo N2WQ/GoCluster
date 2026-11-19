@@ -3988,6 +3988,9 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	dialectSource := s.dialectSourceLabel(client.dialect, created, restored.loadError, s.filterEngine.defaultDialect)
 	dialectDefault := strings.ToUpper(string(s.filterEngine.defaultDialect))
 	greetingData := s.postLoginTemplateData(loginTime, client, prevLogin, prevIP, dialectSource, dialectDefault)
+	if strings.Contains(s.greetingTemplate, "<LOGIN_SUMMARY>") {
+		greetingData.loginSummary = loginSummary(greetingData, restored)
+	}
 	if strings.Contains(s.greetingTemplate, "<SETTINGS_FILTERS>") {
 		greetingData.settingsFilters, err = s.renderBooleanLoginBlock(client, created, restored.profileReset)
 		if err != nil {
@@ -4007,6 +4010,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	} else {
 		after = strings.ReplaceAll(after, "<STARTUP_INFO>", "")
 	}
+	after, prompt, noticeMarked := strings.Cut(after, "<UPGRADE_NOTICE>")
 	before = formatGreeting(before, greetingData)
 	after = formatGreeting(after, greetingData)
 	var startup []string
@@ -4031,7 +4035,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	}
 	if s.bulletinHistory != nil {
 		for _, kind := range []string{"WWV", "WCY"} {
-			addStartup(s.bulletinHistory.Render(kind, false, s.now()))
+			addStartup(s.bulletinHistory.RenderLogin(kind, s.now()))
 		}
 	}
 	if len(startup) > 0 && before != "" && !strings.HasSuffix(before, "\n") {
@@ -4049,6 +4053,9 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		return
 	}
 	if client.filterBanks != nil && !s.sendV7ResetNotice(client) {
+		return
+	}
+	if noticeMarked && !s.sendClientMessage(client, formatGreeting(prompt, greetingData), "login prompt") {
 		return
 	}
 
@@ -4337,6 +4344,7 @@ func sendTelnetOption(conn net.Conn, command, option byte) {
 
 // templateData holds contextual values that can be substituted into operator-configured templates.
 type templateData struct {
+	loginSummary    string
 	now             time.Time
 	startTime       time.Time
 	userCount       int
@@ -5659,6 +5667,7 @@ func applyTemplateTokens(msg string, data templateData) string {
 		"<GRID>", data.grid,
 		"<NOISE>", data.noiseClass,
 		"<SETTINGS_FILTERS>", data.settingsFilters,
+		"<LOGIN_SUMMARY>", data.loginSummary,
 	)
 	return replacer.Replace(msg)
 }
@@ -5865,10 +5874,19 @@ func (s *Server) maybeApplyAutoReadPause(client *Client, message string) string 
 	if !s.autoReadPauseEnabled() || client == nil {
 		return message
 	}
-	return appendReadPauseFooter(message, s.autoReadPauseFooter(client, renderedOutputRows(message)))
+	return appendReadPauseFooter(message, s.autoReadPauseFooter(client, renderedOutputRows(message), false))
 }
 
-func (s *Server) autoReadPauseFooter(client *Client, rows int) string {
+func humanPauseFooter(duration time.Duration) string {
+	seconds := durationCeilSeconds(duration)
+	unit := "seconds"
+	if seconds == 1 {
+		unit = "second"
+	}
+	return fmt.Sprintf("Live spots paused for %d %s. Missed spots aren't replayed.\nType RESUME to restart now, or SHOW HOLD to check the pause.\n", seconds, unit)
+}
+
+func (s *Server) autoReadPauseFooter(client *Client, rows int, legacy bool) string {
 	if !s.autoReadPauseEnabled() || client == nil || rows < s.autoReadPauseMinRows {
 		return ""
 	}
@@ -5876,6 +5894,9 @@ func (s *Server) autoReadPauseFooter(client *Client, rows int) string {
 	// Compute extension under the same authority as manual controls and response
 	// completion so a concurrent longer pause cannot be overwritten.
 	duration := client.extendReadPause(now, s.autoReadPauseDuration)
+	if !legacy {
+		return humanPauseFooter(duration)
+	}
 	return fmt.Sprintf(
 		"Live spots paused for %ds after %d output rows. Type RESUME to resume now.\nMissed spots are not replayed.\n",
 		durationCeilSeconds(duration),
@@ -5908,7 +5929,7 @@ func (s *Server) handleReadPauseCommand(client *Client, line string) (string, bo
 			duration = time.Duration(seconds) * time.Second
 		}
 		client.startReadPause(now, duration)
-		return fmt.Sprintf("Live spots paused for %ds. Type RESUME to resume now.\nMissed spots are not replayed.\n", durationCeilSeconds(duration)), true
+		return humanPauseFooter(duration), true
 	}
 	// HOLD is a read-only two-token control. Recognized malformed requests
 	// stay on the control-reply path, so usage cannot create another pause.

@@ -171,7 +171,7 @@ func showHoldSessionExchange(t *testing.T, conn net.Conn, command, expected stri
 	t.Helper()
 	showHoldSessionWrite(t, conn, command)
 	response := readUntilContains(t, conn, expected, 5*time.Second)
-	if strings.Contains(response, "after 1 output rows") || strings.Contains(response, "Missed spots are not replayed.") {
+	if strings.Contains(response, "Type RESUME to restart now") {
 		t.Fatalf("HOLD reply took the automatic-pause path: %q", response)
 	}
 }
@@ -205,7 +205,7 @@ func TestShowHoldRealSessionsBypassOneRowAutomaticPause(t *testing.T) {
 				}
 				if dialect == DialectCC {
 					showHoldSessionWrite(t, conn, "DIALECT CC")
-					readUntilContains(t, conn, "Missed spots are not replayed.\r\n", 5*time.Second)
+					readUntilContains(t, conn, "Type RESUME to restart now, or SHOW HOLD to check the pause.\r\n", 5*time.Second)
 					showHoldSessionWrite(t, conn, "RESUME")
 					readUntilContains(t, conn, "Live spots resumed. Suppressed spots: 0.\r\n", 5*time.Second)
 				}
@@ -217,7 +217,7 @@ func TestShowHoldRealSessionsBypassOneRowAutomaticPause(t *testing.T) {
 				showHoldSessionExchange(t, conn, "SHOW HOLD EXTRA", "Usage: SHOW HOLD\r\n")
 				assertReadbackPauseState(t, c, initial)
 				showHoldSessionWrite(t, conn, "PAUSE 60")
-				readUntilContains(t, conn, "Missed spots are not replayed.\r\n", 5*time.Second)
+				readUntilContains(t, conn, "Type RESUME to restart now, or SHOW HOLD to check the pause.\r\n", 5*time.Second)
 				c.enqueueSpot(&spotEnvelope{spot: writerV15Spot(), enqueueAt: s.now()})
 				want := readbackPauseTestState{until: 1700000060000000000, cutoff: 1700000060000000000, count: 1, epoch: initial.epoch + 1}
 				assertReadbackPauseState(t, c, want)

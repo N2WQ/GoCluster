@@ -43,17 +43,15 @@ telnet:
   welcome_message: "<CLUSTER> GoCluster with CC Cluster compatibility\r\n"
   login_prompt: "login: "
   login_greeting: |
-    Hello <CALL>, DE <CLUSTER>
-    Cluster: Users <USER_COUNT>  Uptime <UPTIME>
-    Last login: <LAST_LOGIN> from <LAST_IP>
-    <SETTINGS_FILTERS>
-    
+    Welcome to <CLUSTER>, <CALL>.
+    <LOGIN_SUMMARY>
+
     <STARTUP_INFO>
-    <CALL> de <CLUSTER> <DATETIME>>
+    <UPGRADE_NOTICE><CALL> de <CLUSTER> <DATETIME>>
   login_empty_message: |
-    Callsign cannot be empty. Please try again.
+    Enter your callsign.
   login_invalid_message: |
-    Invalid call. Please try again.
+    Callsign not accepted. Check it and try again.
   input_too_long_message: |
     <CONTEXT> input is too long (maximum <MAX_LEN> characters).
   input_invalid_char_message: |

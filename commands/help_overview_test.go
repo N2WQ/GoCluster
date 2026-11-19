@@ -20,7 +20,7 @@ func TestHelpOverviewPresentation(t *testing.T) {
 				t.Fatalf("%s HELP differs from the reviewed presentation fixture", dialect)
 			}
 			previous := -1
-			for _, section := range []string{"Try these commands:", "Call confidence:", "Path reliability:", "What would you like to do?", "For help with one command, type HELP before its name:"} {
+			for _, section := range []string{"Getting help", "Showing archive spots", "Managing filters", "Managing presets"} {
 				index := strings.Index(got, section)
 				if index <= previous {
 					t.Fatalf("missing or out-of-order section %q", section)
@@ -51,7 +51,8 @@ func TestHelpCatalogDiscoverabilityAndWidths(t *testing.T) {
 				t.Fatalf("%s command index omits catalog command %s", dialect, topic)
 			}
 		}
-		for _, topic := range []string{"SPOTS", "FILTERS", "SETTINGS", "PRESETS", "SYMBOLS", "TROUBLE", "COMMANDS"} {
+		show, _ := helpTaskCommands(dialect)
+		for _, topic := range []string{show, "FILTERS", "PRESETS", "SYMBOLS", "TROUBLE", "COMMANDS"} {
 			text := p.ProcessCommandForClient("HELP "+topic, "N0CALL", "", nil, dialect)
 			if strings.HasPrefix(text, "Unknown help topic:") || !strings.Contains(overview, "HELP "+topic) {
 				t.Fatalf("reference %s is not reachable/advertised", topic)
@@ -117,7 +118,7 @@ func TestHelpNavigationNormalization(t *testing.T) {
 		}
 	}
 	got := p.ProcessCommandForClient("H", "N0CALL", "", nil, "classic")
-	if got != p.ProcessCommandForClient("HELP", "N0CALL", "", nil, "go") || !strings.HasPrefix(got, "Try these commands:") {
+	if got != p.ProcessCommandForClient("HELP", "N0CALL", "", nil, "go") || !strings.HasPrefix(got, "Getting help\n") {
 		t.Fatal("default dialect or H alias changed")
 	}
 }
@@ -226,13 +227,17 @@ func TestHelpTaskNavigationAndIndex(t *testing.T) {
 	}
 }
 
-func TestHelpOverviewConfiguredSymbols(t *testing.T) {
+func TestHelpQuickLegendConfiguredSymbols(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		cfg := PathGlyphHelpConfig{Enabled: true, High: "A", Medium: "M", Low: "L", Unlikely: "U", Insufficient: "?", Closed: "X"}
 		p := NewProcessor(nil, nil, nil, nil, nil, nil, WithPathGlyphHelp(cfg))
-		text := p.ProcessCommandForClient("HELP", "N0CALL", "", nil, dialect)
+		text := p.ProcessCommandForClient("HELP SYMBOLS", "N0CALL", "", nil, dialect)
+		legend, _, found := strings.Cut(text, "\nConfidence glyphs:")
+		if !found || !strings.HasPrefix(legend, "Call confidence\n") {
+			t.Fatal("quick legend must precede the technical reference")
+		}
 		for _, want := range []string{"A Favorable", "M Workable", "L Weak", "U Poor", "X Closed", `"?" means not enough recent reports.`} {
-			if !strings.Contains(text, want) {
+			if !strings.Contains(legend, want) {
 				t.Fatalf("custom symbol missing %q", want)
 			}
 		}
@@ -244,7 +249,7 @@ func TestHelpOverviewConfiguredSymbols(t *testing.T) {
 		disabledConfig.Enabled = false
 		for _, disabled := range []PathGlyphHelpConfig{{}, disabledConfig, {Enabled: true, High: "A"}} {
 			p := NewProcessor(nil, nil, nil, nil, nil, nil, WithPathGlyphHelp(disabled))
-			if strings.Contains(p.ProcessCommandForClient("HELP", "N0CALL", "", nil, dialect), "Path reliability:") {
+			if strings.Contains(p.ProcessCommandForClient("HELP SYMBOLS", "N0CALL", "", nil, dialect), "Path reliability") {
 				t.Fatal("unavailable path legend shown")
 			}
 		}

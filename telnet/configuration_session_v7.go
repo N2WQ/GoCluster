@@ -75,7 +75,7 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 	result.profileReset = outcome.ProfileReset
 	c.v7LibraryResetGeneration = outcome.LibraryResetGeneration
 	if outcome.LibraryError != nil {
-		result.warning = "The shared preset reset is pending; preset commands are unavailable until it succeeds.\n"
+		result.warning = "Preset upgrade is pending. Preset commands are unavailable for now.\n"
 	}
 	if errors.Is(err, filter.ErrLoginUpgradeProfileMissing) {
 		record, err = s.newV7LoginRecord(DialectGo)
@@ -93,7 +93,7 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 		c.recordProtected = true
 		c.preserveRecordOnExit.Store(true)
 		result.loadError = err
-		result.warning += "Your saved user record could not be read, admitted or reset. Using temporary defaults; changes in this session will not be saved. SAVE PRESET is unavailable.\n"
+		result.warning += "Could not load or upgrade your saved settings. Using temporary defaults.\nChanges made this session won't be saved. Saving presets is unavailable.\n"
 		var factoryErr error
 		record, factoryErr = s.newV7LoginRecord(s.configurationDefaultDialect())
 		if factoryErr != nil {
@@ -122,7 +122,7 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 		} else if result.created {
 			library, libraryErr := filter.ResetV7PresetLibraryForLogin(c.callsign)
 			if libraryErr != nil {
-				result.warning += "Your new profile was saved, but the shared preset reset is pending; preset commands are unavailable.\n"
+				result.warning += "Preset upgrade is pending. Preset commands are unavailable for now.\n"
 			} else {
 				c.v7LibraryResetGeneration = library.ResetGeneration
 			}

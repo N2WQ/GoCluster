@@ -222,18 +222,22 @@ func (x *helpOwnerSession) assertHelpHasNoEffects(t *testing.T, ziutek bool) {
 	}
 	// Exhaustive aliases belong to commands' routing inventory. These witnesses
 	// cover each interceptor class with both codecs and dialects.
-	for _, tc := range []struct{ topic, canonical, content string }{
-		{"SH MYDX 1", "SHOW MYDX", "SHOW MYDX NEXT <cursor>"},
-		{"SHOW/FILTER RULE", filterTopic, filterTopic + " RULE"},
-		{"RULE", "RULE", "PASS RULE"},
-		{"SET SOLAR 60", "SET SOLAR", "SET SOLAR <15|30|60|OFF>"},
-		{"SAVE PRESET WOULD-WRITE", "SAVE PRESET", "SAVE PRESET <name>"},
-		{"GET YAML CONFIG SCHEMA 6 ID help-18", "GET YAML CONFIG", "GET YAML CONFIG SCHEMA 6 [ID <id>]"},
+	rulePrefix := "PASS and REJECT rules"
+	if c.dialect == DialectCC {
+		rulePrefix = "RULE - "
+	}
+	for _, tc := range []struct{ topic, prefix, content string }{
+		{"SH MYDX 1", "SHOW MYDX - ", "SHOW MYDX NEXT [cursor]"},
+		{"SHOW/FILTER RULE", filterTopic + " - ", filterTopic + " RULE"},
+		{"RULE", rulePrefix, "PASS RULE"},
+		{"SET SOLAR 60", "SET SOLAR - ", "SET SOLAR <15|30|60|OFF>"},
+		{"SAVE PRESET WOULD-WRITE", "SAVE PRESET - ", "SAVE PRESET <name>"},
+		{"GET YAML CONFIG SCHEMA 6 ID help-18", "GET YAML CONFIG - ", "GET YAML CONFIG SCHEMA 6 [ID <id>]"},
 	} {
 		line := helpOwnerInput(t, "HELP "+tc.topic, ziutek)
 		assertHelpOwnerInterceptorsDecline(t, s, c, line)
 		response := s.processor.ProcessCommandForClient(line, c.callsign, "", nil, string(c.dialect))
-		if !strings.HasPrefix(response, tc.canonical+" - ") || !strings.Contains(response, tc.content) {
+		if !strings.HasPrefix(response, tc.prefix) || !strings.Contains(response, tc.content) {
 			t.Fatalf("HELP failed specific owner route %q: %q", tc.topic, response)
 		}
 		before.assertOwners(t, c, x.writes-writes)

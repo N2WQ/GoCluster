@@ -81,39 +81,26 @@ func (s *Server) prepareV7ResetNotice(c *Client) (string, v7ResetNoticeEvents, b
 	return message, events, true, err
 }
 
-func renderV7ResetNotice(configuration filter.V7Configuration, dialect DialectName, events v7ResetNoticeEvents, unsaved bool) (string, error) {
+func renderV7ResetNotice(_ filter.V7Configuration, dialect DialectName, events v7ResetNoticeEvents, unsaved bool) (string, error) {
 	return renderNativeCCBody(maxYAMLBytes, func(h *humanResponse) error {
-		if err := h.line("Upgrade reset notice"); err != nil {
-			return err
-		}
 		if events.profileGeneration != 0 {
-			if err := h.prose("", "", "An earlier upgrade reset your GO and CC filter banks and their six delivery switches to the operator's starting defaults."); err != nil {
-				return err
+			for _, line := range []string{
+				"Upgrade: Your GO and CC filters and delivery settings were reset to defaults.",
+				"Kept: GO/CC dialect, grid, noise level, and dedupe policy.",
+				"Also kept: minimum samples for path ratings and solar summary interval.",
+			} {
+				if err := h.line(line); err != nil {
+					return err
+				}
 			}
 		}
 		if events.libraryGeneration != 0 {
-			if err := h.prose("", "", "The shared library's old named presets were cleared during that upgrade. New presets saved afterward were kept."); err != nil {
+			if err := h.line("The upgrade cleared presets saved in the old format."); err != nil {
 				return err
 			}
 		}
-		if err := h.prose("", "", "This notice reports completed work. Your current selections remain active; no reset is repeated."); err != nil {
-			return err
-		}
-		if err := h.row("Active bank:", strings.ToUpper(string(dialect))); err != nil {
-			return err
-		}
-		if dialect == DialectCC {
-			if err := h.row("Modes:", compactV7NoticeSelection(configuration.Filters.CC.Modes)); err != nil {
-				return err
-			}
-			if err := h.row("Sources:", compactV7NoticeSelection(configuration.Filters.CC.Sources)); err != nil {
-				return err
-			}
-			if err := h.line("SHOW/FILTER displays all current native CC restrictions."); err != nil {
-				return err
-			}
-		} else {
-			if err := h.prose("", "", "Your GO Boolean selection is active. SHOW FILTER displays its exact rules; this notice does not flatten them into mode or source lists."); err != nil {
+		if events.profileGeneration != 0 {
+			if err := h.line("Type " + loginFilterCommand(string(dialect)) + " to see your active filters."); err != nil {
 				return err
 			}
 		}
@@ -122,7 +109,7 @@ func renderV7ResetNotice(configuration filter.V7Configuration, dialect DialectNa
 				return err
 			}
 		}
-		return h.prose("", "", "If acknowledgement cannot be saved, this notice may appear at your next login.")
+		return nil
 	})
 }
 
@@ -200,7 +187,7 @@ func (s *Server) sendV7ResetNotice(c *Client) bool {
 		}
 		if err != nil {
 			log.Printf("Upgrade notice acknowledgement for %s remains pending: %v", c.identity(), err)
-			return c.enqueueV7ResetNotice("The upgrade notice acknowledgement could not be saved.\r\nThe notice may appear again at your next login.\r\n", nil) == nil
+			return c.enqueueV7ResetNotice("This upgrade notice may appear again at your next login.\r\n", nil) == nil
 		}
 		return true
 	case <-c.retired:

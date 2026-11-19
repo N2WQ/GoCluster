@@ -158,46 +158,15 @@ def require_history_row(row):
 
 
 def archive_rows(session, label, selection=""):
-    # Pipelining GET can interleave its server echo with a history row. Consume
-    # the bounded history body first; never strip arbitrary echo pieces. These
-    # zero/one-row queries do not exercise the ten-row automatic pause trailer.
+    # These zero/one-row queries do not exercise the ten-row automatic pause trailer.
     query = f"SHOW DX W6ABC 10{(' ' + selection) if selection else ''} COMMENT {label}"
-    rows, received, raw = [], 0, bytearray()
-    try:
-        session.send(query + "\r\n")
-        while True:
-            line = session.reader.line()
-            received += len(line)
-            raw.extend(line[:harness.MAX_FRAME - len(raw)])
-            require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
-                    "history reply exceeds its bound or has invalid CRLF")
-            text = line[:-2].decode("ascii", "strict")
-            if text in ("End of retained history search.", "No matching retained spots."):
-                require(bool(rows) == (text == "End of retained history search."),
-                        "history footer disagrees with returned rows")
-                break
-            require("Search work limit reached" not in text and "unreadable archive" not in text,
-                    "archive selection incomplete")
-            if text.startswith("DX de"):
-                require_history_row(text)
-                rows.append(text)
-            else:
-                require(text in ("", query.upper()), "unexpected or interleaved history output")
-    except Exception:
-        # line() leaves an unreturned decoded suffix on EOF/timeout/buffer
-        # refusal. Preserve it within the same receipt bound before rethrowing.
-        pending = session.reader.buffer
-        received += len(pending)
-        raw.extend(pending[:harness.MAX_FRAME - len(raw)])
-        raise
-    finally:
-        receipt = f"\n[{session.call}] {query}\n".encode() + bytes(raw)
-        if received > len(raw):
-            receipt += b"\n[history receipt truncated at 65536 bytes]\n"
-        session.suite.log.write(receipt)
-        session.suite.log.flush()
-    complete_reply_config(session, received, "history")
-    return rows
+    result = []
+    for rows, more, _, _ in history_pages(session, query, "SHOW DX NEXT"):
+        require(not any(row in result for row in rows) and len(rows) == len(set(rows)),
+                "archive selection repeated a row")
+        result.extend(rows)
+        if not more:
+            return result
 
 
 def require_archive(session, label):
@@ -2068,10 +2037,10 @@ def dedupe_read_barrier(current, remaining):
 
 
 def require_large_dedupe_output(text, value):
+    _, paused = harness.split_auto_pause(text.splitlines())
     require(text.startswith('Dedupe: "') and "".join(re.findall(r'"(X+)"', text)) == value and
             text.count("; effective MED (grid2)") == 1 and "(fast=on med=on slow=on)" in text and
-            "Configured choice is unrecognized" in text and "Type RESUME to resume now." in text and
-            text.endswith("Missed spots are not replayed."),
+            "Configured choice is unrecognized" in text and paused,
             "large DEDUPE output lost exact value, runtime reason or automatic footer")
 
 
@@ -2111,47 +2080,53 @@ def large_dedupe_cases(suite, root, generation):
                 before["status"]["effective"]["dedupe_policy"] == "MED" and
                 before["status"]["session"]["temporary_defaults"] is False,
                 "large native record did not restore exact choice and existing MED interpretation")
-        text, after = large_dedupe_reply(current, "Missed spots are not replayed.")
+        text, after = large_dedupe_reply(current, harness.PAUSE_FOOTER_END)
         require_large_dedupe_output(text, "X" * count)
         require_cc_unchanged(before, after, record, saved)
 
 
 def decode_history_alias_page(raw, query, older):
     require(len(raw) <= harness.MAX_FRAME and raw.endswith(b"\r\n"), "history alias page exceeds its wire bound")
-    rows, token, echoed, heading = [], None, False, False
+    rows, echoed, heading, partial = [], False, False, False
     lines = raw.splitlines(keepends=True)
     for i, line in enumerate(lines):
         require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "history alias page breaks CRLF")
         text = line[:-2].decode("ascii", "strict")
         require(len(text) <= 78, "history alias page exceeds line width")
         if text == query.upper():
-            require(not echoed and not rows and not heading, "history alias page repeats or interleaves echo")
+            require(not echoed and not rows and not heading and not partial, "history alias page repeats or interleaves echo")
             echoed = True
         elif text == "Older retained history page:":
-            require(older and not heading and not rows, "history alias page has a wrong or duplicate heading")
+            require(older and not heading and not rows and not partial, "history alias page has a wrong or duplicate heading")
             heading = True
         elif text.startswith("DX de"):
+            require(not partial, "history alias page has rows after its early cutoff")
             require_history_row(text)
             rows.append(text)
+        elif text == harness.HISTORY_PARTIAL:
+            require(not partial, "history alias page repeats its early cutoff")
+            partial = True
         elif text == "" and i < len(lines) - 1:
             continue
         else:
             require(i == len(lines) - 1, "history alias page has trailing content")
-            match = re.fullmatch(r"Continue older history: SHOW DX NEXT (H1[0-9A-F]{32})", text)
-            if match:
-                require(bool(rows), "count-reached history alias page has no matching row")
-                token = match.group(1)
-            elif text == "End of retained history search.":
-                require(bool(rows) or older, "fresh empty history alias page claims prior matches")
+            more = text == harness.HISTORY_NEXT
+            require(not partial or more, "history alias early cutoff lacks continuation")
+            if more:
+                require(bool(rows) or partial, "count-reached history alias page has no matching row")
+            elif text == harness.HISTORY_END:
+                require(bool(rows) or older, "history footer disagrees with returned rows")
             else:
-                require(text == "No matching retained spots." and not rows and not older,
-                        "history alias page has no honest complete footer")
+                require(text == harness.HISTORY_EMPTY and not rows and not older,
+                        "history footer disagrees with returned rows or search position")
             require(heading == older, "history alias page lost its continuation heading")
-            return rows, token
+            return rows, more, partial
     raise ValueError("history alias page has no footer")
 
 
 def history_alias_page(current, query, older=False):
+    # Pipelining GET can interleave its echo with rows. Consume and log each
+    # bounded page before sending the correlated readback.
     received, raw = 0, bytearray()
     try:
         current.send(query + "\r\n")
@@ -2162,11 +2137,14 @@ def history_alias_page(current, query, older=False):
             require(received <= harness.MAX_FRAME and line.endswith(b"\r\n") and b"\r" not in line[:-2],
                     "history alias page exceeds its bound or breaks CRLF")
             text = line[:-2].decode("ascii", "strict")
-            if text in ("End of retained history search.", "No matching retained spots.") or text.startswith("Continue older history:"):
+            if text in (harness.HISTORY_END, harness.HISTORY_EMPTY, harness.HISTORY_NEXT):
                 break
-            require("Search work limit" not in text and "unreadable archive" not in text,
-                    "history alias coverage is incomplete")
-        rows, token = decode_history_alias_page(bytes(raw), query, older)
+            if text.startswith("DX de"):
+                require_history_row(text)
+            else:
+                require(text in ("", query.upper(), harness.HISTORY_OLDER, harness.HISTORY_PARTIAL),
+                        "unexpected or interleaved history output")
+        rows, more, partial = decode_history_alias_page(bytes(raw), query, older)
     except Exception:
         received += len(current.reader.buffer)
         raw.extend(current.reader.buffer[:harness.MAX_FRAME - len(raw)])
@@ -2174,29 +2152,24 @@ def history_alias_page(current, query, older=False):
     finally:
         receipt = f"\n[{current.call}] {query}\n".encode() + bytes(raw)
         if received > len(raw):
-            receipt += b"\n[history alias receipt truncated at 65536 bytes]\n"
+            receipt += b"\n[history receipt truncated at 65536 bytes]\n"
         current.suite.log.write(receipt)
         current.suite.log.flush()
-    identifier = current.suite.identifier()
-    command = f"GET YAML CONFIG SCHEMA 7 ID {identifier}"
-    current.send(command + "\r\n")
-    document, prefix = current.frame("CONFIG", identifier, 7, command)
-    echoed, trailing = False, 0
-    for line in prefix.splitlines(keepends=True):
-        require(line.endswith(b"\r\n") and b"\r" not in line[:-2], "history alias barrier breaks CRLF")
-        if current.reader.remote_echo and not echoed and line == command.encode("ascii") + b"\r\n":
-            echoed = True
-            continue
-        require(line == b"\r\n", "history alias page has trailing content")
-        trailing += len(line)
-    require(received + trailing <= harness.MAX_FRAME, "history alias final response exceeds its wire bound")
-    require("error" not in document and type(document.get("configuration")) is dict and
-            type(document.get("status")) is dict and type(document.get("revision")) is str and bool(document["revision"]),
-            "history alias barrier lacks a valid configuration readback")
-    require(document.get("resource") == "CONFIG" and type(document.get("schema_version")) is int and
-            document["schema_version"] == 7 and document.get("request_id") == identifier,
-            "history alias barrier has the wrong resource, schema or request identity")
-    return rows, token, document
+    return rows, more, partial, complete_reply_config(current, received, "history")
+
+
+def history_pages(current, query, next_query):
+    """Yield bounded, checked pages, preserving the caller's plain NEXT alias."""
+    deadline = time.monotonic() + harness.HISTORY_MAX_SECONDS
+    older = query.endswith(" NEXT")
+    for _ in range(harness.HISTORY_MAX_PAGES):
+        require(time.monotonic() < deadline, "history continuation time budget exhausted")
+        page = history_alias_page(current, query, older)
+        yield page
+        if not page[1]:
+            return
+        query, older = next_query, True
+    raise ValueError("history continuation page budget exhausted")
 
 
 def require_history_alias_row(rows, frequency, phrase):
@@ -2230,21 +2203,29 @@ def history_alias_cases(suite, root, nonce, generation, saved_history):
         for index, prefix in enumerate(prefixes):
             values = "CW, COMMENT" if index % 2 else "COMMENT"
             query = prefix + " W6ABC 1 MODE " + values + " COMMENT " + phrase
-            rows, token, after = history_alias_page(current, query)
-            require_history_alias_row(rows, 14064, phrase)
-            require(token is not None, "two matching alias stimuli did not produce continuation")
-            unchanged(after)
+            next_query = prefix + " NEXT"
+            for rows, more, partial, after in history_pages(current, query, next_query):
+                unchanged(after)
+                if partial:
+                    require(not rows, "one-row alias page returned a row before reaching its count")
+                    continue
+                require_history_alias_row(rows, 14064, phrase)
+                require(more, "two matching alias stimuli did not produce continuation")
+                break
             for invalid, expected in ((prefix + " W6ABC 1 MODE COMMENT up:5!", "Command input"),
                                       (prefix + " W6ABC 1 MODE CW, COMMENT FT8", "separate values with commas"),
                                       (prefix + " W6ABC 1 MODE COMMENT COMMENT", "Invalid COMMENT phrase")):
                 _, after = current.human(invalid, expected)
                 unchanged(after)
-            rows, next_token, after = history_alias_page(current, prefix + " NEXT " + token, older=True)
-            require_history_alias_row(rows, 14063, phrase)
-            require(next_token is not None and next_token != token, "successful alias continuation did not rotate its handle")
-            unchanged(after)
-            rows, end_token, after = history_alias_page(current, prefix + " NEXT " + next_token, older=True)
-            require(not rows and end_token is None, "alias continuation retained decoys or fabricated more matches")
+            found = []
+            for rows, _, _, after in history_pages(current, next_query, next_query):
+                unchanged(after)
+                if rows:
+                    require(not found, "alias continuation repeated a row or retained decoys")
+                    require_history_alias_row(rows, 14063, phrase)
+                    found.extend(rows)
+            require(bool(found), "alias continuation failed to advance to the older row")
+            _, after = current.human("SHOW DX NEXT", harness.HISTORY_NO_PENDING)
             unchanged(after)
         saved_history[call] = before["configuration"], before["status"]["presets"]
 
@@ -2260,6 +2241,14 @@ CC_HELP_RULE_FIELDS = dict(bands="bands", modes="modes", sources="sources", even
                            dx_states="dxstates", de_states="destates")
 
 
+def cc_task_terminal(topic):
+    if topic == "FILTER EXAMPLES":
+        return "  HELP PRESETS"
+    if topic in ("FILTERS", "PRESETS"):
+        return harness.help_task_contract(topic, "cc")[1]
+    return None
+
+
 def decode_cc_help(raw, query, minimum_rows, minimum_seconds):
     require(0 < len(raw) <= harness.MAX_FRAME and raw.endswith(b"\r\n"), "CC HELP exceeds its complete wire bound")
     lines, echoed = [], False
@@ -2272,16 +2261,14 @@ def decode_cc_help(raw, query, minimum_rows, minimum_seconds):
             echoed = True
         else:
             lines.append(value)
-    require(len(lines) >= 3 and lines[-1] == "Missed spots are not replayed.", "CC HELP lacks its complete pause footer")
-    footer = re.fullmatch(r"Live spots paused for ([1-9][0-9]*)s after ([1-9][0-9]*) output rows\. "
-                          r"Type RESUME to resume now\.", lines[-2])
-    require(footer is not None and int(footer[1]) >= minimum_seconds and
-            int(footer[2]) == len(lines) - 2 >= minimum_rows, "CC HELP footer misstates duration or rendered row count")
-    body = lines[:-2]
+    body, paused = harness.split_auto_pause(lines, minimum_rows, minimum_seconds)
     while body and body[0] == "":
         body.pop(0)
     topic = query.removeprefix("HELP ")
     task = topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS")
+    terminal = cc_task_terminal(topic)
+    require((terminal is None and paused) or (terminal and body and body[-1] == terminal),
+            "CC HELP lacks its complete ending")
     header = harness.help_task_contract(topic, "cc")[0] if task else topic + " - "
     matches = bool(body) and (body[0] == header if task else body[0].startswith(header))
     require(matches, "CC HELP has the wrong topic header")
@@ -2339,6 +2326,7 @@ def require_cc_help_grammar(lines, topic):
 
 def cc_help_readback(current, topic, minimum_rows, minimum_seconds):
     query, raw, received = "HELP " + topic, bytearray(), 0
+    terminal = cc_task_terminal(topic)
     try:
         current.send(query + "\r\n")
         while True:
@@ -2346,8 +2334,14 @@ def cc_help_readback(current, topic, minimum_rows, minimum_seconds):
             received += len(line)
             raw.extend(line[:harness.MAX_FRAME - len(raw)])
             require(received <= harness.MAX_FRAME, "CC HELP exceeds its wire bound")
-            if line == b"Missed spots are not replayed.\r\n":
+            if line == ((terminal or harness.PAUSE_FOOTER_END) + "\r\n").encode("ascii"):
                 break
+        if terminal and len(help_routing_lines(bytes(raw), query, current.reader.remote_echo)) >= minimum_rows:
+            for _ in range(2):
+                line = current.reader.line()
+                received += len(line)
+                raw.extend(line[:harness.MAX_FRAME - len(raw)])
+                require(received <= harness.MAX_FRAME, "CC HELP footer exceeds its wire bound")
         body = decode_cc_help(bytes(raw), query, minimum_rows, minimum_seconds)
     except Exception:
         received += len(current.reader.buffer)
@@ -2457,7 +2451,7 @@ def resume_help_fixture(current, record, before, *, diagnostic=None, pause=False
     if diagnostic is not None:
         commands.append(("SET DIAG " + diagnostic, "Diagnostic comments: " + diagnostic))
     if pause:
-        commands.append(("PAUSE 300", "Live spots paused for 300s."))
+        commands.append(("PAUSE 300", harness.pause_footer(300)))
     for command, feedback in commands:
         prior, saved = after, record.read_bytes()
         _, after = restored.human(command, feedback)
@@ -2567,9 +2561,10 @@ def help_route_contract(key, dialect):
     contracts = {
         "DX": ("DX - Post a spot (human entry).",
                ("DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]"), None, ()),
-        **{topic: (harness.help_task_contract(topic, dialect)[0], (), None, ())
+        **{topic: (harness.help_task_contract(topic, dialect)[0], (),
+                   "  HELP PRESETS" if topic == "FILTER EXAMPLES" else harness.help_task_contract(topic, dialect)[1], ())
            for topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS")},
-        "OVERVIEW": ("Try these commands:", (), None, ()),
+        "OVERVIEW": ("Getting help", (), "  HELP PRESETS     Learn how to manage saved setups.", ()),
         "HELP": ("HELP - Show command list or command-specific help.", ("HELP [command]",),
                  "  With a command, shows detailed usage.", ("H",)),
         "SHOW BUILD": ("SHOW BUILD - Show binary build metadata.", ("SHOW BUILD",),
@@ -2622,7 +2617,7 @@ def help_route_contract(key, dialect):
     for topic in ("SHOW MYDX", "SHOW DX" if dialect == "go" else "SHOW/DX"):
         summary = "Show filtered spot history." if topic == "SHOW MYDX" else "Alias of SHOW MYDX (stored history)."
         usage = (topic + " [count]", topic + " <prefix|callsign> [count]", topic + " [count] <prefix|callsign>",
-                 topic + " NEXT <cursor>", topic + " [selector] [count] COMMENT <phrase>",
+                 topic + " NEXT [cursor]", topic + " [selector] [count] COMMENT <phrase>",
                  topic + " [selector] [count] BAND <list> MODE <list>")
         contracts[topic] = (topic + " - " + summary, usage, None,
                            ("SH MYDX",) if topic == "SHOW MYDX" else ("SH DX",) if dialect == "go" else ("SH/DX", "SHOW DX", "SH DX"))
@@ -2746,18 +2741,7 @@ def help_routing_lines(raw, query, remote_echo):
 
 def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, remote_echo=False):
     lines = help_routing_lines(raw, query, remote_echo)
-    paused = lines[-1] == "Missed spots are not replayed."
-    if paused:
-        require(len(lines) >= 3, "HELP routing lacks a complete pause footer")
-        footer = re.fullmatch(r"Live spots paused for ([1-9][0-9]*)s after ([1-9][0-9]*) output rows\. "
-                              r"Type RESUME to resume now\.", lines[-2])
-        require(footer is not None and int(footer[1]) >= minimum_seconds and
-                int(footer[2]) == len(lines) - 2 >= minimum_rows, "HELP routing footer misstates duration or row count")
-        lines = lines[:-2]
-    else:
-        require(len(lines) < minimum_rows, "HELP routing omits its required automatic-pause footer")
-    require(not any(line.startswith("Live spots paused for ") or line == "Missed spots are not replayed." for line in lines),
-            "HELP routing embeds a duplicate or partial footer")
+    lines, paused = harness.split_auto_pause(lines, minimum_rows, minimum_seconds)
     while lines and lines[0] == "":
         lines.pop(0)
     header, usage, terminal, allowed_aliases = contract
@@ -2788,7 +2772,7 @@ def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, rem
 
 def help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds, body_oracle=None):
     query, raw, received = ("HELP " + topic).rstrip(), bytearray(), 0
-    terminal = contract[2] or "Missed spots are not replayed."
+    terminal = contract[2] or harness.PAUSE_FOOTER_END
     try:
         current.send(query + "\r\n")
         while True:
@@ -3025,14 +3009,11 @@ def require_discovery_help(lines, key, dialect):
         forbidden = ("free text", "guarantees delivery", "bypasses reputation", "SSID has its own allowance", "FCC license required to post")
     elif key == "OVERVIEW":
         show, readback = ("SHOW DX", "SHOW FILTER") if dialect == "go" else ("SHOW/DX", "SHOW/FILTER")
-        required = (show + " 10", readback, "SHOW SETTINGS", "Call confidence:",
-                    "? One reporter; no added support for the call.",
-                    "S One reporter; stored or recent reports support the call.",
-                    "P Several reporters support the call.", "V Several reporters provide stronger support.",
-                    "C The cluster corrected the call.", "B A correction failed checks; the original call remains.",
-                    "HELP SPOTS", "HELP FILTERS", "HELP SETTINGS", "HELP PRESETS", "HELP SYMBOLS",
-                    "HELP TROUBLE", "HELP COMMANDS", "For help with one command, type HELP before its name:")
-        forbidden = ("GoCluster help -", "BYE", "RESET MODE", "RESET FILTER RULE ALL", "HELP WEB", "Path ratings do not guarantee contact.")
+        required = ("Getting help", "HELP COMMANDS", "HELP <command>", "HELP SYMBOLS", "HELP TROUBLE",
+                    "Showing archive spots", show + " 10", "HELP " + show,
+                    "Managing filters", readback, "HELP FILTERS", "SHOW SETTINGS",
+                    "Managing presets", "LIST PRESET", "SAVE PRESET DAY", "LOAD PRESET DAY", "HELP PRESETS")
+        forbidden = ("GoCluster help -", "Call confidence", "Path reliability", "RESET MODE", "RESET FILTER RULE ALL", "HELP WEB")
     elif key in ("PASS", "REJECT"):
         required = (("GO uses numbered Boolean rules.", "PASS rules are ORed", "Old category mutation syntax is refused, not translated;")
                     if dialect == "go" else ("PASS enables; REJECT disables.", "PC93 aliases ANNOUNCE.", "Boolean rule edits require GO;"))
@@ -3310,7 +3291,7 @@ def dx_input_contract_cases(suite, root):
         current = fixture_session(suite, "VE3ABC-" + str(79 + index))
         current.human("DIALECT " + dialect)
         current.human("RESET FILTER" if dialect == "go" else "SET/NOFILTER")
-        current.human("PAUSE 300", "Live spots paused for 300s.")
+        current.human("PAUSE 300", harness.pause_footer(300))
         before = current.get()
         require(before["configuration"]["settings"]["dialect"] == dialect and
                 before["status"]["session"]["pause_active"] is True,
@@ -3398,7 +3379,7 @@ def hold_command_cases(suite, root, generation, saved_hold, poster):
         for query, feedback in HOLD_REFUSALS:
             check(query, feedback)
         _, paused, observation = hold_readback(current, "PAUSE 15",
-                                              "Live spots paused for 15s. Type RESUME to resume now.\nMissed spots are not replayed.")
+                                              harness.pause_footer(15))
         require_cc_unchanged(before, paused, record, user_receipt[0])
         require(paused["status"]["session"]["pause_active"] is True and paused["status"]["session"]["suppressed_spots"] == 0,
                 "HOLD suppression requires an active finite pause with no invented counter")

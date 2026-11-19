@@ -715,7 +715,9 @@ warning is not proof that every matching record was readable. Archive failures
 are explicit errors, and unsafe malformed cursor boundaries fail rather than
 looping or silently skipping valid rows.
 
-Follow the returned `SHOW DX NEXT <token>` on the same connection. Tokens are
+Type `SHOW DX NEXT` on the same connection to continue the current search.
+Ordinary Telnet does not print a code. VE7CC keeps the returned
+`SHOW DX NEXT <token>` form, which remains accepted. Tokens are
 `H1` plus 32 uppercase hexadecimal characters; the longest supported full NEXT
 command is 49 bytes. One small cursor belongs to that connection, without a
 registry, expiry worker or retained iterator. Successful page publication rotates
@@ -880,8 +882,8 @@ hold. Suppressed counts carry from delivery into the reading interval.
 For a 30-second reading interval, the human footer remains:
 
 ```text
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
+Live spots paused for 30 seconds. Missed spots aren't replayed.
+Type RESUME to restart now, or SHOW HOLD to check the pause.
 ```
 
 GO filter output and shared SETTINGS responses are limited to 65,536 bytes;
@@ -1341,8 +1343,8 @@ When automatic pausing applies, the command response gets a footer showing the
 effective remaining duration:
 
 ```text
-Live spots paused for 30s after 14 output rows. Type RESUME to resume now.
-Missed spots are not replayed.
+Live spots paused for 30 seconds. Missed spots aren't replayed.
+Type RESUME to restart now, or SHOW HOLD to check the pause.
 ```
 
 Users can type `SHOW HOLD` to see remaining pause time and the suppressed spot

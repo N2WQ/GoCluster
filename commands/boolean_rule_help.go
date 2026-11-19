@@ -14,7 +14,7 @@ import (
 func BooleanRuleHelpLines() []string {
 	lines := make([]string, 0, 90)
 	lines = append(lines,
-		"GO and CC use the same rule syntax.",
+		"Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER.",
 		"",
 		"Commands:",
 		"PASS RULE <0..9> <expression>",

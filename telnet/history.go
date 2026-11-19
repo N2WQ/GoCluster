@@ -97,9 +97,12 @@ func (s *Server) beginHistory(c *Client, line string) (historyRequest, string, e
 	if c.historyClosed {
 		return historyRequest{}, "", errClientClosed
 	}
-	request := historyRequest{filter: snapshot, older: command.Token != "", cwSpeed: cwSpeed, diag: c.getDiagMode()}
+	request := historyRequest{filter: snapshot, older: command.Next, cwSpeed: cwSpeed, diag: c.getDiagMode()}
 	if request.older {
-		if c.historySearch == nil || c.historySearch.token != command.Token {
+		if command.Token == "" && c.historySearch == nil {
+			return historyRequest{}, "No archive search to continue. Start a fresh SHOW DX search.\n", nil
+		}
+		if c.historySearch == nil || (command.Token != "" && c.historySearch.token != command.Token) {
 			return historyRequest{}, "Invalid history continuation. Start a fresh SHOW DX search.\n", nil
 		}
 		request.search = *c.historySearch

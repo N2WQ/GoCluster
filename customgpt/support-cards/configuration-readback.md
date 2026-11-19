@@ -266,7 +266,9 @@ Retrieve [comment rules](../../telnet/README.md#comment-filters-and-searches)
 and [rule limits](../../telnet/README.md#filters).
 
 SHOW DX/MYDX explicit COMMENT is independent query grammar in either dialect and
-mandatory even for self-spots. Follow returned NEXT commands. Mode aliases can
+mandatory even for self-spots. Type `SHOW DX NEXT` on the same connection for
+older archive spots; `RESUME` restarts live spots instead. VE7CC still displays
+the coded NEXT form. Mode aliases can
 collide with BAND/MODE/COMMENT keywords; retrieve
 [archive history](../../commands/README.md#archive-history) and
 [ADR-0273](../../docs/decisions/ADR-0273-history-comment-alias-boundary.md).

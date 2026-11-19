@@ -33,7 +33,11 @@ func TestManualReadPauseDurations(t *testing.T) {
 				client, other := &Client{server: server}, &Client{server: server}
 				server.clients = map[string]*Client{"N0CALL": client, "N1CALL": other}
 				response, handled := server.handleReadPauseCommand(client, tc.line)
-				want := fmt.Sprintf("Live spots paused for %ds. Type RESUME to resume now.\nMissed spots are not replayed.\n", tc.seconds)
+				unit := "seconds"
+				if tc.seconds == 1 {
+					unit = "second"
+				}
+				want := fmt.Sprintf("Live spots paused for %d %s. Missed spots aren't replayed.\nType RESUME to restart now, or SHOW HOLD to check the pause.\n", tc.seconds, unit)
 				if !handled || response != want {
 					t.Fatalf("PAUSE response = %q, handled=%t, want %q", response, handled, want)
 				}
@@ -142,7 +146,7 @@ func TestAutoReadPausePreservesOrExtendsDeadline(t *testing.T) {
 			client.readPauseSuppressed.Store(3)
 			now = start.Add(tc.elapsed)
 			response := server.maybeApplyAutoReadPause(client, "output\n")
-			if !strings.Contains(response, fmt.Sprintf("Live spots paused for %ds after 1 output rows.", tc.wantSeconds)) {
+			if !strings.Contains(response, fmt.Sprintf("Live spots paused for %d seconds.", tc.wantSeconds)) {
 				t.Fatalf("footer does not report effective pause: %q", response)
 			}
 			wantDeadline := now.Add(time.Duration(tc.wantSeconds) * time.Second).UnixNano()
@@ -184,15 +188,15 @@ func TestReadPauseSessionTranscript(t *testing.T) {
 					advance    time.Duration
 					seconds    int
 				}{
-					{line: "PAUSE 60", want: "Missed spots are not replayed.\r\n", seconds: 60},
+					{line: "PAUSE 60", want: "Type RESUME to restart now, or SHOW HOLD to check the pause.\r\n", seconds: 60},
 					{line: "SHOW HOLD", want: "Live spots paused for 50s more. Suppressed spots: 0.\r\n", advance: 10 * time.Second, seconds: 50},
-					{line: "PAUSE 5", want: "Missed spots are not replayed.\r\n", seconds: 5},
+					{line: "PAUSE 5", want: "Type RESUME to restart now, or SHOW HOLD to check the pause.\r\n", seconds: 5},
 					{line: "PAUSE 0", want: "Usage: PAUSE [seconds 1-300] (default 30)\r\n", advance: time.Second, seconds: 4},
 					{line: "SHOW HOLD", want: "Live spots paused for 4s more. Suppressed spots: 0.\r\n", seconds: 4},
 					{line: "RESUME", want: "Live spots resumed. Suppressed spots: 0.\r\n"},
 					{line: "SHOW HOLD", want: "Live spots are not paused.\r\n"},
 					{line: "RESUME", want: "Live spots were not paused.\r\n"},
-					{line: "PAUSE", want: "Missed spots are not replayed.\r\n", seconds: 30},
+					{line: "PAUSE", want: "Type RESUME to restart now, or SHOW HOLD to check the pause.\r\n", seconds: 30},
 				} {
 					clock.Add(int64(command.advance))
 					if _, err := io.WriteString(conn, command.line+"\r\n"); err != nil {
@@ -288,7 +292,7 @@ func FuzzReadPauseCommand(f *testing.F) {
 				return
 			}
 			wantDeadline := now.Add(time.Duration(seconds) * time.Second).UnixNano()
-			if !strings.HasPrefix(response, fmt.Sprintf("Live spots paused for %ds.", seconds)) || client.readPauseUntilUnixNano.Load() != wantDeadline || client.readPauseDiscardBefore.Load() != wantDeadline || client.readPauseSuppressed.Load() != 9 {
+			if !strings.HasPrefix(response, fmt.Sprintf("Live spots paused for %d second", seconds)) || client.readPauseUntilUnixNano.Load() != wantDeadline || client.readPauseDiscardBefore.Load() != wantDeadline || client.readPauseSuppressed.Load() != 9 {
 				t.Fatalf("valid PAUSE violated duration or counter contract: %q -> %q", line, response)
 			}
 			return

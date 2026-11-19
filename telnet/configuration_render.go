@@ -97,7 +97,7 @@ func humanReadbackFooter(duration time.Duration) string {
 	if duration <= 0 {
 		duration = defaultReadPauseDuration
 	}
-	return fmt.Sprintf("Live spots paused during delivery and for at least %ds afterward.\nType RESUME when ready. Missed spots are not replayed.\n", durationCeilSeconds(duration))
+	return humanPauseFooter(duration)
 }
 
 func humanReadbackError(err error, duration time.Duration) string {
