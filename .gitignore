@@ -14,16 +14,17 @@ gocluster-windows-amd64.zip
 # data/
 logs/
 archive data/
-data/archive
+data/archive/
+data/bulletins/
 data/cty/
-data/grids
-data/ised
-data/reports
-data/ipinfo
+data/grids/
+data/ised/
+data/reports/
+data/ipinfo/
 data/reputation
-data/scp
+data/scp/
 data/skm_correction/
-data/users
+data/users/
 data/voacap/
 cmd/rbn_backtest/data/
 # *.db
@@ -41,8 +42,3 @@ data/config/openai.yaml
 !.claude/agents/
 !.claude/skills/
 .vscode/
-NUL
-data/cty/cty.plist.status.json
-data/skm_correction/rbnskew.json
-data/bulletins/history.json
-data/bulletins/history.json
