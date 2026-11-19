@@ -92,9 +92,10 @@ func TestSelectiveRescueTemporalFallbackAndForbiddenActions(t *testing.T) {
 			cfg.TemporalDecoder.MinScore, cfg.TemporalDecoder.OverflowAction = math.MaxInt, action
 			f, _, _, s, at := selectiveTemporalHold(t, cfg)
 			wantAction := correctionflow.TemporalDecisionActionFallbackResolver
-			if action == "abstain" {
+			switch action {
+			case "abstain":
 				wantAction = correctionflow.TemporalDecisionActionAbstain
-			} else if action == "bypass" {
+			case "bypass":
 				wantAction = correctionflow.TemporalDecisionActionBypass
 			}
 			release := selectiveTemporalRelease(t, f, time.Now().UTC().Add(4*time.Second), wantAction)

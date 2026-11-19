@@ -2050,6 +2050,8 @@ func resolverAppliedDecisionReason(gate spot.ResolverPrimaryGateResult, selectio
 // semantics, and applies C/B/suppress rails consistent with existing correction behavior.
 // Upstream: processOutputSpots (primary mode) and stabilizer release path.
 // Downstream: SignalResolver lookup, CTY validation, tracker counters, UI/log messages.
+//
+//nolint:unparam // Preserve the existing suppression-wrapper signature; primary routing now consumes the explicit outcome directly.
 func maybeApplyResolverCorrection(
 	spotEntry *spot.Spot,
 	resolver *spot.SignalResolver,
