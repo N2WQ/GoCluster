@@ -15,7 +15,7 @@ gocluster-windows-amd64.zip
 logs/
 archive data/
 data/archive/
-data/bulletins/
+data/bulletins/history.json
 data/cty/
 data/grids/
 data/ised/

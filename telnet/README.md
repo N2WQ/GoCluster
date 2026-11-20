@@ -227,9 +227,11 @@ Blank `NCDXF B` source-class beacon comments display `NCDXF BEACON`.
 
 ### RBN CW speed
 
-Use `SET CWSPEED ON` to display available CW speeds on ordinary-text RBN spots
-and stored history. Use `SET CWSPEED OFF` to hide them. The saved preference defaults to
-OFF and applies in both GO and CC. `SHOW SETTINGS` shows the current choice.
+New user profiles start with CW speed ON. Use `SET CWSPEED OFF` to hide
+available CW speeds on ordinary-text RBN spots and stored history, or use
+`SET CWSPEED ON` to show them again. Existing profiles keep their saved choice,
+and older profiles without the setting use OFF. The preference applies in both
+GO and CC. `SHOW SETTINGS` shows the current choice.
 Diagnostic mode hides speed. If a complete speed cannot fit on a spot line,
 it is omitted. Comment filters and searches use the existing stored comment,
 so they can match speed text that the setting hides from the displayed line.

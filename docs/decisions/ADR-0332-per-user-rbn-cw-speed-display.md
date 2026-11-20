@@ -56,6 +56,7 @@ this reset. Rollback requires compatible executables and saved user data.
 
 ## Links
 
+- [ADR-0365](ADR-0365-cw-speed-starting-default.md) supersedes the starting default only.
 - User and operator instructions: `telnet/README.md`.
 - Related beacon behavior: [ADR-0116](ADR-0116-blank-beacon-comment-fallback.md).
 - Affected packages: `rbn`, `spot`, `archive`, `filter`, `telnet`, `commands`.

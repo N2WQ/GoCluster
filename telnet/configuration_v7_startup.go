@@ -13,12 +13,11 @@ func (s *Server) validateV7StartingConfiguration() error {
 		return err
 	}
 	defer reservation.Release()
-	cfg, err := filter.DefaultV7Configuration(filter.SettingsConfiguration{
-		Dialect: string(s.configurationDefaultDialect()), DedupePolicy: s.effectiveDefaultDedupePolicy().label(),
-	})
+	record, err := s.newV7LoginRecord(s.configurationDefaultDialect())
 	if err != nil {
 		return err
 	}
+	cfg := record.Configuration
 	_, goFilter, ccFilter, err := filter.PrepareV7Configuration(cfg)
 	if err != nil {
 		return err
@@ -31,7 +30,7 @@ func (s *Server) validateV7StartingConfiguration() error {
 	c.configuredSettings, c.configurationInitialized = cfg.Settings, true
 	c.dialect = s.effectiveV7Dialect(cfg.Settings)
 	prepared, _ := s.prepareConfiguration(c, filter.ConfigurationFromFilter(&value, cfg.Settings), s.now())
-	if err := filter.AdmitV7UserRecord(&filter.V7UserRecord{ConfigurationVersion: filter.V7ConfigurationVersion, Configuration: cfg}); err != nil {
+	if err := filter.AdmitV7UserRecord(record); err != nil {
 		return err
 	}
 	return s.v7ConfigurationReadbackFits(c, cfg, prepared, filter.V7PresetReferences{})

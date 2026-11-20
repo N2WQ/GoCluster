@@ -51,7 +51,13 @@ func (s *Server) admitV7LoginRecord(c *Client, record *filter.V7UserRecord, now 
 }
 
 func (s *Server) newV7LoginRecord(dialect DialectName) (*filter.V7UserRecord, error) {
-	configuration, err := filter.DefaultV7Configuration(filter.SettingsConfiguration{Dialect: string(dialect), DedupePolicy: s.effectiveDefaultDedupePolicy().label()})
+	// Apply the CW speed default only to starting settings. A saved profile can
+	// omit cw_speed to represent OFF.
+	configuration, err := filter.DefaultV7Configuration(filter.SettingsConfiguration{
+		Dialect:      string(dialect),
+		DedupePolicy: s.effectiveDefaultDedupePolicy().label(),
+		CWSpeed:      true,
+	})
 	if err != nil {
 		return nil, err
 	}

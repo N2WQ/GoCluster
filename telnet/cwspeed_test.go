@@ -224,6 +224,10 @@ func TestCWSpeedHumanCommandPersistsAcrossDialects(t *testing.T) {
 			if err != nil || record.Configuration.Settings.CWSpeed || c.cwSpeedEnabled() {
 				t.Fatalf("disabled choice not persisted: %+v %v", record, err)
 			}
+			next = configurationTestClient(s, c.callsign)
+			if result := s.restoreV7ClientRecordOwned(next, time.Now().UTC()); result.loadError != nil || next.cwSpeedEnabled() {
+				t.Fatalf("reconnect did not restore disabled choice: %+v", result)
+			}
 		})
 	}
 }

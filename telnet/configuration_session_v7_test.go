@@ -49,6 +49,9 @@ func TestV7LoginResetPreservesSharedSettingsAndPendingNotice(t *testing.T) {
 	if c.configuredSettings.Grid != "FN31" || c.configuredSettings.NoiseClass != "URBAN" || c.configuredSettings.DedupePolicy != "SLOW" || c.configuredSettings.PathMinObservationCount != 42 || c.configuredSettings.SolarSummaryMinutes != 30 {
 		t.Fatal("reset changed unrelated configured preferences")
 	}
+	if c.cwSpeedEnabled() {
+		t.Fatal("reset enabled CW speed for a legacy profile without the preference")
+	}
 	record, err := filter.LoadV7UserRecord(c.callsign)
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +102,9 @@ func TestV7LoginUpgradeCommitFailureUsesProtectedTemporaryState(t *testing.T) {
 	result := s.restoreV7ClientRecordOwned(c, time.Now().UTC())
 	if !errors.Is(result.loadError, fault) || result.profileReset || !c.recordProtected || !c.preserveRecordOnExit.Load() || c.v7Notice.ProfileResetGeneration != 0 {
 		t.Fatalf("failed upgrade became writable/completed: %+v", result)
+	}
+	if !c.cwSpeedEnabled() {
+		t.Fatal("temporary starting settings did not enable CW speed")
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(after, []byte(v7LoginOldLiteral)) {
@@ -186,6 +192,13 @@ func TestV7NewSSIDResetsSharedOldPresetsAfterProfileCreation(t *testing.T) {
 	result := s.restoreV7ClientRecordOwned(c, time.Now().UTC())
 	if result.loadError != nil || !result.created || result.profileReset || c.dialect != DialectGo || c.v7Notice.ProfileResetGeneration != 0 || c.v7LibraryResetGeneration != 7 {
 		t.Fatalf("new SSID reset outcome: %+v", result)
+	}
+	record, err := filter.LoadV7UserRecord(c.callsign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.cwSpeedEnabled() || !record.Configuration.Settings.CWSpeed {
+		t.Fatal("first login did not enable and save CW speed")
 	}
 	if _, err := filter.LoadV7Preset(c.callsign, "OLD"); !errors.Is(err, filter.ErrPresetNotFound) {
 		t.Fatal("new SSID could load old preset", err)

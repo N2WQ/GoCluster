@@ -38,7 +38,8 @@ Local source behavior does not establish publication, deployment or validation.
   GO; CC uses native mode/source, geography and DXBM commands. Retrieve compiled
   HELP for exact aliases; do not translate arbitrary GO rules into CC.
 - `SET CWSPEED ON|OFF` controls available RBN CW speed on ordinary-text live and
-  historical spots, defaults to OFF, and is suppressed by diagnostics. Comment matching
+  historical spots. New profiles start ON. Existing profiles keep their saved
+  choice, with OFF for an omitted preference. Diagnostics hide speed. Comment matching
   retains the stored comment even when speed is hidden. The initial CW speed
   upgrade needs a fresh spot archive; it accumulates only new records afterward.
   The later display correction needs no reset, but cannot repair projections
