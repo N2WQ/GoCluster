@@ -623,7 +623,8 @@ history continuation and pending pages.
 ## WWV and WCY Bulletin History
 
 At login, the latest available WWV and WCY bulletins are shown regardless of
-the live WWV/WCY filter settings. Later announcements follow those filters.
+the live WWV/WCY filter settings, without an added receipt-time prefix. Later
+announcements follow those filters.
 Use `SHOW WWV` or `SHOW WCY` for the latest five retained bulletins and add
 `FULL` for that type's retained bulletins from the last 24 hours. Both dialects
 also accept `SH WWV`, `SHOW/WWV` and `SH/WWV`, with equivalent WCY forms;

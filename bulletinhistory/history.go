@@ -318,20 +318,20 @@ func (s *Store) Render(kind string, full bool, now time.Time) string {
 	if full {
 		limit = 0
 	}
-	return s.render(kind, limit, now, true)
+	return s.render(kind, limit, now, true, true)
 }
 
 // RenderLogin omits uncertain history warnings but still reports confirmed losses.
 func (s *Store) RenderLogin(kind string, now time.Time) string {
-	return s.render(kind, 1, now, false)
+	return s.render(kind, 1, now, false, false)
 }
 
 // RenderRecent returns the newest five bulletins in receipt order.
 func (s *Store) RenderRecent(kind string, now time.Time) string {
-	return s.render(kind, 5, now, true)
+	return s.render(kind, 5, now, true, true)
 }
 
-func (s *Store) render(kind string, limit int, now time.Time, showUncertainty bool) string {
+func (s *Store) render(kind string, limit int, now time.Time, showUncertainty, showReceipt bool) string {
 	if s == nil {
 		return "Bulletin history is unavailable.\n"
 	}
@@ -364,7 +364,10 @@ func (s *Store) render(kind string, limit int, now time.Time, showUncertainty bo
 		fmt.Fprintf(&b, "No %s bulletin in the last 24 hours.\n", kind)
 	}
 	for _, record := range items {
-		fmt.Fprintf(&b, "%s received %s UTC: %s", kind, record.Time.UTC().Format("2006-01-02 15:04:05"), safeDisplayText(record.Text))
+		if showReceipt {
+			fmt.Fprintf(&b, "%s received %s UTC: ", kind, record.Time.UTC().Format("2006-01-02 15:04:05"))
+		}
+		b.WriteString(safeDisplayText(record.Text))
 		if record.Truncated {
 			b.WriteString(" [truncated]")
 		}

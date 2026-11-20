@@ -125,6 +125,9 @@ func TestShippedLoginStartupBeforePrompt(t *testing.T) {
 				if strings.Contains(got, "<STARTUP_INFO>") || (strings.Contains(got, "WWV test data") != (records >= 1)) || (strings.Contains(got, "WCY test data") != (records >= 2)) {
 					t.Fatalf("wrong bulletin display: %q", got)
 				}
+				if strings.Contains(got, "WWV received ") || strings.Contains(got, "WCY received ") {
+					t.Fatalf("login added a receipt prefix: %q", got)
+				}
 			})
 		}
 	}

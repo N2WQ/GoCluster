@@ -63,7 +63,7 @@ func TestArchiveSanitizesOldAndNewTextWithoutChangingIdentity(t *testing.T) {
 	s.Record("WCY", "new\x1btext", now)
 	s.Record("WCY", "bad\xffutf8", now)
 	for _, kind := range []string{"WWV", "WCY"} {
-		for _, got := range []string{s.Render(kind, false, now), s.RenderRecent(kind, now), s.Render(kind, true, now)} {
+		for _, got := range []string{s.RenderLogin(kind, now), s.Render(kind, false, now), s.RenderRecent(kind, now), s.Render(kind, true, now)} {
 			if !utf8.ValidString(got) {
 				t.Fatalf("invalid UTF-8: %q", got)
 			}
@@ -81,6 +81,19 @@ func TestArchiveSanitizesOldAndNewTextWithoutChangingIdentity(t *testing.T) {
 	wcy := s.Render("WCY", true, now)
 	if strings.Count(wcy, "new text") != 2 || !strings.Contains(wcy, "bad�utf8") || s.Stats().Duplicates != 1 {
 		t.Fatalf("identity or utf8 changed: %q, %+v", wcy, s.Stats())
+	}
+}
+
+func TestLoginDisplaysBulletinWithoutReceiptPrefix(t *testing.T) {
+	s, _ := newTestStore(t, 0, 0)
+	now := time.Now().UTC().Truncate(time.Second)
+	for _, kind := range []string{"WWV", "WCY"} {
+		message := kind + " de K1ABC: " + strings.Repeat("x", 260)
+		s.Record(kind, message, now)
+		want := message[:256] + " [truncated]\n"
+		if got := s.RenderLogin(kind, now); got != want {
+			t.Fatalf("%s login = %q, want %q", kind, got, want)
+		}
 	}
 }
 

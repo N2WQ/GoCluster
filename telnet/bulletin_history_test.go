@@ -87,6 +87,13 @@ func TestBulletinLoginAndShowBypassLiveFiltersTCP(t *testing.T) {
 		if strings.Contains(got, tc.absent) {
 			t.Fatalf("%s leaked another type: %q", tc.command, got)
 		}
+		kind := "WWV"
+		if strings.Contains(tc.command, "WCY") {
+			kind = "WCY"
+		}
+		if !strings.Contains(got, kind+" received ") {
+			t.Fatalf("%s missing receipt prefix: %q", tc.command, got)
+		}
 	}
 	if _, err := io.WriteString(conn2, "DIALECT CC\r\n"); err != nil {
 		t.Fatal(err)
@@ -192,8 +199,8 @@ func TestBulletinV6BothDialectsSelectFiveAndLoginOne(t *testing.T) {
 		opts.LoginGreeting = "READY\n"
 	})
 	conn, reader, _, login := connectUpgradeSession(t, s, "K1BUL")
-	if strings.Count(login, "WWV received ") != 1 || strings.Count(login, "WCY received ") != 1 ||
-		!strings.Contains(login, "WWV-item-05") || !strings.Contains(login, "WCY-item-05") || strings.Contains(login, "item-04") {
+	if strings.Contains(login, "WWV received ") || strings.Contains(login, "WCY received ") ||
+		strings.Count(login, "WWV-item-05") != 1 || strings.Count(login, "WCY-item-05") != 1 || strings.Contains(login, "item-04") {
 		t.Fatalf("login must show exactly the latest per type: %q", login)
 	}
 	for _, kind := range []string{"WWV", "WCY"} {
@@ -261,7 +268,7 @@ func TestBulletinFull48MaxUnicodeTCP(t *testing.T) {
 		opts.AutoReadPauseDuration = 30 * time.Second
 	})
 	conn, reader, _, login := connectUpgradeSession(t, s, "K1BUL")
-	if strings.Count(login, "WWV received ") != 1 || !strings.Contains(login, "B00048") {
+	if strings.Contains(login, "WWV received ") || strings.Count(login, "B00048") != 1 || !strings.Contains(login, "[truncated]") || !strings.Contains(login, "WWV history is incomplete:") {
 		t.Fatalf("login did not show only newest WWV: %q", login)
 	}
 	if _, err := io.WriteString(conn, "SHOW/WWV FULL\r\n"); err != nil {

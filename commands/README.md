@@ -440,6 +440,8 @@ limited to 256 characters; longer text is marked as truncated.
 
 Login shows the latest available WWV and WCY bulletin, and these commands show
 requested bulletins, even if the corresponding live bulletin filter is off.
+Login displays the bulletin text without the receipt-time prefix used by these
+history commands.
 After login, live announcements follow the normal WWV and WCY filters. Receipt
 time is when this cluster received the bulletin, not necessarily the time of the
 underlying report. History is saved separately from the spot archive and can
