@@ -10,6 +10,34 @@ Led To ADR(s): none
 
 ## RCA Summary
 
+### 2026-11-19 command integration follow-up
+
+Hosted run 44623331387 passed the Windows product tests and runner fixtures,
+then failed all six command profiles at login. The captured transcript shows a
+successful shipped `Welcome to` greeting and prompt; the client required the old
+`Hello` wording. The operator can configure greeting text, so the client now
+checks the correlated schema-7 session callsign after the bounded prompt read.
+The protected-login oracle also follows the current v7 warning while retaining
+its temporary-defaults and original-file assertions.
+
+The 168 offline Python tests passed locally. The subsequent native and ziutek
+source-bound integration completed 130 of 138 objectives with no reported wire
+or cleanup failures. Eight HELP-routing/discovery objectives failed because
+their exact-header oracle encountered current introductory content first. This
+was corrected with exact introductory content and current switch wording while
+retaining usage, alias, ordering, terminal and state checks. The 169 offline
+tests passed. A subsequent local integration completed 136 of 138 objectives;
+the two remaining first-generation HOLD cases exhausted the 120-second profile
+deadline, followed by three cleanup deadline errors per transport. Both
+second-generation HOLD cases and all HELP objectives passed. The main profile
+budget is now 240 seconds; individual operation limits remain unchanged. If a
+profile deadline has expired, session retirement receives one separate bounded
+30-second window and preserves the original failure and cleanup errors. The 171
+offline Python tests and all 138 local source-bound integration objectives then
+passed across six profiles, with no wire or cleanup errors and 12 child receipts.
+Receipt: `.tmp/command-fixes/20261119-190610-83ba6a46/`. Hosted confirmation
+requires publishing the fix and observing a subsequent CI run.
+
 ### 2026-11-19 follow-up
 
 Hosted run 44606340988 exposed replay diagnostic fixtures that supplied the

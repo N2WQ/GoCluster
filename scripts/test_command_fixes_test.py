@@ -170,15 +170,24 @@ def discovery_help_literal(key, dialect):
     else:
         assert key in ("PASS", "REJECT")
         summary = ("Allow matching spots or enable separate controls." if key == "PASS" else "Veto matching spots or disable separate controls.") if dialect == "go" else "Change separate delivery switches."
-        lines = [key + " - " + summary]
+        lines = ["Spot rules (GO only)", "  PASS RULE 0 MODE=CW       Allow CW under rule 0.",
+                 "  REJECT RULE 9 MODE=FT8    Block FT8 even if a PASS rule allows it.",
+                 "  See HELP RULE for more examples.", "", "Delivery switches (GO and CC)",
+                 "  Switch     Turn on          Turn off", "  WWV        PASS WWV         REJECT WWV",
+                 "  WCY        PASS WCY         REJECT WCY", "  ANNOUNCE   PASS ANNOUNCE    REJECT ANNOUNCE",
+                 "  BEACON     PASS BEACON      REJECT BEACON", "",
+                 "WWV, WCY, and announcements are live messages, not spots.",
+                 "Numbered rules do not filter those messages.",
+                 "Beacon spots still go through your spot filters when BEACON is on.",
+                 "Changing a switch does not change any numbered rule.", "", key + " - " + summary]
         if dialect == "go":
             lines += ["Usage: " + key + " RULE <0..9> <expression>", "       " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"]
-            notes = ["GO uses numbered Boolean rules.", "PASS rules are ORed; a matching REJECT vetoes them.",
+            notes = ["SELF and TOXIC are also separate switches, not rule fields.", "PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
                      "Old category mutation syntax is refused, not translated; use HELP RULE."]
         else:
             lines += ["Usage: " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"]
-            notes = ["PASS enables; REJECT disables. PC93 aliases ANNOUNCE.",
-                     "Boolean rule edits require GO; HELP SET/FILTER describes native CC selection."]
+            notes = ["PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
+                     "Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER."]
     for note in notes[:-1]:
         lines += textwrap.wrap(note, width=78, initial_indent="  ", subsequent_indent="  ")
     # Filler precedes the independently specified terminal, so the strict
@@ -356,7 +365,7 @@ class DriverControls(unittest.TestCase):
     def test_case_retirement_preserves_shared_sessions_and_original_failure(self):
         suite = driver.CommandSuite.__new__(driver.CommandSuite)
         shared, first, second = mock.Mock(), mock.Mock(), mock.Mock()
-        suite.sessions, suite.results, suite.cleanup_errors = [shared], [], []
+        suite.sessions, suite.results, suite.cleanup_errors, suite.deadline = [shared], [], [], float("inf")
         first.close.side_effect = ValueError("cleanup refusal")
 
         def failed_case():
@@ -370,6 +379,39 @@ class DriverControls(unittest.TestCase):
         self.assertEqual(suite.results[0]["result"], "FAIL")
         self.assertIn("original semantic failure", suite.results[0]["detail"])
         self.assertEqual(suite.cleanup_errors, ["owned: cleanup refusal"])
+
+    def test_expired_case_retires_owned_sessions_with_one_bounded_budget(self):
+        suite = driver.CommandSuite.__new__(driver.CommandSuite)
+        shared, first, second = mock.Mock(), mock.Mock(), mock.Mock()
+        suite.sessions, suite.results, suite.cleanup_errors, suite.deadline = [shared], [], [], 90.0
+        observed = []
+
+        def close_first():
+            observed.append(suite.deadline)
+            raise TimeoutError("retirement timed out")
+
+        first.close.side_effect = close_first
+        second.close.side_effect = lambda: observed.append(suite.deadline)
+
+        def failed_case():
+            suite.sessions.extend((first, second))
+            raise ValueError("original semantic failure")
+
+        with mock.patch.object(driver.time, "monotonic", return_value=100.0):
+            suite.case("owned", failed_case)
+        self.assertEqual(observed, [130.0, 130.0])
+        self.assertEqual(suite.deadline, 90.0)
+        shared.close.assert_not_called()
+        self.assertIn("original semantic failure", suite.results[0]["detail"])
+        self.assertEqual(suite.cleanup_errors, ["owned: retirement timed out"])
+
+    def test_retirement_does_not_extend_unexpired_deadline(self):
+        suite = driver.CommandSuite.__new__(driver.CommandSuite)
+        suite.deadline = 101.0
+        with mock.patch.object(driver.time, "monotonic", return_value=100.0):
+            with suite.retirement_deadline():
+                self.assertEqual(suite.deadline, 101.0)
+        self.assertEqual(suite.deadline, 101.0)
 
     def test_login_receipt_uses_existing_bounded_read_without_replay(self):
         from types import SimpleNamespace
@@ -915,8 +957,8 @@ class DriverControls(unittest.TestCase):
                 claim = "Spot queued guarantees delivery." if key == "DX" else "show FCC mailing-address codes" if key.startswith("SHOW") else "RESET MODE"
                 with self.assertRaises(ValueError):
                     driver.require_discovery_help([*decoded, claim], key, dialect)
-                required = (("GO uses numbered Boolean rules.", "PASS rules are ORed", "Old category mutation syntax is refused") if key in ("PASS", "REJECT") and dialect == "go" else
-                            ("PASS enables; REJECT disables.", "Boolean rule edits require GO;") if key in ("PASS", "REJECT") else
+                required = (("Spot rules (GO only)", "Delivery switches (GO and CC)", "Old category mutation syntax is refused") if key in ("PASS", "REJECT") and dialect == "go" else
+                            ("Spot rules (GO only)", "Numbered PASS and REJECT rules are for GO.") if key in ("PASS", "REJECT") else
                             ("Shows canonical numbered rules",) if key == "SHOW FILTER" else
                             ("Shows exact native selections", "Band INHERIT") if key == "SHOW/FILTER" else
                             ("HELP SYMBOLS", "Showing archive spots") if key == "OVERVIEW" else
@@ -1072,6 +1114,29 @@ class DriverControls(unittest.TestCase):
             with self.assertRaises(ValueError):
                 driver.decode_help_routing(fault, query, contract, 10, 30, True)
         self.assertEqual(driver.decode_help_routing(routing_help_wire(["", *lines], query, pause=True), query, contract, 10, 30, True), (lines, True))
+
+    def test_archive_help_requires_exact_introduction_before_matching_details(self):
+        for key in ("SHOW DX", "SHOW/DX"):
+            with self.subTest(key=key):
+                intro = [f"Example: {key} 10 - Show up to 10 recent spots that match your filters.",
+                         f"  {key + ' K1ABC 10':<29}Search for a callsign.",
+                         f"  {key + ' 10 BAND 20 MODE CW':<29}Search for CW spots on 20m.",
+                         f"  {key + ' 10 COMMENT CQ':<29}Find spots with CQ in the comment.",
+                         "These searches don't change your saved filters.", ""]
+                contract = driver.help_route_contract(key, "go" if key == "SHOW DX" else "cc")
+                body = [contract[0], "Usage: " + contract[1][0],
+                        *("       " + usage for usage in contract[1][1:]),
+                        "Aliases: " + ", ".join(contract[3]), "Notes:", "  More details."]
+                query = "HELP " + key
+                lines = intro + body
+                self.assertEqual(driver.decode_help_routing(routing_help_wire(lines, query, pause=True),
+                                 query, contract, 10, 30, True), (lines, True))
+                for fault in (lines[1:], ["Unexpected text", *lines], [*intro[:-1], *body],
+                              [*intro, body[0].replace("Alias", "Wrong"), *body[1:]],
+                              [*intro, body[0], *body[2:]]):
+                    with self.assertRaises(ValueError):
+                        driver.decode_help_routing(routing_help_wire(fault, query, pause=True),
+                                                   query, contract, 10, 30, True)
 
     def test_help_routing_independent_topics_cover_source_heads_and_preserve_explicit_unknowns(self):
         self.assertEqual(driver.HELP_SHORTCUT_MODES, ("CW", "FT2", "FT4", "FT8", "PSK", "RTTY"))
@@ -1667,7 +1732,7 @@ class DriverControls(unittest.TestCase):
                         document["status"]["effective"]["dedupe_policy"] = "SLOW"
                     session = mock.Mock()
                     session.get.return_value = document
-                    session.login_greeting = b"Your saved user record could not be read, admitted or reset. Using temporary defaults."
+                    session.login_greeting = b"Could not load or upgrade your saved settings. Using temporary defaults."
                     if count == 49366 and fault == "negative_record":
                         session.get.side_effect = lambda record=record, raw=raw, document=document: (record.write_bytes(raw + b"#changed\n"), document)[1]
                     documents.append(document)

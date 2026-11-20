@@ -130,13 +130,19 @@ class Session:
         try:
             self.reader.until(b"login: ")
             self.send(call + "\r\n", count=False)
-            greeting = self.reader.until(b"UTC>")
-            if ("Hello " + call).encode() not in greeting:
-                raise ValueError("successful login greeting absent")
+            self.reader.until(b"UTC>")
+            self.verify_login_identity()
         except BaseException:
             self.sock.close()
             raise
         suite.sessions.append(self)
+
+    def verify_login_identity(self):
+        document = self.get(version=7)
+        status = document.get("status")
+        session = status.get("session") if isinstance(status, dict) else None
+        check(isinstance(session, dict) and session.get("callsign") == self.call,
+              "login session identity mismatch")
 
     def send(self, text, count=True):
         self.reader.deadline = min(self.suite.deadline, time.monotonic() + self.suite.args.timeout)
@@ -1019,8 +1025,8 @@ class V7Session(Session):
                 if b"Invalid call" in self.reader.buffer:
                     raise ValueError(f"server refused test login {call}")
                 self.reader._receive()
-            greeting = self.reader.until(b"UTC>")
-            check(("Hello " + call).encode() in greeting, "successful login greeting absent")
+            self.reader.until(b"UTC>")
+            self.verify_login_identity()
         except BaseException:
             self.sock.close()
             raise

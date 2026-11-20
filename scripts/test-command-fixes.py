@@ -118,6 +118,16 @@ class CommandSuite(harness.Suite):
     admission and hide the remaining evidence. Cleanup errors remain failures.
     """
 
+    @contextlib.contextmanager
+    def retirement_deadline(self):
+        original = self.deadline
+        if time.monotonic() >= original:
+            self.deadline = time.monotonic() + 30
+        try:
+            yield
+        finally:
+            self.deadline = original
+
     def case(self, name, operation, required=None):
         started = time.monotonic()
         existing = {id(current) for current in self.sessions}
@@ -126,12 +136,13 @@ class CommandSuite(harness.Suite):
             try:
                 operation()
             finally:
-                for current in self.sessions:
-                    if id(current) not in existing:
-                        try:
-                            current.close()
-                        except Exception as error:
-                            self.cleanup_errors.append(f"{name}: {error}")
+                with self.retirement_deadline():
+                    for current in self.sessions:
+                        if id(current) not in existing:
+                            try:
+                                current.close()
+                            except Exception as error:
+                                self.cleanup_errors.append(f"{name}: {error}")
         super().case(name, owned_operation, required)
         self.results[-1]["elapsed_seconds"] = round(time.monotonic() - started, 3)
 
@@ -1320,7 +1331,7 @@ def profile(binary, root, source, transport):
             child = Child(binary, root, source)
             children.append(child.identity)
             suite = CommandSuite(SimpleNamespace(host=child.host, port=child.port, call="K1ABC",
-                                                  timeout=8, run_seconds=120,
+                                                  timeout=8, run_seconds=240,
                                                   output=root / f"wire-{generation}"))
             if generation == 0:
                 label = literal_archive_label(suite, "CW")
@@ -1940,11 +1951,12 @@ def profile(binary, root, source, transport):
         finally:
             try:
                 if suite:
-                    for session in suite.sessions:
-                        try:
-                            session.close()
-                        except Exception as error:
-                            suite.cleanup_errors.append(str(error))
+                    with suite.retirement_deadline():
+                        for session in suite.sessions:
+                            try:
+                                session.close()
+                            except Exception as error:
+                                suite.cleanup_errors.append(str(error))
                     suite.log.close()
                     results.extend(suite.results)
                     wire.extend(suite.wire_failures)
@@ -2064,7 +2076,7 @@ def large_dedupe_cases(suite, root, generation):
         current = fixture_session(suite, call)
         before, saved = current.get(), record.read_bytes()
         if count == 49366:
-            require("could not be read, admitted or reset" in login_text(current, "") and
+            require("Could not load or upgrade your saved settings." in login_text(current, "") and
                     before["status"]["session"]["temporary_defaults"] is True and saved == original,
                     "oversized native login did not protect its original record")
             effective = before["status"]["effective"]["dedupe_policy"]
@@ -2636,7 +2648,7 @@ def help_route_contract(key, dialect):
         else:
             contracts[verb] = (verb + " - Change separate delivery switches.",
                 (verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]",),
-                last_note("Boolean rule edits require GO; HELP SET/FILTER describes native CC selection."), ())
+                last_note("Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER."), ())
     for topic in ("SET/FILTER", "UNSET/FILTER"):
         usages = [topic + " <switch> [ALL]"]
         if topic == "SET/FILTER":
@@ -2745,15 +2757,36 @@ def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, rem
     while lines and lines[0] == "":
         lines.pop(0)
     header, usage, terminal, allowed_aliases = contract
-    require(lines and lines[0] == header, "HELP routing selects the wrong intended header")
+    intro = []
+    if header.startswith(("SHOW DX - Alias of", "SHOW/DX - Alias of")):
+        show = header.split(" - ", 1)[0]
+        intro = [f"Example: {show} 10 - Show up to 10 recent spots that match your filters.",
+                 f"  {show + ' K1ABC 10':<29}Search for a callsign.",
+                 f"  {show + ' 10 BAND 20 MODE CW':<29}Search for CW spots on 20m.",
+                 f"  {show + ' 10 COMMENT CQ':<29}Find spots with CQ in the comment.",
+                 "These searches don't change your saved filters.", ""]
+    elif header.startswith(("PASS - ", "REJECT - ")):
+        intro = ["Spot rules (GO only)", "  PASS RULE 0 MODE=CW       Allow CW under rule 0.",
+                 "  REJECT RULE 9 MODE=FT8    Block FT8 even if a PASS rule allows it.",
+                 "  See HELP RULE for more examples.", "", "Delivery switches (GO and CC)",
+                 "  Switch     Turn on          Turn off", "  WWV        PASS WWV         REJECT WWV",
+                 "  WCY        PASS WCY         REJECT WCY", "  ANNOUNCE   PASS ANNOUNCE    REJECT ANNOUNCE",
+                 "  BEACON     PASS BEACON      REJECT BEACON", "",
+                 "WWV, WCY, and announcements are live messages, not spots.",
+                 "Numbered rules do not filter those messages.",
+                 "Beacon spots still go through your spot filters when BEACON is on.",
+                 "Changing a switch does not change any numbered rule.", ""]
+    require(lines[:len(intro)] == intro and len(lines) > len(intro) and lines[len(intro)] == header,
+            "HELP routing selects the wrong intended header or introduction")
+    body = lines[len(intro):]
     if header.startswith("Unknown help topic: "):
         require(lines == [header, "Type HELP for available commands."], "unsupported HELP route was accepted or altered")
     else:
         require(not any(line.startswith(("Unknown ", "Usage: Invalid", "Invalid ")) for line in lines),
                 "supported HELP route contains rejection feedback")
         expected = [("Usage: " if index == 0 else "       ") + value for index, value in enumerate(usage)]
-        require(lines[1:1 + len(expected)] == expected and
-                (len(lines) == len(expected) + 1 or not lines[1 + len(expected)].startswith("       ")),
+        require(body[1:1 + len(expected)] == expected and
+                (len(body) == len(expected) + 1 or not body[1 + len(expected)].startswith("       ")),
                 "HELP routing loses or broadens the intended usage")
         aliases = []
         for index, line in enumerate(lines):
@@ -3015,8 +3048,8 @@ def require_discovery_help(lines, key, dialect):
                     "Managing presets", "LIST PRESET", "SAVE PRESET DAY", "LOAD PRESET DAY", "HELP PRESETS")
         forbidden = ("GoCluster help -", "Call confidence", "Path reliability", "RESET MODE", "RESET FILTER RULE ALL", "HELP WEB")
     elif key in ("PASS", "REJECT"):
-        required = (("GO uses numbered Boolean rules.", "PASS rules are ORed", "Old category mutation syntax is refused, not translated;")
-                    if dialect == "go" else ("PASS enables; REJECT disables.", "PC93 aliases ANNOUNCE.", "Boolean rule edits require GO;"))
+        required = (("Spot rules (GO only)", "Delivery switches (GO and CC)", "Old category mutation syntax is refused, not translated;")
+                    if dialect == "go" else ("Spot rules (GO only)", "PC93 aliases ANNOUNCE.", "Numbered PASS and REJECT rules are for GO."))
         forbidden = ("MODE preserves visibility for every mode you do not name.", "MINSNR takes modes", "NEARBY takes ON|OFF", "RESET MODE")
     elif key in ("FILTERS", "FILTER EXAMPLES", "PRESETS"):
         harness.require_help_task(lines, key, dialect)

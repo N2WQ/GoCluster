@@ -131,6 +131,34 @@ class ReaderFixtures(unittest.TestCase):
             value.line()
 
 
+class LoginFixtures(unittest.TestCase):
+    def test_login_requires_correlated_session_identity(self):
+        for cls in (HARNESS.Session, HARNESS.V7Session):
+            for response, identity, success in (
+                (b"Welcome to N0CALL, K1ABC-01.\r\nUTC>", "K1ABC-01", True),
+                (b"Custom greeting\r\nUTC>", "K1ABC-01", True),
+                (b"Custom greeting\r\nUTC>", "K1ABC-02", False),
+                (b"Invalid call\r\nUTC>", None, False),
+                (b"incomplete greeting", None, False),
+            ):
+                with self.subTest(client=cls.__name__, response=response, identity=identity):
+                    sock = FakeSocket([b"login: ", response])
+                    suite = SimpleNamespace(args=SimpleNamespace(host="localhost", port=1, timeout=2),
+                                            deadline=time.monotonic() + 10, sessions=[])
+                    document = {"status": {"session": {"callsign": identity}}}
+                    with patch.object(HARNESS.socket, "create_connection", return_value=sock), \
+                            patch.object(cls, "get", return_value=document) as get:
+                        if success:
+                            session = cls(suite, "K1ABC-01")
+                            self.assertEqual(suite.sessions, [session])
+                            get.assert_called_once_with(version=7)
+                        else:
+                            with self.assertRaises((ValueError, EOFError)):
+                                cls(suite, "K1ABC-01")
+                            self.assertEqual(suite.sessions, [])
+                            self.assertIn("local close", sock.events)
+
+
 class FrameFixtures(unittest.TestCase):
     def test_schema_seven_keeps_both_independent_banks_and_identity(self):
         body = ('schema_version: 7\nrequest_id: Case-1\nresource: CONFIG\n'
