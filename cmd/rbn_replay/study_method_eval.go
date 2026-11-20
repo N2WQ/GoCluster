@@ -18,6 +18,7 @@ type studyMethodEvalDay struct {
 	Modes     map[string]*studyMethodEvalCounts `json:"modes"`
 	Episodes  studyMethodEvalEpisodeChanges     `json:"baseline_episode_changes"`
 	Cells     map[string]studyCellDate          `json:"all_observed_cells"`
+	Paired    studyPairedStability              `json:"paired_follow_on"`
 }
 type studyMethodEvalVariantResult struct {
 	Candidate           studyMethodCandidate              `json:"candidate"`
@@ -192,11 +193,13 @@ func studyMethodEvaluateDay(p *studyMethodEvalPrepared, loaded studyMethodEvalLo
 			return err
 		}
 		for i := range accumulators {
+			accumulators[i].day.Paired.observe(first, pair.Arms[i+1], spots, result.CurrentStability)
 			if err := accumulators[i].account(first, pair.Arms[i+1], record.Outcomes[0].Receipt, record.Outcomes[i+1].Receipt, controlIdentities); err != nil {
 				return err
 			}
 		}
 		if attribution != nil {
+			attribution.day.Paired.observe(pair.Arms[1], pair.Arms[2], spots, result.CurrentStability)
 			if err := attribution.account(pair.Arms[1], pair.Arms[2], record.Outcomes[1].Receipt, record.Outcomes[2].Receipt, geometryIdentities); err != nil {
 				return err
 			}

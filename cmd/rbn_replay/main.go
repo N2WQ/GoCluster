@@ -39,11 +39,37 @@ func main() {
 		methodEvalPlan      = flag.String("study-method-eval-plan", "", "Frozen named-role experimental evaluation plan")
 		methodEvalFreeze    = flag.String("study-method-eval-freeze", "", "SHA256 of the frozen experimental evaluation plan")
 		methodEvalOut       = flag.String("study-method-eval-out", "", "New bounded experimental evaluation directory")
+		weightEvalPlan      = flag.String("study-weight-eval-plan", "", "Frozen comparison of the two exposed CW fallback replay arms")
+		weightEvalFreeze    = flag.String("study-weight-eval-freeze", "", "SHA256 of the frozen CW fallback comparison plan")
+		weightEvalOut       = flag.String("study-weight-eval-out", "", "New CW fallback comparison directory")
 		auditPlan           = flag.String("study-audit-plan", "", "Frozen v5 audit JSON for existing study predictions only")
 		auditFreeze         = flag.String("study-audit-freeze", "", "SHA256 of the frozen audit plan")
 		auditOut            = flag.String("study-audit-out", "", "New audit evidence directory (must not exist)")
 	)
 	flag.Parse()
+	weightRequested := false
+	var weightOverrides []string
+	flag.Visit(func(f *flag.Flag) {
+		if strings.HasPrefix(f.Name, "study-weight-eval-") {
+			weightRequested = true
+		} else {
+			weightOverrides = append(weightOverrides, f.Name)
+		}
+	})
+	for _, argument := range flag.Args() {
+		if !strings.HasPrefix(argument, "-") {
+			continue
+		}
+		name, _, _ := strings.Cut(strings.TrimLeft(argument, "-"), "=")
+		weightRequested = weightRequested || strings.HasPrefix(name, "study-weight-eval-")
+	}
+	if weightRequested {
+		if len(weightOverrides) > 0 || len(flag.Args()) > 0 || *weightEvalOut == "" {
+			must(errors.New("weight evaluation uses only its frozen plan, SHA256 and new output directory"))
+		}
+		must(runStudyWeightEvaluation(studyFile{Path: *weightEvalPlan, SHA256: *weightEvalFreeze}, *weightEvalOut))
+		return
+	}
 	auditRequested := false
 	var auditOverrides []string
 	flag.Visit(func(f *flag.Flag) {

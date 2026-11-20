@@ -251,6 +251,10 @@ func studyReadReports(p studyPlan, digest string, req studyCLIRequest, candidate
 }
 
 func studyReadDayPairs(in studyInput, reports [3]*studyReport) (map[int64]*studyPair, error) {
+	return studyReadDayPairsForReports(in, reports[:])
+}
+
+func studyReadDayPairsForReports(in studyInput, reports []*studyReport) (map[int64]*studyPair, error) {
 	pairs := make(map[int64]*studyPair)
 	for arm, report := range reports {
 		if err := studyCheckFile(report.Decisions); err != nil {

@@ -618,3 +618,40 @@ qualification remain unchanged. See [ADR-0361](decisions/ADR-0361-selective-curr
 The completed [v8 comparison](call-correction-v2-v8-results.md) gained corrections
 but failed the unchanged stability objective and reference guard for both C and
 B. Neither method is qualified for production activation by those results.
+
+### Paired follow-on scoring and CW fallback replay
+
+Experimental evaluation includes a `paired_follow_on` block per date. It compares
+changed emitted identities at the candidate decision time and the original
+input frequency, using the same 15-minute, three-row, 500 Hz follow-on rule.
+The four outcomes distinguish both calls stable, only the ordinary call stable,
+only the candidate call stable, and neither stable. The focal-excluded counts
+remove exactly the input row when it would count in the common window.
+Added-rename counts are available separately. Output gains and losses, lost
+corrections, retargets, retiming, and reference unknowns each keep their own counts.
+The pooled stability calculation and reference guards retain their existing
+definitions. Paired counts describe archive agreement.
+
+The exposed CW fallback comparison uses two complete, disabled-method
+`repaired_off` captures for each of November 7 and 14, 2026. The candidate
+uses a private copy of the CW reliability file with one sorted
+`CALL 0.950` row for each normalized CW reporter absent from both original
+tables. The copied pipeline file points to that asset. The evaluator verifies
+the exact allowed table and path differences, the same source and executable,
+frozen inputs and settings, and all terminal input IDs.
+
+```powershell
+rbn_replay.exe -study-weight-eval-plan weight-evaluation-plan.json `
+  -study-weight-eval-freeze <plan-sha256> -study-weight-eval-out new-weight-evaluation
+```
+
+The plan binds the shared `disabled_method` file and `control_then_candidate`,
+an ordered pair of capture plans. Each capture contains a `plan` file binding
+and two ordered `reports` entries, each with its `complete` and `manifest`
+bindings. A file binding holds its local path and SHA-256. The output contains
+date and CW-specific counts, replay-output confidence glyph distributions,
+split transitions, and a changed-decision stream. The final `COMPLETE.json`
+binds the comparison, which binds the stream. Production fallback and
+activation decisions require separate evidence.
+See the [v10 results](call-correction-v2-v10-results.md) for the exposed
+comparison and slot-boundary findings.

@@ -107,7 +107,8 @@ func studyMethodEvalAccount(c *studyMethodEvalCounts, control, variant *studyDec
 		}
 	}
 	if studyDeliveredCorrection(variant) && (!studyDeliveredCorrection(control) || control.FinalIdentity != variant.FinalIdentity) {
-		if !active[fmt.Sprintf("%s/%d", variant.Raw.Mode, variant.ConfiguredDistance)] {
+		// The weight experiment has no mode/distance activation mask.
+		if active != nil && !active[fmt.Sprintf("%s/%d", variant.Raw.Mode, variant.ConfiguredDistance)] {
 			c.OutsideCells++
 		}
 		if variant.R1.Strong && variant.R1.Identity != variant.FinalIdentity {

@@ -367,6 +367,10 @@ func studyAuditRawPopulation(day *studyRawDay) (map[string][]stabilitypkg.Spot, 
 }
 
 func studyAuditArchiveBindings(day *studyRawDay, pairs map[int64]*studyPair) error {
+	return studyAuditArchiveBindingsForArms(day, pairs, 3)
+}
+
+func studyAuditArchiveBindingsForArms(day *studyRawDay, pairs map[int64]*studyPair, arms int) error {
 	focal := 0
 	for i := range day.Rows {
 		raw := &day.Rows[i]
@@ -381,7 +385,7 @@ func studyAuditArchiveBindings(day *studyRawDay, pairs map[int64]*studyPair) err
 		if pair == nil {
 			return errors.New("terminal union is missing a focal archive ID")
 		}
-		for _, d := range pair.Arms {
+		for _, d := range pair.Arms[:arms] {
 			if d == nil {
 				return errors.New("terminal union is missing a mandatory arm's focal raw ID")
 			}

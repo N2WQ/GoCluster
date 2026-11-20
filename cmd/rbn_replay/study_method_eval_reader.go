@@ -32,7 +32,7 @@ func studyMethodEvalReadJSON(file studyFile, dst any) error {
 	}
 	allowed := false
 	switch dst.(type) {
-	case *studyMethodEvaluationPlan, *studyReport, *studyMethodRunReport, *replayManifest:
+	case *studyMethodEvaluationPlan, *studyWeightEvaluationPlan, *studyReport, *studyMethodRunReport, *replayManifest:
 		allowed = true
 	}
 	if !allowed || reflect.ValueOf(dst).IsNil() {
