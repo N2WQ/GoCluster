@@ -27,8 +27,8 @@
 	Git remote used to resolve the release repository. Defaults to origin.
 
 .PARAMETER BaseReleaseTag
-    Exact published baseline tag for upgrade notes. Required for publication;
-    optional for a clean package-only rehearsal.
+    Optional exact published baseline tag. Publication automatically selects
+    the latest stable release when omitted.
 .PARAMETER SkipCodeMapCheck
 	Skip the generated code-map freshness check. Only allowed with -PackageOnly
 	for local package testing.
@@ -495,7 +495,6 @@ function New-ReleaseNotes {
         [string]$BaseCommit,
         [string]$CommitId,
         [string]$RepositoryUrl,
-        [string]$Explanation,
         [string]$YamlSummary
     )
 
@@ -523,7 +522,10 @@ Extract the asset and open the $PackageDirectoryName directory.
 - Candidate commit: $CommitId
 - [Full source comparison]($RepositoryUrl/compare/$BaseCommit...$CommitId)
 
-$Explanation
+This report is generated automatically and has not been reviewed for all
+operator-facing changes. The source comparison and YAML changes may not reveal
+all required upgrade actions. Review relevant changes and back up the existing
+installation before upgrading.
 
 ## Shipped YAML changes
 
@@ -837,9 +839,6 @@ $script:retainRunRoot = $false
 Push-Location $repoRoot
 try {
     $dirtyPreview = @(Assert-CleanWorktree -RepoRoot $repoRoot -AllowDirty:$AllowDirty).Count -gt 0
-    if (-not $PackageOnly -and -not $BaseReleaseTag) {
-        throw 'Publishing requires -BaseReleaseTag and reviewed upgrade notes.'
-    }
     if ($BaseReleaseTag -and $dirtyPreview) {
         throw 'Upgrade reports require a clean worktree. Omit -BaseReleaseTag for a dirty package-only preview.'
     }
@@ -863,12 +862,17 @@ try {
     Assert-OwnedReleaseOutputs $paths -AllowLegacy | Out-Null
     $target = $null
     $baseCommit = $null
-    if ($BaseReleaseTag) {
+    $automaticBaseline = -not $PackageOnly -and -not $BaseReleaseTag
+    if (-not $PackageOnly -or $BaseReleaseTag) { $target = Resolve-PublicationTarget $Remote }
+    if (-not $PackageOnly) { Assert-GitHubCliReady -HostName $target.HostName }
+    if ($automaticBaseline) {
+        $BaseReleaseTag = Get-LatestPublishedBaseline $target
+        $baseCommit = Resolve-AutomaticUpgradeBaseline $target $BaseReleaseTag $commitId
+    }
+    elseif ($BaseReleaseTag) {
         $baseCommit = Resolve-UpgradeBaseline -Tag $BaseReleaseTag -CommitId $commitId
-        $target = Resolve-PublicationTarget $Remote
     }
     if (-not $PackageOnly) {
-        Assert-GitHubCliReady -HostName $target.HostName
         Assert-ReleaseTargetsAvailable -Target $target -Version $releaseTag -BaseTag $BaseReleaseTag
         Assert-RemoteUpgradeBaseline $target $BaseReleaseTag $baseCommit
     }
@@ -910,11 +914,10 @@ try {
     if ($baseCommit) {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $repoUrl = "https://$($target.Repository)"
-        $explanation = Read-UpgradeExplanation $commitId $BaseReleaseTag $runRoot $repoUrl
         $yamlSummary = Write-ReleaseYamlDiff $stageRoot $runRoot $yaml $baseCommit $commitId
         $notes = New-ReleaseNotes -Version $version -ReleaseTag $releaseTag -Commit $commit -BuildTime $buildTime `
             -BaseTag $BaseReleaseTag -BaseCommit $baseCommit -CommitId $commitId -RepositoryUrl $repoUrl `
-            -Explanation $explanation -YamlSummary $yamlSummary
+            -YamlSummary $yamlSummary
         [IO.File]::WriteAllText((Join-Path $stageRoot 'UPGRADE.md'), $notes + [Environment]::NewLine)
     }
 
@@ -946,6 +949,10 @@ try {
         $generatedPaths = @($PackageDirectoryName)
         if (Test-PathWithin $zipPath $repoRoot) { $generatedPaths += $zipPath.Substring($repoRoot.Length + 1).Replace('\', '/') }
         Assert-ReleaseSourceUnchanged -RepoRoot $repoRoot -CommitId $commitId -GeneratedPaths $generatedPaths
+        if ($automaticBaseline -and (Get-LatestPublishedBaseline $target) -cne $BaseReleaseTag) {
+            throw 'Latest published release changed during preparation; no release was published.'
+        }
+        Assert-RemoteUpgradeBaseline $target $BaseReleaseTag $baseCommit
         Publish-GitHubRelease -ReleaseTag $releaseTag -CommitId $commitId -ZipPath $zipPath -Target $target `
             -NotesPath (Join-Path $paths.StageRoot 'UPGRADE.md')
         Write-Host "Published GitHub Release: $releaseTag"

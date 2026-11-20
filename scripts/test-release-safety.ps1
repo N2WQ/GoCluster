@@ -75,7 +75,7 @@ function New-ReleaseFixture {
     Invoke-FixtureGit $repo @('remote', 'add', 'origin', 'https://github.com/fixture/target.git') | Out-Null
     return $repo
 }
-function Reset-ReleaseNative([string]$Repo, [string]$Fault = '') {
+function Reset-ReleaseNative([string]$Repo, [string]$Fault = '', [string]$BaselineCommit = '') {
     $fixtureCommit = Invoke-FixtureGit $Repo @('rev-parse', 'HEAD')
     $fixtureTag = (Get-Date).ToUniversalTime().ToString('yyMMdd') + 'r' + $fixtureCommit.Substring($fixtureCommit.Length - 4)
     $global:ReleaseSafetyFixture = [pscustomobject]@{
@@ -83,8 +83,8 @@ function Reset-ReleaseNative([string]$Repo, [string]$Fault = '') {
         Calls = [Collections.Generic.List[object]]::new(); SuccessStderr = $false
         LocalCode = 2; RemoteCode = 2; Listing = 'absent'; Permission = 'WRITE'
         Drift = ''; FinalDrift = ''; HeadCalls = 0; BuildSerial = [guid]::NewGuid().ToString('N')
-        BaseCommit = Invoke-FixtureGit $Repo @('rev-parse', '261016r429e')
-        RemoteBase = 'matching'; NotesBytes = ''
+        BaseCommit = if ($BaselineCommit) { $BaselineCommit } else { Invoke-FixtureGit $Repo @('rev-parse', '261016r429e') }
+        RemoteBase = 'matching'; RemoteBaseCalls = 0; NotesBytes = ''; Latest = '261016r429e'; LatestCalls = 0; FetchSource = ''
     }
 }
 function New-LegacyReleaseOutputs([string]$Repo, [string]$Shape) {
@@ -132,11 +132,13 @@ function global:git {
         'remote' { 'git-target' }
         'merge-base' { 'git-ancestor' }
         'archive' { 'git-archive' }
+        'fetch' { 'git-fetch' }
         'cat-file' { 'git-object' }
         'rev-parse' {
             if ($operationArgs -contains '--show-toplevel') { 'git-root' }
             elseif ($operationArgs -contains '--short=12') { 'git-abbrev' }
-            elseif ($operationArgs[-1] -like 'refs/tags/*') { 'git-baseline-local' }
+            elseif ($operationArgs -contains '--is-shallow-repository') { 'git-shallow' }
+            elseif ($operationArgs[-1] -like 'refs/tags/*' -or $operationArgs[-1] -match '^[0-9a-f]{40,64}\^\{commit\}$') { 'git-baseline-local' }
             else {
                 $state.HeadCalls++
                 if ($state.HeadCalls -eq 3 -and $state.FinalDrift) {
@@ -157,12 +159,18 @@ function global:git {
     if ($op -eq 'git-local') { Invoke-ReleaseNativeStatus $op $nativeArgs $state.LocalCode; return }
     if ($op -eq 'git-remote') { Invoke-ReleaseNativeStatus $op $nativeArgs $state.RemoteCode; return }
     if ($op -eq 'git-baseline-remote') {
-        $commit = if ($state.RemoteBase -eq 'matching') { $state.BaseCommit } else { 'f' * 40 }
+        $state.RemoteBaseCalls++
+        $commit = if ($state.RemoteBase -eq 'matching' -or ($state.RemoteBase -eq 'changed' -and $state.RemoteBaseCalls -lt 4)) { $state.BaseCommit } else { 'f' * 40 }
         Invoke-ReleaseNativeStatus $op $nativeArgs 0 ("$commit" + [char]9 + 'refs/tags/261016r429e')
         return
     }
     if ($op -in @('git-tag', 'git-push') -or $state.Fault -ceq $op) { Invoke-ReleaseNativeStatus $op $nativeArgs; return }
     $state.Calls.Add([pscustomobject]@{ Operation = $op; Arguments = $nativeArgs; GOOS = $env:GOOS; GOARCH = $env:GOARCH; CGO = $env:CGO_ENABLED })
+    if ($op -eq 'git-fetch' -and $state.FetchSource) {
+        $fetchArgs = @($nativeArgs | ForEach-Object { if ($_ -ceq 'https://github.com/fixture/target.git') { $state.FetchSource } else { $_ } })
+        & $state.RealGit @fetchArgs
+        return
+    }
     & $state.RealGit @nativeArgs
 }
 function global:dyff {
@@ -216,6 +224,22 @@ function global:gh {
             'gh-repo'
         }
         'api' {
+            if ($nativeArgs[-1] -like '*/releases/latest') {
+                $state.LatestCalls++
+                $latest = if ($state.Latest -eq 'changed') {
+                    if ($state.LatestCalls -gt 1) { 'other-tag' } else { '261016r429e' }
+                } else { $state.Latest }
+                $output = switch ($latest) {
+                    'missing' { '{}' }
+                    'malformed' { 'invalid-json' }
+                    'draft' { '{"tag_name":"261016r429e","draft":true,"prerelease":false,"published_at":"2026-10-16T00:00:00Z"}' }
+                    'prerelease' { '{"tag_name":"261016r429e","draft":false,"prerelease":true,"published_at":"2026-10-16T00:00:00Z"}' }
+                    'unpublished' { '{"tag_name":"261016r429e","draft":false,"prerelease":false,"published_at":null}' }
+                    default { @{ tag_name = $latest; draft = $false; prerelease = $false; published_at = '2026-10-16T00:00:00Z' } | ConvertTo-Json -Compress }
+                }
+                Invoke-ReleaseNativeStatus 'gh-latest' $nativeArgs 0 $output
+                return
+            }
             $page = if ($nativeArgs[-1] -match 'page=(\d+)$') { [int]$Matches[1] } else { throw 'Missing explicit listing page.' }
             switch ($state.Listing) {
                 'absent' { $output = '[{"tag_name":"261016r429e","draft":false,"prerelease":false}]' }
@@ -251,9 +275,6 @@ function global:Compress-Archive {
 }
 function Invoke-ActualRelease([string]$Repo, [hashtable]$Parameters, [string]$ExpectedFailure = '') {
     $Parameters = $Parameters.Clone()
-    if (-not $Parameters['PackageOnly'] -and -not $Parameters.ContainsKey('BaseReleaseTag')) {
-        $Parameters.BaseReleaseTag = '261016r429e'
-    }
     $beforeLocation = (Get-Location).Path
     $beforeOS = $env:GOOS; $beforeArch = $env:GOARCH; $beforeCGO = $env:CGO_ENABLED
     $beforeOSExists = Test-Path Env:GOOS; $beforeArchExists = Test-Path Env:GOARCH
@@ -390,7 +411,7 @@ try {
                 $bytes = $stream.ToArray()
                 Assert-Fixture ([Convert]::ToBase64String($bytes) -ceq $global:ReleaseSafetyFixture.NotesBytes) 'GitHub notes and ZIP report differ.'
                 $report = [Text.Encoding]::UTF8.GetString($bytes)
-                Assert-Fixture ($report.Contains("https://github.com/fixture/target/blob/$head/docs/OPERATOR_GUIDE.md")) 'Report link is not commit pinned.'
+                Assert-Fixture ($report.Contains('generated automatically') -and $report.Contains('may not reveal')) 'Report does not disclose automatic limitations.'
                 Assert-Fixture ($report.Contains("https://github.com/fixture/target/compare/$($global:ReleaseSafetyFixture.BaseCommit)...$head")) 'Report range is wrong.'
             } finally { $stream.Dispose() }
         } finally { $zip.Dispose() }
@@ -398,7 +419,6 @@ try {
     Run-ReleaseCase 'baseline refusal and dirty preview labeling' {
         $repo = New-ReleaseFixture
         Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{ BaseReleaseTag = '' } 'requires -BaseReleaseTag'
         Invoke-ActualRelease $repo @{ BaseReleaseTag = 'does-not-exist' } 'Cannot resolve baseline'
         Invoke-FixtureGit $repo @('tag', 'candidate-itself') | Out-Null
         Invoke-ActualRelease $repo @{ BaseReleaseTag = 'candidate-itself' } 'strict ancestor'
@@ -410,7 +430,7 @@ try {
         }
         Reset-ReleaseNative $repo
         $global:ReleaseSafetyFixture.RemoteBase = 'moved'
-        Invoke-ActualRelease $repo @{} 'does not match local commit'
+        Invoke-ActualRelease $repo @{ BaseReleaseTag = '261016r429e' } 'does not match local commit'
         [IO.File]::AppendAllText((Join-Path $repo 'data/config/app.yaml'), "`r`n# private preview edit`r`n")
         Invoke-ActualRelease $repo @{ PackageOnly = $true; AllowDirty = $true; BaseReleaseTag = '261016r429e' } 'clean worktree'
         Invoke-ActualRelease $repo @{ PackageOnly = $true; AllowDirty = $true }
@@ -435,20 +455,64 @@ try {
             Assert-Fixture (-not $entries.ContainsKey('ready_to_run/UPGRADE.md')) 'Dirty preview shipped a release report.'
         } finally { $zip.Dispose() }
     }
-    Run-ReleaseCase 'report requires committed notes and resolvable source links' {
+    Run-ReleaseCase 'automatic report does not require manual notes' {
         $repo = New-ReleaseFixture
         Reset-ReleaseNative $repo
         $notes = 'docs/release/from-261016r429e.md'
         Invoke-FixtureGit $repo @('rm', '--', $notes) | Out-Null
         Invoke-FixtureGit $repo @('commit', '-q', '-m', 'remove notes from release source') | Out-Null
         Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{} 'Cannot read docs/release/from-261016r429e.md'
-        Write-FixtureFile (Join-Path $repo $notes) '[Missing decision](docs/decisions/no-such-decision.md)'
-        Invoke-FixtureGit $repo @('add', '--', $notes) | Out-Null
-        Invoke-FixtureGit $repo @('commit', '-q', '-m', 'add unresolved release link') | Out-Null
-        Reset-ReleaseNative $repo
-        Invoke-ActualRelease $repo @{} 'link to missing file'
-        Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -in @('archive', 'git-tag', 'git-push', 'gh-create')).Count -eq 0) 'Invalid notes reached archive or publication.'
+        Invoke-ActualRelease $repo @{}
+        $report = [IO.File]::ReadAllText((Join-Path $repo 'ready_to_run/UPGRADE.md'))
+        Assert-Fixture ($report.Contains('generated automatically') -and $report.Contains('source comparison')) 'Automatic report is missing its evidence or limitation.'
+    }
+    Run-ReleaseCase 'automatic baseline failures stop publication' {
+        foreach ($latest in @('missing', 'malformed', 'draft', 'prerelease', 'unpublished', 'changed')) {
+            $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
+            $global:ReleaseSafetyFixture.Latest = $latest
+            Invoke-ActualRelease $repo @{} 'latest|Latest|release'
+            Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -in @('git-tag', 'git-push', 'gh-create')).Count -eq 0) 'Invalid latest release reached publication.'
+        }
+        $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
+        $global:ReleaseSafetyFixture.RemoteBase = 'changed'
+        Invoke-ActualRelease $repo @{} 'does not match local commit'
+        Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -in @('git-tag', 'git-push', 'gh-create')).Count -eq 0) 'Changed baseline reached publication.'
+        foreach ($kind in @('same', 'unrelated')) {
+            $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
+            $commit = if ($kind -eq 'same') { Invoke-FixtureGit $repo @('rev-parse', 'HEAD') } else {
+                $tree = Invoke-FixtureGit $repo @('rev-parse', 'HEAD^{tree}')
+                Invoke-FixtureGit $repo @('commit-tree', $tree, '-m', 'unrelated baseline')
+            }
+            $global:ReleaseSafetyFixture.BaseCommit = $commit
+            Invoke-ActualRelease $repo @{} 'strict ancestor'
+            Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object Operation -in @('git-tag', 'git-push', 'gh-create')).Count -eq 0) 'Non-ancestor baseline reached publication.'
+        }
+    }
+    Run-ReleaseCase 'automatic baseline fetch preserves refs and FETCH_HEAD in shallow checkout' {
+        $source = New-ReleaseFixture
+        $base = Invoke-FixtureGit $source @('rev-parse', '261016r429e')
+        $bare = Join-Path $script:FixtureRoot ([guid]::NewGuid().ToString('N') + '.git')
+        $shallowRepo = Join-Path $script:FixtureRoot ([guid]::NewGuid().ToString('N'))
+        Invoke-FixtureGit $source @('clone', '--bare', '.', $bare) | Out-Null
+        $uri = ([Uri]::new($bare)).AbsoluteUri
+        Invoke-FixtureGit $source @('clone', '--no-tags', '--depth', '1', $uri, $shallowRepo) | Out-Null
+        Invoke-FixtureGit $shallowRepo @('remote', 'set-url', 'origin', 'https://github.com/fixture/target.git') | Out-Null
+        Invoke-FixtureGit $shallowRepo @('config', 'user.name', 'Release safety fixture') | Out-Null
+        Invoke-FixtureGit $shallowRepo @('config', 'user.email', 'release-fixture@example.invalid') | Out-Null
+        Invoke-FixtureGit $shallowRepo @('config', 'commit.gpgsign', 'false') | Out-Null
+        Invoke-FixtureGit $shallowRepo @('commit', '--allow-empty', '-q', '-m', 'unpublished candidate') | Out-Null
+        Assert-Fixture ((Invoke-FixtureGit $shallowRepo @('rev-parse', '--is-shallow-repository')) -ceq 'true') 'Fixture is not shallow.'
+        $refsBefore = Invoke-FixtureGit $shallowRepo @('for-each-ref', '--format=%(refname) %(objectname)')
+        $fetchHead = Join-Path $shallowRepo '.git/FETCH_HEAD'
+        [IO.File]::WriteAllText($fetchHead, 'preserve existing fetch receipt')
+        Reset-ReleaseNative $shallowRepo '' $base
+        $global:ReleaseSafetyFixture.FetchSource = $bare
+        Invoke-ActualRelease $shallowRepo @{}
+        $fetches = @($global:ReleaseSafetyFixture.Calls | Where-Object Operation -eq 'git-fetch')
+        Assert-Fixture ($fetches.Count -ge 1 -and @($fetches | Where-Object { $_.Arguments -notcontains '--no-write-fetch-head' -or $_.Arguments -notcontains '--no-tags' }).Count -eq 0) 'Fetch omitted ref or FETCH_HEAD safeguards.'
+        Assert-Fixture ((Invoke-FixtureGit $shallowRepo @('for-each-ref', '--format=%(refname) %(objectname)')) -ceq $refsBefore) 'Automatic fetch moved a branch or tag.'
+        Assert-Fixture ([IO.File]::ReadAllText($fetchHead) -ceq 'preserve existing fetch receipt') 'Automatic fetch overwrote FETCH_HEAD.'
+        Assert-Fixture ((Invoke-FixtureGit $shallowRepo @('rev-parse', '--is-shallow-repository')) -ceq 'false') 'History needed for ancestry was not obtained.'
     }
     Run-ReleaseCase 'YAML additions removals and failed comparison preserve previous ZIP' {
         $repo = New-ReleaseFixture
@@ -530,7 +594,7 @@ try {
             Assert-Fixture ($global:ReleaseSafetyFixture.Calls.Count -eq 0) 'Forbidden publish switch reached native operations.'
         }
     }
-    foreach ($fault in @('git-root', 'git-status', 'go-tidy', 'go-map', 'git-head', 'git-abbrev', 'git-files', 'git-target', 'gh-auth', 'git-local', 'git-remote', 'gh-repo', 'gh-page1', 'go-readme', 'go-build-main', 'archive', 'git-tag', 'git-push', 'gh-create')) {
+    foreach ($fault in @('git-root', 'git-status', 'go-tidy', 'go-map', 'git-head', 'git-abbrev', 'git-files', 'git-target', 'gh-auth', 'gh-latest', 'git-local', 'git-remote', 'gh-repo', 'gh-page1', 'go-readme', 'go-build-main', 'archive', 'git-tag', 'git-push', 'gh-create')) {
         Run-ReleaseCase "native stop: $fault" {
             $repo = New-ReleaseFixture; Reset-ReleaseNative $repo $fault
             Invoke-ActualRelease $repo @{} '.'

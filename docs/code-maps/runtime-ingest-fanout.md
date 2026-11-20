@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `1b9b13ced1467c13`
+- Source fingerprint: `a3e6508b61c5d183`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -1055,6 +1055,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0365 | Accepted | 2026-11-20 | telnet user preferences | `area:telnet` |
 | ADR-0359 | Accepted | 2026-11-19 | Telnet history and client compatibility | `area:telnet` |
 | ADR-0354 | Accepted | 2026-11-15 | peer FIFO, one verdict, original relay, retirement | `area:peer` |
 | ADR-0339 | Accepted | 2026-11-11 | telnet workers, ordering, session membership | `area:telnet` |

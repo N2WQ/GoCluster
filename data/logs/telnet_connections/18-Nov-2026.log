@@ -1,0 +1,9 @@
+2026/11/18 02:30:50 event=telnet_connection action=disconnect reason=server_shutdown call=VA3UXA ip=127.0.0.1
+2026/11/18 02:31:46 event=telnet_connection action=connect reason=accepted call=unknown ip=127.0.0.1
+2026/11/18 02:31:48 event=telnet_connection action=login reason=success call=VA3UXA ip=127.0.0.1
+2026/11/18 15:25:06 event=telnet_connection action=disconnect reason=server_shutdown call=VA3UXA ip=127.0.0.1
+2026/11/18 15:26:06 event=telnet_connection action=connect reason=accepted call=unknown ip=127.0.0.1
+2026/11/18 15:26:08 event=telnet_connection action=login reason=success call=VA3UXA ip=127.0.0.1
+2026/11/18 16:47:52 event=telnet_connection action=disconnect reason=server_shutdown call=VA3UXA ip=127.0.0.1
+2026/11/18 16:48:50 event=telnet_connection action=connect reason=accepted call=unknown ip=127.0.0.1
+2026/11/18 16:49:01 event=telnet_connection action=login reason=success call=VA3UXA ip=127.0.0.1

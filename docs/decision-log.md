@@ -27,10 +27,11 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0366 | Automatic Release Reports | Accepted | 2026-11-20 | release baseline, automatic upgrade reports | ADR-0362 reviewed prose and explicit baseline | none | [ADR-0366](decisions/ADR-0366-automatic-release-report.md) |
 | ADR-0365 | CW Speed Starting Default | Accepted | 2026-11-20 | telnet user preferences | ADR-0332 starting default only | none | [ADR-0365](decisions/ADR-0365-cw-speed-starting-default.md) |
 | ADR-0364 | PSKReporter Session Recovery | Accepted | 2026-11-19 | MQTT lifecycle and subscription health | none | none | [ADR-0364](decisions/ADR-0364-pskreporter-session-recovery.md) |
 | ADR-0363 | Filter Upgrade Backup Publication | Accepted | 2026-11-19 | filter storage and upgrade recovery | refines ADR-0330 backup publication | none | [ADR-0363](decisions/ADR-0363-filter-upgrade-backup-publication.md) |
-| ADR-0362 | Versioned Public Config and Upgrade Reports | Accepted | 2026-11-19 | public YAML provenance, upgrade reporting, release packaging | none | none | [ADR-0362](decisions/ADR-0362-versioned-config-release-report.md) |
+| ADR-0362 | Versioned Public Config and Upgrade Reports | Accepted | 2026-11-19 | public YAML provenance, upgrade reporting, release packaging | none | ADR-0366 baseline and reviewed-prose requirements | [ADR-0362](decisions/ADR-0362-versioned-config-release-report.md) |
 | ADR-0361 | Selective Current-Signal Call Rescue | Accepted | 2026-11-19 | optional live C, temporal authority, receiver-compatibility B, bounded development replay | none; extends ordinary method | none | [ADR-0361](decisions/ADR-0361-selective-current-signal-call-rescue.md) |
 | ADR-0360 | Call-Correction V2 Evidence And Bounded Bonuses | Accepted | 2026-11-17 | receiver SNR, canonical display, decision-local history, complete Bayes cell masks | ADR-0291 candidate-representative SNR and equal-time receipt selection only | none | [ADR-0360](decisions/ADR-0360-call-correction-v2-evidence-and-bounded-bonuses.md) |
 | ADR-0359 | Plain NEXT for Telnet History | Accepted | 2026-11-19 | Telnet history and client compatibility | refines ADR-0251 continuation input and presentation | none | [ADR-0359](decisions/ADR-0359-plain-next-for-telnet-history.md) |

@@ -179,21 +179,20 @@ for evidence boundaries and interpretation.
 
 ## Release Preparation
 
-`create-release.ps1 -BaseReleaseTag 261016r429e` prepares a release with an
-upgrade report from that baseline. Choose the baseline deliberately and fetch
-its tag. Publication verifies the release and tag on the selected repository.
-Keep the reviewed operator explanation in `docs/release/from-<baseline-tag>.md`
-in the candidate commit. Put required actions first and state why each matters.
-Use `docs/...` as the Markdown link target for repository documents. The
-renderer verifies those file paths and links to their candidate-commit copies.
+Run `create-release.ps1` with no arguments to publish. It selects the latest
+published stable GitHub release as the baseline and verifies its tag and
+ancestry. Missing baseline objects or shallow history are fetched without
+moving local branches, tags or `FETCH_HEAD`. If the baseline or release target
+cannot be verified, publication stops. `-BaseReleaseTag` remains available to
+select a specific published baseline.
 
 Install the Windows build of [dyff 1.12.0](https://github.com/homeport/dyff/releases/tag/v1.12.0)
 on the maintainer's PATH for report generation. The release package contains
 `UPGRADE.md`, the same report sent to GitHub, and `CONFIG-DIFF.md`, the
-public YAML appendix. Review the explained operator actions and source
-comparison before publishing. A text change with no reported structural
-difference can be a comment or formatting change. Use the source comparison
-to see that text.
+public YAML appendix. The report is automatic, not a reviewed explanation of
+operator actions. Code-only changes can require actions that a YAML diff does
+not reveal. A text change with no reported structural difference can be a
+comment or formatting change; use the source comparison to see it.
 
 Use `-PackageOnly -BaseReleaseTag 261016r429e` to rehearse the full report from
 a clean checkout and locally available tag. Rehearsal uses the configured

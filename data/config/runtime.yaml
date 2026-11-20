@@ -40,11 +40,16 @@ telnet:
   admission_log_sample_rate: 0.05                        # Sample rate for per-event reject logs (0..1)
   admission_log_max_reason_lines_per_interval: 20        # Max sampled reject lines emitted per interval
   # Login/message fields support the tokens documented in data/config/README.md.
-  welcome_message: "<CLUSTER> GoCluster Telnet cluster\r\n"
+  welcome_message: "Your IP address is recorded and shared with other clusters to prevent abuse.\r\n<CLUSTER> GoCluster DX Cluster\r\n"
   login_prompt: "login: "
   login_greeting: |
     <CALL> welcome to <CLUSTER>
     <LOGIN_SUMMARY>
+
+    Commands: <DIALECT> (<DIALECT_SOURCE>). Use DIALECT LIST or DIALECT <DIALECT_DEFAULT> to change.
+    Grid: <GRID> | Noise: <NOISE> | Dedupe: <DEDUPE>
+    SET GRID <grid> | SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL | SET DEDUPE FAST|MED|SLOW
+
     <STARTUP_INFO>
     <UPGRADE_NOTICE><CALL> de <CLUSTER> <DATETIME>>
   login_empty_message: |

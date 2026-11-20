@@ -1,0 +1,300 @@
+2026/11/15 00:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T00-00-00Z
+2026/11/15 00:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 00:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 00:02:47 Prop report queued for 2026-11-14 (data\logs\propagation\14-Nov-2026.log)
+2026/11/15 00:02:47 Prop report start for 2026-11-14 (data\logs\propagation\14-Nov-2026.log)
+2026/11/15 00:02:47 Prop report failed for 2026-11-14: load OpenAI config "data\\config\\openai.yaml": open data\config\openai.yaml: The system cannot find the file specified.
+2026/11/15 00:05:01 Prop report queued for 2026-11-14 (data\logs\propagation\14-Nov-2026.log)
+2026/11/15 00:05:01 Prop report start for 2026-11-14 (data\logs\propagation\14-Nov-2026.log)
+2026/11/15 00:05:01 Prop report failed for 2026-11-14: load OpenAI config "data\\config\\openai.yaml": open data\config\openai.yaml: The system cannot find the file specified.
+2026/11/15 00:10:03 Scheduled CTY download complete (26849 prefixes)
+2026/11/15 00:29:59 RBN-CW-RTTY: connection lost: read tcp 192.168.68.100:60264->188.245.97.211:7000: wsarecv: An existing connection was forcibly closed by the remote host. (retry in 5.122881379s)
+2026/11/15 00:30:01 Warning: scheduled RBN skew download failed: skew: fetch failed: skew: unexpected status 429 Too Many Requests
+2026/11/15 00:30:04 RBN-CW-RTTY: connecting to telnet.reversebeacon.net:7000...
+2026/11/15 00:30:04 RBN-CW-RTTY: connection established
+2026/11/15 00:30:06 Logging in to RBN-CW-RTTY as N0CALL-1
+2026/11/15 00:54:17 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m30s spot_q=0/1000 drops=parse=140 last_parse_err=11m30s
+2026/11/15 00:54:47 Ingest Health: DXSUMMIT disconnected idle last_msg=2m0s last_spot=2m0s spot_q=0/1000 drops=parse=140 last_parse_err=12m0s
+2026/11/15 00:55:17 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=140 last_parse_err=12m30s
+2026/11/15 01:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T01-00-00Z
+2026/11/15 01:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 01:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 01:56:17 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m30s spot_q=0/1000 drops=parse=142 last_parse_err=4m30s
+2026/11/15 01:56:47 Ingest Health: DXSUMMIT disconnected idle last_msg=2m0s last_spot=2m0s spot_q=0/1000 drops=parse=142 last_parse_err=5m0s
+2026/11/15 01:57:17 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=142 last_parse_err=5m30s
+2026/11/15 02:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T02-00-00Z
+2026/11/15 02:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 02:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 02:58:17 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m30s spot_q=0/1000 drops=parse=146 last_parse_err=6m30s
+2026/11/15 02:58:47 Ingest Health: DXSUMMIT disconnected idle last_msg=2m0s last_spot=2m0s spot_q=0/1000 drops=parse=146 last_parse_err=7m0s
+2026/11/15 02:59:17 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=146 last_parse_err=7m30s
+2026/11/15 03:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T03-00-00Z
+2026/11/15 03:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 03:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 03:41:47 Ingest Health: DXSUMMIT connected idle last_msg=1m0s last_spot=2m0s spot_q=0/1000 drops=parse=148 last_parse_err=8m0s
+2026/11/15 03:42:17 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=148 last_parse_err=8m30s
+2026/11/15 04:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T04-00-00Z
+2026/11/15 04:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 04:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 04:10:47 Ingest Health: DXSUMMIT connected idle last_msg=1m0s last_spot=2m0s spot_q=0/1000 drops=parse=149 last_parse_err=20m0s
+2026/11/15 04:11:17 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=149 last_parse_err=20m30s
+2026/11/15 04:42:17 Ingest Health: DXSUMMIT connected idle last_msg=30s last_spot=2m30s spot_q=0/1000 drops=parse=149 last_parse_err=51m30s
+2026/11/15 04:43:17 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=149 last_parse_err=52m30s
+2026/11/15 05:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T05-00-00Z
+2026/11/15 05:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 05:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 05:00:01 Gridstore: integrity scan ok (records=120420 duration=72.2471ms count_meta=120420)
+2026/11/15 05:00:02 CustomSCP: integrity scan ok (records=2105404)
+2026/11/15 06:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T06-00-00Z
+2026/11/15 06:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 06:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 06:31:26 PSKReporter: Processing queue full, dropped 1883 payload(s) total
+2026/11/15 06:35:18 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m30s spot_q=0/1000 drops=parse=152 last_parse_err=7m30s
+2026/11/15 06:35:48 Ingest Health: DXSUMMIT disconnected idle last_msg=2m0s last_spot=2m0s spot_q=0/1000 drops=parse=152 last_parse_err=8m0s
+2026/11/15 06:36:18 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=152 last_parse_err=8m30s
+2026/11/15 07:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T07-00-00Z
+2026/11/15 07:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 07:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 08:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T08-00-00Z
+2026/11/15 08:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 08:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 08:30:21 PSKReporter: Connection lost: pingresp not received, disconnecting (last_payload=14s last_spot=14s last_parse_err=never processing=0/256 mqtt_q=0/0 spot_queue=0/25000 path_only_q=0/25000 drops payload=2020 oversize=0 spot=0 path_only=0 parse=0 mqtt_drop=0 mqtt_qos12_timeout=0 mqtt_qos12_disconnect=0)
+2026/11/15 08:30:21 PSKReporter: Will attempt to reconnect...
+2026/11/15 08:30:54 solarweather: GOES fetch failed: Get "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json": context deadline exceeded
+2026/11/15 08:31:03 solarweather: Kp fetch failed: Get "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json": read tcp 192.168.68.100:59497->3.162.103.41:443: wsarecv: A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond.
+2026/11/15 08:31:18 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m29s spot_q=0/1000 drops=parse=165 last_parse_err=15m30s
+2026/11/15 08:31:54 solarweather: GOES fetch failed: Get "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json": context deadline exceeded
+2026/11/15 08:31:56 solarweather: Kp fetch failed: Get "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json": dial tcp: lookup services.swpc.noaa.gov: no such host
+2026/11/15 08:32:00 RBN-CW-RTTY: connection lost: read tcp 192.168.68.100:50973->44.52.120.53:7000: wsarecv: An established connection was aborted by the software in your host machine. (retry in 5.122881379s)
+2026/11/15 08:32:00 RBN-FT4-FT8: connection lost: read tcp 192.168.68.100:58206->188.245.97.211:7001: wsarecv: An established connection was aborted by the software in your host machine. (retry in 5.029783456s)
+2026/11/15 08:32:05 RBN-FT4-FT8: connecting to telnet.reversebeacon.net:7001...
+2026/11/15 08:32:05 RBN-CW-RTTY: connecting to telnet.reversebeacon.net:7000...
+2026/11/15 08:32:17 RBN-CW-RTTY: connection failed: failed to connect to RBN-CW-RTTY: dial tcp: lookup telnet.reversebeacon.net: no such host (retry in 11.611253168s)
+2026/11/15 08:32:17 RBN-FT4-FT8: connection failed: failed to connect to RBN-FT4-FT8: dial tcp: lookup telnet.reversebeacon.net: no such host (retry in 10.541411667s)
+2026/11/15 08:32:17 Warning: deduplicator idle for 2m10.6962969s
+2026/11/15 08:32:18 Ingest Health: RBN-CW-RTTY disconnected idle last_msg=2m11s last_spot=2m11s spot_q=0/1000
+2026/11/15 08:32:18 Ingest Health: RBN-FT4-FT8 disconnected idle last_msg=2m11s last_spot=2m11s spot_q=0/1000
+2026/11/15 08:32:18 Ingest Health: DXSUMMIT disconnected idle last_msg=2m30s last_spot=2m29s spot_q=0/1000 drops=parse=165 last_parse_err=16m30s
+2026/11/15 08:32:18 Ingest Health: PSKReporter connected idle last_msg=2m11s last_spot=2m11s payload_q=0/256 spot_q=0/25000 path_only_q=0/25000 drops=payload=2020
+2026/11/15 08:32:27 RBN-FT4-FT8: connecting to telnet.reversebeacon.net:7001...
+2026/11/15 08:32:28 RBN-CW-RTTY: connecting to telnet.reversebeacon.net:7000...
+2026/11/15 08:32:31 RBN-CW-RTTY: connection failed: failed to connect to RBN-CW-RTTY: dial tcp: lookup telnet.reversebeacon.net: no such host (retry in 20.099624957s)
+2026/11/15 08:32:31 RBN-FT4-FT8: connection failed: failed to connect to RBN-FT4-FT8: dial tcp: lookup telnet.reversebeacon.net: no such host (retry in 22.053039878s)
+2026/11/15 08:32:44 solarweather: GOES fetch failed: Get "https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json": dial tcp: lookup services.swpc.noaa.gov: no such host
+2026/11/15 08:32:44 solarweather: Kp fetch failed: Get "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json": dial tcp: lookup services.swpc.noaa.gov: no such host
+2026/11/15 08:32:47 Warning: deduplicator idle for 2m40.6976526s
+2026/11/15 08:32:52 RBN-CW-RTTY: connecting to telnet.reversebeacon.net:7000...
+2026/11/15 08:32:52 RBN-CW-RTTY: connection failed: failed to connect to RBN-CW-RTTY: dial tcp: lookup telnet.reversebeacon.net: no such host (retry in 40.587996746s)
+2026/11/15 08:32:54 RBN-FT4-FT8: connecting to telnet.reversebeacon.net:7001...
+2026/11/15 08:32:54 RBN-FT4-FT8: connection failed: failed to connect to RBN-FT4-FT8: dial tcp: lookup telnet.reversebeacon.net: no such host (retry in 41.471642401s)
+2026/11/15 08:33:17 Warning: deduplicator idle for 3m10.6975482s
+2026/11/15 08:33:32 RBN-CW-RTTY: connecting to telnet.reversebeacon.net:7000...
+2026/11/15 08:33:32 RBN-CW-RTTY: connection established
+2026/11/15 08:33:33 PSKReporter: Connected, subscribing to 1 topic(s)
+2026/11/15 08:33:33 PSKReporter: Subscribed to pskr/filter/v2/+/+/#
+2026/11/15 08:33:33 PSKReporter: Successfully subscribed, receiving spots...
+2026/11/15 08:33:34 Logging in to RBN-CW-RTTY as N0CALL-1
+2026/11/15 08:33:35 RBN-FT4-FT8: connecting to telnet.reversebeacon.net:7001...
+2026/11/15 08:33:35 RBN-FT4-FT8: connection established
+2026/11/15 08:33:37 Logging in to RBN-FT4-FT8 as N0CALL-1
+2026/11/15 08:33:48 Ingest Health: RBN-CW-RTTY connected active last_msg=0s last_spot=0s spot_q=0/1000
+2026/11/15 08:33:48 Ingest Health: RBN-FT4-FT8 connected active last_msg=0s last_spot=0s spot_q=0/1000
+2026/11/15 08:33:48 Ingest Health: PSKReporter connected active last_msg=0s last_spot=0s payload_q=0/256 mqtt_q=0/4096 spot_q=0/25000 path_only_q=0/25000 drops=payload=2020
+2026/11/15 08:34:18 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=168 last_parse_err=30s
+2026/11/15 08:34:48 Flood control: action=observe reason=flood_source_node total=1
+2026/11/15 08:41:16 PSKReporter: Processing queue full, dropped 2021 payload(s) total
+2026/11/15 09:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T09-00-00Z
+2026/11/15 09:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 09:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 09:57:22 PSKReporter: Processing queue full, dropped 2024 payload(s) total
+2026/11/15 10:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T10-00-00Z
+2026/11/15 10:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 10:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 10:23:40 PSKReporter: Processing queue full, dropped 2138 payload(s) total
+2026/11/15 11:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T11-00-00Z
+2026/11/15 11:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 11:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 11:07:28 PSKReporter: Processing queue full, dropped 2203 payload(s) total
+2026/11/15 11:11:24 PSKReporter: Processing queue full, dropped 2208 payload(s) total
+2026/11/15 11:22:08 PSKReporter: Processing queue full, dropped 2349 payload(s) total
+2026/11/15 11:26:06 PSKReporter: Processing queue full, dropped 2428 payload(s) total
+2026/11/15 11:34:41 PSKReporter: Processing queue full, dropped 2510 payload(s) total
+2026/11/15 11:54:57 PSKReporter: Processing queue full, dropped 2536 payload(s) total
+2026/11/15 11:59:01 PSKReporter: Processing queue full, dropped 2539 payload(s) total
+2026/11/15 12:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T12-00-00Z
+2026/11/15 12:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 12:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 12:13:17 PSKReporter: Processing queue full, dropped 2542 payload(s) total
+2026/11/15 12:15:49 PSKReporter: Processing queue full, dropped 3046 payload(s) total
+2026/11/15 12:28:38 PSKReporter: Processing queue full, dropped 3047 payload(s) total
+2026/11/15 12:29:13 PSKReporter: Processing queue full, dropped 3186 payload(s) total
+2026/11/15 12:43:48 PSKReporter: Processing queue full, dropped 3189 payload(s) total
+2026/11/15 13:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T13-00-00Z
+2026/11/15 13:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 13:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 13:18:44 Path predictor compacted 64 shards
+2026/11/15 14:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T14-00-00Z
+2026/11/15 14:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 14:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 14:18:44 Path predictor compacted 64 shards
+2026/11/15 15:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T15-00-00Z
+2026/11/15 15:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 15:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 15:12:06 New connection from 127.0.0.1:56776
+2026/11/15 15:12:06 Registered client: LZ3ZZ (total: 2)
+2026/11/15 15:12:16 Client LZ3ZZ disconnected: EOF
+2026/11/15 15:12:16 Unregistered client: LZ3ZZ (total: 1)
+2026/11/15 15:21:18 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m29s spot_q=0/1000 drops=parse=243 last_parse_err=14m30s
+2026/11/15 15:21:47 Rejected command input from VA3UXA: forbidden byte 0x3D
+2026/11/15 15:22:18 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=244 last_parse_err=30s
+2026/11/15 15:22:48 Flood control: action=observe reason=flood_source_node total=5
+2026/11/15 16:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T16-00-00Z
+2026/11/15 16:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 16:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 16:18:44 Path predictor compacted 64 shards
+2026/11/15 16:24:13 PSKReporter: Processing queue full, dropped 3392 payload(s) total
+2026/11/15 16:58:16 Received signal: terminated
+2026/11/15 16:58:16 Shutting down gracefully...
+2026/11/15 16:58:16 Deduplicator: Stopping...
+2026/11/15 16:58:16 Deduplicator: Process loop stopped
+2026/11/15 16:58:16 Deduplicator: Cleanup loop stopped
+2026/11/15 16:58:16 Stopping RBN-CW-RTTY client...
+2026/11/15 16:58:16 Stopping RBN-FT4-FT8 client...
+2026/11/15 16:58:16 RBN-CW: Spot processing stopped
+2026/11/15 16:58:16 Stopping PSKReporter client...
+2026/11/15 16:58:16 RBN-FT: Spot processing stopped
+2026/11/15 16:58:16 PSKReporter client stopped
+2026/11/15 16:58:16 Stopping telnet server...
+2026/11/15 16:58:16 DXSummit: Spot processing stopped
+2026/11/15 16:58:16 Client VA3UXA disconnected: read tcp 127.0.0.1:8300->127.0.0.1:53476: use of closed network connection
+2026/11/15 16:58:16 Disconnected client VA3UXA: server shutdown
+2026/11/15 16:58:16 Cluster stopped
+2026/11/15 16:58:16 Unregistered client: VA3UXA (total: 0)
+2026/11/15 16:59:12 Loaded configuration from data\config
+2026/11/15 16:59:12 VOACAP SSN state restored from data/voacap/ssn_state.json
+2026/11/15 16:59:12 [JOB 1] WAL file data\voacap\forecast_cache.pebble\000289.log with log number 000289 stopped reading at offset: 2675857; replayed 432 keys in 296 batches
+2026/11/15 16:59:12 VOACAP forecast cache restored from data/voacap/forecast_cache.pebble loaded=2878 pruned=0 expired=0 invalid=0 stale_generation=0 stale_window=0 overflow=0 duration=273ms
+2026/11/15 16:59:12 DX Cluster Server 261113 starting... (commit=66405747df19 built=2026-11-13T19:53:40Z)
+2026/11/15 16:59:12 VOACAP SSN monitor enabled
+2026/11/15 16:59:12 VOACAP closed fallback enabled
+2026/11/15 16:59:12 Solar weather overrides enabled
+2026/11/15 16:59:12 Prop report scheduler enabled
+2026/11/15 16:59:12 Configuration loaded for Go Cluster beta
+2026/11/15 16:59:12  (N0CALL-1)
+2026/11/15 16:59:12 FCC ULS: allowlist load failed from data/fcc/allowlist.txt: open data/fcc/allowlist.txt: The system cannot find the file specified.
+2026/11/15 16:59:13 Loaded CTY database from data/cty/cty.plist
+2026/11/15 16:59:13 Loaded 467 spotter reliability weights from data/rbn/priors/spotter_reliability.txt
+2026/11/15 16:59:13 Loaded 464 CW spotter reliability weights from data/rbn/priors/spotter_reliability_cw.txt
+2026/11/15 16:59:13 Loaded 109 RTTY spotter reliability weights from data/rbn/priors/spotter_reliability_rtty.txt
+2026/11/15 16:59:13 Loaded call correction confusion model from data/rbn/priors/confusion_model.json
+2026/11/15 16:59:13 Warning: failed to load ipinfo store: ipinfo pebble open: error opening database at "data\\ipinfo\\pebble\\db": pebble: database "data\\ipinfo\\pebble\\db" does not exist
+2026/11/15 16:59:13 Ring buffer created (capacity: 75000)
+2026/11/15 16:59:13 [JOB 1] WAL file data\scp\004098.log with log number 004098 stopped reading at offset: 373123; replayed 6907 keys in 6907 batches
+2026/11/15 16:59:16 ISED import: assigned=92233 known_province=90593 unknown_province=1640 main_rows=92233 malformed_main=0 event_rows=963 uncertain_events=3 malformed_events=3 schema=1
+2026/11/15 16:59:16 ISED published: schema=1 cache_generation=4 cache_entries=0 cache_cap=200000
+2026/11/15 16:59:16 ISED database updated
+2026/11/15 16:59:17 [JOB 1] WAL file data\grids\pebble\000075.log with log number 000075 stopped reading at offset: 6986720; replayed 183463 keys in 268 batches
+2026/11/15 16:59:17 Gridstore: db_check_on_miss=true (source=data\config)
+2026/11/15 16:59:17 Loaded 52 RBN skew corrections from data/skm_correction/rbnskew.json
+2026/11/15 16:59:17 Secondary dedupe (fast) active with 179s window; frequency changes=off
+2026/11/15 16:59:17 Secondary dedupe (med) active with 359s window; frequency changes=off
+2026/11/15 16:59:17 Secondary dedupe (slow) active with 479s window; frequency changes=off
+2026/11/15 16:59:17 Deduplicator: Starting unified processing loop for ALL sources
+2026/11/15 16:59:17 Deduplication active with 2m0s window
+2026/11/15 16:59:17 Flood control active with partition=exact_source_type log_interval=300s
+2026/11/15 16:59:17 Mode inference: dx_cache=50000 ttl=300s digital_window=180s min_corrob=5 seeds=46 seed_ttl=21600s
+2026/11/15 16:59:17 [JOB 1] WAL file data\archive\pebble\007297.log with log number 007297 stopped reading at offset: 1728765; replayed 10607 keys in 96 batches
+2026/11/15 16:59:17 Archive: writing to data/archive/pebble (batch=3000/3000ms queue=5000 cleanup=907s retention=86400s)
+2026/11/15 16:59:17 Toxicity classifier disabled
+2026/11/15 16:59:17 Telnet server listening on port 8300
+2026/11/15 16:59:17 RBN-CW-RTTY: connecting to telnet.reversebeacon.net:7000...
+2026/11/15 16:59:17 Broadcast worker 6 started
+2026/11/15 16:59:17 Broadcast worker 7 started
+2026/11/15 16:59:17 Broadcast worker 8 started
+2026/11/15 16:59:17 Broadcast worker 9 started
+2026/11/15 16:59:17 Reject worker 0 started
+2026/11/15 16:59:17 Reject worker 1 started
+2026/11/15 16:59:17 Broadcast worker 2 started
+2026/11/15 16:59:17 Broadcast worker 0 started
+2026/11/15 16:59:17 Broadcast worker 1 started
+2026/11/15 16:59:17 Broadcast worker 4 started
+2026/11/15 16:59:17 Broadcast worker 3 started
+2026/11/15 16:59:17 Broadcast worker 5 started
+2026/11/15 16:59:17 RBN-CW-RTTY: connection established
+2026/11/15 16:59:17 RBN CW/RTTY client ready to forward spots into unified dedup engine
+2026/11/15 16:59:17 RBN-FT4-FT8: connecting to telnet.reversebeacon.net:7001...
+2026/11/15 16:59:17 RBN-FT4-FT8: connection established
+2026/11/15 16:59:17 RBN Digital (FT4/FT8) client ready to forward spots into unified dedup engine
+2026/11/15 16:59:17 DXSummit client feeding spots into unified dedup engine
+2026/11/15 16:59:17 PSKReporter: MQTT inbound queue depth=4096 workers=1 qos12_timeout=250ms
+2026/11/15 16:59:17 Connecting to PSKReporter MQTT broker at tcp://mqtt.pskreporter.info:1883 (topics=pskr/filter/v2/+/+/#)...
+2026/11/15 16:59:17 PSKReporter worker 0 started
+2026/11/15 16:59:17 Connected to PSKReporter MQTT broker
+2026/11/15 16:59:17 PSKReporter client feeding spots into unified dedup engine
+2026/11/15 16:59:17 Cluster is running. Press Ctrl+C to stop.
+2026/11/15 16:59:17 Connect via: telnet localhost 8300
+2026/11/15 16:59:17 Receiving CW/RTTY spots from RBN (port 7000)...
+2026/11/15 16:59:17 Receiving FT4/FT8 spots from RBN Digital (port 7001)...
+2026/11/15 16:59:17 Receiving digital mode spots from PSKReporter (topics: pskr/filter/v2/+/+/#)...
+2026/11/15 16:59:17 Receiving DXSummit HTTP spots every 60 seconds...
+2026/11/15 16:59:17 Unified deduplication active: 120 second window
+2026/11/15 16:59:17 Go runtime tuning: memory_limit=1536MiB gc_percent=50 max_procs=2
+2026/11/15 16:59:17 Architecture: ALL sources -> Dedup Engine -> Ring Buffer -> Clients
+2026/11/15 16:59:17 Statistics will be displayed every 60 seconds...
+2026/11/15 16:59:17 ---
+2026/11/15 16:59:17 PSKReporter: Connected, subscribing to 1 topic(s)
+2026/11/15 16:59:17 PSKReporter: Subscribed to pskr/filter/v2/+/+/#
+2026/11/15 16:59:17 PSKReporter: Successfully subscribed, receiving spots...
+2026/11/15 16:59:17 Flood control: action=observe reason=flood_source_node total=1
+2026/11/15 16:59:19 Logging in to RBN-CW-RTTY as N0CALL-1
+2026/11/15 16:59:19 Logging in to RBN-FT4-FT8 as N0CALL-1
+2026/11/15 16:59:36 New connection from 127.0.0.1:65215
+2026/11/15 16:59:47 Ingest Health: RBN-CW-RTTY connected active last_msg=0s last_spot=0s spot_q=0/1000
+2026/11/15 16:59:47 Ingest Health: RBN-FT4-FT8 connected active last_msg=0s last_spot=0s spot_q=0/1000
+2026/11/15 16:59:47 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=1 last_parse_err=30s
+2026/11/15 16:59:47 Ingest Health: PSKReporter connected active last_msg=0s last_spot=0s payload_q=0/256 mqtt_q=0/4096 spot_q=0/25000 path_only_q=0/25000
+2026/11/15 16:59:47 Registered client: VA3UXA (total: 1)
+2026/11/15 17:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T17-00-00Z
+2026/11/15 17:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 17:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 17:08:47 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m29s spot_q=0/1000 drops=parse=4 last_parse_err=2m30s
+2026/11/15 17:09:47 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=4 last_parse_err=3m30s
+2026/11/15 17:10:17 Flood control: action=observe reason=flood_source_node total=48
+2026/11/15 17:30:02 PSKReporter: Connection lost: pingresp not received, disconnecting (last_payload=16s last_spot=16s last_parse_err=never processing=0/256 mqtt_q=0/0 spot_queue=0/25000 path_only_q=0/25000 drops payload=0 oversize=0 spot=0 path_only=0 parse=0 mqtt_drop=0 mqtt_qos12_timeout=0 mqtt_qos12_disconnect=0)
+2026/11/15 17:30:02 PSKReporter: Will attempt to reconnect...
+2026/11/15 17:30:02 PSKReporter: Connected, subscribing to 1 topic(s)
+2026/11/15 17:30:02 PSKReporter: Subscribed to pskr/filter/v2/+/+/#
+2026/11/15 17:30:02 PSKReporter: Successfully subscribed, receiving spots...
+2026/11/15 17:47:08 PSKReporter: Processing queue full, dropped 1 payload(s) total
+2026/11/15 17:54:13 PSKReporter: Processing queue full, dropped 73 payload(s) total
+2026/11/15 18:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T18-00-00Z
+2026/11/15 18:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 18:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 18:03:44 PSKReporter: Processing queue full, dropped 88 payload(s) total
+2026/11/15 18:57:09 PSKReporter: Processing queue full, dropped 421 payload(s) total
+2026/11/15 19:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T19-00-00Z
+2026/11/15 19:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 19:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 19:05:50 PSKReporter: Processing queue full, dropped 601 payload(s) total
+2026/11/15 19:16:44 PSKReporter: Processing queue full, dropped 604 payload(s) total
+2026/11/15 20:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T20-00-00Z
+2026/11/15 20:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 20:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 20:49:12 PSKReporter: Processing queue full, dropped 713 payload(s) total
+2026/11/15 21:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T21-00-00Z
+2026/11/15 21:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 21:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 21:34:47 Ingest Health: DXSUMMIT disconnected active last_msg=1m30s last_spot=1m30s spot_q=0/1000 drops=parse=33 last_parse_err=2m30s
+2026/11/15 21:35:17 Ingest Health: DXSUMMIT disconnected idle last_msg=2m0s last_spot=2m0s spot_q=0/1000 drops=parse=33 last_parse_err=3m0s
+2026/11/15 21:35:47 Ingest Health: DXSUMMIT connected active last_msg=30s last_spot=29s spot_q=0/1000 drops=parse=33 last_parse_err=3m30s
+2026/11/15 22:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T22-00-00Z
+2026/11/15 22:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 22:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 22:03:56 FCC ULS import: active=822120 known_state=822080 unknown_state=40 uncertain_calls=0 malformed_EN=1 schema=1
+2026/11/15 22:03:56 FCC ULS published: schema=1 cache_generation=4 cache_entries=727 cache_cap=200000
+2026/11/15 22:03:56 FCC ULS database updated
+2026/11/15 22:15:00 Scheduled ISED download: up to date
+2026/11/15 23:00:00 Gridstore: checkpoint created at data\grids\pebble\checkpoint\2026-11-15T23-00-00Z
+2026/11/15 23:00:00 Gridstore: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 23:00:00 CustomSCP: checkpoint cleanup removed 1 old checkpoint(s)
+2026/11/15 23:16:26 PSKReporter: Processing queue full, dropped 981 payload(s) total

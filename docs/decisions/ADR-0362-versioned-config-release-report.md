@@ -4,6 +4,10 @@
 - Date: 2026-11-19
 - Decision Origin: Approved release report and config bundle Scope Ledger v1
 
+The reviewed-prose and explicitly selected baseline requirements below are
+superseded by [ADR-0366](ADR-0366-automatic-release-report.md). The public YAML
+comparison, manifest and publication-safety decisions remain in force.
+
 ## Context
 
 The release ZIP includes public YAML. Operators deploy private copies, and

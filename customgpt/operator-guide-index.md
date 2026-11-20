@@ -8,6 +8,7 @@ existing operator-facing docs.
 | Need | Start here |
 | --- | --- |
 | Download the ready-to-run package | [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [download/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/download/README.md) |
+| Interpret automatic upgrade reports and their limits | [Upgrade a node](../docs/OPERATOR_GUIDE.md#upgrade-a-node), [automatic release reports](../docs/decisions/ADR-0366-automatic-release-report.md) |
 | Interpret build versions, interpret automatic commit-suffix release tags, or troubleshoot a duplicate release tag | [README.md build notes](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md), [ADR-0236](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0236-date-only-build-version.md), [ADR-0252](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/decisions/ADR-0252-automatic-commit-suffix-release-tags.md), [peer/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/peer/README.md) |
 | Configure a real node | [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [data/config/README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/data/config/README.md) |
 | Run on Windows | [docs/OPERATOR_GUIDE.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/docs/OPERATOR_GUIDE.md), [README.md](https://raw.githubusercontent.com/N2WQ/GoCluster/main/README.md) |

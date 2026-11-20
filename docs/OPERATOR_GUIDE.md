@@ -32,9 +32,10 @@ GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .
 
 ## Upgrade A Node
 
-1. Open `UPGRADE.md` in the release ZIP or on the GitHub release page. Check
-   that its baseline matches the version you are replacing. If you are on
-   an older release, review the intervening upgrade instructions too.
+1. Open `UPGRADE.md` in the release ZIP or on the GitHub release page. It is
+   generated automatically; its source comparison and YAML diff may not identify
+   every required action. Check that its baseline matches the version you are
+   replacing. If you are on an older release, review intervening releases too.
 2. Stop the old cluster and keep its executable, private config, and any
    state backups called out by the report. Apply the required edits to a
    copy of your complete private config. Keep local settings such as

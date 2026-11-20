@@ -19,8 +19,31 @@ function Resolve-UpgradeBaseline {
     return $baseCommit
 }
 
-function Assert-RemoteUpgradeBaseline {
-    param([object]$Target, [string]$Tag, [string]$BaseCommit)
+function Get-LatestPublishedBaseline {
+    param([object]$Target)
+
+    $result = Invoke-NativeResult 'gh' @('api', '--hostname', $Target.HostName, '--method', 'GET',
+        "repos/$($Target.NameWithOwner)/releases/latest")
+    if ($result.ExitCode -ne 0) { throw 'Cannot determine the latest published stable release.' }
+    try { $release = $result.Output | ConvertFrom-Json } catch { throw 'Invalid latest release response.' }
+    if ($release -isnot [pscustomobject] -or
+        -not $release.PSObject.Properties['tag_name'] -or -not $release.PSObject.Properties['draft'] -or
+        -not $release.PSObject.Properties['prerelease'] -or -not $release.PSObject.Properties['published_at']) {
+        throw 'Invalid latest published stable release response.'
+    }
+    $published = [DateTimeOffset]::MinValue
+    if ($release.tag_name -isnot [string] -or
+        $release.tag_name -cnotmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$' -or $release.tag_name.Contains('..') -or
+        $release.draft -isnot [bool] -or $release.prerelease -isnot [bool] -or $release.draft -or $release.prerelease -or
+        ($release.published_at -isnot [string] -and $release.published_at -isnot [datetime] -and $release.published_at -isnot [datetimeoffset]) -or
+        -not [DateTimeOffset]::TryParse([string]$release.published_at, [ref]$published)) {
+        throw 'Invalid latest published stable release response.'
+    }
+    return $release.tag_name
+}
+
+function Get-RemoteUpgradeBaseline {
+    param([object]$Target, [string]$Tag)
 
     $ref = "refs/tags/$Tag"
     $peeled = "$ref^{}"
@@ -35,10 +58,49 @@ function Assert-RemoteUpgradeBaseline {
         }
         $refs[$fields[1]] = $fields[0]
     }
-    $remoteCommit = if ($refs.ContainsKey($peeled)) { $refs[$peeled] } else { $refs[$ref] }
-    if (-not $refs.ContainsKey($ref) -or $remoteCommit -cne $BaseCommit) {
+    if (-not $refs.ContainsKey($ref)) { throw "Missing remote baseline tag $Tag." }
+    return $(if ($refs.ContainsKey($peeled)) { $refs[$peeled] } else { $refs[$ref] })
+}
+
+function Assert-RemoteUpgradeBaseline {
+    param([object]$Target, [string]$Tag, [string]$BaseCommit)
+
+    $remoteCommit = Get-RemoteUpgradeBaseline $Target $Tag
+    if ($remoteCommit -cne $BaseCommit) {
         throw "Remote baseline tag $Tag does not match local commit $BaseCommit."
     }
+}
+
+function Resolve-AutomaticUpgradeBaseline {
+    param([object]$Target, [string]$Tag, [string]$CommitId)
+
+    $base = Get-RemoteUpgradeBaseline $Target $Tag
+    $object = Invoke-NativeResult 'git' @('cat-file', '-e', "$base^{commit}")
+    if ($object.ExitCode -ne 0) {
+        # Fetch objects only: leave local tags, branches and FETCH_HEAD intact.
+        $fetch = Invoke-NativeResult 'git' @('fetch', '--no-tags', '--no-write-fetch-head', '--no-recurse-submodules',
+            $Target.PushUrl, "refs/tags/$Tag")
+        if ($fetch.ExitCode -ne 0) { throw "Cannot fetch baseline objects for $Tag." }
+    }
+    $resolved = Invoke-NativeResult 'git' @('rev-parse', '--verify', "$base^{commit}")
+    if ($resolved.ExitCode -ne 0 -or $resolved.Output.Trim() -cne $base) {
+        throw "Cannot verify baseline commit for $Tag."
+    }
+    $shallow = Invoke-NativeResult 'git' @('rev-parse', '--is-shallow-repository')
+    if ($shallow.ExitCode -ne 0 -or $shallow.Output.Trim() -cnotin @('true', 'false')) {
+        throw 'Cannot determine whether release history is complete.'
+    }
+    if ($shallow.Output.Trim() -ceq 'true') {
+        $history = Invoke-NativeResult 'git' @('fetch', '--unshallow', '--no-tags', '--no-write-fetch-head',
+            '--no-recurse-submodules', $Target.PushUrl, 'HEAD', "refs/tags/$Tag")
+        if ($history.ExitCode -ne 0) { throw 'Cannot obtain complete release history.' }
+    }
+    $ancestor = Invoke-NativeResult 'git' @('merge-base', '--is-ancestor', $base, $CommitId)
+    if ($ancestor.ExitCode -ne 0 -or $base -ceq $CommitId) {
+        throw "Baseline tag $Tag must be a strict ancestor of the candidate commit."
+    }
+    Assert-RemoteUpgradeBaseline $Target $Tag $base
+    return $base
 }
 
 function Get-StagedReleaseYaml {
@@ -78,30 +140,6 @@ function Open-ReleaseSnapshot {
     $result = Invoke-NativeResult 'git' @('archive', '--format=zip', "--output=$ZipPath", $CommitId, '--', $Path)
     if ($result.ExitCode -ne 0) { throw "Cannot read $Path from release commit $CommitId." }
     return [IO.Compression.ZipFile]::OpenRead($ZipPath)
-}
-
-function Read-UpgradeExplanation {
-    param([string]$CommitId, [string]$BaseTag, [string]$RunRoot, [string]$RepositoryUrl)
-
-    $path = "docs/release/from-$BaseTag.md"
-    $zip = Open-ReleaseSnapshot $CommitId $path (Join-Path $RunRoot 'upgrade-source.zip')
-    try {
-        $entry = $zip.GetEntry($path)
-        if ($null -eq $entry) { throw "Missing reviewed upgrade notes at $path." }
-        $reader = [IO.StreamReader]::new($entry.Open(), [Text.UTF8Encoding]::new($false, $true))
-        try { $body = $reader.ReadToEnd().Trim() } finally { $reader.Dispose() }
-    } finally { $zip.Dispose() }
-    if ([string]::IsNullOrWhiteSpace($body)) { throw "Reviewed upgrade notes at $path are empty." }
-    # Relative source links become commit-pinned web links in both outputs.
-    $pattern = '\]\((?<path>docs/[A-Za-z0-9_./-]+\.md)(?<anchor>#[A-Za-z0-9_-]+)?\)'
-    foreach ($link in [regex]::Matches($body, $pattern)) {
-        $target = $link.Groups['path'].Value
-        $result = Invoke-NativeResult 'git' @('cat-file', '-t', ($CommitId + ':' + $target))
-        if ($result.ExitCode -ne 0 -or $result.Output.Trim() -cne 'blob') {
-            throw "Upgrade notes link to missing file $target at $CommitId."
-        }
-    }
-    return [regex]::Replace($body, $pattern, "]($RepositoryUrl/blob/$CommitId/" + '$1$2)')
 }
 
 function Compare-ReleaseYaml {
