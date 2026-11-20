@@ -309,6 +309,26 @@ budget and storage failures return an error without `COMPLETE.json`; partial
 files remain and `FAILED.json` is best effort. Treat only a valid completion
 binding as usable evidence.
 
+### Exposed ordinary CW safeguard experiment
+
+Add `-study-ordinary-guard` to a frozen `repaired_off` tuning capture on
+November 7, 14, 15 or 16, 2026. Use the same frozen plan and executable without
+the flag for the ordinary control. The experiment requires selective rescue off
+and runs separately from method comparisons and diagnostic captures.
+
+After an immediate ordinary CW replacement passes validation, replay can retain
+the licensed incoming call. This requires a uniquely attached frequency group
+within 100 Hz of the focal report, a different group for the proposed call, and
+a gap of at least 150 Hz. Two receiver families must have reported both calls
+within 60 seconds of one another. Two families other than the focal family must
+also have supported the incoming call in the last 60 seconds. Incomplete or
+conflicting evidence leaves the ordinary decision in force.
+
+The active completion contains `ordinary_guard: true`. A direct retention has
+terminal reason `ordinary_cw_guard_retained_original`. Compare complete receipts
+using the common raw ID and frozen references. This evidence describes an
+exposed experiment and cannot qualify production behavior.
+
 ### Bounded exposed diagnostic replay
 
 The E1 investigation under [approved v5/v6](call-correction-v2-scope-ledger-v6.md)

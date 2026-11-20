@@ -89,9 +89,10 @@ type replayRunner struct {
 	temporalPending    map[uint64]replayTemporalPending
 	// Non-nil only for the explicitly selected offline study. This observer
 	// owns row provenance and never supplies a prediction or gate decision.
-	study       *studyObserver
-	diagnostics *studyDiagnosticRun
-	method      *studyMethodRun // Explicit replay-only method; nil preserves ordinary execution.
+	study         *studyObserver
+	diagnostics   *studyDiagnosticRun
+	method        *studyMethodRun // Explicit replay-only method; nil preserves ordinary execution.
+	ordinaryGuard bool            // Exposed study only; never consulted on temporal release.
 }
 
 // runReplay is the public orchestration entry point used by main and tests.

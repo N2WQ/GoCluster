@@ -24,6 +24,9 @@ import (
 func studySHA256Bytes(data []byte) [32]byte { return sha256.Sum256(data) }
 
 func runCCV2Study(req studyCLIRequest) error {
+	if err := validateOrdinaryGuardRequest(req); err != nil {
+		return err
+	}
 	if (req.MethodPlan != "" || req.MethodFreeze != "" || req.MethodCandidate != "") && (req.Compare != "" || req.DiagnosticSelection != "" || req.DiagnosticFreeze != "") {
 		return errors.New("experimental method cannot use legacy comparison or selected diagnostics")
 	}
@@ -253,6 +256,12 @@ func studyRunDayPrepared(p studyPlan, digest string, req studyCLIRequest, arm st
 
 func studyRunDayPreparedMethod(p studyPlan, digest string, req studyCLIRequest, arm studyArm, candidate studyCandidate,
 	in studyInput, cfg *config.Config, day *studyRawDay, maskSchema bool, prepared *studyDiagnosticPrepared, method *studyMethodPrepared) (err error) {
+	if err := validateOrdinaryGuardRequest(req); err != nil {
+		return err
+	}
+	if req.OrdinaryGuard && (prepared != nil || method != nil || cfg.CallCorrection.SelectiveRescueEnabled) {
+		return errors.New("ordinary guard requires the ordinary resolver with selective rescue and diagnostics off")
+	}
 	if err := studyMethodRuntimeAuthority(cfg, method); err != nil {
 		return err
 	}
@@ -266,6 +275,7 @@ func studyRunDayPreparedMethod(p studyPlan, digest string, req studyCLIRequest, 
 		}
 	}
 	r := newReplayRunner(replayRequest{dateValue: in.DateUTC})
+	r.ordinaryGuard = req.OrdinaryGuard
 	r.cfg, r.replayCfg, r.outDir = cfg, defaultReplayConfig(), req.Output
 	r.archiveDir, r.zipPath = req.Output, in.Archive.Path
 	r.zipResult.Meta.SHA256 = in.Archive.SHA256
@@ -410,6 +420,10 @@ func studyRunDayPreparedMethod(p studyPlan, digest string, req studyCLIRequest, 
 	report.Decisions = studyFile{Path: observer.path, SHA256: decisionSHA}
 	report.CallCorrectionSHA256, report.PipelineWithoutBayesSHA256 = ccFingerprint, pipelineFingerprint
 	report.LicenseInputs = r.licenseInputs
+	if r.ordinaryGuard {
+		report.OrdinaryGuard = true
+		report.ClaimLimits = append(report.ClaimLimits, "Ordinary CW safeguard experiment on exposed dates; no activation or RF-accuracy qualification")
+	}
 	if r.diagnostics != nil {
 		report.Diagnostics, err = r.diagnostics.complete(r.temporalNextID)
 		if err != nil {

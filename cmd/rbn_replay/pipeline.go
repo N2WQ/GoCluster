@@ -214,7 +214,7 @@ func maybeApplyResolverCorrectionReplayWithSelectionOverride(
 	now time.Time,
 	selectionOverride *correctionflow.ResolverPrimarySelection,
 ) replayResolverApplyOutcome {
-	return maybeApplyResolverCorrectionReplayDiagnosticCore(spotEntry, resolver, evidence, hasEvidence, cfg, ctyDB, tracker, adaptive, recentBandStore, now, selectionOverride, nil)
+	return maybeApplyResolverCorrectionReplayDiagnosticCore(spotEntry, resolver, evidence, hasEvidence, cfg, ctyDB, tracker, adaptive, recentBandStore, now, selectionOverride, nil, nil)
 }
 
 // The optional call destination observes the same execution after the existing
@@ -223,7 +223,7 @@ func maybeApplyResolverCorrectionReplayDiagnosticCore(
 	spotEntry *spot.Spot, resolver *spot.SignalResolver, evidence spot.ResolverEvidence, hasEvidence bool,
 	cfg config.CallCorrectionConfig, ctyDB *cty.CTYDatabase, tracker *stats.Tracker, adaptive *spot.AdaptiveMinReports,
 	recentBandStore spot.RecentSupportStore, now time.Time, selectionOverride *correctionflow.ResolverPrimarySelection,
-	capture *studyDiagnosticSelectorCall,
+	capture *studyDiagnosticSelectorCall, retainOriginal func(winner string) bool,
 ) replayResolverApplyOutcome {
 	outcome := replayResolverApplyOutcome{}
 	if spotEntry == nil {
@@ -329,10 +329,13 @@ func maybeApplyResolverCorrectionReplayDiagnosticCore(
 		return outcome
 	}
 
-	applied, suppress, reason := applyReplayReplacement(spotEntry, winnerCall, cfg, ctyDB, now)
+	applied, suppress, reason := applyReplayReplacementGuarded(spotEntry, winnerCall, cfg, ctyDB, now, retainOriginal)
 	if !applied {
-		outcome.Suppress, outcome.replacementRejected = suppress, true
+		outcome.Suppress, outcome.replacementRejected = suppress, reason != studyOrdinaryGuardRetained
 		outcome.Confidence.Final = normalizeConfidenceGlyph(spotEntry.Confidence)
+		if reason == studyOrdinaryGuardRetained {
+			outcome.methodReason = reason
+		}
 		observeResolverPrimaryDecision(tracker, "rejected", reason, 1)
 		return outcome
 	}
@@ -352,6 +355,13 @@ func maybeApplyResolverCorrectionReplayDiagnosticCore(
 // ordinary and experimental proposals. Exactly one gate-allowed candidate may
 // enter it; validation failure is terminal, never a runner-up search signal.
 func applyReplayReplacement(s *spot.Spot, call string, cfg config.CallCorrectionConfig, db *cty.CTYDatabase, now time.Time) (applied, suppress bool, reason string) {
+	return applyReplayReplacementGuarded(s, call, cfg, db, now, nil)
+}
+
+// Apply the experiment after the ordinary replacement is valid, and before any
+// correction counters, learning or identity mutation can observe its callsign.
+func applyReplayReplacementGuarded(s *spot.Spot, call string, cfg config.CallCorrectionConfig, db *cty.CTYDatabase, now time.Time,
+	retainOriginal func(winner string) bool) (applied, suppress bool, reason string) {
 	if shouldRejectCTYCall(call) {
 		reason = resolverDecisionInvalidBaseCall
 	} else if db != nil {
@@ -368,6 +378,9 @@ func applyReplayReplacement(s *spot.Spot, call string, cfg config.CallCorrection
 	}
 	if rejectReplayDXLicense(db, call, s.IsBeacon || spot.IsBeaconCall(call), now) {
 		return false, false, resolverDecisionLicenseReject
+	}
+	if retainOriginal != nil && retainOriginal(call) {
+		return false, false, studyOrdinaryGuardRetained
 	}
 	s.DXCall, s.DXCallNorm, s.Confidence = call, call, "C"
 	return true, false, ""

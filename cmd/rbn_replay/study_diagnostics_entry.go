@@ -65,7 +65,7 @@ func studyDiagnosticRejectReportMarker(data []byte) error {
 		if strings.EqualFold(key, "diagnostics") {
 			return errStudyDiagnosticReportMarker
 		}
-		if strings.EqualFold(key, "experimental") {
+		if strings.EqualFold(key, "experimental") || strings.EqualFold(key, "ordinary_guard") {
 			return errStudyExperimentalReportMarker
 		}
 		if err := studyDiagnosticSkipReportValue(decoder, 1); err != nil {

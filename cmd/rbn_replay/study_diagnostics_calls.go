@@ -67,13 +67,19 @@ func (r *replayRunner) diagnosticSelected(s *spot.Spot) (studyDiagnosticRawBindi
 }
 
 func (r *replayRunner) applyResolverOutcome(s *spot.Spot, evidence spot.ResolverEvidence, hasEvidence bool, now time.Time) replayResolverApplyOutcome {
+	if r.ordinaryGuard && hasEvidence && evidence.Key.Mode == "CW" && r.study != nil && r.study.pending[s] != nil {
+		retain := func(winner string) bool {
+			return r.retainOrdinaryCWOriginal(s, evidence.Key, winner, now)
+		}
+		return maybeApplyResolverCorrectionReplayDiagnosticCore(s, r.resolver, evidence, hasEvidence, r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now, nil, nil, retain)
+	}
 	binding, selected := r.diagnosticSelected(s)
 	if !selected || r.diagnostics.owner.Err() != nil {
 		ordinary := maybeApplyResolverCorrectionReplay(s, r.resolver, evidence, hasEvidence, r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now)
 		return r.applyMethodRescue(s, evidence, hasEvidence, now, ordinary, "", nil)
 	}
 	var capture studyDiagnosticSelectorCall
-	outcome := maybeApplyResolverCorrectionReplayDiagnosticCore(s, r.resolver, evidence, hasEvidence, r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now, nil, &capture)
+	outcome := maybeApplyResolverCorrectionReplayDiagnosticCore(s, r.resolver, evidence, hasEvidence, r.cfg.CallCorrection, r.ctyDB, r.tracker, r.adaptiveMinReports, r.recentBandStore, now, nil, &capture, nil)
 	if capture.Called {
 		r.diagnostics.capture(binding, "pipeline_selection", &capture.Data, capture.Err)
 	}

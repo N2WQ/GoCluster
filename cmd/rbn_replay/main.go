@@ -31,6 +31,7 @@ func main() {
 		studyPhase          = flag.String("study-phase", "holdout", "Study population: tuning or holdout")
 		studyOut            = flag.String("study-out", "", "New study output directory (must not exist)")
 		studyCompare        = flag.String("study-compare", "", "Comma-separated complete study report paths to compare")
+		ordinaryGuard       = flag.Bool("study-ordinary-guard", false, "Run the exposed ordinary CW safeguard experiment")
 		diagnosticSelection = flag.String("study-diagnostic-selection", "", "Frozen exposed diagnostic case selection (not qualification)")
 		diagnosticFreeze    = flag.String("study-diagnostic-freeze", "", "SHA256 of the frozen diagnostic case selection")
 		methodPlan          = flag.String("study-method-plan", "", "Frozen replay-only experimental method plan")
@@ -140,6 +141,9 @@ func main() {
 		if studyMethodCLIFlag(argument) {
 			methodRequested, studyRequested = true, true
 		}
+		if name, _, _ := strings.Cut(strings.TrimLeft(argument, "-"), "="); strings.HasPrefix(argument, "-") && name == "study-ordinary-guard" {
+			studyRequested = true
+		}
 	}
 	if studyRequested {
 		if len(replayOverrides) > 0 || len(flag.Args()) > 0 {
@@ -160,7 +164,7 @@ func main() {
 		req := studyCLIRequest{Plan: *studyPlan, Freeze: *studyFreeze, Arm: *studyArm,
 			Candidate: *studyCandidate, Phase: *studyPhase, Output: *studyOut, Compare: *studyCompare, Date: *dateFlag,
 			DiagnosticSelection: *diagnosticSelection, DiagnosticFreeze: *diagnosticFreeze,
-			MethodPlan: *methodPlan, MethodFreeze: *methodFreeze, MethodCandidate: *methodCandidate}
+			MethodPlan: *methodPlan, MethodFreeze: *methodFreeze, MethodCandidate: *methodCandidate, OrdinaryGuard: *ordinaryGuard}
 		must(studyDiagnosticValidateRequest(req))
 		must(runCCV2Study(req))
 		return

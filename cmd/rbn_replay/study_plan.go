@@ -36,6 +36,7 @@ type studyCLIRequest struct {
 	Plan, Freeze, Arm, Candidate, Phase, Output, Compare, Date string
 	DiagnosticSelection, DiagnosticFreeze                      string
 	MethodPlan, MethodFreeze, MethodCandidate                  string
+	OrdinaryGuard                                              bool
 }
 
 type studyFile struct {

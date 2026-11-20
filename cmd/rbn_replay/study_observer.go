@@ -95,6 +95,7 @@ type studyReport struct {
 	ClaimLimits                []string                 `json:"claim_limits"`
 	Diagnostics                *studyDiagnosticManifest `json:"diagnostics,omitempty"`
 	Experimental               *studyMethodManifest     `json:"experimental,omitempty"`
+	OrdinaryGuard              bool                     `json:"ordinary_guard,omitempty"`
 }
 
 type studyReferenceCoverage struct {
