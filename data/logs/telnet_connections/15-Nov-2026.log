@@ -1,6 +1,0 @@
-2026/11/15 15:12:06 event=telnet_connection action=connect reason=accepted call=unknown ip=127.0.0.1
-2026/11/15 15:12:06 event=telnet_connection action=login reason=success call=LZ3ZZ ip=127.0.0.1 suppressed=1 window=2m0s
-2026/11/15 15:12:16 event=telnet_connection action=disconnect reason=unknown call=LZ3ZZ ip=127.0.0.1 suppressed=1 window=2m0s
-2026/11/15 16:58:16 event=telnet_connection action=disconnect reason=server_shutdown call=VA3UXA ip=127.0.0.1
-2026/11/15 16:59:36 event=telnet_connection action=connect reason=accepted call=unknown ip=127.0.0.1
-2026/11/15 16:59:47 event=telnet_connection action=login reason=success call=VA3UXA ip=127.0.0.1
