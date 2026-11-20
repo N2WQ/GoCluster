@@ -94,6 +94,15 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 				conn, reader, _, transcript := connectUpgradeSession(t, s, call)
 				cfg, tail := upgradeWireGet(t, s, call, conn, reader, "")
 				assertHumanWire(t, transcript)
+				for _, guidance := range []string{
+					"Use DIALECT LIST or DIALECT ",
+					"SET GRID <grid> | SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL",
+					"SET DEDUPE FAST|MED|SLOW",
+				} {
+					if !strings.Contains(transcript, guidance) {
+						t.Fatalf("missing login guidance %q: %q", guidance, transcript)
+					}
+				}
 				title := "Saved settings loaded (GO)."
 				switch journey {
 				case "new":

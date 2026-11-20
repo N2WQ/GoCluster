@@ -537,6 +537,7 @@ func TestDiagnosticWrapperNativeSupervisorAdmission(t *testing.T) {
 	}()
 	script := `
 $ErrorActionPreference='Stop'
+[Console]::Error.WriteLine('admission: compiling native probe')
 Add-Type -TypeDefinition @'
 using System;using System.Runtime.InteropServices;using System.ComponentModel;
 public static class AdmissionProbe {
@@ -548,7 +549,9 @@ public static class AdmissionProbe {
  public static void Join(string n) {var j=OpenJobObject(5,false,n);if(j==IntPtr.Zero)throw new Win32Exception(Marshal.GetLastWin32Error(),"open");try{if(!AssignProcessToJobObject(j,GetCurrentProcess()))throw new Win32Exception(Marshal.GetLastWin32Error(),"assign");bool m;if(!IsProcessInJob(GetCurrentProcess(),j,out m)||!m)throw new Exception("not member");}finally{if(!CloseHandle(j))throw new Win32Exception(Marshal.GetLastWin32Error(),"close");}}
 }
 '@
+[Console]::Error.WriteLine('admission: joining parent job')
 [AdmissionProbe]::Join('Local\GoClusterDiagWrapper-` + fixture.nonce + `')
+[Console]::Error.WriteLine('admission: joined parent job')
 exit 0
 `
 	units := utf16.Encode([]rune(script))
@@ -556,14 +559,16 @@ exit 0
 	for i, unit := range units {
 		encoded[2*i], encoded[2*i+1] = byte(unit), byte(unit>>8)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	// Allow extra time for cold startup and compilation on shared CI hosts while
+	// retaining a finite deadline and distinguishing it from admission errors.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, os.Getenv(diagPowerShellIdentity), "-NoProfile", "-NonInteractive",
 		"-EncodedCommand", base64.StdEncoding.EncodeToString(encoded))
 	command.WaitDelay = 250 * time.Millisecond
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("actual native supervisor cannot join the parent-owned job: %v; %s", err, output)
+		t.Fatalf("native supervisor admission probe failed: %v; context: %v; output: %s", err, ctx.Err(), output)
 	}
 	accounting, err := diagAwaitJob(job)
 	if err != nil || accounting.TotalProcesses < 1 || accounting.ActiveProcesses != 0 {

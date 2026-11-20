@@ -106,7 +106,7 @@ func TestShippedLoginStartupBeforePrompt(t *testing.T) {
 					opts.PathStatusMessage = "Path notice"
 				})
 				_, got := openStartupSession(t, s, "UTC>")
-				welcome, prompt := strings.Index(got, "Welcome to N2WQ-2, K1BUL."), strings.LastIndex(got, "K1BUL de N2WQ-2")
+				welcome, prompt := strings.Index(got, "K1BUL welcome to N2WQ-2"), strings.LastIndex(got, "K1BUL de N2WQ-2")
 				if welcome < 0 || prompt <= welcome || !strings.HasSuffix(strings.TrimSpace(got), "UTC>") || strings.Count(got, "UTC>") != 1 {
 					t.Fatalf("incorrect welcome/prompt transcript: %q", got)
 				}
