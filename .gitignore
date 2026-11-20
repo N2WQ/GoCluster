@@ -19,6 +19,7 @@ data/bulletins/*
 data/cty/*
 data/grids/*
 data/ised/*
+data/logs/*
 data/reports/*
 data/ipinfo/*
 data/reputation/*
