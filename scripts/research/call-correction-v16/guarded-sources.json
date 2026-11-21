@@ -1,0 +1,26 @@
+{
+  "base_revision": "6e11e5d763d68d819d6b539f4d8abf05aa6474c2",
+  "tested_original_binary": "6d83da5c76af8afbef2b3b24aa82dded2052b14be37d321008299af76aa01ac3",
+  "sources": {
+    "cmd/rbn_replay/rbn_history.go": {
+      "base": "891a1f42dbdc1c228bb98fce61a721b150700fecae1269fc8d48c9670e3761e9",
+      "research": "a42235af801fcc552b5b83b5eb11cbc443cebc4f4da898639e33a5f788c29a3a"
+    },
+    "cmd/rbn_replay/study_method_apply.go": {
+      "base": "a4f79032fd6e90abe0aaf9d130057cdfa3a2eb29f5ff30c690b1c330b7a0ff1a",
+      "research": "e5f245edff489038bc18a9b0468598c74f7d4ba10cd0ab7dbcf08b1b1f382c3c"
+    },
+    "cmd/rbn_replay/study_method_plan.go": {
+      "base": "8e29df45281f70cca80defc5648234a93ce14af47197960866bb429a15b4360e",
+      "research": "703896be52a570bdc3884d10297116e39612b95009268a4e04b0a3e4cb6eafd2"
+    },
+    "internal/correctionflow/frequency_proposals.go": {
+      "base": "c3af2fa5f5de6f41de074af81e20f678661a1408663823573dbe138d411c9b1d",
+      "research": "7db329c5ec17da59dc378f36c082aab009ee9b051b9f6a2a896e39614e8f30a1"
+    },
+    "internal/correctionflow/selective_frequency.go": {
+      "base": "52aacd634eee405144e46812575aefbf164493dc22feb9b85349159ab9ab10d0",
+      "research": "57dcf21f026a1404bf9e17ad8ac8b8a5a1ce8890fc1eaa4f1e72da7ab4a4575d"
+    }
+  }
+}

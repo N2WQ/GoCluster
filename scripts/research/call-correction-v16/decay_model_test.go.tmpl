@@ -1,0 +1,30 @@
+package spot
+
+import (
+	"testing"
+	"time"
+)
+
+func TestV16DecayHalfLifeAndOverlap(t *testing.T) {
+	now := time.Unix(10000, 0)
+	raw := &ResolverEvidenceView{window: 5*time.Minute, count: 3, candidates: []resolverEvidenceCandidate{
+		{call: "K1AAA", receivers: []ResolverReceiverObservation{
+			{Receiver:"RX1", WeightMilli: 960, ObservedAt:now.Add(-v16HalfLife)},
+			{Receiver:"RX2", WeightMilli: 0, ObservedAt:now}}},
+		{call: "K1AAB", receivers: []ResolverReceiverObservation{
+			{Receiver:"RX1", WeightMilli: 960, ObservedAt:now}}},
+	}}
+	for _, mode := range []string{"RTTY", "FT8"} {
+		if v16DecayView(raw, now, mode) != raw { t.Fatal("non-CW projection",mode) }
+	}
+	view := v16DecayView(raw, now, "CW")
+	c,w,_ := view.ReceiverTotals()
+	if c != 2 || w != 960 || view.candidates[0].receivers[0].WeightMilli != 480 ||
+		raw.candidates[0].receivers[0].WeightMilli != 960 {t.Fatalf("initial c=%d w=%d",c,w)}
+	next := v16DecayView(view, now.Add(v16HalfLife), "CW")
+	c,w,_ = next.ReceiverTotals()
+	if c != 2 || w != 480 || next.candidates[0].receivers[0].WeightMilli != 240 ||
+		next.candidates[0].receivers[1].WeightMilli != 0 || v16DecayView(next, next.v16At,"CW")!=next {
+		t.Fatalf("release c=%d w=%d",c,w)
+	}
+}

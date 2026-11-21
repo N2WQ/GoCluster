@@ -1,0 +1,26 @@
+package spot
+
+import (
+	"reflect"
+	"testing"
+	"time"
+)
+
+func TestV16ClockOnlyStoredMilliweights(t *testing.T) {
+	at := time.Unix(12000, 0)
+	view := &ResolverEvidenceView{window: 300*time.Second, count: 4, candidates: []resolverEvidenceCandidate{
+		{call: "K1ABC", receivers: []ResolverReceiverObservation{
+			{Receiver: "A", WeightMilli: 952, ObservedAt: at, HasReport: true, Report: 12},
+			{Receiver: "B", WeightMilli: 1, ObservedAt: at.Add(-119*time.Second)},
+			{Receiver: "C", WeightMilli: 0, ObservedAt: at.Add(-60*time.Second)}}},
+		{call: "K1ABD", receivers: []ResolverReceiverObservation{
+			{Receiver: "A", WeightMilli: 952, ObservedAt: at.Add(-120*time.Second)}}},
+	}}
+	priced := view
+	for _, dt := range []time.Duration{0, 60*time.Second, 90*time.Second, 180*time.Second} {
+		priced = v16DecayView(priced, at.Add(dt), "CW")
+		if !reflect.DeepEqual(priced.candidates,view.candidates) { t.Fatalf("changed receipt at %v",dt) }
+		n,w,_ := priced.ReceiverTotals()
+		if n!=3 || w!=953 { t.Fatalf("unique receivers=%d weighted support=%d",n,w) }
+	}
+}

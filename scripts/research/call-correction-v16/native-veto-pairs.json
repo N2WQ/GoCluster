@@ -1,0 +1,34 @@
+{
+  "method-b-clock": {
+    "dates": 1,
+    "disrupted_parent_ids": 59,
+    "changed_delivered_identity_or_status": 59,
+    "either_supports_new": 28,
+    "either_supports_parent": 0,
+    "neither_strong": 31
+  },
+  "method-b-speed": {
+    "dates": 1,
+    "disrupted_parent_ids": 14,
+    "changed_delivered_identity_or_status": 14,
+    "either_supports_new": 8,
+    "either_supports_parent": 0,
+    "neither_strong": 6
+  },
+  "guarded-clock": {
+    "dates": 8,
+    "disrupted_parent_ids": 5,
+    "changed_delivered_identity_or_status": 5,
+    "either_supports_new": 0,
+    "either_supports_parent": 0,
+    "neither_strong": 5
+  },
+  "guarded-speed": {
+    "dates": 8,
+    "disrupted_parent_ids": 1,
+    "changed_delivered_identity_or_status": 1,
+    "either_supports_new": 0,
+    "either_supports_parent": 0,
+    "neither_strong": 1
+  }
+}

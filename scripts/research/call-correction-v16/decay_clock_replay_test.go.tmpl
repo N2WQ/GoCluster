@@ -1,0 +1,33 @@
+package main
+
+import (
+	"testing"
+	"time"
+
+	"dxcluster/spot"
+)
+
+func TestV16ClockOnlyNativeRivalRanking(t *testing.T) {
+	at := time.Unix(12000,0).UTC()
+	window := 300*time.Second
+	r,key := replayTemporalFreshRunner(t,replayTemporalFreshConfig(),at,window)
+	recent := at.Add(180*time.Second)
+	for _,rx := range []string{"N0AAA","N0BBB"} {
+		if !r.resolver.Enqueue(spot.ResolverEvidence{ObservedAt:recent, Key:key, DXCall:"K1ABE",
+			Spotter:rx, FrequencyKHz:14020, RecencyWindow:window}) { t.Fatal("queue full") }
+	}
+	r.driver.Step(recent)
+	r.driver.Sweep(recent.Add(time.Millisecond))
+	decision := recent.Add(60*time.Second)
+	s := replayTemporalFreshSpot("K1ABF",decision)
+	selection := r.selectTemporalInitial(s,key,"K1ABF",decision)
+	snapshot := selection.Snapshot
+	if snapshot.Winner!="K1ABC" || snapshot.TotalReporters!=4 || snapshot.WinnerSupport!=3 ||
+		snapshot.WinnerWeightedSupportMilli!=3000 || snapshot.TotalWeightedSupportMilli!=4000 {
+		t.Fatalf("unexpired votes changed under identity weighting: %+v",snapshot)
+	}
+	replayTemporalFreshOrdinaryControl(t,r,key,s,decision,"K1ABC")
+	fresh,ok := r.resolver.LookupEligible(key,at.Add(window+time.Second))
+	if !ok || fresh.TotalReporters!=2 || fresh.TotalWeightedSupportMilli!=2000 ||
+		len(fresh.CandidateRanks)!=1 || fresh.CandidateRanks[0].Call!="K1ABE" {t.Fatal("expiry failed",fresh)}
+}

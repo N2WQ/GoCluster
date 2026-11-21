@@ -1,0 +1,108 @@
+{
+  "clock-only": {
+    "correct_fix": {
+      "reference_identity_delivered": 105
+    },
+    "correct_fix/two_burst": {
+      "reference_identity_delivered": 8
+    },
+    "correct_fix/without_two_burst": {
+      "reference_identity_delivered": 97
+    },
+    "miss": {
+      "other_original_delivered": 91,
+      "other_rename_delivered": 2,
+      "suppressed_or_no_output": 12
+    },
+    "wrong_original": {
+      "other_rename_delivered": 85
+    },
+    "wrong_original/two_burst": {
+      "other_rename_delivered": 68
+    },
+    "wrong_original/without_two_burst": {
+      "other_rename_delivered": 17
+    }
+  },
+  "decay60": {
+    "correct_fix": {
+      "reference_identity_delivered": 105
+    },
+    "correct_fix/two_burst": {
+      "reference_identity_delivered": 8
+    },
+    "correct_fix/without_two_burst": {
+      "reference_identity_delivered": 97
+    },
+    "miss": {
+      "other_original_delivered": 76,
+      "reference_identity_delivered": 18,
+      "suppressed_or_no_output": 11
+    },
+    "wrong_original": {
+      "other_rename_delivered": 32,
+      "reference_identity_delivered": 53
+    },
+    "wrong_original/two_burst": {
+      "other_rename_delivered": 23,
+      "reference_identity_delivered": 45
+    },
+    "wrong_original/without_two_burst": {
+      "other_rename_delivered": 9,
+      "reference_identity_delivered": 8
+    }
+  },
+  "decay90": {
+    "correct_fix": {
+      "reference_identity_delivered": 105
+    },
+    "correct_fix/two_burst": {
+      "reference_identity_delivered": 8
+    },
+    "correct_fix/without_two_burst": {
+      "reference_identity_delivered": 97
+    },
+    "miss": {
+      "other_original_delivered": 77,
+      "reference_identity_delivered": 17,
+      "suppressed_or_no_output": 11
+    },
+    "wrong_original": {
+      "other_rename_delivered": 40,
+      "reference_identity_delivered": 45
+    },
+    "wrong_original/two_burst": {
+      "other_rename_delivered": 28,
+      "reference_identity_delivered": 40
+    },
+    "wrong_original/without_two_burst": {
+      "other_rename_delivered": 12,
+      "reference_identity_delivered": 5
+    }
+  },
+  "ordinary": {
+    "correct_fix": {
+      "reference_identity_delivered": 105
+    },
+    "correct_fix/two_burst": {
+      "reference_identity_delivered": 8
+    },
+    "correct_fix/without_two_burst": {
+      "reference_identity_delivered": 97
+    },
+    "miss": {
+      "other_original_delivered": 91,
+      "other_rename_delivered": 2,
+      "suppressed_or_no_output": 12
+    },
+    "wrong_original": {
+      "other_rename_delivered": 85
+    },
+    "wrong_original/two_burst": {
+      "other_rename_delivered": 68
+    },
+    "wrong_original/without_two_burst": {
+      "other_rename_delivered": 17
+    }
+  }
+}
