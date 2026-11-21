@@ -171,7 +171,7 @@ go build -trimpath -o gocluster.exe .
 
 ## Run On Linux
 
-Build from the repository root with Go `1.26+`:
+Build from the repository root with Go `1.27.1+`:
 
 ```sh
 go test ./...

@@ -70,6 +70,7 @@ func presetGuideHelpLines() []string {
 	return []string{
 		"A preset saves your active GO or CC filters and shared settings.",
 		"  LIST PRESET        List your saved presets.",
+		"When LIST PRESET pauses live spots, type RESUME to restart.",
 		"  SAVE PRESET DAY    Save your current setup. Replaces DAY if it exists.",
 		"  LOAD PRESET DAY    Apply DAY and save it for future logins.",
 		"  DELETE PRESET DAY  Remove DAY without changing your active settings.",

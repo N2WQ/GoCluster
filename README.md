@@ -35,14 +35,14 @@ For an example cluster, enter these connection settings:
 
 | Setting | Value |
 | --- | --- |
-| Host / server | `cluster.n2wq.com` |
+| Host / server | `dxc.n2wq.com` |
 | Port | `8300` |
 | Login | Your amateur radio callsign |
 
 If you have a command-line telnet client installed, connect with:
 
 ```text
-telnet cluster.n2wq.com 8300
+telnet dxc.n2wq.com 8300
 ```
 
 Other clusters may use a different host or port; use the details supplied by
@@ -103,8 +103,9 @@ will hear the station or make a contact.
 | View recent spots for a station | `SHOW DX K1ABC 10` |
 | View recent space weather bulletins | `SHOW WWV` or `SHOW WCY` |
 | View retained space weather bulletins | `SHOW WWV FULL` or `SHOW WCY FULL` |
-| See all your filter categories | `SHOW FILTER` |
-| Inspect one category or all details | `SHOW FILTER BAND` or `SHOW FILTER FULL` |
+| See your active filters | `SHOW FILTER` |
+| See detailed rule information (GO) | `SHOW FILTER FULL` |
+| See the frequency-slot selection (CC) | `SHOW/FILTER DXBM` |
 | See your grid, preferences, and session state | `SHOW SETTINGS` |
 | Pause live spots for 60 seconds | `PAUSE 60` |
 | Check or end a pause | `SHOW HOLD` or `RESUME` |
@@ -482,10 +483,10 @@ PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)
 REJECT RULE 9 COMMENT="QRT"
 ```
 
-Every saved rule retains its Boolean structure. `SHOW FILTER FULL` adds the
-single prepared program's counts and separate delivery controls. Category
-readbacks are unsupported. Human readbacks temporarily pause live spots;
-use `RESUME` when ready.
+Every saved rule retains its Boolean structure. GO filter readbacks show the
+whole rule set. `SHOW FILTER FULL` adds the prepared program's counts and
+separate delivery controls. Human readbacks temporarily pause live spots.
+Use `RESUME` when ready.
 
 `SHOW SETTINGS` separates your selections from the choices currently in use.
 The following example uses server path minimums of 21 for stations and 11 for
@@ -548,9 +549,9 @@ PASS RULE 1 MODE=FT8 AND BAND=40M AND SOURCE=SKIMMER
 Long values use exact quoted ASCII pieces joined by `+`. Decode and concatenate
 the pieces without adding spaces; display quotes and the `+` are not command
 syntax. Use schema 6 YAML for rules beyond the command-line limit.
-`SHOW FILTER FULL` adds preparation counts and separate-control detail. Category
-readbacks are unsupported. `GET YAML FILTER SCHEMA 6` exposes exact saved rules,
-individual controls and canonical expressions.
+GO filter readbacks show the whole rule set. `SHOW FILTER FULL` adds preparation
+counts and separate-control detail. `GET YAML FILTER SCHEMA 6` exposes exact saved
+rules, individual controls and canonical expressions.
 
 See recent countries that have heard your baseline call:
 

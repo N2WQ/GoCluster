@@ -66,7 +66,7 @@ After login, type `HELP` for the command list. Useful first commands:
 - `WHOSPOTSME [band]`: show recent spotter countries for your call.
 - `SET GRID <grid>`: set your 4 or 6 character Maidenhead grid.
 - `SHOW FILTER`: display active filters.
-- `PASS <type> <list>` and `REJECT <type> <list>`: adjust filters.
+- `HELP FILTERS` explains how to change filters in your active dialect.
 - `SHOW DEDUPE` and `SET DEDUPE FAST|MED|SLOW`: inspect or change duplicate suppression.
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: opt into or stop periodic solar summaries.
@@ -76,7 +76,7 @@ After login, type `HELP` for the command list. Useful first commands:
 ## Linux
 
 This release package is Windows amd64 only. Linux operators should build from
-source with Go `1.26+`:
+source with Go `1.27.1+`:
 
 ```sh
 GOOS=linux GOARCH=amd64 go build -trimpath -o gocluster .

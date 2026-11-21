@@ -27,6 +27,9 @@ func TestBooleanRuleHelpSharedReference(t *testing.T) {
 		"exact CTY canonical labels",
 		"DXDXCC<>K becomes DXDXCC<>291",
 		"Unknown or conflicting labels reject the entire edit.",
+		"DXZONE and DEZONE use CQ zones, numbered 1 through 40.",
+		"For an unknown DX zone, NOT (DXZONE=5) is true.",
+		"For that same spot, DXZONE<>5 is false.",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("shared Boolean reference omitted %q", required)
