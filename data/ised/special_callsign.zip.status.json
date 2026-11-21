@@ -1,0 +1,13 @@
+{
+  "url": "https://apc-cap.ic.gc.ca/datafiles/special_callsign.zip",
+  "etag": "\"7250-660afcb066080\"",
+  "last_modified": "Fri, 20 Nov 2026 07:00:02 GMT",
+  "downloaded_at": "2026-11-20T13:51:52.6817934Z",
+  "checked_at": "2026-11-20T14:52:49.2502246Z",
+  "size_bytes": 29264,
+  "sha256": "2a64a627fd9757ee337c6671ea7000f33e63ab30065e0e1f54784c691a5af517",
+  "up_to_date": true,
+  "processed_at": "2026-11-20T13:51:54.2470488Z",
+  "processed_ok": true,
+  "validator_resource": "0feff83897c32d33adeb8a84a5ebb30d853b6246243e8ed070252d1d96a8d989"
+}
