@@ -1,0 +1,27 @@
+{
+  "eligible_by_date": {
+    "2026-09-26": 777,
+    "2026-11-07": 820,
+    "2026-11-14": 1402,
+    "2026-11-15": 1030,
+    "2026-11-16": 241
+  },
+  "arms": {
+    "latest": {
+      "retained": 2830, "supported": 1563, "supported_episodes": 267,
+      "blocked_valid": 21, "unlabeled": 1224, "third_identity": 36
+    },
+    "shared": {
+      "retained": 288, "supported": 159, "supported_episodes": 80,
+      "blocked_valid": 1, "unlabeled": 125, "third_identity": 8
+    },
+    "wpm": {
+      "retained": 658, "supported": 403, "supported_episodes": 86,
+      "blocked_valid": 0, "unlabeled": 254, "third_identity": 1
+    },
+    "shared_wpm": {
+      "retained": 80, "supported": 43, "supported_episodes": 20,
+      "blocked_valid": 0, "unlabeled": 36, "third_identity": 1
+    }
+  }
+}
