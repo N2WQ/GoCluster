@@ -794,6 +794,10 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 		ingestTotal := uint64(0)
 		if ingestStats != nil {
 			ingestTotal = ingestStats.IngestCount()
+			if history := ingestStats.cwBursts; history != nil {
+				rows, evictions := history.Stats()
+				resolverPressureLine += fmt.Sprintf(" | CW burst history rows=%d evictions=%d", rows, evictions)
+			}
 		}
 
 		var pipelineLine string
@@ -2113,7 +2117,7 @@ func maybeApplyResolverCorrectionWithSelectionOverride(
 	temporalResult *runtimeTemporalResult,
 ) bool {
 	return applyResolverCorrection(spotEntry, resolver, evidence, hasEvidence, cfg, ctyDB, metaCache,
-		tracker, dash, recentBandStore, adaptive, selectionOverride, now, temporalResult).suppress
+		tracker, dash, recentBandStore, adaptive, selectionOverride, now, temporalResult, nil).suppress
 }
 
 func resolverConfidenceGlyph(snapshot spot.ResolverSnapshot, snapshotOK bool, emittedCall string) string {

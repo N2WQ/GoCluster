@@ -17,7 +17,7 @@ The test replays 4,270 eligible decisions and compares every count for all four 
 | Latest plus incoming WPM agreement | 658 | 403 | 0 |
 | Latest plus shared family and incoming WPM agreement | 80 | 43 | 0 |
 
-The WPM rule's 403 supported retentions span 86 episodes. Another 254 retentions lacked a strong reference, and one had a reference supporting a third identity. References are imperfect and can disagree. Development dates were September 26 and November 7, 14, 15 and 16, 2026. This is a retrospective safeguard. Live GoCluster still uses its ordinary resolver, and qualification on untouched dates remains open.
+The WPM rule's 403 supported retentions span 86 episodes. Another 254 retentions lacked a strong reference, and one had a reference supporting a third identity. References are imperfect and can disagree. Development dates were September 26 and November 7, 14, 15 and 16, 2026. This retrospective study uses archive timestamps. The [live trial](../../../docs/cw-call-correction-branch.md) measures when each report arrives. Qualification on untouched dates remains open.
 
 ### Inspect a single decision
 
@@ -42,9 +42,19 @@ The earlier guarded frequency rescue was a separate experiment. Its fresh-date q
 
 ## Rebuild the v16 guarded frequency rescue
 
+For all historical Go overlay builders, use the checkpoint that contains the
+study kit and its original Go source. Later server versions changed some
+of the exact source lines those builders replace. From a Windows checkout run
+
+```powershell
+git fetch origin tag research/call-correction-v16-source
+git -c core.autocrlf=true worktree add --detach ../gocluster-v16-rebuild 499ba0a33585a72163020d70e842fdb5c1b8dfd5
+cd ../gocluster-v16-rebuild
+```
+
 The experimental binary runs the GoCluster RBN replay command. The ordinary resolver runs first. When its proposed winner fails maximum edit distance, the rescue checks whether the frequency evidence separates that winner from the incoming spot. It requires support for the alternative in the ordinary snapshot, applies the selective method's existing gates and declines a rename when at least two receivers in the associated group reported the incoming spelling. Literal receiver labels follow the existing resolver convention.
 
-Build from the GoCluster checkout used for the experiment, revision `6e11e5d763d68d819d6b539f4d8abf05aa6474c2`. The builder checks each original and replacement file against its SHA-256 and creates the Go overlay in the output directory.
+The checkpoint adds the replay kit to the original Go source at `6e11e5d763d68d819d6b539f4d8abf05aa6474c2`. The Windows checkout uses CRLF for the five frozen base files. The tracked replacement templates keep their original bytes. The builder checks both against SHA-256 before creating the overlay.
 
 ```powershell
 python -B scripts/research/call-correction-v16/build_guarded.py --repo . --out .tmp/v16-rebuild

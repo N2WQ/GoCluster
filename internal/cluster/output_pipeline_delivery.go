@@ -65,24 +65,11 @@ func (p *outputPipeline) handleStabilizerRelease(envelope *telnetStabilizerEnvel
 	}
 	resolverEvidenceEnqueued := envelope.evidenceEnqueued
 	selection := correctionflow.SelectResolverPrimarySnapshotForCallAt(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(delayed), now)
-	if maybeApplyResolverCorrectionWithSelectionOverride(
-		delayed,
-		p.signalResolver,
-		resolverEvidence,
-		hasResolverEvidence,
-		p.correctionCfg,
-		ctyDB,
-		p.metaCache,
-		p.tracker,
-		p.dash,
-		p.recentBandStore,
-		p.adaptiveMinReports,
-		p.spotterReliability,
-		p.spotterReliabilityCW,
-		p.spotterReliabilityRTTY,
-		p.confusionModel,
-		&selection, now, envelope.temporalResult,
-	) {
+	retention := cwRetentionRequest{pipeline: p, context: &releaseCtx}
+	outcome := applyResolverCorrection(delayed, p.signalResolver, resolverEvidence, hasResolverEvidence,
+		p.correctionCfg, ctyDB, p.metaCache, p.tracker, p.dash, p.recentBandStore,
+		p.adaptiveMinReports, &selection, now, envelope.temporalResult, &retention)
+	if outcome.suppress {
 		return
 	}
 	applySupportFloor(delayed, p.recentBandStore, p.customSCPStore, nil, p.correctionCfg)

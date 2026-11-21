@@ -20,10 +20,11 @@ type resolverCorrectionOutcome struct {
 	gate                                   spot.ResolverPrimaryGateResult
 	gateEvaluated                          bool
 	applied, suppress, replacementRejected bool
+	retained                               bool
 }
 
 func (r resolverCorrectionOutcome) terminal() bool {
-	return r.applied || r.suppress || r.replacementRejected
+	return r.applied || r.suppress || r.replacementRejected || r.retained
 }
 
 // Keep the ordinary linear guard/gate/validation order together: its rejection
@@ -33,7 +34,7 @@ func applyResolverCorrection(spotEntry *spot.Spot, resolver *spot.SignalResolver
 	ctyDB *cty.CTYDatabase, metaCache *callMetaCache, tracker *stats.Tracker, dash ui.Surface,
 	recentBandStore spot.RecentSupportStore, adaptive *spot.AdaptiveMinReports,
 	selectionOverride *correctionflow.ResolverPrimarySelection, now time.Time,
-	temporalResult *runtimeTemporalResult) (result resolverCorrectionOutcome) {
+	temporalResult *runtimeTemporalResult, retention *cwRetentionRequest) (result resolverCorrectionOutcome) {
 	if spotEntry == nil {
 		return result
 	}
@@ -197,28 +198,7 @@ func applyResolverCorrection(spotEntry *spot.Spot, resolver *spot.SignalResolver
 	}
 
 	if ctyDB != nil {
-		if info := effectivePrefixInfo(ctyDB, metaCache, winnerCall); info != nil {
-			if replacementLicenseRejected(spotEntry, winnerCall, ctyDB, metaCache) {
-				result.replacementRejected = true
-				decisionReason = resolverDecisionLicenseMissing
-				observeResolverPrimaryDecision(tracker, "rejected", decisionReason, 1)
-				return result
-			}
-			spotEntry.DXCall = winnerCall
-			spotEntry.DXCallNorm = winnerCall
-			result.applied = true
-			resetCorrectedDXClassification(spotEntry)
-			temporalResult.confirm(preCorrectionCall, winnerCall)
-			spotEntry.Confidence = "C"
-			spotEntry.ConfidencePercent = winnerConfidence
-			spotEntry.ConfidencePercentOK = true
-			if tracker != nil {
-				tracker.IncrementCallCorrections()
-			}
-			appliedReason := resolverAppliedDecisionReason(gate, selection)
-			decisionReason = appliedReason
-			observeResolverPrimaryDecision(tracker, "applied", appliedReason, 1)
-		} else {
+		if effectivePrefixInfo(ctyDB, metaCache, winnerCall) == nil {
 			result.replacementRejected = true
 			decisionReason = resolverDecisionCTYMiss
 			observeResolverPrimaryDecision(tracker, "rejected", resolverDecisionCTYMiss, 1)
@@ -228,8 +208,23 @@ func applyResolverCorrection(spotEntry *spot.Spot, resolver *spot.SignalResolver
 				return result
 			}
 			spotEntry.Confidence = "B"
+			return result
 		}
-		return result
+		if replacementLicenseRejected(spotEntry, winnerCall, ctyDB, metaCache) {
+			result.replacementRejected = true
+			decisionReason = resolverDecisionLicenseMissing
+			observeResolverPrimaryDecision(tracker, "rejected", decisionReason, 1)
+			return result
+		}
+	}
+
+	if retention != nil {
+		if reason := retention.evaluate(evidence.Key, preCorrectionCall, winnerCall, now); reason != "" {
+			result.retained = true
+			decisionReason = reason
+			observeResolverPrimaryDecision(tracker, "rejected", reason, 1)
+			return result
+		}
 	}
 
 	spotEntry.DXCall = winnerCall

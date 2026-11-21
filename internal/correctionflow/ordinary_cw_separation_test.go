@@ -7,6 +7,29 @@ import (
 	"dxcluster/spot"
 )
 
+func BenchmarkOrdinaryCWSeparation(b *testing.B) {
+	for _, name := range []string{"same_frequency", "separated"} {
+		b.Run(name, func(b *testing.B) {
+			rows := f0BaseRows()
+			if name == "same_frequency" {
+				for i := range rows {
+					rows[i].Observation.FrequencyKHz = 7021
+				}
+			}
+			key, _, sources, cfg := f0Fixture(b, rows)
+			in := OrdinaryCWSeparationInput{Key: key, Sources: sources, Config: cfg,
+				Original: "K1ABC", Winner: "DL9ZZZ", FocalKHz: 7021, At: f0At,
+				FocalFamily: "R6", ReceiverFamily: func(s string) string { return s }}
+			b.ReportAllocs()
+			for b.Loop() {
+				if OrdinaryCWSeparation(in) != (name == "separated") {
+					b.Fatal("unexpected frequency decision")
+				}
+			}
+		})
+	}
+}
+
 func TestOrdinaryCWSeparation(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

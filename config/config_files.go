@@ -207,6 +207,8 @@ var runtimePresenceExemptPaths = map[string]struct{}{
 	"dedup.secondary_prefer_stronger_snr":                   {},
 	"call_correction.slash_precedence_min_reports":          {},
 	"call_correction.selective_rescue_enabled":              {},
+	"call_correction.cw_frequency_separation_enabled":       {},
+	"call_correction.cw_burst_wpm_enabled":                  {},
 	"call_correction.bayes_bonus.enabled_distances_by_mode": {},
 }
 
@@ -291,9 +293,11 @@ func mergedRuntimePresenceDiagnostics(raw map[string]any) []string {
 	collectStructPresenceDiagnostics(raw, reflect.TypeOf(Config{}), nil, &diagnostics)
 	diagnostics = append(diagnostics, humanTelnetPresenceDiagnostics(raw)...)
 	diagnostics = append(diagnostics, bayesBonusMaskPresenceDiagnostics(raw)...)
-	if value, present := yamlValueAt(raw, "call_correction", "selective_rescue_enabled"); present {
-		if _, ok := value.(bool); !ok {
-			diagnostics = append(diagnostics, `invalid YAML setting "call_correction.selective_rescue_enabled": must be a boolean, not null`)
+	for _, key := range []string{"selective_rescue_enabled", "cw_frequency_separation_enabled", "cw_burst_wpm_enabled"} {
+		if value, present := yamlValueAt(raw, "call_correction", key); present {
+			if _, ok := value.(bool); !ok {
+				diagnostics = append(diagnostics, fmt.Sprintf(`invalid YAML setting "call_correction.%s": must be a boolean, not null`, key))
+			}
 		}
 	}
 	sort.Strings(diagnostics)

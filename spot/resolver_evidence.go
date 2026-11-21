@@ -118,6 +118,7 @@ func (s ResolverSnapshot) ReceiverEvidence() *ResolverEvidenceView { return s.re
 // Compact preserves all scoring tallies without retaining receiver generations.
 func (s ResolverSnapshot) Compact() ResolverSnapshot {
 	s.receiverEvidence = nil
+	s.cwDecay = nil
 	return s
 }
 

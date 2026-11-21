@@ -720,6 +720,7 @@ func (r *clusterRuntime) initializeSignalResolverAndRecentStore() bool {
 	}
 	if r.cfg.CallCorrection.Enabled {
 		r.signalResolver = spot.NewSignalResolver(spot.SignalResolverConfig{
+			CWDecayComparison:         cwBurstComparisonEnabled(&r.cfg.CallCorrection),
 			QueueSize:                 shadowResolverQueueSize,
 			MaxActiveKeys:             shadowResolverMaxActiveKeys,
 			MaxCandidatesPerKey:       shadowResolverMaxCandidatesPerKey,
@@ -944,6 +945,9 @@ func (r *clusterRuntime) initializePipelineCore() bool {
 		log.Println("Flood control disabled")
 	}
 	r.ingestValidator = newIngestValidator(r.ctyLookup, r.metaCache, r.ctyUpdater, r.gridUpdater, dedupInput, r.unlicensedReporter, r.dropReporter, r.cfg.CTY.Enabled)
+	if cwBurstComparisonEnabled(&r.cfg.CallCorrection) {
+		r.ingestValidator.cwBursts = correctionflow.NewCWBurstHistory()
+	}
 	if !r.cfg.FloodControl.Enabled {
 		r.ingestValidator.admitPrimary = admitPrimary
 	}
@@ -1361,6 +1365,9 @@ func (r *clusterRuntime) startOutputPipeline() {
 		r.allowedBandSet,
 		r.toxicityClassifier,
 	)
+	if r.ingestValidator != nil {
+		r.outputPipeline.cwBursts = r.ingestValidator.cwBursts
+	}
 	go r.outputPipeline.run()
 	startPipelineHealthMonitor(r.ctx, r.deduplicator, &r.lastOutput, r.peerManager)
 }

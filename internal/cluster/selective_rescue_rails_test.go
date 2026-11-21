@@ -26,7 +26,7 @@ func TestSelectiveRescueStabilizerRetryRemainsOrdinaryOnly(t *testing.T) {
 	s := selectiveLiveSpot("K1ABC", at)
 	original := captureOriginalPeerPublication(s)
 	evidence, _ := buildResolverEvidenceSnapshot(s, cfg, nil, time.Now().UTC())
-	outcome := applyResolverCorrection(s, r, evidence, true, cfg, db, nil, p.tracker, nil, nil, nil, nil, time.Time{}, nil)
+	outcome := applyResolverCorrection(s, r, evidence, true, cfg, db, nil, p.tracker, nil, nil, nil, nil, time.Time{}, nil, nil)
 	if !outcome.replacementRejected || outcome.applied || outcome.suppress || s.Confidence != "?" || p.tracker.CallCorrections() != 0 {
 		t.Fatalf("actual prior license rejection must retain an ordinary glyph without B: %+v spot=%+v", outcome, s)
 	}

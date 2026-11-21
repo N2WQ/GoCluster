@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"dxcluster/cty"
+	"dxcluster/internal/correctionflow"
 	"dxcluster/internal/ratelimit"
 	"dxcluster/peer"
 	"dxcluster/spot"
@@ -34,6 +35,7 @@ type ingestValidator struct {
 	peerIngress          *peer.SpotIngress     // Installed before Start, same single CTY owner.
 	peerAdmit            func(*spot.Spot) bool // Direct policy + primary admission, never flood input.
 	input                chan *spot.Spot
+	cwBursts             *correctionflow.CWBurstHistory
 	dedupInput           chan<- *spot.Spot
 	admitPrimary         func(*spot.Spot) bool // Fixed before Start; used only without an intervening flood gate.
 	ctyLookup            func() *cty.CTYDatabase
@@ -172,6 +174,9 @@ func (v *ingestValidator) run() {
 			v.ingestTotal.Add(1)
 			if !v.validateSpot(s) {
 				continue
+			}
+			if v.cwBursts != nil {
+				v.cwBursts.Observe(s)
 			}
 			if !v.tryForward(s) {
 				if count, ok := v.dedupDropCounter.Inc(); ok {

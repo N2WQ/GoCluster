@@ -39,7 +39,10 @@ func resolverProjectionBase(snapshot ResolverSnapshot) ResolverSnapshot {
 }
 
 func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time.Time) ResolverSnapshot {
-	view := snap.receiverEvidence
+	return r.projectEligibleView(snap, now, snap.receiverEvidence)
+}
+
+func (r *SignalResolver) projectEligibleView(snap ResolverSnapshot, now time.Time, view *ResolverEvidenceView) ResolverSnapshot {
 	cutoff := now.Add(-view.window)
 	eligible := func(row *ResolverReceiverObservation) bool {
 		return !row.ObservedAt.Before(cutoff) && !row.ObservedAt.After(now)
@@ -52,36 +55,39 @@ func (r *SignalResolver) projectEligibleSnapshot(snap ResolverSnapshot, now time
 			}
 		}
 	}
-	if count == view.count {
+	if count == view.count && view == snap.receiverEvidence {
 		return snap
 	}
 	projected := resolverProjectionBase(snap)
 	if count == 0 {
 		return projected
 	}
-	fresh := &ResolverEvidenceView{window: view.window, candidates: make([]resolverEvidenceCandidate, 0, len(view.candidates))}
-	for _, candidate := range view.candidates {
-		latest := resolverCanonicalRows(view, candidate.call)
-		rows := make([]ResolverReceiverObservation, 0, len(candidate.receivers))
-		for i := range candidate.receivers {
-			row := &candidate.receivers[i]
-			if !eligible(row) {
-				continue
+	fresh := view
+	if count != view.count {
+		fresh = &ResolverEvidenceView{window: view.window, candidates: make([]resolverEvidenceCandidate, 0, len(view.candidates))}
+		for _, candidate := range view.candidates {
+			latest := resolverCanonicalRows(view, candidate.call)
+			rows := make([]ResolverReceiverObservation, 0, len(candidate.receivers))
+			for i := range candidate.receivers {
+				row := &candidate.receivers[i]
+				if !eligible(row) {
+					continue
+				}
+				// A newer observation on an equivalent spelling supersedes this row
+				// even when that newer observation lies after this release clock.
+				index := sort.Search(len(latest), func(i int) bool { return latest[i].Receiver >= row.Receiver })
+				if index == len(latest) || latest[index].Receiver != row.Receiver || !latest[index].ObservedAt.Equal(row.ObservedAt) {
+					continue
+				}
+				rows = append(rows, *row)
 			}
-			// A newer observation on an equivalent spelling supersedes this row
-			// even when that newer observation lies after this release clock.
-			index := sort.Search(len(latest), func(i int) bool { return latest[i].Receiver >= row.Receiver })
-			if index == len(latest) || latest[index].Receiver != row.Receiver || !latest[index].ObservedAt.Equal(row.ObservedAt) {
-				continue
+			if len(rows) > 0 {
+				fresh.candidates = append(fresh.candidates, resolverEvidenceCandidate{call: candidate.call, receivers: rows})
+				fresh.count += len(rows)
 			}
-			rows = append(rows, *row)
 		}
-		if len(rows) > 0 {
-			fresh.candidates = append(fresh.candidates, resolverEvidenceCandidate{call: candidate.call, receivers: rows})
-			fresh.count += len(rows)
-		}
+		fresh.canonical = buildCanonicalResolverCandidates(fresh.candidates)
 	}
-	fresh.canonical = buildCanonicalResolverCandidates(fresh.candidates)
 	projected.receiverEvidence = fresh
 	receivers := make(map[string]int, fresh.count)
 	for i := range fresh.canonical {

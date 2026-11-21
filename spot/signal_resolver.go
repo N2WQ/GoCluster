@@ -116,6 +116,7 @@ type ResolverSnapshot struct {
 	TotalWeightedSupportMilli  int
 	CandidateRanks             []ResolverCandidateSupport
 	receiverEvidence           *ResolverEvidenceView
+	cwDecay                    *ResolverSnapshot // same owner publication; dropped by Compact
 	lossMinAt                  time.Time
 	lossMaxAt                  time.Time
 	lossWindow                 time.Duration
@@ -184,6 +185,7 @@ type SignalResolverMetrics struct {
 //
 // All bounds are hard caps. Enqueue is always fail-open/non-blocking.
 type SignalResolverConfig struct {
+	CWDecayComparison         bool // Maintain the independent CW decay decision for the live veto.
 	QueueSize                 int
 	MaxActiveKeys             int
 	MaxCandidatesPerKey       int
@@ -229,6 +231,7 @@ type SignalResolver struct {
 
 	snapshots          sync.Map // ResolverSignalKey -> *resolverSnapshotCell
 	confusionWorkspace confusionAlignmentWorkspace
+	cwDecayScratch     cwDecayWorkspace // owner only; capped by one resolver key
 	processClock       resolverProcessClock
 	nextGeneration     uint64 // Single owner; never retained outside current cells.
 	ownerAdmitted      atomic.Bool
@@ -264,6 +267,7 @@ type resolverCandidate struct {
 }
 
 type resolverKeyState struct {
+	cwDecay        *resolverCWDecayAuthority // allocated only for enabled CW keys
 	key            ResolverSignalKey
 	cell           *resolverSnapshotCell
 	generation     uint64
@@ -761,6 +765,9 @@ func invalidateResolverWinnerState(st *resolverKeyState, call string) {
 			return
 		}
 	}
+	if st.cwDecay != nil {
+		st.cwDecay.invalidate(identity)
+	}
 	if st.stableWinner == identity {
 		st.stableWinner = ""
 		st.pendingWinner = ""
@@ -802,6 +809,16 @@ func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) 
 	st.lastEvalAt = now
 
 	view := publishedResolverEvidence(st)
+	snapshot := r.rankResolverSnapshot(st, view, now, false)
+	if r.cfg.CWDecayComparison && st.key.Mode == "CW" {
+		snapshot.cwDecay = r.rankCWDecaySnapshot(st, snapshot, view, now)
+	}
+	r.publishKeySnapshot(st, snapshot, now, true)
+}
+
+// rankResolverSnapshot advances only the supplied ranking state. Both models
+// see the same admitted observations, quotas, expiry and publication clock.
+func (r *SignalResolver) rankResolverSnapshot(st *resolverKeyState, view *ResolverEvidenceView, now time.Time, decayed bool) ResolverSnapshot {
 	ranked := rankedCanonicalResolverCandidates(view, st.rankedScratch[:0], r.cfg.SlashPrecedenceMinReports)
 
 	snapshot := ResolverSnapshot{
@@ -817,8 +834,7 @@ func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) 
 		st.pendingWins = 0
 		clear(ranked)
 		st.rankedScratch = ranked[:0]
-		r.publishKeySnapshot(st, snapshot, now, true)
-		return
+		return snapshot
 	}
 	if st.stableWinner != "" && !resolverRankedContainsCall(ranked, st.stableWinner) {
 		st.stableWinner = ""
@@ -841,17 +857,22 @@ func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) 
 		runner = ranked[1]
 	}
 
-	totalReporters := len(st.reporterRefs)
-	if totalReporters <= 0 {
-		// Defensive fallback for externally-constructed test states that do not
-		// initialize reporterRefs.
-		totalReporters = totalUniqueResolverReporters(ranked)
-	}
-	totalWeightedSupportMilli := totalResolverReporterWeightMilli(st.reporterRefs)
-	if len(st.reporterRefs) == 0 {
-		// Only externally constructed states lacking references use defaults.
-		// An actual zero-weight population has references and retains total zero.
-		totalWeightedSupportMilli = totalUniqueResolverReporterWeightMilli(ranked)
+	var totalReporters, totalWeightedSupportMilli int
+	if decayed {
+		totalReporters, totalWeightedSupportMilli, _ = view.ReceiverTotals()
+	} else {
+		totalReporters = len(st.reporterRefs)
+		if totalReporters <= 0 {
+			// Defensive fallback for externally-constructed test states that do not
+			// initialize reporterRefs.
+			totalReporters = totalUniqueResolverReporters(ranked)
+		}
+		totalWeightedSupportMilli = totalResolverReporterWeightMilli(st.reporterRefs)
+		if len(st.reporterRefs) == 0 {
+			// Only externally constructed states lacking references use defaults.
+			// An actual zero-weight population has references and retains total zero.
+			totalWeightedSupportMilli = totalUniqueResolverReporterWeightMilli(ranked)
+		}
 	}
 	provisionalState := classifyResolverState(top.weightedSupportMilli, totalWeightedSupportMilli)
 	provisionalWinner := resolverRankIdentity(top)
@@ -924,8 +945,7 @@ func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) 
 		snapshot.CandidateRanks = candidateRanks
 		clear(ranked)
 		st.rankedScratch = ranked[:0]
-		r.publishKeySnapshot(st, snapshot, now, true)
-		return
+		return snapshot
 	}
 
 	publishedWinner := provisionalWinner
@@ -986,7 +1006,7 @@ func (r *SignalResolver) evaluatePrunedKey(st *resolverKeyState, now time.Time) 
 	snapshot.CandidateRanks = candidateRanks
 	clear(ranked)
 	st.rankedScratch = ranked[:0]
-	r.publishKeySnapshot(st, snapshot, now, true)
+	return snapshot
 }
 
 func (r *SignalResolver) publishSnapshot(key ResolverSignalKey, snapshot ResolverSnapshot) {

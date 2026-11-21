@@ -69,6 +69,9 @@ type Spot struct {
 	ModeProvenance      ModeProvenance // How Mode was assigned (explicit/evidence/default)
 	Report              int            // Signal report in dB (SNR for digital modes, signal strength for CW)
 	Time                time.Time      // When the spot was created
+	RBNCQReceivedAt     time.Time      `json:"-"` // Live read time of an RBN CW CQ line, independent of its minute-resolution wire clock.
+	RBNCQRawKHz         float64        `json:"-"` // Same line's frequency before skimmer skew correction.
+	CWBurstFocal        CWBurstFocal   `json:"-"` // Original admission in the branch-local CW history, preserved across holds.
 	Comment             string         // User comment or additional info
 	CWDisplayAvailable  bool           // RBN CW source-order display projection is available.
 	CWDisplayComment    string         // Display text without recognized CW speed pairs.
@@ -117,6 +120,14 @@ type Spot struct {
 	// SecondaryDedupe is ephemeral live-output evidence, captured before fanout.
 	// Archive encoding deliberately omits it; queued diagnostics never consult caches.
 	SecondaryDedupe [3]SecondaryDedupeEvidence `json:"-"`
+}
+
+// CWBurstFocal identifies one bounded history entry without retaining a history
+// pointer or the other receivers' observations in pending delivery queues.
+type CWBurstFocal struct {
+	Original string
+	Sequence uint64
+	Slot     uint16
 }
 
 // CanonicalPSKMode returns the canonical PSK family label alongside the
@@ -574,6 +585,9 @@ func (s *Spot) CloneWithComment(comment string) *Spot {
 		ModeProvenance:      s.ModeProvenance,
 		Report:              s.Report,
 		Time:                s.Time,
+		RBNCQReceivedAt:     s.RBNCQReceivedAt,
+		RBNCQRawKHz:         s.RBNCQRawKHz,
+		CWBurstFocal:        s.CWBurstFocal,
 		Comment:             comment,
 		CWDisplayAvailable:  s.CWDisplayAvailable,
 		CWDisplayComment:    s.CWDisplayComment,

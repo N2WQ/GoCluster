@@ -107,7 +107,7 @@ func TestSelectiveRescueLiveImmediateAndDisabled(t *testing.T) {
 			selectiveLivePrecondition(t, f.pipeline, key, "K1ABD", "K1ABC")
 			ordinarySpot := selectiveLiveSpot("K1ABD", at)
 			evidence, _ := buildResolverEvidenceSnapshot(ordinarySpot, cfg, nil, time.Now().UTC())
-			ordinary := applyResolverCorrection(ordinarySpot, r, evidence, true, cfg, nil, nil, nil, nil, nil, nil, nil, time.Time{}, nil)
+			ordinary := applyResolverCorrection(ordinarySpot, r, evidence, true, cfg, nil, nil, nil, nil, nil, nil, nil, time.Time{}, nil, nil)
 			if ordinary.terminal() || ordinarySpot.DXCallNorm != "K1ABD" || ordinary.gate.Reason != "max_edit_distance" {
 				t.Fatalf("ordinary failure control must reach its actual distance gate: %+v", ordinary)
 			}
@@ -141,7 +141,7 @@ func TestSelectiveRescueTerminalLicenseWithoutB(t *testing.T) {
 	selectiveLivePrecondition(t, f.pipeline, key, "K1ABC", "K1ABA")
 	s := selectiveLiveSpot("K1ABC", at)
 	evidence, _ := buildResolverEvidenceSnapshot(s, cfg, nil, time.Now().UTC())
-	ordinary := applyResolverCorrection(s, r, evidence, true, cfg, db, nil, nil, nil, nil, nil, nil, time.Time{}, nil)
+	ordinary := applyResolverCorrection(s, r, evidence, true, cfg, db, nil, nil, nil, nil, nil, nil, time.Time{}, nil, nil)
 	if !ordinary.replacementRejected || ordinary.applied || ordinary.suppress || s.Confidence == "B" {
 		t.Fatalf("real missing-license rejection must be terminal without B: %+v glyph=%s", ordinary, s.Confidence)
 	}

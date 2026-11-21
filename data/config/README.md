@@ -176,6 +176,16 @@ and the [correction contract](../../spot/README.md#bounded-historical-bonuses).
 
 ### Selective CW rescue
 
+The two optional original-call safeguards use
+`call_correction.cw_frequency_separation_enabled` and
+`call_correction.cw_burst_wpm_enabled`. Both are optional booleans in
+`pipeline.yaml`. The supplied configuration disables both. An omitted key
+disables its safeguard in an older private configuration. Set either key to
+`true` in the active private configuration and restart to enable it. Set it
+back to `false` and restart to turn it off. The master
+`call_correction.enabled` still governs ordinary correction. See the
+[trial guide and experiment inventory](../../docs/cw-call-correction-branch.md).
+
 `pipeline.yaml` owns optional `call_correction.selective_rescue_enabled`.
 Omission or `false` preserves ordinary correction. Explicit null, strings,
 numbers, lists and mappings are rejected. The supplied value is `false`; this

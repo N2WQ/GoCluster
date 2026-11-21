@@ -23,6 +23,8 @@
 ################################################################################
 call_correction:
   selective_rescue_enabled: false     # Optional extra CW rescues after ordinary failure; ship off (see README)
+  cw_frequency_separation_enabled: false  # Keep the original CW call when receivers separate the two signals
+  cw_burst_wpm_enabled: false             # Keep the original CW call when arrival bursts, WPM and decay agree
   # ---------------------------------------------------------------------------
   # 1) Enablement
   # Purpose: Turn resolver-primary correction on/off.

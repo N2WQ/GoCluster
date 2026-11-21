@@ -46,6 +46,7 @@ type outputPipeline struct {
 	peerManager            *peer.Manager
 	tracker                *stats.Tracker
 	signalResolver         *spot.SignalResolver
+	cwBursts               *correctionflow.CWBurstHistory
 	correctionCfg          config.CallCorrectionConfig
 	ctyLookup              func() *cty.CTYDatabase
 	metaCache              *callMetaCache
@@ -116,6 +117,7 @@ type outputSpotContext struct {
 	temporalResult             *runtimeTemporalResult
 	resolverSelectionOverride  *correctionflow.ResolverPrimarySelection
 	resolverReleaseAt          time.Time
+	cwDecayPrior               spot.CWDecayPrior // Pre-focal exact-key publication, immediate evaluation only.
 	dxIdentityChanged          bool // Accepted literal replacement; inherited grid is not new cache evidence.
 	stabilizerHeld             bool // True only after actual stabilizer admission, not initial overflow.
 }

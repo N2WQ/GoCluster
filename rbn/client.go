@@ -654,7 +654,7 @@ func (c *Client) serveGeneration(gen *connectionGeneration) (err error) {
 		}
 		c.lastLineAt.Store(now.UnixNano())
 		if strings.HasPrefix(line, "DX de") {
-			c.parseSpot(line)
+			c.parseSpotAt(line, now)
 			continue
 		}
 		if c.minimalParse && c.rawChan != nil {
@@ -953,6 +953,10 @@ func nextUnconsumedCleanToken(tokens []spotToken, consumed []bool, start int) in
 // Minimal-parse/human feeds may continue without an explicit mode; RBN skimmer
 // feeds require one at ingest.
 func (c *Client) parseSpot(line string) {
+	c.parseSpotAt(line, time.Now().UTC())
+}
+
+func (c *Client) parseSpotAt(line string, receivedAt time.Time) {
 	line = strings.TrimSpace(line)
 	if line == "" {
 		return
@@ -1072,11 +1076,16 @@ func (c *Client) parseSpot(line string) {
 		return
 	}
 
+	rawFreq := freq
 	if !c.minimalParse {
 		freq = skew.ApplyCorrection(c.skewStore, deCallRaw, freq)
 	}
 
 	s := spot.NewSpotNormalized(dxCall, deCall, freq, mode)
+	if spotClass == SpotClassCQ && mode == "CW" {
+		s.RBNCQReceivedAt = receivedAt
+		s.RBNCQRawKHz = rawFreq
+	}
 	if mode != "" {
 		s.ModeProvenance = spot.ModeProvenanceCommentExplicit
 	}

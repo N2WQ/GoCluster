@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `a3e6508b61c5d183`
+- Source fingerprint: `226dbb9c51245281`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,9 +12,9 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 15 | 26 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 59 | 226 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 61 | 228 |
 | `dxcluster/peer` | `peer` | 63 | 138 |
-| `dxcluster/spot` | `spot` | 46 | 86 |
+| `dxcluster/spot` | `spot` | 47 | 87 |
 | `dxcluster/telnet` | `telnet` | 83 | 179 |
 
 ## In-Scope Package Edges
@@ -160,6 +160,8 @@ Source files:
 - `internal/cluster/call_meta_cache.go`
 - `internal/cluster/correction_decision_diagnostics.go`
 - `internal/cluster/cty_filters.go`
+- `internal/cluster/cw_decay_retention.go`
+- `internal/cluster/cw_retention.go`
 - `internal/cluster/drop_log_dedupe.go`
 - `internal/cluster/dropped_call_log.go`
 - `internal/cluster/event_file_log.go`
@@ -264,6 +266,8 @@ Test files:
 - `internal/cluster/custom_scp_family_delivery_test.go`
 - `internal/cluster/custom_scp_freshness_delivery_test.go`
 - `internal/cluster/custom_scp_static_future_delivery_test.go`
+- `internal/cluster/cw_decay_retention_test.go`
+- `internal/cluster/cw_retention_delivery_test.go`
 - `internal/cluster/cw_speed_archive_test.go`
 - `internal/cluster/diagnostic_wrapper_child_windows_test.go`
 - `internal/cluster/diagnostic_wrapper_fixture_windows_test.go`
@@ -681,6 +685,7 @@ Source files:
 - `spot/resolver_ambiguity.go`
 - `spot/resolver_canonical.go`
 - `spot/resolver_confusion.go`
+- `spot/resolver_cw_decay.go`
 - `spot/resolver_evidence.go`
 - `spot/resolver_evidence_filter.go`
 - `spot/resolver_fresh.go`
@@ -756,6 +761,7 @@ Test files:
 - `spot/recent_band_test.go`
 - `spot/reliability_integrity_fuzz_test.go`
 - `spot/resolver_ambiguity_population_test.go`
+- `spot/resolver_cw_decay_test.go`
 - `spot/resolver_evidence_filter_test.go`
 - `spot/resolver_evidence_test.go`
 - `spot/resolver_fresh_projection_bench_test.go`

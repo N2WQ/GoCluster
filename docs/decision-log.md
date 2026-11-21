@@ -27,6 +27,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0368 | Opt-in CW call retention | Accepted | 2026-11-21 | RBN CW correction and trial defaults | ADR-0367 shipped defaults on main | none | [ADR-0368](decisions/ADR-0368-opt-in-cw-call-retention.md) |
+| ADR-0367 | CW call retention on the experimental branch | Accepted for branch | 2026-11-21 | RBN CW correction and arrival timing | none | ADR-0368 shipped defaults on main | [ADR-0367](decisions/ADR-0367-cw-call-retention-on-experimental-branch.md) |
 | ADR-0366 | Automatic Release Reports | Accepted | 2026-11-20 | release baseline, automatic upgrade reports | ADR-0362 reviewed prose and explicit baseline | none | [ADR-0366](decisions/ADR-0366-automatic-release-report.md) |
 | ADR-0365 | CW Speed Starting Default | Accepted | 2026-11-20 | telnet user preferences | ADR-0332 starting default only | none | [ADR-0365](decisions/ADR-0365-cw-speed-starting-default.md) |
 | ADR-0364 | PSKReporter Session Recovery | Accepted | 2026-11-19 | MQTT lifecycle and subscription health | none | none | [ADR-0364](decisions/ADR-0364-pskreporter-session-recovery.md) |

@@ -1,9 +1,9 @@
-// File role: Tests positive current-signal separation for the offline ordinary
-// CW safeguard. Crawler notes: The replay caller supplies its frozen family
-// mapping and the existing read-only frequency sources. No row escapes.
+// File role: Tests current-signal separation before an ordinary CW rename.
+// Live and replay callers supply receiver families and read-only frequency sources.
 package correctionflow
 
 import (
+	"math"
 	"math/bits"
 	"strings"
 	"time"
@@ -35,6 +35,12 @@ func OrdinaryCWSeparation(in OrdinaryCWSeparationInput) bool {
 		in.At.IsZero() || in.FocalFamily == "" || in.ReceiverFamily == nil || !positiveFrequency(in.FocalKHz) {
 		return false
 	}
+	// Most ordinary renames concern one frequency. If even one known observation
+	// from each spelling is closer than the partition gap, they necessarily share
+	// a component and the full assessment cannot retain the original.
+	if !possibleCWSeparation(&in) {
+		return false
+	}
 	var assessment FrequencyAssessment
 	rows, _, refusal := frequencySourceRows(in.Key, in.Sources, in.Config, &assessment)
 	if refusal != "" {
@@ -50,6 +56,31 @@ func OrdinaryCWSeparation(in OrdinaryCWSeparationInput) bool {
 		return false
 	}
 	return ordinaryCWFamilyWitnesses(in, rows)
+}
+
+func possibleCWSeparation(in *OrdinaryCWSeparationInput) bool {
+	var originalHz, winnerHz float64
+	for i := range in.Sources {
+		source := &in.Sources[i]
+		if !source.Present {
+			continue
+		}
+		source.Evidence.Range(func(call string, r spot.ResolverReceiverObservation) bool {
+			if knownFrequency(r) {
+				switch call {
+				case in.Original:
+					originalHz = r.FrequencyKHz * 1000
+				case in.Winner:
+					winnerHz = r.FrequencyKHz * 1000
+				}
+			}
+			return originalHz == 0 || winnerHz == 0
+		})
+		if originalHz != 0 && winnerHz != 0 {
+			return math.Abs(originalHz-winnerHz) >= 150
+		}
+	}
+	return false
 }
 
 func ordinaryCWFamilyWitnesses(in OrdinaryCWSeparationInput, rows []frequencyRow) bool {

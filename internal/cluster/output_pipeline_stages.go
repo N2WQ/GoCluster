@@ -133,6 +133,9 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 		}
 	} else {
 		resolverEvidence, hasResolverEvidence = buildResolverEvidenceSnapshot(s, p.correctionCfg, p.adaptiveMinReports, now)
+		if hasResolverEvidence && p.signalResolver != nil && cwBurstComparisonEnabled(&p.correctionCfg) && s.CWBurstFocal.Sequence != 0 {
+			ctx.cwDecayPrior = p.signalResolver.CaptureCWDecayPrior(resolverEvidence.Key)
+		}
 		if hasResolverEvidence && p.signalResolver != nil && p.signalResolver.Enqueue(resolverEvidence) {
 			ctx.stabilizerEvidenceEnqueued = true
 		}
@@ -156,9 +159,10 @@ func (p *outputPipeline) applyResolverStage(ctx *outputSpotContext, temporalRele
 			selected = correctionflow.SelectResolverPrimarySnapshotForCall(p.signalResolver, resolverEvidence.Key, p.correctionCfg, normalizedDXCall(s))
 			selectionOverride = &selected
 		}
+		retention := cwRetentionRequest{pipeline: p, context: ctx, immediate: temporalRelease == nil, admittedAt: now}
 		outcome := applyResolverCorrection(s, p.signalResolver, resolverEvidence, hasResolverEvidence, p.correctionCfg, ctx.ctyDB,
 			p.metaCache, p.tracker, p.dash, p.recentBandStore, p.adaptiveMinReports,
-			selectionOverride, ctx.resolverReleaseAt, ctx.temporalResult)
+			selectionOverride, ctx.resolverReleaseAt, ctx.temporalResult, &retention)
 		if p.correctionCfg.SelectiveRescueEnabled && !outcome.terminal() {
 			outcome = p.applySelectiveRescue(ctx, resolverEvidence, hasResolverEvidence, outcome, rescue, now)
 		}

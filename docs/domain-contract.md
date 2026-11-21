@@ -15,6 +15,13 @@ pressure.
 
 ## Optional selective call rescue
 
+GoCluster also exposes independently switchable RBN CW safeguards after an
+ordinary rename has qualified. Retaining the incoming call preserves the
+ordinary authority for downstream licensing and output processing. The burst
+safeguard uses local arrival time. Each switch accepts explicit YAML booleans
+and treats omission as disabled. The supplied configuration disables both.
+See the [trial contract](cw-call-correction-branch.md#what-the-safeguards-do).
+
 - `call_correction.selective_rescue_enabled` is an optional boolean shipping
   false. Present null/nonboolean is invalid. It adds only current-supported CW
   proposals after ordinary nonterminal failure; ordinary success, suppression

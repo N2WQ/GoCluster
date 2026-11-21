@@ -918,6 +918,10 @@ type CallCorrectionConfig struct {
 	// SelectiveRescueEnabled admits additional C rescues after an ordinary
 	// nonterminal failure. False is omitted from historical effective JSON hashes.
 	SelectiveRescueEnabled bool `yaml:"selective_rescue_enabled" json:"SelectiveRescueEnabled,omitempty"`
+	// These vetoes can retain the incoming CW spelling after ordinary correction.
+	// Omitted keys preserve the behavior of existing operator configurations.
+	CWFrequencySeparationEnabled bool `yaml:"cw_frequency_separation_enabled" json:"CWFrequencySeparationEnabled,omitempty"`
+	CWBurstWPMEnabled            bool `yaml:"cw_burst_wpm_enabled" json:"CWBurstWPMEnabled,omitempty"`
 	// BandStateOverrides allows per-band, per-activity-state tuning of frequency tolerance.
 	// Values fall back to the global defaults when omitted.
 	BandStateOverrides []BandStateOverride `yaml:"band_state_overrides"`

@@ -21,7 +21,9 @@ func emitResolverDecision(dash ui.Surface, entry *spot.Spot, snapshot spot.Resol
 	if snapshot.EvidenceLoss {
 		outcome, basis = "retained", "unavailable_loss"
 	} else {
-		if spot.CorrectionVoteKey(call) != spot.CorrectionVoteKey(input) {
+		if reason == cwFrequencyRetained || reason == cwBurstRetained {
+			outcome = "retained"
+		} else if spot.CorrectionVoteKey(call) != spot.CorrectionVoteKey(input) {
 			outcome = "corrected"
 		}
 		if entry.ConfidencePercentOK {

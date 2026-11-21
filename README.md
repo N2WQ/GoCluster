@@ -774,6 +774,8 @@ Managing presets
 
 ## Running A Node
 
+For the optional CW call-retention trial, see the [Windows build, activation, rollback and experiment inventory](docs/cw-call-correction-branch.md).
+
 Telnet users connecting to an existing cluster can skip this section.
 To operate your own node, download `gocluster-windows-amd64.zip` from
 [GitHub Releases](https://github.com/N2WQ/GoCluster/releases/latest), extract it,
