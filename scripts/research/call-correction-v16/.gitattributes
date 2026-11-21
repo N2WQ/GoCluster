@@ -1,0 +1,3 @@
+# Preserve byte-exact source snapshots used by the native and synthetic receipts.
+guarded-sources/** -text whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+synthetic_tracks.py -text whitespace=-blank-at-eof,blank-at-eol,space-before-tab,cr-at-eol

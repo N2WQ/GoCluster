@@ -1,0 +1,38 @@
+// File role: replay-only CW receiver weight projection at native owner/release clocks.
+package spot
+
+import (
+	"math"
+	"time"
+)
+
+const v16HalfLife = HALF_LIFE * time.Second
+
+// Owner snapshots retain the immutable original evidence. A later release must
+// reprice from those original milliweights, including when one receiver appears
+// under multiple calls. A key owns at most its original view and a projection.
+func v16DecayView(view *ResolverEvidenceView, now time.Time, mode string) *ResolverEvidenceView {
+	if mode != "CW" || view == nil {
+		return view
+	}
+	if original := view.v16Original; original != nil {
+		if now.Equal(view.v16At) {
+			return view
+		}
+		view = original
+	}
+	result := &ResolverEvidenceView{window: view.window, count: view.count,
+		candidates: make([]resolverEvidenceCandidate, len(view.candidates)),
+		v16Original: view, v16At: now}
+	for i, candidate := range view.candidates {
+		rows := make([]ResolverReceiverObservation, len(candidate.receivers))
+		for j, row := range candidate.receivers {
+			age := max(time.Duration(0), now.Sub(row.ObservedAt))
+			row.WeightMilli = int(math.Round(float64(row.WeightMilli) * math.Exp2(-float64(age)/float64(v16HalfLife))))
+			rows[j] = row
+		}
+		result.candidates[i] = resolverEvidenceCandidate{call: candidate.call, receivers: rows}
+	}
+	result.canonical = buildCanonicalResolverCandidates(result.candidates)
+	return result
+}

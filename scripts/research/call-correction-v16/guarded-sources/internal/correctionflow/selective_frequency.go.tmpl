@@ -1,0 +1,146 @@
+// File role: Pure selective frequency rescue C. Geometry proves exclusions;
+// unresolved canonical identities retain dissent and may veto a nomination.
+// All borrowed evidence stays in the assessment's bounded request-local core.
+package correctionflow
+
+import (
+	"strings"
+
+	"dxcluster/config"
+	"dxcluster/spot"
+)
+
+// SelectiveFrequencyDecline explains one rejected nominee using owned scalars.
+// CredibleSupport counts distinct positive-weight receiver labels in weighted
+// mode, or all receiver labels in explicit raw mode. An unusable competitor
+// rejects the entire assessment before nomination, so its nominee fields are empty.
+type SelectiveFrequencyDecline struct {
+	NomineeCall, NomineeIdentity   string
+	OpponentCall, OpponentIdentity string
+	Reason                         string
+	CredibleSupport                int
+}
+
+type SelectiveFrequencyAssessment struct {
+	FrequencyAssessment
+	Declines []SelectiveFrequencyDecline // At most one per nominee, or one whole-assessment refusal.
+}
+
+// AssessSelectiveFrequencyProposals preserves ordinary frequency nomination and
+// adds a conservative competition veto. It is pure and CW-only, admits configured
+// distances one through three within the global cap, and does not run any gates
+// or create public confidence for an alternative identity. Returned proposals
+// remain subject to the caller's existing eight-trial beam and ordinary gates.
+func AssessSelectiveFrequencyProposals(key spot.ResolverSignalKey, subject string, focalKHz float64,
+	ordinary ResolverPrimarySelection, sources [5]FrequencySource, cfg config.CallCorrectionConfig, options FrequencyProposalOptions) SelectiveFrequencyAssessment {
+	out, _ := prepareSelectiveFrequencyProposals(key, subject, focalKHz, ordinary, sources, cfg, options)
+	return out
+}
+
+// AssessReplayWinnerSeparated is used only by the local replay overlay.
+func AssessReplayWinnerSeparated(key spot.ResolverSignalKey, subject string, focalKHz float64,
+    ordinary ResolverPrimarySelection, sources [5]FrequencySource, cfg config.CallCorrectionConfig, options FrequencyProposalOptions) SelectiveFrequencyAssessment {
+    out,_:=prepareSelectiveFrequencyProposalsWithWinner(key,subject,focalKHz,ordinary,sources,cfg,options,true)
+    return out
+}
+
+// Replay comparisons can reuse the full retained population, including every
+// C-disqualified identity. This private seam never lends evidence to callers.
+func prepareSelectiveFrequencyProposals(key spot.ResolverSignalKey, subject string, focalKHz float64,
+	ordinary ResolverPrimarySelection, sources [5]FrequencySource, cfg config.CallCorrectionConfig, options FrequencyProposalOptions) (SelectiveFrequencyAssessment, frequencyProposalContext) {
+    return prepareSelectiveFrequencyProposalsWithWinner(key,subject,focalKHz,ordinary,sources,cfg,options,false)
+}
+
+func prepareSelectiveFrequencyProposalsWithWinner(key spot.ResolverSignalKey, subject string, focalKHz float64,
+    ordinary ResolverPrimarySelection, sources [5]FrequencySource, cfg config.CallCorrectionConfig, options FrequencyProposalOptions,
+    requireWinner bool) (SelectiveFrequencyAssessment,frequencyProposalContext) {
+    assessment, context := prepareFrequencyProposalsWithWinner(key, subject, focalKHz, ordinary, sources, cfg, options, requireWinner)
+	out := SelectiveFrequencyAssessment{FrequencyAssessment: assessment}
+	if out.Reason != "assessed" {
+		return out, context
+	}
+	credible := selectiveFrequencyCredibility(context)
+	// Run this before tie/neighbor helpers: those helpers may calculate distance
+	// against any retained identity. Never truncate an unusable credible opponent
+	// or let a tied population hide the reason for whole-assessment refusal.
+	for _, rank := range context.ranks {
+		if count := credible[rank.Identity()]; count >= 2 && !frequencyModelCall(rank.Identity()) {
+			out.Reason = "selective_unusable_competitor"
+			out.Declines = []SelectiveFrequencyDecline{selectiveFrequencyDecline(FrequencyProposal{}, rank, count, out.Reason)}
+			return out, context
+		}
+	}
+	activeCap := options.MaxDistance
+	if cfg.MaxEditDistance >= 0 {
+		activeCap = min(activeCap, cfg.MaxEditDistance)
+	}
+	nominateFrequencyProposals(subject, sources, cfg, activeCap, context, &out.FrequencyAssessment)
+	kept := out.Proposals[:0]
+	for _, nominee := range out.Proposals {
+        if requireWinner {
+            rank, ok := ordinary.Snapshot.CandidateForCall(nominee.Call)
+            if !ok || rank.Support<1 || rank.ReplacementBlocked {
+                continue
+            }
+        }
+		declined := false
+		// CanonicalSupport supplies lexical identity order, independent of source
+		// or receipt order. The first credible incompatible rival is the witness.
+		for _, rival := range context.ranks {
+			count := credible[rival.Identity()]
+			if count < 2 || selectiveFrequencyRelated(nominee.Identity, rival.Identity(), cfg) {
+				continue
+			}
+			// The primary gate is directed: rival is the observation, nominee the
+			// proposed truth. Weighted CW edit costs can make reversal differ.
+			if spot.CorrectionCandidateDistance(rival.Call, nominee.Call, key.Mode, cfg.DistanceModelCW, cfg.DistanceModelRTTY) > activeCap {
+				out.Declines = append(out.Declines, selectiveFrequencyDecline(nominee, rival, count, "selective_competitor"))
+				declined = true
+				break
+			}
+		}
+		if !declined {
+			kept = append(kept, nominee)
+		}
+	}
+	// Clear rejected owned strings from the unused backing; no borrowed rank or
+	// receiver backing escapes and one assessment cannot retain another's evidence.
+	clear(out.Proposals[len(kept):])
+	out.Proposals = kept
+	out.BeamLimited = len(kept) > 8
+	return out, context
+}
+
+func selectiveFrequencyCredibility(context frequencyProposalContext) map[string]int {
+	counts := make(map[string]int, len(context.ranks))
+	weighted := context.population.SupportBasis == spot.ResolverSupportBasisWeighted
+	context.union.RangeCanonical(func(identity, _ string, row spot.ResolverReceiverObservation) bool {
+		// Canonical iteration has already joined aliases and source copies into
+		// one membership for each identity/receiver label.
+		if !weighted || row.WeightMilli > 0 {
+			counts[identity]++
+		}
+		return true
+	})
+	return counts
+}
+
+func selectiveFrequencyRelated(nominee, rival string, cfg config.CallCorrectionConfig) bool {
+	if nominee == rival {
+		return true
+	}
+	_, related := spot.DetectCorrectionFamilyWithPolicy(nominee, rival, spot.CorrectionFamilyPolicy{
+		Configured:                 true,
+		TruncationEnabled:          cfg.FamilyPolicy.Truncation.Enabled,
+		TruncationMaxLengthDelta:   cfg.FamilyPolicy.Truncation.MaxLengthDelta,
+		TruncationMinShorterLength: cfg.FamilyPolicy.Truncation.MinShorterLength,
+		TruncationAllowPrefix:      cfg.FamilyPolicy.Truncation.AllowPrefixMatch,
+		TruncationAllowSuffix:      cfg.FamilyPolicy.Truncation.AllowSuffixMatch,
+	})
+	return related
+}
+
+func selectiveFrequencyDecline(nominee FrequencyProposal, rival spot.ResolverCandidateSupport, count int, reason string) SelectiveFrequencyDecline {
+	return SelectiveFrequencyDecline{NomineeCall: strings.Clone(nominee.Call), NomineeIdentity: strings.Clone(nominee.Identity),
+		OpponentCall: strings.Clone(rival.Call), OpponentIdentity: strings.Clone(rival.Identity()), Reason: reason, CredibleSupport: count}
+}

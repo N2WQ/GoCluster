@@ -1,0 +1,157 @@
+{
+  "automatic_activation_authorized": false,
+  "cells": {
+    "CW/1": {
+      "covered_by_reference": [
+        0,
+        0
+      ],
+      "date_counts": [
+        {
+          "all_incremental_episode_ids": 2,
+          "date_utc": "2026-11-17",
+          "jointly_strong_incremental_episodes": 0,
+          "r1_covered_incremental_episodes": 0,
+          "r1_net_supported_correction_episodes": 0,
+          "r1_new_strong_contradictions": 0,
+          "r2_covered_incremental_episodes": 0,
+          "r2_net_supported_correction_episodes": 0,
+          "r2_new_strong_contradictions": 0
+        },
+        {
+          "all_incremental_episode_ids": 1,
+          "date_utc": "2026-11-18",
+          "jointly_strong_incremental_episodes": 0,
+          "r1_covered_incremental_episodes": 0,
+          "r1_net_supported_correction_episodes": 0,
+          "r1_new_strong_contradictions": 0,
+          "r2_covered_incremental_episodes": 0,
+          "r2_net_supported_correction_episodes": 0,
+          "r2_new_strong_contradictions": 0
+        }
+      ],
+      "incremental": 3,
+      "joint": 0,
+      "pass": false,
+      "reasons": [
+        "requires 200 jointly assessable incremental episodes including 50 on two dates",
+        "each reference must cover at least 80% of incremental episodes",
+        "requires net supported gain on each date under each reference"
+      ]
+    },
+    "CW/2": {
+      "covered_by_reference": [
+        0,
+        0
+      ],
+      "date_counts": [
+        {
+          "all_incremental_episode_ids": 0,
+          "date_utc": "2026-11-17",
+          "jointly_strong_incremental_episodes": 0,
+          "r1_covered_incremental_episodes": 0,
+          "r1_net_supported_correction_episodes": 0,
+          "r1_new_strong_contradictions": 0,
+          "r2_covered_incremental_episodes": 0,
+          "r2_net_supported_correction_episodes": 0,
+          "r2_new_strong_contradictions": 0
+        },
+        {
+          "all_incremental_episode_ids": 1,
+          "date_utc": "2026-11-18",
+          "jointly_strong_incremental_episodes": 0,
+          "r1_covered_incremental_episodes": 0,
+          "r1_net_supported_correction_episodes": 0,
+          "r1_new_strong_contradictions": 0,
+          "r2_covered_incremental_episodes": 0,
+          "r2_net_supported_correction_episodes": 0,
+          "r2_new_strong_contradictions": 0
+        }
+      ],
+      "incremental": 1,
+      "joint": 0,
+      "pass": false,
+      "reasons": [
+        "requires 200 jointly assessable incremental episodes including 50 on two dates",
+        "each reference must cover at least 80% of incremental episodes",
+        "requires net supported gain on each date under each reference"
+      ]
+    },
+    "CW/3": {
+      "covered_by_reference": [
+        1,
+        0
+      ],
+      "date_counts": [
+        {
+          "all_incremental_episode_ids": 0,
+          "date_utc": "2026-11-17",
+          "jointly_strong_incremental_episodes": 0,
+          "r1_covered_incremental_episodes": 0,
+          "r1_net_supported_correction_episodes": 0,
+          "r1_new_strong_contradictions": 0,
+          "r2_covered_incremental_episodes": 0,
+          "r2_net_supported_correction_episodes": 0,
+          "r2_new_strong_contradictions": 0
+        },
+        {
+          "all_incremental_episode_ids": 1,
+          "date_utc": "2026-11-18",
+          "jointly_strong_incremental_episodes": 0,
+          "r1_covered_incremental_episodes": 1,
+          "r1_net_supported_correction_episodes": 1,
+          "r1_new_strong_contradictions": 1,
+          "r2_covered_incremental_episodes": 0,
+          "r2_net_supported_correction_episodes": 0,
+          "r2_new_strong_contradictions": 1
+        }
+      ],
+      "incremental": 1,
+      "joint": 0,
+      "pass": false,
+      "reasons": [
+        "requires 200 jointly assessable incremental episodes including 50 on two dates",
+        "each reference must cover at least 80% of incremental episodes",
+        "new strong episode contradiction",
+        "requires net supported gain on each date under each reference"
+      ]
+    }
+  },
+  "complete_population_objective_pass": true,
+  "dates": [
+    "2026-11-17",
+    "2026-11-18"
+  ],
+  "declared_cells_meet_holdout_floors": false,
+  "direct_selective_mutations_outside_cw_1_to_3": {},
+  "direct_selective_nomination_contract_pass": true,
+  "eligible": false,
+  "freeze_sha256": "815468a4766247701cd70a9be28ae2a0284b71ec8d07cf1fb771c70dd4063760",
+  "new_renames_within_predeclared_cells": true,
+  "observed_changed_cells_without_predeclared_floors": [],
+  "outside_renames_by_cell": {},
+  "phase": "holdout",
+  "pooled": {
+    "added_applied_receipts": 14,
+    "affected_baseline_id_union": 0,
+    "all_cells_new_r1_strong_disagreeing_renames": 6,
+    "all_cells_new_r2_strong_disagreeing_renames": 7,
+    "all_terminal_ids": 483066,
+    "control_applied": 7110,
+    "control_stable": 5130,
+    "lost_applied_receipts": 0,
+    "new_identity_renames_outside_active_cells": 0,
+    "retargeted_and_retimed_baseline_receipts": 0,
+    "retargeted_baseline_receipts": 0,
+    "retimed_baseline_receipts": 0,
+    "variant_applied": 7124,
+    "variant_stable": 5141
+  },
+  "qualification_boundary": "Holdout floors cover the predeclared cells only. Each newly active cell requires declaration and full qualification before promotion. Outside-cell receipts can also reflect downstream effects.",
+  "scope_review_before_promotion": false,
+  "score_receipts_sha256": {
+    "2026-11-17": "c1806266968fd9c2f23283c0b2bd57562a78d4f368e754a4ffab3706c181542b",
+    "2026-11-18": "c65933caf86a69abb9c5ee8f97d0e7c850dd71aa0249576aa6e76793565ef16e"
+  },
+  "zero_new_strong_contradictions": false
+}

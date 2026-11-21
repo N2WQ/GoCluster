@@ -1,0 +1,2220 @@
+{
+  "anonymous_overlap_controls": {
+    "2026-05-30/one_changing_speed_dt0/2s": {
+      "clock_unknown": 5,
+      "combined_alert": 84,
+      "combined_no_alert": 11,
+      "events": 100,
+      "extra_false_alert": 84,
+      "geometry_no_alert": 95,
+      "wpm_measurable": 95
+    },
+    "2026-05-30/one_changing_speed_dt0/3s": {
+      "clock_unknown": 2,
+      "combined_alert": 89,
+      "combined_no_alert": 9,
+      "events": 100,
+      "extra_false_alert": 89,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-05-30/one_changing_speed_dt0/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 96,
+      "combined_no_alert": 3,
+      "events": 100,
+      "extra_false_alert": 96,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-05-30/one_changing_speed_dt2/2s": {
+      "clock_unknown": 10,
+      "combined_alert": 70,
+      "combined_no_alert": 20,
+      "events": 100,
+      "extra_false_alert": 70,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-05-30/one_changing_speed_dt2/3s": {
+      "clock_unknown": 3,
+      "combined_alert": 80,
+      "combined_no_alert": 17,
+      "events": 100,
+      "extra_false_alert": 80,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-05-30/one_changing_speed_dt2/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 96,
+      "combined_no_alert": 3,
+      "events": 100,
+      "extra_false_alert": 96,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-05-30/one_changing_speed_dt5/2s": {
+      "clock_unknown": 30,
+      "combined_alert": 41,
+      "combined_no_alert": 29,
+      "events": 100,
+      "extra_false_alert": 41,
+      "geometry_no_alert": 70,
+      "wpm_measurable": 70
+    },
+    "2026-05-30/one_changing_speed_dt5/3s": {
+      "clock_unknown": 19,
+      "combined_alert": 54,
+      "combined_no_alert": 27,
+      "events": 100,
+      "extra_false_alert": 54,
+      "geometry_no_alert": 81,
+      "wpm_measurable": 81
+    },
+    "2026-05-30/one_changing_speed_dt5/5s": {
+      "clock_unknown": 2,
+      "combined_alert": 81,
+      "combined_no_alert": 17,
+      "events": 100,
+      "extra_false_alert": 81,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-05-30/one_identical_repeat_dt0/2s": {
+      "clock_unknown": 5,
+      "combined_alert": 1,
+      "combined_no_alert": 94,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 95,
+      "wpm_measurable": 95
+    },
+    "2026-05-30/one_identical_repeat_dt0/3s": {
+      "clock_unknown": 2,
+      "combined_alert": 1,
+      "combined_no_alert": 97,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-05-30/one_identical_repeat_dt0/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 1,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-05-30/one_identical_repeat_dt2/2s": {
+      "clock_unknown": 10,
+      "combined_alert": 1,
+      "combined_no_alert": 89,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-05-30/one_identical_repeat_dt2/3s": {
+      "clock_unknown": 3,
+      "combined_alert": 1,
+      "combined_no_alert": 96,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-05-30/one_identical_repeat_dt2/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 1,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-05-30/one_identical_repeat_dt5/2s": {
+      "clock_unknown": 30,
+      "combined_alert": 1,
+      "combined_no_alert": 69,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 70,
+      "wpm_measurable": 70
+    },
+    "2026-05-30/one_identical_repeat_dt5/3s": {
+      "clock_unknown": 19,
+      "combined_alert": 2,
+      "combined_no_alert": 79,
+      "events": 100,
+      "extra_false_alert": 2,
+      "geometry_no_alert": 81,
+      "wpm_measurable": 81
+    },
+    "2026-05-30/one_identical_repeat_dt5/5s": {
+      "clock_unknown": 2,
+      "combined_alert": 1,
+      "combined_no_alert": 97,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-05-30/two_cochannel_different_speed_dt0/2s": {
+      "clock_unknown": 4,
+      "combined_alert": 78,
+      "combined_no_alert": 18,
+      "events": 100,
+      "extra_true_alert": 78,
+      "geometry_no_alert": 96,
+      "wpm_measurable": 96
+    },
+    "2026-05-30/two_cochannel_different_speed_dt0/3s": {
+      "combined_alert": 87,
+      "combined_no_alert": 13,
+      "events": 100,
+      "extra_true_alert": 87,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_different_speed_dt0/5s": {
+      "combined_alert": 96,
+      "combined_no_alert": 4,
+      "events": 100,
+      "extra_true_alert": 96,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_different_speed_dt2/2s": {
+      "clock_unknown": 5,
+      "combined_alert": 66,
+      "combined_no_alert": 29,
+      "events": 100,
+      "extra_true_alert": 66,
+      "geometry_no_alert": 95,
+      "wpm_measurable": 95
+    },
+    "2026-05-30/two_cochannel_different_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 82,
+      "combined_no_alert": 17,
+      "events": 100,
+      "extra_true_alert": 82,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-05-30/two_cochannel_different_speed_dt2/5s": {
+      "combined_alert": 97,
+      "combined_no_alert": 3,
+      "events": 100,
+      "extra_true_alert": 97,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_different_speed_dt5/2s": {
+      "clock_unknown": 15,
+      "combined_alert": 48,
+      "combined_no_alert": 37,
+      "events": 100,
+      "extra_true_alert": 48,
+      "geometry_no_alert": 85,
+      "wpm_measurable": 85
+    },
+    "2026-05-30/two_cochannel_different_speed_dt5/3s": {
+      "clock_unknown": 10,
+      "combined_alert": 59,
+      "combined_no_alert": 31,
+      "events": 100,
+      "extra_true_alert": 59,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-05-30/two_cochannel_different_speed_dt5/5s": {
+      "combined_alert": 84,
+      "combined_no_alert": 16,
+      "events": 100,
+      "extra_true_alert": 84,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt0/2s": {
+      "clock_unknown": 4,
+      "combined_no_alert": 96,
+      "events": 100,
+      "geometry_no_alert": 96,
+      "wpm_measurable": 96
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt0/3s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt0/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt2/2s": {
+      "clock_unknown": 5,
+      "combined_no_alert": 95,
+      "events": 100,
+      "geometry_no_alert": 95,
+      "wpm_measurable": 95
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt2/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt5/2s": {
+      "clock_unknown": 15,
+      "combined_alert": 1,
+      "combined_no_alert": 84,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 85,
+      "wpm_measurable": 85
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt5/3s": {
+      "clock_unknown": 10,
+      "combined_alert": 1,
+      "combined_no_alert": 89,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-05-30/two_cochannel_equal_speed_dt5/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt0/2s": {
+      "clock_unknown": 4,
+      "combined_alert": 1,
+      "combined_no_alert": 95,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 96,
+      "wpm_measurable": 40,
+      "wpm_unavailable": 56
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt0/3s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 51,
+      "wpm_unavailable": 49
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt0/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 58,
+      "wpm_unavailable": 42
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt2/2s": {
+      "clock_unknown": 5,
+      "combined_alert": 1,
+      "combined_no_alert": 94,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 95,
+      "wpm_measurable": 40,
+      "wpm_unavailable": 55
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 1,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 51,
+      "wpm_unavailable": 48
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt2/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 58,
+      "wpm_unavailable": 42
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt5/2s": {
+      "clock_unknown": 15,
+      "combined_alert": 1,
+      "combined_no_alert": 84,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 85,
+      "wpm_measurable": 40,
+      "wpm_unavailable": 45
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt5/3s": {
+      "clock_unknown": 10,
+      "combined_alert": 1,
+      "combined_no_alert": 89,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 51,
+      "wpm_unavailable": 39
+    },
+    "2026-05-30/two_cochannel_missing_speed_dt5/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 58,
+      "wpm_unavailable": 42
+    },
+    "2026-05-30/two_separated_equal_speed_dt0/2s": {
+      "clock_unknown": 4,
+      "combined_alert": 73,
+      "combined_no_alert": 23,
+      "events": 100,
+      "geometry_alert": 73,
+      "geometry_no_alert": 23,
+      "wpm_measurable": 96
+    },
+    "2026-05-30/two_separated_equal_speed_dt0/3s": {
+      "combined_alert": 83,
+      "combined_no_alert": 17,
+      "events": 100,
+      "geometry_alert": 83,
+      "geometry_no_alert": 17,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_separated_equal_speed_dt0/5s": {
+      "combined_alert": 87,
+      "combined_no_alert": 13,
+      "events": 100,
+      "geometry_alert": 87,
+      "geometry_no_alert": 13,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_separated_equal_speed_dt2/2s": {
+      "clock_unknown": 5,
+      "combined_alert": 60,
+      "combined_no_alert": 35,
+      "events": 100,
+      "geometry_alert": 60,
+      "geometry_no_alert": 35,
+      "wpm_measurable": 95
+    },
+    "2026-05-30/two_separated_equal_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 78,
+      "combined_no_alert": 21,
+      "events": 100,
+      "geometry_alert": 78,
+      "geometry_no_alert": 21,
+      "wpm_measurable": 99
+    },
+    "2026-05-30/two_separated_equal_speed_dt2/5s": {
+      "combined_alert": 86,
+      "combined_no_alert": 14,
+      "events": 100,
+      "geometry_alert": 86,
+      "geometry_no_alert": 14,
+      "wpm_measurable": 100
+    },
+    "2026-05-30/two_separated_equal_speed_dt5/2s": {
+      "clock_unknown": 15,
+      "combined_alert": 44,
+      "combined_no_alert": 41,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_alert": 43,
+      "geometry_no_alert": 42,
+      "wpm_measurable": 85
+    },
+    "2026-05-30/two_separated_equal_speed_dt5/3s": {
+      "clock_unknown": 10,
+      "combined_alert": 54,
+      "combined_no_alert": 36,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_alert": 53,
+      "geometry_no_alert": 37,
+      "wpm_measurable": 90
+    },
+    "2026-05-30/two_separated_equal_speed_dt5/5s": {
+      "combined_alert": 76,
+      "combined_no_alert": 24,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_alert": 75,
+      "geometry_no_alert": 25,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/one_changing_speed_dt0/2s": {
+      "clock_unknown": 10,
+      "combined_alert": 73,
+      "combined_no_alert": 17,
+      "events": 100,
+      "extra_false_alert": 73,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-09-26/one_changing_speed_dt0/3s": {
+      "clock_unknown": 3,
+      "combined_alert": 89,
+      "combined_no_alert": 8,
+      "events": 100,
+      "extra_false_alert": 89,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-09-26/one_changing_speed_dt0/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 95,
+      "combined_no_alert": 4,
+      "events": 100,
+      "extra_false_alert": 95,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/one_changing_speed_dt2/2s": {
+      "clock_unknown": 9,
+      "combined_alert": 71,
+      "combined_no_alert": 20,
+      "events": 100,
+      "extra_false_alert": 71,
+      "geometry_no_alert": 91,
+      "wpm_measurable": 91
+    },
+    "2026-09-26/one_changing_speed_dt2/3s": {
+      "clock_unknown": 3,
+      "combined_alert": 82,
+      "combined_no_alert": 15,
+      "events": 100,
+      "extra_false_alert": 82,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-09-26/one_changing_speed_dt2/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 93,
+      "combined_no_alert": 6,
+      "events": 100,
+      "extra_false_alert": 93,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/one_changing_speed_dt5/2s": {
+      "clock_unknown": 21,
+      "combined_alert": 45,
+      "combined_no_alert": 34,
+      "events": 100,
+      "extra_false_alert": 45,
+      "geometry_no_alert": 79,
+      "wpm_measurable": 79
+    },
+    "2026-09-26/one_changing_speed_dt5/3s": {
+      "clock_unknown": 13,
+      "combined_alert": 60,
+      "combined_no_alert": 27,
+      "events": 100,
+      "extra_false_alert": 60,
+      "geometry_no_alert": 87,
+      "wpm_measurable": 87
+    },
+    "2026-09-26/one_changing_speed_dt5/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 81,
+      "combined_no_alert": 18,
+      "events": 100,
+      "extra_false_alert": 81,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/one_identical_repeat_dt0/2s": {
+      "clock_unknown": 10,
+      "combined_no_alert": 90,
+      "events": 100,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-09-26/one_identical_repeat_dt0/3s": {
+      "clock_unknown": 3,
+      "combined_no_alert": 97,
+      "events": 100,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-09-26/one_identical_repeat_dt0/5s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/one_identical_repeat_dt2/2s": {
+      "clock_unknown": 9,
+      "combined_no_alert": 91,
+      "events": 100,
+      "geometry_no_alert": 91,
+      "wpm_measurable": 91
+    },
+    "2026-09-26/one_identical_repeat_dt2/3s": {
+      "clock_unknown": 3,
+      "combined_no_alert": 97,
+      "events": 100,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-09-26/one_identical_repeat_dt2/5s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/one_identical_repeat_dt5/2s": {
+      "clock_unknown": 21,
+      "combined_no_alert": 79,
+      "events": 100,
+      "geometry_no_alert": 79,
+      "wpm_measurable": 79
+    },
+    "2026-09-26/one_identical_repeat_dt5/3s": {
+      "clock_unknown": 13,
+      "combined_no_alert": 87,
+      "events": 100,
+      "geometry_no_alert": 87,
+      "wpm_measurable": 87
+    },
+    "2026-09-26/one_identical_repeat_dt5/5s": {
+      "clock_unknown": 1,
+      "combined_alert": 1,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_cochannel_different_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_alert": 87,
+      "combined_no_alert": 12,
+      "events": 100,
+      "extra_true_alert": 87,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_cochannel_different_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 92,
+      "combined_no_alert": 7,
+      "events": 100,
+      "extra_true_alert": 92,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_cochannel_different_speed_dt0/5s": {
+      "combined_alert": 100,
+      "events": 100,
+      "extra_true_alert": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_cochannel_different_speed_dt2/2s": {
+      "clock_unknown": 2,
+      "combined_alert": 81,
+      "combined_no_alert": 17,
+      "events": 100,
+      "extra_true_alert": 81,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-09-26/two_cochannel_different_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 89,
+      "combined_no_alert": 10,
+      "events": 100,
+      "extra_true_alert": 89,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_cochannel_different_speed_dt2/5s": {
+      "combined_alert": 99,
+      "combined_no_alert": 1,
+      "events": 100,
+      "extra_true_alert": 99,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_cochannel_different_speed_dt5/2s": {
+      "clock_unknown": 10,
+      "combined_alert": 53,
+      "combined_no_alert": 37,
+      "events": 100,
+      "extra_true_alert": 53,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-09-26/two_cochannel_different_speed_dt5/3s": {
+      "clock_unknown": 6,
+      "combined_alert": 66,
+      "combined_no_alert": 28,
+      "events": 100,
+      "extra_true_alert": 66,
+      "geometry_no_alert": 94,
+      "wpm_measurable": 94
+    },
+    "2026-09-26/two_cochannel_different_speed_dt5/5s": {
+      "combined_alert": 88,
+      "combined_no_alert": 12,
+      "events": 100,
+      "extra_true_alert": 88,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt0/5s": {
+      "combined_no_alert": 100,
+      "events": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt2/2s": {
+      "clock_unknown": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt2/5s": {
+      "combined_no_alert": 100,
+      "events": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt5/2s": {
+      "clock_unknown": 10,
+      "combined_no_alert": 90,
+      "events": 100,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 90
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt5/3s": {
+      "clock_unknown": 6,
+      "combined_no_alert": 94,
+      "events": 100,
+      "geometry_no_alert": 94,
+      "wpm_measurable": 94
+    },
+    "2026-09-26/two_cochannel_equal_speed_dt5/5s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 61,
+      "wpm_unavailable": 38
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 64,
+      "wpm_unavailable": 35
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt0/5s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 73,
+      "wpm_unavailable": 27
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt2/2s": {
+      "clock_unknown": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 61,
+      "wpm_unavailable": 37
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 64,
+      "wpm_unavailable": 35
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt2/5s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 73,
+      "wpm_unavailable": 27
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt5/2s": {
+      "clock_unknown": 10,
+      "combined_no_alert": 90,
+      "events": 100,
+      "geometry_no_alert": 90,
+      "wpm_measurable": 61,
+      "wpm_unavailable": 29
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt5/3s": {
+      "clock_unknown": 6,
+      "combined_no_alert": 94,
+      "events": 100,
+      "geometry_no_alert": 94,
+      "wpm_measurable": 64,
+      "wpm_unavailable": 30
+    },
+    "2026-09-26/two_cochannel_missing_speed_dt5/5s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 73,
+      "wpm_unavailable": 27
+    },
+    "2026-09-26/two_separated_equal_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_alert": 81,
+      "combined_no_alert": 18,
+      "events": 100,
+      "geometry_alert": 81,
+      "geometry_no_alert": 18,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_separated_equal_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 85,
+      "combined_no_alert": 14,
+      "events": 100,
+      "geometry_alert": 85,
+      "geometry_no_alert": 14,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_separated_equal_speed_dt0/5s": {
+      "combined_alert": 85,
+      "combined_no_alert": 15,
+      "events": 100,
+      "geometry_alert": 85,
+      "geometry_no_alert": 15,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_separated_equal_speed_dt2/2s": {
+      "clock_unknown": 2,
+      "combined_alert": 76,
+      "combined_no_alert": 22,
+      "events": 100,
+      "geometry_alert": 76,
+      "geometry_no_alert": 22,
+      "wpm_measurable": 98
+    },
+    "2026-09-26/two_separated_equal_speed_dt2/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 82,
+      "combined_no_alert": 17,
+      "events": 100,
+      "geometry_alert": 82,
+      "geometry_no_alert": 17,
+      "wpm_measurable": 99
+    },
+    "2026-09-26/two_separated_equal_speed_dt2/5s": {
+      "combined_alert": 85,
+      "combined_no_alert": 15,
+      "events": 100,
+      "geometry_alert": 85,
+      "geometry_no_alert": 15,
+      "wpm_measurable": 100
+    },
+    "2026-09-26/two_separated_equal_speed_dt5/2s": {
+      "clock_unknown": 10,
+      "combined_alert": 48,
+      "combined_no_alert": 42,
+      "events": 100,
+      "geometry_alert": 48,
+      "geometry_no_alert": 42,
+      "wpm_measurable": 90
+    },
+    "2026-09-26/two_separated_equal_speed_dt5/3s": {
+      "clock_unknown": 6,
+      "combined_alert": 60,
+      "combined_no_alert": 34,
+      "events": 100,
+      "geometry_alert": 60,
+      "geometry_no_alert": 34,
+      "wpm_measurable": 94
+    },
+    "2026-09-26/two_separated_equal_speed_dt5/5s": {
+      "combined_alert": 77,
+      "combined_no_alert": 23,
+      "events": 100,
+      "geometry_alert": 77,
+      "geometry_no_alert": 23,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/one_changing_speed_dt0/2s": {
+      "clock_unknown": 3,
+      "combined_alert": 83,
+      "combined_no_alert": 14,
+      "events": 100,
+      "extra_false_alert": 83,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-11-07/one_changing_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 94,
+      "combined_no_alert": 5,
+      "events": 100,
+      "extra_false_alert": 94,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/one_changing_speed_dt0/5s": {
+      "combined_alert": 100,
+      "events": 100,
+      "extra_false_alert": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/one_changing_speed_dt2/2s": {
+      "clock_unknown": 5,
+      "combined_alert": 76,
+      "combined_no_alert": 19,
+      "events": 100,
+      "extra_false_alert": 76,
+      "geometry_no_alert": 95,
+      "wpm_measurable": 95
+    },
+    "2026-11-07/one_changing_speed_dt2/3s": {
+      "clock_unknown": 2,
+      "combined_alert": 88,
+      "combined_no_alert": 10,
+      "events": 100,
+      "extra_false_alert": 88,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-11-07/one_changing_speed_dt2/5s": {
+      "combined_alert": 100,
+      "events": 100,
+      "extra_false_alert": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/one_changing_speed_dt5/2s": {
+      "clock_unknown": 20,
+      "combined_alert": 45,
+      "combined_no_alert": 35,
+      "events": 100,
+      "extra_false_alert": 45,
+      "geometry_no_alert": 80,
+      "wpm_measurable": 80
+    },
+    "2026-11-07/one_changing_speed_dt5/3s": {
+      "clock_unknown": 11,
+      "combined_alert": 59,
+      "combined_no_alert": 30,
+      "events": 100,
+      "extra_false_alert": 59,
+      "geometry_no_alert": 89,
+      "wpm_measurable": 89
+    },
+    "2026-11-07/one_changing_speed_dt5/5s": {
+      "combined_alert": 85,
+      "combined_no_alert": 15,
+      "events": 100,
+      "extra_false_alert": 85,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/one_identical_repeat_dt0/2s": {
+      "clock_unknown": 3,
+      "combined_no_alert": 97,
+      "events": 100,
+      "geometry_no_alert": 97,
+      "wpm_measurable": 97
+    },
+    "2026-11-07/one_identical_repeat_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 2,
+      "combined_no_alert": 97,
+      "events": 100,
+      "extra_false_alert": 2,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/one_identical_repeat_dt0/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_false_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/one_identical_repeat_dt2/2s": {
+      "clock_unknown": 5,
+      "combined_alert": 1,
+      "combined_no_alert": 94,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 95,
+      "wpm_measurable": 95
+    },
+    "2026-11-07/one_identical_repeat_dt2/3s": {
+      "clock_unknown": 2,
+      "combined_alert": 2,
+      "combined_no_alert": 96,
+      "events": 100,
+      "extra_false_alert": 2,
+      "geometry_no_alert": 98,
+      "wpm_measurable": 98
+    },
+    "2026-11-07/one_identical_repeat_dt2/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_false_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/one_identical_repeat_dt5/2s": {
+      "clock_unknown": 20,
+      "combined_alert": 1,
+      "combined_no_alert": 79,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 80,
+      "wpm_measurable": 80
+    },
+    "2026-11-07/one_identical_repeat_dt5/3s": {
+      "clock_unknown": 11,
+      "combined_alert": 1,
+      "combined_no_alert": 88,
+      "events": 100,
+      "extra_false_alert": 1,
+      "geometry_no_alert": 89,
+      "wpm_measurable": 89
+    },
+    "2026-11-07/one_identical_repeat_dt5/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_false_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_different_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_alert": 96,
+      "combined_no_alert": 3,
+      "events": 100,
+      "extra_true_alert": 96,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_cochannel_different_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 98,
+      "combined_no_alert": 1,
+      "events": 100,
+      "extra_true_alert": 98,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_cochannel_different_speed_dt0/5s": {
+      "combined_alert": 100,
+      "events": 100,
+      "extra_true_alert": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_different_speed_dt2/2s": {
+      "clock_unknown": 1,
+      "combined_alert": 87,
+      "combined_no_alert": 12,
+      "events": 100,
+      "extra_true_alert": 87,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_cochannel_different_speed_dt2/3s": {
+      "combined_alert": 95,
+      "combined_no_alert": 5,
+      "events": 100,
+      "extra_true_alert": 95,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_different_speed_dt2/5s": {
+      "combined_alert": 100,
+      "events": 100,
+      "extra_true_alert": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_different_speed_dt5/2s": {
+      "clock_unknown": 7,
+      "combined_alert": 53,
+      "combined_no_alert": 40,
+      "events": 100,
+      "extra_true_alert": 53,
+      "geometry_no_alert": 93,
+      "wpm_measurable": 93
+    },
+    "2026-11-07/two_cochannel_different_speed_dt5/3s": {
+      "clock_unknown": 4,
+      "combined_alert": 65,
+      "combined_no_alert": 31,
+      "events": 100,
+      "extra_true_alert": 65,
+      "geometry_no_alert": 96,
+      "wpm_measurable": 96
+    },
+    "2026-11-07/two_cochannel_different_speed_dt5/5s": {
+      "combined_alert": 91,
+      "combined_no_alert": 9,
+      "events": 100,
+      "extra_true_alert": 91,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 2,
+      "combined_no_alert": 97,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt0/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt2/2s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt2/3s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt2/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt5/2s": {
+      "clock_unknown": 7,
+      "combined_no_alert": 93,
+      "events": 100,
+      "geometry_no_alert": 93,
+      "wpm_measurable": 93
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt5/3s": {
+      "clock_unknown": 4,
+      "combined_alert": 1,
+      "combined_no_alert": 95,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 96,
+      "wpm_measurable": 96
+    },
+    "2026-11-07/two_cochannel_equal_speed_dt5/5s": {
+      "combined_alert": 2,
+      "combined_no_alert": 98,
+      "events": 100,
+      "extra_true_alert": 2,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 62,
+      "wpm_unavailable": 37
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 69,
+      "wpm_unavailable": 30
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt0/5s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 74,
+      "wpm_unavailable": 26
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt2/2s": {
+      "clock_unknown": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "geometry_no_alert": 99,
+      "wpm_measurable": 62,
+      "wpm_unavailable": 37
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt2/3s": {
+      "combined_no_alert": 100,
+      "events": 100,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 69,
+      "wpm_unavailable": 31
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt2/5s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 74,
+      "wpm_unavailable": 26
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt5/2s": {
+      "clock_unknown": 7,
+      "combined_no_alert": 93,
+      "events": 100,
+      "geometry_no_alert": 93,
+      "wpm_measurable": 62,
+      "wpm_unavailable": 31
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt5/3s": {
+      "clock_unknown": 4,
+      "combined_no_alert": 96,
+      "events": 100,
+      "geometry_no_alert": 96,
+      "wpm_measurable": 69,
+      "wpm_unavailable": 27
+    },
+    "2026-11-07/two_cochannel_missing_speed_dt5/5s": {
+      "combined_alert": 1,
+      "combined_no_alert": 99,
+      "events": 100,
+      "extra_true_alert": 1,
+      "geometry_no_alert": 100,
+      "wpm_measurable": 74,
+      "wpm_unavailable": 26
+    },
+    "2026-11-07/two_separated_equal_speed_dt0/2s": {
+      "clock_unknown": 1,
+      "combined_alert": 90,
+      "combined_no_alert": 9,
+      "events": 100,
+      "geometry_alert": 90,
+      "geometry_no_alert": 9,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_separated_equal_speed_dt0/3s": {
+      "clock_unknown": 1,
+      "combined_alert": 91,
+      "combined_no_alert": 8,
+      "events": 100,
+      "geometry_alert": 91,
+      "geometry_no_alert": 8,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_separated_equal_speed_dt0/5s": {
+      "combined_alert": 91,
+      "combined_no_alert": 9,
+      "events": 100,
+      "geometry_alert": 91,
+      "geometry_no_alert": 9,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_separated_equal_speed_dt2/2s": {
+      "clock_unknown": 1,
+      "combined_alert": 85,
+      "combined_no_alert": 14,
+      "events": 100,
+      "geometry_alert": 85,
+      "geometry_no_alert": 14,
+      "wpm_measurable": 99
+    },
+    "2026-11-07/two_separated_equal_speed_dt2/3s": {
+      "combined_alert": 89,
+      "combined_no_alert": 11,
+      "events": 100,
+      "geometry_alert": 89,
+      "geometry_no_alert": 11,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_separated_equal_speed_dt2/5s": {
+      "combined_alert": 88,
+      "combined_no_alert": 12,
+      "events": 100,
+      "geometry_alert": 88,
+      "geometry_no_alert": 12,
+      "wpm_measurable": 100
+    },
+    "2026-11-07/two_separated_equal_speed_dt5/2s": {
+      "clock_unknown": 7,
+      "combined_alert": 51,
+      "combined_no_alert": 42,
+      "events": 100,
+      "geometry_alert": 51,
+      "geometry_no_alert": 42,
+      "wpm_measurable": 93
+    },
+    "2026-11-07/two_separated_equal_speed_dt5/3s": {
+      "clock_unknown": 4,
+      "combined_alert": 63,
+      "combined_no_alert": 33,
+      "events": 100,
+      "geometry_alert": 63,
+      "geometry_no_alert": 33,
+      "wpm_measurable": 96
+    },
+    "2026-11-07/two_separated_equal_speed_dt5/5s": {
+      "combined_alert": 82,
+      "combined_no_alert": 18,
+      "events": 100,
+      "geometry_alert": 82,
+      "geometry_no_alert": 18,
+      "wpm_measurable": 100
+    }
+  },
+  "constructs": {
+    "2026-05-30/one_missing_speed/2s": {
+      "clock_unknown": 6,
+      "combined_link": 94,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_unavailable": 94
+    },
+    "2026-05-30/one_missing_speed/3s": {
+      "clock_unknown": 2,
+      "combined_link": 98,
+      "geometry_link": 98,
+      "pairs": 100,
+      "wpm_unavailable": 98
+    },
+    "2026-05-30/one_missing_speed/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-05-30/one_repeat/2s": {
+      "clock_unknown": 6,
+      "combined_link": 94,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_known": 75,
+      "wpm_unavailable": 19
+    },
+    "2026-05-30/one_repeat/3s": {
+      "clock_unknown": 2,
+      "combined_link": 98,
+      "geometry_link": 98,
+      "pairs": 100,
+      "wpm_known": 76,
+      "wpm_unavailable": 22
+    },
+    "2026-05-30/one_repeat/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 67,
+      "wpm_unavailable": 33
+    },
+    "2026-05-30/one_speed_change/2s": {
+      "clock_unknown": 6,
+      "combined_link": 19,
+      "combined_split": 75,
+      "extra_false_split": 75,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_known": 75,
+      "wpm_unavailable": 19
+    },
+    "2026-05-30/one_speed_change/3s": {
+      "clock_unknown": 2,
+      "combined_link": 22,
+      "combined_split": 76,
+      "extra_false_split": 76,
+      "geometry_link": 98,
+      "pairs": 100,
+      "wpm_known": 76,
+      "wpm_unavailable": 22
+    },
+    "2026-05-30/one_speed_change/5s": {
+      "combined_link": 33,
+      "combined_split": 67,
+      "extra_false_split": 67,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 67,
+      "wpm_unavailable": 33
+    },
+    "2026-05-30/two_different_speed_cochannel/2s": {
+      "clock_unknown": 8,
+      "combined_link": 16,
+      "combined_split": 76,
+      "extra_true_split": 76,
+      "geometry_link": 92,
+      "pairs": 100,
+      "wpm_known": 76,
+      "wpm_unavailable": 16
+    },
+    "2026-05-30/two_different_speed_cochannel/3s": {
+      "clock_unknown": 4,
+      "combined_link": 23,
+      "combined_split": 73,
+      "extra_true_split": 73,
+      "geometry_link": 96,
+      "pairs": 100,
+      "wpm_known": 73,
+      "wpm_unavailable": 23
+    },
+    "2026-05-30/two_different_speed_cochannel/5s": {
+      "combined_link": 38,
+      "combined_split": 62,
+      "extra_true_split": 62,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 62,
+      "wpm_unavailable": 38
+    },
+    "2026-05-30/two_equal_speed_cochannel/2s": {
+      "clock_unknown": 8,
+      "combined_link": 92,
+      "geometry_link": 92,
+      "pairs": 100,
+      "wpm_known": 76,
+      "wpm_unavailable": 16
+    },
+    "2026-05-30/two_equal_speed_cochannel/3s": {
+      "clock_unknown": 4,
+      "combined_link": 96,
+      "geometry_link": 96,
+      "pairs": 100,
+      "wpm_known": 73,
+      "wpm_unavailable": 23
+    },
+    "2026-05-30/two_equal_speed_cochannel/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 62,
+      "wpm_unavailable": 38
+    },
+    "2026-05-30/two_missing_speed/2s": {
+      "clock_unknown": 8,
+      "combined_link": 92,
+      "geometry_link": 92,
+      "pairs": 100,
+      "wpm_unavailable": 92
+    },
+    "2026-05-30/two_missing_speed/3s": {
+      "clock_unknown": 4,
+      "combined_link": 96,
+      "geometry_link": 96,
+      "pairs": 100,
+      "wpm_unavailable": 96
+    },
+    "2026-05-30/two_missing_speed/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-05-30/two_nearby_different_speed/2s": {
+      "clock_unknown": 8,
+      "combined_link": 13,
+      "combined_split": 79,
+      "extra_true_split": 69,
+      "geometry_link": 82,
+      "geometry_split": 10,
+      "pairs": 100,
+      "wpm_known": 76,
+      "wpm_unavailable": 16
+    },
+    "2026-05-30/two_nearby_different_speed/3s": {
+      "clock_unknown": 4,
+      "combined_link": 20,
+      "combined_split": 76,
+      "extra_true_split": 69,
+      "geometry_link": 89,
+      "geometry_split": 7,
+      "pairs": 100,
+      "wpm_known": 73,
+      "wpm_unavailable": 23
+    },
+    "2026-05-30/two_nearby_different_speed/5s": {
+      "combined_link": 34,
+      "combined_split": 66,
+      "extra_true_split": 62,
+      "geometry_link": 96,
+      "geometry_split": 4,
+      "pairs": 100,
+      "wpm_known": 62,
+      "wpm_unavailable": 38
+    },
+    "2026-05-30/two_separated_equal_speed/2s": {
+      "clock_unknown": 8,
+      "combined_link": 1,
+      "combined_split": 91,
+      "geometry_link": 1,
+      "geometry_split": 91,
+      "pairs": 100,
+      "wpm_known": 76,
+      "wpm_unavailable": 16
+    },
+    "2026-05-30/two_separated_equal_speed/3s": {
+      "clock_unknown": 4,
+      "combined_split": 96,
+      "geometry_split": 96,
+      "pairs": 100,
+      "wpm_known": 73,
+      "wpm_unavailable": 23
+    },
+    "2026-05-30/two_separated_equal_speed/5s": {
+      "combined_split": 100,
+      "geometry_split": 100,
+      "pairs": 100,
+      "wpm_known": 62,
+      "wpm_unavailable": 38
+    },
+    "2026-09-26/one_missing_speed/2s": {
+      "clock_unknown": 6,
+      "combined_link": 94,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_unavailable": 94
+    },
+    "2026-09-26/one_missing_speed/3s": {
+      "clock_unknown": 2,
+      "combined_link": 98,
+      "geometry_link": 98,
+      "pairs": 100,
+      "wpm_unavailable": 98
+    },
+    "2026-09-26/one_missing_speed/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-09-26/one_repeat/2s": {
+      "clock_unknown": 6,
+      "combined_link": 94,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_known": 81,
+      "wpm_unavailable": 13
+    },
+    "2026-09-26/one_repeat/3s": {
+      "clock_unknown": 2,
+      "combined_link": 98,
+      "geometry_link": 98,
+      "pairs": 100,
+      "wpm_known": 85,
+      "wpm_unavailable": 13
+    },
+    "2026-09-26/one_repeat/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 86,
+      "wpm_unavailable": 14
+    },
+    "2026-09-26/one_speed_change/2s": {
+      "clock_unknown": 6,
+      "combined_link": 13,
+      "combined_split": 81,
+      "extra_false_split": 81,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_known": 81,
+      "wpm_unavailable": 13
+    },
+    "2026-09-26/one_speed_change/3s": {
+      "clock_unknown": 2,
+      "combined_link": 13,
+      "combined_split": 85,
+      "extra_false_split": 85,
+      "geometry_link": 98,
+      "pairs": 100,
+      "wpm_known": 85,
+      "wpm_unavailable": 13
+    },
+    "2026-09-26/one_speed_change/5s": {
+      "combined_link": 14,
+      "combined_split": 86,
+      "extra_false_split": 86,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 86,
+      "wpm_unavailable": 14
+    },
+    "2026-09-26/two_different_speed_cochannel/2s": {
+      "clock_unknown": 6,
+      "combined_link": 15,
+      "combined_split": 79,
+      "extra_true_split": 79,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_known": 79,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/two_different_speed_cochannel/3s": {
+      "clock_unknown": 4,
+      "combined_link": 16,
+      "combined_split": 80,
+      "extra_true_split": 80,
+      "geometry_link": 96,
+      "pairs": 100,
+      "wpm_known": 80,
+      "wpm_unavailable": 16
+    },
+    "2026-09-26/two_different_speed_cochannel/5s": {
+      "combined_link": 15,
+      "combined_split": 85,
+      "extra_true_split": 85,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 85,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/two_equal_speed_cochannel/2s": {
+      "clock_unknown": 6,
+      "combined_link": 94,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_known": 79,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/two_equal_speed_cochannel/3s": {
+      "clock_unknown": 4,
+      "combined_link": 96,
+      "geometry_link": 96,
+      "pairs": 100,
+      "wpm_known": 80,
+      "wpm_unavailable": 16
+    },
+    "2026-09-26/two_equal_speed_cochannel/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 85,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/two_missing_speed/2s": {
+      "clock_unknown": 6,
+      "combined_link": 94,
+      "geometry_link": 94,
+      "pairs": 100,
+      "wpm_unavailable": 94
+    },
+    "2026-09-26/two_missing_speed/3s": {
+      "clock_unknown": 4,
+      "combined_link": 96,
+      "geometry_link": 96,
+      "pairs": 100,
+      "wpm_unavailable": 96
+    },
+    "2026-09-26/two_missing_speed/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-09-26/two_nearby_different_speed/2s": {
+      "clock_unknown": 6,
+      "combined_link": 14,
+      "combined_split": 80,
+      "extra_true_split": 75,
+      "geometry_link": 89,
+      "geometry_split": 5,
+      "pairs": 100,
+      "wpm_known": 79,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/two_nearby_different_speed/3s": {
+      "clock_unknown": 4,
+      "combined_link": 16,
+      "combined_split": 80,
+      "extra_true_split": 78,
+      "geometry_link": 94,
+      "geometry_split": 2,
+      "pairs": 100,
+      "wpm_known": 80,
+      "wpm_unavailable": 16
+    },
+    "2026-09-26/two_nearby_different_speed/5s": {
+      "combined_link": 15,
+      "combined_split": 85,
+      "extra_true_split": 83,
+      "geometry_link": 98,
+      "geometry_split": 2,
+      "pairs": 100,
+      "wpm_known": 85,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/two_separated_equal_speed/2s": {
+      "clock_unknown": 6,
+      "combined_link": 1,
+      "combined_split": 93,
+      "geometry_link": 1,
+      "geometry_split": 93,
+      "pairs": 100,
+      "wpm_known": 79,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/two_separated_equal_speed/3s": {
+      "clock_unknown": 4,
+      "combined_link": 1,
+      "combined_split": 95,
+      "geometry_link": 1,
+      "geometry_split": 95,
+      "pairs": 100,
+      "wpm_known": 80,
+      "wpm_unavailable": 16
+    },
+    "2026-09-26/two_separated_equal_speed/5s": {
+      "combined_split": 100,
+      "geometry_split": 100,
+      "pairs": 100,
+      "wpm_known": 85,
+      "wpm_unavailable": 15
+    },
+    "2026-11-07/one_missing_speed/2s": {
+      "clock_unknown": 5,
+      "combined_link": 95,
+      "geometry_link": 95,
+      "pairs": 100,
+      "wpm_unavailable": 95
+    },
+    "2026-11-07/one_missing_speed/3s": {
+      "clock_unknown": 1,
+      "combined_link": 99,
+      "geometry_link": 99,
+      "pairs": 100,
+      "wpm_unavailable": 99
+    },
+    "2026-11-07/one_missing_speed/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-11-07/one_repeat/2s": {
+      "clock_unknown": 5,
+      "combined_link": 95,
+      "geometry_link": 95,
+      "pairs": 100,
+      "wpm_known": 88,
+      "wpm_unavailable": 7
+    },
+    "2026-11-07/one_repeat/3s": {
+      "clock_unknown": 1,
+      "combined_link": 99,
+      "geometry_link": 99,
+      "pairs": 100,
+      "wpm_known": 89,
+      "wpm_unavailable": 10
+    },
+    "2026-11-07/one_repeat/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 88,
+      "wpm_unavailable": 12
+    },
+    "2026-11-07/one_speed_change/2s": {
+      "clock_unknown": 5,
+      "combined_link": 7,
+      "combined_split": 88,
+      "extra_false_split": 88,
+      "geometry_link": 95,
+      "pairs": 100,
+      "wpm_known": 88,
+      "wpm_unavailable": 7
+    },
+    "2026-11-07/one_speed_change/3s": {
+      "clock_unknown": 1,
+      "combined_link": 10,
+      "combined_split": 89,
+      "extra_false_split": 89,
+      "geometry_link": 99,
+      "pairs": 100,
+      "wpm_known": 89,
+      "wpm_unavailable": 10
+    },
+    "2026-11-07/one_speed_change/5s": {
+      "combined_link": 12,
+      "combined_split": 88,
+      "extra_false_split": 88,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 88,
+      "wpm_unavailable": 12
+    },
+    "2026-11-07/two_different_speed_cochannel/2s": {
+      "combined_link": 10,
+      "combined_split": 90,
+      "extra_true_split": 90,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 90,
+      "wpm_unavailable": 10
+    },
+    "2026-11-07/two_different_speed_cochannel/3s": {
+      "combined_link": 16,
+      "combined_split": 84,
+      "extra_true_split": 84,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 84,
+      "wpm_unavailable": 16
+    },
+    "2026-11-07/two_different_speed_cochannel/5s": {
+      "combined_link": 17,
+      "combined_split": 83,
+      "extra_true_split": 83,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 83,
+      "wpm_unavailable": 17
+    },
+    "2026-11-07/two_equal_speed_cochannel/2s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 90,
+      "wpm_unavailable": 10
+    },
+    "2026-11-07/two_equal_speed_cochannel/3s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 84,
+      "wpm_unavailable": 16
+    },
+    "2026-11-07/two_equal_speed_cochannel/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 83,
+      "wpm_unavailable": 17
+    },
+    "2026-11-07/two_missing_speed/2s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-11-07/two_missing_speed/3s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-11-07/two_missing_speed/5s": {
+      "combined_link": 100,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_unavailable": 100
+    },
+    "2026-11-07/two_nearby_different_speed/2s": {
+      "combined_link": 10,
+      "combined_split": 90,
+      "extra_true_split": 89,
+      "geometry_link": 99,
+      "geometry_split": 1,
+      "pairs": 100,
+      "wpm_known": 90,
+      "wpm_unavailable": 10
+    },
+    "2026-11-07/two_nearby_different_speed/3s": {
+      "combined_link": 16,
+      "combined_split": 84,
+      "extra_true_split": 84,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 84,
+      "wpm_unavailable": 16
+    },
+    "2026-11-07/two_nearby_different_speed/5s": {
+      "combined_link": 17,
+      "combined_split": 83,
+      "extra_true_split": 83,
+      "geometry_link": 100,
+      "pairs": 100,
+      "wpm_known": 83,
+      "wpm_unavailable": 17
+    },
+    "2026-11-07/two_separated_equal_speed/2s": {
+      "combined_split": 100,
+      "geometry_split": 100,
+      "pairs": 100,
+      "wpm_known": 90,
+      "wpm_unavailable": 10
+    },
+    "2026-11-07/two_separated_equal_speed/3s": {
+      "combined_split": 100,
+      "geometry_split": 100,
+      "pairs": 100,
+      "wpm_known": 84,
+      "wpm_unavailable": 16
+    },
+    "2026-11-07/two_separated_equal_speed/5s": {
+      "combined_split": 100,
+      "geometry_split": 100,
+      "pairs": 100,
+      "wpm_known": 83,
+      "wpm_unavailable": 17
+    }
+  },
+  "dates": {
+    "2026-05-30": {
+      "archive_sha256": "4f0f5f82e2f685bcdb6e1612c547bc5f625cadece265153f4352ecd776a5153a",
+      "counts": {
+        "constructed_source_pairs": 100,
+        "cw_cq": 729420,
+        "groups": 115188,
+        "missing_speed": 0,
+        "raw_rows": 730894,
+        "simple_calls": 726174
+      },
+      "receiver_metadata_sha256": "88789c069d94a47eab698299527972aa1924d65f31232cf4a1ef4e79a9a6b7b2"
+    },
+    "2026-09-26": {
+      "archive_sha256": "d8b6f8470b9d291dc82e29d4a0613f62b212b22a6a17a1c16de000a437dd8efb",
+      "counts": {
+        "constructed_source_pairs": 100,
+        "cw_cq": 53363,
+        "groups": 6139,
+        "missing_speed": 0,
+        "raw_rows": 132566,
+        "simple_calls": 52226
+      },
+      "receiver_metadata_sha256": "88789c069d94a47eab698299527972aa1924d65f31232cf4a1ef4e79a9a6b7b2"
+    },
+    "2026-11-07": {
+      "archive_sha256": "6e93a5249a41f026dd19de15a013045f6e73e9ff3f6e67f2f0ccfcdd621451d1",
+      "counts": {
+        "constructed_source_pairs": 100,
+        "cw_cq": 27942,
+        "groups": 3294,
+        "missing_speed": 1,
+        "raw_rows": 29374,
+        "simple_calls": 25579
+      },
+      "receiver_metadata_sha256": "88789c069d94a47eab698299527972aa1924d65f31232cf4a1ef4e79a9a6b7b2"
+    }
+  },
+  "natural_30_60s": {
+    "2026-05-30/different_reported_call/2s": {
+      "clock_unknown": 10346,
+      "combined_link": 2692,
+      "combined_split": 13860,
+      "extra_true_split": 1628,
+      "geometry_link": 4320,
+      "geometry_split": 12232,
+      "pairs": 26898,
+      "wpm_known": 13181,
+      "wpm_unavailable": 3371
+    },
+    "2026-05-30/different_reported_call/3s": {
+      "clock_unknown": 7337,
+      "combined_link": 3257,
+      "combined_split": 16304,
+      "extra_true_split": 1849,
+      "geometry_link": 5106,
+      "geometry_split": 14455,
+      "pairs": 26898,
+      "wpm_known": 15082,
+      "wpm_unavailable": 4479
+    },
+    "2026-05-30/different_reported_call/5s": {
+      "clock_unknown": 3310,
+      "combined_link": 4132,
+      "combined_split": 19456,
+      "extra_true_split": 2163,
+      "geometry_link": 6295,
+      "geometry_split": 17293,
+      "pairs": 26898,
+      "wpm_known": 17123,
+      "wpm_unavailable": 6465
+    },
+    "2026-05-30/same_reported_call/2s": {
+      "clock_unknown": 27659,
+      "combined_link": 56822,
+      "combined_split": 778,
+      "extra_false_split": 622,
+      "geometry_link": 57444,
+      "geometry_split": 156,
+      "pairs": 85259,
+      "wpm_known": 44975,
+      "wpm_unavailable": 12625
+    },
+    "2026-05-30/same_reported_call/3s": {
+      "clock_unknown": 19101,
+      "combined_link": 65330,
+      "combined_split": 828,
+      "extra_false_split": 650,
+      "geometry_link": 65980,
+      "geometry_split": 178,
+      "pairs": 85259,
+      "wpm_known": 49736,
+      "wpm_unavailable": 16422
+    },
+    "2026-05-30/same_reported_call/5s": {
+      "clock_unknown": 8610,
+      "combined_link": 75779,
+      "combined_split": 870,
+      "extra_false_split": 662,
+      "geometry_link": 76441,
+      "geometry_split": 208,
+      "pairs": 85259,
+      "wpm_known": 54486,
+      "wpm_unavailable": 22163
+    },
+    "2026-09-26/different_reported_call/2s": {
+      "clock_unknown": 60,
+      "combined_link": 53,
+      "combined_split": 62,
+      "extra_true_split": 11,
+      "geometry_link": 64,
+      "geometry_split": 51,
+      "pairs": 175,
+      "wpm_known": 108,
+      "wpm_unavailable": 7
+    },
+    "2026-09-26/different_reported_call/3s": {
+      "clock_unknown": 47,
+      "combined_link": 58,
+      "combined_split": 70,
+      "extra_true_split": 11,
+      "geometry_link": 69,
+      "geometry_split": 59,
+      "pairs": 175,
+      "wpm_known": 120,
+      "wpm_unavailable": 8
+    },
+    "2026-09-26/different_reported_call/5s": {
+      "clock_unknown": 20,
+      "combined_link": 78,
+      "combined_split": 77,
+      "extra_true_split": 15,
+      "geometry_link": 93,
+      "geometry_split": 62,
+      "pairs": 175,
+      "wpm_known": 140,
+      "wpm_unavailable": 15
+    },
+    "2026-09-26/same_reported_call/2s": {
+      "clock_unknown": 979,
+      "combined_link": 2104,
+      "combined_split": 16,
+      "extra_false_split": 11,
+      "geometry_link": 2115,
+      "geometry_split": 5,
+      "pairs": 3099,
+      "wpm_known": 1926,
+      "wpm_unavailable": 194
+    },
+    "2026-09-26/same_reported_call/3s": {
+      "clock_unknown": 633,
+      "combined_link": 2448,
+      "combined_split": 18,
+      "extra_false_split": 12,
+      "geometry_link": 2460,
+      "geometry_split": 6,
+      "pairs": 3099,
+      "wpm_known": 2227,
+      "wpm_unavailable": 239
+    },
+    "2026-09-26/same_reported_call/5s": {
+      "clock_unknown": 283,
+      "combined_link": 2801,
+      "combined_split": 15,
+      "extra_false_split": 9,
+      "geometry_link": 2810,
+      "geometry_split": 6,
+      "pairs": 3099,
+      "wpm_known": 2470,
+      "wpm_unavailable": 346
+    },
+    "2026-11-07/different_reported_call/2s": {
+      "clock_unknown": 28,
+      "combined_link": 25,
+      "combined_split": 21,
+      "extra_true_split": 7,
+      "geometry_link": 32,
+      "geometry_split": 14,
+      "pairs": 74,
+      "wpm_known": 45,
+      "wpm_unavailable": 1
+    },
+    "2026-11-07/different_reported_call/3s": {
+      "clock_unknown": 17,
+      "combined_link": 36,
+      "combined_split": 21,
+      "extra_true_split": 7,
+      "geometry_link": 43,
+      "geometry_split": 14,
+      "pairs": 74,
+      "wpm_known": 53,
+      "wpm_unavailable": 4
+    },
+    "2026-11-07/different_reported_call/5s": {
+      "clock_unknown": 9,
+      "combined_link": 42,
+      "combined_split": 23,
+      "extra_true_split": 7,
+      "geometry_link": 49,
+      "geometry_split": 16,
+      "pairs": 74,
+      "wpm_known": 60,
+      "wpm_unavailable": 5
+    },
+    "2026-11-07/same_reported_call/2s": {
+      "clock_unknown": 370,
+      "combined_link": 976,
+      "combined_split": 24,
+      "extra_false_split": 24,
+      "geometry_link": 1000,
+      "pairs": 1370,
+      "wpm_known": 947,
+      "wpm_unavailable": 53
+    },
+    "2026-11-07/same_reported_call/3s": {
+      "clock_unknown": 250,
+      "combined_link": 1094,
+      "combined_split": 26,
+      "extra_false_split": 26,
+      "geometry_link": 1120,
+      "pairs": 1370,
+      "wpm_known": 1044,
+      "wpm_unavailable": 76
+    },
+    "2026-11-07/same_reported_call/5s": {
+      "clock_unknown": 111,
+      "combined_link": 1233,
+      "combined_split": 26,
+      "extra_false_split": 26,
+      "geometry_link": 1259,
+      "pairs": 1370,
+      "wpm_known": 1163,
+      "wpm_unavailable": 96
+    }
+  },
+  "parameters": {
+    "burst_width_s": [
+      2,
+      3,
+      5
+    ],
+    "clock": "evaluate at second bin close; all constituent reports already available",
+    "comparison_lag_s_inclusive": [
+      30,
+      60
+    ],
+    "constructed_offsets": "30/45/60s first report separation; 0/80/200Hz median offsets; WPM median centers 28/36 preserving sample dispersion",
+    "geometry_split_above_hz": 100,
+    "grouping": "10s UTC bins by band and reported simple call, first receipt per normalized family; within-bin 100Hz spread max; groups matched in same band",
+    "limits": "constructed source labels by assignment; natural repeated pairs may share families/groups, source sample is exposed and enriched; no production parity or effect inferred",
+    "max_within_burst_wpm_range": 2,
+    "min_burst_families": 2,
+    "natural_candidate_radius_hz": 250,
+    "natural_labels": "same vs different reported calls conditional on burst eligibility; split categories descriptive only; no RF identities",
+    "overlap_controls": "Interleave and anonymize the two samples; no calls or manual source partition supplied to detector. 0/2/5s onset offsets. Any trailing 2/3/5s interval with >=4 observations and >=2 families is assessable. A gap >=101Hz (<=100Hz within-side spread) or >=4WPM (<=2WPM within-side spread) must separate two families per side. Any alert before event end counts. No alert does not assert a common transmitter.",
+    "selection": "up to 100 disjoint same-reported-call pairs/day, <=50Hz and >=3 families per group, 30-60s apart; source counts retained",
+    "window_utc": "[00:00:00,03:00:00)",
+    "wpm_veto_absolute_difference_at_least": 4
+  },
+  "script_sha256": "563b07f922cd38d2c9dc7d8266c7d0c80aa75d5ba48e6257966921ab929219b5"
+}
