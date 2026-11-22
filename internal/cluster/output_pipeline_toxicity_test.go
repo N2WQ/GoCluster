@@ -3,7 +3,9 @@ package cluster
 import (
 	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"dxcluster/buffer"
@@ -181,6 +183,62 @@ func TestOutputPipelineDrainsToxicityOnInputClose(t *testing.T) {
 	if recentSpots[0].ToxicityStatus != spot.ToxicityToxic {
 		t.Fatalf("expected drained toxicity status TOXIC, got %q", recentSpots[0].ToxicityStatus)
 	}
+}
+
+type toxicityDrainFixture struct {
+	pending atomic.Int64
+	results chan toxicity.Result
+	idle    chan struct{}
+}
+
+func (f *toxicityDrainFixture) Pending() int64                  { return f.pending.Load() }
+func (f *toxicityDrainFixture) ResultBacklog() int              { return len(f.results) }
+func (f *toxicityDrainFixture) Results() <-chan toxicity.Result { return f.results }
+func (f *toxicityDrainFixture) PendingIdle() <-chan struct{}    { return f.idle }
+
+func TestOutputPipelineDrainsBeforeGraceAfterFinalResult(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		recent := buffer.NewRingBuffer(4)
+		p := &outputPipeline{buf: recent, ctyLookup: func() *cty.CTYDatabase { return nil }}
+		p.initLifecycle()
+		p.drainDeadline = time.Now().Add(time.Second)
+		close(p.stopCh)
+
+		source := &toxicityDrainFixture{
+			results: make(chan toxicity.Result, 1),
+			idle:    make(chan struct{}, 1),
+		}
+		source.pending.Store(1)
+		source.idle <- struct{}{} // A notification from an earlier job may be queued.
+		s := spot.NewSpot("K1ABC", "W1XYZ", 14074, "CW")
+		s.Comment = "non routine"
+		source.results <- toxicity.Result{Spot: s, Decision: toxicity.Decision{Status: spot.ToxicityToxic}}
+
+		done := make(chan struct{})
+		go func() {
+			p.drainToxicityPending(source, p.drainDeadline)
+			close(done)
+		}()
+		synctest.Wait()
+		if got := recent.GetRecent(2); len(got) != 1 || got[0].ToxicityStatus != spot.ToxicityToxic {
+			t.Fatalf("expected one delivered classification while worker was pending, got %v", got)
+		}
+		select {
+		case <-done:
+			t.Fatal("pipeline finished before the worker")
+		default:
+		}
+
+		source.pending.Store(0)
+		select {
+		case source.idle <- struct{}{}:
+		default:
+		}
+		<-done
+		if !time.Now().Before(p.drainDeadline) || len(recent.GetRecent(2)) != 1 {
+			t.Fatal("expected drain before grace expired with exactly one delivery")
+		}
+	})
 }
 
 func TestFormatToxicitySummaryExposesBoundedCounters(t *testing.T) {

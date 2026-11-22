@@ -56,6 +56,7 @@ type Classifier struct {
 	client  classifierClient
 	jobs    chan job
 	results chan Result
+	idle    chan struct{}
 	ctx     context.Context
 	cancel  context.CancelFunc
 
@@ -90,6 +91,7 @@ func NewClassifier(cfg Config, gate *SafeGate, client classifierClient) *Classif
 		client:  client,
 		jobs:    make(chan job, cfg.QueueSize),
 		results: make(chan Result, cfg.QueueSize),
+		idle:    make(chan struct{}, 1),
 		ctx:     ctx,
 		cancel:  cancel,
 	}
@@ -129,7 +131,7 @@ func (c *Classifier) Stop() {
 		// retires its own pending count; receiving also releases its references.
 		for len(c.jobs) > 0 {
 			<-c.jobs
-			c.pending.Add(-1)
+			c.finishPendingJob()
 		}
 		// A result already received cannot be revoked. Nonblocking retirement
 		// also tolerates that transfer racing Stop; keep Results open because
@@ -183,7 +185,7 @@ func (c *Classifier) ClassifyOrEnqueue(s *spot.Spot, now time.Time) bool {
 	case c.jobs <- job{spot: s, comment: clean}:
 		return false
 	default:
-		c.pending.Add(-1)
+		c.finishPendingJob()
 		applyDecision(s, Decision{Status: spot.ToxicityUnavailable})
 		c.queueFull.Add(1)
 		c.unavailable.Add(1)
@@ -204,7 +206,7 @@ func (c *Classifier) worker() {
 }
 
 func (c *Classifier) handleJob(j job) {
-	defer c.pending.Add(-1)
+	defer c.finishPendingJob()
 	c.lifecycleMu.Lock()
 	if c.stopped {
 		c.lifecycleMu.Unlock()
@@ -241,6 +243,21 @@ func (c *Classifier) handleJob(j job) {
 	case c.results <- Result{Spot: j.spot, Decision: decision}:
 	case <-c.ctx.Done():
 	}
+}
+
+func (c *Classifier) finishPendingJob() {
+	if c.pending.Add(-1) == 0 {
+		select {
+		case c.idle <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// PendingIdle signals that pending work reached zero. Signals coalesce and
+// may be stale. The drain consumer still checks counts and buffered results.
+func (c *Classifier) PendingIdle() <-chan struct{} {
+	return c.idle
 }
 
 func (c *Classifier) Pending() int64 {

@@ -12,6 +12,23 @@ import (
 	"dxcluster/spot"
 )
 
+func TestClassifierPendingIdleFollowsFinalPublication(t *testing.T) {
+	c := NewClassifier(lifecycleConfig(1, 1), testGate(t), &lifecycleReplyClient{})
+	lifecycleCleanup(t, c, nil)
+	input := lifecycleSpot("a conversational comment to classify")
+	if c.ClassifyOrEnqueue(input, time.Now().UTC()) {
+		t.Fatal("fixture job was not accepted")
+	}
+	c.Start()
+	lifecycleAwait(t, c.PendingIdle(), "final job completion")
+	if c.Pending() != 0 || c.ResultBacklog() != 1 {
+		t.Fatalf("idle signaled before final publication: pending=%d backlog=%d", c.Pending(), c.ResultBacklog())
+	}
+	if result := <-c.Results(); result.Spot != input || result.Decision.Status != spot.ToxicityToxic {
+		t.Fatalf("unexpected final result: %+v", result)
+	}
+}
+
 func TestClassifierStopRetiresBlockedPublication(t *testing.T) {
 	client := &lifecycleReplyClient{}
 	c := NewClassifier(lifecycleConfig(1, 1), testGate(t), client)

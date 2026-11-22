@@ -57,7 +57,9 @@ func (p *outputPipeline) stop() {
 // expiry; remaining HTTP work is canceled independently by the timer owner.
 func (p *outputPipeline) retire() {
 	p.beginRetirement()
-	p.drainToxicityPending(p.drainDeadline)
+	if p.toxicityClassifier != nil {
+		p.drainToxicityPending(p.toxicityClassifier, p.drainDeadline)
+	}
 	close(p.graceFinished)
 	<-p.classifierStopped
 	p.releaseDueTemporal(time.Now().UTC(), true)
@@ -70,13 +72,21 @@ func (p *outputPipeline) retire() {
 	}
 }
 
-func (p *outputPipeline) drainToxicityPending(deadline time.Time) {
-	if p.toxicityClassifier == nil || !time.Now().Before(deadline) {
+type toxicityDrainSource interface {
+	Pending() int64
+	ResultBacklog() int
+	PendingIdle() <-chan struct{}
+	Results() <-chan toxicity.Result
+}
+
+func (p *outputPipeline) drainToxicityPending(source toxicityDrainSource, deadline time.Time) {
+	if !time.Now().Before(deadline) {
 		return
 	}
 	timer := time.NewTimer(time.Until(deadline))
 	defer timer.Stop()
-	for p.toxicityClassifier.Pending() > 0 || p.toxicityClassifier.ResultBacklog() > 0 {
+	idle, results := source.PendingIdle(), source.Results()
+	for source.Pending() > 0 || source.ResultBacklog() > 0 {
 		// Check the clock again after synchronous processing. Terminal Stop may
 		// still be joining a client, so its completion alone cannot gate transfer.
 		if !time.Now().Before(deadline) {
@@ -87,7 +97,10 @@ func (p *outputPipeline) drainToxicityPending(deadline time.Time) {
 			return
 		case <-p.classifierStopped:
 			return
-		case result := <-p.toxicityResults():
+		case <-idle:
+			// The last result can be consumed before its worker clears pending.
+			// Recheck both counts after the worker completes.
+		case result := <-results:
 			if !p.processToxicityResult(result) {
 				return
 			}

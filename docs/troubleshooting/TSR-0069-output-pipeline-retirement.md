@@ -73,6 +73,13 @@ Tags: shutdown, output, grace, temporal, stabilizer
   lacked a shared completion contract.
 - A preselect deadline check was insufficient: select may choose ready data
   after expiry. Processing admission is checked again before applying a result.
+- On November 21 the Windows product test timed out before the grace timer,
+  which later logged zero classifier pending jobs and buffered results. The
+  drain could consume the last result and block again while its worker still
+  owned the pending count. The classifier now signals transitions to zero
+  through one coalescing slot. The drain wakes and checks both counts again
+  before ending grace. The regression holds the final worker pending until
+  the result is delivered, then verifies completion before the deadline.
 - Missing lower-bound cancellation evidence could falsely accept an early
   timer. The HTTP control brackets the first deadline and rejects early cancel.
 - Scientific review supports timing/force semantics, not correction accuracy,
