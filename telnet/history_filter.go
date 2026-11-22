@@ -26,7 +26,8 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 	c.filterMu.RLock()
 	owned := &Client{
 		callsign: c.callsign, dialect: c.dialect, grid: c.grid, gridDerived: c.gridDerived,
-		gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
+		operatingGeography: c.operatingGeography,
+		gridCell:           c.gridCell, gridCoarseCell: c.gridCoarseCell,
 		noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
 		configuredSettings: filter.SettingsConfiguration{CWSpeed: c.configuredSettings.CWSpeed},
 	}
@@ -43,6 +44,7 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 
 // historyFilterDigest requires the configuration transaction stripe. It borrows
 // maps only while locked and retains only a fixed-size matching fingerprint.
+// Operating geography is immutable for the connection, as is the login call.
 func (c *Client) historyFilterDigest() [32]byte {
 	c.pathMu.RLock()
 	c.filterMu.RLock()

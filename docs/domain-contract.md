@@ -804,6 +804,20 @@ take one value.
   `DXDXCC=IT9` normalizes to entity 248 with that CTY association;
   `DXCALL=IT9*` selects a literal prefix. SHOW DXCC and history CTY selector
   precedence remain separate. See [ADR-0321](decisions/ADR-0321-boolean-canonical-dxcc-input.md).
+- The current GO grammar accepts bare `MYCONT` on DXCONT/DECONT and bare
+  `MYDXCC` on DXDXCC/DEDXCC, with `=` and `<>`, alone or in lists. Each
+  occurrence counts toward existing limits. Current storage and machine
+  readbacks keep the symbolic names. They compile without a CTY label lookup.
+  The portable CTY lookup at login uses the radio callsign without its numeric
+  SSID. It supplies the session's canonical continent and positive ADIF
+  independently. Each stays fixed until reconnect.
+  Home-call licensing and GRID use their own inputs. Live and filtered history
+  consume the same session values and perform no per-spot lookup for them.
+  An unknown spot field makes ordinary comparisons false. An unknown session
+  operand cannot satisfy `=` by itself, and cannot support `<>` against all
+  list members. Known members can still satisfy `=`. `ALL` retains its wildcard
+  behavior and `NOT` retains ordinary negation. See
+  [operating geography](../telnet/README.md#your-operating-geography-in-go-rules).
 - DXSTATE/DESTATE use the observed canonical 60 FCC plus 13 Canadian codes
   described above. Rule operands normalize case; missing, lowercase or invalid
   spot codes are unknown. The home/base-call license jurisdiction used to

@@ -518,6 +518,11 @@ whole rule set. `SHOW FILTER FULL` adds the prepared program's counts and
 separate delivery controls. Human readbacks temporarily pause live spots.
 Use `RESUME` when ready.
 
+Use `DECONT=MYCONT` for reports from your operating continent or
+`DXDXCC=MYDXCC` for stations in your operating entity. The same GO rule works
+with different logins. For example, `N2WQ/VE3` uses Canada for `MYDXCC`.
+See [your operating geography in GO rules](telnet/README.md#your-operating-geography-in-go-rules).
+
 `SHOW SETTINGS` separates your selections from the choices currently in use.
 The following example uses server path minimums of 21 for stations and 11 for
 beacons. Dedupe remains SLOW even when a rule contains NEARBY:

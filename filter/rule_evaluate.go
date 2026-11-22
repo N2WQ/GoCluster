@@ -32,6 +32,15 @@ func (p *rulePredicate) matches(view *ruleView) bool {
 		if !known {
 			return false
 		}
+		if p.usesOperatingGeography {
+			entity := view.operatingGeography.DXCC
+			if entity > 0 && number == entity {
+				return p.operator == expr.Equal
+			}
+			if entity <= 0 && p.operator == expr.NotEqual {
+				return false
+			}
+		}
 		for _, operand := range p.integers {
 			if ruleCompareInt(number, operand, p.operator) {
 				return p.operator != expr.NotEqual
@@ -62,6 +71,17 @@ func (p *rulePredicate) matches(view *ruleView) bool {
 			// Unknown fails ordinary comparisons, including inequality. NOT is
 			// ordinary Boolean negation in the surrounding expression.
 			return false
+		}
+		if p.usesOperatingGeography {
+			continent := view.operatingGeography.Continent
+			if value == continent {
+				return p.operator == expr.Equal
+			}
+			// A known literal may still satisfy equality. Inequality cannot
+			// establish a difference from every operand if one is unknown.
+			if continent == "" && p.operator == expr.NotEqual {
+				return false
+			}
 		}
 		switch p.field {
 		case ruleFieldDXCall, ruleFieldDECall:

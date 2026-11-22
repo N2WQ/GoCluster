@@ -126,4 +126,6 @@ type rulePredicate struct {
 	calls       []ruleCallPattern
 	events      spot.EventMask
 	eventNone   bool
+	// The field selects the session continent or DXCC. No resolved value is retained.
+	usesOperatingGeography bool
 }

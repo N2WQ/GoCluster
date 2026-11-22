@@ -20,18 +20,27 @@ type ruleView struct {
 	nearbyLoaded, nearby bool
 	loaded               uint32
 	text                 [ruleFieldCount]string
+	operatingGeography   OperatingGeography
 }
 
 func newRuleView(s *spot.Spot, pathClass string) ruleView {
 	return ruleView{spot: s, pathClass: pathClass}
 }
 
+// OperatingGeography carries the login's canonical CTY continent and positive
+// ADIF entity. An empty continent or nonpositive DXCC is unknown.
+type OperatingGeography struct {
+	Continent string
+	DXCC      int
+}
+
 // EvaluationContext is captured by the caller for one user. Its zero value
-// explicitly supplies unavailable location and path prediction. It is never
-// retained by a prepared rule or used to read mutable client state.
+// supplies unavailable location, operating geography and path prediction. It is
+// never retained by a prepared rule or used to read mutable client state.
 type EvaluationContext struct {
 	PathClass            string
 	FineCell, CoarseCell pathreliability.CellID
+	OperatingGeography   OperatingGeography
 }
 
 func (v *ruleView) nearbyValue() bool {

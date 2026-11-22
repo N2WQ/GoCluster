@@ -36,7 +36,7 @@ func compileRule(source string) (*compiledRule, error) {
 	return compileRuleWithDXCCResolver(source, nil, true)
 }
 
-func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error), allowAll bool) (*compiledRule, error) {
+func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error), currentOperands bool) (*compiledRule, error) {
 	syntax, err := expr.Parse(source)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error
 			}
 		}
 		program.rawValueCount += len(node.Atom.Values)
-		predicate, err := compileRulePredicate(&node.Atom, resolve, allowAll)
+		predicate, err := compileRulePredicate(&node.Atom, resolve, currentOperands)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +88,7 @@ func ruleCompileError(column int, format string, args ...any) error {
 	return &expr.SyntaxError{Column: column, Message: fmt.Sprintf(format, args...)}
 }
 
-func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error), allowAll bool) (rulePredicate, error) {
+func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error), currentOperands bool) (rulePredicate, error) {
 	field, ok := ruleFieldForName(atom.Field)
 	if !ok {
 		return rulePredicate{}, ruleCompileError(atom.Column, "unsupported field %q", atom.Field)
@@ -112,12 +112,21 @@ func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error), al
 		}
 	}
 	if field == ruleFieldBand {
-		if err := expandRuleMetaBands(atom, allowAll); err != nil {
+		if err := expandRuleMetaBands(atom, currentOperands); err != nil {
 			return rulePredicate{}, err
 		}
 	}
 	hasAll := false
-	acceptsAll := allowAll && field.supportsAllValues()
+	acceptsAll := currentOperands && field.supportsAllValues()
+	var sessionOperand string
+	if currentOperands {
+		switch field {
+		case ruleFieldDXCont, ruleFieldDECont:
+			sessionOperand = "MYCONT"
+		case ruleFieldDXDXCC, ruleFieldDEDXCC:
+			sessionOperand = "MYDXCC"
+		}
+	}
 	for i := range atom.Values {
 		value := &atom.Values[i]
 		if acceptsAll && isAllOperand(*value) {
@@ -125,6 +134,10 @@ func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error), al
 				return rulePredicate{}, ruleCompileError(value.Column, "%s%sALL needs a number after %s. Use %s=ALL to match any value", atom.Field, atom.Operator, atom.Operator, atom.Field)
 			}
 			hasAll = true
+			continue
+		}
+		if sessionOperand != "" && !value.Quoted && value.Text == sessionOperand {
+			predicate.usesOperatingGeography = true
 			continue
 		}
 		text, err := predicate.compileValue(value, ordered, resolve)

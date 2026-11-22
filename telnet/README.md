@@ -410,9 +410,9 @@ searches for the text `all`. Quote a literal catalog value named ALL, such as
 | `SOURCE` | `HUMAN` when `Spot.IsHuman` is true; otherwise `SKIMMER`. |
 | `EVENT` | Taxonomy event bits, with `NONE` for eventless spots; no untagged exemption. |
 | `DXCALL`, `DECALL` | Exact callsign patterns, one prefix/suffix `*`, or `*` alone; see below. |
-| `DXCONT`, `DECONT` | Supported continent codes. |
+| `DXCONT`, `DECONT` | Supported continent codes or bare `MYCONT`. |
 | `DXZONE`, `DEZONE` | Integral CQ zones 1–40. |
-| `DXDXCC`, `DEDXCC` | Positive ADIF integers or exact CTY canonical labels; labels normalize to numeric codes. No callsign lookup. |
+| `DXDXCC`, `DEDXCC` | Positive ADIF integers, exact CTY canonical labels, or bare `MYDXCC`. Labels normalize to numeric codes. |
 | `DXSTATE`, `DESTATE` | Canonical observed US/Canadian registered mailing codes; missing/invalid metadata is unknown. |
 | `DXGRID2`, `DEGRID2` | Two-letter Maidenhead fields, `AA` through `RR`. |
 | `FREQ` | Finite nonnegative operands in kHz; `=`/`<>` also accept inclusive low-high ranges. Spot frequency is known only when finite and positive. No extra rounding or epsilon is added. |
@@ -567,6 +567,53 @@ and [native v7](#persistence-format-and-rollback). The retained schema-six GO
 interface edits only the active GO bank. Older COMMENT-list
 mechanics in [ADR-0261](../docs/decisions/ADR-0261-literal-comment-filter-and-history.md)
 are historical, not a supported compatibility engine.
+
+## Your Operating Geography in GO Rules
+
+Use `MYCONT` for your operating continent and `MYDXCC` for your operating DXCC
+entity. CTY (the cluster's callsign geography database) supplies both from your
+login callsign. `N2WQ/VE3` uses `NA` and Canada (ADIF `1`) for that connection.
+The lookup uses the radio callsign without its numeric SSID, so
+`N2WQ/VE3-01` also uses Canada.
+Reconnect to use updated CTY data. The cluster uses the same session values for
+live spots and filtered spot history. `SET GRID` supplies location for features
+such as NEARBY and PATH. The login callsign supplies operating geography.
+
+| GO expression | Selects |
+| --- | --- |
+| `DECONT=MYCONT` | Reports from spotters on your operating continent. |
+| `DXCONT=MYCONT` | Spotted stations on your operating continent. |
+| `DXDXCC=MYDXCC` | Spotted stations in your operating DXCC entity. |
+| `DEDXCC=MYDXCC` | Reports from spotters in your operating DXCC entity. |
+| `DECONT=MYCONT AND DXDXCC<>MYDXCC` | Reports from your continent about stations outside your entity. |
+
+This CW example replaces PASS slot 0.
+
+```text
+PASS RULE 0 MODE=CW AND DECONT=MYCONT AND DXDXCC<>MYDXCC
+```
+
+Other PASS slots can still admit a spot. Use `SHOW FILTER RULE` to check all
+slots. Use `RESUME` to end a readback pause and resume live spots.
+
+Use the names without quotes, in either case, with `=` or `<>`. You can mix
+them with fixed values in lists, for example `DECONT=MYCONT,EU` or
+`DXDXCC=MYDXCC,291`. `SHOW FILTER`, YAML, profiles, and presets retain the
+variable names. Copy the expression as written to use it with another login.
+
+If CTY is unavailable at login, both session values are unknown. A comparison
+against an unknown spot value or an unknown session value is false. In a list,
+a known member can still satisfy `=`. For example, `DECONT=MYCONT,EU` can match
+an EU spotter while `MYCONT` is unknown. `<>` needs known values to establish
+that the spot differs from every list member. The `ALL` wildcard still applies
+when present. `NOT` negates the result, so `NOT DXDXCC=MYDXCC` includes unknown
+cases while `DXDXCC<>MYDXCC` selects known differences.
+
+Use these operands inside GO numbered rules, including GO rules submitted by
+YAML. Native CC uses its own filter syntax. History entity selectors and
+`SHOW DXCC` have their own syntax. Upgrade uses the existing profile and preset
+format. If rolling back to an older executable after saving either operand,
+use compatible profile and preset-library backups with that executable.
 
 ## Canonical DXCC Prefixes
 

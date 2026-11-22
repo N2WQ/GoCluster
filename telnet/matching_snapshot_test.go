@@ -111,6 +111,22 @@ func BenchmarkMatchingSnapshot(b *testing.B) {
 	}
 }
 
+func BenchmarkMatchingSnapshotOperatingGeography(b *testing.B) {
+	c := &Client{
+		filter:             passRuleTestFilter(b, "DECONT=MYCONT AND DXDXCC<>MYDXCC"),
+		operatingGeography: filter.OperatingGeography{Continent: "NA", DXCC: 1},
+	}
+	value := spot.NewSpot("DL1ABC", "VE3ABC", 14020, "CW")
+	value.DXMetadata.ADIF, value.DEMetadata.Continent = 230, "NA"
+	s := &Server{}
+	b.ReportAllocs()
+	for b.Loop() {
+		if matched, _, _ := s.matchSnapshot(c.captureMatchingSnapshot(), value); !matched {
+			b.Fatal("expected a match")
+		}
+	}
+}
+
 func TestMatchingSnapshotMissingFilterFailsClosed(t *testing.T) {
 	var c *Client
 	s := &Server{}

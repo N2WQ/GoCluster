@@ -23,6 +23,7 @@ func FuzzV6MachineRequest(f *testing.F) {
 	f.Add(v6MachineRequestFixture(v6CompleteFilterFixture, true), uint8(0))
 	f.Add(v6MachineRequestFixture("rules: []\n", true), uint8(0))
 	f.Add(nearbySeed, uint8(0))
+	f.Add(v6MachineRequestFixture("rules: [{slot: 0, action: pass, expr: 'DECONT=MYCONT AND DXDXCC<>MYDXCC'}]\n", true), uint8(0))
 	f.Add(v6MachineRequestFixture("grid: \"\"\nsolar_summary_minutes: 0\n", true), uint8(1))
 	f.Add(v6MachineRequestFixture("filters:\n  rules: [{slot: 0, action: pass, expr: 'DXCONT=EU AND MODE=CW'}]\nsettings:\n  grid: \"\"\n", true), uint8(2))
 	f.Add([]byte("schema_version: 6\nconfiguration: null\n"), uint8(2))

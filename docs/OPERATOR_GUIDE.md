@@ -324,6 +324,10 @@ Log in with your callsign. Useful first commands:
 - In GO, `PASS RULE 0 BAND=ALL AND MODE=CW` selects CW on any band, including
   spots whose band is unknown. `ALL` stays literal in callsign and comment
   fields. See [filter expressions](../telnet/README.md#filters).
+- In GO, `DECONT=MYCONT` selects reports from your operating continent and
+  `DXDXCC=MYDXCC` selects stations in your operating entity. Both follow the
+  portable callsign you used at login. See
+  [operating geography examples](../telnet/README.md#your-operating-geography-in-go-rules).
 - In GO, `RESET FILTER RULE <slot|ALL>` clears the selected rules, including any NEARBY terms they contain.
 - In GO, `RESET FILTER` clears all numbered rules and preserves shared settings and separate controls.
 - `SAVE PRESET <name>`: save filters and preferences to a named snapshot.

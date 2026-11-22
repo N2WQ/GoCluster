@@ -7,7 +7,9 @@ import (
 	"log"
 	"strings"
 
+	"dxcluster/filter"
 	"dxcluster/spot"
+	"dxcluster/strutil"
 	"dxcluster/uls"
 )
 
@@ -28,9 +30,10 @@ const (
 // fail-open result means the validator could not prove the login was bad, so
 // availability wins and the skip is still reported for operators.
 type loginValidationResult struct {
-	valid    bool
-	failOpen bool
-	reason   loginValidationReason
+	valid              bool
+	failOpen           bool
+	reason             loginValidationReason
+	operatingGeography filter.OperatingGeography
 }
 
 // validateLoginCallsign protects the cluster from obvious bad, unknown, or
@@ -53,15 +56,32 @@ func (s *Server) validateLoginCallsign(call string) loginValidationResult {
 	if isTestCall {
 		lookupCall = testBase
 	}
-	_, ok := db.LookupCallsignPortable(lookupCall)
+	operatingInfo, ok := db.LookupCallsignPortable(lookupCall)
 	if !ok {
 		return loginValidationResult{reason: loginValidationReasonCTYUnknown}
+	}
+	// Preserve the portable operating match even when the distinct home-call
+	// licensing check has to fail open. No CTY database escapes into the session.
+	accepted := loginValidationResult{valid: true}
+	if station, _, hasSSID := strings.Cut(lookupCall, "-"); hasSSID {
+		// A numeric SSID can change which slash segment CTY sees as shortest.
+		// Resolve rule geography from the normalized radio callsign alone.
+		operatingInfo, _ = db.LookupCallsignPortable(spot.NormalizeCallsign(station))
+	}
+	if operatingInfo != nil {
+		if continent := strutil.NormalizeUpper(operatingInfo.Continent); filter.IsSupportedContinent(continent) {
+			accepted.operatingGeography.Continent = continent
+		}
+		if operatingInfo.ADIF > 0 {
+			accepted.operatingGeography.DXCC = operatingInfo.ADIF
+		}
 	}
 	if !isTestCall {
 		licenseCall := strings.TrimSpace(uls.NormalizeForLicense(call))
 		baseInfo, baseOK := db.LookupCallsignPortable(licenseCall)
 		if !baseOK {
-			return loginValidationResult{valid: true, failOpen: true, reason: loginValidationReasonCTYUnknown}
+			accepted.failOpen, accepted.reason = true, loginValidationReasonCTYUnknown
+			return accepted
 		}
 		var check func(string) bool
 		var reason loginValidationReason
@@ -71,19 +91,20 @@ func (s *Server) validateLoginCallsign(call string) loginValidationResult {
 		case spot.IsCanadianJurisdiction(baseInfo.ADIF):
 			check, reason = s.canadianLicenseCheck, loginValidationReasonCAUnlicensed
 		default:
-			return loginValidationResult{valid: true}
+			return accepted
 		}
 		if uls.AllowlistMatch(baseInfo.ADIF, licenseCall) {
-			return loginValidationResult{valid: true}
+			return accepted
 		}
 		if check == nil {
-			return loginValidationResult{valid: true, failOpen: true, reason: loginValidationReasonCTYUnavailable}
+			accepted.failOpen, accepted.reason = true, loginValidationReasonCTYUnavailable
+			return accepted
 		}
 		if !check(licenseCall) {
 			return loginValidationResult{reason: reason}
 		}
 	}
-	return loginValidationResult{valid: true}
+	return accepted
 }
 
 // isValidLoginCallsign applies the cheap syntax gate before CTY/ULS lookups so

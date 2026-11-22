@@ -479,6 +479,9 @@ type Client struct {
 	historyClosed     bool
 	dropCount         uint64     // Count of spots dropped for this client due to backpressure
 	dropWindow        dropWindow // Sliding window for extreme drop detection
+
+	// Captured before registration and immutable for the connection, like callsign.
+	operatingGeography filter.OperatingGeography
 }
 
 // InputValidationError describes a length or character violation. It is
@@ -3921,6 +3924,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			continue
 		}
 		callsign = normalized
+		client.operatingGeography = loginValidation.operatingGeography
 		break
 	}
 

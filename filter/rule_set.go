@@ -46,7 +46,7 @@ func PrepareRuleSet(definitions []RuleDefinition) (*PreparedRuleSet, error) {
 	return prepareRuleSet(definitions, true)
 }
 
-func prepareRuleSet(definitions []RuleDefinition, allowAll bool) (*PreparedRuleSet, error) {
+func prepareRuleSet(definitions []RuleDefinition, currentOperands bool) (*PreparedRuleSet, error) {
 	if len(definitions) > MaxRuleSlots {
 		return nil, fmt.Errorf("rules exceed slot limit %d", MaxRuleSlots)
 	}
@@ -63,7 +63,7 @@ func prepareRuleSet(definitions []RuleDefinition, allowAll bool) (*PreparedRuleS
 	rules := make([]preparedRule, 0, len(definitions))
 	atoms, values, rawValues := 0, 0, 0
 	for _, definition := range definitions {
-		rule, err := prepareRule(definition, nil, allowAll)
+		rule, err := prepareRule(definition, nil, currentOperands)
 		if err != nil {
 			return nil, err
 		}
@@ -218,6 +218,7 @@ func (s *PreparedRuleSet) Matches(sp *spot.Spot, context EvaluationContext) bool
 	}
 	view := newRuleView(sp, context.PathClass)
 	view.fine, view.coarse = context.FineCell, context.CoarseCell
+	view.operatingGeography = context.OperatingGeography
 	for i := range s.rules {
 		rule := &s.rules[i]
 		if rule.definition.Action == RuleReject && rule.program.evaluate(&view, rule.program.root) {
@@ -259,8 +260,8 @@ func (s *PreparedRuleSet) NeedsNearby() bool {
 	return false
 }
 
-func prepareRule(definition RuleDefinition, resolve func(string) (int, error), allowAll bool) (preparedRule, error) {
-	program, err := compileRuleWithDXCCResolver(definition.Expr, resolve, allowAll)
+func prepareRule(definition RuleDefinition, resolve func(string) (int, error), currentOperands bool) (preparedRule, error) {
+	program, err := compileRuleWithDXCCResolver(definition.Expr, resolve, currentOperands)
 	if err != nil {
 		return preparedRule{}, fmt.Errorf("rule slot %d: %w", definition.Slot, err)
 	}

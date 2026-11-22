@@ -172,8 +172,8 @@ func prepareRetiredV5Configuration(cfg *retiredV5Configuration) error {
 		definitions[i] = RuleDefinition(rule)
 	}
 	// Temporary current preparation checks the unchanged comparison vocabulary,
-	// operators, operands, identities and aggregate budgets. New ALL wildcard
-	// syntax cannot turn a formerly invalid profile into a reset candidate.
+	// operators, operands, identities and aggregate budgets. New wildcard and
+	// session operands cannot turn a formerly invalid profile into a reset candidate.
 	set, err := prepareRuleSet(definitions, false)
 	if err != nil {
 		return err

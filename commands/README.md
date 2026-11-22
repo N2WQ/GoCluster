@@ -578,6 +578,12 @@ check; missing/nonpositive spot ADIF metadata is unknown. `SHOW DXCC` lookup
 and archive selector precedence are separate, unchanged paths. See
 [canonical DXCC prefixes](../telnet/README.md#canonical-dxcc-prefixes).
 
+Use `MYCONT` with `DXCONT` or `DECONT`, and `MYDXCC` with `DXDXCC` or `DEDXCC`,
+for [your operating geography](../telnet/README.md#your-operating-geography-in-go-rules).
+For example, `PASS RULE 0 DECONT=MYCONT AND DXDXCC<>MYDXCC` selects reports from
+your continent about stations outside your entity. `HELP RULE` lists both
+operands. Readbacks and presets keep the names so the rule follows the login.
+
 ## US And Canadian State Commands And YAML Versions
 
 DXSTATE and DESTATE are GO expression fields:

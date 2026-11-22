@@ -10,6 +10,7 @@ import (
 func FuzzBooleanRuleCommand(f *testing.F) {
 	for _, line := range []string{
 		"PASS RULE 0 NEARBY", "PASS RULE 0 NOT NEARBY OR MODE=CW",
+		"PASS RULE 0 DECONT=MYCONT AND DXDXCC<>MYDXCC",
 		"PASS RULE 0 MODE=CW", `REJECT RULE 9 COMMENT="MiXeD ""quote"""`,
 		`PASS RULE 9 COMMENT="No changes applied."`, "RESET FILTER RULE ALL",
 		"PASS RULE 12 BAND=20M", "PASS RULE 1 MODE=CW AND", "SET/FILTER MODE CW",
@@ -24,8 +25,9 @@ func FuzzBooleanRuleCommand(f *testing.F) {
 		candidate, source, _ := booleanCommandFixture(t, DialectGo)
 		before, live := snapshotBooleanCommand(candidate), snapshotBooleanCommand(source)
 		outcome := newFilterCommandEngine().stageBooleanFilterCommand(candidate, line)
-		if (line == "PASS RULE 0 NEARBY" || line == "PASS RULE 0 NOT NEARBY OR MODE=CW") && !outcome.publish {
-			t.Fatal("positive NEARBY corpus input was refused")
+		if (line == "PASS RULE 0 NEARBY" || line == "PASS RULE 0 NOT NEARBY OR MODE=CW" ||
+			line == "PASS RULE 0 DECONT=MYCONT AND DXDXCC<>MYDXCC") && !outcome.publish {
+			t.Fatal("positive Boolean corpus input was refused")
 		}
 		live.assertUnchanged(t, source)
 		if !outcome.publish {

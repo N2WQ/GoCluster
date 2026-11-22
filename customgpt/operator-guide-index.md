@@ -53,6 +53,7 @@ existing operator-facing docs.
 | Need | Start here |
 | --- | --- |
 | Use GO `HELP RULE`, `PASS RULE`/`REJECT RULE` slots 0-9 and ordinary GO reset | [GO filters](../telnet/README.md#filters), [Boolean contract](../docs/domain-contract.md#boolean-personal-rules), [configuration card](support-cards/configuration-readback.md) |
+| Match my operating continent or DXCC entity in GO, including portable logins | [GO operating geography](../telnet/README.md#your-operating-geography-in-go-rules), [configuration card](support-cards/configuration-readback.md) |
 | Edit native CC modes/sources, DOC/DOS/DXCTY/DXSTATE, DXBM and SET/NOFILTER | [CC commands](../docs/cc-dialect.md#terminal-commands), compiled `HELP SET/FILTER`; per-band geography initially uses GoCluster YAML. |
 | Keep delivery switches separate in each bank; PC93 follows ANNOUNCE | [CC controls](../docs/cc-dialect.md), [compiled HELP](../commands/README.md#help-source-of-truth) |
 | SAVE/LIST/LOAD/DELETE tagged presets shared across SSIDs; LOAD preserves the other bank | [named presets](../telnet/README.md#named-presets), [CC presets](../docs/cc-dialect.md#presets-limits-and-recovery) |

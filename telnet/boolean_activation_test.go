@@ -117,7 +117,7 @@ func TestBooleanActivationHumanSavePresetAndReload(t *testing.T) {
 	}
 }
 
-func TestBooleanAllYAMLWireAndRefusal(t *testing.T) {
+func TestBooleanOperandsYAMLWireAndRefusal(t *testing.T) {
 	for _, schema := range []struct {
 		version                 int
 		patch, rules, errorPath string
@@ -162,18 +162,21 @@ func TestBooleanAllYAMLWireAndRefusal(t *testing.T) {
 				return command(schema.patch)
 			}
 
-			if response := patch("band=[all] AND MODE=CW"); !strings.Contains(response, "persisted: true") {
-				t.Fatalf("valid wildcard edit failed: %s", response)
+			if response := patch("band=[all] AND MODE=CW AND DECONT=mycont AND DXDXCC=mydxcc"); !strings.Contains(response, "persisted: true") {
+				t.Fatalf("valid operand edit failed: %s", response)
 			}
-			const canonical = "BAND=ALL AND MODE=CW"
+			const canonical = "BAND=ALL AND MODE=CW AND DECONT=MYCONT AND DXDXCC=MYDXCC"
 			saved, err := filter.LoadV7UserRecord(c.callsign)
 			if err != nil || len(saved.Configuration.Filters.GO.Rules) != 1 || saved.Configuration.Filters.GO.Rules[0].Expr != canonical {
-				t.Fatalf("wildcard was not saved canonically: %+v (%v)", saved, err)
+				t.Fatalf("operands were not saved canonically: %+v (%v)", saved, err)
 			}
 			readback := command(fmt.Sprintf("GET YAML FILTER SCHEMA %d", schema.version))
-			if !strings.Contains(readback, canonical) || !c.filter.Matches(&spot.Spot{Mode: "CW"}) ||
-				c.filter.Matches(&spot.Spot{Mode: "FT8"}) {
-				t.Fatalf("wildcard differs between readback and matching: %s", readback)
+			matchingSpot := &spot.Spot{Mode: "CW", DEMetadata: spot.CallMetadata{Continent: "NA"}, DXMetadata: spot.CallMetadata{ADIF: 1}}
+			wrongMode := &spot.Spot{Mode: "FT8", DEMetadata: matchingSpot.DEMetadata, DXMetadata: matchingSpot.DXMetadata}
+			context := filter.EvaluationContext{OperatingGeography: filter.OperatingGeography{Continent: "NA", DXCC: 1}}
+			if !strings.Contains(readback, canonical) || !c.filter.MatchesWithContext(matchingSpot, context) ||
+				c.filter.MatchesWithContext(wrongMode, context) || c.filter.Matches(matchingSpot) {
+				t.Fatalf("operands differ between readback and matching: %s", readback)
 			}
 
 			before, disk, savedRevision := snapshotBooleanCommand(c), v6CoordinatorDisk(t, c), revision()
@@ -182,6 +185,12 @@ func TestBooleanAllYAMLWireAndRefusal(t *testing.T) {
 				!strings.Contains(response, "col 5: SNR>ALL") || !strings.Contains(response, "Use SNR=ALL") ||
 				revision() != savedRevision || !bytes.Equal(v6CoordinatorDisk(t, c), disk) {
 				t.Fatalf("refused wildcard lost its wire diagnostic or changed durable state: %s", response)
+			}
+			before.assertUnchanged(t, c)
+			response = patch("DECONT=MYDXCC")
+			if !strings.Contains(response, "code: invalid_document") || !strings.Contains(response, schema.errorPath) ||
+				revision() != savedRevision || !bytes.Equal(v6CoordinatorDisk(t, c), disk) {
+				t.Fatalf("wrong field type was not refused atomically: %s", response)
 			}
 			before.assertUnchanged(t, c)
 		})

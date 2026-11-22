@@ -91,6 +91,14 @@ Meta bands select fixed groups of amateur bands. For example, `WARC` selects
 To find up to 20 recent WARC spots that match your filters, type
 `SHOW DX 20 BAND WARC` in GO or `SHOW/DX 20 BAND WARC` in CC.
 
+### Your Operating Geography
+
+In GO, `DECONT=MYCONT` selects reports from spotters on your operating
+continent. `DXDXCC=MYDXCC` selects stations in your operating DXCC entity.
+For example, CTY assigns North America and Canada (ADIF `1`) to `N2WQ/VE3`
+for that connection. Saved rules keep the variable names, so the expression
+can follow the operator who uses it. Type `HELP RULE` for field and list syntax.
+
 ## Linux
 
 This release package is Windows amd64 only. Linux operators should build from

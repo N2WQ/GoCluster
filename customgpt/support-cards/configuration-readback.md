@@ -36,6 +36,26 @@ Local source behavior does not establish publication, deployment or validation.
   noise, dedupe, PATHSAMPLES, SOLAR and CWSPEED are shared. GO Boolean mutations require
   GO; CC uses native mode/source, geography and DXBM commands. Retrieve compiled
   HELP for exact aliases; do not translate arbitrary GO rules into CC.
+- GO rules accept bare `MYCONT` with `DXCONT`/`DECONT` and bare `MYDXCC` with
+  `DXDXCC`/`DEDXCC`, with `=` and `<>`. DX is the spotted station and DE is
+  the spotter. The session's portable CTY login match supplies both values.
+  `N2WQ/VE3` and `N2WQ/VE3-01` both use `NA` and ADIF `1` for Canada. CTY
+  rule geography uses the radio callsign without its numeric session suffix.
+  `SET GRID` and home-call license checks use separate inputs. Reconnect to
+  pick up a CTY refresh. The same session values apply to live spots and
+  filtered history. Readback, YAML,
+  profiles, and presets retain the variable names, so the expression follows
+  the login using it. Use the operands in GO numbered rules. Native CC,
+  explicit history selectors, and `SHOW DXCC` use separate syntax.
+- When a `MYCONT` or `MYDXCC` rule seems to drop spots, check the exact login
+  callsign, active dialect, readback pause, and all PASS and REJECT slots.
+  Check CTY availability at login and the relevant DX or DE metadata. Unknown
+  values make ordinary comparisons false. In an `=` list, a known literal can
+  still match. In a `<>` list, an unknown member prevents proving every value
+  differs. `ALL` stays a wildcard, and `NOT` negates the comparison result. The
+  syntax needs no profile reset. For rollback after saving these operands, use
+  matching profile and preset-library backups. Retrieve
+  [operating geography in GO rules](../../telnet/README.md#your-operating-geography-in-go-rules).
 - `SET CWSPEED ON|OFF` controls available RBN CW speed on ordinary-text live and
   historical spots. New profiles start ON. Existing profiles keep their saved
   choice, with OFF for an omitted preference. Diagnostics hide speed. Comment matching

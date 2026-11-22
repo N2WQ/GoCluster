@@ -10,8 +10,9 @@ import (
 )
 
 type clientMatchingSnapshot struct {
-	filter filter.MatchSnapshot
-	path   pathState
+	filter             filter.MatchSnapshot
+	path               pathState
+	operatingGeography filter.OperatingGeography
 }
 
 func (c *Client) captureMatchingSnapshot() clientMatchingSnapshot {
@@ -21,7 +22,8 @@ func (c *Client) captureMatchingSnapshot() clientMatchingSnapshot {
 	c.pathMu.RLock()
 	c.filterMu.RLock()
 	snapshot := clientMatchingSnapshot{
-		filter: c.filter.MatchSnapshot(),
+		filter:             c.filter.MatchSnapshot(),
+		operatingGeography: c.operatingGeography,
 		path: pathState{
 			grid: c.grid, gridDerived: c.gridDerived,
 			gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
@@ -64,5 +66,6 @@ func (s *Server) matchSnapshot(snapshot clientMatchingSnapshot, sp *spot.Spot) (
 	}
 	return snapshot.filter.MatchesWithContext(sp, filter.EvaluationContext{
 		PathClass: pathClass, FineCell: snapshot.path.gridCell, CoarseCell: snapshot.path.gridCoarseCell,
+		OperatingGeography: snapshot.operatingGeography,
 	}), prediction, predicted
 }

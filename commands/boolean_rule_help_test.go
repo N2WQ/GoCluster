@@ -27,6 +27,10 @@ func TestBooleanRuleHelpSharedReference(t *testing.T) {
 		"exact CTY canonical labels",
 		"DXDXCC<>K becomes DXDXCC<>291",
 		"Unknown or conflicting labels reject the entire edit.",
+		"Use MYCONT with DXCONT or DECONT for your operating continent.",
+		"Use MYDXCC with DXDXCC or DEDXCC for your operating entity.",
+		"CTY sets both values from your login for the whole connection.",
+		"Use either name unquoted with = or <>. Saved rules keep the name.",
 		"DXZONE and DEZONE use CQ zones, numbered 1 through 40.",
 		"For an unknown DX zone, NOT (DXZONE=5) is true.",
 		"For that same spot, DXZONE<>5 is false.",
@@ -76,6 +80,7 @@ func TestBooleanRuleHelpReadableLayout(t *testing.T) {
 				`REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"`,
 				"PASS RULE 2 NOT (DXCONT=EU OR BAND=20M)",
 				"PASS RULE 0 MODE=CW AND DXDXCC<>K",
+				"PASS RULE 0 DECONT=MYCONT AND DXDXCC<>MYDXCC",
 				"PASS RULE 0 MODE=CW AND (DXCONT=EU OR NEARBY)",
 			} {
 				if !strings.Contains(text, "\n  "+example+"\n") {

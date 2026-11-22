@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0371 | Operating Geography in GO Rules | Accepted | 2026-11-22 | Portable CTY login, GO rule operands, and persistence | extends ADR-0317 operand semantics | none | [ADR-0371](decisions/ADR-0371-operating-geography-in-go-rules.md) |
 | ADR-0370 | ALL in GO Filter Rules | Accepted | 2026-11-22 | GO rule operands, canonical storage, and rollback | extends ADR-0317 operand semantics | none | [ADR-0370](decisions/ADR-0370-go-rule-all-wildcard.md) |
 | ADR-0369 | CW call retention shipped defaults | Accepted | 2026-11-22 | RBN CW correction and shipped defaults | ADR-0368 shipped defaults | none | [ADR-0369](decisions/ADR-0369-cw-call-retention-shipped-defaults.md) |
 | ADR-0368 | Opt-in CW call retention | Accepted | 2026-11-21 | RBN CW correction and trial defaults | ADR-0367 shipped defaults on main | ADR-0369 for shipped defaults | [ADR-0368](decisions/ADR-0368-opt-in-cw-call-retention.md) |

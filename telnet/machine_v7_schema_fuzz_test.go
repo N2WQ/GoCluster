@@ -9,6 +9,7 @@ import (
 
 func FuzzV7MachineSchema(f *testing.F) {
 	for _, configuration := range []string{
+		"dialect: go\nfilters: {rules: [{slot: 0, action: pass, expr: 'DECONT=MYCONT AND DXDXCC<>MYDXCC'}]}\n",
 		"dialect: cc\nfilters: {modes: []}\n",
 		"dialect: cc\nfilters: {geography: {DOC: {bands: {'6': {action: INHERIT}}}}}\n",
 		"dialect: cc\nfilters: {dxbm: {active: true, base_allow: false, slots: {20-CW: true}}}\n",
