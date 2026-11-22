@@ -21,7 +21,7 @@ This directory owns PSKReporter MQTT ingest and normalization into canonical spo
 
 ## FT Frequency Handling
 
-For `FT2`, `FT4`, and `FT8`, the runtime canonicalizes the operational frequency to the nearest configured dial frequency from `mode_inference.digital_seeds`.
+For `FT2`, `FT4`, and `FT8`, the runtime canonicalizes the operational frequency to a matching configured dial frequency from `mode_inference.digital_seeds` when one is available. Without a match, it keeps the observed frequency.
 
 That canonical dial frequency is then used for:
 
@@ -31,7 +31,7 @@ That canonical dial frequency is then used for:
 - FT confidence burst grouping
 - telnet output
 
-The raw observed RF frequency is still kept separately for diagnostics and archive records.
+When canonicalization changes the frequency, the raw observed RF frequency is kept separately for diagnostics and archive records.
 
 ## Path-Only Modes
 

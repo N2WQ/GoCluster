@@ -375,11 +375,10 @@ one class, only when the cached VOACAP class is open and the configured
 request-SNR REL gate passes. For bidirectional forecasts, the retained REL gate
 uses the lower of the receive and transmit REL values. REL is reliability of
 VOACAP's configured request SNR, not a direct probability of the displayed
-class. It never overrides a sufficient bucket p50 result. For PATH filters, the
-closed glyph is visible as `CLOSED` and remains compatible with `UNLIKELY`:
-existing `PASS/REJECT PATH UNLIKELY` filters still include closed fallback
-spots, while direct `PASS/REJECT PATH CLOSED` rules target only closed fallback
-spots from VOACAP or native 160m low-darkness fallback.
+class. It never overrides a sufficient bucket p50 result. In GO rules, the
+closed glyph is `PATH=CLOSED`. `PATH=UNLIKELY` does not match CLOSED; use
+`PATH=UNLIKELY,CLOSED` to select both classes. CLOSED can come from VOACAP or
+the native 160m fallback.
 For beacon spots, transmit evidence is not applicable. Beacon p50 prediction
 uses the DX-to-user receive leg only, applies the user's receive-noise penalty,
 does not apply `reverse_hint_discount`, and uses

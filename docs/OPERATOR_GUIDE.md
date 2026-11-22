@@ -764,8 +764,8 @@ prefixes.
   supplied the result. `<snr>` is the selected hour's rounded bidirectional
   FT8-equivalent SNR after receive-side noise penalty, `h<hour>` is the
   selected UTC forecast hour, and `<ssn>` is the rounded solar-derived SSN
-  used for the run. `PASS/REJECT PATH CLOSED` targets these VOACAP closed
-  fallback spots; `UNLIKELY` PATH filters still include them for compatibility.
+  used for the run. GO rules can select these spots with `PATH=CLOSED`;
+  `PATH=UNLIKELY` does not include CLOSED.
   The runtime polls NOAA `sunspot_report.json` every 30 minutes by default.
   Validated reports give a local `10 * groups + spots` index, smoothed with a
   48-hour exponential half-life using actual observation time. Only the final

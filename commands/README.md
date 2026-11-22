@@ -227,6 +227,7 @@ The operator-facing commands handled here are:
 - `SHOW DEDUPE`
 - `SET DEDUPE`
 - `SET DIAG`
+- `SET CWSPEED`
 - `SET GRID`
 - `SET NOISE`
 - `SET PATHSAMPLES`

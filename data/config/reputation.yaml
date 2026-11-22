@@ -1,11 +1,13 @@
 # Purpose: Telnet reputation gate, local/IPinfo data sources, lookup caches, and drop visibility.
 # Ownership: deployment/runtime settings plus operator policy.
 # Runtime behavior: Required merged runtime config loaded from the active config directory at startup.
-# Safe edits: Put real IPinfo tokens only in private config; tune gates deliberately because drops are silent to clients.
+# Safe edits: Put real IPinfo tokens only in private config; tune gates deliberately because manual DX refusals expose only a generic message.
 # Source: data/config/README.md.
 #
-# Lookup order: IPv4 in-memory -> Pebble (IPv6) -> Cymru DNS -> IPinfo API.
-# Drops are silent to clients; console_drop_display controls local visibility.
+# Admission uses retained and local metadata without starting network lookups.
+# Signed-in enrichment prefers current local IPinfo, then Cymru and the API;
+# a valid stale local match is a fallback. Manual DX refusals say "Spot rejected."
+# console_drop_display controls local diagnostic visibility.
 reputation:
   enabled: true
 

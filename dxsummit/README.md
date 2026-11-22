@@ -4,8 +4,8 @@ This package owns the optional DXSummit HTTP polling feed.
 
 ## Runtime Contract
 
-- Loader defaults keep the feed disabled when `dxsummit.enabled` is omitted.
-- The checked-in `data/config/ingest.yaml` block is operator-editable runtime configuration; its explicit values override loader defaults for this checkout.
+- `dxsummit.enabled` is required; the shipped configuration enables the feed.
+- The checked-in `data/config/ingest.yaml` block provides the required operator-editable runtime settings.
 - When enabled, one goroutine polls `api/v1/spots`; requests do not overlap.
 - Each request is bounded by `request_timeout_ms` and `max_response_bytes`.
 - The output queue is capped by `spot_channel_size`; full queues drop the newest DXSummit row and increment health counters.
@@ -18,7 +18,7 @@ Normal request shape:
 GET {base_url}?limit={max_records_per_poll}&from_time={now-lookback_seconds}&to_time={now}&include=HF,VHF,UHF&refresh={unix_ms}
 ```
 
-Loader-default startup behavior is seed-only. With `startup_backfill_seconds: 0`, the first successful poll establishes the high-water ID and emits no spots. A positive startup backfill emits only rows newer than that startup window after high-water filtering.
+With `startup_backfill_seconds: 0`, the first successful poll establishes the high-water ID and emits no spots. A positive startup backfill emits only rows within that startup window after high-water filtering. The shipped value is 300 seconds.
 
 ## Operator Visibility
 

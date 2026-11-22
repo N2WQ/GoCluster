@@ -132,13 +132,13 @@ DX 7001.0 K1ABC CW heard well
 Frequency is in **kHz**, so enter `7001.0` for 7.001 MHz. Replace the example
 with the station and frequency you actually heard. `HELP DX` explains the syntax.
 
-Comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _`.
+Comments accept ASCII letters, digits, spaces, and `/ # @ - . , * ? _ +`.
 Other punctuation and non-ASCII characters are rejected. The entire edited
 command must fit the node's byte limit (128 by default), excluding its line ending.
 
 ## Filter Examples
 
-Use numbered `PASS RULE` and `REJECT RULE` expressions to choose reports.
+In the GO dialect, use numbered `PASS RULE` and `REJECT RULE` expressions to choose spots.
 Any matching REJECT wins. Otherwise, any matching PASS qualifies. With no PASS
 rules there is no personal PASS restriction; an empty set has no hidden base
 filters. Separate controls, such as SELF and TOXIC, still apply.
@@ -346,7 +346,9 @@ These symbols describe support for the reported DX callsign:
 | `C` | The call was corrected and the corrected call passed validation. |
 | `B` | A suggested correction failed validation; the original call was kept. |
 
-Use `PASS CONFIDENCE` or `REJECT CONFIDENCE` to filter these values.
+In GO, use a numbered rule such as `PASS RULE 0 CONF=P,V` to select these values.
+This replaces any rule already in slot 0; confidence-exempt modes have no known
+CONF value and do not match this comparison.
 While a call waits in the stabilizer, its ordinary letter keeps the strongest
 level reached for that unchanged call: `? < S < P < V`. The percentage in
 `DIAG CONF` stays current and can fall or become unavailable. Filters see the
@@ -373,9 +375,10 @@ a guarantee of a contact. A blank is not a prediction of a closed path.
 Solar-weather overrides may display `R` for a radio blackout or `G` for a
 geomagnetic storm; these do not replace INSUFFICIENT.
 
-PATH filters use class names, not symbols: for example, `PASS PATH HIGH,MEDIUM`.
-UNLIKELY rules also match CLOSED fallback results; a direct CLOSED rule can
-select that class specifically. `SHOW PROP IT9 20m FT8` requests an hourly
+GO PATH rules use class names, not symbols: for example, `PASS RULE 0 PATH=HIGH,MEDIUM`.
+This replaces any rule already in slot 0.
+`PATH=UNLIKELY` does not match CLOSED; use `PATH=UNLIKELY,CLOSED` to select both.
+`SHOW PROP IT9 20m FT8` requests an hourly
 outlook from your grid. Omitted mode defaults to CW; forecast availability
 depends on the server, and UNLIKELY/CLOSED forecast rows are hidden.
 
@@ -620,6 +623,10 @@ telnet users can use the commands above.
 <details>
 <summary>Expand the YAML protocol and complete SETTINGS response example</summary>
 
+The examples in this section use the legacy schema 6 GO/settings interface.
+FILTER and CONFIG require GO to be active; SETTINGS and CAPABILITIES also work
+in CC. Use schema 7 CONFIG for a complete backup of both banks.
+
 Clients use `GET YAML FILTER SCHEMA 6`, `GET YAML SETTINGS SCHEMA 6`,
 `GET YAML CONFIG SCHEMA 6` and `GET YAML CAPABILITIES SCHEMA 6`. The first two read one resource; CONFIG captures filters
 and settings together; CAPABILITIES describes the schema, choices and limits.
@@ -714,10 +721,10 @@ a failed earlier human autosave without resetting scheduling or session controls
 Machine writes retain the preset reference and may change `(modified)`.
 `VALIDATE YAML CONFIG` checks a complete proposal without applying or saving it.
 
-Every new human or YAML readback is limited to **65,536 final response bytes**,
+These schema 6 responses and GO human readbacks are limited to **65,536 final response bytes**,
 including CRLF, framing and human footers. Responses are complete or return an
 explicit error. New machine proposals must also fit a complete CONFIG response,
-including reserved response metadata. Uploads allow 65,536 body bytes, excluding
+including reserved response metadata. Schema 6 uploads allow 65,536 body bytes, excluding
 markers but counting actual LF/CRLF bytes, with a 30-second deadline from header
 acceptance. Oversized, expired, incomplete or unreliable uploads, including
 malformed upload headers, close the connection. A fully received invalid document

@@ -19,7 +19,7 @@ Peering is explicit:
 - `direction: both` allows either side to establish the link
 - omitted `direction` defaults to `outbound`
 - omitted `family` defaults to `dxspider`
-- the node can run receive-only peering when `forward_spots` is false or omitted
+- the node can run receive-only peering when `forward_spots` is false
 
 Inbound admission is explicit:
 
@@ -366,7 +366,7 @@ for the reproduced publication race and regression evidence.
 
 ## Bounds and operator recovery
 
-Enabled peering requires integer `peering.max_peers` (1–64, shipped64). It bounds
+Enabled peering requires integer `peering.max_peers` (1-64, shipped 64). It bounds
 enabled direct identities; disabled rows do not count and `both` counts once.
 There is no runtime fallback or unlimited sentinel. Add the key to existing
 configuration and restart; active over-cap configurations fail startup.
@@ -390,7 +390,7 @@ one-second healthy interval. After handshake, complete C then required A must
 be delivered within five seconds, even when periodic C/K are disabled.
 
 Authoritative refusal starts controlled retries with shared inbound/outbound
-configured exponential backoff (normal loaded defaults2,4,8…300 seconds).
+configured exponential backoff (normal loaded defaults 2, 4, 8 ... 300 seconds).
 Only one recovery candidate per identity can proceed. Authenticate inbound
 candidates before retry ownership; a failed outbound TCP dial consumes no
 startup grant. Global startup grants are at least one second apart with circular

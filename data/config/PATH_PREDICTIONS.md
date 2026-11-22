@@ -267,10 +267,8 @@ same res-2 cache boundary as other VOACAP fallback data. The fallback never
 replaces a normal sufficient p50 bucket prediction.
 For beacon spots, the same fallback uses the receive-leg VOACAP SNR and
 receive-leg REL rather than the blended bidirectional effective SNR.
-For `PASS/REJECT PATH`, the closed fallback is filter-visible as `CLOSED`.
-`CLOSED` remains compatible with `UNLIKELY`, so existing `UNLIKELY` filters
-still include closed fallback spots, while direct `CLOSED` filters target only
-closed fallback spots.
+In GO rules, the closed fallback is `PATH=CLOSED`. `PATH=UNLIKELY` does not
+match CLOSED; use `PATH=UNLIKELY,CLOSED` to select both classes.
 
 The experimental native 160m fallback covers the gap where p50 evidence is
 insufficient and VOACAP has no usable current-hour result for 160m. It measures
