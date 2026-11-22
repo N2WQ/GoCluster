@@ -45,6 +45,8 @@ When burst history is active, the resolver pressure summary shows the number of 
 
 RBN live spots carry a minute-level station timestamp. The live rule measures when GoCluster receives the reports. Network buffering can group reports that were distributed over time at the source. The five-day study measured archive timestamps with second resolution. It provides evidence about the historical rule and cannot establish the live error rate.
 
+The decay comparison ages the exact-slot resolver publication captured before the focal report is queued. The ordinary resolver can read a newer publication if the worker has published more evidence in the meantime.
+
 All 658 historical WPM retentions had immediate decisions. In the decayed arm, 624 kept the same call, 30 declined a replacement on edit distance and four declined it on confidence. The live burst rule requires positive support for the incoming call in a settled exact slot or an eligible settled neighborhood. It declines a pending, held, delayed or otherwise uncertain comparison. With the live stabilizer and its support store active, only a verified (`V`) original is eligible. A probable (`P`) original can enter a delay if the exact-slot evidence changes before delivery. Frequency separation can also be checked on delayed delivery. When both safeguards would qualify, frequency separation is recorded first. The decision reasons are `cw_frequency_separation_retained` and `cw_burst_wpm_decay_retained`.
 
 ## Work since Thursday, November 19

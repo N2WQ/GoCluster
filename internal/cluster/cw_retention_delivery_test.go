@@ -81,14 +81,16 @@ func TestCWBurstWPMRetentionDelivery(t *testing.T) {
 		name, incoming, want string
 		frequency, burst     bool
 		rescue               bool
+		freshWinner          bool
 		retained             uint64
 	}{
-		{"both_off", "26 WPM", "K1ABD", false, false, false, 0},
-		{"frequency_only_cochannel", "26 WPM", "K1ABD", true, false, false, 0},
-		{"burst_only", "26 WPM", "K1ABC", false, true, false, 1},
-		{"both_on_cochannel", "26 WPM", "K1ABC", true, true, false, 1},
-		{"agrees_with_older_replacement", "20 WPM", "K1ABD", false, true, false, 0},
-		{"method_c_disables_burst", "26 WPM", "K1ABD", false, true, true, 0},
+		{"both_off", "26 WPM", "K1ABD", false, false, false, false, 0},
+		{"frequency_only_cochannel", "26 WPM", "K1ABD", true, false, false, false, 0},
+		{"burst_only", "26 WPM", "K1ABC", false, true, false, false, 1},
+		{"both_on_cochannel", "26 WPM", "K1ABC", true, true, false, false, 1},
+		{"agrees_with_older_replacement", "20 WPM", "K1ABD", false, true, false, false, 0},
+		{"method_c_disables_burst", "26 WPM", "K1ABD", false, true, true, false, 0},
+		{"decay_confirms_rename", "26 WPM", "K1ABD", false, true, false, true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := selectiveLiveConfig()
@@ -133,15 +135,43 @@ func TestCWBurstWPMRetentionDelivery(t *testing.T) {
 					t.Fatal("independent receiver evidence was refused")
 				}
 			}
+			if tc.freshWinner {
+				// Refresh the resolver's winning evidence without changing the
+				// arrival history. The real resolver sees reports from outside
+				// the burst predictor cohort.
+				for _, receiver := range []string{"N0BAD", "N0BAI", "N0BAJ"} {
+					fresh := newDeliveryTestSpot("K1ABD", receiver, at.Add(-2*time.Second))
+					fresh.IsHuman, fresh.SourceType = false, spot.SourceRBN
+					fresh.RBNCQReceivedAt, fresh.RBNCQRawKHz = at.Add(-2*time.Second), 14020
+					fresh.CWSpeeds = []string{"20 WPM"}
+					history.Observe(fresh)
+					if fresh.CWBurstFocal.Sequence != 0 {
+						t.Fatal("fresh control receiver unexpectedly entered burst history")
+					}
+					evidence, ok := buildResolverEvidenceSnapshot(fresh, cfg, nil, fresh.RBNCQReceivedAt)
+					if !ok || !r.Enqueue(evidence) {
+						t.Fatal("fresh winner evidence was refused")
+					}
+				}
+			}
 			driver.Drain()
 			driver.Sweep(at.Add(-time.Second))
 			ordinary, ok := r.Lookup(key)
 			if !ok || ordinary.Winner != "K1ABD" {
 				t.Fatalf("ordinary majority missing: %+v", ordinary)
 			}
+			if tc.freshWinner {
+				decayed, ok := r.LookupCWDecayEligible(key, at)
+				if !ok || decayed.Winner != "K1ABD" || decayed.EvidenceLoss {
+					t.Fatalf("expected decayed majority for replacement: %+v", decayed)
+				}
+			}
 			f := newAmbiguityDeliveryFixture(t, r, cfg)
 			f.pipeline.cwBursts = history
 			s := report("K1ABC", "N0TTT", tc.incoming, 0)
+			if tc.freshWinner && !history.Retain(s.CWBurstFocal, "K1ABD") {
+				t.Fatal("expected burst and WPM to agree even with fresh decayed winner evidence")
+			}
 			f.pipeline.processSpotBody(s, nil)
 			rows := f.ring.GetRecent(2)
 			if len(rows) != 1 || rows[0].DXCallNorm != tc.want {
