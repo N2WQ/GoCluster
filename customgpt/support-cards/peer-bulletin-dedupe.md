@@ -108,7 +108,7 @@ dedupe, topology cache, or private peer configuration.
   can contain a corrected identity. A corrected local line alone is not the
   expected PC11/PC61 payload.
 - For a local `DX` spot, original means the accepted source `Spot` after primary
-  normalization and completed toxicity classification, before output changes.
+  normalization and any applicable admission checks, before output changes.
   It does not mean literal command-line whitespace, case or pre-parser frequency
   precision. A compact immutable record follows existing temporal, FT and
   stabilizer holds; release does not recapture the corrected spot.

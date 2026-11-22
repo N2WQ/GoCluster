@@ -611,78 +611,54 @@
       "id": "SA-008",
       "category": "filtering-dedupe",
       "severity": "high",
-      "title": "Toxicity filter status explanation",
+      "title": "Literal spot comment filtering",
       "prompt_sequence": [
-        "why does REJECT TOXIC not hide this comment"
+        "How do I hide spots containing a particular phrase?"
       ],
       "action_plan": [
         {
-          "name": "getSupportRoute",
-          "endpoint": "/support-route?query=why%20does%20REJECT%20TOXIC%20not%20hide%20this%20comment%20UNKNOWN%20SAFE_LOCAL%20UNAVAILABLE"
+          "name": "getSourceMap",
+          "endpoint": "/source-map"
         },
         {
-          "name": "getTroubleshootingIndex",
-          "endpoint": "/troubleshooting-index"
-        },
-        {
-          "name": "getDoc",
-          "endpoint": "/doc?path=README.md"
+          "name": "searchSupportCorpus",
+          "endpoint": "/search?query=COMMENT&path=telnet%2FREADME.md"
         },
         {
           "name": "getDoc",
-          "endpoint": "/doc?path=telnet/README.md"
-        },
-        {
-          "name": "getDoc",
-          "endpoint": "/doc?path=data/config/README.md"
-        },
-        {
-          "name": "getDoc",
-          "endpoint": "/doc?path=cloudflare/toxicity-worker/README.md"
+          "endpoint": "/doc?path=telnet/README.md&start_line=470&line_count=80"
         }
       ],
       "required_sources": [
-        "customgpt/troubleshooting-index.md",
-        "README.md",
-        "telnet/README.md",
-        "data/config/README.md",
-        "cloudflare/toxicity-worker/README.md",
-        "customgpt/support-cards/toxicity-filter.md"
+        "customgpt/source-map.md",
+        "telnet/README.md"
       ],
       "answer_checks": {
         "required": [
           {
-            "name": "toxic statuses",
+            "name": "literal GO rule",
             "all_of": [
-              "UNKNOWN",
-              "SAFE_LOCAL",
-              "UNAVAILABLE"
-            ]
-          },
-          {
-            "name": "asks for redacted evidence",
-            "any_of": [
-              "redacted",
-              "status",
-              "config"
+              "GO",
+              "REJECT RULE",
+              "COMMENT",
+              "literal"
             ]
           }
         ],
         "forbidden": [
           {
-            "name": "guesses AI classification",
-            "text": "the AI classified"
+            "name": "treats COMMENT as a regex",
+            "text": "COMMENT uses regular expressions"
           }
         ],
         "require_source_citation": true
       },
       "required_source_substrings": [
         {
-          "path": "customgpt/support-cards/toxicity-filter.md",
+          "path": "telnet/README.md",
           "contains": [
-            "Must Include",
-            "Must Avoid",
-            "Sources"
+            "Comment Filters And Searches",
+            "REJECT RULE"
           ]
         }
       ]

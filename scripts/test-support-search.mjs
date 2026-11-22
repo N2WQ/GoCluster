@@ -66,7 +66,7 @@ try {
       assert.equal(body.truncated, count > 25);
       assert.equal(body.coverage_complete, true);
       assert.equal(body.searched_count, 1);
-      assert.equal(body.corpus_count, 46);
+      assert.equal(body.corpus_count, 45);
       assert.equal(body.eligible_file_count, 1);
       assert.equal(body.limits.max_search_results, 25);
     });
@@ -75,7 +75,8 @@ try {
     fixtures.set("customgpt/source-map.md", blankRegions(26, "alpha separated beta"));
     fixtures.set("scripts/README.md", "ALPHA BETA");
     const { body } = await search("alpha beta");
-    assert.equal(requests.length, 46);
+    assert.equal(requests.length, 45);
+    assert(!requests.includes("customgpt/support-cards/toxicity-filter.md"));
     assert.equal(body.matches[0].path, "scripts/README.md");
     assert.equal(body.matches[0].match_type, "exact");
     assert.equal(body.matches[1].match_type, "all_words");
@@ -128,7 +129,7 @@ try {
     fixtures.set("docs/ENVIRONMENT.md", "THROW");
     const { status, body } = await search();
     assert.equal(status, 200);
-    assert.equal(body.searched_count, 44);
+    assert.equal(body.searched_count, 43);
     assert.equal(body.failed_paths.length, 2);
     assert.deepEqual(body.failed_paths.map(f => f.path).sort(), ["docs/ENVIRONMENT.md", "scripts/README.md"]);
     assert.equal(body.coverage_complete, false);

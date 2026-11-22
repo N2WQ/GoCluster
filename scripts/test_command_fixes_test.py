@@ -181,11 +181,11 @@ def discovery_help_literal(key, dialect):
                  "Beacon spots still go through your spot filters when BEACON is on.",
                  "Changing a switch does not change any numbered rule.", "", key + " - " + summary]
         if dialect == "go":
-            lines += ["Usage: " + key + " RULE <0..9> <expression>", "       " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"]
-            notes = ["SELF and TOXIC are also separate switches, not rule fields.", "PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
+            lines += ["Usage: " + key + " RULE <0..9> <expression>", "       " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]"]
+            notes = ["SELF separately controls live spots of your own call.", "PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
                      "Old category mutation syntax is refused, not translated; use HELP RULE."]
         else:
-            lines += ["Usage: " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"]
+            lines += ["Usage: " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]"]
             notes = ["PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
                      "Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER."]
     for note in notes[:-1]:

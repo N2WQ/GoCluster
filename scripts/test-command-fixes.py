@@ -2643,11 +2643,11 @@ def help_route_contract(key, dialect):
         if dialect == "go":
             summary = "Allow matching spots or enable separate controls." if verb == "PASS" else "Veto matching spots or disable separate controls."
             contracts[verb] = (verb + " - " + summary,
-                (verb + " RULE <0..9> <expression>", verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"),
+                (verb + " RULE <0..9> <expression>", verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]"),
                 "  Old category mutation syntax is refused, not translated; use HELP RULE.", ())
         else:
             contracts[verb] = (verb + " - Change separate delivery switches.",
-                (verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]",),
+                (verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]",),
                 last_note("Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER."), ())
     for topic in ("SET/FILTER", "UNSET/FILTER"):
         usages = [topic + " <switch> [ALL]"]

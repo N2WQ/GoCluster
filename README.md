@@ -141,7 +141,7 @@ command must fit the node's byte limit (128 by default), excluding its line endi
 In the GO dialect, use numbered `PASS RULE` and `REJECT RULE` expressions to choose spots.
 Any matching REJECT wins. Otherwise, any matching PASS qualifies. With no PASS
 rules there is no personal PASS restriction; an empty set has no hidden base
-filters. Separate controls, such as SELF and TOXIC, still apply.
+filters. Separate controls, such as SELF, still apply.
 
 Slots 0 through 9 identify rules, not priorities. Adding another PASS broadens
 your selection rather than adding an AND condition. To require two conditions,
@@ -431,13 +431,6 @@ REJECT RULE 8 SOURCE=SKIMMER AND MODE=CW,RTTY AND SNR<10
 Remove it with `RESET FILTER RULE 8`. This does not bypass other rules.
 See the [SNR reference](telnet/README.md#minimum-snr).
 
-### Toxic Comment Filtering
-
-`REJECT TOXIC` hides human reports already classified as toxic; `PASS TOXIC`
-allows them. This optional feature is disabled by default. Reports that have
-not been classified, or whose classification is unavailable, still pass.
-See [filter details](telnet/README.md#filters).
-
 ### History Searches
 
 `SHOW MYDX 3D2/R 10` searches a canonical DXCC entity;
@@ -505,15 +498,16 @@ Grid          FN31PR
 Noise         SUBURBAN
 Dedupe        SLOW
 Path samples  DEFAULT; stations 21, beacons 11
-Solar         Every 30 minutes
+CW speed      Off
+Solar         Every 30 minutes when conditions are active
 
 Session only
 Diagnostics   Off
 Live spots    Paused for reading; at least 30s after delivery
               135 spots suppressed
 
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
+Live spots paused for 30 seconds. Missed spots aren't replayed.
+Type RESUME to restart now, or SHOW HOLD to check the pause.
 ```
 
 The reading interval starts after the server finishes writing and flushing the
@@ -536,10 +530,10 @@ Path samples  30 (user minimum); stations 30, beacons 30
               Cluster minimums: stations 21, beacons 11
 ```
 
-Login shows actual settings and numbered rules under "Default settings and
-filters" for new accounts or "Current settings and filters" for returning
-accounts. Upgraded users keep their settings and receive a short reset notice.
-Rules are never flattened into independent mode/band/source lists.
+The supplied greeting shows a short login summary. Use `SHOW SETTINGS` for
+your current preferences and `SHOW FILTER` for the active filter bank. A
+custom greeting can include the full settings and filters block. Upgraded
+users receive a reset notice when their old filters are reset.
 
 Human readbacks use at most 78 printable ASCII characters per line, followed
 by CRLF. Short rules are commands you can reuse:
@@ -741,7 +735,7 @@ See the [client protocol details](telnet/README.md#client-yaml-configuration).
 
 ### HELP
 
-Use `HELP` for a short menu, call confidence tags and configured path symbols.
+Use `HELP` for a short menu and `HELP SYMBOLS` for confidence tags and path symbols.
 Use `HELP FILTERS` to inspect filters and learn the few essential rules.
 Use `HELP FILTER EXAMPLES` for complete GO or CC setups, with replacement warnings before the commands.
 Use `HELP PRESETS` to save a setup, create another and switch between them.
@@ -784,14 +778,11 @@ Managing presets
 See the [CW call-retention guide](docs/cw-call-correction-branch.md) for configuration, rollback, and experiment results.
 
 Telnet users connecting to an existing cluster can skip this section.
-To operate your own node, download `gocluster-windows-amd64.zip` from
-[GitHub Releases](https://github.com/N2WQ/GoCluster/releases/latest), extract it,
-and follow the packaged `ready_to_run/README.md`. GitHub's automatic source
-archives are not ready-to-run packages. See [download instructions](download/README.md).
-
-For installation and service operation, use the [Operator Guide](docs/OPERATOR_GUIDE.md).
-The published ready-to-run package is Windows amd64. Linux can be built from
-source; Windows VOACAP execution is unavailable on non-Windows builds.
+Windows amd64 builds are available on [GitHub Releases](https://github.com/N2WQ/GoCluster/releases/latest).
+Check the [download instructions](download/README.md) for the runtime data
+needed by the release you select. See the [Operator Guide](docs/OPERATOR_GUIDE.md)
+for installation and service operation. Linux operators can build from source.
+Runtime VOACAP execution requires Windows.
 
 ## Configuring A Real Node
 

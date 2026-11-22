@@ -77,7 +77,7 @@ distinguishes entity selection (`DXDXCC=IT9`, ADIF 248) from literal GO calls
 
 Separate controls retain their own grammar. Shared PASS/REJECT control forms
 work in both dialects; CC SET/FILTER and UNSET/FILTER support BEACON, WWV, WCY,
-ANNOUNCE/PC93, SELF and TOXIC as separate switches. Switches take no value or ALL.
+ANNOUNCE/PC93 and SELF as separate switches. Switches take no value or ALL.
 Only SET/FILTER accepts `<switch>/ON|/OFF`, without extra values; UNSET has no
 inline flags. SELF selects spots of the user's own call. Named CC control
 shortcuts retain their no-argument grammar. Native CC also supports global
@@ -333,8 +333,9 @@ schema 6 is a legacy view, not a complete backup. CAPABILITIES advertises
 supported schemas, fields, vocabulary and bounds. Optional GET IDs preserve
 case and accept 1-32 ASCII letters, digits or hyphens.
 
-The legacy schema 6 FILTER has seven fields: `rules`, `include_beacons`,
-`allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic`.
+The legacy schema 6 FILTER includes `rules` and separate delivery switches.
+Preserve every field returned in the writable configuration for a complete
+restore.
 SETTINGS retains its six fields: `dialect`, `grid`, `noise_class`,
 `dedupe_policy`, `path_min_observation_count`, `solar_summary_minutes`.
 Schema 6 CONFIG nests `filters` and `settings`. Each rule requires integer slot 0–9,
@@ -424,8 +425,8 @@ and their HELP topics are available in both dialects. Successful LOAD/SAVE
 establish the applied/saved reference; failed association persistence after
 SAVE retains the previous reference both live and on disk. Protected
 temporary-defaults sessions cannot SAVE, LOAD or commit machine writes.
-The 20-name, 256 KiB-per-preset and 8 MiB collection limits remain separate
-from canonical, wire and decode-work bounds. Prospective admission checks the
+The shared library allows 20 names and 8 MiB. A tagged preset is limited to
+192 KiB. Wire and decode-work limits also apply. Prospective admission checks the
 complete retained profile and export sizes before accepting changes.
 
 ### WWV and WCY bulletins
@@ -599,7 +600,7 @@ selects CW from Europe or with a nearby endpoint. Missing proximity is false;
 NOT NEARBY includes unknown proximity. The
 [rule-only recovery contract](../telnet/README.md#grid-noise-and-nearby)
 waives only mapping availability for an unchanged saved GRID with every other
-setting/control unchanged. SELF/history exceptions and TOXIC remain distinct.
+setting/control unchanged. Own-call history retains its separate exception.
 
 Machine schemas 6 and 7 have the separate compatibility boundaries described
 above. Native disk version 7 retains both banks, independent controls and applied

@@ -3,8 +3,8 @@ title: Using the CC dialect
 description: Independent CC filter banks, configuration ownership and session-only native spot output.
 ---
 
-GO and CC remember separate filters and separate BEACON, SELF, TOXIC, ANNOUNCE,
-WWV and WCY choices. `DIALECT CC` restores your CC selection; `DIALECT GO`
+GO and CC remember separate filters and delivery switches, including BEACON,
+SELF, ANNOUNCE, WWV, and WCY. `DIALECT CC` restores your CC selection; `DIALECT GO`
 restores your GO rules. GRID, noise, dedupe, PATHSAMPLES and SOLAR remain shared.
 Switching can change which spots you receive.
 
@@ -92,9 +92,8 @@ Machine GET does not pause spots. Already queued spots retain existing delivery
 semantics; a filter update is not a strict wire barrier.
 
 SELF retains the existing own-call exception: live spots of your normalized
-login call require SELF and TOXIC, then bypass personal criteria. History's
-own-call exception is independent of SELF, still obeys TOXIC and explicit search
-selectors. SELF does not mean spots you reported about another station.
+login call require SELF and can bypass personal criteria. History's
+own-call exception is independent of SELF. Explicit search selectors still apply. SELF does not mean spots you reported about another station.
 
 ## Native CC11 output is independent
 
@@ -166,7 +165,7 @@ bands for the same category in one PATCH is refused; different categories can
 be edited together. DXBM PATCH replaces its complete `active`, `base_allow`
 and `slots` state. OFF is explicit; absence means preserve/inherit as applicable.
 
-Schema six keeps its 65,536-byte headers/body contract. FILTER and CONFIG are
+Schema six allows 65,536 bytes for the upload body and final reply. FILTER and CONFIG are
 available only while GO is effective; CONFIG proposals must remain in GO.
 SETTINGS and CAPABILITIES remain available in CC with compatibility guidance,
 without showing an empty or inactive GO filter as CC state. SETTINGS may switch

@@ -426,7 +426,7 @@ end: `K1ABC`, `W1*`, `*ABC`, or `*`. Internal/multiple stars and `?` wildcards
 are invalid. A lone star does not match an unknown empty call.
 
 Separate controls are not expression fields. In both dialects,
-`PASS/REJECT <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]` enable/disable the
+`PASS/REJECT <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]` enable/disable the
 named control. PC93 aliases ANNOUNCE. These switches accept no value or one
 `ALL`; `PASS BEACON OFF` is refused. Old NEARBY toggle commands are refused;
 use a numbered expression such as `PASS RULE 0 MODE=CW AND NEARBY`.
@@ -437,10 +437,10 @@ and there are no NEARBY control aliases. Named CC control shortcuts such as `SET
 `SET/SELF` take no arguments; [native mode/category commands](../docs/cc-dialect.md#terminal-commands)
 have their own grammar and do not mutate GO rules.
 
-Live self-spots require SELF enabled and bypass personal rules, but
-still honor TOXIC. Command/history self matches retain their exception
-independently of SELF, also honoring TOXIC. Explicit history BAND/MODE/COMMENT
-clauses are mandatory even for self-spots.
+With SELF enabled, live spots of your own call can bypass personal rules
+while other delivery checks still apply. History has its own same-call
+exception independent of SELF. Explicit history BAND/MODE/COMMENT clauses
+still apply.
 
 Ordinary live broadcasts keep each active session on one worker, preserving its
 queue order when other clients connect or leave. Departures can leave worker
@@ -475,20 +475,6 @@ reused for that spot/user evaluation.
 `boolean_rule_readback.go` own human admission/display;
 `matching_snapshot.go` and `history_filter.go` capture matching state.
 `commands/boolean_rule_help.go` supplies the registered HELP RULE reference.
-
-`PASS TOXIC` shows spots classified as toxic; `REJECT TOXIC` hides only spots
-with classifier status `TOXIC`.
-
-Toxic comment filtering is optional and fail-open. When the classifier is
-disabled, unavailable, timed out, or has not seen a human comment yet, the spot
-passes `REJECT TOXIC`. Routine comments that match the local ham-radio safe
-gate are marked `SAFE_LOCAL` and also pass. The classifier receives only the
-cleaned free-text comment, not callsigns, band, mode, source, IP, session data,
-or archive records.
-
-`SHOW FILTER` reports the current `TOXIC` toggle. The toggle applies to live
-spots and archive-backed history queries. Local self-spot bypasses still honor
-`REJECT TOXIC` once a spot is classified as `TOXIC`.
 
 ## Comment Filters And Searches
 
@@ -760,7 +746,7 @@ See [ADR-0251](../docs/decisions/ADR-0251-exact-call-paged-history.md) and
 
 `SHOW/FILTER` and `SH/FILTER` are aliases in GO, with RULE/FULL arguments.
 CC accepts DOC, DOS, DXCTY, DXSTATE, DXBM, MODE, SOURCE, BEACON, WWV, WCY,
-ANNOUNCE, SELF, TOXIC and FULL. CC has no Boolean RULE view and refuses Boolean
+ANNOUNCE, SELF and FULL. CC has no Boolean RULE view and refuses Boolean
 rule mutations. `SHOW FILTER` also works as a CC alias. SETTINGS aliases are
 `SHOW/SETTINGS` and `SH/SETTINGS` in both dialects.
 
@@ -768,18 +754,16 @@ In GO, every occupied slot appears in slot order with its action and full canoni
 saved expression. No synthetic source condition is added.
 FULL reports occupied slots and one program's node/atom/value counts. There are
 no projected expressions, suspended rules or global NEARBY status fields.
-BEACON, WWV, WCY, ANNOUNCE/PC93, SELF and TOXIC remain separate controls.
-The [NEARBY recovery contract](#grid-noise-and-nearby) applies when location is
-unavailable. Existing self/TOXIC exceptions remain distinct from rule matching.
+Delivery switches such as BEACON, WWV, WCY, ANNOUNCE/PC93, and SELF
+operate separately from numbered rules. When location is unavailable,
+see [NEARBY behavior](#grid-noise-and-nearby).
 
-The shipped login greeting includes a settings/filter block. New accounts see
-"Default settings and filters"; returning accounts see "Current settings and
-filters". Values come from actual restored/prepared state, including a looked-up
-grid and effective dedupe. Recognized old profiles get the reset notice and
-first-time guidance; old-library cleanup alone must not claim a profile reset.
-The GO view does not flatten OR/NOT expressions into independent lists. The CC
-view displays its independently saved native categories.
-Custom greeting templates can place the block with `<SETTINGS_FILTERS>`.
+The supplied greeting includes a short `<LOGIN_SUMMARY>`. Operators can place
+`<SETTINGS_FILTERS>` in a custom greeting to show the full block. It uses
+"Default settings and filters" for new accounts and "Current settings and
+filters" for returning accounts. Values come from the restored or prepared
+session. A profile reset gets the reset notice and first-time guidance.
+The GO block shows canonical rules, and the CC block shows native selections.
 
 `SHOW DXCC` (also `SH DXCC`) requires one prefix or callsign. Extra values
 return usage without performing a lookup. `BYE`, `QUIT` and `EXIT` take no
@@ -959,7 +943,7 @@ omitted from PATCH, not recompiled by rendering.
 | Resource fields | Representation |
 | --- | --- |
 | `rules` | Sequence of mappings requiring `slot` (integer 0–9), lowercase `action: pass` or `action: reject`, and `expr` (complete expression string). Duplicate slots fail. |
-| `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self`, `allow_toxic` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
+| `include_beacons`, `allow_wwv`, `allow_wcy`, `allow_announce`, `allow_self` | Explicit `true`, explicit `false` or the string `DEFAULT`. |
 | `dialect`, `grid`, `noise_class`, `dedupe_policy` | Strings; an empty string preserves the explicit default/lookup selection. |
 | `path_min_observation_count` | Integer; zero uses the cluster minimum. |
 | `solar_summary_minutes` | Integer: 0, 15, 30 or 60; zero means OFF. |
@@ -992,41 +976,11 @@ First read your own current configuration:
 GET YAML CONFIG SCHEMA 6 ID Read-1
 ```
 
-This separate request validates a complete CONFIG without applying/saving it:
+For `VALIDATE YAML CONFIG`, copy the entire writable `configuration` from
+a GET reply into a new schema-six request envelope. Preserve all fields.
+For `PUT YAML CONFIG`, also include `if_revision` from the current GET.
+FILTER and SETTINGS place fields directly under `configuration`.
 
-```text
-VALIDATE YAML CONFIG
----
-schema_version: 6
-request_id: Validate-1
-configuration:
-  filters:
-    rules:
-      - slot: 0
-        action: pass
-        expr: 'MODE=CW,FT8 AND SOURCE=HUMAN'
-      - slot: 9
-        action: reject
-        expr: 'COMMENT="CQ ""DX"""'
-    include_beacons: DEFAULT
-    allow_wwv: true
-    allow_wcy: false
-    allow_announce: DEFAULT
-    allow_self: DEFAULT
-    allow_toxic: DEFAULT
-  settings:
-    dialect: go
-    grid: ""
-    noise_class: ""
-    dedupe_policy: ""
-    path_min_observation_count: 0
-    solar_summary_minutes: 0
-...
-```
-
-For `PUT YAML CONFIG`, use the same complete shape and additionally supply
-`if_revision` from the current GET. FILTER and SETTINGS place their fields
-directly under `configuration`, without a `filters` or `settings` wrapper.
 A complete settings replacement is:
 
 ```text
@@ -1413,7 +1367,7 @@ History uses one detached matching snapshot per page. Matching and fingerprintin
 use the same effective cells. True rule/location changes invalidate pending
 pages and continuation, including change then restoration; lazy cache filling
 that preserves effective geometry does not. Propagation observations remain
-current and outside the configuration fingerprint. SELF/TOXIC exceptions and
+current and outside the configuration fingerprint. Own-call exceptions and
 explicit history clauses retain their documented behavior.
 
 RESET FILTER and RESET FILTER RULE clear the selected rules, including their

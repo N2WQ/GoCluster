@@ -14,15 +14,10 @@ from the repository root.
 
 ## Get A Binary
 
-The current ready-to-run release asset is Windows amd64:
-
-```text
-https://github.com/N2WQ/GoCluster/releases/latest
-gocluster-windows-amd64.zip
-```
-
-Download that asset, not GitHub's automatic source-code archives. Extract it
-and open `ready_to_run/`.
+Windows amd64 builds are available on [GitHub Releases](https://github.com/N2WQ/GoCluster/releases/latest).
+For release `261121r74c2`, open the [download instructions](https://github.com/N2WQ/GoCluster/blob/main/download/README.md)
+for the four model files required before a fresh start. Use the source tree
+matching the release tag to open references that are outside the extracted ZIP.
 
 Linux operators currently build from source:
 
@@ -291,7 +286,7 @@ telnet localhost 8300
 
 Log in with your callsign. Useful first commands:
 
-- `HELP`: show starter commands, call confidence, path symbols and a short task menu.
+- `HELP` shows starter commands and the short task menu.
 - `HELP SPOTS`: find spots or report a station.
 - `HELP SETTINGS`: change location and shared settings.
 - `HELP PRESETS`: save a setup, create another and switch between them.
@@ -322,17 +317,17 @@ Log in with your callsign. Useful first commands:
   the saved cadence and report effective zero without promising delivery.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `SHOW FILTER`: show filter selections and restrictions.
-- `SHOW FILTER RULE` or `SHOW FILTER FULL`: show saved/effective numbered rules and separate controls.
+- In GO, `SHOW FILTER RULE` or `SHOW FILTER FULL` displays saved rules and separate controls.
 - `SHOW SETTINGS`: show configured choices, effective settings, and session status.
-- `PASS RULE <0..9> <expression>`: add or replace a qualifying rule.
-- `REJECT RULE <0..9> <expression>`: add or replace a veto rule.
-- `RESET FILTER RULE <slot|ALL>`: clear rules without changing NEARBY.
-- `RESET FILTER`: clear rules and NEARBY, preserving settings and separate controls.
+- In GO, `PASS RULE <0..9> <expression>`: add or replace a qualifying rule.
+- In GO, `REJECT RULE <0..9> <expression>`: add or replace a veto rule.
+- In GO, `RESET FILTER RULE <slot|ALL>` clears the selected rules, including any NEARBY terms they contain.
+- In GO, `RESET FILTER` clears all numbered rules and preserves shared settings and separate controls.
 - `SAVE PRESET <name>`: save filters and preferences to a named snapshot.
 - `LIST PRESET`: list the snapshots shared by your numeric SSIDs.
 - `LOAD PRESET <name>`: load a snapshot and save the current SSID's defaults.
 - `DELETE PRESET <name>`: remove a snapshot while keeping current settings.
-- `PASS NEARBY ON|OFF`: toggle nearby local-area filtering.
+- In GO, use `NEARBY` as a rule condition, for example `PASS RULE 0 MODE=CW AND NEARBY`.
 - `SHOW DEDUPE`: show your dedupe policy.
 - `SET DEDUPE FAST|MED|SLOW`: change your dedupe policy.
 - `DX <freq> <call> <comment>`: post a local human spot.
@@ -391,108 +386,60 @@ feature needs no archive reset or saved-profile migration. See the
 
 ### Read Your Filters And Settings
 
-Login shows actual settings and numbered Boolean rules. New users see
-"Default settings and filters"; returning users see "Current settings and
-filters". Recognized old profiles receive the same configured starting rules
-as new users while keeping saved settings and controls. The reset notice says
-"Your old filters were reset. Your settings were kept." Old presets are cleared;
-existing Boolean profiles and presets are not reset.
+The supplied login greeting shows a short summary. Use `SHOW FILTER` for your
+active bank and `SHOW SETTINGS` for shared preferences. Nodes can include a
+full settings and filters block in custom greetings. Upgrading a recognized
+pre-seven profile resets the old filters and six switches, initializes both
+banks from server defaults, and preserves shared settings and the selected
+dialect. The upgrade also clears old named presets. Check the login notice
+and keep matching backups.
 
-`SHOW FILTER` shows current settings and rules without combining independent
-mode/band/source lists. Two PASS rules are alternatives, not a Cartesian
-product. For example, these rules select human CW on 20m or skimmer FT8 on 40m,
-excluding EU DX:
+In GO, these rules select human CW on 20m or skimmer FT8 on 40m and exclude
+European DX.
 
 ```text
-PASS RULE 0 MODE=CW AND BAND=20M
+PASS RULE 0 MODE=CW AND BAND=20M AND SOURCE=HUMAN
 PASS RULE 1 MODE=FT8 AND BAND=40M AND SOURCE=SKIMMER
 REJECT RULE 9 DXCONT=EU
 ```
 
-A PASS without SOURCE selects HUMAN only. If SOURCE appears anywhere in the
-expression, normal Boolean logic applies. `SOURCE=HUMAN,SKIMMER` allows both.
-REJECT rules do not get a HUMAN default. Removing all active PASS rules allows
-all sources except matching REJECTs. An allowed source is not a feed-health
-indicator. SELF ON can bypass personal rules for spots of the user's own call.
+Omit `SOURCE` to allow either source if the other conditions match. PASS
+rules are alternatives. A matching REJECT takes precedence. Put required
+conditions in the same rule with AND. These commands replace the named slots.
+Check for other rules before applying a recipe. Invalid edits leave your
+settings intact. A save warning means an accepted edit may only be live in
+the current session.
 
-Create a new rule 0 to replace the starting selection. Using another slot
-adds an alternative PASS. Invalid edits change nothing. Accepted human edits
-are active immediately; a save failure explicitly says they were not saved.
+In GO, `SHOW FILTER RULE` shows the canonical rules. `SHOW FILTER FULL` adds
+preparation counts and separate-control detail. In CC, `SHOW/FILTER` shows
+native selections and `SHOW/FILTER DXBM` shows the frequency slots. Use
+`HELP FILTERS` for the active dialect's commands. In GO, `NEARBY` is an
+ordinary rule condition. Missing proximity makes that condition false.
+NEARBY leaves other conditions and the dedupe policy in effect.
 
-`SHOW FILTER RULE` shows the same concise rules; `SHOW FILTER FULL` adds
-geometry and preparation counts. Both dialects support `SHOW/FILTER` and
-`SH/FILTER`. Old category readbacks such as `SHOW FILTER BAND` are unsupported.
-NEARBY shows the effective expression or that a geography-only rule is suspended.
+Human readbacks use up to 78 printable ASCII characters per line before CRLF.
+Decode long quoted pieces and join them without inserting spaces. Use schema 7
+YAML for values beyond the command-line limit. See
+[lossless wrapping examples](../telnet/README.md#human-configuration-readbacks).
 
-Human readbacks use at most 78 printable ASCII characters per line, followed
-by CRLF. Short rules use command syntax. Long exact values use quoted ASCII
-escapes and complete
-quoted pieces joined with `+`. Spaces inside quotes are retained, and neither
-the marker nor continuation indentation is part of the value. Escapes are not
-split. Long display pieces are not directly copyable commands; use schema 5
-YAML for rules beyond the configured command-line limit.
-See [lossless wrapping examples](../telnet/README.md#human-configuration-readbacks).
+`SHOW SETTINGS` distinguishes configured and effective choices. An empty
+GRID can use a callsign lookup. A zero PATHSAMPLES value uses the current
+server floors. Zero SOLAR turns summaries off. The session section shows the
+current diagnostics and pause. For example, with server floors of 21 for
+stations and 11 for beacons, an override of 15 stays inactive. An active
+override of 30 applies to both.
 
-`SHOW SETTINGS` shows the configured choice and the behavior the server uses.
-For example, an empty configured GRID can use a callsign lookup. Active NEARBY
-can temporarily use FAST dedupe while the configured choice remains SLOW. A zero
-PATHSAMPLES value uses the active station/beacon minimums; zero SOLAR means Off.
-Pause and diagnostic status appear under Session only:
+Human filter and settings readbacks pause live spots from request acceptance
+through delivery, then for the configured reading interval after the server
+flushes the response. Zero duration selects 30 seconds for these readbacks,
+even if the generic row trigger is disabled. Type `RESUME` to end the pause.
+A longer active pause is preserved. A later valid `PAUSE` or `RESUME` takes
+precedence over completion of an earlier readback. Use `SHOW HOLD` for status.
 
-```text
-User          N2WQ-1
-Preset        CONTEST (modified)
-
-Dialect       GO
-Grid          FN31PR
-Noise         SUBURBAN
-Dedupe        SLOW; effective FAST while NEARBY is active
-Path samples  DEFAULT; stations 21, beacons 11
-Solar         Every 30 minutes when conditions are active
-
-Session only
-Diagnostics   Off
-Live spots    Paused for reading; at least 30s after delivery
-              135 spots suppressed
-
-Live spots paused during delivery and for at least 30s afterward.
-Type RESUME when ready. Missed spots are not replayed.
-```
-
-Effective path minimums reflect restored runtime state. With server floors
-of 21/11, reconnect leaves a saved personal minimum of 15 inactive:
-
-```text
-Path samples  15 configured; effective stations 21, beacons 11
-              Override inactive: not above station minimum 21
-```
-
-An active minimum of 30 gives stations 30 and beacons 30. Production output
-reads the loaded predictor configuration rather than using these example
-numbers, and identifies disabled or unavailable prediction explicitly.
-NEARBY readback distinguishes enabled from usable. Enabled NEARBY keeps ordinary
-location rules suspended when user cells are unavailable; DX spots on the
-affected bands fail NEARBY matching instead of falling back to those rules.
-
-Every human filter/settings readback pauses live spots as soon as the request
-is accepted, including time spent preparing and sending the reply. After the
-server finishes its write and flush, users get the full configured positive
-reading interval, or 30 seconds when that duration is zero. The row threshold,
-including zero, does not disable these readback pauses. Other automatic
-responses retain the ordinary row threshold and zero-disable settings.
-
-A longer active pause remains in force. A later valid PAUSE or RESUME takes
-precedence over a reply still waiting to finish; invalid pause arguments have
-no effect. A new human readback starts a fresh reading pause. SHOW HOLD can
-report a reply still being delivered with no finite countdown yet. Terminal
-rendering time is outside the server's delivery measurement.
-
-Each new readback has a 65,536-byte final response limit, including line
-endings and footers. If the complete response does not fit, users receive an
-explicit error. A human size error still pauses for reading. Use a smaller
-filter category when FULL is too large. A valid larger preset can still LOAD
-within the existing 256 KiB preset limit even when FULL or YAML inspection
-returns a size error.
+GO filter and shared settings readbacks allow 65,536 final bytes. Native CC
+filter readbacks allow 262,144. These limits include line endings and footers.
+If a response is too large, the server sends an error. Use a narrower native
+CC category when possible. Tagged presets have their own 192 KiB limit.
 
 ### Understand Preset Status And Reconnect Warnings
 
@@ -500,8 +447,8 @@ Successful LOAD or SAVE associates the preset name with the current full login
 callsign, including its SSID. The reference is the snapshot successfully
 applied or saved. Editing filters or preferences adds `(modified)`; restoring
 those values clears it. Callsign pattern order does not count as a change, but
-adding or removing an occurrence does. Pauses, diagnostics, and temporary NEARBY dedupe
-behavior leave this status unchanged.
+adding or removing an occurrence does. Session pauses and diagnostics leave
+this status alone.
 
 Reconnect restores the preferences, preset name, and reference together.
 Deleting or overwriting a library preset keeps the session's applied snapshot
@@ -526,152 +473,60 @@ resume normal persistence.
 
 ### Configure Through A YAML Client
 
-Clients can use these commands in either dialect:
+Use schema 7 in either dialect.
 
 | Command | Practical use |
 | --- | --- |
-| `GET YAML FILTER` | Read every exact filter value. |
-| `GET YAML SETTINGS` | Read preferences and current behavior. |
-| `GET YAML CONFIG` | Read filters and settings together. |
-| `GET YAML CAPABILITIES` | Discover fields, available choices, and limits. |
-| `PUT YAML FILTER|SETTINGS|CONFIG` | Replace the complete selected resource. |
-| `PATCH YAML FILTER|SETTINGS|CONFIG` | Change supplied fields and keep omitted fields. |
-| `VALIDATE YAML CONFIG` | Check a complete proposal without changing or saving it. |
+| `GET YAML FILTER SCHEMA 7` | Read the active filter bank and its dialect tag. |
+| `GET YAML SETTINGS SCHEMA 7` | Read shared preferences and their effective values. |
+| `GET YAML CONFIG SCHEMA 7` | Back up both filter banks and shared settings. |
+| `GET YAML CAPABILITIES SCHEMA 7` | Read protocol capabilities and limits. |
+| `PUT YAML CONFIG SCHEMA 7` | Restore a complete both-bank configuration. |
+| `VALIDATE YAML CONFIG SCHEMA 7` | Check a complete proposal without applying or saving it. |
 
-GET accepts an optional identifier, for example `GET YAML SETTINGS ID Noise-1`.
-Identifiers contain 1-32 ASCII letters, digits, or hyphens, and preserve case.
-The server assigns one when it is omitted. One example complete reply is:
+A restore uses the complete writable `configuration` from a schema 7 CONFIG
+backup. Preserve every field in it. Obtain a fresh CONFIG revision from the
+destination session and send it as `if_revision`. Use a new request envelope
+with `schema_version: 7` and `request_id`. The GET `status`, `resource`, and
+`revision` fields belong to the response envelope.
 
-```yaml
----
-schema_version: 1
-request_id: Noise-1
-resource: SETTINGS
-revision: example-session-0
-configuration:
-  dialect: ""
-  grid: ""
-  noise_class: ""
-  dedupe_policy: ""
-  path_min_observation_count: 0
-  solar_summary_minutes: 0
-status:
-  configured:
-    dialect: ""
-    grid: ""
-    noise_class: ""
-    dedupe_policy: ""
-    path_min_observation_count: 0
-    solar_summary_minutes: 0
-  effective:
-    dialect: go
-    grid: FN31
-    grid_derived: true
-    noise_class: QUIET
-    dedupe_policy: FAST
-    path_min_observation_count: 0
-    solar_summary_minutes: 0
-    nearby_active: false
-  session:
-    callsign: W1ABC-1
-    diagnostic_comments: "OFF"
-    pause_active: false
-    pause_pending_delivery: false
-    pause_remaining_seconds: 0
-    suppressed_spots: 0
-    temporary_defaults: false
-  server:
-    default_dialect: go
-    default_dedupe_policy: FAST
-    default_noise_class: QUIET
-    path_min_observation_count: 0
-    auto_read_pause_min_rows: 10
-    auto_read_pause_seconds: 30
-  preset:
-    associated: false
-    name: ""
-    modified: false
-...
-```
-
-Copy the writable `configuration` into a request and use the actual revision
-returned by GET. FILTER and SETTINGS put their fields directly under
-`configuration`; CONFIG contains `filters` and `settings`. The separate
-`status` sections are read-only, and the stored preset reference is private.
-
-For example, a complete settings replacement is sent as:
+For a single shared setting, use PATCH. First send
+`GET YAML SETTINGS SCHEMA 7 ID Noise-1`, then substitute the returned
+revision in the following request. IDs use 1–32 ASCII letters, digits, or
+hyphens and preserve case.
 
 ```text
-PUT YAML SETTINGS
+PATCH YAML SETTINGS SCHEMA 7
 ---
-schema_version: 1
-request_id: edit-1
-if_revision: example-session-0
-configuration:
-  dialect: "go"
-  grid: "FN31"
-  noise_class: URBAN
-  dedupe_policy: FAST
-  path_min_observation_count: 0
-  solar_summary_minutes: 0
-...
-```
-
-PUT requires every writable field in the selected resource. A missing field
-returns an error without resetting other settings. PATCH keeps omitted fields:
-
-```text
-PATCH YAML SETTINGS
----
-schema_version: 1
-request_id: edit-2
-if_revision: example-session-1
+schema_version: 7
+request_id: Noise-2
+if_revision: "replace-with-current-GET-revision"
 configuration:
   noise_class: RURAL
 ...
 ```
 
-A supplied list or rule map replaces that whole list or map. PATCH can change
-one rule-set member while preserving the other members. Use CONFIG to change
-GRID and its dependent NEARBY filter together. Explicit `false`, zero, empty
-default strings, and toggle `DEFAULT` values survive read/edit/write cycles.
+PATCH retains omitted fields. A supplied GO rules list replaces the whole
+list. An explicit empty list clears it. Keep DEFAULT selections, zero values,
+empty strings and collections, and explicit false values when copying
+configuration. Native CC has additional per-band PATCH rules.
 
-Writes validate the resulting configuration, save it atomically, and then
-install it. Validation or persistence failure leaves the live and saved
-configuration unchanged. A recognized choice that the server has disabled,
-such as SLOW dedupe, is rejected. An unchanged successful PUT still repairs
-durability if an earlier human change failed to save; its revision stays the
-same. Successful replies contain `applied: true` and `persisted: true`.
-VALIDATE replies contain `valid: true`, `applied: false`, and `persisted: false`.
+A stale revision, invalid proposal, or failed save leaves live and saved
+configuration intact. After reconnecting or receiving a conflict, get a fresh
+revision. If the connection closes before you receive the reply, GET again
+to discover the saved result.
 
-PUT/PATCH require the matching GET revision. After an edit conflict, reconnect,
-or server restart, GET again before retrying. Pause, diagnostics, and login
-timestamps do not change the configuration revision. Ordinary YAML writes keep
-the preset reference and may change `(modified)`. If the connection breaks
-during a write, reconnect and GET to discover the outcome.
+Schema 7 uploads and final replies allow 262,144 bytes. Schema 6 allows
+65,536 bytes and remains available for GO FILTER/CONFIG and shared
+SETTINGS/CAPABILITIES. Use schema 7 for a complete backup. Send the upload
+within 30 seconds between standalone `---` and `...` lines. Body limits count
+received line endings, and final response limits include framing. Unreliable
+upload framing closes the connection. A complete, reliably framed invalid
+proposal returns a YAML error. Machine commands leave live-spot pause state
+alone.
 
-Upload one ordinary YAML document between standalone `---` and `...` lines.
-The body limit is 65,536 bytes, counting its received LF or CRLF line endings;
-the marker lines are separate. The complete upload must arrive within 30
-seconds. Oversized, incomplete, expired, or unreliable framing closes the
-connection without applying the proposal. Rejected PUT/PATCH/VALIDATE headers
-also close it, so leftover payload cannot execute commands. A fully received
-document with invalid syntax or values gets a framed error and keeps the
-connection open. Use plain values and collections; anchors, aliases, merge
-keys, custom tags, nulls, unknown fields, and duplicate interpreted keys are
-rejected.
-
-Every YAML reply is one complete document with CRLF line endings and the same
-65,536-byte response limit. New machine writes must leave a complete CONFIG
-readback within that limit, including reserved metadata. A small PATCH of an
-already oversized human configuration can fail until that configuration is
-reduced. A size error contains `error.code: response_too_large` instead of a
-truncated success. YAML commands and their errors have no pause effects or
-human footers. Existing pauses still suppress ordinary live traffic and can
-naturally increase their counters.
-
-See [the telnet protocol guide](../telnet/README.md) for the full field schema,
-framing contract, error codes, and limits.
+[Telnet framing and errors](../telnet/README.md#client-yaml-configuration) ·
+[Schema 7 ownership and restore rules](cc-dialect.md#yaml-and-backups)
 
 ### Login Identity And Diagnostics
 
@@ -1064,7 +919,7 @@ IG9, not Sicily alone. Use `REJECT RULE 9 DXCALL=IT9*` for a callsign-prefix blo
 Human and YAML requests share this input contract. One snapshot covers a whole
 request; accepted expressions, SHOW, YAML readback and saved rules use numeric
 ADIF codes. Saved rules survive CTY unavailability and are not reinterpreted
-after a refresh. Native storage loading and schema 5 are unchanged.
+after a refresh.
 
 `SHOW MYDX 3D2/R 10` and `SHOW DX K 10` search by entity. Canonical labels take
 precedence over portable callsign parsing; existing callsign searches still work.
@@ -1075,8 +930,7 @@ Numeric arguments remain counts. `SHOW DXCC` detail lookup is unchanged. See
 
 Users can select `PASS RULE 0 DXSTATE=CA,TX,ON,QC` or
 `REJECT RULE 1 DESTATE=AA,AE,AP`. Unknown State fails every comparison, including
-`<>`; NOT flips that result. NEARBY omits geographic atoms from effective rules
-while retaining full saved expressions. All 60 FCC and 13
+`<>`; NOT flips that result. NEARBY combines with geographic conditions through the rule's Boolean operators. All 60 FCC and 13
 Canadian province/territory codes are accepted. The source is a registered
 address, which can differ from the station's operating location.
 
@@ -1097,7 +951,7 @@ Canadian cache entries revalidate at midnight. Prefix checks prove callsign
 plausibility without proving residency or club/event eligibility.
 
 Archive version 6 retains observed State; versions 2–5 remain unknown and are
-never enriched on history reads. Preference schema 5 is independent of archive
+never enriched on history reads. Preference schema 7 is independent of archive
 record versions. Recognized old user profiles receive a one-time reset-only
 login upgrade, not a conversion of old filter expressions.
 Keep matching binary/data backups for rollback, not a version-marker edit.
@@ -1118,7 +972,7 @@ report, including humans; SOURCE in these examples makes the exemption explicit.
 Missing SNR fails the comparison, so these REJECTs do not match missing reports.
 Zero and negative thresholds are valid. Clear a slot with
 `RESET FILTER RULE <slot>`; presets, revisions and history use the same rule set.
-Use `GET YAML CONFIG SCHEMA 5` for exact definitions. PATCH replaces a supplied
+Use `GET YAML CONFIG SCHEMA 7` for exact definitions. PATCH replaces a supplied
 whole rules list, with `[]` clearing it. See [SNR](../telnet/README.md#minimum-snr).
 
 Literal comment filtering uses expressions such as
@@ -1129,10 +983,5 @@ For archive searches, `SHOW DX [selector] [count] COMMENT <phrase>` remains a
 mandatory explicit selection even for self-spots and is retained by NEXT.
 See [comments](../telnet/README.md#comment-filters-and-searches).
 
-Only native disk configuration version 5 and machine schema 5 are accepted.
-The experiment uses a private store. Login resets recognized old profiles to
-configured default modes, without a source restriction, while preserving
-settings, separate controls and metadata. Old presets are cleared without
-rewiping new v5 presets. Original backups and explicit errors protect against
-failed upgrades; malformed and future-version records remain protected.
-Implementing this path does not itself deploy it or authorize production writes.
+For current profile backup and upgrade behavior, see the
+[configuration storage guide](../data/config/README.md#user-configuration-storage).

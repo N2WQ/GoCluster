@@ -35,11 +35,11 @@ a compact operator/support header:
 # Source: data/config/README.md.
 ```
 
-These headers are local context for operators, support agents, and developers.
-They do not define schema, defaults, or loader behavior; the active YAML values,
-this README, package docs, current code, and ADRs remain authoritative. Header
-updates must stay comment-only unless a separate approved config/schema change
-explicitly changes runtime behavior.
+The source path starts at the repository root or the extracted package root.
+Headers summarize each file's purpose and ownership. Use the active YAML,
+current code, and supporting docs for schema, defaults, and loader behavior.
+Keep the supplied settings in files marked internal compatibility. Header
+updates change comments only.
 
 Private or optional secret-bearing config, such as a local `openai.yaml`, should
 keep secret-handling comments but must not be committed with real credentials.
@@ -111,8 +111,6 @@ Configuration is split by concern so you only edit the relevant file:
 - `pipeline.yaml` - algorithm calibration for call correction, harmonics, mode inference, and spot-quality policy; not a normal operator tuning surface.
 - `path_reliability.yaml` - operator policy for enable/display/sample-floor/receiver-cap mode/glyphs and the optional VOACAP sparse-data fallback, plus active p50 histogram compatibility and algorithm calibration for decay, weights, thresholds, offsets, and noise tables.
 - `solarweather.yaml` - operator policy for enable/fetch/reporting controls, plus algorithm calibration for daylight/high-latitude/level thresholds and override glyph behavior.
-- `toxicity.yaml` - optional deployment/runtime settings for the Cloudflare Worker human-comment toxicity classifier.
-- `toxicity_safe_gate.yaml` - optional reference table for routine ham-radio comments that may bypass the classifier when the Worker is enabled.
 - `voacap_experiment.yaml` - optional tool config for manual VOACAP SSN forecast experiments; ignored by server startup and loaded by `voacap_ssn_forecast_watch`.
 
 ### Call-correction Bayes cells
@@ -364,25 +362,6 @@ Loader behavior:
 - `go_runtime.memory_limit_mib`, `go_runtime.gc_percent`, and `go_runtime.max_procs` apply the same process-wide Go runtime controls as `GOMEMLIMIT`, `GOGC`, and `GOMAXPROCS` without requiring a wrapper script. Set any value to `0` to leave the Go runtime or environment-provided value unchanged.
 - `pskreporter.workers: 0` follows the effective `go_runtime.max_procs` / `GOMAXPROCS` scheduler width; set a positive value only when you deliberately want wider PSKReporter burst processing than the process CPU budget.
 - `openai.yaml` is optional for server startup and `prop_report -no-llm`. When propagation-report LLM generation is enabled, the file is required and validated at that tool boundary. Secret values must not be logged or committed.
-- `toxicity.yaml` is optional for server startup. When enabled, it requires a Worker endpoint, bearer token environment variable, bounded worker/queue/cache settings, and `toxicity_safe_gate.yaml`; secret bearer token values must stay in the environment or private config, not checked-in YAML.
-- In a present `toxicity.yaml`, all ten keys are required and non-null even when
-  disabled. Explicit numeric `0` requests the existing defaults: timeout 1200 ms,
-  workers 2, queue 128, cache 4096 entries, TTL 86400 seconds and comment payload
-  512 bytes. This is a documented exception to the general no-hidden-default
-  rule; omission is never the same as zero. Negative values fail load. Positive
-  `timeout_ms` must be at most 2147483647 (the existing consumer ceiling), and
-  positive `cache_ttl_seconds` must fit Go's duration, at most 9223372036 on a
-  64-bit host. Native integer decoding limits also apply. These are admission
-  limits, not recommended operating values. See [ADR-0276](../../docs/decisions/ADR-0276-toxicity-config-zero-and-duration-admission.md).
-- Classifier `Stop` is terminal: it cancels HTTP work, joins workers and releases
-  queued jobs and unreceived results. Later eligible human submissions fail open
-  as `UNAVAILABLE`. Terminal cancellation is cleanup, not an AI timeout or
-  malformed response; it does not itself classify the discarded spots.
-- Runtime shutdown gives the output pipeline the existing bounded classifier
-  grace, then cancels unfinished HTTP work. Already admitted processing finishes
-  before its downstream services close; this can outlast grace. Late temporal/FT
-  holds and released stabilizer processing retire before completion. Normal
-  suppression and bounded queue drops still apply; handoff is not network receipt.
 - `path_reliability.native_160m_fallback.enabled: true` uses solar path geometry to fill insufficient 160m p50 results with `CLOSED`, `LOW`, or `UNLIKELY`. Endpoint daylight can produce CLOSED and twilight can produce UNLIKELY; the dark fraction also affects the result. It does not predict SNR, never emits `HIGH` or `MEDIUM`, never overrides sufficient p50, and yields to any usable current-hour VOACAP fallback result. `display_enabled: false` keeps the evaluation in aggregate counters without changing glyphs.
 - `path_reliability.voacap_fallback.enabled: false` starts no solar polling or VOACAP worker. When enabled on Windows, the runtime polls NOAA `sunspot_report.json` with `ssn_fetch_interval_seconds: 1800`. Validated report groups yield the local index `10 * groups + spots`; `ssn_ewma_half_life_seconds: 172800` smooths it with a 48-hour exponential half-life using actual observation time and full precision until final SSN rounding. No blend or conversion is used. Every rounded SSN change can refresh requested paths; retired `ssn_recent_flux_weight` and `recompute_delta_percent` are rejected. `ssn_stale_after_seconds: 172800` warns after 48 hours without a newer observation and keeps the last good compatible input, including after unchanged or failed polls. Never-observed input is missing without an invented age; missing/ambiguous reports do not mean zero. Old flux-v2 and Wolf-v1 state and validators are incompatible; cold start replays usable observations oldest first. Compatible version-3 continuity persists at `ssn_state_path`, separately from forecasts in the per-node Pebble DB at `forecast_cache_db_path`; neither path may be shared by running cluster processes. This is an experimental local index, not official smoothed International SSN or a demonstrated accuracy improvement. See [ADR-0350](../../docs/decisions/ADR-0350-voacap-observation-count-input.md).
 - The VOACAP defaults `forecast_hours: 24` and `cache_ttl_seconds: 86400` cover 24 UTC hours from the worker's starting hour. Original coverage and expiry survive reads and restarts unchanged. A valid current-model forecast stays usable during replacement, even on a different SSN. Ordinary requests in the final hour renew without initial warm-up; failure cooldown still applies. Cold paths retain `delay_seconds: 600`. Idle paths create no jobs. Model-generation-1 predictions are retired because the former CIRCUIT layout could send a wrong receiver longitude. Valid unexpired recognized legacy keys can seed bounded one-time immediate ordinary admission when requested, without serving old predictions or enqueueing at startup. Other missing or invalid cache state uses normal warm-up. Rebuild and expiry gaps remain possible under queueing or failure. See [ADR-0347](../../docs/decisions/ADR-0347-voacap-flux-and-daily-forecast.md).
@@ -503,9 +482,9 @@ Input behavior:
   backslashes are literal, not escapes.
 - Telnet IAC negotiation bytes (including subnegotiation) are stripped from input before validation.
 - Recognized machine command headers preserve request identifier case. Structured
-  YAML bodies preserve case and punctuation and use their own 65,536-byte limit
-  and 30-second total upload deadline. These protocol limits do not change
-  `runtime.yaml` or turn user YAML into deployment configuration. See the
+  YAML bodies preserve case and punctuation. Schema 6 allows 65,536 body bytes,
+  and schema 7 allows 262,144. Both have a 30-second total upload deadline. User
+  YAML edits the client's preferences. See the
   [client protocol](../../telnet/README.md).
 
 Read-pause behavior:
@@ -541,12 +520,11 @@ Read-pause behavior:
 - Machine GET, PUT, PATCH and VALIDATE YAML commands, including errors, do not
   start, extend, resume or reset pauses or suppression counters. Counters can
   still increase naturally if an existing pause suppresses live traffic.
-- Every new readback has a 65,536-byte final response limit, including CRLF,
-  headers, YAML document markers and human pause footers. Generate the complete
-  response before queueing; oversized output fails explicitly without a truncated
-  success. Human errors follow the reading-pause policy; YAML errors remain framed
-  YAML with no human footer or pause effects. Existing row-based behavior for
-  other commands and the checked-in runtime YAML values remain unchanged.
+- GO filter output, shared human SETTINGS output, and schema 6 YAML frames
+  have a 65,536-byte final response limit. Native CC human filter output and
+  schema 7 YAML frames have a 262,144-byte limit. These limits include CRLF,
+  headers, YAML markers, and any human pause footer. Oversized output returns
+  an explicit error.
 
 Bulletin behavior:
 - `telnet.bulletin_dedupe_window_seconds` suppresses identical WWV, WCY, and `TO ALL` announcement lines across all bulletin sources before they enter client control queues.

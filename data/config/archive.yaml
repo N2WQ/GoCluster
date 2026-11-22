@@ -8,15 +8,16 @@ archive:
   # Enable or disable Pebble spot archival.
   enabled: true
 
-  # Pebble database directory path (relative to repo root or absolute).
+  # Pebble database directory. Relative paths start at the process working directory.
   db_path: "data/archive/pebble"
 
   # Async writer backpressure controls.
   queue_size: 5000            # Drops newest when full to protect hot path.
   batch_size: 3000            # Max rows per flush.
   batch_interval_ms: 3000     # Max time to wait before flushing even if batch_size not reached.
-  synchronous: "off"          # OFF maximizes throughput but loses crash safety; use normal/full for durability.
-  auto_delete_corrupt_db: true # When true, deletes the DB if startup integrity checks fail.
+  synchronous: "off"          # off skips sync; normal, full, and extra all request Pebble sync.
+  # Allows startup to remove a non-directory at db_path or replace a corrupt database.
+  auto_delete_corrupt_db: true
 
   # Retention and cleanup.
   cleanup_interval_seconds: 907    # How often to purge expired rows.

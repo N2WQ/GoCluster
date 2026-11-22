@@ -232,7 +232,7 @@ The runtime is intentionally conservative about what it republishes to peers.
 - local `DX` command spots remain the operator-authored exception
 
 Eligible local publication preserves the accepted source `Spot` after primary
-normalization and completion of toxicity classification, before local output
+normalization and any applicable admission checks, before local output
 preparation, call correction or frequency averaging. It does not preserve the
 literal command line: command parsing may already normalize calls, comment
 spacing and frequency. A local display can show corrected B while peers receive

@@ -11,9 +11,9 @@ machine input errors use the terminal handling below. Commands continue to
 support comma-separated filter inputs when the command limit is increased.
 
 `PUT YAML`, `PATCH YAML` and `VALIDATE YAML CONFIG` enter a separate bounded
-upload reader after a valid command header. Their body may contain at most
-65,536 bytes, counting its original LF or CRLF endings, within a 30-second total
-deadline. The body sits between standalone `---` and `...` lines and preserves
+upload reader after a valid command header. Schema 6 allows 65,536 body bytes.
+Schema 7 allows 262,144. The limits include received LF or CRLF line endings,
+and both schemas have a 30-second upload deadline. The body sits between standalone `---` and `...` lines and preserves
 case and YAML punctuation. It must contain one plain YAML document; anchors,
 aliases, merge keys, custom tags and null values are rejected.
 
@@ -24,11 +24,11 @@ document that fails schema or value validation receives a framed YAML error and
 keeps the connection open. See the [client protocol](../telnet/README.md) for
 request fields and examples.
 
-Every new SHOW or GET YAML readback is capped at 65,536 final response bytes,
-including CRLF conversion, framing and human footers. Oversized responses return
-an explicit error. `telnet.writer_batch_max_bytes` controls batching; it does not
-raise this response limit. A valid preset larger than 64 KiB can still LOAD under
-the independent 256 KiB preset budget, while its FULL/YAML readback may fail.
+GO filter readbacks, shared human SETTINGS readbacks, and schema 6 YAML
+replies are capped at 65,536 final bytes. Native CC filter readbacks and schema 7
+YAML replies allow 262,144. These limits include CRLF, framing, and any human
+footer. Oversized responses return an error. Writer batching has its own limits.
+Tagged presets are subject to a separate 192 KiB limit.
 
 ## Telnet Session Timeouts
 

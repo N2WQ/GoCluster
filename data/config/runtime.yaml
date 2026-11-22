@@ -1,4 +1,4 @@
-# Purpose: Telnet delivery/runtime settings, buffer sizing, default filters, messages, dedupe, and user policy defaults.
+# Purpose: Telnet delivery/runtime settings, buffer sizing, default filters, messages, and Go runtime controls.
 # Ownership: deployment/runtime settings plus operator policy.
 # Runtime behavior: Required merged runtime config loaded from the active config directory at startup.
 # Safe edits: Set Go runtime controls, telnet ports/messages, default filter policy, and bounded queue values for the local deployment.
@@ -77,8 +77,10 @@ telnet:
   worker_queue_size: 1024          # Jobs queued per broadcast worker before dropping
   client_buffer_size: 512          # Per-client spot backlog before a slow session drops spots
   control_queue_size: 32           # Per-client control backlog (bulletins/prompts/keepalives); full queue disconnects
-  auto_read_pause_min_rows: 10     # Rendered command rows that trigger a temporary live-spot pause (0 disables)
-  auto_read_pause_seconds: 30      # Seconds to suppress live spot lines after long command output (0 disables)
+  # Either zero disables the row-based trigger. Human filter and settings readbacks
+  # ignore the row threshold and use 30 seconds when the configured duration is zero.
+  auto_read_pause_min_rows: 10     # Minimum rendered rows for the generic automatic pause
+  auto_read_pause_seconds: 30      # Reading interval in seconds
   bulletin_dedupe_window_seconds: 600 # Suppress identical WWV/WCY/TO ALL announcement lines across all bulletin sources (0 disables)
   bulletin_dedupe_max_entries: 4096   # Hard cap on retained bulletin dedupe keys
   writer_batch_max_bytes: 16384    # Per-connection writer flush cap (bytes) for control-first micro-batching

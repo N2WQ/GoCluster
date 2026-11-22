@@ -91,7 +91,7 @@ func TestHelpRuleExamplesAndDeliverySwitches(t *testing.T) {
 		for _, dialect := range []string{"go", "cc"} {
 			page := p.ProcessCommandForClient("HELP "+verb, "N0CALL", "", nil, dialect)
 			if !strings.HasPrefix(page, "Spot rules (GO only)\n") || !strings.Contains(page, table) ||
-				!strings.Contains(page, "SELF and TOXIC are also separate switches, not rule fields.") {
+				!strings.Contains(page, "SELF separately controls live spots of your own call.") {
 				t.Fatalf("%s Help %s doesn't distinguish spot rules from delivery switches", dialect, verb)
 			}
 		}

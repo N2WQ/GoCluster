@@ -1,8 +1,7 @@
 # GoCluster Release Package
 
-This zip is the ready-to-run Windows amd64 operator package. It contains
-`gocluster.exe`, public example config, required runtime reference data, and a
-small documentation bundle.
+This ZIP contains the Windows amd64 executable, public example configuration,
+selected runtime data, and an operator documentation bundle.
 
 The cluster executable writes peer diagnostic files. `binaries.json` records
 the executable hash; `licenses/` includes the
@@ -38,6 +37,17 @@ node: change `server.node_id` in `app.yaml` from `N0CALL-1`, change the RBN
 login callsigns in `ingest.yaml` from `N0CALL-1`, and update any private
 upstream telnet `host` and login fields you enable. If peering is enabled,
 also replace peer hosts, login callsigns, and passwords in `peering.yaml`.
+
+## Check Runtime Data
+
+Before a fresh start, confirm that the active `pipeline.yaml` model files
+exist. The supplied configuration refers to three spotter-reliability files
+and a confusion model under `data/rbn/priors`. If the ZIP omits them, copy them
+from the matching tagged source. See the [download guide](https://github.com/N2WQ/GoCluster/blob/main/download/README.md)
+for the paths required by release 261121r74c2.
+
+Use the release tag in `data/config-bundle.json` to open matching source docs
+for references outside the ZIP.
 
 ## Launch
 

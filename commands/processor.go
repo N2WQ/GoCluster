@@ -383,7 +383,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		[]string{
 			"History is pulled from stored spots (not live buffer).",
 			"Count range is 1-250 (default 50).",
-			"Respects your filters; self-spots bypass rules except toxicity.",
+			"Own-call results can bypass personal rules. Search clauses still apply.",
 			"Full calls select exact normalized DX identities; prefixes select entities.",
 			"DX suffixes and numeric SSIDs follow stored station normalization.",
 			"Each page selects newest matches and displays them chronologically.",

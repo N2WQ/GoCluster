@@ -32,8 +32,7 @@ Local source behavior does not establish publication, deployment or validation.
   Retrieve [the contract](../../docs/domain-contract.md#fixed-meta-bands) and
   [CC guidance](../../docs/cc-dialect.md#fixed-meta-bands).
 
-- GO and CC remember independent filters and independent BEACON, SELF, TOXIC,
-  ANNOUNCE, WWV and WCY selections. Switching activates the saved bank. GRID,
+- GO and CC remember independent filters and delivery switches. Switching activates the saved bank. GRID,
   noise, dedupe, PATHSAMPLES, SOLAR and CWSPEED are shared. GO Boolean mutations require
   GO; CC uses native mode/source, geography and DXBM commands. Retrieve compiled
   HELP for exact aliases; do not translate arbitrary GO rules into CC.
@@ -75,9 +74,9 @@ Local source behavior does not establish publication, deployment or validation.
   spots. Native-format acknowledgements order the writer's output layout;
   queued, unsent spots may use the newly selected format. See
   [read pause](../../telnet/README.md#read-pause).
-- Live own-call spots require SELF and TOXIC, then bypass personal criteria.
-  History's exception is independent of SELF, still obeying TOXIC and explicit
-  query selectors. SELF does not mean reports the user submitted about others.
+- With SELF enabled, live own-call spots can bypass personal criteria.
+  History has an independent own-call exception and applies explicit query
+  selectors. SELF does not mean reports the user submitted about others.
 
 ## Human Comment Reports
 

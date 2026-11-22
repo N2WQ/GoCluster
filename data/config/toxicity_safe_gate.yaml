@@ -1,13 +1,12 @@
-# Purpose: Conservative local safe gate for routine ham-radio spot comments.
-# Ownership: reference table
-# Runtime behavior: Optional reference table loaded only when toxicity.yaml enables the Worker classifier.
-# Safe edits: Add only unambiguous routine radio shorthand; toxic or conversational text must continue to route to AI.
+# Purpose: Companion table for internal compatibility settings.
+# Ownership: Internal reference table.
+# Runtime behavior: Loaded at startup when selected by enabled internal settings.
+# Safe edits: Keep the supplied table.
 # Source: data/config/README.md.
 
-# max_tokens keeps the local bypass narrow; longer comments route to AI.
+
 max_tokens: 8
 
-# safe_tokens are accepted only when every comment token is safe.
 safe_tokens:
   - CQ
   - DX
@@ -40,7 +39,6 @@ safe_tokens:
   - ARRL
   - FD
 
-# event_prefixes allow reference forms such as POTA-1234 and IOTA-EU-005.
 event_prefixes:
   - POTA
   - SOTA

@@ -39,7 +39,7 @@ func ccFilterHelpLines(verb string) []string {
 			"Use SET/FILTER category/PASS, /REJECT or /OFF for native categories.")
 	}
 	lines := helpEntryLines(verb+" - Change native CC selections or switches.", usage, nil, notes)
-	lines = appendListSection(lines, "Switches:", []string{"BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC"})
+	lines = appendListSection(lines, "Switches:", []string{"BEACON", "WWV", "WCY", "ANNOUNCE", "SELF"})
 	if verb == "SET/FILTER" {
 		lines = appendListSection(lines, "Native bands:", filter.CCSupportedBands())
 		nativeSlots := filter.CCSupportedSlots()
@@ -70,7 +70,7 @@ func nativeCCShortcutHelpLines(topic string) []string {
 }
 
 func installNativeCCHelpBoundary(catalog *helpCatalog) {
-	for _, name := range []string{"ANN", "ANNOUNCE", "BEACON", "WWV", "WCY", "SELF", "TOXIC"} {
+	for _, name := range []string{"ANN", "ANNOUNCE", "BEACON", "WWV", "WCY", "SELF"} {
 		for _, prefix := range []string{"SET/", "SET/NO", "UNSET/"} {
 			topic := prefix + name
 			if _, exists := catalog.entries[topic]; exists {

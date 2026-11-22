@@ -61,6 +61,13 @@ func (catalog helpCatalog) normalizeTopic(dialect, topic string) string {
 		// Fixed controls win before historical mode-shortcut guidance.
 		// HELP discards argument tails; execution remains owned by telnet.
 		command, _, _ := strings.Cut(upper, " ")
+		// Route fixed compatibility shortcuts without listing them in HELP COMMANDS.
+		switch command {
+		case "SET/TOXIC", "SET/NOTOXIC":
+			return "SET/FILTER"
+		case "UNSET/TOXIC":
+			return "UNSET/FILTER"
+		}
 		if strings.HasPrefix(command, "SET/NO") && spot.IsCCShortcutMode(strings.TrimPrefix(command, "SET/NO")) {
 			return "SET/NO<MODE>"
 		}

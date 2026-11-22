@@ -129,7 +129,6 @@ try {
     "customgpt/support-cards/windows-startup-config.md",
     "customgpt/support-cards/log-destination.md",
     "customgpt/support-cards/runtime-yaml-controls.md",
-    "customgpt/support-cards/toxicity-filter.md",
     "customgpt/support-cards/path-reliability.md",
     "customgpt/support-cards/truncated-retrieval.md",
     "customgpt/support-cards/ambiguous-short-prompt.md",
@@ -281,6 +280,14 @@ await check("/search returns bounded support snippets", async () => {
   assert(response.status === 200, `expected 200, got ${response.status}`);
   assert(body.result_count > 0, "expected search results");
   assert(body.files.some((file) => file.content.includes("go_runtime.max_procs")), "missing exact key in search snippet");
+});
+
+await check("literal COMMENT guidance remains discoverable and the retired route is absent", async () => {
+  const { response: routeResponse, body: route } = await jsonCall("/support-route?query=reject%20toxic%20comment%20safe_local");
+  assert(routeResponse.status === 200 && route.support_route?.id !== "toxicity-filter", "retired support route still active");
+  const { response, body } = await jsonCall("/search?query=COMMENT&path=telnet%2FREADME.md");
+  assert(response.status === 200, "expected COMMENT search to succeed");
+  assert(body.files.some((file) => file.path === "telnet/README.md" && file.content.includes("REJECT RULE")), "missing literal COMMENT rule guidance");
 });
 
 await check("/doc supports bounded line windows", async () => {

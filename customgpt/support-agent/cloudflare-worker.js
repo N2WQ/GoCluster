@@ -58,22 +58,6 @@ const SUPPORT_ROUTES = [
     must_avoid: ["claim lost logging without checking dedicated log", "conflate console/UI with file-only logs"]
   },
   {
-    id: "toxicity-filter",
-    persona: "telnet-user",
-    domain: "filtering-dedupe",
-    card_path: "customgpt/support-cards/toxicity-filter.md",
-    required_sources: [
-      "customgpt/troubleshooting-index.md",
-      "README.md",
-      "telnet/README.md",
-      "data/config/README.md",
-      "cloudflare/toxicity-worker/README.md"
-    ],
-    match_any: ["reject toxic", "toxic comment", "toxicity", "unknown", "safe_local", "unavailable", "worker timeout"],
-    must_include: ["SHOW FILTER", "UNKNOWN", "SAFE_LOCAL", "UNAVAILABLE", "do not guess classification"],
-    must_avoid: ["guess the AI classification", "claim unknown/unavailable is blocked"]
-  },
-  {
     id: "runtime-yaml-controls",
     persona: "node-operator",
     domain: "yaml-operator-policy",
@@ -250,7 +234,6 @@ const SEARCH_CORPUS_PATHS = [
   "customgpt/support-cards/windows-startup-config.md",
   "customgpt/support-cards/log-destination.md",
   "customgpt/support-cards/runtime-yaml-controls.md",
-  "customgpt/support-cards/toxicity-filter.md",
   "customgpt/support-cards/path-reliability.md",
   "customgpt/support-cards/truncated-retrieval.md",
   "customgpt/support-cards/ambiguous-short-prompt.md",

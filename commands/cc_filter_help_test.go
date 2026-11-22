@@ -27,7 +27,7 @@ func ccHelpGroup(t *testing.T, text, heading string) []string {
 
 func TestCCFilterHelpGrammar(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
-	wantSwitches := []string{"BEACON", "WWV", "WCY", "ANNOUNCE", "SELF", "TOXIC"}
+	wantSwitches := []string{"BEACON", "WWV", "WCY", "ANNOUNCE", "SELF"}
 	for _, verb := range []string{"SET/FILTER", "UNSET/FILTER"} {
 		text := p.ProcessCommandForClient("HELP "+verb, "W1ABC", "", nil, "cc")
 		assertHelpWidth(t, text)
@@ -61,5 +61,26 @@ func TestCCFilterHelpGrammar(t *testing.T) {
 	assertHelpWidth(t, text)
 	if !strings.Contains(text, "HELP SET/FILTER") || !strings.Contains(text, "HELP FILTER EXAMPLES") || !strings.Contains(text, "Band, mode, source, country, and state filters all apply together.") || strings.Contains(text, "PASS RULE 0") {
 		t.Fatal("FILTERS reference loses native guidance or advertises Boolean mutation")
+	}
+}
+
+func TestCompatibilityControlsAreNotAdvertisedInHelp(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	for _, dialect := range []string{"go", "cc"} {
+		for _, topic := range []string{"COMMANDS", "PASS", "REJECT", "RULE", "SHOW MYDX"} {
+			got := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect)
+			if strings.Contains(strings.ToUpper(got), "TOXIC") {
+				t.Errorf("%s HELP %s advertises a compatibility control: %q", dialect, topic, got)
+			}
+		}
+	}
+	for topic, generic := range map[string]string{
+		"SET/TOXIC": "SET/FILTER", "SET/NOTOXIC": "SET/FILTER", "UNSET/TOXIC": "UNSET/FILTER",
+	} {
+		got := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, "cc")
+		want := p.ProcessCommandForClient("HELP "+generic, "W1ABC", "", nil, "cc")
+		if got != want || strings.Contains(strings.ToUpper(got), "TOXIC") {
+			t.Errorf("CC HELP %s did not route to general filter guidance: %q", topic, got)
+		}
 	}
 }

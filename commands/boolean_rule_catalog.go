@@ -21,7 +21,7 @@ func installBooleanRuleHelp(catalog *helpCatalog, dialect string) {
 		"  If you have PASS rules, a spot must match at least one of them.",
 		"  With no PASS rules, only matching REJECT rules block spots.",
 		"  Other delivery settings still apply. SELF can let spots of your call",
-		"  bypass your rules; TOXIC still applies.",
+		"  bypass your rules. Other delivery checks still apply.",
 		"",
 		"Examples (each command replaces the rule at that number)",
 		"  PASS RULE 0 MODE=CW,FT8",
@@ -114,9 +114,9 @@ func installDeliverySwitchHelp(catalog *helpCatalog, dialect string) {
 			"Changing a switch does not change any numbered rule.",
 			"",
 		}
-		usage := []string{verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF|TOXIC> [ALL]"}
+		usage := []string{verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]"}
 		notes := []string{
-			"SELF and TOXIC are also separate switches, not rule fields.",
+			"SELF separately controls live spots of your own call.",
 			"PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
 		}
 		if dialect == "cc" {
