@@ -34,6 +34,10 @@ ready_to_run/
 Start with `ready_to_run/README.md`. It uses the packaged config to show the
 Telnet port.
 
+Meta bands let you select several bands by name in filters and history searches.
+For example, `WARC` selects 30m, 17m, and 12m. After connecting, type
+`HELP BANDS` or see the [meta bands list and examples](../README.md#meta-bands).
+
 **Release 261121r74c2 requires four extra files before a fresh start.**
 Copy these files from the [matching tagged source](https://github.com/N2WQ/GoCluster/tree/261121r74c2/data/rbn/priors)
 into `ready_to_run/data/rbn/priors/`.

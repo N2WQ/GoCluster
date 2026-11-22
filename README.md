@@ -21,6 +21,7 @@ hide repeated reports, and view optional hints about radio conditions.
 - [Read a spot line](#read-a-spot-line)
 - [Everyday commands](#common-telnet-commands)
 - [Choose which spots you see](#filter-examples)
+- [Select groups of bands](#meta-bands)
 - [Save your preferences](#named-presets)
 - [Understand confidence and path symbols](#confidence-tags)
 - [Troubleshoot missing or surprising spots](#troubleshooting)
@@ -183,6 +184,33 @@ SHOW FILTER RULE
 
 The comma list selects either band. Add `AND MODE=CW` to the same expression
 if both the band selection and CW are required.
+
+### Meta Bands
+
+A meta band is a name for a fixed group of amateur bands. Use it to select
+several bands at once in a filter or a spot history search. The names are
+case-insensitive.
+
+| Name | Bands it selects |
+| --- | --- |
+| `WARC` | 30m, 17m, 12m |
+| `HFCONTEST` | 160m, 80m, 40m, 20m, 15m, 10m |
+| `HF` | 160m, 80m, 60m, 40m, 30m, 20m, 17m, 15m, 12m, 10m |
+| `VHF` | 6m, 4m, 2m, 1.25m |
+| `UHF` | 70cm, 33cm, 23cm, 13cm |
+| `VHFUP` | All members of `VHF` and `UHF` above |
+
+`HFCONTEST` selects spots on those bands regardless of contest activity.
+
+- **GO filters** use expressions such as `BAND=WARC AND MODE=CW` for CW on
+  30m, 17m, or 12m. Mix groups and individual bands with `BAND=WARC,6m`.
+- **CC filters** use `SET/FILTER DXBM/PASS WARC` to pass the WARC bands and
+  retain existing frequency selections outside those bands.
+- **Spot history** uses `SHOW DX 20 BAND WARC` in GO or
+  `SHOW/DX 20 BAND WARC` in CC. Each shows up to 20 recent WARC spots that
+  pass your current filters and leaves those filters in place.
+
+Type `HELP BANDS` in either dialect for the full list and more examples.
 
 ### Show Only CW
 

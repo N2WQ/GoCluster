@@ -83,6 +83,14 @@ After login, type `HELP` for common tasks or `HELP COMMANDS` for the full index.
 - `DIALECT`, `DIALECT LIST`, `DIALECT <go|cc>`: show or switch command dialect.
 - `BYE`: disconnect.
 
+### Meta Bands
+
+Meta bands select fixed groups of amateur bands. For example, `WARC` selects
+30m, 17m, and 12m. Other groups are `HFCONTEST`, `HF`, `VHF`, `UHF`, and
+`VHFUP`. Type `HELP BANDS` for the full list and filter examples in GO and CC.
+To find up to 20 recent WARC spots that match your filters, type
+`SHOW DX 20 BAND WARC` in GO or `SHOW/DX 20 BAND WARC` in CC.
+
 ## Linux
 
 This release package is Windows amd64 only. Linux operators should build from
