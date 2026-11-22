@@ -2577,8 +2577,8 @@ def help_route_contract(key, dialect):
                    "  HELP PRESETS" if topic == "FILTER EXAMPLES" else harness.help_task_contract(topic, dialect)[1], ())
            for topic in ("FILTERS", "FILTER EXAMPLES", "PRESETS")},
         "OVERVIEW": ("Getting help", (), "  HELP PRESETS     Learn how to manage saved setups.", ()),
-        "HELP": ("HELP - Show command list or command-specific help.", ("HELP [command]",),
-                 "  With a command, shows detailed usage.", ("H",)),
+        "HELP": ("HELP - Show the help menu or one topic.", ("HELP [topic]",),
+                 "  Type HELP followed by a topic, such as HELP SHOW SETTINGS.", ("H",)),
         "SHOW BUILD": ("SHOW BUILD - Show binary build metadata.", ("SHOW BUILD",),
                        "  Shows the build version, release tag, and Go version when available.", ("SH BUILD",)),
         "SHOW OWN": ("SHOW OWN - Show your login and baseline own call.", ("SHOW OWN",),
@@ -2589,14 +2589,14 @@ def help_route_contract(key, dialect):
                       ("SHOW PROP <call|prefix|grid> [band] [mode]",),
                       "  Only rows with REL HIGH, MEDIUM, or LOW are shown.", ("SH PROP", "SHOW/PROP", "SH/PROP")),
         "SHOW HOLD": ("SHOW HOLD - Show read-pause status.", ("SHOW HOLD",),
-                      "  Shows remaining pause time and suppressed spot count.", ()),
+                      "  Shows how many spots were held back during the current or last pause.", ()),
         "SHOW SETTINGS": ("SHOW SETTINGS - Display preferences and session behavior.", ("SHOW SETTINGS",),
                           "  65,536 bytes.", ("SHOW/SETTINGS", "SH/SETTINGS")),
         "SHOW DEDUPE": ("SHOW DEDUPE - Show your broadcast dedupe policy.", ("SHOW DEDUPE",),
                         "  Shows if a policy is disabled server-side.", ()),
         "SET SOLAR": ("SET SOLAR - Opt into solar summaries.", ("SET SOLAR <15|30|60|OFF>",),
                       "  OFF disables summaries.", ()),
-        "SET GRID": ("SET GRID - Set your grid for path reliability glyphs.", ("SET GRID <locator>",),
+        "SET GRID": ("SET GRID - Set your station grid.", ("SET GRID <locator>",),
                      "  Unavailable grid mapping is reported separately from invalid syntax.", ()),
         "SET NOISE": ("SET NOISE - Set your noise class for glyphs.",
                       ("SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>",), "  Default is QUIET when unset.", ()),
@@ -2621,11 +2621,15 @@ def help_route_contract(key, dialect):
 
     contracts["SHOW SETTINGS"] = ("SHOW SETTINGS - Display preferences and session behavior.", ("SHOW SETTINGS",),
         last_note("The complete response, including its pause footer, is limited to 65,536 bytes."), ("SHOW/SETTINGS", "SH/SETTINGS"))
-    parent_usages = (("SHOW DX [count|selector]",) if dialect == "go" else ()) + (
-        "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW WWV [FULL]", "SHOW WCY [FULL]",
-        "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN")
+    filter_usage = "SHOW FILTER [RULE|FULL]" if dialect == "go" else "SHOW/FILTER [view]"
+    history = "SHOW DX" if dialect == "go" else "SHOW/DX"
+    parent_usages = (
+        history + " [count|selector]", "SHOW MYDX [count|selector]", filter_usage,
+        "SHOW SETTINGS", "SHOW HOLD", "SHOW DEDUPE", "SHOW DXCC <prefix|callsign>",
+        "SHOW WWV [FULL]", "SHOW WCY [FULL]", "SHOW PROP <call|prefix|grid> [band] [mode]",
+        "SHOW BUILD", "SHOW OWN")
     contracts["SHOW"] = ("SHOW - See SHOW subcommands.", parent_usages,
-                         "  Use HELP " + ("SHOW DX" if dialect == "go" else "SHOW/DX") + " for the history alias.", ("SH",))
+                         "  Type HELP before a subcommand for its options.", ("SH",))
     for topic in ("SHOW MYDX", "SHOW DX" if dialect == "go" else "SHOW/DX"):
         summary = "Show filtered spot history." if topic == "SHOW MYDX" else "Alias of SHOW MYDX (stored history)."
         usage = (topic + " [count]", topic + " <prefix|callsign> [count]", topic + " [count] <prefix|callsign>",
@@ -2637,8 +2641,9 @@ def help_route_contract(key, dialect):
     contracts[filter_topic] = ((filter_topic + " - Display current filter state.",
         (filter_topic, filter_topic + " RULE", filter_topic + " FULL"), None, ("SHOW/FILTER", "SH/FILTER")) if dialect == "go" else
         (filter_topic + " - Inspect native CC state.",
-         (filter_topic + " [DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL]",),
-         last_note("GET YAML CONFIG SCHEMA 7 provides a complete both-bank backup. Schema 6 does not."), ("SHOW FILTER", "SH/FILTER")))
+         (filter_topic, filter_topic + " FULL", filter_topic + " <DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE>",
+          filter_topic + " <BEACON|WWV|WCY|ANNOUNCE|PC93|SELF>"),
+         "  Use GET YAML CONFIG SCHEMA 7 for a backup of both filter banks.", ("SHOW FILTER", "SH/FILTER")))
     for verb in ("PASS", "REJECT"):
         if dialect == "go":
             summary = "Allow matching spots or enable separate controls." if verb == "PASS" else "Veto matching spots or disable separate controls."
@@ -2780,7 +2785,7 @@ def decode_help_routing(raw, query, contract, minimum_rows, minimum_seconds, rem
             "HELP routing selects the wrong intended header or introduction")
     body = lines[len(intro):]
     if header.startswith("Unknown help topic: "):
-        require(lines == [header, "Type HELP for available commands."], "unsupported HELP route was accepted or altered")
+        require(lines == [header, "Type HELP COMMANDS for available commands."], "unsupported HELP route was accepted or altered")
     else:
         require(not any(line.startswith(("Unknown ", "Usage: Invalid", "Invalid ")) for line in lines),
                 "supported HELP route contains rejection feedback")
@@ -2928,7 +2933,7 @@ def help_routing_cases(suite, root, generation, saved_help_routes):
                 current, before = resume_help_fixture(current, record, before, diagnostic="MODE")
             saved, library_saved = record.read_bytes(), library.read_bytes()
             contract = help_route_contract(key, dialect) if key else (
-                "Unknown help topic: " + topic, (), "Type HELP for available commands.", ())
+                "Unknown help topic: " + topic, (), "Type HELP COMMANDS for available commands.", ())
             after, paused = help_routing_readback(current, topic, contract, minimum_rows, minimum_seconds)
             require_help_routing_state(before, after, record, saved, library, library_saved, paused)
             before = after
@@ -3028,7 +3033,8 @@ def require_discovery_help(lines, key, dialect):
         required = ("Frequency is in kHz (e.g., 7001.0).",
                     "Use plain decimal numbers; exponent notation is not accepted.",
                     "Values in gaps between bands remain accepted.",
-                    "Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _.",
+                    "Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _ +.",
+                    "Use + in the comment for reports such as FT8 +02.",
                     "Other punctuation and non-ASCII characters are rejected.",
                     "The whole command has a node-configured byte limit (default 128).",
                     "Mode/report may be parsed from the comment.",
@@ -3057,7 +3063,8 @@ def require_discovery_help(lines, key, dialect):
     else:
         require(key in ("SHOW FILTER", "SHOW/FILTER"), "invalid HELP wording oracle")
         required = (("Shows canonical numbered rules and separate controls.", "GET YAML CONFIG SCHEMA 7") if dialect == "go" else
-                    ("Shows exact native selections and six controls.", "Band INHERIT differs from explicit OFF", "GET YAML CONFIG SCHEMA 7"))
+                    ("Use SHOW/FILTER or SHOW/FILTER FULL to see all native selections.",
+                     "Band INHERIT differs from explicit OFF", "GET YAML CONFIG SCHEMA 7"))
         forbidden = ("show FCC mailing-address codes",)
     for phrase in required:
         require(phrase in flat, "HELP omits intended current contract: " + phrase)
@@ -3159,9 +3166,9 @@ HOLD_REFUSALS = (("SHOW HOLD EXTRA", "Usage: SHOW HOLD"), ("show  hold  10", "Us
                  (" SHOW HOLD EXTRA TAIL ", "Usage: SHOW HOLD"), ("SHOW HOLD ALL", "Usage: SHOW HOLD"),
                  ("SH HOLD", "Unknown SHOW subcommand: HOLD"), ("SHOW HOLDS", "Unknown SHOW subcommand: HOLDS"),
                  ("SHOW HOLDX", "Unknown SHOW subcommand: HOLDX"), ("SHOW HOLD/EXTRA", "Unknown SHOW subcommand: HOLD/EXTRA"),
-                 ("SHOW/HOLD", "Unknown command: SHOW/HOLD\nType HELP for available commands."),
-                 ("SH/HOLD", "Unknown command: SH/HOLD\nType HELP for available commands."),
-                 ("SHOWHOLD", "Unknown command: SHOWHOLD\nType HELP for available commands."))
+                 ("SHOW/HOLD", "Unknown command: SHOW/HOLD\nType HELP COMMANDS for available commands."),
+                 ("SH/HOLD", "Unknown command: SH/HOLD\nType HELP COMMANDS for available commands."),
+                 ("SHOWHOLD", "Unknown command: SHOWHOLD\nType HELP COMMANDS for available commands."))
 
 
 def decode_hold_reply(raw, query, remote_echo=False):

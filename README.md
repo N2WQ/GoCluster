@@ -436,9 +436,10 @@ See the [SNR reference](telnet/README.md#minimum-snr).
 `SHOW MYDX 3D2/R 10` searches a canonical DXCC entity;
 `SHOW DX K1ABC 10` searches one normalized station identity. Counts default to
 50 and accept 1-250. Your filters and archive retention apply. Pages select
-newest matches and display them chronologically. If a reply supplies
-`SHOW DX NEXT H1...`, enter the exact returned command on the same connection
-to continue. Reconnects and relevant preference changes require a fresh search.
+newest matches and display them chronologically. When the reply offers another
+page, enter `SHOW DX NEXT` on the same connection. With VE7CC output, use the
+continuation command in the reply. Reconnects and relevant preference changes
+require a fresh search.
 See [history and continuation](telnet/README.md#archive-history-and-continuation).
 
 New DX calls display without trailing numeric SSIDs: `K1ABC-2` becomes `K1ABC`.

@@ -113,7 +113,7 @@ func TestHelpNavigationNormalization(t *testing.T) {
 				t.Fatalf("%s topic %s normalization failed", dialect, topic)
 			}
 		}
-		if got := p.ProcessCommandForClient("HELP MADEUP", "N0CALL", "", nil, dialect); got != "Unknown help topic: MADEUP\nType HELP for available commands.\n" {
+		if got := p.ProcessCommandForClient("HELP MADEUP", "N0CALL", "", nil, dialect); got != "Unknown help topic: MADEUP\nType HELP COMMANDS for available commands.\n" {
 			t.Fatalf("unknown topic response changed: %q", got)
 		}
 	}

@@ -14,10 +14,11 @@ func TestMetaBandHelpDiscoveryAndMembership(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		text := p.ProcessCommandForClient("help bands", "N0CALL", "", nil, dialect)
 		assertHelpWidth(t, text)
-		if previous != "" && text != previous {
+		shared, _, found := strings.Cut(text, "\nMore help:\n")
+		if !found || (previous != "" && shared != previous) {
 			t.Fatal("the two styles must discover the same shared band catalog")
 		}
-		previous = text
+		previous = shared
 		for _, band := range spot.SupportedBandNames() {
 			if !strings.Contains(text, band) {
 				t.Fatalf("%s band HELP omitted physical band %q", dialect, band)
@@ -45,6 +46,28 @@ func TestMetaBandHelpDiscoveryAndMembership(t *testing.T) {
 			navigation := p.ProcessCommandForClient(topic, "N0CALL", "", nil, dialect)
 			if !strings.Contains(navigation, "BANDS") {
 				t.Fatalf("%s %s does not discover band HELP", dialect, topic)
+			}
+		}
+	}
+}
+
+func TestMetaBandHelpLinksResolveInTheirDialect(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	for _, dialect := range []string{"go", "cc"} {
+		page := p.ProcessCommandForClient("HELP BANDS", "N0CALL", "", nil, dialect)
+		_, links, found := strings.Cut(page, "\nMore help:\n")
+		if !found {
+			t.Fatalf("%s HELP BANDS has no topic links", dialect)
+		}
+		if strings.Contains(links, "\n  HELP SET/FILTER\n") != (dialect == "cc") {
+			t.Fatalf("%s HELP BANDS has the wrong CC reference: %q", dialect, links)
+		}
+		for _, line := range strings.Split(links, "\n") {
+			if command := strings.TrimSpace(line); strings.HasPrefix(command, "HELP ") {
+				reply := p.ProcessCommandForClient(command, "N0CALL", "", nil, dialect)
+				if strings.HasPrefix(reply, "Unknown help topic:") {
+					t.Errorf("%s HELP BANDS points to unavailable %q", dialect, command)
+				}
 			}
 		}
 	}

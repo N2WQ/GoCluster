@@ -31,7 +31,8 @@ func TestHelpArchiveExamplesParse(t *testing.T) {
 		page := p.ProcessCommandForClient("HELP "+tc.topic, "N0CALL", "", nil, tc.dialect)
 		examples, _, found := strings.Cut(page, "\n\n")
 		if !found || !strings.HasPrefix(examples, "Example: "+tc.topic+" 10 - ") ||
-			!strings.Contains(page, "Type "+tc.topic+" NEXT to search older spots.") ||
+			!strings.Contains(page, "Type "+tc.topic+" NEXT on the same connection to search older spots.") ||
+			!strings.Contains(page, "With VE7CC output, use the continuation command in the reply.") ||
 			!strings.Contains(page, tc.topic+" NEXT [cursor]") {
 			t.Fatalf("%s archive help lost the example-led introduction or continuation guidance", tc.dialect)
 		}
@@ -111,7 +112,8 @@ func TestHelpWordingDXAdmissionAndOutcome(t *testing.T) {
 			"Frequency is in kHz (e.g., 7001.0).",
 			"Use plain decimal numbers; exponent notation is not accepted.",
 			"Values in gaps between bands remain accepted.",
-			"Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _.",
+			"Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _ +.",
+			"Use + in the comment for reports such as FT8 +02.",
 			"Other punctuation and non-ASCII characters are rejected.",
 			"The whole command has a node-configured byte limit (default 128).",
 			"Mode/report may be parsed from the comment.",
@@ -234,6 +236,33 @@ func TestHelpWordingMachineSchema6LegacyAnd7Complete(t *testing.T) {
 			}
 			if strings.Contains(flat, "SCHEMA 2|3|4") || strings.Contains(flat, "SCHEMA 5") || strings.Contains(flat, "Default schema 1") {
 				t.Fatalf("%s %s advertises an obsolete machine schema", dialect, topic)
+			}
+		}
+	}
+}
+
+func TestHelpWordingMachineWriteOmission(t *testing.T) {
+	p := NewProcessor(nil, nil, nil, nil, nil, nil)
+	checks := []struct {
+		topic, required, unrelated string
+	}{
+		{"PUT YAML CONFIG", "In schema 7, omitting cw_speed sets it to OFF.", "PUT requires every writable field"},
+		{"PUT YAML SETTINGS", "Schema 6 writes preserve the current CW speed setting.", "frequency_overrides"},
+		{"PUT YAML FILTER", "omit DXBM frequency_overrides for no overrides", "cw_speed"},
+		{"PATCH YAML CONFIG", "Omitting cw_speed in schema 7 keeps the current CW speed setting.", ""},
+		{"PATCH YAML SETTINGS", "Schema 6 writes also keep that setting.", "frequency_overrides"},
+		{"PATCH YAML FILTER", "Omit frequency_overrides within that object to clear those overrides.", "cw_speed"},
+		{"VALIDATE YAML CONFIG", "Schema 7 VALIDATE allows you to omit if_revision.", ""},
+	}
+	for _, dialect := range []string{"go", "cc"} {
+		for _, check := range checks {
+			response := p.ProcessCommandForClient("HELP "+check.topic, "W1ABC", "", nil, dialect)
+			flat := strings.Join(strings.Fields(response), " ")
+			if !strings.Contains(flat, check.required) {
+				t.Errorf("%s HELP %s missing %q", dialect, check.topic, check.required)
+			}
+			if check.unrelated != "" && strings.Contains(flat, check.unrelated) {
+				t.Errorf("%s HELP %s advertises %q", dialect, check.topic, check.unrelated)
 			}
 		}
 	}

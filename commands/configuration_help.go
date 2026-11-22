@@ -87,7 +87,8 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 			notes := []string{
 				"Send standalone --- and ... marker lines around one plain YAML document.",
 				"Legacy three-token upload headers select schema 6 and its 65,536-byte physical limit.",
-				"New uploads require SCHEMA 7 in the header and matching schema_version: 7 in the body. Include request_id, if_revision and configuration.",
+				"For schema 7, put SCHEMA 7 in the header and schema_version: 7 in the body.",
+				"Include request_id, if_revision and configuration.",
 				"GET again after reconnect or a revision conflict before retrying a write.",
 				"Validation or persistence failure leaves live and saved configuration unchanged.",
 				"Unavailable choices are rejected; named preset baselines are preserved.",
@@ -99,13 +100,35 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 				"Ordinary PATCH filter edits cannot also change bank selection or inactive-bank filters. PUT CONFIG is the complete restore boundary.",
 				"Supplied GO rules replace the list; [] clears it. Native empty mode/source lists admit no reports.",
 				"Native global geography PATCH replaces its list and clears band exceptions. Bands-only edits change named rows; INHERIT removes one override. Do not combine global and bands in one category PATCH.",
-				"DXBM PATCH supplies complete active/base/slot state. Mode/source lists are replacements, not incremental patches.",
-				"No aliases, anchors, merge keys, custom tags, nulls or extra documents.",
 			}
+			hasSettings := resource != "FILTER"
+			hasFilters := resource != "SETTINGS"
+			if hasFilters && verb == "PATCH" {
+				notes = append(notes,
+					"A supplied DXBM object replaces active, base_allow and slots.",
+					"Omit frequency_overrides within that object to clear those overrides.")
+			}
+			notes = append(notes, "No aliases, anchors, merge keys, custom tags, nulls or extra documents.")
 			if verb == "PUT" {
-				notes = append(notes, "PUT requires every writable field of the resource; missing fields are errors.")
+				notes = append(notes, "PUT replaces the requested resource. Include every required field.")
+				if hasSettings {
+					notes = append(notes, "In schema 7, omitting cw_speed sets it to OFF.")
+				}
+				if hasFilters {
+					notes = append(notes, "In the schema 7 CC bank, omit DXBM frequency_overrides for no overrides.")
+				}
+				if hasSettings {
+					notes = append(notes, "Schema 6 writes preserve the current CW speed setting.")
+				}
 			} else {
-				notes = append(notes, "PATCH preserves omitted fields. Supplied lists replace those selections; native band rows follow the geography rules above.")
+				notes = append(notes, "PATCH keeps fields you omit. Supplied lists replace the current selections.")
+				if hasSettings {
+					notes = append(notes, "Omitting cw_speed in schema 7 keeps the current CW speed setting.",
+						"Schema 6 writes also keep that setting.")
+				}
+				if hasFilters {
+					notes = append(notes, "Native band rows and DXBM follow the replacement rules above.")
+				}
 			}
 			add(topic, "Write "+strings.ToLower(resource)+" for clients.", []string{topic, topic + " SCHEMA 7"}, notes)
 		}
@@ -113,6 +136,7 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 	add("VALIDATE YAML CONFIG", "Check a complete client proposal.", []string{"VALIDATE YAML CONFIG", "VALIDATE YAML CONFIG SCHEMA 7"}, []string{
 		"Uses the same framed upload and plain YAML rules as PUT.",
 		"Include schema_version, request_id and the complete configuration.",
+		"Schema 7 VALIDATE allows you to omit if_revision.",
 		"The explicit SCHEMA 7 header must match body version 7; the legacy header selects version 6 and its smaller physical limit.",
 		"Schema 6 validation requires effective GO. Schema 7 validates the complete both-bank restore.",
 		"Checks choices and complete CONFIG response size without applying or saving.",

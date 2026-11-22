@@ -35,12 +35,13 @@ HELP rendering and its detailed references are owned by:
 - `installCommentHelp(...)` in [`comment_help.go`](comment_help.go)
 - catalog head/alias routing in [`help_routing.go`](help_routing.go)
 
-The landing screen shows three starter commands, call confidence, configured
-path symbols and seven help links. It has no title or disconnect command.
+The landing screen groups commands and help links by task. Use
+`HELP COMMANDS` for the full index and `HELP SYMBOLS` for call confidence and
+the configured path symbols.
 `HELP FILTERS` starts with inspection and explains the few essential filter rules.
 `HELP FILTER EXAMPLES` gives complete GO or CC recipes, with replacement warnings before commands.
-`HELP PRESETS` shows saving DAY, creating NIGHT and switching between them.
-It explains overwrite and future-login effects before the affected commands.
+`HELP PRESETS` uses DAY to show how to list, save, load and delete presets.
+It explains when a save replaces a preset and when a load affects future logins.
 `HELP SPOTS`, `HELP SETTINGS` and `HELP TROUBLE` give short examples and next steps.
 `HELP BANDS` lists physical bands and the six fixed meta-band memberships in
 both dialects. Its names and physical limits come from the shared spot catalogue.
@@ -215,8 +216,10 @@ The operator-facing commands handled here are:
 - `SHOW OWN`
 - GO: `SHOW FILTER [RULE|FULL]`, `HELP RULE`, `PASS RULE <0..9> <expression>`,
   `REJECT RULE <0..9> <expression>`, `RESET FILTER RULE <0..9|ALL>`
-- CC: `SHOW/FILTER [DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL]`,
-  `SET/FILTER <category>/<PASS|REJECT> <list>`, `SET/FILTER <category>/OFF`,
+- CC: `SHOW/FILTER [view]` accepts `FULL`, `DOC`, `DOS`, `DXCTY`, `DXSTATE`,
+  `DXBM`, `MODE`, `SOURCE`, `BEACON`, `WWV`, `WCY`, `ANNOUNCE` (or `PC93`),
+  and `SELF`. Use `SET/FILTER <category>/<PASS|REJECT> <list>` or
+  `SET/FILTER <category>/OFF` to change native selections. Other commands include
   `SET/NOFILTER`, configured `SET/<mode>`, `SET/NO<mode>`, `UNSET/<mode>`,
   `SET/SKIMMER`, `SET/NOSKIMMER`, `UNSET/SKIMMER`
 - `SHOW SETTINGS`

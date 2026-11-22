@@ -70,7 +70,7 @@ callsign:
 telnet localhost {{ .TelnetPort }}
 ```
 
-After login, type `HELP` for the command list. Useful first commands:
+After login, type `HELP` for common tasks or `HELP COMMANDS` for the full index.
 
 - `SHOW MYDX` or `SHOW DX`: show filtered spot history.
 - `WHOSPOTSME [band]`: show recent spotter countries for your call.

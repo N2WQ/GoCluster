@@ -10,7 +10,7 @@ func TestConfigurationCommandHelp(t *testing.T) {
 	for _, dialect := range []string{"go", "cc"} {
 		response := p.ProcessCommandForClient("HELP SHOW FILTER", "W1ABC-1", "", nil, dialect)
 		if dialect == "cc" {
-			for _, want := range []string{"native CC state", "DOC|DOS|DXCTY|DXSTATE", "INHERIT", "active allow-all", "SCHEMA 7", "RESUME"} {
+			for _, want := range []string{"native CC state", "DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE", "BEACON|WWV|WCY|ANNOUNCE|PC93|SELF", "INHERIT", "active filter that allows all ranges", "SCHEMA 7", "RESUME", "262,144 bytes"} {
 				if !strings.Contains(response, want) {
 					t.Fatalf("native CC readback help omits %q: %s", want, response)
 				}

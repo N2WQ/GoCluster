@@ -95,10 +95,20 @@ func installNativeCCHelpBoundary(catalog *helpCatalog) {
 		if topic == "SH/FILTER" {
 			aliases = []string{"SHOW/FILTER", "SHOW FILTER"}
 		}
-		catalog.entries[topic] = helpEntry{summary: topic + " - Inspect native CC state.", lines: helpEntryLines(topic+" - Inspect native CC state.", []string{topic + " [DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL]"}, aliases, []string{
-			"Shows exact native selections and six controls. Band INHERIT differs from explicit OFF; DXBM OFF differs from active allow-all.",
-			"Readbacks pause live spots through delivery and reading. RESUME ends the pause; missed spots are not replayed.",
-			"GET YAML CONFIG SCHEMA 7 provides a complete both-bank backup. Schema 6 does not.",
+		catalog.entries[topic] = helpEntry{summary: topic + " - Inspect native CC state.", lines: helpEntryLines(topic+" - Inspect native CC state.", []string{
+			topic,
+			topic + " FULL",
+			topic + " <DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE>",
+			topic + " <BEACON|WWV|WCY|ANNOUNCE|PC93|SELF>",
+		}, aliases, []string{
+			"Use SHOW/FILTER or SHOW/FILTER FULL to see all native selections.",
+			"PC93 is another name for ANNOUNCE.",
+			"Band INHERIT differs from explicit OFF.",
+			"DXBM OFF differs from an active filter that allows all ranges.",
+			"Live spots pause during delivery and reading. Type RESUME to continue.",
+			"Missed spots are not replayed.",
+			"The complete reply, including the pause footer, is limited to 262,144 bytes.",
+			"Use GET YAML CONFIG SCHEMA 7 for a backup of both filter banks.",
 		})}
 	}
 }

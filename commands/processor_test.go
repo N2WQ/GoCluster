@@ -936,13 +936,13 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		topic    string
 		contains []string
 	}{
-		{"HELP", []string{"HELP - Show command list", "Usage: HELP [command]"}},
-		{"DX", []string{"DX - Post a spot", "Usage: DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]"}},
-		{"SHOW", []string{"SHOW - See SHOW subcommands.", "SHOW DXCC"}},
+		{"HELP", []string{"HELP - Show the help menu", "Usage: HELP [topic]"}},
+		{"DX", []string{"DX - Post a spot", "Usage: DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]", "Use + in the comment for reports such as FT8 +02."}},
+		{"SHOW", []string{"SHOW - See SHOW subcommands.", "SHOW SETTINGS", "SHOW HOLD", "SHOW DEDUPE", "SHOW DXCC"}},
 		{"SHOW DX", []string{"SHOW DX - Alias of SHOW MYDX (stored history)", "Usage: SHOW DX [count]"}},
 		{"SHOW MYDX", []string{"SHOW MYDX - Show filtered spot history", "stored spots"}},
 		{"SHOW DXCC", []string{"SHOW DXCC - Look up DXCC/ADIF and zones", "other prefixes"}},
-		{"SHOW PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "Usage: SHOW PROP <call|prefix|grid> [band] [mode]", "omitted mode defaults to CW", "EFF, RX, and TX show mode-specific glyphs", "Only rows with REL HIGH, MEDIUM, or LOW are shown"}},
+		{"SHOW PROP", []string{"SHOW PROP - Show point-to-point propagation outlook", "Usage: SHOW PROP <call|prefix|grid> [band] [mode]", "The default mode is CW", "VOACAP forecasts", "EFF, RX, and TX show mode-specific glyphs", "Only rows with REL HIGH, MEDIUM, or LOW are shown"}},
 		{"SHOW BUILD", []string{"SHOW BUILD - Show binary build metadata", "Usage: SHOW BUILD"}},
 		{"SHOW OWN", []string{"SHOW OWN - Show your login and baseline own call", "Usage: SHOW OWN"}},
 		{"WHOSPOTSME", []string{"WHOSPOTSME - Show recent spotter countries", "Usage: WHOSPOTSME [band]"}},
@@ -952,7 +952,7 @@ func TestHelpEntriesGoDialect(t *testing.T) {
 		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
 		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},
-		{"SET GRID", []string{"SET GRID - Set your grid", "Usage: SET GRID <locator>", "exactly 4 or 6 characters"}},
+		{"SET GRID", []string{"SET GRID - Set your station grid", "Usage: SET GRID <locator>", "4- or 6-character Maidenhead grid", "NEARBY rule"}},
 		{"SET NOISE", []string{"SET NOISE - Set your noise class for glyphs", "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>"}},
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
 		{"NEARBY", []string{"NEARBY - Boolean proximity predicate", "Usage: PASS RULE 0 NEARBY", "No operator or value follows NEARBY.", "NOT NEARBY", "geography conditions", "SET DEDUPE"}},
@@ -975,9 +975,9 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		topic    string
 		contains []string
 	}{
-		{"HELP", []string{"HELP - Show command list", "Usage: HELP [command]"}},
-		{"DX", []string{"DX - Post a spot", "Usage: DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]"}},
-		{"SHOW", []string{"SHOW - See SHOW subcommands.", "SHOW DXCC"}},
+		{"HELP", []string{"HELP - Show the help menu", "Usage: HELP [topic]"}},
+		{"DX", []string{"DX - Post a spot", "Usage: DX <freq_khz> <callsign> [comment]", "DX <callsign> <freq_khz> [comment]", "Use + in the comment for reports such as FT8 +02."}},
+		{"SHOW", []string{"SHOW - See SHOW subcommands.", "SHOW SETTINGS", "SHOW HOLD", "SHOW DEDUPE", "SHOW DXCC"}},
 		{"SHOW/DX", []string{"SHOW/DX - Alias of SHOW MYDX (stored history)", "Usage: SHOW/DX [count]"}},
 		{"SHOW MYDX", []string{"SHOW MYDX - Show filtered spot history", "stored spots"}},
 		{"SHOW DXCC", []string{"SHOW DXCC - Look up DXCC/ADIF and zones", "other prefixes"}},
@@ -991,7 +991,7 @@ func TestHelpEntriesCCDialect(t *testing.T) {
 		{"SHOW DEDUPE", []string{"SHOW DEDUPE - Show your broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
 		{"SET DEDUPE", []string{"SET DEDUPE - Select broadcast dedupe policy", "FAST = short window", "CQ zones", "NEARBY rules never change your saved or effective"}},
 		{"SET DIAG", []string{"SET DIAG - Select diagnostic comments", "Usage: SET DIAG <OFF|DEDUPE|SOURCE|CONF|PATH|MODE>"}},
-		{"SET GRID", []string{"SET GRID - Set your grid", "Usage: SET GRID <locator>", "exactly 4 or 6 characters"}},
+		{"SET GRID", []string{"SET GRID - Set your station grid", "Usage: SET GRID <locator>", "4- or 6-character Maidenhead grid", "NEARBY rule"}},
 		{"SET NOISE", []string{"SET NOISE - Set your noise class for glyphs", "Usage: SET NOISE <QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL>"}},
 		{"SET PATHSAMPLES", []string{"SET PATHSAMPLES - Set your path sample floor", "Usage: SET PATHSAMPLES <count|DEFAULT>"}},
 		{"NEARBY", []string{"NEARBY - GO dialect only.", "DIALECT GO", "HELP SET/FILTER"}},

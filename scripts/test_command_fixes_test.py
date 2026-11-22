@@ -148,7 +148,8 @@ def discovery_help_literal(key, dialect):
         lines = ["DX - Post a spot (human entry).", "Usage: DX <freq_khz> <callsign> [comment]",
                  "       DX <callsign> <freq_khz> [comment]", "Notes:"]
         notes = ["Frequency is in kHz (e.g., 7001.0).", "Use plain decimal numbers; exponent notation is not accepted.",
-                 "Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _.",
+                 "Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _ +.",
+                 "Use + in the comment for reports such as FT8 +02.",
                  "Other punctuation and non-ASCII characters are rejected.",
                  "The whole command has a node-configured byte limit (default 128).",
                  "Mode/report may be parsed from the comment.",
@@ -163,10 +164,12 @@ def discovery_help_literal(key, dialect):
                      "Aliases: SHOW/FILTER, SH/FILTER"]
             notes = ["Shows canonical numbered rules and separate controls.", "GET YAML CONFIG SCHEMA 7 is complete."]
         else:
-            lines = ["SHOW/FILTER - Inspect native CC state.", "Usage: SHOW/FILTER [DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL]",
-                     "Aliases: SHOW FILTER, SH/FILTER"]
-            notes = ["Shows exact native selections and six controls.", "Band INHERIT differs from explicit OFF; DXBM also has independent state.",
-                     "GET YAML CONFIG SCHEMA 7 provides a complete both-bank backup. Schema 6 does not."]
+            lines = ["SHOW/FILTER - Inspect native CC state.", "Usage: SHOW/FILTER", "       SHOW/FILTER FULL",
+                     "       SHOW/FILTER <DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE>",
+                     "       SHOW/FILTER <BEACON|WWV|WCY|ANNOUNCE|PC93|SELF>", "Aliases: SHOW FILTER, SH/FILTER"]
+            notes = ["Use SHOW/FILTER or SHOW/FILTER FULL to see all native selections.",
+                     "Band INHERIT differs from explicit OFF.",
+                     "Use GET YAML CONFIG SCHEMA 7 for a backup of both filter banks."]
     else:
         assert key in ("PASS", "REJECT")
         summary = ("Allow matching spots or enable separate controls." if key == "PASS" else "Veto matching spots or disable separate controls.") if dialect == "go" else "Change separate delivery switches."
@@ -532,9 +535,9 @@ class DriverControls(unittest.TestCase):
                     " SHOW HOLD EXTRA TAIL ": "Usage: SHOW HOLD", "SHOW HOLD ALL": "Usage: SHOW HOLD",
                     "SH HOLD": "Unknown SHOW subcommand: HOLD", "SHOW HOLDS": "Unknown SHOW subcommand: HOLDS",
                     "SHOW HOLDX": "Unknown SHOW subcommand: HOLDX", "SHOW HOLD/EXTRA": "Unknown SHOW subcommand: HOLD/EXTRA",
-                    "SHOW/HOLD": "Unknown command: SHOW/HOLD\nType HELP for available commands.",
-                    "SH/HOLD": "Unknown command: SH/HOLD\nType HELP for available commands.",
-                    "SHOWHOLD": "Unknown command: SHOWHOLD\nType HELP for available commands."}
+                    "SHOW/HOLD": "Unknown command: SHOW/HOLD\nType HELP COMMANDS for available commands.",
+                    "SH/HOLD": "Unknown command: SH/HOLD\nType HELP COMMANDS for available commands.",
+                    "SHOWHOLD": "Unknown command: SHOWHOLD\nType HELP COMMANDS for available commands."}
         self.assertEqual(dict(driver.HOLD_REFUSALS), expected)
         self.assertEqual(len(driver.HOLD_REFUSALS), len(expected))
         self.assertFalse(any("\t" in query for query in driver.HOLD_VALID_QUERIES))
@@ -960,9 +963,9 @@ class DriverControls(unittest.TestCase):
                 required = (("Spot rules (GO only)", "Delivery switches (GO and CC)", "Old category mutation syntax is refused") if key in ("PASS", "REJECT") and dialect == "go" else
                             ("Spot rules (GO only)", "Numbered PASS and REJECT rules are for GO.") if key in ("PASS", "REJECT") else
                             ("Shows canonical numbered rules",) if key == "SHOW FILTER" else
-                            ("Shows exact native selections", "Band INHERIT") if key == "SHOW/FILTER" else
+                            ("see all native selections", "Band INHERIT") if key == "SHOW/FILTER" else
                             ("HELP SYMBOLS", "Showing archive spots") if key == "OVERVIEW" else
-                            ("station reputation admission", "Spot queued confirms", "Comment: ASCII") if key == "DX" else ())
+                            ("station reputation admission", "Spot queued confirms", "Comment: ASCII", "FT8 +02") if key == "DX" else ())
                 for phrase in required:
                     with self.assertRaises(ValueError):
                         driver.require_discovery_help([line for line in lines if phrase not in line], key, dialect)
@@ -1164,7 +1167,7 @@ class DriverControls(unittest.TestCase):
                     self.assertEqual(topics[verb + " YAML " + resource + " EXTRA"], verb + " YAML " + resource)
             for topic in negatives:
                 query = "HELP " + topic
-                contract = ("Unknown help topic: " + topic, (), "Type HELP for available commands.", ())
+                contract = ("Unknown help topic: " + topic, (), "Type HELP COMMANDS for available commands.", ())
                 lines = [contract[0], contract[2]]
                 self.assertEqual(driver.decode_help_routing(routing_help_wire(lines, query, echo=False), query,
                                                            contract, 10, 30), (lines, False))

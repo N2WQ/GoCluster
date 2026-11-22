@@ -268,7 +268,7 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 		}
 		return "BYE"
 	default:
-		return fmt.Sprintf("Unknown command: %s\nType HELP for available commands.\n", command)
+		return fmt.Sprintf("Unknown command: %s\nType HELP COMMANDS for available commands.\n", command)
 	}
 }
 
@@ -290,7 +290,7 @@ func (p *Processor) handleHelp(dialect string, topic string) string {
 		if entry, ok := catalog.lookup(normalized); ok {
 			return strings.Join(entry.lines, "\n") + "\n"
 		}
-		return fmt.Sprintf("Unknown help topic: %s\nType HELP for available commands.\n", normalized)
+		return fmt.Sprintf("Unknown help topic: %s\nType HELP COMMANDS for available commands.\n", normalized)
 	}
 
 	return strings.Join(helpOverviewLines(dialect), "\n") + "\n"
@@ -330,16 +330,18 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		}
 	}
 
+	const helpSummary = "HELP - Show the help menu or one topic."
 	helpLines := helpEntryLines(
-		"HELP - Show command list or command-specific help.",
-		[]string{"HELP [command]"},
+		helpSummary,
+		[]string{"HELP [topic]"},
 		[]string{"H"},
 		[]string{
-			"Without arguments, lists commands for the active dialect.",
-			"With a command, shows detailed usage.",
+			"Type HELP for the quick menu and common tasks.",
+			"Type HELP COMMANDS for the full index in your dialect.",
+			"Type HELP followed by a topic, such as HELP SHOW SETTINGS.",
 		},
 	)
-	add("HELP", "HELP - Show command list or command-specific help.", helpLines)
+	add("HELP", helpSummary, helpLines)
 
 	minDXFrequency, maxDXFrequency := spot.FrequencyBounds()
 	dxLines := helpEntryLines(
@@ -354,7 +356,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"Use plain decimal numbers; exponent notation is not accepted.",
 			fmt.Sprintf("After 10 Hz rounding: %.2f through %.2f kHz.", minDXFrequency, maxDXFrequency),
 			"Values in gaps between bands remain accepted.",
-			"Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _.",
+			"Comment: ASCII letters, digits, spaces, and / # @ - . , * ? _ +.",
+			"Use + in the comment for reports such as FT8 +02.",
 			"Other punctuation and non-ASCII characters are rejected.",
 			"The whole command has a node-configured byte limit (default 128).",
 			"Mode/report may be parsed from the comment.",
@@ -389,7 +392,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"Each page selects newest matches and displays them chronologically.",
 			"History excludes reports older than the configured retention cutoff.",
 			"Work limits may return zero spots with a continuation; this is incomplete.",
-			"Type SHOW MYDX NEXT to search older spots.",
+			"Type SHOW MYDX NEXT on the same connection to search older spots.",
+			"With VE7CC output, use the continuation command in the reply.",
 			"Matching settings changes require a fresh search; observations stay current.",
 			"A valid fresh search replaces the previous cursor even if its read fails.",
 			"A failed continuation retains its position unless independently invalidated.",
@@ -431,7 +435,9 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		[]string{"SHOW PROP <call|prefix|grid> [band] [mode]"},
 		[]string{"SH PROP", "SHOW/PROP", "SH/PROP"},
 		[]string{
-			"Uses your SET GRID and SET NOISE settings; omitted mode defaults to CW.",
+			"Set your station grid with SET GRID before running this command.",
+			"The server needs path reliability and VOACAP forecasts.",
+			"The outlook uses your SET NOISE setting. The default mode is CW.",
 			"Single-band misses may wait briefly; all-band requests refresh in the background.",
 			"EFF, RX, and TX show mode-specific glyphs; REL shows the merged class.",
 			"Only rows with REL HIGH, MEDIUM, or LOW are shown.",
@@ -485,7 +491,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 		[]string{"SHOW HOLD"},
 		nil,
 		[]string{
-			"Shows remaining pause time and suppressed spot count.",
+			"Shows whether live spots are paused during delivery or for a set time.",
+			"Shows how many spots were held back during the current or last pause.",
 		},
 	)
 	add("SHOW HOLD", "SHOW HOLD - Show read-pause status.", showHoldLines)
@@ -532,11 +539,12 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	add("SET DIAG", "SET DIAG - Select diagnostic comments.", setDiagLines)
 
 	setGridLines := helpEntryLines(
-		"SET GRID - Set your grid for path reliability glyphs.",
+		"SET GRID - Set your station grid.",
 		[]string{"SET GRID <locator>"},
 		nil,
 		[]string{
-			"Use exactly 4 or 6 characters, for example FN31 or FN31PR.",
+			"Use a 4- or 6-character Maidenhead grid, such as FN31 or FN31PR.",
+			"Your grid is used for path ratings, SHOW PROP and GO's NEARBY rule.",
 			"Unavailable grid mapping is reported separately from invalid syntax.",
 		},
 	)
@@ -597,15 +605,23 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	add("SET CWSPEED", "SET CWSPEED - Show or hide RBN CW speed.", helpEntryLines(
 		"SET CWSPEED - Show or hide RBN CW speed.",
 		[]string{"SET CWSPEED <ON|OFF>"}, nil,
-		[]string{"The saved setting applies to ordinary-text live spots and stored history.", "Diagnostic mode hides speed. Comment matching is unchanged.", "Native CC11 keeps raw comments regardless of CWSPEED or DIAG."},
+		[]string{
+			"Shows RBN CW speed on ordinary live spots and in history when available.",
+			"New profiles start ON. Existing profiles keep their choice.",
+			"Older saved profiles without a speed setting use OFF.",
+			"Diagnostic comments hide CW speed. Comment matching stays the same.",
+			"Native CC11 sends the stored comment regardless of CWSPEED or DIAG.",
+		},
 	))
 
 	presetNotes := []string{
 		"Presets are shared across your numeric SSIDs; commands work in both dialects.",
 		"Names: 1-32 ASCII letters, digits or hyphens; start with a letter or digit.",
 		"Names are case-insensitive and displayed uppercase.",
-		"Limit: 20 presets, 256 KiB per preset.",
-		"Includes filters, dialect, dedupe, grid, noise, PATHSAMPLES and solar cadence.",
+		fmt.Sprintf("Limit: %d presets, %d KiB per preset and 8 MiB per library.",
+			filter.MaxPresets, min(filter.MaxV7ConfigurationBytes, filter.MaxPresetBytes)/(1<<10)),
+		"Includes the active filter bank, its controls and shared settings.",
+		"Shared settings include DEDUPE, GRID, NOISE, PATHSAMPLES, SOLAR and CWSPEED.",
 		"Login/IP history and temporary session controls are excluded.",
 	}
 	for _, entry := range []struct{ verb, summary, note string }{
@@ -660,16 +676,28 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	)
 	add("BYE", "BYE - Disconnect.", byeLines, "QUIT", "EXIT")
 
+	showHistory, showFilter := helpTaskCommands(dialect)
+	filterView := " [RULE|FULL]"
 	if dialect == "cc" {
-		showLines := helpEntryLines(
-			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW WWV [FULL]", "SHOW WCY [FULL]", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
-			[]string{"SH"},
-			[]string{
-				"Use HELP SHOW/DX for the history alias.",
-			},
-		)
-		add("SHOW", "SHOW - See SHOW subcommands.", showLines)
+		filterView = " [view]"
+	}
+	const showSummary = "SHOW - See SHOW subcommands."
+	add("SHOW", showSummary, helpEntryLines(showSummary, []string{
+		showHistory + " [count|selector]",
+		"SHOW MYDX [count|selector]",
+		showFilter + filterView,
+		"SHOW SETTINGS",
+		"SHOW HOLD",
+		"SHOW DEDUPE",
+		"SHOW DXCC <prefix|callsign>",
+		"SHOW WWV [FULL]",
+		"SHOW WCY [FULL]",
+		"SHOW PROP <call|prefix|grid> [band] [mode]",
+		"SHOW BUILD",
+		"SHOW OWN",
+	}, []string{"SH"}, []string{"Type HELP before a subcommand for its options."}))
+
+	if dialect == "cc" {
 
 		showDXLines := helpEntryLines(
 			"SHOW/DX - Alias of SHOW MYDX (stored history).",
@@ -689,7 +717,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Each page selects newest matches and displays them chronologically.",
 				"History excludes reports older than the configured retention cutoff.",
 				"Work limits may return zero spots with a continuation; this is incomplete.",
-				"Type SHOW/DX NEXT to search older spots.",
+				"Type SHOW/DX NEXT on the same connection to search older spots.",
+				"With VE7CC output, use the continuation command in the reply.",
 				"Matching settings changes require a fresh search; observations stay current.",
 				"A valid fresh search replaces the previous cursor even if its read fails.",
 				"A failed continuation retains its position unless independently invalidated.",
@@ -806,15 +835,6 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 			"BYE",
 		}
 	} else {
-		showLines := helpEntryLines(
-			"SHOW - See SHOW subcommands.",
-			[]string{"SHOW DX [count|selector]", "SHOW MYDX [count|selector]", "SHOW DXCC <prefix|callsign>", "SHOW WWV [FULL]", "SHOW WCY [FULL]", "SHOW PROP <call|prefix|grid> [band] [mode]", "SHOW BUILD", "SHOW OWN"},
-			[]string{"SH"},
-			[]string{
-				"Use HELP SHOW DX for the history alias.",
-			},
-		)
-		add("SHOW", "SHOW - See SHOW subcommands.", showLines)
 
 		showFilterLines := helpEntryLines(
 			"SHOW FILTER - Display current filter state.",
@@ -844,7 +864,8 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 				"Each page selects newest matches and displays them chronologically.",
 				"History excludes reports older than the configured retention cutoff.",
 				"Work limits may return zero spots with a continuation; this is incomplete.",
-				"Type SHOW DX NEXT to search older spots.",
+				"Type SHOW DX NEXT on the same connection to search older spots.",
+				"With VE7CC output, use the continuation command in the reply.",
 				"Matching settings changes require a fresh search; observations stay current.",
 				"A valid fresh search replaces the previous cursor even if its read fails.",
 				"A failed continuation retains its position unless independently invalidated.",
@@ -909,7 +930,7 @@ func buildHelpCatalog(dialect string, dedupeHelp DedupeHelpConfig, whoSpotsMeHel
 	installCommentHelp(&catalog)
 	installBooleanRuleHelp(&catalog, dialect)
 	installTaskHelp(&catalog, dialect)
-	installBandHelp(&catalog)
+	installBandHelp(&catalog, dialect)
 	installHelpRoutingAliases(&catalog, dialect)
 	return catalog
 }

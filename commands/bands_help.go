@@ -8,10 +8,10 @@ import (
 	"dxcluster/spot"
 )
 
-func installBandHelp(catalog *helpCatalog) {
+func installBandHelp(catalog *helpCatalog, dialect string) {
 	catalog.entries["BANDS"] = helpEntry{
 		summary: "BANDS - Choose individual bands or fixed groups of bands.",
-		lines:   bandHelpLines(),
+		lines:   bandHelpLines(dialect),
 	}
 	for _, topic := range []string{"SHOW DX", "SHOW MYDX", "SHOW/DX", "SH/DX"} {
 		if entry, ok := catalog.entries[topic]; ok {
@@ -21,7 +21,7 @@ func installBandHelp(catalog *helpCatalog) {
 	}
 }
 
-func bandHelpLines() []string {
+func bandHelpLines(dialect string) []string {
 	lines := []string{"BANDS - Choose individual bands or fixed groups of bands.", ""}
 	lines = appendListSection(lines, "Individual bands:", spot.SupportedBandNames())
 	lines = append(lines, "", "Meta bands:")
@@ -43,7 +43,7 @@ func bandHelpLines() []string {
 			lines = append(lines, fmt.Sprintf("4m covers %.3f-%.3f MHz.", segment.Min/1000, segment.Max/1000))
 		}
 	}
-	return append(lines,
+	lines = append(lines,
 		"", "GO example:",
 		"  This replaces rule 0, including its previous conditions.",
 		"  Keep any other conditions you still want.",
@@ -54,5 +54,9 @@ func bandHelpLines() []string {
 		"  Mode, source and geography selections still apply.",
 		"", "Search history without changing your filters:",
 		"  GO: SHOW DX 20 BAND WARC", "  CC: SHOW/DX 20 BAND WARC",
-		"", "More help:", "  HELP FILTERS", "  HELP RULE", "  HELP SET/FILTER")
+		"", "More help:", "  HELP FILTERS", "  HELP RULE")
+	if dialect == "cc" {
+		return append(lines, "  HELP SET/FILTER")
+	}
+	return append(lines, "  In CC, type HELP SET/FILTER.")
 }

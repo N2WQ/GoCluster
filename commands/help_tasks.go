@@ -24,7 +24,7 @@ func installTaskHelp(catalog *helpCatalog, dialect string) {
 	}{
 		{"SPOTS", "Find spots or report a station.", []string{
 			"Find spots or report a station:",
-			"  " + show + " 10", "  Show 10 recent spots that match your filters.",
+			"  " + show + " 10", "  Show up to 10 recent spots that match your filters.",
 			"", "Find a call, band or mode:",
 			"  " + show + " K1ABC 10", "  " + show + " 10 BAND 20", "  " + show + " 10 MODE CW",
 			"  These searches do not change your saved filters.",

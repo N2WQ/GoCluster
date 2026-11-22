@@ -67,7 +67,7 @@ func TestCCFilterHelpGrammar(t *testing.T) {
 func TestCompatibilityControlsAreNotAdvertisedInHelp(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
-		for _, topic := range []string{"COMMANDS", "PASS", "REJECT", "RULE", "SHOW MYDX"} {
+		for _, topic := range []string{"COMMANDS", "PASS", "REJECT", "RULE", "SHOW MYDX", "SHOW FILTER"} {
 			got := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect)
 			if strings.Contains(strings.ToUpper(got), "TOXIC") {
 				t.Errorf("%s HELP %s advertises a compatibility control: %q", dialect, topic, got)

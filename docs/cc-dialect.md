@@ -162,8 +162,9 @@ Use OFF to remove a geography restriction.
 Band-only PATCH edits named rows, with `{bands: {}}` a no-op. Patch-only
 `action: INHERIT` removes a band override and accepts no values. Global plus
 bands for the same category in one PATCH is refused; different categories can
-be edited together. DXBM PATCH replaces its complete `active`, `base_allow`
-and `slots` state. OFF is explicit; absence means preserve/inherit as applicable.
+be edited together. Omitting `dxbm` in a PATCH preserves it. Supplying it replaces
+`active`, `base_allow`, `slots` and `frequency_overrides`. Omit
+`frequency_overrides` inside the supplied `dxbm` object to clear those overrides.
 
 Schema six allows 65,536 bytes for the upload body and final reply. FILTER and CONFIG are
 available only while GO is effective; CONFIG proposals must remain in GO.
@@ -173,7 +174,7 @@ banks. Schema six is not a complete backup and cannot edit the inactive bank.
 
 ## Presets, limits and recovery
 
-Use `HELP PRESETS` for DAY and NIGHT save-and-switch examples.
+Use `HELP PRESETS` for an example of saving, loading and deleting DAY.
 Saving an existing name replaces that preset.
 Loading saves the applied settings for future logins with your current callsign and SSID.
 

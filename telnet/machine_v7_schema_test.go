@@ -126,7 +126,7 @@ func TestV7MachineSchemaCCPatchPresence(t *testing.T) {
 			}
 		}},
 		{"whole-dxbm", "dxbm: {active: true, base_allow: false, slots: {20-CW: true}}", func(t *testing.T, c filter.CCConfiguration) {
-			if !c.DXBM.Active || c.DXBM.BaseAllow || len(c.DXBM.Slots) != 1 || !c.DXBM.Slots["20-CW"] {
+			if !c.DXBM.Active || c.DXBM.BaseAllow || len(c.DXBM.Slots) != 1 || !c.DXBM.Slots["20-CW"] || len(c.DXBM.FrequencyOverrides) != 0 {
 				t.Fatal("DXBM did not replace complete state")
 			}
 		}},
@@ -135,6 +135,10 @@ func TestV7MachineSchemaCCPatchPresence(t *testing.T) {
 			before, _ := v7PreparedFixture(t)
 			before.Settings.Dialect = "" // Effective CC can come from the server default.
 			before.Filters.CC.AllowSelf = filter.DefaultBoolTrue
+			cell := filter.CCSupportedFrequencyCells()[0].ID
+			before.Filters.CC.DXBM = filter.CCDXBM{
+				Active: true, BaseAllow: false, FrequencyOverrides: filter.CCFrequencyOverrides{cell: true},
+			}
 			saved := before.Clone()
 			request := decodeV7PatchFixture(t, "FILTER", "dialect: cc\nfilters:\n"+indentMachineFixture(tc.patch+"\n"))
 			got, err := request.apply(before, "cc")
@@ -147,6 +151,9 @@ func TestV7MachineSchemaCCPatchPresence(t *testing.T) {
 			}
 			if !before.Equal(saved) || !(filter.V6Configuration{Filters: got.Filters.GO}).Equal(filter.V6Configuration{Filters: before.Filters.GO}) || got.Settings != before.Settings {
 				t.Fatal("CC edit changed input, inactive GO, or shared settings")
+			}
+			if !strings.HasPrefix(tc.patch, "dxbm:") && !got.Filters.CC.DXBM.FrequencyOverrides[cell] {
+				t.Fatal("PATCH without DXBM cleared a frequency override")
 			}
 			tc.check(t, got.Filters.CC)
 		})

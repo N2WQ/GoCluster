@@ -21,8 +21,8 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 		history, readback = "SHOW/DX", "SHOW/FILTER"
 	}
 	cases := []helpRoutingCase{
-		{"HELP", "HELP", "HELP [command]"}, {"H", "HELP", "HELP [command]"},
-		{"H SHOW BUILD", "HELP", "HELP [command]"}, {"HELP SHOW BUILD", "HELP", "HELP [command]"},
+		{"HELP", "HELP", "HELP [topic]"}, {"H", "HELP", "HELP [topic]"},
+		{"H SHOW BUILD", "HELP", "HELP [topic]"}, {"HELP SHOW BUILD", "HELP", "HELP [topic]"},
 		{"SHOW", "SHOW", "SHOW DXCC"}, {"SH", "SHOW", "SHOW DXCC"},
 		{"DX", "DX", "DX <freq_khz> <callsign> [comment]"},
 		{"DX 14030 K1ABC CQ", "DX", "DX <freq_khz> <callsign> [comment]"},
@@ -101,7 +101,7 @@ func helpRoutingLiteralCases(dialect string) []helpRoutingCase {
 			test := &cases[index]
 			switch test.canonical {
 			case "SHOW/FILTER":
-				test.usage = "DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE|FULL"
+				test.usage = "DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE"
 			case "RULE", "PASS RULE", "REJECT RULE", "RESET FILTER", "RESET FILTER RULE", "NEARBY", "PASS COMMENT", "REJECT COMMENT", "REMOVE PASS COMMENT", "REMOVE REJECT COMMENT", "RESET FILTER COMMENT", "SHOW FILTER COMMENT", "PASS MINSNR", "REJECT MINSNR":
 				test.usage = "DIALECT GO"
 			case "PASS", "REJECT":
@@ -183,7 +183,7 @@ func TestHelpRoutingUnknownHeadsAndDialectRestrictions(t *testing.T) {
 			"WHOSPOTSMEX", "NEARBYX", "RESUMED", "DIALECTX", "SET SOLARX 30", "SET GRIDX FN31", "SET PATHSAMPLESX DEFAULT",
 			"SAVE PRESETX CON", "GET YAML CONFIGX", "SET/NOFILTERX", "SHOW/PROPX FN31", "SH/PROPX FN31", "FILTERX",
 		} {
-			want := "Unknown help topic: " + topic + "\nType HELP for available commands.\n"
+			want := "Unknown help topic: " + topic + "\nType HELP COMMANDS for available commands.\n"
 			if got := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect); got != want {
 				t.Fatalf("%s unsupported HELP %q resolved: %q", dialect, topic, got)
 			}
@@ -336,7 +336,7 @@ func FuzzHelpRoutingWholeTokenBoundaries(f *testing.F) {
 			return
 		}
 		topic := tc.topic + tail
-		want := "Unknown help topic: " + topic + "\nType HELP for available commands.\n"
+		want := "Unknown help topic: " + topic + "\nType HELP COMMANDS for available commands.\n"
 		if got := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, dialect); got != want {
 			t.Fatalf("character collision resolved: %q -> %q", topic, got)
 		}

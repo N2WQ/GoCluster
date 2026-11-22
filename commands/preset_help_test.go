@@ -15,7 +15,7 @@ func TestNamedPresetHelp(t *testing.T) {
 				t.Fatalf("%s HELP omits %s", dialect, topic)
 			}
 			response := p.ProcessCommandForClient("HELP "+topic, "N2WQ", "", nil, dialect)
-			for _, want := range []string{"Usage: " + topic, "numeric SSIDs", "case-insensitive", "uppercase", "20 presets, 256 KiB", "Login/IP history"} {
+			for _, want := range []string{"Usage: " + topic, "numeric SSIDs", "case-insensitive", "uppercase", "20 presets, 192 KiB per preset and 8 MiB per library", "SOLAR and CWSPEED", "Login/IP history"} {
 				if !strings.Contains(response, want) {
 					t.Fatalf("%s %s missing %q: %s", dialect, topic, want, response)
 				}
