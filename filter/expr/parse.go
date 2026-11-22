@@ -1,6 +1,9 @@
 package expr
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // Parse accepts printable ASCII with ASCII-space whitespace. Columns are
 // 1-based source byte offsets, including for quoted values and end-of-input.
@@ -213,7 +216,7 @@ func (p *parser) values() ([]Value, error) {
 	for {
 		p.spaces()
 		if len(values) >= MaxValuesPerAtom {
-			return nil, syntaxError(p.pos+1, "atom exceeds value limit")
+			return nil, syntaxError(p.pos+1, fmt.Sprintf("This comparison accepts at most %d values", MaxValuesPerAtom))
 		}
 		value, err := p.value()
 		if err != nil {

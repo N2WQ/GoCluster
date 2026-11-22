@@ -250,7 +250,8 @@ func TestParseLimits(t *testing.T) {
 			if len(e.Nodes[0].Atom.Values) != MaxValuesPerAtom {
 				t.Fatal("wrong list count")
 			}
-			if _, err := Parse("A=" + over); err == nil || !strings.Contains(err.Error(), "value limit") {
+			var diagnostic *SyntaxError
+			if _, err := Parse("A=" + over); !errors.As(err, &diagnostic) || diagnostic.Message != "This comparison accepts at most 32 values" {
 				t.Fatalf("33 values (bracketed=%v): %v", bracketed, err)
 			}
 		}
