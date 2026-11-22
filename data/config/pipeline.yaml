@@ -22,9 +22,17 @@
 #       their bounded corroboration knobs live in this section.
 ################################################################################
 call_correction:
-  selective_rescue_enabled: false     # Optional extra CW rescues after ordinary failure; ship off (see README)
-  cw_frequency_separation_enabled: false  # Keep the original CW call when receivers separate the two signals
-  cw_burst_wpm_enabled: false             # Keep the original CW call when arrival bursts, WPM and decay agree
+  # Method C can try an extra CW rename after ordinary correction declines.
+  selective_rescue_enabled: false
+
+  # Keep the reported CW callsign when receiver evidence places it and the
+  # proposed replacement in separate frequency groups.
+  cw_frequency_separation_enabled: true
+
+  # Keep the reported CW callsign when arrival bursts, keying speed (WPM),
+  # and a separate 60-second decay check support keeping it at delivery.
+  # Requires selective_rescue_enabled to be false.
+  cw_burst_wpm_enabled: true
   # ---------------------------------------------------------------------------
   # 1) Enablement
   # Purpose: Turn resolver-primary correction on/off.

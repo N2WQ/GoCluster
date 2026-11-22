@@ -1,13 +1,13 @@
 {
   "url": "https://apc-cap.ic.gc.ca/datafiles/amateur_delim.zip",
-  "etag": "\"235b2e-660afcb066080\"",
-  "last_modified": "Fri, 20 Nov 2026 07:00:02 GMT",
-  "downloaded_at": "2026-11-20T13:51:52.6211369Z",
-  "checked_at": "2026-11-20T14:52:49.1826492Z",
-  "size_bytes": 2317102,
-  "sha256": "f8410eab19a369be820f17ce08ed2e4f292752223215e4035902a94da7434203",
+  "etag": "\"235b7b-660c3e8ce7e40\"",
+  "last_modified": "Sat, 21 Nov 2026 07:00:01 GMT",
+  "downloaded_at": "2026-11-22T04:18:31.4812341Z",
+  "checked_at": "2026-11-22T04:18:31.4812341Z",
+  "size_bytes": 2317179,
+  "sha256": "4c63ea8b6d2350541f11ccdaae658f9a24c6f5c12a4a5761319102d97a6f2b88",
   "up_to_date": true,
-  "processed_at": "2026-11-20T13:51:54.2470488Z",
+  "processed_at": "2026-11-22T04:18:33.011504Z",
   "processed_ok": true,
   "validator_resource": "715da9fe4f975c11324cbe56c48fdc2fbc50ded14bebdc030a6b0812fcbdb4c6"
 }
