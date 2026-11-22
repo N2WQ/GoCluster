@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0142 | IPinfo Startup Credential | Monitoring | 2026-11-22 | IPinfo startup configuration and release packaging | ADR-0372 | `docs/troubleshooting/TSR-0142-ipinfo-startup-credential.md` |
 | TSR-0141 | PSKReporter Startup And Subscription Recovery | Monitoring | 2026-11-19 | PSKReporter MQTT startup, retry and subscription health | ADR-0364 | `docs/troubleshooting/TSR-0141-pskreporter-startup-and-subscription-recovery.md` |
 | TSR-0140 | Interrupted Filter Upgrade Backups | Monitoring | 2026-11-19 | filter storage, login and shared presets | ADR-0363 | `docs/troubleshooting/TSR-0140-interrupted-filter-upgrade-backups.md` |
 | TSR-0139 | Study Geography and Replay Clock Fixtures | Monitoring | 2026-11-17 | schema-2 CTY/H3 inputs, complete row coverage, fixture sample-clock initialization | ADR-0360 | `docs/troubleshooting/TSR-0139-study-geography-and-replay-clock-fixtures.md` |

@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0372 | IPinfo File Credential | Accepted | 2026-11-22 | IPinfo startup and public release configuration | none | none | [ADR-0372](decisions/ADR-0372-ipinfo-file-credential.md) |
 | ADR-0371 | Operating Geography in GO Rules | Accepted | 2026-11-22 | Portable CTY login, GO rule operands, and persistence | extends ADR-0317 operand semantics | none | [ADR-0371](decisions/ADR-0371-operating-geography-in-go-rules.md) |
 | ADR-0370 | ALL in GO Filter Rules | Accepted | 2026-11-22 | GO rule operands, canonical storage, and rollback | extends ADR-0317 operand semantics | none | [ADR-0370](decisions/ADR-0370-go-rule-all-wildcard.md) |
 | ADR-0369 | CW call retention shipped defaults | Accepted | 2026-11-22 | RBN CW correction and shipped defaults | ADR-0368 shipped defaults | none | [ADR-0369](decisions/ADR-0369-cw-call-retention-shipped-defaults.md) |

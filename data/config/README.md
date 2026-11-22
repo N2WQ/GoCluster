@@ -369,7 +369,13 @@ Loader behavior:
 - `voacap_experiment.yaml` is optional for server startup. The file is validated only by the VOACAP experiment command, and its SSN smoothing, recompute delta, forecast duration, VOACAP timeout/home, and center-frequency values are experiment-owned rather than production path-reliability settings.
 - `peering.yaml` in the public example uses disabled `.example.invalid` peers, blank passwords, and placeholder callsigns. Put real peer connection details only in a private config directory.
 - `peering.max_peers` is a required integer from 1 through 64, including when peering is disabled. The shipped value is 64; there is no omitted, null, zero, or unlimited fallback. Existing private configurations must add this key explicitly. When peering is enabled, the number of enabled direct peer identities must fit this cap; disabled rows do not count, and a `both` direction counts once. An over-cap dormant registry remains loadable while peering is disabled, but enabling it fails startup. Changes require a restart, and lowering the cap never silently selects a subset of peers. The cap bounds direct sessions and recovery identities; the pending-handshake limit remains 128, with at most `max_peers + 128` transport owners. It does not limit remote topology population or raise the existing memory budget.
-- `reputation.yaml` in the public example disables IPinfo download/API usage and uses a placeholder download token so the strict loader still sees the required key. Put real IPinfo tokens only in a private config directory.
+- The shipping `reputation.yaml` uses `ipinfo_download_enabled: auto` and
+  `ipinfo_download_token: "file:../secrets/.env"`. The path is relative to the
+  selected config directory. Auto mode starts the background download only when
+  the file supplies a usable token. Use `false` to disable downloads. Existing
+  private configurations may use `true` with an inline token or a file reference.
+  The live IPinfo API remains separately configured and disabled by default.
+  See the [operator setup](../../docs/OPERATOR_GUIDE.md#ipinfo-refresh-and-recovery).
 - Reputation `snapshot_max_age_seconds` measures the age of the last verified
   active IPinfo snapshot. A verified unchanged archive renews the window when
   its bytes match the serving database's source. Manually supplied databases

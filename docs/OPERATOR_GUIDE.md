@@ -47,6 +47,24 @@ naturally change its checksums.
 
 ## IPinfo Refresh And Recovery
 
+For the shipping `data/config` directory, create a local `data/secrets/.env`
+file with one unquoted assignment named `IPINFO_DOWNLOAD_TOKEN`. Blank lines
+and lines starting with `#` are allowed. Keep the file private. Git ignores
+`.env` and release packages exclude `data/secrets`.
+
+The shipping `reputation.yaml` points to `file:../secrets/.env` relative to
+the selected config directory. Its `auto` mode downloads in the background
+at startup and then on the configured daily schedule once the file supplies
+a token. A missing file leaves downloads idle. An invalid or unreadable file
+produces a startup warning and leaves downloads idle. Restart with the matching
+executable to apply changes to the credential file. Use `false` to disable
+downloads explicitly.
+
+The download status file uses a digest for authenticated request URLs. A
+successful refresh replaces older status metadata that used a plaintext URL.
+A changed token triggers a full fetch before a conditional check can verify the
+new request.
+
 The signed-in reputation gate uses fresh local IPinfo metadata first. The
 shipped freshness window is 26 hours. After it elapses, the gate tries Cymru and
 the enabled IPinfo API before using a valid stale local match. Pre-login

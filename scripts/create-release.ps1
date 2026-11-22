@@ -294,6 +294,7 @@ function Assert-ForbiddenPayloadAbsent {
         "logs",
         "data/users",
         "data/reputation",
+        "data/secrets",
         "data/fcc",
         "data/rbn"
     )
@@ -472,10 +473,10 @@ function Assert-PublicReleaseConfig {
         -Description "data/config/peering.yaml remote_callsign"
 
     Assert-RequiredLinePresent -Text $reputation `
-        -AllowedPattern '(?m)^\s*ipinfo_download_enabled:\s*false\s*(#.*)?$' `
+        -AllowedPattern '(?m)^\s*ipinfo_download_enabled:\s*auto\s*(#.*)?$' `
         -Description "data/config/reputation.yaml ipinfo_download_enabled"
     Assert-RequiredLinePresent -Text $reputation `
-        -AllowedPattern '(?m)^\s*ipinfo_download_token:\s*"REPLACE_WITH_IPINFO_TOKEN"\s*(#.*)?$' `
+        -AllowedPattern '(?m)^\s*ipinfo_download_token:\s*"file:\.\./secrets/\.env"\s*(#.*)?$' `
         -Description "data/config/reputation.yaml ipinfo_download_token"
     Assert-RequiredLinePresent -Text $reputation `
         -AllowedPattern '(?m)^\s*ipinfo_api_enabled:\s*false\s*(#.*)?$' `

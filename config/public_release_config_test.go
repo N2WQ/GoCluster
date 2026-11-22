@@ -10,9 +10,9 @@ import (
 )
 
 func TestCheckedInPublicConfigLoads(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "data", "config"))
+	cfg, err := Load(testConfigDir(t))
 	if err != nil {
-		t.Fatalf("Load(../data/config) error: %v", err)
+		t.Fatalf("load public defaults in isolation: %v", err)
 	}
 
 	if cfg.Server.NodeID != "N0CALL-1" {
@@ -40,11 +40,8 @@ func TestCheckedInPublicConfigLoads(t *testing.T) {
 	if cfg.Peering.Enabled {
 		t.Fatalf("peering.enabled = true, want public config disabled by default")
 	}
-	if cfg.Reputation.IPInfoDownloadEnabled {
-		t.Fatalf("reputation.ipinfo_download_enabled = true, want public config download disabled by default")
-	}
-	if cfg.Reputation.IPInfoDownloadToken != "REPLACE_WITH_IPINFO_TOKEN" {
-		t.Fatalf("reputation.ipinfo_download_token is not the public placeholder")
+	if cfg.Reputation.IPInfoDownloadEnabled || cfg.Reputation.IPInfoDownloadToken != "" {
+		t.Fatal("public config enabled IPinfo downloads without the local credential file")
 	}
 	if cfg.Reputation.IPInfoAPIEnabled {
 		t.Fatalf("reputation.ipinfo_api_enabled = true, want public config API disabled by default")
@@ -52,9 +49,9 @@ func TestCheckedInPublicConfigLoads(t *testing.T) {
 }
 
 func TestCheckedInPublicConfigPeerExamples(t *testing.T) {
-	cfg, err := Load(filepath.Join("..", "data", "config"))
+	cfg, err := Load(testConfigDir(t))
 	if err != nil {
-		t.Fatalf("Load(../data/config) error: %v", err)
+		t.Fatalf("load public defaults in isolation: %v", err)
 	}
 	if len(cfg.Peering.Peers) == 0 {
 		t.Fatalf("expected public example peers")
@@ -95,8 +92,8 @@ func TestCheckedInPublicConfigTextBackstops(t *testing.T) {
 	assertConfigLinesMatch(t, peering, `^\s*password:\s*`, `^\s*password:\s*""\s*(#.*)?$`, "peering.yaml password")
 	assertConfigLinesMatch(t, peering, `^\s*login_callsign:\s*`, `^\s*login_callsign:\s*"N0CALL-\d+"\s*(#.*)?$`, "peering.yaml login_callsign")
 	assertConfigLinesMatch(t, peering, `^\s*remote_callsign:\s*`, `^\s*remote_callsign:\s*"N0PEER-\d+"\s*(#.*)?$`, "peering.yaml remote_callsign")
-	assertConfigLinesMatch(t, reputation, `^\s*ipinfo_download_enabled:\s*`, `^\s*ipinfo_download_enabled:\s*false\s*(#.*)?$`, "reputation.yaml ipinfo_download_enabled")
-	assertConfigLinesMatch(t, reputation, `^\s*ipinfo_download_token:\s*`, `^\s*ipinfo_download_token:\s*"REPLACE_WITH_IPINFO_TOKEN"\s*(#.*)?$`, "reputation.yaml ipinfo_download_token")
+	assertConfigLinesMatch(t, reputation, `^\s*ipinfo_download_enabled:\s*`, `^\s*ipinfo_download_enabled:\s*auto\s*(#.*)?$`, "reputation.yaml ipinfo_download_enabled")
+	assertConfigLinesMatch(t, reputation, `^\s*ipinfo_download_token:\s*`, `^\s*ipinfo_download_token:\s*"file:\.\./secrets/\.env"\s*(#.*)?$`, "reputation.yaml ipinfo_download_token")
 	assertConfigLinesMatch(t, reputation, `^\s*ipinfo_api_enabled:\s*`, `^\s*ipinfo_api_enabled:\s*false\s*(#.*)?$`, "reputation.yaml ipinfo_api_enabled")
 	assertConfigLinesMatch(t, reputation, `^\s*ipinfo_api_token:\s*`, `^\s*ipinfo_api_token:\s*""\s*(#.*)?$`, "reputation.yaml ipinfo_api_token")
 }

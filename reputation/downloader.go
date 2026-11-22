@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,13 +73,9 @@ func (g *Gate) downloadAndLoad(ctx context.Context) error {
 		Destination:         gzPath,
 		Timeout:             cfg.ipinfoDownloadTimeout,
 		RequireByteExact304: true,
+		URLSecret:           token,
 	})
 	if err != nil {
-		var requestErr *url.Error
-		if errors.As(err, &requestErr) {
-			// The URL can contain the private download token.
-			return fmt.Errorf("IPinfo download request: %w", requestErr.Err)
-		}
 		return err
 	}
 	hash := result.Meta.SHA256

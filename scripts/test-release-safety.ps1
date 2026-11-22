@@ -56,7 +56,8 @@ function New-ReleaseFixture {
     Write-FixtureFile (Join-Path $repo 'data/config/legacy.yml') 'example: false'
     Write-FixtureFile (Join-Path $repo 'data/config/ingest.yaml') "callsign: `"N0CALL-2`"`nhost: `"telnet.reversebeacon.net`"`n"
     Write-FixtureFile (Join-Path $repo 'data/config/peering.yaml') "local_callsign: `"N0CALL-3`"`nenabled: false`nhost: `"peer1.example.invalid`"`npassword: `"`"`nlogin_callsign: `"N0CALL-4`"`nremote_callsign: `"N0PEER-1`"`n"
-    Write-FixtureFile (Join-Path $repo 'data/config/reputation.yaml') "ipinfo_download_enabled: false`nipinfo_download_token: `"REPLACE_WITH_IPINFO_TOKEN`"`nipinfo_api_enabled: false`nipinfo_api_token: `"`"`n"
+    Write-FixtureFile (Join-Path $repo 'data/config/reputation.yaml') "ipinfo_download_enabled: auto`nipinfo_download_token: `"file:../secrets/.env`"`nipinfo_api_enabled: false`nipinfo_api_token: `"`"`n"
+    Write-FixtureFile (Join-Path $repo 'data/secrets/.env') 'IPINFO_DOWNLOAD_TOKEN=fixture-only'
     foreach ($relative in @('docs/release/README.md.template', 'docs/OPERATOR_GUIDE.md', 'third_party/go-sqlite3/LICENSE', 'third_party/go-sqlite3/engine/LICENSE', 'third_party/go-sqlite3/provenance/GO-LICENSE.txt')) {
         Write-FixtureFile (Join-Path $repo $relative) "public fixture: $relative`n"
     }
@@ -379,7 +380,7 @@ try {
                 Assert-Fixture ($names -contains $required) "Missing archive payload: $required"
             }
             Assert-Fixture (-not ($names -contains 'ready_to_run/peerdiag.exe')) 'Obsolete companion entered the ZIP.'
-            Assert-Fixture (@($names | Where-Object { $_ -match 'owner|rollback|\.git|main\.go|data/users' }).Count -eq 0) 'Private bookkeeping or source entered the ZIP.'
+            Assert-Fixture (@($names | Where-Object { $_ -match 'owner|rollback|\.git|main\.go|data/(users|secrets)' }).Count -eq 0) 'Private bookkeeping, credential files, or source entered the ZIP.'
         } finally { $zip.Dispose() }
         $hashes = [IO.File]::ReadAllText((Join-Path $repo 'ready_to_run/binaries.json')) | ConvertFrom-Json
         Assert-Fixture (@($hashes).Count -eq 1 -and $hashes[0].file -ceq 'gocluster.exe') 'Binary manifest must describe only the cluster executable.'

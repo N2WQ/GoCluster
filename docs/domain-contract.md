@@ -1047,6 +1047,9 @@ valid stale local match. A negative Cymru answer belongs to the DNS cache and
 does not count as known location. Pre-login reads retained or local metadata and
 starts no network work. A successful upstream check renews the active snapshot
 only when the verified archive matches that database's recorded source.
+The shipping configuration starts refresh in `auto` mode when the local
+credential file supplies a usable token. A missing or invalid token file leaves
+refresh disabled. See [ADR-0372](decisions/ADR-0372-ipinfo-file-credential.md).
 IPinfo accepts HTTP 304 as byte-exact evidence only with a matching strong
 ETag bound to a complete response from the same direct resource. Otherwise
 verification requires a complete download. An import requires at least one

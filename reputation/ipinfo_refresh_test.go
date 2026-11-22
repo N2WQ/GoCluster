@@ -100,6 +100,71 @@ func TestIPInfoFreshnessAcrossStoreAndCache(t *testing.T) {
 	}
 }
 
+func TestIPInfoDownloadRequiresExplicitCredential(t *testing.T) {
+	cfg := ipinfoTestConfig(t, "invalid://example.invalid/archive")
+	cfg.IPInfoDownloadToken = ""
+	g := openTestGate(t, cfg)
+	if g.cfg.ipinfoDownloadEnabled || g.cfg.ipinfoDownloadToken != "" {
+		t.Fatal("gate enabled downloads or supplied a fallback without a credential")
+	}
+}
+
+func TestIPInfoStartupDownloadsWithFileCredential(t *testing.T) {
+	const sampleToken = "sample-download-token"
+	gzipBody := snapshotGzip(t, snapshotCSV("64500"))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("token") != sampleToken {
+			t.Error("startup request did not use the file credential")
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, _ = w.Write(gzipBody)
+	}))
+	defer server.Close()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "config")
+	if err := os.CopyFS(dir, os.DirFS(filepath.Join("..", "data", "config"))); err != nil {
+		t.Fatal(err)
+	}
+	secretsDir := filepath.Join(root, "secrets")
+	if err := os.Mkdir(secretsDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(secretsDir, ".env"), []byte("IPINFO_DOWNLOAD_TOKEN="+sampleToken+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := config.Load(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := ipinfoTestConfig(t, server.URL+"/archive?token=$TOKEN")
+	cfg.IPInfoDownloadEnabled = loaded.Reputation.IPInfoDownloadEnabled
+	cfg.IPInfoDownloadToken = loaded.Reputation.IPInfoDownloadToken
+	g := openTestGate(t, cfg)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	g.Start(ctx)
+
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for g.ipinfoView.Load() == nil {
+		select {
+		case <-ctx.Done():
+			t.Fatal("startup did not publish the downloaded database")
+		case <-tick.C:
+		}
+	}
+	requireIPInfoASN(t, g, netip.MustParseAddr("203.0.113.42"), time.Now().UTC(), "64500")
+	status, err := os.ReadFile(download.MetadataPath(cfg.IPInfoDownloadPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(status, []byte(sampleToken)) {
+		t.Fatal("startup download retained its credential in the status file")
+	}
+}
+
 func TestIPInfoUnchangedVerificationAndFailedImportRecovery(t *testing.T) {
 	type representation struct {
 		tag  string

@@ -34,6 +34,7 @@ const (
 
 // Metadata tracks the last successful download/check and any post-processing status.
 type Metadata struct {
+	// URL identifies the original request. Credential-bearing URLs use a digest.
 	URL          string    `json:"url,omitempty"`
 	ETag         string    `json:"etag,omitempty"`
 	LastModified string    `json:"last_modified,omitempty"`
@@ -68,6 +69,10 @@ type Request struct {
 	// MaxBytes bounds both declared and streamed body size before publication.
 	// Zero preserves unlimited downloads for existing callers.
 	MaxBytes int64
+	// URLSecret is the credential already included in URL. When set, persist
+	// only a digest of the request URL, omit redirect Referer, and suppress
+	// credential-bearing validators and error text.
+	URLSecret string
 }
 
 // Result summarizes the download outcome.
@@ -91,14 +96,18 @@ func MetadataPath(dest string) string {
 // Upstream: CTY, IPinfo, FCC, ISED and RBN replay.
 // Downstream: HTTP client, metadata read/write helpers.
 func Download(ctx context.Context, req Request) (Result, error) {
-	return download(ctx, req, fsutil.ReplaceFile)
+	result, err := download(ctx, req, fsutil.ReplaceFile)
+	if err != nil && req.URLSecret != "" {
+		err = redactDownloadError(err, req.URLSecret)
+	}
+	return result, err
 }
 
 func download(ctx context.Context, req Request, replace func(string, string) error) (Result, error) {
 	var result Result
-	url := strings.TrimSpace(req.URL)
+	endpoint := strings.TrimSpace(req.URL)
 	dest := strings.TrimSpace(req.Destination)
-	if url == "" {
+	if endpoint == "" {
 		return result, errors.New("download: URL is empty")
 	}
 	if dest == "" {
@@ -106,6 +115,10 @@ func download(ctx context.Context, req Request, replace func(string, string) err
 	}
 	if req.MaxBytes < 0 {
 		return result, errors.New("download: MaxBytes must be >= 0")
+	}
+	identity := endpoint
+	if req.URLSecret != "" {
+		identity = fmt.Sprintf("sha256:%x", sha256.Sum256([]byte(endpoint)))
 	}
 	metaPath := strings.TrimSpace(req.MetadataPath)
 	if metaPath == "" {
@@ -119,8 +132,13 @@ func download(ctx context.Context, req Request, replace func(string, string) err
 	}
 	prevMeta, metaSource := ReadMetadata(append([]string{metaPath}, req.LegacyMetadataPaths...)...)
 	force := req.Force || (!destExists && !req.AllowMissingDestination)
-	if prevMeta != nil && prevMeta.URL != "" && prevMeta.URL != url {
-		force = true
+	validatorMeta := prevMeta
+	if prevMeta != nil {
+		clearSecretValidators(prevMeta, req.URLSecret)
+		if prevMeta.URL != identity {
+			force = force || prevMeta.URL != ""
+			validatorMeta = nil
+		}
 	}
 
 	if req.Timeout > 0 {
@@ -128,7 +146,7 @@ func download(ctx context.Context, req Request, replace func(string, string) err
 		ctx, cancel = context.WithTimeout(ctx, req.Timeout)
 		defer cancel()
 	}
-	resp, evidence, err := fetch(ctx, url, req, prevMeta, force)
+	resp, evidence, err := fetch(ctx, endpoint, req, validatorMeta, force)
 	if err != nil {
 		return result, err
 	}
@@ -148,7 +166,7 @@ func download(ctx context.Context, req Request, replace func(string, string) err
 		if verified {
 			defer resp.Body.Close()
 			result.Status = StatusNotModified
-			result.Meta = mergeMetadata(prevMeta, url, resp, time.Now().UTC(), false, "")
+			result.Meta = mergeMetadata(prevMeta, identity, resp, time.Now().UTC(), false, "")
 			if !req.RequireByteExact304 {
 				result.Meta.ByteExactETag = ""
 			}
@@ -161,7 +179,7 @@ func download(ctx context.Context, req Request, replace func(string, string) err
 		}
 		// Neither the validator nor the retained file proved this response.
 		// Fetch once without validators under the original deadline.
-		resp, evidence, err = fetch(ctx, url, req, nil, true)
+		resp, evidence, err = fetch(ctx, endpoint, req, nil, true)
 		if err != nil {
 			return result, err
 		}
@@ -173,13 +191,14 @@ func download(ctx context.Context, req Request, replace func(string, string) err
 		return result, err
 	}
 	now := time.Now().UTC()
-	result.Meta = mergeMetadata(prevMeta, url, resp, now, result.Status == StatusUpdated, result.Meta.SHA256)
+	result.Meta = mergeMetadata(prevMeta, identity, resp, now, result.Status == StatusUpdated, result.Meta.SHA256)
 	result.Meta.SizeBytes = result.Bytes
 	result.Meta.ValidatorResource = evidence.resource
 	result.Meta.ByteExactETag = ""
 	if req.RequireByteExact304 && evidence.direct {
 		result.Meta.ByteExactETag = responseStrongETag(resp)
 	}
+	clearSecretValidators(&result.Meta, req.URLSecret)
 	saveDownloadMetadata(req, metaPath, metaSource, result.Meta, replace)
 	return result, nil
 }
@@ -195,7 +214,7 @@ func fetch(ctx context.Context, endpoint string, opts Request, previous *Metadat
 	if err != nil {
 		return nil, fetchEvidence{}, fmt.Errorf("download: build request: %w", err)
 	}
-	if force || (previous != nil && previous.URL != endpoint) {
+	if force {
 		previous = nil
 	}
 	setDownloadValidators(req, opts.RequireByteExact304, previous, true)
@@ -210,6 +229,9 @@ func fetch(ctx context.Context, endpoint string, opts Request, previous *Metadat
 			// Go copies the initial headers before this hook. Recompute them
 			// for this hop so matching tag text at a different URL is irrelevant.
 			setDownloadValidators(next, opts.RequireByteExact304, previous, false)
+			if opts.URLSecret != "" {
+				next.Header.Del("Referer")
+			}
 			return nil
 		},
 	}

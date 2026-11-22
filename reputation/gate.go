@@ -931,9 +931,6 @@ func normalizeGateConfig(cfg config.ReputationConfig) gateConfig {
 	if g.ipinfoDownloadURL == "" {
 		g.ipinfoDownloadURL = "https://ipinfo.io/data/ipinfo_lite.csv.gz?token=$TOKEN"
 	}
-	if g.ipinfoDownloadToken == "" {
-		g.ipinfoDownloadToken = "8a74cd36c1905b"
-	}
 	if g.ipinfoDownloadTimeout <= 0 {
 		g.ipinfoDownloadTimeout = 15 * time.Second
 	}

@@ -1,7 +1,7 @@
 # Purpose: Telnet reputation gate, local/IPinfo data sources, lookup caches, and drop visibility.
 # Ownership: deployment/runtime settings plus operator policy.
 # Runtime behavior: Required merged runtime config loaded from the active config directory at startup.
-# Safe edits: Put real IPinfo tokens only in private config; tune gates deliberately because manual DX refusals expose only a generic message.
+# Safe edits: Put the IPinfo download token in data/secrets/.env. Tune gates deliberately because manual DX refusals expose only a generic message.
 # Source: data/config/README.md.
 #
 # Admission uses retained and local metadata without starting network lookups.
@@ -22,15 +22,14 @@ reputation:
                                            # compaction is CPU/disk heavy; disable if import window is tight
 
   # ===== Download + import =====
-  # When enabled, the scheduler downloads the CSV, imports to Pebble, updates CURRENT_DB,
-  # then optionally deletes the CSV (and gzip if desired). When disabled, you must
-  # supply an existing Pebble DB at ipinfo_pebble_path.
-  ipinfo_download_enabled: false
+  # Auto downloads only when the local token file exists and contains a usable token.
+  # Use false to disable refresh, or true to require a configured credential.
+  ipinfo_download_enabled: auto
   # Refresh needs distinct paths for the archive, sidecar, and diagnostic CSV.
   ipinfo_snapshot_path: "data/ipinfo/location.csv"   # published CSV for diagnostics
   ipinfo_download_path: "data/ipinfo/ipinfo_lite.csv.gz"
   ipinfo_download_url: "https://ipinfo.io/data/ipinfo_lite.csv.gz?token=$TOKEN"
-  ipinfo_download_token: "REPLACE_WITH_IPINFO_TOKEN"
+  ipinfo_download_token: "file:../secrets/.env"      # relative to this config directory
   ipinfo_refresh_utc: "03:00"                        # daily UTC time (HH:MM)
   ipinfo_download_timeout_ms: 15000                  # download deadline
   ipinfo_import_timeout_ms: 600000                   # extract + import + optional compaction

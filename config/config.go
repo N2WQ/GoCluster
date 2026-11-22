@@ -1672,6 +1672,7 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 		return nil, diagnostics, diagnostics.Error()
 	}
 
+	ipinfoDownloadAuto := prepareIPInfoDownloadMode(raw)
 	data, err := yaml.Marshal(raw)
 	if err != nil {
 		return nil, diagnostics, fmt.Errorf("failed to render merged config from %q: %w", path, err)
@@ -1744,6 +1745,7 @@ func LoadWithDiagnostics(path string) (*Config, LoadDiagnostics, error) {
 		return nil, diagnostics, err
 	}
 	normalizeReputationConfig(&cfg, presence)
+	resolveIPInfoDownloadToken(&cfg, ipinfoDownloadAuto, &diagnostics)
 	diagnostics.sort()
 	return &cfg, diagnostics, nil
 }
@@ -3508,9 +3510,6 @@ func normalizeReputationConfig(cfg *Config, presence loadRawPresence) {
 	}
 	if strings.TrimSpace(cfg.Reputation.IPInfoDownloadURL) == "" {
 		cfg.Reputation.IPInfoDownloadURL = "https://ipinfo.io/data/ipinfo_lite.csv.gz?token=$TOKEN"
-	}
-	if strings.TrimSpace(cfg.Reputation.IPInfoDownloadToken) == "" {
-		cfg.Reputation.IPInfoDownloadToken = "8a74cd36c1905b"
 	}
 	if strings.TrimSpace(cfg.Reputation.IPInfoRefreshUTC) == "" {
 		cfg.Reputation.IPInfoRefreshUTC = "03:00"
