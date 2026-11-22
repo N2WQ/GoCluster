@@ -4,8 +4,10 @@
 - Date: 2026-11-21
 - Decision origin: Owner's selection of live RBN arrival timing for v17
 
-[ADR-0368](ADR-0368-opt-in-cw-call-retention.md) defines the opt-in defaults on
-`main`. This record describes the original experimental checkout.
+This record describes the original experimental checkout.
+[ADR-0368](ADR-0368-opt-in-cw-call-retention.md) records the initial rollout on
+`main`. [ADR-0369](ADR-0369-cw-call-retention-shipped-defaults.md) gives the
+current shipped defaults.
 
 ## Context
 

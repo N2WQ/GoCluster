@@ -4,6 +4,9 @@
 - Date: 2026-11-21
 - Decision origin: Approved Scope Ledger v2 for the CW trial
 
+[ADR-0369](ADR-0369-cw-call-retention-shipped-defaults.md) supersedes the
+shipped-default decision below.
+
 ## Decision
 
 Publish the existing RBN CW frequency separation and burst/WPM safeguards

@@ -781,7 +781,7 @@ Managing presets
 
 ## Running A Node
 
-For the optional CW call-retention trial, see the [Windows build, activation, rollback and experiment inventory](docs/cw-call-correction-branch.md).
+See the [CW call-retention guide](docs/cw-call-correction-branch.md) for configuration, rollback, and experiment results.
 
 Telnet users connecting to an existing cluster can skip this section.
 To operate your own node, download `gocluster-windows-amd64.zip` from

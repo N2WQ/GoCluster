@@ -1,6 +1,6 @@
-# Trial the CW call-retention safeguards
+# CW call-retention safeguards
 
-GoCluster offers two optional safeguards that can keep the incoming RBN CW callsign when ordinary correction would rename it. Both ship disabled. The archived experiments examine false overwrites and leave live correction accuracy and capacity to the trial.
+GoCluster enables two safeguards in its supplied configuration. They can keep the incoming RBN CW callsign when ordinary correction would rename it. The archived experiments examine false overwrites. Live correction accuracy and capacity still need measurement.
 
 ## Build and start from VS Code
 
@@ -14,7 +14,7 @@ go version -m .\gocluster-cw-trial.exe
 
 Use your node's complete private config directory. For a new node, copy the example directory once and set your own node and RBN login callsigns before connecting. The [node setup guide](OPERATOR_GUIDE.md#configure-a-real-node) covers feed configuration and runtime assets.
 
-In the active `pipeline.yaml`, set these entries in the existing `call_correction` block. Older private configurations enable each safeguard only when its key is set to `true`.
+The supplied `pipeline.yaml` already has these settings in its `call_correction` block. To enable the safeguards in an existing private configuration, set each desired switch to `true` in the active `pipeline.yaml` and restart. A missing switch leaves its safeguard disabled.
 
 ```yaml
 call_correction:

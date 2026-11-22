@@ -11,15 +11,16 @@ func TestSelectiveRescueYAMLOptionalBoolean(t *testing.T) {
 }
 
 func TestCWSafeguardsYAMLOptionalBooleans(t *testing.T) {
-	t.Run("shipped_disabled", func(t *testing.T) {
+	t.Run("shipped_enabled", func(t *testing.T) {
 		dir := testConfigDir(t)
 		writeRequiredFloodControlFile(t, dir)
 		cfg, err := Load(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.CallCorrection.CWFrequencySeparationEnabled || cfg.CallCorrection.CWBurstWPMEnabled {
-			t.Fatal("CW call retention safeguards must ship disabled")
+		if !cfg.CallCorrection.CWFrequencySeparationEnabled || !cfg.CallCorrection.CWBurstWPMEnabled {
+			t.Fatalf("both CW call retention safeguards must ship enabled: frequency=%t burst/WPM=%t",
+				cfg.CallCorrection.CWFrequencySeparationEnabled, cfg.CallCorrection.CWBurstWPMEnabled)
 		}
 	})
 	t.Run("frequency", func(t *testing.T) {

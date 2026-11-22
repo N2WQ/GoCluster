@@ -179,12 +179,12 @@ and the [correction contract](../../spot/README.md#bounded-historical-bonuses).
 The two optional original-call safeguards use
 `call_correction.cw_frequency_separation_enabled` and
 `call_correction.cw_burst_wpm_enabled`. Both are optional booleans in
-`pipeline.yaml`. The supplied configuration disables both. An omitted key
-disables its safeguard in an older private configuration. Set either key to
-`true` in the active private configuration and restart to enable it. Set it
-back to `false` and restart to turn it off. The master
-`call_correction.enabled` still governs ordinary correction. See the
-[trial guide and experiment inventory](../../docs/cw-call-correction-branch.md).
+`pipeline.yaml`. The supplied configuration enables both. An omitted key
+disables its safeguard. In an active private configuration, set either key to
+`true` to enable it or `false` to disable it, then restart. Ordinary correction
+must be enabled for either safeguard. Burst/WPM also requires selective rescue
+to be disabled. See the
+[CW call-retention guide](../../docs/cw-call-correction-branch.md).
 
 `pipeline.yaml` owns optional `call_correction.selective_rescue_enabled`.
 Omission or `false` preserves ordinary correction. Explicit null, strings,
