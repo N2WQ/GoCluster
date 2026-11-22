@@ -218,10 +218,14 @@ changing controls/settings. A source-less PASS admits matching HUMAN/SKIMMER;
 explicit SOURCE guards use ordinary Boolean logic. See
 [GO filters](../../telnet/README.md#filters) and `HELP RULE`.
 
-Unknown comparisons, including `<>`, are false; NOT negates them. Blank MODE is
+Ordinary comparisons with unknown data, including `<>`, are false. Bare
+`ALL` includes unknown data in list-based equality, and `BAND<>ALL` matches
+nothing. DXCALL, DECALL and COMMENT treat ALL as literal text. NOT negates the
+comparison result. Blank MODE is
 known `UNKNOWN`, eventless spots use `EVENT=NONE`, the field is `CONF`, and PATH
 classes match exactly. GO DXDXCC/DEDXCC requests accept positive ADIF integers
-or exact canonical CTY labels; saved/readback rules are numeric. Keep callsign
+or exact canonical CTY labels. Saved/readback rules use numbers for specific
+entities and retain the wildcard `ALL`. Keep callsign
 patterns, entity comparisons, CTY history selectors and SHOW DXCC lookup distinct.
 Retrieve [field semantics](../../docs/domain-contract.md#expressions-and-field-semantics)
 and [DXCC distinctions](../../telnet/README.md#canonical-dxcc-prefixes).

@@ -13,6 +13,13 @@ Skimmer CW spots on 20m and 40m:
   SHOW FILTER
   RESUME
 
+CW spots on any band:
+  This recipe clears the existing GO rules before adding one.
+  RESET FILTER RULE ALL
+  PASS RULE 0 BAND=ALL AND MODE=CW
+  SHOW FILTER
+  RESUME
+
 Allow any band, mode and source except FT8:
   Removes all your GO rules. Your other settings stay unchanged.
   RESET FILTER RULE ALL

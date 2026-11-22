@@ -30,6 +30,9 @@ func TestBooleanRuleHelpSharedReference(t *testing.T) {
 		"DXZONE and DEZONE use CQ zones, numbered 1 through 40.",
 		"For an unknown DX zone, NOT (DXZONE=5) is true.",
 		"For that same spot, DXZONE<>5 is false.",
+		"ALL includes missing or unknown values.",
+		"BAND<>ALL matches nothing.",
+		"DXCALL, DECALL and COMMENT treat ALL as literal text.",
 	} {
 		if !strings.Contains(text, required) {
 			t.Fatalf("shared Boolean reference omitted %q", required)
@@ -67,6 +70,8 @@ func TestBooleanRuleHelpReadableLayout(t *testing.T) {
 			}
 			for _, example := range []string{
 				`COMMENT="CQ ""DX""  !;=()[]"`,
+				"PASS RULE 0 BAND=ALL AND MODE=CW",
+				"PASS RULE 1 COMMENT=ALL",
 				"PASS RULE 0 MODE=CW,FT8 AND SOURCE=HUMAN",
 				`REJECT RULE 9 SNR<-15 OR COMMENT="test beacon"`,
 				"PASS RULE 2 NOT (DXCONT=EU OR BAND=20M)",

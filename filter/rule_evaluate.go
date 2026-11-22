@@ -23,6 +23,8 @@ func (p *compiledRule) evaluate(view *ruleView, root int) bool {
 
 func (p *rulePredicate) matches(view *ruleView) bool {
 	switch p.field {
+	case ruleFieldAllValues:
+		return view.spot != nil && p.operator == expr.Equal
 	case ruleFieldNearby:
 		return view.nearbyValue()
 	case ruleFieldSNR, ruleFieldDXZone, ruleFieldDEZone, ruleFieldDXDXCC, ruleFieldDEDXCC:
@@ -57,7 +59,7 @@ func (p *rulePredicate) matches(view *ruleView) bool {
 	default:
 		value := view.textValue(p.field)
 		if value == "" {
-			// Unknown fails every comparison, including inequality. NOT is
+			// Unknown fails ordinary comparisons, including inequality. NOT is
 			// ordinary Boolean negation in the surrounding expression.
 			return false
 		}

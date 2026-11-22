@@ -321,6 +321,9 @@ Log in with your callsign. Useful first commands:
 - `SHOW SETTINGS`: show configured choices, effective settings, and session status.
 - In GO, `PASS RULE <0..9> <expression>`: add or replace a qualifying rule.
 - In GO, `REJECT RULE <0..9> <expression>`: add or replace a veto rule.
+- In GO, `PASS RULE 0 BAND=ALL AND MODE=CW` selects CW on any band, including
+  spots whose band is unknown. `ALL` stays literal in callsign and comment
+  fields. See [filter expressions](../telnet/README.md#filters).
 - In GO, `RESET FILTER RULE <slot|ALL>` clears the selected rules, including any NEARBY terms they contain.
 - In GO, `RESET FILTER` clears all numbered rules and preserves shared settings and separate controls.
 - `SAVE PRESET <name>`: save filters and preferences to a named snapshot.
@@ -929,8 +932,9 @@ Numeric arguments remain counts. `SHOW DXCC` detail lookup is unchanged. See
 ## US State And Canadian Province Filtering And Upgrade
 
 Users can select `PASS RULE 0 DXSTATE=CA,TX,ON,QC` or
-`REJECT RULE 1 DESTATE=AA,AE,AP`. Unknown State fails every comparison, including
-`<>`; NOT flips that result. NEARBY combines with geographic conditions through the rule's Boolean operators. All 60 FCC and 13
+`REJECT RULE 1 DESTATE=AA,AE,AP`. Unknown State fails ordinary comparisons, including
+`<>`. `DXSTATE=ALL` includes unknown State, and NOT negates the comparison result.
+NEARBY combines with geographic conditions through the rule's Boolean operators. All 60 FCC and 13
 Canadian province/territory codes are accepted. The source is a registered
 address, which can differ from the station's operating location.
 

@@ -20,6 +20,7 @@ func TestMetaBandGOExpansion(t *testing.T) {
 		{`BAND<>[WARC,20M] AND NOT (MODE=CW OR BAND=VHF)`, `BAND<>30M,17M,12M,20M AND NOT (MODE=CW OR BAND=6M,4M,2M,1.25M)`},
 		{`BAND=VHF AND COMMENT="WARC,HF AND BAND=UHF ""literal"""`, `BAND=6M,4M,2M,1.25M AND COMMENT="WARC,HF AND BAND=UHF ""literal"""`},
 		{`BAND=20M,20m`, `BAND=20M,20M`},
+		{`BAND=[warc,all,20M] AND COMMENT="BAND=ALL"`, `BAND=30M,17M,12M,ALL,20M AND COMMENT="BAND=ALL"`},
 	} {
 		program, err := compileRule(test.source)
 		if err != nil || program.canonical != test.canonical {
@@ -38,6 +39,8 @@ func TestMetaBandGOExpansion(t *testing.T) {
 		{`BAND=UHF`, "13cm", "FT8", true}, {`BAND=UHF`, "6m", "CW", false},
 		{`BAND<>WARC`, "20m", "CW", true}, {`BAND<>WARC`, "30m", "CW", false},
 		{`BAND<>WARC`, "", "CW", false}, {`NOT BAND=WARC`, "", "CW", true},
+		{`BAND=WARC,ALL`, "", "FT8", true},
+		{`BAND<>ALL,WARC`, "20m", "FT8", false},
 		{`BAND=WARC AND MODE=CW OR BAND=VHF`, "30m", "FT8", false},
 		{`BAND=WARC AND MODE=CW OR BAND=VHF`, "4m", "FT8", true},
 	} {
@@ -125,6 +128,7 @@ func FuzzMetaBandGOExpansion(f *testing.F) {
 	for _, source := range []string{
 		"BAND=WARC", "BAND=HFCONTEST", "BAND=HF", "BAND=VHF", "BAND=UHF", "BAND=VHFUP",
 		"BAND=WARC,20m,WARC", "BAND<>HF AND NOT BAND=VHF",
+		"BAND=[WARC,ALL,20M]", `BAND=ALL,HF,"ALL"`, "NOT BAND<>ALL",
 		`BAND=UHF AND COMMENT="WARC AND BAND=HF ""literal"""`,
 		"BAND=VHF,BOGUS", "BAND=" + strings.Repeat("HF,", 32) + "HF",
 	} {

@@ -33,10 +33,10 @@ type compiledRuleNode struct {
 }
 
 func compileRule(source string) (*compiledRule, error) {
-	return compileRuleWithDXCCResolver(source, nil)
+	return compileRuleWithDXCCResolver(source, nil, true)
 }
 
-func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error)) (*compiledRule, error) {
+func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error), allowAll bool) (*compiledRule, error) {
 	syntax, err := expr.Parse(source)
 	if err != nil {
 		return nil, err
@@ -68,7 +68,7 @@ func compileRuleWithDXCCResolver(source string, resolve func(string) (int, error
 			}
 		}
 		program.rawValueCount += len(node.Atom.Values)
-		predicate, err := compileRulePredicate(&node.Atom, resolve)
+		predicate, err := compileRulePredicate(&node.Atom, resolve, allowAll)
 		if err != nil {
 			return nil, err
 		}
@@ -88,7 +88,7 @@ func ruleCompileError(column int, format string, args ...any) error {
 	return &expr.SyntaxError{Column: column, Message: fmt.Sprintf(format, args...)}
 }
 
-func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error)) (rulePredicate, error) {
+func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error), allowAll bool) (rulePredicate, error) {
 	field, ok := ruleFieldForName(atom.Field)
 	if !ok {
 		return rulePredicate{}, ruleCompileError(atom.Column, "unsupported field %q", atom.Field)
@@ -112,27 +112,46 @@ func compileRulePredicate(atom *expr.Atom, resolve func(string) (int, error)) (r
 		}
 	}
 	if field == ruleFieldBand {
-		if err := expandRuleMetaBands(atom); err != nil {
+		if err := expandRuleMetaBands(atom, allowAll); err != nil {
 			return rulePredicate{}, err
 		}
 	}
+	hasAll := false
+	acceptsAll := allowAll && field.supportsAllValues()
 	for i := range atom.Values {
 		value := &atom.Values[i]
+		if acceptsAll && isAllOperand(*value) {
+			if ordered {
+				return rulePredicate{}, ruleCompileError(value.Column, "%s%sALL needs a number after %s. Use %s=ALL to match any value", atom.Field, atom.Operator, atom.Operator, atom.Field)
+			}
+			hasAll = true
+			continue
+		}
 		text, err := predicate.compileValue(value, ordered, resolve)
 		if err != nil {
 			return rulePredicate{}, err
 		}
 		value.Text = text
-		value.Quoted = field == ruleFieldComment
+		// Canonical taxonomy names can be ALL even when the input was an alias.
+		// Keep that literal quoted so reparsing cannot widen the saved rule.
+		value.Quoted = field == ruleFieldComment || (acceptsAll && text == "ALL")
+	}
+	if hasAll {
+		// Validate every list member first. The constant then owns no lookup
+		// operands and does not schedule path prediction.
+		return rulePredicate{field: ruleFieldAllValues, operator: atom.Operator}, nil
 	}
 	return predicate, nil
 }
 
+func isAllOperand(value expr.Value) bool {
+	return !value.Quoted && value.Text == "ALL"
+}
+
 // Only BAND atoms containing a fixed meta name are expanded and deduplicated.
-// Physical-only operands keep their existing multiplicity and budget accounting.
-// This operates on parsed values, so COMMENT contents and Boolean topology are
-// untouched; the canonical stored form contains physical members only.
-func expandRuleMetaBands(atom *expr.Atom) error {
+// Other lists keep their multiplicity. Expanded lists retain a bare ALL
+// alongside their physical members so the wildcard survives canonicalization.
+func expandRuleMetaBands(atom *expr.Atom, allowAll bool) error {
 	containsMeta := false
 	for _, value := range atom.Values {
 		if _, ok := spot.MetaBandMembers(value.Text); ok {
@@ -147,9 +166,12 @@ func expandRuleMetaBands(atom *expr.Atom) error {
 	for _, value := range atom.Values {
 		members, ok := spot.MetaBandMembers(value.Text)
 		if !ok {
-			member := spot.NormalizeBand(value.Text)
-			if !spot.IsValidBand(member) {
-				return ruleCompileError(value.Column, "unsupported BAND value %q", value.Text)
+			member := value.Text
+			if !allowAll || !isAllOperand(value) {
+				member = spot.NormalizeBand(value.Text)
+				if !spot.IsValidBand(member) {
+					return ruleCompileError(value.Column, "unsupported BAND value %q", value.Text)
+				}
 			}
 			members = []string{member}
 		}

@@ -69,6 +69,7 @@ func TestLoginUpgradeRetiredV5MalformedProtected(t *testing.T) {
 		"predicate":      strings.Replace(retiredV5LiteralRecord, `MODE=CW AND COMMENT="NEARBY"`, "NEARBY", 1),
 		"unknown-field":  strings.Replace(retiredV5LiteralRecord, "MODE=CW", "FUTURE=CW", 1),
 		"bad-expression": strings.Replace(retiredV5LiteralRecord, "MODE=CW", "MODE=BAD", 1),
+		"all-wildcard":   strings.Replace(retiredV5LiteralRecord, "MODE=CW", "BAND=ALL", 1),
 		"bad-slot":       strings.Replace(retiredV5LiteralRecord, "slot: 3", "slot: 10", 1),
 		"bad-action":     strings.Replace(retiredV5LiteralRecord, "action: pass", "action: PASS", 1),
 		"duplicate-slot": strings.Replace(retiredV5LiteralRecord, "rules: [", "rules: [{slot: 3, action: reject, expr: 'MODE=RTTY'},", 1),

@@ -34,6 +34,8 @@ const (
 	ruleFieldComment
 	ruleFieldNearby
 	ruleFieldCount
+	// Compiled-only constant. It has no name and never indexes a spot field.
+	ruleFieldAllValues
 )
 
 var ruleFieldNames = [ruleFieldCount]string{
@@ -41,6 +43,15 @@ var ruleFieldNames = [ruleFieldCount]string{
 	"DXCONT", "DECONT", "DXZONE", "DEZONE", "DXDXCC", "DEDXCC",
 	"DXSTATE", "DESTATE", "DXGRID2", "DEGRID2", "FREQ", "SNR",
 	"CONF", "PATH", "COMMENT", "NEARBY",
+}
+
+func (field ruleField) supportsAllValues() bool {
+	switch field {
+	case ruleFieldDXCall, ruleFieldDECall, ruleFieldComment:
+		return false
+	default:
+		return field < ruleFieldNearby
+	}
 }
 
 func ruleFieldForName(name string) (ruleField, bool) {

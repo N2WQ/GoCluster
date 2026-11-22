@@ -673,8 +673,9 @@ lenient modes must be explicit, documented, and test-covered.
 - State accepts 60 FCC and 13 Canadian codes as registered-address metadata,
   not proof of operating location. `DXSTATE`/`DESTATE` Boolean atoms compare
   canonical observed codes; missing, invalid or noncanonical State is unknown.
-  Every comparison, including `<>`, is false for unknown State; NOT negates
-  that result. NEARBY combines with these comparisons through ordinary Boolean
+  Ordinary comparisons, including `<>`, are false for unknown State.
+  `DXSTATE=ALL` and `DESTATE=ALL` include unknown State. NOT negates the
+  comparison result. NEARBY combines with these comparisons through ordinary Boolean
   logic and does not suppress geography.
 - Archive version 6 records both observed States. Versions 2-5 remain unknown;
   history never consults today's registry to hydrate old records.
@@ -758,11 +759,21 @@ apply before counting.
 An atom is a field comparison. Expressions use parentheses and NOT, AND and OR,
 with precedence NOT > AND > OR and short-circuit evaluation. `=` against a
 comma list, bare or bracketed, matches any value. `<>` means none of the listed
-values only when the spot operand is known. Every comparison against unknown
+values only when the spot operand is known. Ordinary comparisons against unknown
 data is false, including `<>`; NOT negates that result. For example,
 `DXSTATE<>CA` is false for unknown State, while `NOT DXSTATE=CA` is true.
 A reject-only set can admit unknown State without making its `<>` atom true.
-There are no generic ALL/ON/OFF wildcard operands.
+Bare `ALL` is a case-insensitive wildcard in `=` and `<>` lists for every
+comparison field except DXCALL, DECALL and COMMENT. It matches every value,
+including missing or unknown data, for `=`, and nothing for `<>`.
+Other operands in the list retain their normal validation and budget charges.
+Calls and comments interpret ALL as text. Quoted `"ALL"` follows ordinary
+literal validation. Canonical MODE and EVENT values named ALL remain quoted
+when they represent specific catalog entries. The wildcard is unavailable
+with ordered comparisons and takes no catalogue, CTY or path lookup.
+Only GO personal-rule expressions use this grammar, including schemas 6 and 7.
+Canonical readback, profiles and presets retain the wildcard operand.
+See [ADR-0370](decisions/ADR-0370-go-rule-all-wildcard.md).
 
 The fields are BAND, MODE, SOURCE, EVENT, DXCALL, DECALL, DXCONT, DECONT,
 DXZONE, DEZONE, DXDXCC, DEDXCC, DXSTATE, DESTATE, DXGRID2, DEGRID2, FREQ,
@@ -785,8 +796,9 @@ take one value.
   resolves all labels, across fields and slots, before full-rule preparation
   completes; NEARBY does not remove geography. Unknown/conflicting labels
   refuse the whole proposal. Numeric inputs require no CTY; integer overflow
-  cannot fall through to label resolution. All prepared definitions, readbacks
-  and stored expressions are numeric; native loaders and matching remain
+  cannot fall through to label resolution. Canonical definitions, readbacks
+  and stored expressions use numbers for specific entities and retain bare
+  `ALL` when present. Native loaders and matching remain
   CTY-independent. Repetitions still consume current operand budgets.
   A positive spot ADIF is known without CTY-membership validation.
   `DXDXCC=IT9` normalizes to entity 248 with that CTY association;
@@ -852,7 +864,8 @@ names without copying numeric range definitions or creating a filter bank.
 Names are case-insensitive and may mix with individual bands. Expansion
 deduplicates overlapping physical members while retaining raw-input and expanded
 admission limits. GO preserves comparison operators and Boolean structure and
-saves ordinary canonical BAND lists. Meta names are not physical spot labels.
+saves ordinary canonical BAND lists, retaining bare `ALL` if supplied.
+Meta names are not physical spot labels.
 HF deliberately includes 160m as operating shorthand; HFCONTEST identifies a
 fixed band collection, not contest activity or universal contest eligibility.
 

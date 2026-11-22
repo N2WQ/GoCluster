@@ -138,8 +138,12 @@ func helpTaskRecipes(t *testing.T, s *Server, c *Client) [][]string {
 	t.Helper()
 	text := s.processor.ProcessCommandForClient("HELP FILTER EXAMPLES", c.callsign, "", nil, string(c.dialect))
 	blocks := helpTaskCommandBlocks(text)
-	if len(blocks) != 4 {
-		t.Fatalf("guide must expose four complete recipes, got %d: %s", len(blocks), text)
+	expectedCount := 4
+	if c.dialect == DialectGo {
+		expectedCount = 5
+	}
+	if len(blocks) != expectedCount {
+		t.Fatalf("guide has %d complete recipes, want %d: %s", len(blocks), expectedCount, text)
 	}
 	show := "SHOW FILTER"
 	if c.dialect == DialectCC {
@@ -155,7 +159,11 @@ func helpTaskRecipes(t *testing.T, s *Server, c *Client) [][]string {
 
 func TestHelpFilterRecipesCurrentBanks(t *testing.T) {
 	for _, dialect := range []DialectName{DialectGo, DialectCC} {
-		for recipe := range 4 {
+		recipeCount := 4
+		if dialect == DialectGo {
+			recipeCount = 5
+		}
+		for recipe := range recipeCount {
 			t.Run(string(dialect)+"/"+strconv.Itoa(recipe+1), func(t *testing.T) {
 				s, c := helpTaskTestClient(t, dialect)
 				before := helpTaskConfiguration(t, c)
@@ -165,9 +173,14 @@ func TestHelpFilterRecipesCurrentBanks(t *testing.T) {
 				want := before.Clone()
 				if dialect == DialectGo {
 					want.Filters.GO.Rules = nil
-					if recipe < 3 {
-						actions := []filter.RuleAction{filter.RulePass, filter.RulePass, filter.RuleReject}
-						expressions := []string{"BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN", "BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER", "MODE=FT8"}
+					if recipe < 4 {
+						actions := []filter.RuleAction{filter.RulePass, filter.RulePass, filter.RulePass, filter.RuleReject}
+						expressions := []string{
+							"BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
+							"BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER",
+							"BAND=ALL AND MODE=CW",
+							"MODE=FT8",
+						}
 						want.Filters.GO.Rules = []filter.RuleDefinition{{Slot: 0, Action: actions[recipe], Expr: expressions[recipe]}}
 					}
 				} else {
@@ -213,16 +226,16 @@ func helpTaskMatchVectors(t *testing.T, c *Client, recipe int) {
 		mode      string
 		human     bool
 		country   int
-		goWant    [4]bool
+		goWant    [5]bool
 		ccWant    [3]bool
 	}{
-		{14025, "CW", true, 230, [4]bool{true, false, true, true}, [3]bool{true, false, false}},
-		{7074, "FT8", true, 14, [4]bool{true, false, false, true}, [3]bool{true, false, false}},
-		{14025, "CW", false, 230, [4]bool{false, true, true, true}, [3]bool{false, false, false}},
-		{21025, "CW", true, 291, [4]bool{false, false, true, true}, [3]bool{false, false, false}},
-		{3520, "CW", true, 291, [4]bool{false, false, true, true}, [3]bool{false, true, false}},
-		{3520, "CW", true, 14, [4]bool{false, false, true, true}, [3]bool{false, false, true}},
-		{3520, "FT8", true, 14, [4]bool{false, false, false, true}, [3]bool{false, false, false}},
+		{14025, "CW", true, 230, [5]bool{true, false, true, true, true}, [3]bool{true, false, false}},
+		{7074, "FT8", true, 14, [5]bool{true, false, false, false, true}, [3]bool{true, false, false}},
+		{14025, "CW", false, 230, [5]bool{false, true, true, true, true}, [3]bool{false, false, false}},
+		{21025, "CW", true, 291, [5]bool{false, false, true, true, true}, [3]bool{false, false, false}},
+		{3520, "CW", true, 291, [5]bool{false, false, true, true, true}, [3]bool{false, true, false}},
+		{3520, "CW", true, 14, [5]bool{false, false, true, true, true}, [3]bool{false, false, true}},
+		{3520, "FT8", true, 14, [5]bool{false, false, false, false, true}, [3]bool{false, false, false}},
 	} {
 		sp := spot.NewSpot("K1ABC", "N2ABC", probe.frequency, probe.mode)
 		sp.IsHuman, sp.DEMetadata.ADIF, sp.DXMetadata.ADIF = probe.human, probe.country, 291

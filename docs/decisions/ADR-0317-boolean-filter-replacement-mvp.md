@@ -180,3 +180,4 @@ version marker. Existing archive encodings and recorded metadata remain intact.
   records the capability-serialization interoperability fix found during the
   private experiment, without changing expression semantics.
 - Superseded in part by: [ADR-0329](ADR-0329-nearby-boolean-predicate-and-generation-six.md) for the affected NEARBY/schema/generation clauses.
+- Operand semantics extended by [ADR-0370](ADR-0370-go-rule-all-wildcard.md).

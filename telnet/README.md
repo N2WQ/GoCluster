@@ -389,9 +389,20 @@ Expressions support comparisons, the operand-free NEARBY predicate, parentheses,
 NOT, AND and OR, with precedence
 `NOT > AND > OR`. Equality matches any value in a bare or bracketed comma list,
 for example `MODE=CW,FT8` or `MODE=[CW,FT8]`. `<>` means none of the listed values
-only when the field is known. Every comparison on a missing/unknown value is
-false, including `<>`; NOT negates that result. There are no generic
-ALL/ON/OFF wildcard operands.
+only when the field is known. Ordinary comparisons with missing or unknown data
+are false, including `<>`. NOT negates the comparison result.
+
+Bare `ALL` is a case-insensitive wildcard in `=` and `<>` value lists for
+every comparison field except DXCALL, DECALL and COMMENT. It includes missing or
+unknown values. `PASS RULE 0 BAND=ALL AND MODE=CW` selects CW on any band.
+`BAND=20M,ALL` also matches any band. The whole list must still be valid.
+`BAND<>ALL` matches nothing. A `REJECT RULE` with `BAND=ALL` as its entire
+expression vetoes every spot evaluated by the personal rules.
+Telnet and YAML schemas 6 and 7 use the same expression syntax.
+
+`DXCALL=ALL` and `DECALL=ALL` select the exact callsign. `COMMENT=ALL`
+searches for the text `all`. Quote a literal catalog value named ALL, such as
+`MODE="ALL"`. Use a numeric value for ordered comparisons, such as `SNR>10`.
 
 | Fields | Values and matching |
 | --- | --- |

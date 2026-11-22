@@ -40,6 +40,7 @@ func TestRuleSetMatchesAllocs(t *testing.T) {
 		{"full-scan", fullBudgetRuleDefinitions(), false},
 		{"nearby-cached", []RuleDefinition{{0, RulePass, "NEARBY OR NEARBY"}}, true},
 		{"nearby-short-circuit", []RuleDefinition{{0, RulePass, "MODE=FT8 OR NEARBY"}}, true},
+		{"all-values", []RuleDefinition{{0, RulePass, "BAND=ALL AND PATH=ALL"}}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			set := mustPrepareRuleSet(t, tc.definitions...)
@@ -72,6 +73,7 @@ func BenchmarkRuleSetMatches(b *testing.B) {
 		{"nearby-cached-single", []RuleDefinition{{0, RulePass, "NEARBY"}}, 0, true},
 		{"nearby-cached-repeated", []RuleDefinition{{0, RulePass, "NEARBY AND NEARBY OR NEARBY"}}, 0, true},
 		{"nearby-short-circuit", []RuleDefinition{{0, RulePass, "MODE=FT8 OR NEARBY"}}, 0, true},
+		{"all-values", []RuleDefinition{{0, RulePass, "BAND=ALL AND PATH=ALL"}}, 0, true},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			set := mustPrepareRuleSet(b, tc.definitions...)

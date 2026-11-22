@@ -156,6 +156,10 @@ func (p *parser) parseAtom() (int, error) {
 	}
 	p.pos += len(field)
 	if strings.EqualFold(field, "NEARBY") {
+		p.spaces()
+		if p.pos < len(p.source) && strings.ContainsRune("=<>", rune(p.source[p.pos])) {
+			return -1, syntaxError(p.pos+1, "NEARBY takes no operator or values. Use NEARBY on its own")
+		}
 		index, err := p.add(Node{Kind: PredicateKind, Left: -1, Right: -1,
 			Atom: Atom{Field: "NEARBY", Column: column}}, column)
 		if err == nil {

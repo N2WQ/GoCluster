@@ -148,6 +148,11 @@ your selection rather than adding an AND condition. To require two conditions,
 put both in one expression, such as `BAND=20m AND MODE=CW`. NOT binds before AND,
 then OR; parentheses let you override that order.
 
+Use `PASS RULE 0 BAND=ALL AND MODE=CW` for CW on every band, including
+spots whose band is unknown. `BAND<>ALL` matches nothing. Callsign and
+comment fields keep their text behavior: `DXCALL=ALL` selects that exact
+callsign and `COMMENT=ALL` searches for the text `all`.
+
 New users receive an ordinary editable PASS rule in slot 0 containing the
 configured default modes and sources. Users leaving the old filter system
 receive the same starting rule while keeping their settings. Edit that rule when narrowing
@@ -235,10 +240,10 @@ entities, not callsign prefixes; numeric-only rules need no CTY.
 Call patterns support an exact name, a single leading or trailing wildcard,
 or a lone `*`.
 
-EVENT is literal: `EVENT=POTA,SOTA` does not admit untagged spots.
-Add `NONE` to include untagged spots. State/province values are registered
-addresses, not proof of operating location. Unknown values fail comparisons,
-including `<>`; NOT flips that result. Use `HELP RULE` or the
+Use `EVENT=POTA,SOTA` for spots tagged with either event. Add `NONE` to include
+untagged spots. A registered state or province can differ
+from the operating location. Ordinary comparisons fail on unknown values, including with `<>`.
+NOT flips that result. Use `HELP RULE` or the
 [filter reference](telnet/README.md#filters) for the full field contract.
 
 ### Focus On Nearby Reports

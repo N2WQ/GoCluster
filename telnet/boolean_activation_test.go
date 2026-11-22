@@ -1,6 +1,8 @@
 package telnet
 
 import (
+	"bytes"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -12,25 +14,30 @@ import (
 
 func TestBooleanActivationLiveAndHistoryUsePreparedRules(t *testing.T) {
 	f := testRuleFilter(t,
-		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8"},
-		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: `COMMENT="blocked"`},
+		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=ALL AND MODE=FT8"},
+		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: `BAND=ALL AND COMMENT="blocked"`},
 	)
 	c := &Client{filter: f, callsign: "W1ABC", spotChan: make(chan *spotEnvelope, 1)}
 	s := &Server{}
 	for _, test := range []struct {
 		name, dx, mode, comment string
+		unknownBand             bool
 		self                    bool
 		live, history           bool
 	}{
-		{"ordinary pass", "K1ABC", "FT8", "CQ", true, true, true},
-		{"ordinary reject", "K1ABC", "FT8", "BLOCKED", true, false, false},
-		{"wrong mode", "K1ABC", "CW", "CQ", true, false, false},
-		{"self bypass", "W1ABC", "CW", "BLOCKED", true, true, true},
-		{"history self exception", "W1ABC", "CW", "BLOCKED", false, false, true},
+		{"ordinary pass", "K1ABC", "FT8", "CQ", false, true, true, true},
+		{"unknown band pass", "K1ABC", "FT8", "CQ", true, true, true, true},
+		{"unknown band reject", "K1ABC", "FT8", "BLOCKED", true, true, false, false},
+		{"wrong mode", "K1ABC", "CW", "CQ", false, true, false, false},
+		{"self bypass", "W1ABC", "CW", "BLOCKED", false, true, true, true},
+		{"history self exception", "W1ABC", "CW", "BLOCKED", false, false, false, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			f.SetSelfEnabled(test.self)
 			sp := spot.NewSpot(test.dx, "N2AAA", 14074, test.mode)
+			if test.unknownBand {
+				sp.Band, sp.BandNorm = "", ""
+			}
 			sp.Comment = test.comment
 			s.deliverJob(broadcastJob{spot: sp, clients: []*Client{c}, allowFast: true, allowMed: true, allowSlow: true})
 			delivered := false
@@ -58,10 +65,24 @@ func TestBooleanActivationHumanSavePresetAndReload(t *testing.T) {
 		t.Fatal(err)
 	}
 	saveCurrentV7TestRecord(t, c.callsign, &filter.V7UserRecord{Configuration: initial})
-	response, handled := s.filterEngine.Handle(c, `PASS RULE 3 COMMENT="CQ test"`)
-	if !handled || !strings.Contains(response, "Rule 3 set.") || strings.Contains(response, "warning:") {
+	const expression = `BAND=ALL AND COMMENT="CQ test"`
+	response, handled := s.filterEngine.Handle(c, "PASS RULE 3 "+expression)
+	if !handled || !strings.Contains(response, "Rule 3 set.") || !strings.Contains(response, expression) || strings.Contains(response, "warning:") {
 		t.Fatalf("active human rule dispatch failed: %s", response)
 	}
+	disk := v6CoordinatorDisk(t, c)
+	before := snapshotBooleanCommand(c)
+	revision, err := c.v7ConfigurationRevisionToken()
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, handled = s.filterEngine.Handle(c, "PASS RULE 3 SNR>ALL")
+	afterRevision, err := c.v7ConfigurationRevisionToken()
+	if err != nil || !handled || !strings.Contains(response, "col 5: SNR>ALL needs a number") ||
+		!strings.Contains(response, "Use SNR=ALL") || afterRevision != revision || !bytes.Equal(v6CoordinatorDisk(t, c), disk) {
+		t.Fatalf("invalid edit lost its diagnostic or changed durable state: %s (%v)", response, err)
+	}
+	before.assertUnchanged(t, c)
 	record, err := filter.LoadV7UserRecord(c.callsign)
 	if err != nil {
 		t.Fatal(err)
@@ -93,6 +114,77 @@ func TestBooleanActivationHumanSavePresetAndReload(t *testing.T) {
 	result := s.restoreClientRecordOwned(replacement, time.Now().UTC())
 	if result.loadError != nil || !replacement.captureV6Configuration().Equal(saved) {
 		t.Fatalf("login restore lost persisted rules/settings: %v", result.loadError)
+	}
+}
+
+func TestBooleanAllYAMLWireAndRefusal(t *testing.T) {
+	for _, schema := range []struct {
+		version                 int
+		patch, rules, errorPath string
+	}{
+		{6, "PATCH YAML FILTER", "  rules: %s\n", "configuration.rules[0].expr"},
+		{7, "PATCH YAML FILTER SCHEMA 7", "  dialect: go\n  filters:\n    rules: %s\n", "configuration.filters.rules[0].expr"},
+	} {
+		t.Run(fmt.Sprint(schema.version), func(t *testing.T) {
+			s, c := v7MachineTestClient(t)
+			bankedV6SelectGO(t, c)
+			revision := func() string {
+				t.Helper()
+				value, err := c.v7ConfigurationRevisionToken()
+				if err != nil {
+					t.Fatal(err)
+				}
+				return value
+			}
+			command := func(line string) string {
+				t.Helper()
+				dispatch := s.handleV7MachineCommand(c, line)
+				if !dispatch.handled || dispatch.terminal {
+					t.Fatalf("%s dispatch failed: %+v", line, dispatch)
+				}
+				select {
+				case reply := <-c.controlChan:
+					if reply.configurationReservation != nil {
+						reply.configurationReservation.Release()
+					}
+					return string(reply.raw)
+				default:
+					t.Fatalf("%s did not return a reply", line)
+					return ""
+				}
+			}
+			patch := func(expression string) string {
+				t.Helper()
+				rules := fmt.Sprintf("[{slot: 0, action: pass, expr: '%s'}]", expression)
+				body := fmt.Sprintf("---\nschema_version: %d\nrequest_id: wildcard\nif_revision: %s\nconfiguration:\n", schema.version, revision())
+				transport, _ := newYAMLTestClient(body + fmt.Sprintf(schema.rules, rules) + "...\n")
+				c.conn, c.reader = transport.conn, transport.reader
+				return command(schema.patch)
+			}
+
+			if response := patch("band=[all] AND MODE=CW"); !strings.Contains(response, "persisted: true") {
+				t.Fatalf("valid wildcard edit failed: %s", response)
+			}
+			const canonical = "BAND=ALL AND MODE=CW"
+			saved, err := filter.LoadV7UserRecord(c.callsign)
+			if err != nil || len(saved.Configuration.Filters.GO.Rules) != 1 || saved.Configuration.Filters.GO.Rules[0].Expr != canonical {
+				t.Fatalf("wildcard was not saved canonically: %+v (%v)", saved, err)
+			}
+			readback := command(fmt.Sprintf("GET YAML FILTER SCHEMA %d", schema.version))
+			if !strings.Contains(readback, canonical) || !c.filter.Matches(&spot.Spot{Mode: "CW"}) ||
+				c.filter.Matches(&spot.Spot{Mode: "FT8"}) {
+				t.Fatalf("wildcard differs between readback and matching: %s", readback)
+			}
+
+			before, disk, savedRevision := snapshotBooleanCommand(c), v6CoordinatorDisk(t, c), revision()
+			response := patch("SNR>ALL")
+			if !strings.Contains(response, "code: invalid_document") || !strings.Contains(response, schema.errorPath) ||
+				!strings.Contains(response, "col 5: SNR>ALL") || !strings.Contains(response, "Use SNR=ALL") ||
+				revision() != savedRevision || !bytes.Equal(v6CoordinatorDisk(t, c), disk) {
+				t.Fatalf("refused wildcard lost its wire diagnostic or changed durable state: %s", response)
+			}
+			before.assertUnchanged(t, c)
+		})
 	}
 }
 

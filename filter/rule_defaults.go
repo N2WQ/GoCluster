@@ -33,6 +33,10 @@ func PrepareDefaultRuleSet(modes, sources []string) (*PreparedRuleSet, error) {
 		if !IsSupportedMode(candidate) {
 			return nil, fmt.Errorf("unsupported default mode %q", candidate)
 		}
+		if candidate == "ALL" {
+			// Configured modes are concrete taxonomy entries in both banks.
+			candidate = `"ALL"`
+		}
 		if containsDefaultRuleMode(selected, candidate) {
 			continue
 		}

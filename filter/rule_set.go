@@ -43,6 +43,10 @@ type PreparedRuleSet struct {
 // PrepareRuleSet validates the complete replacement without retaining or
 // changing caller-owned definitions. Slot order is readback order, not priority.
 func PrepareRuleSet(definitions []RuleDefinition) (*PreparedRuleSet, error) {
+	return prepareRuleSet(definitions, true)
+}
+
+func prepareRuleSet(definitions []RuleDefinition, allowAll bool) (*PreparedRuleSet, error) {
 	if len(definitions) > MaxRuleSlots {
 		return nil, fmt.Errorf("rules exceed slot limit %d", MaxRuleSlots)
 	}
@@ -59,7 +63,7 @@ func PrepareRuleSet(definitions []RuleDefinition) (*PreparedRuleSet, error) {
 	rules := make([]preparedRule, 0, len(definitions))
 	atoms, values, rawValues := 0, 0, 0
 	for _, definition := range definitions {
-		rule, err := prepareRule(definition, nil)
+		rule, err := prepareRule(definition, nil, allowAll)
 		if err != nil {
 			return nil, err
 		}
@@ -138,7 +142,7 @@ func (s *PreparedRuleSet) WithRuleDXCCResolver(definition RuleDefinition, resolv
 	if err := validateRuleDefinition(definition); err != nil {
 		return nil, err
 	}
-	rule, err := prepareRule(definition, resolve)
+	rule, err := prepareRule(definition, resolve, true)
 	if err != nil {
 		return nil, err
 	}
@@ -255,8 +259,8 @@ func (s *PreparedRuleSet) NeedsNearby() bool {
 	return false
 }
 
-func prepareRule(definition RuleDefinition, resolve func(string) (int, error)) (preparedRule, error) {
-	program, err := compileRuleWithDXCCResolver(definition.Expr, resolve)
+func prepareRule(definition RuleDefinition, resolve func(string) (int, error), allowAll bool) (preparedRule, error) {
+	program, err := compileRuleWithDXCCResolver(definition.Expr, resolve, allowAll)
 	if err != nil {
 		return preparedRule{}, fmt.Errorf("rule slot %d: %w", definition.Slot, err)
 	}

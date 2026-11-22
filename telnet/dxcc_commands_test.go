@@ -78,7 +78,7 @@ func TestDXCCCanonicalHumanPersistenceAndRefusal(t *testing.T) {
 		if nearby {
 			c.filter = passRuleTestFilter(t, want+" AND NEARBY")
 		}
-		for _, operand := range []string{"K,ZZ", "W6", "K1ABC", "K,0", "K,ALL", "K*"} {
+		for _, operand := range []string{"K,ZZ", "W6", "K1ABC", "K,0", `K,"ALL"`, "K,ALL,ZZ", "K*"} {
 			before, revision := snapshotBooleanCommand(c), v6CoordinatorRevision(t, c)
 			response, _ := engine.Handle(c, "PASS RULE 0 DXDXCC="+operand)
 			if !strings.Contains(response, "No changes applied.") {

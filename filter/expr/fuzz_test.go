@@ -5,6 +5,7 @@ import "testing"
 func FuzzParse(f *testing.F) {
 	for _, seed := range []string{
 		"NEARBY", "NOT NEARBY", "MODE=CW OR NEARBY", "", "SNR=1", "A=1 OR B=2 AND NOT C=3", "NOT (A=1 OR B=2)",
+		"NEARBY=ALL", "NOT (BAND=[20M,ALL] AND SNR<>ALL)", `MODE="ALL" AND COMMENT=ALL`,
 		`COMMENT="CQ ""DX"""`, `X=[AND,OR,NOT,"",k1abc/p]`,
 		"A=1,", "A=[1,]", "NOT NOT NOT NOT NOT NOT NOT NOT A=1",
 		"(((((((((A=1)))))))))", "A!=1", "A=é", "A=\x00",

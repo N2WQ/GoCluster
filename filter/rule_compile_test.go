@@ -21,6 +21,9 @@ func TestRuleCompileDXCCResolver(t *testing.T) {
 			`DXDXCC=291,291 AND COMMENT="MiXeD" AND COMMENT="DXDXCC=K"`, 1},
 		{`DXDXCC=0291 AND DEDXCC="+291"`, `DXDXCC=291 AND DEDXCC=291`, 0},
 		{`DXDXCC=99999`, `DXDXCC=99999`, 0},
+		{`DXDXCC=ALL AND DEDXCC<>ALL`, `DXDXCC=ALL AND DEDXCC<>ALL`, 0},
+		{`DXDXCC=ALL,K`, `DXDXCC=ALL,291`, 1},
+		{`DXDXCC=ALL,ZZ`, "", 1},
 		{`DXDXCC=` + longLabel, `DXDXCC=460`, 1},
 		{`DXDXCC=0`, "", 0},
 		{`DEDXCC=-1`, "", 0},
@@ -45,7 +48,7 @@ func TestRuleCompileDXCCResolver(t *testing.T) {
 					return 0, fmt.Errorf("unknown canonical label")
 				}
 			}
-			program, err := compileRuleWithDXCCResolver(test.source, resolve)
+			program, err := compileRuleWithDXCCResolver(test.source, resolve, true)
 			if calls != test.calls {
 				t.Fatalf("resolver calls %d, want %d", calls, test.calls)
 			}
@@ -67,7 +70,7 @@ func TestRuleCompileDXCCResolver(t *testing.T) {
 	for _, number := range []int{0, -1} {
 		if _, err := compileRuleWithDXCCResolver("DXDXCC=K", func(string) (int, error) {
 			return number, nil
-		}); err == nil {
+		}, true); err == nil {
 			t.Fatalf("resolver returned nonpositive ADIF %d", number)
 		}
 	}
@@ -76,7 +79,7 @@ func TestRuleCompileDXCCResolver(t *testing.T) {
 func TestRuleCompileDXCCOriginalColumnAndCanonicalLimit(t *testing.T) {
 	calls := 0
 	resolve := func(string) (int, error) { calls++; return 291, nil }
-	_, err := compileRuleWithDXCCResolver("DXDXCC=K AND COMMENT=MiXeD AND DEZONE=41", resolve)
+	_, err := compileRuleWithDXCCResolver("DXDXCC=K AND COMMENT=MiXeD AND DEZONE=41", resolve, true)
 	var syntax *expr.SyntaxError
 	if !errors.As(err, &syntax) || syntax.Column != 39 || calls != 1 {
 		t.Fatalf("original typed-error column lost: %v, calls %d", err, calls)
@@ -88,7 +91,7 @@ func TestRuleCompileDXCCOriginalColumnAndCanonicalLimit(t *testing.T) {
 			t.Fatalf("fixture failed before domain normalization: %v", err)
 		}
 		calls = 0
-		program, err := compileRuleWithDXCCResolver(source, resolve)
+		program, err := compileRuleWithDXCCResolver(source, resolve, true)
 		if calls != 1 {
 			t.Fatal("fixture did not reach DXCC normalization")
 		}
