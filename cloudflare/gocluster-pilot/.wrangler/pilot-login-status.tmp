@@ -1,0 +1,7 @@
+npm warn exec The following package was not found and will be installed: wrangler@4.167.0
+
+ ⛅️ wrangler 4.167.0
+────────────────────
+Attempting to login via OAuth...
+Opening a link in your default browser: https://dash.cloudflare.com/oauth2/auth?response_type=code&client_id=54d11594-84e4-41aa-b438-e81b8fa78ee7&redirect_uri=http%3A%2F%2Flocalhost%3A8976%2Foauth%2Fcallback&scope=workers_scripts%3Awrite%20account%3Aread%20connectivity%3Aadmin%20offline_access&state=HgFWXxOALxrfxBSH8NdW11tSna.iiueo&code_challenge=OpqOjUk2_uf6l5Vz1tEKvT5TLcOwYaqzcoCGRx6t8Fg&code_challenge_method=S256
+Successfully logged in.
