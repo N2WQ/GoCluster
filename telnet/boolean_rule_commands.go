@@ -121,6 +121,9 @@ func booleanLegacyRuleDiscovery(line string, dialect DialectName) string {
 func booleanCCFilterExclusion(verb, tail string) (domain string, reject bool) {
 	if verb == "SET/FILTER" {
 		if words := strings.Fields(tail); len(words) > 0 {
+			if action, ok := legacyCCSpacedDXBMAction(words); ok {
+				return "DXBM", action == actionBlock
+			}
 			domain, action, _ := nativeCCFilterAction(words)
 			return domain, action == "REJECT"
 		}

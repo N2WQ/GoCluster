@@ -293,7 +293,7 @@ func parseCCDialect(tokens, upper []string) (parsedFilterCommand, bool, string) 
 	}
 
 	if upper[0] == "SET/FILTER" && len(upper) >= 2 {
-		// DXBM/PASS or DXBM/REJECT inline or separated.
+		// Inline DXBM actions and the legacy bare action after DXBM.
 		if strings.HasPrefix(strings.ToUpper(upper[1]), "DXBM/") {
 			mode := strings.TrimPrefix(strings.ToUpper(upper[1]), "DXBM/")
 			switch mode {
@@ -302,13 +302,8 @@ func parseCCDialect(tokens, upper []string) (parsedFilterCommand, bool, string) 
 			case "REJECT":
 				return parsedFilterCommand{action: actionBlock, domain: "DXBM", args: tokens[2:]}, true, ""
 			}
-		} else if strings.EqualFold(upper[1], "DXBM") && len(upper) >= 3 {
-			if strings.EqualFold(upper[2], "PASS") {
-				return parsedFilterCommand{action: actionAllow, domain: "DXBM", args: tokens[3:]}, true, ""
-			}
-			if strings.EqualFold(upper[2], "REJECT") {
-				return parsedFilterCommand{action: actionBlock, domain: "DXBM", args: tokens[3:]}, true, ""
-			}
+		} else if action, ok := legacyCCSpacedDXBMAction(upper[1:]); ok {
+			return parsedFilterCommand{action: action, domain: "DXBM", args: tokens[3:]}, true, ""
 		}
 	}
 
@@ -392,6 +387,22 @@ func parseCCDialect(tokens, upper []string) (parsedFilterCommand, bool, string) 
 			}
 		}
 		return parsedFilterCommand{}, false, ""
+	}
+}
+
+// A bare action after DXBM belongs to legacy discovery. Native CC uses its
+// own slash-based action parser.
+func legacyCCSpacedDXBMAction(words []string) (filterAction, bool) {
+	if len(words) < 2 || !strings.EqualFold(words[0], "DXBM") {
+		return 0, false
+	}
+	switch {
+	case strings.EqualFold(words[1], "PASS"):
+		return actionAllow, true
+	case strings.EqualFold(words[1], "REJECT"):
+		return actionBlock, true
+	default:
+		return 0, false
 	}
 }
 

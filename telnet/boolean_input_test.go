@@ -138,6 +138,8 @@ func TestBooleanInputOverlongPrefixNeedsACompleteCommandWord(t *testing.T) {
 		{"SET/NOFT8", " EXTRA", true},
 		{"SET/FILTER DOC/REJECT", "ED", false},
 		{"SET/FILTER DOC/REJECT ", "K", true},
+		{"SET/FILTER DXBM REJECT", "ED", false},
+		{"SET/FILTER DXBM REJECT ", "6", true},
 		{"REJECT RULE", "S", false},
 		{"REJECT RULE 9 ", "BAND=20M", true},
 	} {

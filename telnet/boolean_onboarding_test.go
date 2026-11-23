@@ -471,6 +471,13 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 				{"SET/FILTER DOC/REJECT K", "Use REJECT RULE <0..9> <expression>."},
 				{"set/filter dxstate /reject ca", "Use REJECT RULE <0..9> <expression>."},
 				{"SET/FILTER DOC/PASS REJECT", "Use PASS RULE <expression> to set rule 0."},
+				{"SET/FILTER DXBM/REJECT 6", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/FILTER DXBM /REJECT 6", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/FILTER DXBM REJECT 6", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/FILTER DXBM/PASS 6", "Use PASS RULE <expression> to set rule 0."},
+				{"SET/FILTER DXBM /PASS 6", "Use PASS RULE <expression> to set rule 0."},
+				{"set/filter dxbm pass 6", "Use PASS RULE <expression> to set rule 0."},
+				{"SET/FILTER DXBM/OFF", "Use PASS RULE <expression> to set rule 0."},
 				{"SET/NOSKIMMER", "Use REJECT RULE <0..9> <expression>."},
 				{"SET/NOFT8", "Use REJECT RULE <0..9> <expression>."},
 				{"set/nocw extra", "Use REJECT RULE <0..9> <expression>."},
@@ -506,6 +513,17 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 			}{
 				{"SET/FILTER DOC/REJECT K\t", true},
 				{"set/filter doc /reject k\t", true},
+				{"SET/FILTER DXBM/REJECT 6\t", true},
+				{"SET/FILTER DXBM /REJECT 6\t", true},
+				{"SET/FILTER DXBM REJECT 6\t", true},
+				{"set/filter  dxbm  reject  6\t", true},
+				{"SET/FILTER DXBM/PASS 6\t", false},
+				{"SET/FILTER DXBM /PASS 6\t", false},
+				{"SET/FILTER DXBM PASS 6\t", false},
+				{"SET/FILTER DXBM PASS REJECT\t", false},
+				{"SET/FILTER DXBM/OFF\t", false},
+				{"SET/FILTER DOC REJECT K\t", false},
+				{"SET/FILTER DXBM REJECTED 6\t", false},
 				{"SET/NOSKIMMER\t", true},
 				{"SET/NOFT8\t", true},
 				{"REJECT BAND 20M\t", true},
@@ -588,7 +606,41 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 				!strings.Contains(response, "Saved and active.") {
 				t.Fatalf("native CC veto was not saved in the CC bank:\n%s", response)
 			}
+			assertNativeDXBMWireSyntax(t, get, ccAfter)
 		})
+	}
+}
+
+func assertNativeDXBMWireSyntax(t *testing.T, get func(string) (filter.V7Configuration, string), before filter.V7Configuration) {
+	t.Helper()
+	for _, command := range []string{"SET/FILTER DXBM PASS 6", "SET/FILTER DXBM REJECT 6"} {
+		got, reply := get(command)
+		if !got.Equal(before) || !strings.Contains(reply, "No changes applied.") ||
+			!strings.Contains(reply, "Use SET/FILTER <category>/PASS <list>, /REJECT <list> or /OFF.") {
+			t.Fatalf("native CC admitted the legacy spelling %q:\n%s", command, reply)
+		}
+	}
+	for _, test := range []struct {
+		action string
+		pass   bool
+	}{
+		{"/PASS", true}, {" /PASS", true},
+		{"/REJECT", false}, {" /REJECT", false},
+	} {
+		command := "SET/FILTER DXBM" + test.action + " 6"
+		want := before
+		want.Filters.CC.DXBM = filter.CCDXBM{
+			Active: true, BaseAllow: !test.pass,
+			Slots: map[string]bool{"6-CW": test.pass, "6-SSB": test.pass, "6-FM": test.pass},
+		}
+		got, reply := get(command)
+		if !got.Equal(want) || !strings.Contains(reply, "Saved and active.") {
+			t.Fatalf("native CC failed to save the expected six-meter selection for %q:\n%s", command, reply)
+		}
+		cleared, reply := get("SET/FILTER DXBM/OFF")
+		if !cleared.Equal(before) || !strings.Contains(reply, "Saved and active.") {
+			t.Fatalf("native DXBM/OFF failed to clear just the band selection:\n%s", reply)
+		}
 	}
 }
 
