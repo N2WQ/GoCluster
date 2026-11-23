@@ -325,6 +325,7 @@ func TestBooleanRuleCommandsLegacyAndUnownedHeads(t *testing.T) {
 		"SET/NOBEACON", "SET/WWV", "SET/NOWWV", "SET/WCY", "SET/NOWCY",
 		"SET/SELF EXTRA", "SET/FILTER SELF/OFF EXTRA",
 		"UNSET/FILTER TOXIC", "PASS UNRELATED THING", "SET/UNRELATED",
+		"SET/NOINVENTED", "UNSET/FT8", "UNSET/SKIMMER",
 		"REMOVE PASS COMMENTARY phrase", "RESET SOMETHING", "DIALECT CC", "",
 		"SET DX FILTER MODE=CW",
 	}
@@ -344,7 +345,7 @@ func TestBooleanRuleCommandsLegacyAndUnownedHeads(t *testing.T) {
 						t.Fatalf("wrong ownership: %+v", outcome)
 					}
 					hint := "Use PASS RULE <expression> to set rule 0."
-					if strings.HasPrefix(line, "REJECT ") {
+					if strings.HasPrefix(line, "REJECT ") || line == "SET/NOFT8" || line == "SET/NOSKIMMER EXTRA" {
 						hint = "Use REJECT RULE <0..9> <expression>."
 					}
 					if refuse && (!strings.HasPrefix(outcome.response, hint) ||

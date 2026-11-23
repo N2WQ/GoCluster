@@ -2,6 +2,12 @@
 // reader can preserve literal bytes. Staged GO edits own the rule 0 guard.
 package telnet
 
+import (
+	"strings"
+
+	"dxcluster/filter"
+)
+
 // booleanRuleExpressionStart reads the edited input buffer without allocating.
 // After PASS RULE and a space, the next byte may already be expression syntax.
 // A numeric-looking token still owns the slot position and must be validated
@@ -37,19 +43,37 @@ func booleanRuleSlotLead(b byte) bool {
 }
 
 func booleanInputHint(line []byte, b byte, dialect DialectName, tooLong bool) string {
-	word, _ := nextCommentInputWord(line, 0)
-	reject := asciiWordEqual(word, "REJECT")
-	if reject && dialect != DialectCC {
-		return booleanRejectRuleUsage
+	prefix := string(line)
+	if tooLong && b != ' ' {
+		// The last word may continue past the limit. An exact prefix is
+		// insufficient to identify a command in that case.
+		prefix = prefix[:strings.LastIndexByte(prefix, ' ')+1]
 	}
-	if tooLong {
+	verb, tail := takeCommentWord(prefix)
+	if verb != "PASS" && verb != "REJECT" {
+		if dialect != DialectCC {
+			if domain, reject := booleanCCFilterExclusion(verb, tail); reject && !booleanSeparateDomain(domain) {
+				return booleanRejectRuleUsage
+			}
+		}
 		return ""
 	}
-	switch b {
-	case '=', '<', '>', '(', ')', '[', ']', '"':
-		if reject || asciiWordEqual(word, "PASS") {
-			return booleanRuleSetUsage
-		}
+	domain, _ := takeCommentWord(tail)
+	if booleanSeparateDomain(domain) || domain == "NOFILTER" {
+		return ""
+	}
+	// At the start of the arguments, a rejected '(' is itself evidence
+	// of an attempted shorthand expression. A lone verb is ambiguous.
+	opensExpression := domain == "" && tail != "" && !tooLong && b == '('
+	if domain != "RULE" && domain != "NOT" && !booleanLegacyDomain(domain) &&
+		!strings.HasPrefix(domain, "(") && !opensExpression && filter.RuleFieldOperators(domain) == nil {
+		return ""
+	}
+	if verb == "REJECT" && dialect != DialectCC {
+		return booleanRejectRuleUsage
+	}
+	if !tooLong && strings.ContainsRune("=<>()[]\"", rune(b)) {
+		return booleanRuleSetUsage
 	}
 	return ""
 }

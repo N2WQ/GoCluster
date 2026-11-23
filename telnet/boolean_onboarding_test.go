@@ -471,22 +471,68 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 				{"SET/FILTER DOC/REJECT K", "Use REJECT RULE <0..9> <expression>."},
 				{"set/filter dxstate /reject ca", "Use REJECT RULE <0..9> <expression>."},
 				{"SET/FILTER DOC/PASS REJECT", "Use PASS RULE <expression> to set rule 0."},
-				{"REJECT\tRULE 9 BAND=20M", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/NOSKIMMER", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/NOFT8", "Use REJECT RULE <0..9> <expression>."},
+				{"set/nocw extra", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/SKIMMER", "Use PASS RULE <expression> to set rule 0."},
+				{"SET/NOFILTER", "Use PASS RULE <expression> to set rule 0."},
+				{"REJECT RULE\t9 BAND=20M", "Use REJECT RULE <0..9> <expression>."},
+				{"REJECT (MODE=CW)", "Use REJECT RULE <0..9> <expression>."},
+				{"REJECT SNR>10", "Use REJECT RULE <0..9> <expression>."},
+				{"PASS FREQ>14000", "Usage: PASS RULE <expression>"},
 				{"REJECT RULE 9 COMMENT=\"caf\u00e9\"", "Use REJECT RULE <0..9> <expression>."},
 				{"REJECT RULE 9 COMMENT=\"" + strings.Repeat("A", defaultCommandLineLimit) + "\"", "Use REJECT RULE <0..9> <expression>."},
 			} {
 				got, reply := get(test.command)
-				if !got.Equal(blocked) || !strings.Contains(reply, "\r\nrevision: "+revision+"\r\n") ||
-					!strings.Contains(reply, "No changes applied.") || !strings.Contains(reply, test.hint) {
-					t.Fatalf("malformed %q changed rules or gave incomplete feedback:\n%s", test.command, reply)
+				if !got.Equal(blocked) || !strings.Contains(reply, "\r\nrevision: "+revision+"\r\n") {
+					t.Fatalf("refusal for %q changed rules or revision:\n%s", test.command, reply)
+				}
+				message, _, _ := strings.Cut(reply, "---\r\n")
+				if !strings.Contains(message, "No changes applied.") || !strings.Contains(message, test.hint) {
+					t.Errorf("refusal for %q gave incomplete feedback:\n%s", test.command, message)
 				}
 				if strings.HasPrefix(test.hint, "Use REJECT") &&
-					(!strings.Contains(reply, "Pick an empty rule number to keep your current rules.") ||
-						strings.Contains(reply, "PASS RULE <expression>")) {
-					t.Fatalf("malformed %q steered users toward PASS:\n%s", test.command, reply)
+					(!strings.Contains(message, "Pick an empty rule number to keep your current rules.") ||
+						strings.Contains(message, "PASS RULE <expression>")) {
+					t.Errorf("refusal for %q lost its REJECT guidance:\n%s", test.command, message)
 				}
-				if strings.HasPrefix(strings.ToUpper(test.command), "SET/FILTER ") && !strings.HasPrefix(reply, test.hint+"\r\n") {
-					t.Fatalf("CC-style command %q did not lead with its recovery instruction:\n%s", test.command, reply)
+				if strings.HasPrefix(strings.ToUpper(test.command), "SET/") && !strings.HasPrefix(message, test.hint+"\r\n") {
+					t.Errorf("CC-style command %q did not lead with its recovery instruction:\n%s", test.command, message)
+				}
+			}
+			for _, test := range []struct {
+				command string
+				reject  bool
+			}{
+				{"SET/FILTER DOC/REJECT K\t", true},
+				{"set/filter doc /reject k\t", true},
+				{"SET/NOSKIMMER\t", true},
+				{"SET/NOFT8\t", true},
+				{"REJECT BAND 20M\t", true},
+				{"REJECT SELF ALL\t", false},
+				{"REJECT PC93 ALL\t", false},
+				{"PASS SELF=", false},
+				{"REJECT\tRULE 9 BAND=20M", false},
+				{"REJECT\tSELF ALL", false},
+				{"REJECT INVENTED\t", false},
+				{"SET/NOSELF\t", false},
+				{"SET/NOFILTER\t", false},
+				{"SET/NOINVENTED\t", false},
+				{"SET/FILTER SELF /REJECT ALL\t", false},
+				{"SET/FILTER DOC/OFF\t", false},
+				{"SET/FILTER DOC/PASS REJECT\t", false},
+			} {
+				got, reply := get(test.command)
+				message, _, _ := strings.Cut(reply, "---\r\n")
+				if !got.Equal(blocked) || !strings.Contains(reply, "\r\nrevision: "+revision+"\r\n") {
+					t.Fatalf("reader refusal for %q changed filters or revision:\n%s", test.command, reply)
+				}
+				if !strings.HasPrefix(message, "Invalid command.\r\n") || strings.Contains(message, "PASS RULE") ||
+					strings.Contains(message, "REJECT RULE") != test.reject || test.reject &&
+					(!strings.Contains(message, "Use REJECT RULE <0..9> <expression>.") ||
+						!strings.Contains(message, "Pick an empty rule number to keep your current rules.") ||
+						!strings.Contains(message, "No changes applied.")) {
+					t.Errorf("reader refusal for %q gave the wrong recovery:\n%s", test.command, message)
 				}
 			}
 			after, err := os.ReadFile(path)

@@ -129,6 +129,34 @@ func TestBooleanInputGuidanceSurvivesFormatting(t *testing.T) {
 	}
 }
 
+func TestBooleanInputOverlongPrefixNeedsACompleteCommandWord(t *testing.T) {
+	for _, test := range []struct {
+		prefix, tail string
+		wantReject   bool
+	}{
+		{"SET/NOFT8", "X", false},
+		{"SET/NOFT8", " EXTRA", true},
+		{"SET/FILTER DOC/REJECT", "ED", false},
+		{"SET/FILTER DOC/REJECT ", "K", true},
+		{"REJECT RULE", "S", false},
+		{"REJECT RULE 9 ", "BAND=20M", true},
+	} {
+		t.Run(test.prefix+test.tail, func(t *testing.T) {
+			client, _ := newHumanRecoveryClient(t, []byte(test.prefix+test.tail+"\nSHOW OWN\n"), false)
+			var validation *InputValidationError
+			if _, err := client.readBooleanCommandLine(len(test.prefix)); !errors.As(err, &validation) || validation.kind != inputErrorTooLong {
+				t.Fatalf("expected an overlong input error, got %v", err)
+			}
+			if strings.Contains(validation.guidance, "Use REJECT RULE") != test.wantReject {
+				t.Fatalf("wrong recovery for accepted prefix %q: %q", test.prefix, validation.guidance)
+			}
+			if line, err := client.readBooleanCommandLine(len(test.prefix)); err != nil || line != "SHOW OWN" {
+				t.Fatalf("following command changed: %q, %v", line, err)
+			}
+		})
+	}
+}
+
 func TestBooleanInputActivationPreservesMachineHeaderBoundaries(t *testing.T) {
 	active, _ := newHumanRecoveryClient(t, []byte("PASS RULE 0 MODE=CW\n"), false)
 	if line, err := active.readCommandLine(128); err != nil || line != "PASS RULE 0 MODE=CW" {

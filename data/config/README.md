@@ -489,6 +489,9 @@ Input behavior:
   and field-specific operands, but preserves COMMENT literal case, punctuation
   and spaces. Expression quotes use doubled `""` for a literal quote;
   backslashes are literal, not escapes.
+- GO input errors suggest numbered REJECT syntax when the command prefix
+  identifies a REJECT rule or a legacy exclusion. Delivery switches and
+  ambiguous prefixes get the ordinary input error.
 - Telnet IAC negotiation bytes (including subnegotiation) are stripped from input before validation.
 - Recognized machine command headers preserve request identifier case. Structured
   YAML bodies preserve case and punctuation. Schema 6 allows 65,536 body bytes,

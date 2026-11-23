@@ -108,15 +108,30 @@ func booleanRuleUsage(action filter.RuleAction) string {
 }
 
 func booleanLegacyRuleDiscovery(line string, dialect DialectName) string {
-	verb, tail := takeCommentWord(line)
-	reject := verb == "REJECT"
-	if dialect != DialectCC && verb == "SET/FILTER" {
-		if words := strings.Fields(tail); len(words) > 0 {
-			_, action, _ := nativeCCFilterAction(words)
-			reject = action == "REJECT"
-		}
+	if dialect == DialectCC {
+		return booleanRuleDiscovery
 	}
-	return booleanRuleDiscoveryFor(reject, dialect)
+	verb, tail := takeCommentWord(line)
+	_, reject := booleanCCFilterExclusion(verb, tail)
+	return booleanRuleDiscoveryFor(verb == "REJECT" || reject, dialect)
+}
+
+// Only the recovery text uses this classification. A header-only shortcut
+// check carries exclusion intent even when dispatch refuses additional words.
+func booleanCCFilterExclusion(verb, tail string) (domain string, reject bool) {
+	if verb == "SET/FILTER" {
+		if words := strings.Fields(tail); len(words) > 0 {
+			domain, action, _ := nativeCCFilterAction(words)
+			return domain, action == "REJECT"
+		}
+		return "", false
+	}
+	if !strings.HasPrefix(verb, "SET/") {
+		return "", false
+	}
+	command, matched, refusal := parseNativeCCShortcut(verb, 1)
+	return command.category, matched && refusal == "" && !command.enabled &&
+		(command.edit == nativeCCMode || command.edit == nativeCCSource)
 }
 
 func booleanRuleDiscoveryFor(reject bool, dialect DialectName) string {
