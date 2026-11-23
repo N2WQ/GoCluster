@@ -8,6 +8,8 @@ Fable keep separate approval, planning, review, and reporting contracts.
 Changing a workflow's reporting requirements does not change the other
 executor's contract.
 
+For production browser console changes, the [site update runbook](../cloudflare/gocluster-pilot/PRODUCTION.md) explains asset preparation, Worker tests, manual publication, release evidence and rollback.
+
 ## Principles
 
 - Task classification controls approval; touched surface and engineering risk

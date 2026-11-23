@@ -17,6 +17,7 @@ hide repeated reports, and view optional hints about radio conditions.
 
 ## On This Page
 
+- [Use the production browser console](cloudflare/gocluster-pilot/README.md) or [update, verify and recover the site](cloudflare/gocluster-pilot/PRODUCTION.md).
 - [Connect and get started](#start-as-a-telnet-user)
 - [Read a spot line](#read-a-spot-line)
 - [Everyday commands](#common-telnet-commands)

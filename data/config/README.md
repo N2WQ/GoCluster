@@ -68,7 +68,7 @@ Configuration is split by concern so you only edit the relevant file:
   header reading through disconnection. The shipped `heartbeat_seconds: 30`
   sets the WebSocket ping interval. Changes take effect on restart.
 - To enable the origin, set `GOCLUSTER_WEB_EDGE_SECRET` in the cluster service
-  environment and store the same random value in the pilot Worker's secret
+  environment and store the same random value in the production Worker's secret
   binding. Use 32 to 256 printable non-space ASCII characters. The Worker
   must send the exact public HTTPS Origin and Host, its secret in
   `X-GoCluster-Edge-Secret`, and matching `CF-Connecting-IP` and

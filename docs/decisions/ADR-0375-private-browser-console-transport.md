@@ -31,7 +31,7 @@ The pilot needs a healthy tunnel on the cluster host, matching secret values and
 
 ## Links
 
-- [Pilot deployment, acceptance and rollback](../../cloudflare/gocluster-pilot/README.md)
+- [Production console setup](../../cloudflare/gocluster-pilot/README.md) and [updates, acceptance and rollback](../../cloudflare/gocluster-pilot/PRODUCTION.md)
 - [Runtime configuration](../../data/config/README.md)
 - [Listener admission tests](../../telnet/web_listener_test.go) and [session framing tests](../../telnet/web_session_test.go)
 - Extends [ADR-0374, session-only JSON output](ADR-0374-session-json-output.md).
