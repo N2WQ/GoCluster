@@ -10,7 +10,7 @@ On a desktop, drag the right edge of a column heading to resize it. Drag the lab
 
 The call confidence badge shows `?` and `B` in red, `S` in yellow, `P` in light green, `V` in dark green, and `C` in blue. An unrated spot shows a neutral dot.
 
-In Spots, **Group repeats** combines automated reports of the same DX callsign, band, and mode when the whole group spans at most 100 Hz and 60 seconds. A count such as **×8** shows how many reports are in the group. The summary shows the best SNR, call confidence, and path rating, with the reporting callsign in each value's tooltip. The tuning frequency comes from the strongest SNR report when one is available. Expand the group to see the original reports and any **C** or **B** correction badges. Turn grouping off for individual spots in newest-first order. This browser remembers your choice.
+In Spots, **Group repeats** combines automated reports of the same DX callsign, band, and mode when the whole group spans at most 100 Hz and 60 seconds. Click the count, such as **×8**, to expand or collapse the original reports. Click the DX callsign to open spot details. The summary shows the best SNR, call confidence, and path icon, with the reporting callsign in each value's tooltip. The tuning frequency comes from the strongest SNR report when one is available. Turn grouping off for individual spots in newest-first order. This browser remembers your choice.
 
 ## Connect the production node
 

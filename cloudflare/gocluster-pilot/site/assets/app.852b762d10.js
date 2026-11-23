@@ -3544,19 +3544,23 @@ function snrMeter(s) {
   const ft = ["FT8", "FT4", "FT2", "JS8"].includes(s.mode);
   return Math.max(0.06, Math.min(1, ft ? (s.snr + 24) / 36 : s.snr / 40));
 }
-function repeatCount(group) {
-  return html`<span class="repeat-count mono" title=${plural(group.length, "report")}>×${group.length}</span>`;
+function repeatCount(call, { group, expanded, toggle }) {
+  const label = `${expanded ? "Collapse" : "Expand"} ${call}, ${plural(group.length, "report")}`;
+  return html`<button type="button" class="repeat-count mono" title=${label} aria-label=${label}
+    aria-expanded=${expanded ? "true" : "false"} aria-controls=${"repeat-" + group[0].s.id} onClick=${toggle}>×${group.length}</button>`;
 }
 const COLUMNS = {
   time: { label: "UTC", tpl: "58px", minW: 0, cell: s => html`<span class="c-time mono" title=${s.t != null ? new Date(s.t).toUTCString() : "No time"}>${fmtTime(s.t)}<i class="age">${fmtAge(s.t)}</i></span>` },
-  dx: { label: "DX", tpl: "minmax(104px,148px)", fixed: true, cell: (s, r, x) => html`<span class="c-dx"><b class="mono">${s.dxCall}</b>${x.group && !x.showSpotter ? repeatCount(x.group) : null}${x.watch ? html`<span class="wtag" title="On your watch list">watch</span>` : null}${x.own ? html`<span class="wtag own">you</span>` : null}${!r.pass ? html`<span class="why" title=${reasonWords(r.by, workingCards())}><${Icon} name="eyeOff" size=${12} />${r.by && r.by.startsWith("REJECT") ? "Hide #" + r.by.slice(7) : r.by === "no PASS matched" ? "no Show" : r.by}</span>` : null}${x.member && !x.showSpotter ? html`<span class="repeat-member-call mono" title=${"Heard by " + s.deCall}>${s.deCall}</span>` : null}</span>` },
+  dx: { label: "DX", tpl: "minmax(104px,148px)", fixed: true, cell: (s, r, x) => html`<span class="c-dx">
+    ${x.group ? html`<button type="button" class="repeat-dx mono" title=${"Spot details for " + s.dxCall} onClick=${x.openDetails}>${s.dxCall}</button>` : html`<b class="mono">${s.dxCall}</b>`}
+    ${x.group && !x.showSpotter ? repeatCount(s.dxCall, x) : null}${x.watch ? html`<span class="wtag" title="On your watch list">watch</span>` : null}${x.own ? html`<span class="wtag own">you</span>` : null}${!r.pass ? html`<span class="why" title=${reasonWords(r.by, workingCards())}><${Icon} name="eyeOff" size=${12} />${r.by && r.by.startsWith("REJECT") ? "Hide #" + r.by.slice(7) : r.by === "no PASS matched" ? "no Show" : r.by}</span>` : null}${x.member && !x.showSpotter ? html`<span class="repeat-member-call mono" title=${"Heard by " + s.deCall}>${s.deCall}</span>` : null}</span>` },
   freq: { label: "kHz", tpl: "94px", align: "r", cell: s => html`<span class="c-freq mono">${fmtFreq(s.freq)}</span>` },
   mode: { label: "Mode", align: "c", tpl: "62px", cell: s => html`<span class="c-mode"><${ModeBadge} mode=${s.mode} /></span>` },
   rep: { label: "SNR", align: "c", tpl: "72px", minW: 720, cell: (s, r, x) => html`<span class="c-rep" title=${x.best?.snr ? `Best SNR: ${fmtReport(x.best.snr)} dB · ${x.best.snr.deCall}` : undefined}>${s.snr != null ? html`<span class="mono">${fmtReport(s)}</span><span class="meter-s"><i style=${`width:${Math.round(snrMeter(s) * 100)}%`}></i></span>` : null}</span>` },
   where: { label: "Where", tpl: "minmax(150px,1.3fr)", minW: 600, cell: s => html`<span class="c-where"><span class="cont" style=${`--ch:${CONT_HUE[s.dxCont] || "#94a3b8"}`}>${s.dxCont || "?"}</span><span class="ent">${s.dxEntity || ""}</span><span class="grid mono">${s.dxGrid || ""}</span>${s.events.map(e => html`<span class="ev">${e}</span>`)}</span>` },
   cmt: { label: "Comment", tpl: "minmax(100px,1fr)", minW: 1040, cell: (s, r, x) => html`<span class="c-cmt" title=${x.group ? undefined : x.cmt}>${x.group ? "" : x.cmt}</span>` },
-  de: { label: "Heard by", tpl: "minmax(112px,156px)", minW: 860, cell: (s, r, x) => html`<span class="c-de"><span class="mono" title=${x.group ? s.deCall : undefined}>${s.deCall}</span>${x.group ? repeatCount(x.group) : null}<span class="src">${s.feed === "PSKReporter" ? "PSKR" : s.feed}</span>${!x.group && s.node && s.node !== s.deCall && !(s.feed === "RBN" && s.node === "RBN") ? html`<span class="src" title="Originating node">via ${s.node}</span>` : null}</span>` },
-  path: { label: "Path", tpl: "44px", align: "c", title: "Path to your grid", cell: (s, r, x) => html`<span class="c-path"><${PathGlyph} cls=${x.group ? x.best.path?.path : s.path} reportedBy=${x.best?.path?.deCall} />${x.best?.path ? html`<span class="repeat-path-label" aria-hidden="true">${DATA.PATH[x.best.path.path][1]}</span>` : null}</span>` },
+  de: { label: "Heard by", tpl: "minmax(112px,156px)", minW: 860, cell: (s, r, x) => html`<span class="c-de"><span class="mono" title=${x.group ? s.deCall : undefined}>${s.deCall}</span>${x.group ? repeatCount(s.dxCall, x) : null}<span class="src">${s.feed === "PSKReporter" ? "PSKR" : s.feed}</span>${!x.group && s.node && s.node !== s.deCall && !(s.feed === "RBN" && s.node === "RBN") ? html`<span class="src" title="Originating node">via ${s.node}</span>` : null}</span>` },
+  path: { label: "Path", tpl: "44px", align: "c", title: "Path to your grid", cell: (s, r, x) => html`<span class="c-path"><${PathGlyph} cls=${x.group ? x.best.path?.path : s.path} reportedBy=${x.best?.path?.deCall} /></span>` },
   conf: { label: "Call", tpl: "36px", align: "c", title: "Callsign confidence", cell: (s, r, x) => html`<span class="c-conf"><${ConfBadge} conf=${x.group ? x.best.conf?.conf : s.conf} reportedBy=${x.best?.conf?.deCall} /></span>` },
 };
 const DEFAULT_ORDER = ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "path", "conf"];
@@ -3575,17 +3579,15 @@ function moveCol(from, to, after) {
 
 function SpotRow({ r, sel, fresh, cols, group, best, member, expanded, toggle }) {
   const s = r.s;
+  const openDetails = () => set({ selSpot: best?.snr || s, drawer: "spot" });
   const x = {
     own: SIM.baseCallOf(s.dxCall) === S.snap.baseCall, watch: watchHit(s.dxCall),
     cmt: (s.cwSpeeds && s.cwSpeeds.length ? fmtCw(s) + " " : "") + (s.comment || ""),
-    group, best, member, showSpotter: cols.includes("de"),
+    group, best, member, expanded, toggle, openDetails, showSpotter: cols.includes("de"),
   };
-  const open = () => set({ selSpot: s, drawer: "spot" });
   return html`<div role="row" tabindex=${group ? undefined : "0"} class=${cls("row", group && "repeat-summary", member && "repeat-member", !r.pass && "hidden", sel && "sel", fresh && "fresh", x.own && "own", x.watch && "watch", s.beacon && "beacon")} style=${`--bc:${BAND_COLOR[s.band] || "var(--line)"}`}
-      onClick=${group ? undefined : open} onKeyDown=${group ? undefined : e => { if (e.key === "Enter") open(); }}>
+      onClick=${group ? undefined : openDetails} onKeyDown=${group ? undefined : e => { if (e.key === "Enter") openDetails(); }}>
     ${cols.map(k => COLUMNS[k].cell((k === "freq" || k === "rep" || k === "de") && best?.snr ? best.snr : s, r, x))}
-    ${group ? html`<button type="button" class="repeat-expand" aria-expanded=${expanded ? "true" : "false"} aria-controls=${"repeat-" + group[0].s.id}
-      aria-label=${`${expanded ? "Collapse" : "Expand"} ${s.dxCall}, ${plural(group.length, "report")}`} onClick=${toggle}><${Icon} name="chevronDown" size=${15} /></button>` : null}
   </div>`;
 }
 
@@ -3707,8 +3709,7 @@ function ColumnHead({ k, drag, setDrag }) {
     g.widths[k] = Math.max(32, Math.min(1600, Math.round(g.start + e.clientX - g.x)));
     const sizes = Object.values(g.widths);
     g.grid.style.setProperty("--cols", sizes.map(n => n + "px").join(" "));
-    const minimum = 35 + 12 * (sizes.length - 1) + sizes.reduce((a, b) => a + b, 0);
-    g.grid.style.minWidth = `calc(${minimum}px + var(--repeat-gutter, 0px))`;
+    g.grid.style.minWidth = (35 + 12 * (sizes.length - 1) + sizes.reduce((a, b) => a + b, 0)) + "px";
   }
   function finish(e, save) {
     const g = gesture.current;
@@ -3758,7 +3759,7 @@ function StreamView() {
   const preview = isDirty() || S.showHidden;
   const hiddenN = S.showHidden ? rows.filter(r => !r.pass).length : 0;
   const auto = mobile ? [] : colOrder().filter(k => colVisible(k) && COLUMNS[k].minW && w < COLUMNS[k].minW);
-  return html`<section ref=${secRef} class=${cls("stream", S.prefs.density, grouped && "repeats-on", drag && "is-dragging")} style=${layout} aria-label="Spots">
+  return html`<section ref=${secRef} class=${cls("stream", S.prefs.density, drag && "is-dragging")} style=${layout} aria-label="Spots">
     ${newer > 0 ? html`<button type="button" class="newer" onClick=${() => { ref.current.scrollTo({ top: 0, behavior: "smooth" }); }}><${Icon} name="chevronDown" size=${14} /> ${plural(newer, "newer spot")}</button>` : null}
     <div class="spot-scroll" ref=${ref} onScroll=${onScroll}><div class="spot-grid">
     <div class="thead" role="row">${cols.map(k => html`<${ColumnHead} key=${k} k=${k} drag=${drag} setDrag=${setDrag} />`)}</div>
