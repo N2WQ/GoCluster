@@ -350,9 +350,49 @@ func TestBooleanOnboardingFirstEditAndReconnectTCP(t *testing.T) {
 func TestBooleanOnboardingLoginDisplayBudget(t *testing.T) {
 	s, c := readbackTestClient()
 	c.grid = strings.Repeat("X", maxYAMLBytes)
-	response, err := s.renderBooleanLoginBlock(c, false, false)
+	response, err := s.renderBooleanLoginBlock(c, false, false, true)
 	if response != "" || !errors.Is(err, errReadbackTooLarge) {
 		t.Fatal("oversized login display returned partial success")
+	}
+}
+
+func TestBooleanOnboardingRecipeAcrossGreetingBlocks(t *testing.T) {
+	const summary = "SUMMARY\n<LOGIN_SUMMARY>\nEND SUMMARY\n"
+	const details = "DETAILS\n<SETTINGS_FILTERS>\nEND DETAILS\n"
+	const command = "  PASS RULE BAND=20M AND SOURCE=HUMAN"
+	const replacement = "This replaces all of rule 0. Include every condition you want to keep."
+	for _, transport := range []string{"native", "ziutek"} {
+		for _, test := range []struct{ name, template string }{
+			{"summary", summary}, {"details", details},
+			{"summary-first", summary + details}, {"details-first", details + summary},
+		} {
+			t.Run(transport+"/"+test.name, func(t *testing.T) {
+				s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
+					opts.Transport, opts.EchoMode = transport, "off"
+					opts.LoginGreeting = test.template + "READY\n"
+				})
+				const call = "LZ3NY-12"
+				conn, _, done, first := connectUpgradeSession(t, s, call)
+				assertHumanWire(t, first)
+				if strings.Count(first, command) != 1 || !strings.Contains(first, command+"\r\n"+replacement) {
+					t.Fatalf("first login omitted or duplicated the complete recipe:\n%s", first)
+				}
+				hasSummary := strings.Contains(test.template, "<LOGIN_SUMMARY>")
+				hasDetails := strings.Contains(test.template, "<SETTINGS_FILTERS>")
+				if strings.Contains(first, "Starting filters are active (GO).") != hasSummary ||
+					strings.Contains(first, "Default settings and filters:") != hasDetails {
+					t.Fatalf("template lost a requested block:\n%s", first)
+				}
+				if hasSummary && strings.Index(first, command) > strings.Index(first, "END SUMMARY") {
+					t.Fatalf("the recipe did not appear in the short summary:\n%s", first)
+				}
+				closeHandshakeTranscriptSession(t, conn, done)
+				_, _, _, returning := connectUpgradeSession(t, s, call)
+				if strings.Contains(returning, command) || strings.Contains(returning, replacement) {
+					t.Fatalf("returning login received the first-use recipe:\n%s", returning)
+				}
+			})
+		}
 	}
 }
 
@@ -405,10 +445,29 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 				!strings.Contains(refusal, "No changes applied.") {
 				t.Fatalf("shortcut replaced a veto or gave incomplete feedback:\n%s", refusal)
 			}
-			for _, command := range []string{"PASS RULE 01 BAND=20M", "PASS RULE 10 BAND=20M", "REJECT RULE (BAND=20M)"} {
-				got, response := get(command)
-				if !got.Equal(blocked) || !strings.Contains(response, "No changes applied.") {
-					t.Fatalf("malformed %q changed rules or went unreported:\n%s", command, response)
+			_, yamlTail, _ := strings.Cut(response, "\r\nrevision: ")
+			revision, _, _ := strings.Cut(yamlTail, "\r\n")
+			if revision == "" {
+				t.Fatal("missing revision after setting rule 0")
+			}
+			for _, test := range []struct{ command, hint string }{
+				{"PASS RULE 01 BAND=20M", "Usage: PASS RULE <expression>"},
+				{"PASS RULE 10 BAND=20M", "Usage: PASS RULE <expression>"},
+				{"REJECT BAND 20M", "Use REJECT RULE <0..9> <expression>."},
+				{"REJECT INVENTED", "Use REJECT RULE <0..9> <expression>."},
+				{"reject band=20m", "Use REJECT RULE <0..9> <expression>."},
+				{"REJECT RULE (BAND=20M)", "Use REJECT RULE <0..9> <expression>."},
+				{"REJECT RULE 9 MODE=NOT_A_MODE", "Use REJECT RULE <0..9> <expression>."},
+			} {
+				got, reply := get(test.command)
+				if !got.Equal(blocked) || !strings.Contains(reply, "\r\nrevision: "+revision+"\r\n") ||
+					!strings.Contains(reply, "No changes applied.") || !strings.Contains(reply, test.hint) {
+					t.Fatalf("malformed %q changed rules or gave incomplete feedback:\n%s", test.command, reply)
+				}
+				if strings.HasPrefix(test.hint, "Use REJECT") &&
+					(!strings.Contains(reply, "Pick an empty rule number to keep your current rules.") ||
+						strings.Contains(reply, "PASS RULE <expression>")) {
+					t.Fatalf("malformed %q steered users toward PASS:\n%s", test.command, reply)
 				}
 			}
 			after, err := os.ReadFile(path)
@@ -433,7 +492,8 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 				}
 			}
 			_, help := get("HELP FILTERS")
-			if !strings.Contains(help, "Coming from AR-Cluster?") || strings.Contains(help, "Type RESUME to restart now") ||
+			if !strings.Contains(help, "Coming from AR-Cluster?") || !strings.Contains(help, "This replaces all of rule 0.") ||
+				strings.Contains(help, "Type RESUME to restart now") ||
 				client.readPausePending.Load() || client.readPauseUntilUnixNano.Load() != 0 {
 				t.Fatalf("short HELP omitted the shortcut or paused live spots:\n%s", help)
 			}

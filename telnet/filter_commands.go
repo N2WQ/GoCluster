@@ -246,11 +246,11 @@ func (e *filterCommandEngine) execute(client *Client, cmd parsedFilterCommand) (
 	}
 
 	if !booleanSeparateDomain(cmd.domain) {
-		return booleanRuleRefusal(booleanRuleDiscovery).response, false
+		return booleanRuleRefusal(booleanRuleDiscoveryFor(cmd.action == actionBlock, client.dialect)).response, false
 	}
 	handler := e.domains[strutil.NormalizeUpper(cmd.domain)]
 	if handler == nil {
-		return booleanRuleRefusal(booleanRuleDiscovery).response, false
+		return booleanRuleRefusal(booleanRuleDiscoveryFor(cmd.action == actionBlock, client.dialect)).response, false
 	}
 
 	resp, mutated := handler.apply(client, cmd.action, cmd.args)

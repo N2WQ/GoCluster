@@ -73,6 +73,7 @@ func writeBooleanSettingsAndRules(h *humanResponse, c *Client, cfg filter.Config
 }
 
 const firstGOFilterExample = "  PASS RULE BAND=20M AND SOURCE=HUMAN"
+const firstGOFilterReplacement = "This replaces all of rule 0. Include every condition you want to keep."
 
 func writeBooleanEditGuidance(h *humanResponse) error {
 	for _, text := range []string{
@@ -90,7 +91,7 @@ func writeBooleanEditGuidance(h *humanResponse) error {
 	return nil
 }
 
-func loginSummary(data templateData, restored restoredLogin) string {
+func loginSummary(data templateData, restored restoredLogin, showRecipe bool) string {
 	var b strings.Builder
 	unit := "users"
 	if data.userCount == 1 {
@@ -108,9 +109,9 @@ func loginSummary(data templateData, restored restoredLogin) string {
 		switch {
 		case restored.created:
 			fmt.Fprintf(&b, "Starting filters are active (%s).\n", data.dialect)
-			if strings.EqualFold(data.dialect, string(DialectGo)) {
+			if showRecipe {
 				b.WriteString("For human reports on 20m, try the PASS RULE shortcut.\n" + firstGOFilterExample + "\n" +
-					"This sets rule 0. Coming from AR-Cluster? See HELP FILTERS.\n")
+					firstGOFilterReplacement + "\nComing from AR-Cluster? See HELP FILTERS.\n")
 			}
 		case !restored.profileReset:
 			fmt.Fprintf(&b, "Saved settings loaded (%s).\n", data.dialect)
@@ -132,7 +133,7 @@ func loginFilterCommand(dialect string) string {
 
 // Rendering owns the same configuration lease as command readback. It does not
 // start a reading pause or publish defaults while describing restored state.
-func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, error) {
+func (s *Server) renderBooleanLoginBlock(c *Client, first, reset, showRecipe bool) (string, error) {
 	if c != nil && c.filterBanks != nil && c.dialect == DialectCC {
 		return s.renderV7CCLoginBlock(c, first)
 	}
@@ -169,13 +170,16 @@ func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, 
 				if err := writeBooleanEditGuidance(h); err != nil {
 					return err
 				}
-				for _, text := range []string{
-					"For human reports on 20m, try the PASS RULE shortcut.",
-					firstGOFilterExample,
-					"Coming from AR-Cluster? See HELP FILTERS.",
-				} {
-					if err := h.line(text); err != nil {
-						return err
+				if showRecipe {
+					for _, text := range []string{
+						"For human reports on 20m, try the PASS RULE shortcut.",
+						firstGOFilterExample,
+						firstGOFilterReplacement,
+						"Coming from AR-Cluster? See HELP FILTERS.",
+					} {
+						if err := h.line(text); err != nil {
+							return err
+						}
 					}
 				}
 			}

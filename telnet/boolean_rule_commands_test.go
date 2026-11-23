@@ -257,6 +257,9 @@ func TestBooleanRuleCommandsRefusalsAreAtomic(t *testing.T) {
 					usage := "RESET FILTER RULE <0..9|ALL>"
 					if !strings.HasPrefix(line, "RESET") {
 						usage = "PASS RULE <0..9> <expression>"
+						if strings.HasPrefix(line, "REJECT") {
+							usage = "Use REJECT RULE <0..9> <expression>."
+						}
 					}
 					if !strings.Contains(outcome.response, usage) {
 						t.Fatalf("missing exact usage: %q", outcome.response)
@@ -340,7 +343,11 @@ func TestBooleanRuleCommandsLegacyAndUnownedHeads(t *testing.T) {
 					if outcome.handled != refuse || outcome.publish {
 						t.Fatalf("wrong ownership: %+v", outcome)
 					}
-					if refuse && (!strings.Contains(outcome.response, "PASS RULE") ||
+					hint := "Use PASS RULE <expression> to set rule 0."
+					if strings.HasPrefix(line, "REJECT ") {
+						hint = "Use REJECT RULE <0..9> <expression>."
+					}
+					if refuse && (!strings.HasPrefix(outcome.response, hint) ||
 						!strings.HasSuffix(outcome.response, "No changes applied.\r\n")) {
 						t.Fatalf("missing numbered-rule guidance: %q", outcome.response)
 					}

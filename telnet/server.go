@@ -3992,11 +3992,13 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	dialectSource := s.dialectSourceLabel(client.dialect, created, restored.loadError, s.filterEngine.defaultDialect)
 	dialectDefault := strings.ToUpper(string(s.filterEngine.defaultDialect))
 	greetingData := s.postLoginTemplateData(loginTime, client, prevLogin, prevIP, dialectSource, dialectDefault)
-	if strings.Contains(s.greetingTemplate, "<LOGIN_SUMMARY>") {
-		greetingData.loginSummary = loginSummary(greetingData, restored)
+	hasLoginSummary := strings.Contains(s.greetingTemplate, "<LOGIN_SUMMARY>")
+	showRecipeInSummary := hasLoginSummary && created && restored.loadError == nil && client.dialect == DialectGo
+	if hasLoginSummary {
+		greetingData.loginSummary = loginSummary(greetingData, restored, showRecipeInSummary)
 	}
 	if strings.Contains(s.greetingTemplate, "<SETTINGS_FILTERS>") {
-		greetingData.settingsFilters, err = s.renderBooleanLoginBlock(client, created, restored.profileReset)
+		greetingData.settingsFilters, err = s.renderBooleanLoginBlock(client, created, restored.profileReset, !showRecipeInSummary)
 		if err != nil {
 			log.Printf("Login settings display failed for %s: %v", client.callsign, err)
 			greetingData.settingsFilters = "Settings display failed. Use SHOW FILTER.\n"

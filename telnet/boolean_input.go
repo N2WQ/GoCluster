@@ -36,14 +36,21 @@ func booleanRuleSlotLead(b byte) bool {
 	return b >= '0' && b <= '9' || b == '+' || b == '-'
 }
 
-func booleanInputNeedsHint(line []byte, b byte) bool {
+func booleanInputHint(line []byte, b byte, dialect DialectName) string {
 	switch b {
 	case '=', '<', '>', '(', ')', '[', ']', '"':
 		word, _ := nextCommentInputWord(line, 0)
-		return asciiWordEqual(word, "PASS") || asciiWordEqual(word, "REJECT")
-	default:
-		return false
+		if asciiWordEqual(word, "REJECT") {
+			if dialect != DialectCC {
+				return booleanRejectRuleUsage
+			}
+			return booleanRuleSetUsage
+		}
+		if asciiWordEqual(word, "PASS") {
+			return booleanRuleSetUsage
+		}
 	}
+	return ""
 }
 
 // Rule syntax shares framing, editing, recovery and machine-header ownership

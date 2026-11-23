@@ -725,8 +725,9 @@ Boolean personal-rule engine; the old category model has been removed.
 - Any matching active REJECT vetoes delivery. Otherwise active PASS rules are
   ORed. With no active PASS, personal selection is unrestricted except for
   REJECTs; with no rules there is no personal restriction. Slots are not
-  priorities. Adding a PASS broadens selection; narrow an existing PASS by
-  editing it rather than adding another.
+  priorities. A first PASS requires a match. With a PASS already in place, an
+  additional PASS can let more spots through. To narrow an existing PASS, edit
+  its expression.
 - New records and recognized old-profile resets receive the same validated
   configured MODE and SOURCE selections as an ordinary editable PASS in slot 0.
   Selections combine with AND; ALL, both sources or an empty source selection

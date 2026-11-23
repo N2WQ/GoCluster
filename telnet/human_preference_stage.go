@@ -159,7 +159,7 @@ func (e *filterCommandEngine) preflightHumanFilterOwned(c *Client, line string) 
 		return humanCommandOutcome{}, true
 	}
 	if e.booleanLegacyMutation(line, c.dialect) {
-		return booleanRuleRefusal(booleanRuleDiscovery), false
+		return booleanRuleRefusal(booleanLegacyRuleDiscovery(line, c.dialect)), false
 	}
 	tokens := strings.Fields(strings.TrimSpace(line))
 	upper := make([]string, len(tokens))

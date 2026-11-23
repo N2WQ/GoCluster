@@ -11,6 +11,7 @@ import (
 )
 
 const booleanRuleSetUsage = "Usage: PASS RULE <expression>\n       PASS RULE <0..9> <expression>\n       REJECT RULE <0..9> <expression>"
+const booleanRejectRuleUsage = "Use REJECT RULE <0..9> <expression>.\nPick an empty rule number to keep your current rules."
 const booleanRuleResetUsage = "Usage: RESET FILTER RULE <0..9|ALL>\n       RESET FILTER"
 const booleanRuleDiscovery = "Use PASS RULE <expression> to set rule 0.\n" + booleanRuleSetUsage + "\nType HELP RULE for fields and examples."
 
@@ -39,28 +40,29 @@ func parseBooleanRuleCommand(line string) (booleanRuleCommand, bool, string) {
 	word, rest := takeCommentWord(tail)
 	switch verb {
 	case "PASS", "REJECT":
+		command.action = filter.RulePass
+		if verb == "REJECT" {
+			command.action = filter.RuleReject
+		}
+		usage := booleanRuleUsage(command.action)
 		if word != "RULE" {
 			if word == "" {
-				return command, true, booleanRuleSetUsage
+				return command, true, usage
 			}
 			return command, false, ""
 		}
 		start, omittedSlot, ok := booleanRuleExpressionStart([]byte(line))
 		if !ok || start == len(line) {
-			return command, true, booleanRuleSetUsage
+			return command, true, usage
 		}
 		if !omittedSlot {
 			slot, _ := takeCommentWord(rest)
 			if !booleanRuleSlot(slot) {
-				return command, true, booleanRuleSetUsage
+				return command, true, usage
 			}
 			command.slot = int(slot[0] - '0')
 		}
 		command.omittedSlot, command.expression = omittedSlot, line[start:]
-		command.action = filter.RulePass
-		if verb == "REJECT" {
-			command.action = filter.RuleReject
-		}
 		return command, true, ""
 	case "RESET":
 		if word == "RULE" {
@@ -98,6 +100,25 @@ func booleanRuleSlot(word string) bool {
 	return len(word) == 1 && word[0] >= '0' && word[0] <= '9'
 }
 
+func booleanRuleUsage(action filter.RuleAction) string {
+	if action == filter.RuleReject {
+		return booleanRejectRuleUsage
+	}
+	return booleanRuleSetUsage
+}
+
+func booleanLegacyRuleDiscovery(line string, dialect DialectName) string {
+	verb, _ := takeCommentWord(line)
+	return booleanRuleDiscoveryFor(verb == "REJECT", dialect)
+}
+
+func booleanRuleDiscoveryFor(reject bool, dialect DialectName) string {
+	if reject && dialect != DialectCC {
+		return booleanRejectRuleUsage + "\nType HELP RULE for fields and examples."
+	}
+	return booleanRuleDiscovery
+}
+
 // This entry point must receive a detached candidate, never a live client. It
 // validates and renders before assignment, so every refusal leaves the candidate
 // and all previously published immutable programs untouched.
@@ -111,7 +132,7 @@ func (e *filterCommandEngine) stageBooleanFilterCommand(c *Client, line string) 
 	}
 	if !handled {
 		if e.booleanLegacyMutation(line, c.dialect) {
-			return booleanRuleRefusal(booleanRuleDiscovery)
+			return booleanRuleRefusal(booleanLegacyRuleDiscovery(line, c.dialect))
 		}
 		return humanCommandOutcome{}
 	}
@@ -136,7 +157,7 @@ func (e *filterCommandEngine) stageBooleanFilterCommand(c *Client, line string) 
 	}
 	next, err := command.prepare(previous, newRuleDXCCResolver(lookup))
 	if err != nil {
-		return booleanRuleRefusal("Invalid rule: " + err.Error() + "\n" + booleanRuleSetUsage)
+		return booleanRuleRefusal("Invalid rule: " + err.Error() + "\n" + booleanRuleUsage(command.action))
 	}
 	cfg := filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)
 	cfg.Filters = cfg.Filters.WithRuleSet(next)

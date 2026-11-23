@@ -464,7 +464,8 @@ Telnet message tokens (usable in `runtime.yaml`):
 - Post-login `login_greeting`: same tokens as above (with real values after login),
   plus `<LOGIN_SUMMARY>` for the shipped short login summary and
   `<SETTINGS_FILTERS>` for the full settings/rule block and first-time guidance.
-  Custom templates can place or omit either block.
+  Custom templates can place or omit either block. If both are present, the
+  short summary shows the first-login GO filter example once.
 - `<STARTUP_INFO>` places the startup notices and WWV/WCY history in the
   post-login greeting. Only its first occurrence displays the block; later
   occurrences are removed. The shipped greeting places it before the prompt.
@@ -480,8 +481,9 @@ Telnet message tokens (usable in `runtime.yaml`):
 - Path reliability `path_status_message`: `<GRID>`, `<NOISE>`.
 
 Input behavior:
-- Ordinary human command headers and their echo normalize to uppercase. After
-  `PASS RULE <slot>` or `REJECT RULE <slot>`, printable ASCII expression bytes
+- Ordinary human command headers and their echo normalize to uppercase. In GO,
+  `PASS RULE` accepts an expression with or without a slot number. In both
+  forms, and in numbered `REJECT RULE`, printable ASCII expression bytes
   retain their case and spaces in input and echo. Compilation normalizes syntax
   and field-specific operands, but preserves COMMENT literal case, punctuation
   and spaces. Expression quotes use doubled `""` for a literal quote;

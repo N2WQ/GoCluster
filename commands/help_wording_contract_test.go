@@ -198,7 +198,7 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 				"If you have PASS rules, a spot must match at least one of them.",
 				"A matching REJECT blocks the spot.",
 				"PASS RULE BAND=20M AND SOURCE=HUMAN",
-				"This sets rule 0. Other rules and delivery settings still apply.",
+				"This replaces all of rule 0. Other rules and delivery settings still apply.",
 				"Use PASS RULE 0 with your expression to replace a REJECT in rule 0.",
 				"HELP FILTER EXAMPLES",
 			} {

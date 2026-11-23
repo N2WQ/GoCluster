@@ -73,6 +73,9 @@ def routing_help_wire(lines, query="HELP SH BUILD EXTRA", pause=False, echo=True
 def discovery_literal_reply(verb, unknown=False, dialect="go"):
     if dialect == "cc":
         return ("Use HELP SET/FILTER for native CC filters. Boolean rule edits require DIALECT\nGO.\nNo changes applied.")
+    if verb == "REJECT":
+        return ("Use REJECT RULE <0..9> <expression>.\nPick an empty rule number to keep your current rules.\n"
+                "Type HELP RULE for fields and examples.\nNo changes applied.")
     prefix = "Use PASS RULE <expression> to set rule 0.\n" if unknown else ""
     return (prefix + "Usage: PASS RULE <expression>\n       PASS RULE <0..9> <expression>\n"
             "       REJECT RULE <0..9> <expression>\nType HELP RULE for fields and examples.\nNo changes applied.")

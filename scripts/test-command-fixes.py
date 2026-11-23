@@ -417,8 +417,9 @@ def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
                 dict(slot=0, action="pass", expr="DXCALL=W6* AND DECALL=K1*"),
                 dict(slot=1, action="reject", expr="DXCALL=N0XYZ OR DECALL=N0XYZ")],
                 "callsign lists lost exact canonical definitions")
-            for old in ("PASS DXCALL W6*", "REJECT DECALL N0XYZ"):
-                require_fixture_refusal(current, old, record, "Use PASS RULE <expression> to set rule 0.")
+            for old, feedback in (("PASS DXCALL W6*", "Use PASS RULE <expression> to set rule 0."),
+                                  ("REJECT DECALL N0XYZ", "Use REJECT RULE <0..9> <expression>.")):
+                require_fixture_refusal(current, old, record, feedback)
         document = current.get()
         expected = copy.deepcopy(active_fixture_bank(document))
         require_callsign_rules(document, expected, record)
@@ -601,7 +602,9 @@ def filter_argument_cases(suite, root, cw_label, saved_arguments):
         if dialect == "go":
             for old in ("PASS NOFILTER OFF", "PASS NOFILTER ALL", "REJECT BAND ALL",
                         "PASS MODE CW", "SET/FILTER BAND/ON", "SET/FILTER DXCALL/OFF"):
-                require_fixture_refusal(current, old, record, "Use PASS RULE <expression> to set rule 0.")
+                feedback = ("Use REJECT RULE <0..9> <expression>." if old.startswith("REJECT ") else
+                            "Use PASS RULE <expression> to set rule 0.")
+                require_fixture_refusal(current, old, record, feedback)
             current = reconnect_fixture_session(current, record)
             fixture_edit(current, "RESET FILTER RULE ALL", record)
             fixture_edit(current, "PASS RULE 0 MODE=CW", record)
@@ -2951,6 +2954,10 @@ def filter_discovery_reply(verb, unknown=False, dialect="go"):
     require(verb in ("PASS", "REJECT"), "invalid discovery action oracle")
     if dialect == "cc":
         return native_retired_reply(verb)
+    if verb == "REJECT":
+        return bounded_filter_refusal("Use REJECT RULE <0..9> <expression>.\n"
+                                      "Pick an empty rule number to keep your current rules.\n"
+                                      "Type HELP RULE for fields and examples.", "  ")
     message = ("Usage: PASS RULE <expression>\n       PASS RULE <0..9> <expression>\n"
                "       REJECT RULE <0..9> <expression>\nType HELP RULE for fields and examples.")
     if unknown:
@@ -2962,9 +2969,15 @@ def require_discovery_inventory(reply, verb, unknown=False, dialect="go"):
     require(reply == filter_discovery_reply(verb, unknown, dialect), "discovery loses exact dialect-specific feedback")
     if dialect == "go":
         flat = " ".join(reply.split())
-        require("PASS RULE <expression>" in flat and "PASS RULE <0..9> <expression>" in flat and
-                "REJECT RULE <0..9> <expression>" in flat and "HELP RULE" in flat,
-                "GO discovery omits rule-0 or numbered-rule recovery")
+        if verb == "REJECT":
+            require(flat.startswith("Use REJECT RULE <0..9> <expression>.") and
+                    "Pick an empty rule number to keep your current rules." in flat and
+                    "PASS RULE" not in flat and "HELP RULE" in flat,
+                    "GO REJECT discovery steers users away from numbered REJECT syntax")
+        else:
+            require("PASS RULE <expression>" in flat and "PASS RULE <0..9> <expression>" in flat and
+                    "REJECT RULE <0..9> <expression>" in flat and "HELP RULE" in flat,
+                    "GO discovery omits rule-0 or numbered-rule recovery")
     else:
         require("HELP SET/FILTER" in reply and "DIALECT GO" in " ".join(reply.split()) and "HELP RULE" not in reply,
                 "CC discovery loses bank-specific recovery")
@@ -3027,6 +3040,8 @@ def discovery_feedback_cases(dialect):
         for command in ("SET/FILTER COMMENT CQ", "UNSET/FILTER COMMENT CQ", "SET/FILTER NEARBY ON",
                         "SET/FILTER BAND 20", "UNSET/FILTER MODE CW", "SET/FILTER DXBM ALL"):
             cases.append((command, native_retired_reply(command), None, False))
+    else:
+        cases.append(("REJECT BAND 20M", filter_discovery_reply("REJECT", True), "REJECT", True))
     return cases
 
 

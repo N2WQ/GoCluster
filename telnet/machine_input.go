@@ -150,10 +150,13 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 		if allowed != "" {
 			c.logRejectedInput(context, fmt.Sprintf("forbidden byte 0x%02X", b))
 			inputErr := newInputInvalidCharError(context, maxLen, allowed, b)
-			if ruleSyntax && booleanInputNeedsHint(line, b) {
-				inputErr.guidance = booleanRuleSetUsage + "\nNo changes applied."
-			} else if ruleArguments {
+			if ruleArguments {
 				inputErr.guidance = "No changes applied."
+			}
+			if ruleSyntax {
+				if hint := booleanInputHint(line, b, c.dialect); hint != "" {
+					inputErr.guidance = hint + "\nNo changes applied."
+				}
 			}
 			return fail(inputErr)
 		}
