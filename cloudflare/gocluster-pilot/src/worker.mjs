@@ -1,34 +1,24 @@
 const pilotHost = "gocluster-pilot.n2wq-api.workers.dev";
-const page = `<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GoCluster private pilot</title>
-<main>
-<h1>GoCluster private pilot</h1>
-<p>You reached the pilot through Cloudflare Access.</p>
-<p>The live cluster connection is pending.</p>
-</main>
-</html>`;
+const policy = `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' wss://${pilotHost}/ws; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 
 export default {
-  fetch(request) {
+  async fetch(request, env) {
     const url = new URL(request.url);
     const headers = {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+      "Content-Security-Policy": policy,
       "X-Content-Type-Options": "nosniff",
     };
-    if (url.hostname !== pilotHost || url.pathname !== "/") {
-      return new Response(null, { status: 404, headers });
-    }
-    if (request.headers.has("Upgrade")) {
-      return new Response(null, { status: 400, headers });
-    }
+    if (url.hostname !== pilotHost) return new Response(null, { status: 404, headers });
+    if (url.pathname === "/ws") return new Response(null, { status: 503, headers });
+    if (request.headers.has("Upgrade")) return new Response(null, { status: 400, headers });
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response(null, { status: 405, headers: { ...headers, Allow: "GET, HEAD" } });
     }
-    headers["Content-Type"] = "text/html; charset=utf-8";
-    return new Response(request.method === "HEAD" ? null : page, { headers });
+    if (url.pathname === "/") url.pathname = "/index.html";
+    const asset = await env.ASSETS.fetch(new Request(url, request));
+    const response = new Response(asset.body, asset);
+    for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
+    return response;
   },
 };

@@ -1,0 +1,75 @@
+{
+  "title": "GoCluster Console",
+  "settings": {
+    "socket_path": "/ws",
+    "replay_url": "replay/session.jsonl",
+    "startup_history": "5",
+    "access_check": "on"
+  },
+  "files": {
+    "assets/app.2437b68512.js": {
+      "bytes": 278416,
+      "sha256": "2437b68512af24fc7eedd2fd4f6e52934fcc604f77b0bde3750d0d5e01c373ea"
+    },
+    "assets/app.37b3325c97.css": {
+      "bytes": 74425,
+      "sha256": "37b3325c97868c014c961b8c505a04795029f3a11e195b834ad0704625119ccb"
+    },
+    "assets/favicon.svg": {
+      "bytes": 612,
+      "sha256": "149f505246f49f009857b428da57989ff4c65966619b07f0272a9d1a5bebe52c"
+    },
+    "assets/fonts/geist-mono-latin-400-normal.woff2": {
+      "bytes": 14712,
+      "sha256": "616e37ca59a2afebe306751773a538b93f5a2d9a90fd3fc97ce73321cb93af51"
+    },
+    "assets/fonts/geist-mono-latin-500-normal.woff2": {
+      "bytes": 15304,
+      "sha256": "9a494764f87c2e11d24001b910600bd2192230554c090a0ddc66e8221b32f3ce"
+    },
+    "assets/fonts/geist-mono-latin-600-normal.woff2": {
+      "bytes": 15264,
+      "sha256": "88b4b9b48e07467c2466309639a45e62ed3e3de22a48ee640d047521374e3d7c"
+    },
+    "assets/fonts/geist-mono-latin-700-normal.woff2": {
+      "bytes": 15312,
+      "sha256": "cfcf93fe43702a8b6117c89fd7529180307d05309dba654e3c9de1177d5ab1b0"
+    },
+    "assets/fonts/geist-sans-latin-400-normal.woff2": {
+      "bytes": 33400,
+      "sha256": "e6ef6abb39c762ed2259cc814e6f16888c540cd84835962227b56ab2354f27f1"
+    },
+    "assets/fonts/geist-sans-latin-500-normal.woff2": {
+      "bytes": 34716,
+      "sha256": "40073e90816315c92e4f4381bd50b6fdc950b22b0dd010a4179046cf588d4f12"
+    },
+    "assets/fonts/geist-sans-latin-600-normal.woff2": {
+      "bytes": 35292,
+      "sha256": "9d99fbd791968493fa507ac846de561cee47b00f8100c23cad333b3cb78392d6"
+    },
+    "assets/fonts/geist-sans-latin-700-normal.woff2": {
+      "bytes": 35484,
+      "sha256": "3d59addfafec3452d44717aa0a18911d5c3812487ed06af47f2ef27192ea1eed"
+    },
+    "assets/vendor/NOTICES.txt": {
+      "bytes": 17056,
+      "sha256": "fa575f785b3ac7fff32e4e75e338e52960e0f1b82c016fdc249252e839c7d9a5"
+    },
+    "assets/vendor/js-yaml-4.1.0.45dc3dd03d.js": {
+      "bytes": 39430,
+      "sha256": "45dc3dd03dc07a06705a2c2989b8c7f709013f04bd5386e3279d4e447f07ebd7"
+    },
+    "assets/vendor/preact-htm-3.1.1.62c4ffea40.js": {
+      "bytes": 13296,
+      "sha256": "62c4ffea400078c0eda7f435b22726b4961ebdf74c8506f188e92bec41d8ac51"
+    },
+    "index.html": {
+      "bytes": 1072,
+      "sha256": "c3927628d9c77747f1e05d583a00065d468ec61f6c17d50de026b2cd6805d3c1"
+    },
+    "replay/session.jsonl": {
+      "bytes": 1724,
+      "sha256": "63d98fb4ebae5bdddbcc57b1d35ad76d1d003a4567d345600e0afe5b4be503d1"
+    }
+  }
+}

@@ -1,0 +1,2 @@
+# The release manifest hashes the original bytes, including text line endings.
+site/** -text
