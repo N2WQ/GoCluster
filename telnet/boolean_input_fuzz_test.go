@@ -9,10 +9,12 @@ import (
 
 func FuzzBooleanInput(f *testing.F) {
 	for _, body := range []string{`MODE=CW`, `COMMENT="MiXeD ""quote"""`, "MODE=CW\x15SHOW OWN", "MODE=\x01BAD", strings.Repeat("X", 129), string([]byte{IAC})} {
-		f.Add([]byte(body), false)
-		f.Add([]byte(body), true)
+		for _, ziutek := range []bool{false, true} {
+			f.Add([]byte(body), ziutek, false)
+			f.Add([]byte(body), ziutek, true)
+		}
 	}
-	f.Fuzz(func(t *testing.T, body []byte, ziutek bool) {
+	f.Fuzz(func(t *testing.T, body []byte, ziutek, omittedSlot bool) {
 		if len(body) > 1024 {
 			return
 		}
@@ -25,7 +27,11 @@ func FuzzBooleanInput(f *testing.F) {
 		// This oracle requires an application-data newline after the payload.
 		// Escape literal IAC so it cannot consume that newline as a telnet verb.
 		body = bytes.ReplaceAll(body, []byte{IAC}, []byte{IAC, IAC})
-		input := append([]byte("PASS RULE 0 "), body...)
+		prefix := "PASS RULE 0 "
+		if omittedSlot {
+			prefix = "PASS RULE "
+		}
+		input := append([]byte(prefix), body...)
 		input = append(input, []byte("\nSHOW OWN\n")...)
 		client, conn := newHumanRecoveryClient(t, input, ziutek)
 		line, err := client.readBooleanCommandLine(128)

@@ -116,10 +116,15 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 		allowed := ""
 		commentByte := machineAware && b >= 32 && b <= 126 && commentArgumentsStarted(line)
 		ruleArguments := false
+		atShortExpressionStart := false
 		if machineAware && ruleSyntax {
-			_, ruleArguments = booleanRuleExpressionStart(line)
+			start, omittedSlot, ok := booleanRuleExpressionStart(line)
+			ruleArguments = ok
+			atShortExpressionStart = omittedSlot && start == len(line)
 		}
-		ruleByte := ruleArguments && b >= 32 && b <= 126
+		// A left parenthesis can start a rule. Other expression punctuation
+		// still needs a term to follow, including after erasing a slot number.
+		ruleByte := ruleArguments && b >= 32 && b <= 126 && (!atShortExpressionStart || b == '(')
 		humanUnderscore := machineAware && b == '_' && machineIntent(line) == ""
 		dxCommentPlus := machineAware && b == '+' && dxCommentArgumentsStarted(line)
 		if len(line) >= maxLen || (!commentByte && !ruleByte && !humanUnderscore && !dxCommentPlus && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
@@ -146,7 +151,7 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 			c.logRejectedInput(context, fmt.Sprintf("forbidden byte 0x%02X", b))
 			inputErr := newInputInvalidCharError(context, maxLen, allowed, b)
 			if ruleSyntax && booleanInputNeedsHint(line, b) {
-				inputErr.guidance = "Use PASS RULE <0-9> <expression> or REJECT RULE <0-9> <expression>. No changes applied."
+				inputErr.guidance = booleanRuleSetUsage + "\nNo changes applied."
 			} else if ruleArguments {
 				inputErr.guidance = "No changes applied."
 			}
@@ -171,7 +176,7 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 	if machineAware && machineIntent(line) == "" {
 		end := len(line)
 		if ruleSyntax {
-			if start, ok := booleanRuleExpressionStart(line); ok {
+			if start, _, ok := booleanRuleExpressionStart(line); ok {
 				end = start
 			}
 		}

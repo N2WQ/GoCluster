@@ -10,9 +10,9 @@ import (
 	"dxcluster/filter"
 )
 
-const booleanRuleSetUsage = "Usage: PASS RULE <0..9> <expression>\n       REJECT RULE <0..9> <expression>"
+const booleanRuleSetUsage = "Usage: PASS RULE <expression>\n       PASS RULE <0..9> <expression>\n       REJECT RULE <0..9> <expression>"
 const booleanRuleResetUsage = "Usage: RESET FILTER RULE <0..9|ALL>\n       RESET FILTER"
-const booleanRuleDiscovery = "Use numbered rules: PASS RULE <0..9> <expression> or REJECT RULE <0..9> <expression>. Type HELP RULE for fields and examples."
+const booleanRuleDiscovery = "Use PASS RULE <expression> to set rule 0.\n" + booleanRuleSetUsage + "\nType HELP RULE for fields and examples."
 
 type booleanRuleEdit uint8
 
@@ -24,10 +24,11 @@ const (
 )
 
 type booleanRuleCommand struct {
-	edit       booleanRuleEdit
-	slot       int
-	action     filter.RuleAction
-	expression string
+	edit        booleanRuleEdit
+	slot        int
+	omittedSlot bool
+	action      filter.RuleAction
+	expression  string
 }
 
 // Header words use ASCII spaces only. The expression is a borrowed, complete
@@ -44,15 +45,18 @@ func parseBooleanRuleCommand(line string) (booleanRuleCommand, bool, string) {
 			}
 			return command, false, ""
 		}
-		slot, _ := takeCommentWord(rest)
-		if !booleanRuleSlot(slot) {
-			return command, true, booleanRuleSetUsage
-		}
-		start, ok := booleanRuleExpressionStart([]byte(line))
+		start, omittedSlot, ok := booleanRuleExpressionStart([]byte(line))
 		if !ok || start == len(line) {
 			return command, true, booleanRuleSetUsage
 		}
-		command.slot, command.expression = int(slot[0]-'0'), line[start:]
+		if !omittedSlot {
+			slot, _ := takeCommentWord(rest)
+			if !booleanRuleSlot(slot) {
+				return command, true, booleanRuleSetUsage
+			}
+			command.slot = int(slot[0] - '0')
+		}
+		command.omittedSlot, command.expression = omittedSlot, line[start:]
 		command.action = filter.RulePass
 		if verb == "REJECT" {
 			command.action = filter.RuleReject
@@ -120,6 +124,12 @@ func (e *filterCommandEngine) stageBooleanFilterCommand(c *Client, line string) 
 		return booleanRuleRefusal("Personal filter unavailable.")
 	}
 	previous := c.filter.PreparedRules()
+	if command.omittedSlot {
+		rules := previous.Definitions()
+		if len(rules) != 0 && rules[0].Slot == 0 && rules[0].Action == filter.RuleReject {
+			return booleanRuleRefusal("Rule 0 is a REJECT. Include 0 after PASS RULE to replace it.")
+		}
+	}
 	var lookup func() *cty.CTYDatabase
 	if c.server != nil {
 		lookup = c.server.ctyLookup

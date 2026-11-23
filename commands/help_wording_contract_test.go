@@ -73,12 +73,17 @@ func TestHelpRuleExamplesAndDeliverySwitches(t *testing.T) {
 			t.Fatalf("GO Help %s doesn't lead with its example: %q", topic, goRule)
 		}
 		example, _, _ = strings.Cut(example, "\n")
-		slotText, expression, _ := strings.Cut(example, " ")
-		slot, err := strconv.Atoi(slotText)
-		if err != nil {
-			t.Fatal(err)
+		slot, expression := 0, example
+		if verb == "REJECT" {
+			slotText, rest, _ := strings.Cut(example, " ")
+			var err error
+			slot, err = strconv.Atoi(slotText)
+			if err != nil {
+				t.Fatal(err)
+			}
+			expression = rest
 		}
-		_, err = filter.PrepareRuleSet([]filter.RuleDefinition{
+		_, err := filter.PrepareRuleSet([]filter.RuleDefinition{
 			{Slot: slot, Action: filter.RuleAction(strings.ToLower(verb)), Expr: expression},
 		})
 		if err != nil {
@@ -191,8 +196,10 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 			flat := strings.Join(strings.Fields(response), " ")
 			for _, required := range []string{
 				"If you have PASS rules, a spot must match at least one of them.",
-				"A matching REJECT rule blocks a spot, even if a PASS rule matches.",
-				"Adding a PASS rule can let in more spots. Edit a rule to narrow it.",
+				"A matching REJECT blocks the spot.",
+				"PASS RULE BAND=20M AND SOURCE=HUMAN",
+				"This sets rule 0. Other rules and delivery settings still apply.",
+				"Use PASS RULE 0 with your expression to replace a REJECT in rule 0.",
 				"HELP FILTER EXAMPLES",
 			} {
 				if !strings.Contains(flat, required) {
@@ -212,6 +219,11 @@ func TestHelpWordingBooleanReplacementAndExclusiveRecipe(t *testing.T) {
 			}
 		}
 		examples := p.ProcessCommandForClient("HELP FILTER EXAMPLES", "W1ABC-18", "", nil, dialect)
+		if !strings.HasPrefix(examples, "Coming from AR-Cluster?") ||
+			!strings.Contains(examples, "SET DX FILTER BAND=20 AND NOT SKIMMER") ||
+			!strings.Contains(examples, "If rule 1 allows FT8 on any band, it can still allow FT8 outside 20m.") {
+			t.Fatal("GO examples lose the translation or the other-rule boundary")
+		}
 		warning := "Removes all your GO rules. Your other settings stay unchanged."
 		reset := strings.Index(examples, "  RESET FILTER RULE ALL\n")
 		if !strings.Contains(examples, warning) || strings.Index(examples, warning) > reset ||

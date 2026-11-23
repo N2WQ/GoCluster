@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"dxcluster/commands"
 	"dxcluster/filter"
 	"dxcluster/spot"
 	"gopkg.in/yaml.v3"
@@ -110,7 +111,9 @@ func TestBooleanOnboardingLoginJourneys(t *testing.T) {
 				case "legacy":
 					title = "SHOW/FILTER: your filters"
 				}
-				if strings.Count(transcript, title) != 1 || strings.Contains(transcript, "PASS RULE") || strings.Contains(transcript, "<LOGIN_SUMMARY>") {
+				if strings.Count(transcript, title) != 1 || strings.Contains(transcript, "<LOGIN_SUMMARY>") ||
+					(strings.Contains(transcript, "PASS RULE BAND=20M AND SOURCE=HUMAN") != (journey == "new")) ||
+					(strings.Contains(transcript, "Coming from AR-Cluster? See HELP FILTERS.") != (journey == "new")) {
 					t.Fatalf("wrong or repeated login block:\n%s", transcript)
 				}
 				reset := strings.Contains(transcript, "Upgrade: Your GO and CC filters")
@@ -296,11 +299,11 @@ func TestBooleanOnboardingFirstEditAndReconnectTCP(t *testing.T) {
 				!strings.Contains(greeting, "Report sources: HUMAN only") {
 				t.Fatal("new login did not explain starting state")
 			}
-			first, response := upgradeWireGet(t, s, call, conn, reader, "PASS RULE 0 BAND=20M AND MODE=CW\r\n")
+			first, response := upgradeWireGet(t, s, call, conn, reader, "PASS RULE BAND=20M AND SOURCE=HUMAN\r\n")
 			response += upgradeHumanCommand(t, s, call, conn, reader, "SHOW FILTER")
 			response += upgradeHumanCommand(t, s, call, conn, reader, "RESUME")
 			if !strings.Contains(response, "Saved and active.") || !strings.Contains(response, "Current settings and filters:") ||
-				booleanDisplayedExpression(t, response, "PASS RULE 0") != "BAND=20M AND MODE=CW" {
+				booleanDisplayedExpression(t, response, "PASS RULE 0") != "BAND=20M AND SOURCE=HUMAN" {
 				t.Fatalf("first edit/readback failed:\n%s", response)
 			}
 			s.clientsMutex.RLock()
@@ -309,7 +312,7 @@ func TestBooleanOnboardingFirstEditAndReconnectTCP(t *testing.T) {
 			if client == nil || client.readPausePending.Load() || client.readPauseUntilUnixNano.Load() != 0 {
 				t.Fatal("RESUME did not clear the readback pause")
 			}
-			unchanged, refusal := upgradeWireGet(t, s, call, conn, reader, "PASS RULE 0 BAND=20M AND\r\n")
+			unchanged, refusal := upgradeWireGet(t, s, call, conn, reader, "PASS RULE BAND=20M AND\r\n")
 			if !strings.Contains(refusal, "No changes applied.") || !unchanged.Equal(first) {
 				t.Fatal("invalid first edit changed the rules")
 			}
@@ -337,7 +340,7 @@ func TestBooleanOnboardingFirstEditAndReconnectTCP(t *testing.T) {
 			reloaded, _ := upgradeWireGet(t, s, call, conn2, reader2, "")
 			if !reloaded.Equal(final) || !strings.Contains(returning, "Current settings and filters:") ||
 				strings.Contains(returning, "Default settings and filters:") ||
-				strings.Contains(returning, "To receive CW and FT8 from humans and skimmers:") {
+				strings.Contains(returning, "PASS RULE BAND=20M AND SOURCE=HUMAN") {
 				t.Fatalf("returning login reset or misdescribed the selection:\n%s", returning)
 			}
 		})
@@ -350,6 +353,111 @@ func TestBooleanOnboardingLoginDisplayBudget(t *testing.T) {
 	response, err := s.renderBooleanLoginBlock(c, false, false)
 	if response != "" || !errors.Is(err, errReadbackTooLarge) {
 		t.Fatal("oversized login display returned partial success")
+	}
+}
+
+func TestBooleanPASSShortcutTCP(t *testing.T) {
+	for _, transport := range []string{"native", "ziutek"} {
+		t.Run(transport, func(t *testing.T) {
+			s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
+				opts.Transport, opts.EchoMode = transport, "off"
+				opts.LoginGreeting = "READY\n"
+				opts.InputInvalidCharMessage = "Invalid command.\n"
+				opts.AutoReadPauseMinRows, opts.AutoReadPauseDuration = 10, 30*time.Second
+			})
+			s.processor = commands.NewProcessor(nil, nil, nil, nil, nil, nil)
+			const call = "LZ3NY-12"
+			otherRule := filter.RuleDefinition{Slot: 1, Action: filter.RulePass, Expr: "MODE=FT8"}
+			configuration := currentV7GOTestConfiguration(t, []filter.RuleDefinition{otherRule}, filter.SettingsConfiguration{
+				Dialect: "go", NoiseClass: "URBAN", DedupePolicy: "MED",
+			})
+			saveCurrentV7TestRecord(t, call, &filter.V7UserRecord{Configuration: configuration})
+			conn, reader, done, _ := connectUpgradeSession(t, s, call)
+			get := func(command string) (filter.V7Configuration, string) {
+				return upgradeWireGet(t, s, call, conn, reader, command+"\r\n")
+			}
+			const expression = `(BAND=20M AND MODE=CW) AND COMMENT="MiXeD  ""quote"""`
+			short, response := get("pass rule " + expression)
+			wantRules := []filter.RuleDefinition{
+				{Slot: 0, Action: filter.RulePass, Expr: `BAND=20M AND MODE=CW AND COMMENT="MiXeD  ""quote"""`},
+				otherRule,
+			}
+			if !strings.Contains(response, "Rule 0 set.") || !strings.Contains(response, "Saved and active.") ||
+				!slices.Equal(short.Filters.GO.Rules, wantRules) {
+				t.Fatalf("shortcut lost a rule or changed expression bytes:\n%s", response)
+			}
+			numbered, response := get("PASS RULE 0 " + expression)
+			if !numbered.Equal(short) || !strings.Contains(response, "Rule 0 replaced.") {
+				t.Fatalf("explicit rule differs from shortcut:\n%s", response)
+			}
+			blocked, response := get("REJECT RULE 0 BAND=20M")
+			if !strings.Contains(response, "Saved and active.") ||
+				!slices.Equal(blocked.Filters.GO.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"}, otherRule}) {
+				t.Fatalf("failed to set a rule-0 veto:\n%s", response)
+			}
+			path := filepath.Join(filter.UserDataDir, call+".yaml")
+			before, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			refused, refusal := get("PASS RULE BAND=20M")
+			if !refused.Equal(blocked) || !strings.Contains(refusal, "Rule 0 is a REJECT. Include 0 after PASS RULE to replace it.") ||
+				!strings.Contains(refusal, "No changes applied.") {
+				t.Fatalf("shortcut replaced a veto or gave incomplete feedback:\n%s", refusal)
+			}
+			for _, command := range []string{"PASS RULE 01 BAND=20M", "PASS RULE 10 BAND=20M", "REJECT RULE (BAND=20M)"} {
+				got, response := get(command)
+				if !got.Equal(blocked) || !strings.Contains(response, "No changes applied.") {
+					t.Fatalf("malformed %q changed rules or went unreported:\n%s", command, response)
+				}
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(after, before) {
+				t.Fatalf("refusals changed persisted bytes: %v", err)
+			}
+			s.clientsMutex.RLock()
+			client := s.clients[call]
+			s.clientsMutex.RUnlock()
+			if client == nil {
+				t.Fatal("missing live client")
+			}
+			for _, test := range []struct {
+				freqKHz float64
+				want    bool
+			}{{14074, false}, {7074, true}} {
+				sp := spot.NewSpot("LZ1ABC", "LZ2ABC", test.freqKHz, "FT8")
+				live, _, _ := s.matchSnapshot(client.captureMatchingSnapshot(), sp)
+				history := client.captureHistoryFilter().matches(s, sp)
+				if live != test.want || history != test.want {
+					t.Fatalf("FT8 %.0f after refusal: live=%v history=%v want=%v", test.freqKHz, live, history, test.want)
+				}
+			}
+			_, help := get("HELP FILTERS")
+			if !strings.Contains(help, "Coming from AR-Cluster?") || strings.Contains(help, "Type RESUME to restart now") ||
+				client.readPausePending.Load() || client.readPauseUntilUnixNano.Load() != 0 {
+				t.Fatalf("short HELP omitted the shortcut or paused live spots:\n%s", help)
+			}
+			show := upgradeHumanCommand(t, s, call, conn, reader, "SHOW FILTER")
+			if booleanDisplayedExpression(t, show, "REJECT RULE 0") != "BAND=20M" {
+				t.Fatalf("guarded veto missing from numbered readback:\n%s", show)
+			}
+			closeHandshakeTranscriptSession(t, conn, done)
+			conn, reader, _, _ = connectUpgradeSession(t, s, call)
+			reloaded, _ := upgradeWireGet(t, s, call, conn, reader, "")
+			if !reloaded.Equal(blocked) {
+				t.Fatal("reconnect lost the guarded veto or another rule")
+			}
+			changed, response := get("PASS RULE 0 BAND=20M")
+			if !strings.Contains(response, "Saved and active.") ||
+				!slices.Equal(changed.Filters.GO.Rules, []filter.RuleDefinition{{Slot: 0, Action: filter.RulePass, Expr: "BAND=20M"}, otherRule}) {
+				t.Fatalf("explicit 0 failed to replace the veto:\n%s", response)
+			}
+			cc, _ := get("DIALECT cc")
+			ccAfter, response := get("PASS RULE (BAND=20M)")
+			if cc.Settings.Dialect != "cc" || !ccAfter.Equal(cc) || !strings.Contains(response, "Use HELP SET/FILTER for native CC filters.") {
+				t.Fatalf("shortcut bypasses CC guidance or changes a bank:\n%s", response)
+			}
+		})
 	}
 }
 

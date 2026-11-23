@@ -15,11 +15,14 @@ func filterGuideHelpLines(dialect string) []string {
 		}
 	}
 	return []string{
-		"SHOW FILTER shows your active rules.",
+		"SHOW FILTER shows your active rules. Use RESUME if live spots pause.",
+		"Coming from AR-Cluster? Try this GO shortcut for human reports on 20m.",
+		"  PASS RULE BAND=20M AND SOURCE=HUMAN",
+		"This sets rule 0. Other rules and delivery settings still apply.",
+		"AR-Cluster's SET DX FILTER replaces the whole DX filter.",
+		"Use PASS RULE 0 with your expression to replace a REJECT in rule 0.",
+		"A matching REJECT blocks the spot. Include a number in every REJECT RULE.",
 		"If you have PASS rules, a spot must match at least one of them.",
-		"A matching REJECT rule blocks a spot, even if a PASS rule matches.",
-		"Adding a PASS rule can let in more spots. Edit a rule to narrow it.",
-		"Other delivery settings still apply. SELF can let your own spots bypass rules.",
 		"HELP RULE explains the syntax. HELP FILTER EXAMPLES shows complete setups.",
 	}
 }
@@ -42,6 +45,15 @@ func filterExampleHelpLines(dialect string) []string {
 
 func goFilterExampleHelpLines() []string {
 	return []string{
+		"Coming from AR-Cluster? Try this GO shortcut for human reports on 20m.",
+		"AR-Cluster command   SET DX FILTER BAND=20 AND NOT SKIMMER",
+		"The GoCluster command sets rule 0 and replaces any PASS already there.",
+		"This is enough when rule 0 is your only rule, as on a new GO account.",
+		"If rule 1 allows FT8 on any band, it can still allow FT8 outside 20m.",
+		"If rule 0 is a REJECT, include 0 in the PASS command to replace it.",
+		"To keep your PASS and block 20m, use REJECT RULE 9 BAND=20M if 9 is free.",
+		"  PASS RULE BAND=20M AND SOURCE=HUMAN", "  SHOW FILTER", "  RESUME",
+		"",
 		"Human-reported CW and FT8 spots on 20m and 40m:",
 		"  Removes all your GO rules. Your other settings stay unchanged.",
 		"  To keep your current setup, see HELP PRESETS before changing it.",

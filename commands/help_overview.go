@@ -32,6 +32,10 @@ func helpRowLines(rows ...helpRow) []string {
 
 func helpOverviewLines(dialect string) []string {
 	show, readback := helpTaskCommands(dialect)
+	filterGuide := "Learn how to change which spots you receive."
+	if dialect != "cc" {
+		filterGuide = "Create filters. Includes an AR-Cluster quick start."
+	}
 	return []string{
 		"Getting help",
 		"  HELP COMMANDS    List all commands.",
@@ -43,7 +47,7 @@ func helpOverviewLines(dialect string) []string {
 		fmt.Sprintf("  %-17sLearn to search by call, band, mode, or comment.", "HELP "+show),
 		"", "Managing filters",
 		fmt.Sprintf("  %-17sSee your active filters.", readback),
-		"  HELP FILTERS     Learn how to change which spots you receive.",
+		"  HELP FILTERS     " + filterGuide,
 		"  SHOW SETTINGS    See your settings.",
 		"", "Managing presets",
 		"  LIST PRESET      List your saved presets.",

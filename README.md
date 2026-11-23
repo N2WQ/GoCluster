@@ -31,6 +31,9 @@ hide repeated reports, and view optional hints about radio conditions.
 
 ## Start As A Telnet User
 
+Coming from AR-Cluster? See the [GO filter shortcut](#coming-from-ar-cluster),
+or type `HELP FILTERS` after login.
+
 You need a telnet client or a logging program with a DX cluster connection.
 For an example cluster, enter these connection settings:
 
@@ -139,13 +142,36 @@ command must fit the node's byte limit (128 by default), excluding its line endi
 
 ## Filter Examples
 
-In the GO dialect, use numbered `PASS RULE` and `REJECT RULE` expressions to choose spots.
+### Coming From AR-Cluster
+
+For human reports on 20 meters, use the command for your cluster.
+
+| Cluster | Command |
+| --- | --- |
+| AR-Cluster 6.6 | `SET DX FILTER BAND=20 AND NOT SKIMMER` |
+| GoCluster GO | `PASS RULE BAND=20M AND SOURCE=HUMAN` |
+
+AR-Cluster's `SET DX FILTER` replaces the whole DX filter. The GoCluster shortcut
+sets **rule 0**. On a new GO account, rule 0 holds your starting mode and source
+choices. The shortcut replaces that expression, so include every condition you
+want to keep. If rule 1 already allows FT8 on any band, it can still allow FT8
+outside 20m. [AR-Cluster user manual](https://www.arcluster.org/user-guide/)
+
+If rule 0 is a REJECT, GoCluster asks for the number. Use `PASS RULE 0` with
+your full expression if you intend to replace that exclusion. To keep your PASS
+and add a separate exclusion, use an empty rule number such as `REJECT RULE 9 BAND=20M`.
+Use `SHOW FILTER` to check your rules and `RESUME` when ready. `HELP FILTERS` and
+`HELP FILTER EXAMPLES` cover the shortcut and common setups.
+
+### How Rules Work Together
+
+In GO, use `PASS RULE` and `REJECT RULE` expressions to choose spots.
 Any matching REJECT wins. Otherwise, any matching PASS qualifies. With no PASS
 rules there is no personal PASS restriction; an empty set has no hidden base
 filters. Separate controls, such as SELF, still apply.
 
-Slots 0 through 9 identify rules, not priorities. Adding another PASS broadens
-your selection rather than adding an AND condition. To require two conditions,
+Slots 0 through 9 identify the rule to edit. When a PASS already exists, adding
+another PASS can let in more spots. To require two conditions,
 put both in one expression, such as `BAND=20m AND MODE=CW`. NOT binds before AND,
 then OR; parentheses let you override that order.
 
@@ -799,7 +825,7 @@ Showing archive spots
 
 Managing filters
   SHOW FILTER      See your active filters.
-  HELP FILTERS     Learn how to change which spots you receive.
+  HELP FILTERS     Create filters. Includes an AR-Cluster quick start.
   SHOW SETTINGS    See your settings.
 
 Managing presets

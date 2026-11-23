@@ -11,6 +11,8 @@ description: Consistent starting rules, explicit skimmer selection, and exact ru
 
 > [ADR-0330](ADR-0330-native-cc-banks-and-generation-seven.md) replaces affected shared GO/CC ownership and generation/reset clauses with independent native CC banks and generation seven. This record retains its historical decision; compatible GO predicate/source and transaction contracts continue.
 
+> [ADR-0373](ADR-0373-go-pass-rule-zero-shortcut.md) extends GO first-login guidance with the guarded rule 0 shortcut.
+
 ## Context
 
 [ADR-0320](ADR-0320-explicit-source-filtering.md) supersedes the implicit

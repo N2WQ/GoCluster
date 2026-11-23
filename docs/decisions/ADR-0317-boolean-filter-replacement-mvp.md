@@ -11,6 +11,8 @@ description: Numbered Boolean rules, geography-only NEARBY projection, and isola
 
 > [ADR-0330](ADR-0330-native-cc-banks-and-generation-seven.md) replaces affected shared GO/CC ownership and generation/reset clauses with independent native CC banks and generation seven. This record retains its historical decision; compatible GO predicate/source and transaction contracts continue.
 
+> [ADR-0373](ADR-0373-go-pass-rule-zero-shortcut.md) extends human GO PASS syntax with the guarded rule 0 shortcut.
+
 ## Context
 
 [ADR-0321](ADR-0321-boolean-canonical-dxcc-input.md) restores canonical DXCC

@@ -230,6 +230,11 @@ See [storage](../../data/config/README.md#user-configuration-storage).
 
 ## GO Boolean Rules
 
+The [AR-Cluster quick start](../../README.md#coming-from-ar-cluster) explains
+the unnumbered GO PASS. When rule 0 holds a REJECT, tell the user to include
+`0` with the PASS expression only if they intend to replace that veto.
+Direct them to `SHOW FILTER` if other rules still qualify or block spots.
+
 GO `PASS RULE`/`REJECT RULE` slots 0-9 replace whole expressions. REJECT vetoes;
 PASS rules are ORed, and no PASS means unrestricted apart from REJECTs. Edit or
 remove an existing PASS, including default slot 0, to narrow selection. GO

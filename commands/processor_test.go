@@ -626,7 +626,7 @@ func TestHelpPerDialect(t *testing.T) {
 			}
 			continue
 		}
-		for _, want := range []string{"HELP RULE", "HELP FILTER EXAMPLES", "a spot must match at least one of them.", "Other delivery settings still apply."} {
+		for _, want := range []string{"HELP RULE", "HELP FILTER EXAMPLES", "a spot must match at least one of them.", "Other rules and delivery settings still apply."} {
 			if !strings.Contains(reference, want) {
 				t.Fatalf("%s reference missing %q", dialect, want)
 			}

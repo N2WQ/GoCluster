@@ -10,7 +10,7 @@ Showing archive spots
 
 Managing filters
   SHOW FILTER      See your active filters.
-  HELP FILTERS     Learn how to change which spots you receive.
+  HELP FILTERS     Create filters. Includes an AR-Cluster quick start.
   SHOW SETTINGS    See your settings.
 
 Managing presets

@@ -17,18 +17,19 @@ func TestBooleanInputPrefixScope(t *testing.T) {
 		{"PASS RULE 0 ", true}, {"reject rule 9 ", true},
 		{"  PASS  RULE  12   ", true}, {"PASS RULE bad MODE=CW", true},
 		{"PASS RULE -1 ", true}, {"PASS RULE 0", false},
-		{"PASS RULE ", false}, {"PASS RULES 0 ", false},
+		{"PASS RULE ", true}, {"PASS RULE MODE", true}, {"PASS RULE (", true},
+		{"REJECT RULE ", false}, {"REJECT RULE MODE", false}, {"PASS RULES 0 ", false},
 		{"PASS BAND ", false}, {"REJECT COMMENT ", false},
 		{"RESET FILTER RULE ", false}, {"GET YAML FILTER ", false},
 	} {
-		start, ok := booleanRuleExpressionStart([]byte(test.line))
+		start, _, ok := booleanRuleExpressionStart([]byte(test.line))
 		if ok != test.ok || ok && (start < 0 || start > len(test.line)) {
 			t.Fatalf("%q offset=%d ok=%v, want %v", test.line, start, ok, test.ok)
 		}
 	}
 	line := []byte(`pass rule 0 COMMENT="POTA * ?"`)
-	start, ok := booleanRuleExpressionStart(line)
-	if !ok || string(line[start:]) != `COMMENT="POTA * ?"` {
+	start, omitted, ok := booleanRuleExpressionStart(line)
+	if !ok || omitted || string(line[start:]) != `COMMENT="POTA * ?"` {
 		t.Fatal("prefix discarded part of the literal expression")
 	}
 	if allocations := testing.AllocsPerRun(100, func() { booleanRuleExpressionStart(line) }); allocations != 0 {
@@ -41,6 +42,9 @@ func TestBooleanInputLiteralCaseAndEditing(t *testing.T) {
 		for _, test := range []struct {
 			input, want string
 		}{
+			{`pass rule (band=20m or mode=cw) and comment="MiXeD  ""quote"""` + "\r\n",
+				`PASS RULE (band=20m or mode=cw) and comment="MiXeD  ""quote"""`},
+			{"pass rule 0\bmode=cw\n", "PASS RULE mode=cw"},
 			{`pass rule 1 (band=[40m,30m] and mode=cw) or comment="MiXeD ""quote""; <>() [] * ?"` + "\r\n",
 				`PASS RULE 1 (band=[40m,30m] and mode=cw) or comment="MiXeD ""quote""; <>() [] * ?"`},
 			{"  reject  rule  12   mode=cw\n", "  REJECT  RULE  12   mode=cw"},
@@ -70,11 +74,11 @@ func TestBooleanInputLiteralCaseAndEditing(t *testing.T) {
 
 func TestBooleanInputEchoPreservesLiteralCase(t *testing.T) {
 	for _, ziutek := range []bool{false, true} {
-		client, _ := newHumanRecoveryClient(t, []byte("pass rule 1 comment=\"MiXeD\"\r\n"), ziutek)
+		client, _ := newHumanRecoveryClient(t, []byte("pass rule comment=\"MiXeD\"\r\n"), ziutek)
 		var echo bytes.Buffer
 		client.writer, client.echoInput = bufio.NewWriter(&echo), true
 		got, err := client.readBooleanCommandLine(128)
-		want := `PASS RULE 1 comment="MiXeD"`
+		want := `PASS RULE comment="MiXeD"`
 		if err != nil || got != want || echo.String() != want+"\r\n" {
 			t.Fatalf("ziutek=%v line=%q echo=%q err=%v", ziutek, got, echo.String(), err)
 		}
@@ -85,6 +89,8 @@ func TestBooleanInputRejectedPhysicalLineRecovery(t *testing.T) {
 	for _, ziutek := range []bool{false, true} {
 		for _, tail := range []string{
 			"PASS BAND=40M AND MODE=CW\n",
+			"PASS RULE \b(MODE=CW)\n",
+			"REJECT RULE MODE=CW\n",
 			"PASS RULE 1 \b=MODECW\n",
 			"PASS RULE 1 \x17=MODECW\n",
 			"PASS RULE 1 COMMENT=\"POTA\"\x15SHOW OWN=bad\n",
@@ -118,7 +124,7 @@ func TestBooleanInputGuidanceSurvivesFormatting(t *testing.T) {
 	}
 	server := &Server{inputInvalidMsg: "Invalid command.\n"}
 	message := server.formatInputValidationMessage(validation)
-	if !strings.Contains(message, "PASS RULE <0-9>") || !strings.HasSuffix(message, "No changes applied.\n") {
+	if !strings.Contains(message, "PASS RULE <expression>") || !strings.HasSuffix(message, "No changes applied.\n") {
 		t.Fatalf("runtime formatter discarded rule guidance: %q", message)
 	}
 }

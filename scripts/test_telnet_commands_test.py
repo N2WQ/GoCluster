@@ -439,15 +439,17 @@ class HelpTaskFixtures(unittest.TestCase):
         for dialect in ("GO", "CC"):
             show = "SHOW FILTER" if dialect == "GO" else "SHOW/FILTER"
             cases = {
-                "FILTERS": ("SHOW FILTER shows your active rules." if dialect == "GO" else "SHOW/FILTER shows your active filters.",
+                "FILTERS": ("SHOW FILTER shows your active rules. Use RESUME if live spots pause." if dialect == "GO" else
+                            "SHOW/FILTER shows your active filters.",
                             "HELP RULE explains the syntax. HELP FILTER EXAMPLES shows complete setups." if dialect == "GO" else
                             "HELP SET/FILTER lists the options. HELP FILTER EXAMPLES shows complete setups.",
-                            ["A matching REJECT rule blocks a spot, even if a PASS rule matches." if dialect == "GO" else
-                             "Band, mode, source, country, and state filters all apply together."]),
+                            ["PASS RULE BAND=20M AND SOURCE=HUMAN",
+                             "A matching REJECT blocks the spot. Include a number in every REJECT RULE."] if dialect == "GO" else
+                            ["Band, mode, source, country, and state filters all apply together."]),
                 "FILTER EXAMPLES": (
-                    "Human-reported CW and FT8 spots on 20m and 40m:" if dialect == "GO" else
+                    "Coming from AR-Cluster? Try this GO shortcut for human reports on 20m." if dialect == "GO" else
                     "Select the 20m and 40m frequency ranges:", "HELP PRESETS",
-                    (["RESET FILTER RULE ALL",
+                    (["PASS RULE BAND=20M AND SOURCE=HUMAN", "RESET FILTER RULE ALL",
                       "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
                       "PASS RULE 0 BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER",
                       "REJECT RULE 0 MODE=FT8", "RESET FILTER"] if dialect == "GO" else

@@ -72,9 +72,12 @@ func writeBooleanSettingsAndRules(h *humanResponse, c *Client, cfg filter.Config
 	return nil
 }
 
+const firstGOFilterExample = "  PASS RULE BAND=20M AND SOURCE=HUMAN"
+
 func writeBooleanEditGuidance(h *humanResponse) error {
 	for _, text := range []string{
-		"To change rule 0, create a new rule 0.",
+		"PASS RULE without a number sets rule 0. Include every condition to keep.",
+		"Use PASS RULE 0 with your expression to replace a REJECT in rule 0.",
 		"A different PASS number adds another selection.",
 		"Any PASS can match. A matching REJECT blocks the spot.",
 		"PASS without SOURCE allows humans and skimmers.",
@@ -105,6 +108,10 @@ func loginSummary(data templateData, restored restoredLogin) string {
 		switch {
 		case restored.created:
 			fmt.Fprintf(&b, "Starting filters are active (%s).\n", data.dialect)
+			if strings.EqualFold(data.dialect, string(DialectGo)) {
+				b.WriteString("For human reports on 20m, try the PASS RULE shortcut.\n" + firstGOFilterExample + "\n" +
+					"This sets rule 0. Coming from AR-Cluster? See HELP FILTERS.\n")
+			}
 		case !restored.profileReset:
 			fmt.Fprintf(&b, "Saved settings loaded (%s).\n", data.dialect)
 		}
@@ -163,8 +170,9 @@ func (s *Server) renderBooleanLoginBlock(c *Client, first, reset bool) (string, 
 					return err
 				}
 				for _, text := range []string{
-					"To receive CW and FT8 from humans and skimmers:",
-					"  PASS RULE 0 MODE=CW,FT8",
+					"For human reports on 20m, try the PASS RULE shortcut.",
+					firstGOFilterExample,
+					"Coming from AR-Cluster? See HELP FILTERS.",
 				} {
 					if err := h.line(text); err != nil {
 						return err

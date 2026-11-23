@@ -418,7 +418,7 @@ def callsign_pattern_cases(suite, root, cw_label, saved_callsigns):
                 dict(slot=1, action="reject", expr="DXCALL=N0XYZ OR DECALL=N0XYZ")],
                 "callsign lists lost exact canonical definitions")
             for old in ("PASS DXCALL W6*", "REJECT DECALL N0XYZ"):
-                require_fixture_refusal(current, old, record, "Use numbered rules:")
+                require_fixture_refusal(current, old, record, "Use PASS RULE <expression> to set rule 0.")
         document = current.get()
         expected = copy.deepcopy(active_fixture_bank(document))
         require_callsign_rules(document, expected, record)
@@ -601,7 +601,7 @@ def filter_argument_cases(suite, root, cw_label, saved_arguments):
         if dialect == "go":
             for old in ("PASS NOFILTER OFF", "PASS NOFILTER ALL", "REJECT BAND ALL",
                         "PASS MODE CW", "SET/FILTER BAND/ON", "SET/FILTER DXCALL/OFF"):
-                require_fixture_refusal(current, old, record, "Use numbered rules:")
+                require_fixture_refusal(current, old, record, "Use PASS RULE <expression> to set rule 0.")
             current = reconnect_fixture_session(current, record)
             fixture_edit(current, "RESET FILTER RULE ALL", record)
             fixture_edit(current, "PASS RULE 0 MODE=CW", record)
@@ -2647,8 +2647,11 @@ def help_route_contract(key, dialect):
     for verb in ("PASS", "REJECT"):
         if dialect == "go":
             summary = "Allow matching spots or enable separate controls." if verb == "PASS" else "Veto matching spots or disable separate controls."
+            usage = (verb + " RULE <0..9> <expression>", verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]")
+            if verb == "PASS":
+                usage += ("PASS RULE <expression>",)
             contracts[verb] = (verb + " - " + summary,
-                (verb + " RULE <0..9> <expression>", verb + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]"),
+                usage,
                 "  Old category mutation syntax is refused, not translated; use HELP RULE.", ())
         else:
             contracts[verb] = (verb + " - Change separate delivery switches.",
@@ -2948,10 +2951,10 @@ def filter_discovery_reply(verb, unknown=False, dialect="go"):
     require(verb in ("PASS", "REJECT"), "invalid discovery action oracle")
     if dialect == "cc":
         return native_retired_reply(verb)
+    message = ("Usage: PASS RULE <expression>\n       PASS RULE <0..9> <expression>\n"
+               "       REJECT RULE <0..9> <expression>\nType HELP RULE for fields and examples.")
     if unknown:
-        message = "Use numbered rules: PASS RULE <0..9> <expression> or REJECT RULE <0..9> <expression>. Type HELP RULE for fields and examples."
-    else:
-        message = "Usage: PASS RULE <0..9> <expression>\n       REJECT RULE <0..9> <expression>\nType HELP RULE for fields and examples."
+        message = "Use PASS RULE <expression> to set rule 0.\n" + message
     return bounded_filter_refusal(message, "  ")
 
 
@@ -2959,8 +2962,9 @@ def require_discovery_inventory(reply, verb, unknown=False, dialect="go"):
     require(reply == filter_discovery_reply(verb, unknown, dialect), "discovery loses exact dialect-specific feedback")
     if dialect == "go":
         flat = " ".join(reply.split())
-        require("PASS RULE <0..9> <expression>" in flat and "REJECT RULE <0..9> <expression>" in flat and
-                "HELP RULE" in flat, "GO discovery omits numbered-rule recovery")
+        require("PASS RULE <expression>" in flat and "PASS RULE <0..9> <expression>" in flat and
+                "REJECT RULE <0..9> <expression>" in flat and "HELP RULE" in flat,
+                "GO discovery omits rule-0 or numbered-rule recovery")
     else:
         require("HELP SET/FILTER" in reply and "DIALECT GO" in " ".join(reply.split()) and "HELP RULE" not in reply,
                 "CC discovery loses bank-specific recovery")

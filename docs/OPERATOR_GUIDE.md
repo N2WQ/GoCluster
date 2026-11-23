@@ -337,7 +337,14 @@ Log in with your callsign. Useful first commands:
 - `SHOW FILTER`: show filter selections and restrictions.
 - In GO, `SHOW FILTER RULE` or `SHOW FILTER FULL` displays saved rules and separate controls.
 - `SHOW SETTINGS`: show configured choices, effective settings, and session status.
-- In GO, `PASS RULE <0..9> <expression>`: add or replace a qualifying rule.
+- In GO, `PASS RULE <expression>` sets rule 0. A new GO account starts with its
+  configured modes and sources in PASS rule 0. Include every condition you want
+  to keep. Use `PASS RULE 0 <expression>` to replace a REJECT in rule 0.
+- In GO, `PASS RULE <0..9> <expression>` sets the specified rule. For an
+  AR-Cluster quick start, use `HELP FILTERS`. AR-Cluster's
+  `SET DX FILTER BAND=20 AND NOT SKIMMER` replaces its whole DX filter.
+  GoCluster's `PASS RULE BAND=20M AND SOURCE=HUMAN` sets rule 0. The other
+  rules can still qualify or block spots. [AR-Cluster user manual](https://www.arcluster.org/user-guide/)
 - In GO, `REJECT RULE <0..9> <expression>`: add or replace a veto rule.
 - In GO, `PASS RULE 0 BAND=ALL AND MODE=CW` selects CW on any band, including
   spots whose band is unknown. `ALL` stays literal in callsign and comment

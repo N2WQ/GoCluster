@@ -282,20 +282,21 @@ def help_task_contract(topic, dialect):
     show = "SHOW FILTER" if dialect.lower() == "go" else "SHOW/FILTER"
     if topic == "FILTERS":
         if dialect.lower() == "go":
-            return ("SHOW FILTER shows your active rules.",
+            return ("SHOW FILTER shows your active rules. Use RESUME if live spots pause.",
                     "HELP RULE explains the syntax. HELP FILTER EXAMPLES shows complete setups.",
-                    ("A matching REJECT rule blocks a spot, even if a PASS rule matches.",))
+                    ("PASS RULE BAND=20M AND SOURCE=HUMAN",
+                     "A matching REJECT blocks the spot. Include a number in every REJECT RULE."))
         return ("SHOW/FILTER shows your active filters.",
                 "HELP SET/FILTER lists the options. HELP FILTER EXAMPLES shows complete setups.",
                 ("Band, mode, source, country, and state filters all apply together.",))
     if topic == "FILTER EXAMPLES":
-        commands = (("RESET FILTER RULE ALL",
+        commands = (("PASS RULE BAND=20M AND SOURCE=HUMAN", "RESET FILTER RULE ALL",
                      "PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
                      "PASS RULE 0 BAND=20M,40M AND MODE=CW AND SOURCE=SKIMMER",
                      "REJECT RULE 0 MODE=FT8", "RESET FILTER") if dialect.lower() == "go" else
                     ("SET/FILTER DXBM/OFF", "SET/FILTER DXBM/PASS 20,40",
                      "SET/FILTER DOC/PASS K,VE", "SET/NOFT8", "SET/NOFILTER"))
-        header = ("Human-reported CW and FT8 spots on 20m and 40m:" if dialect.lower() == "go" else
+        header = ("Coming from AR-Cluster? Try this GO shortcut for human reports on 20m." if dialect.lower() == "go" else
                   "Select the 20m and 40m frequency ranges:")
         return header, "HELP PRESETS", (*commands, show, "RESUME", "HELP PRESETS")
     check(topic == "PRESETS", "unsupported task HELP oracle")

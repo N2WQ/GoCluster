@@ -335,11 +335,12 @@ Private local-cluster acceptance remains pending. The telnet layer owns command
 admission and publication. GO uses immutable Boolean rules; CC uses its own
 immutable native categories and independently saved state.
 
-GO uses the following numbered-rule commands. CC owns separate native state;
+GO uses the following personal-rule commands. CC owns separate native state;
 see [CC commands, schema 7 and recovery](../docs/cc-dialect.md). The Boolean
 examples below apply to GO.
 
 ```text
+PASS RULE <expression>
 PASS RULE <0..9> <expression>
 REJECT RULE <0..9> <expression>
 RESET FILTER RULE <0..9|ALL>
@@ -351,12 +352,26 @@ HELP RULE
 Each occupied slot holds one action and one complete expression. Setting a slot
 replaces both; it is not a delta or an addition to a category list.
 
+`PASS RULE <expression>` is the rule 0 shortcut. It fills an empty rule 0 or
+replaces the whole PASS expression there. Include each condition you want to
+keep. Use `PASS RULE 0 <expression>` to replace a REJECT in rule 0. Every
+`REJECT RULE` command requires a number. Use a free number to preserve your PASS
+rules when you add a separate exclusion.
+
+For AR-Cluster users, `SET DX FILTER BAND=20 AND NOT SKIMMER` and GoCluster's
+`PASS RULE BAND=20M AND SOURCE=HUMAN` express the same 20m human-report choice.
+AR-Cluster replaces its whole DX filter. GoCluster sets rule 0, and other
+rules still apply. For example, a separate PASS for FT8 on any band can still
+allow FT8 outside 20m. Use `HELP FILTER EXAMPLES` for both commands and
+`SHOW FILTER` to inspect your saved rules. [AR-Cluster user manual](https://www.arcluster.org/user-guide/)
+
 - Any matching REJECT vetoes delivery. Otherwise any active PASS can qualify.
 - With no active PASS, personal selection is unrestricted except for matching
   REJECTs. With no rules there is no personal restriction; separate controls
   still apply.
-- Slot IDs are not priorities. Adding another PASS broadens selection. To narrow
-  a selection, edit or remove its existing PASS, including default slot 0.
+- Slot IDs identify which rule to edit. When a PASS already exists, adding
+  another PASS can let in more spots. To narrow a selection, edit or remove its
+  existing PASS, including default slot 0.
 - `RESET FILTER RULE` clears the selected slot or all slots.
   `RESET FILTER` clears all personal rules. Neither resets
   separate controls or profile settings, and neither reinstalls defaults.
@@ -822,6 +837,8 @@ The supplied greeting includes a short `<LOGIN_SUMMARY>`. Operators can place
 filters" for returning accounts. Values come from the restored or prepared
 session. A profile reset gets the reset notice and first-time guidance.
 The GO block shows canonical rules, and the CC block shows native selections.
+The short summary includes the PASS shortcut on first GO login and directs
+AR-Cluster users to `HELP FILTERS`.
 
 `SHOW DXCC` (also `SH DXCC`) requires one prefix or callsign. Extra values
 return usage without performing a lookup. `BYE`, `QUIT` and `EXIT` take no

@@ -89,8 +89,8 @@ func TestBooleanFilterSnapshotCanonicalRulesAndCounts(t *testing.T) {
 	}
 	flattened := strings.Join(strings.Fields(body), " ")
 	for _, want := range []string{
-		"PASS rules are ORed", "matching REJECT wins", "Slot IDs are not priorities",
-		"ordinary editable rule", "adding another PASS broadens selection", "Edit/remove slot 0",
+		"PASS rules are ORed", "matching REJECT wins", "Rule numbers identify the rule to edit",
+		"PASS RULE without a number sets rule 0", "Include 0 to replace a REJECT there",
 		"SELF ON can bypass ordinary personal rules", "TOXIC still applies", "ANNOUNCE/PC93",
 		"DEFAULT (ON)", "separate control", "3/10 occupied slots", "atoms 6/128", "values 5/512",
 		"Program nodes 9; atoms 6; values 5.",

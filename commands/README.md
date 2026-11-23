@@ -214,7 +214,7 @@ The operator-facing commands handled here are:
   commit and build timestamp remain separate metadata in
   `--version` and PC18, rather than appearing in the version string.
 - `SHOW OWN`
-- GO: `SHOW FILTER [RULE|FULL]`, `HELP RULE`, `PASS RULE <0..9> <expression>`,
+- GO: `SHOW FILTER [RULE|FULL]`, `HELP RULE`, `PASS RULE [0..9] <expression>`,
   `REJECT RULE <0..9> <expression>`, `RESET FILTER RULE <0..9|ALL>`
 - CC: `SHOW/FILTER [view]` accepts `FULL`, `DOC`, `DOS`, `DXCTY`, `DXSTATE`,
   `DXBM`, `MODE`, `SOURCE`, `BEACON`, `WWV`, `WCY`, `ANNOUNCE` (or `PC93`),
@@ -254,9 +254,13 @@ This package documents those commands in HELP, but the parsers for `PASS`,
 `PAUSE`, `SHOW HOLD`, `RESUME`, and the `cc` aliases live under [`../telnet`](../telnet).
 
 In GO, setting a slot replaces its action and entire expression. Slots are not
-priorities; another PASS broadens selection. No active PASS means unrestricted
+priorities. An additional PASS can let in more spots. No active PASS means unrestricted
 personal selection except matching REJECTs. New accounts and old-profile resets
 receive the same editable default PASS slot 0; restored Boolean empty rules stay empty.
+`PASS RULE <expression>` fills empty rule 0 or replaces its PASS expression.
+Use `PASS RULE 0 <expression>` to replace a REJECT there. `REJECT RULE` takes
+an explicit slot. `HELP FILTERS` and `HELP FILTER EXAMPLES` lead with the
+shortcut and explain how its rule 0 edit differs from AR-Cluster's whole-filter edit.
 A PASS rule without SOURCE allows HUMAN and SKIMMER.
 SOURCE follows ordinary Boolean semantics, including OR and NOT.
 Explicit SOURCE=HUMAN stays human-only, including saved default rules.

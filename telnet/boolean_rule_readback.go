@@ -48,7 +48,8 @@ func writeBooleanFilterSnapshot(h *humanResponse, f *filter.Filter) error {
 	}
 	for _, text := range []string{
 		"PASS rules are ORed; any matching REJECT wins. With no active PASS rule, personal rules allow all except matching REJECTs.",
-		"Slot IDs are not priorities. Default slot 0 is an ordinary editable rule; adding another PASS broadens selection. Edit/remove slot 0 to narrow it.",
+		"Rule numbers identify the rule to edit. To narrow a PASS, replace its expression with all the conditions you want.",
+		"PASS RULE without a number sets rule 0. Include 0 to replace a REJECT there.",
 	} {
 		if err := h.row("", text); err != nil {
 			return err

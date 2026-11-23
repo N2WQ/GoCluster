@@ -73,11 +73,9 @@ def routing_help_wire(lines, query="HELP SH BUILD EXTRA", pause=False, echo=True
 def discovery_literal_reply(verb, unknown=False, dialect="go"):
     if dialect == "cc":
         return ("Use HELP SET/FILTER for native CC filters. Boolean rule edits require DIALECT\nGO.\nNo changes applied.")
-    if unknown:
-        return ("Use numbered rules: PASS RULE <0..9> <expression> or REJECT RULE <0..9>\n"
-                "  <expression>. Type HELP RULE for fields and examples.\nNo changes applied.")
-    return ("Usage: PASS RULE <0..9> <expression>\n       REJECT RULE <0..9> <expression>\n"
-            "Type HELP RULE for fields and examples.\nNo changes applied.")
+    prefix = "Use PASS RULE <expression> to set rule 0.\n" if unknown else ""
+    return (prefix + "Usage: PASS RULE <expression>\n       PASS RULE <0..9> <expression>\n"
+            "       REJECT RULE <0..9> <expression>\nType HELP RULE for fields and examples.\nNo changes applied.")
 
 
 def current_configuration(dialect="cc"):
@@ -103,15 +101,17 @@ def task_help_literal(topic, dialect):
     # Their facts and commands are independent of the harness's task oracle.
     if topic == "FILTERS":
         if dialect == "go":
-            return ["SHOW FILTER shows your active rules.",
-                    "A matching REJECT rule blocks a spot, even if a PASS rule matches.",
+            return ["SHOW FILTER shows your active rules. Use RESUME if live spots pause.",
+                    "  PASS RULE BAND=20M AND SOURCE=HUMAN",
+                    "A matching REJECT blocks the spot. Include a number in every REJECT RULE.",
                     "HELP RULE explains the syntax. HELP FILTER EXAMPLES shows complete setups."]
         return ["SHOW/FILTER shows your active filters.",
                 "Band, mode, source, country, and state filters all apply together.",
                 "HELP SET/FILTER lists the options. HELP FILTER EXAMPLES shows complete setups."]
     elif topic == "FILTER EXAMPLES":
         if dialect == "go":
-            lines = ["Human-reported CW and FT8 spots on 20m and 40m:",
+            lines = ["Coming from AR-Cluster? Try this GO shortcut for human reports on 20m.",
+                     "  PASS RULE BAND=20M AND SOURCE=HUMAN",
                      "  Removes all current GO rules. Other settings stay unchanged.",
                      "  RESET FILTER RULE ALL",
                      "  PASS RULE 0 BAND=20M,40M AND MODE=CW,FT8 AND SOURCE=HUMAN",
@@ -185,6 +185,8 @@ def discovery_help_literal(key, dialect):
                  "Changing a switch does not change any numbered rule.", "", key + " - " + summary]
         if dialect == "go":
             lines += ["Usage: " + key + " RULE <0..9> <expression>", "       " + key + " <BEACON|WWV|WCY|ANNOUNCE|SELF> [ALL]"]
+            if key == "PASS":
+                lines.append("       PASS RULE <expression>")
             notes = ["SELF separately controls live spots of your own call.", "PC93 aliases ANNOUNCE. Switches accept no value or ALL.",
                      "Old category mutation syntax is refused, not translated; use HELP RULE."]
         else:

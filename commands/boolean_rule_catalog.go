@@ -15,16 +15,18 @@ func installBooleanRuleHelp(catalog *helpCatalog, dialect string) {
 		"Start with SHOW FILTER to see your rules.",
 		"Rule numbers run from 0 to 9. Using a number again replaces that rule.",
 		"Numbers do not set priority.",
+		"PASS RULE without a number sets rule 0. See HELP FILTERS for a quick start.",
 		"",
 		"How rules work together",
 		"  A matching REJECT rule blocks a spot, even if a PASS rule matches.",
 		"  If you have PASS rules, a spot must match at least one of them.",
 		"  With no PASS rules, only matching REJECT rules block spots.",
+		"  Adding a PASS rule can let in more spots. Edit a rule to narrow it.",
 		"  Other delivery settings still apply. SELF can let spots of your call",
 		"  bypass your rules. Other delivery checks still apply.",
 		"",
-		"Examples (each command replaces the rule at that number)",
-		"  PASS RULE 0 MODE=CW,FT8",
+		"Examples",
+		"  PASS RULE MODE=CW,FT8",
 		"    Allow CW or FT8 under rule 0. Other PASS rules still apply.",
 		"  REJECT RULE 9 BAND=20M AND MODE=FT8",
 		"    Block FT8 on 20m, even if a PASS rule allows it.",
@@ -55,8 +57,11 @@ func installBooleanRuleHelp(catalog *helpCatalog, dialect string) {
 		summary: "PASS RULE - Replace a numbered personal rule.",
 		lines: []string{
 			"PASS RULE <0-9> <expression>",
-			"Example: PASS RULE 0 MODE=CW,FT8",
-			"This replaces rule 0. A comma means either mode matches.",
+			"PASS RULE <expression>",
+			"Example: PASS RULE MODE=CW,FT8",
+			"The short form sets rule 0. A comma means either mode matches.",
+			"Use PASS RULE 0 with your expression to replace a REJECT in rule 0.",
+			"Include every condition you want to keep. Other rules still apply.",
 			"PASS RULE 0 BAND=ALL AND MODE=CW allows CW on any band.",
 			"Adding a PASS rule can let in more spots. Edit a rule to narrow it.",
 			"A matching REJECT rule still blocks the spot. See HELP RULE.",
@@ -66,6 +71,7 @@ func installBooleanRuleHelp(catalog *helpCatalog, dialect string) {
 		summary: "REJECT RULE - Replace a numbered personal rule.",
 		lines: []string{
 			"REJECT RULE <0-9> <expression>",
+			"Include a number. To keep your PASS rules, pick an empty rule number.",
 			"Example: REJECT RULE 9 BAND=20M AND MODE=FT8",
 			"This replaces rule 9. AND means both conditions must match.",
 			"REJECT RULE 9 BAND=ALL matches every spot the rules evaluate.",
@@ -125,6 +131,12 @@ func installDeliverySwitchHelp(catalog *helpCatalog, dialect string) {
 			notes = append(notes, "Numbered PASS and REJECT rules are for GO. In CC, see HELP SET/FILTER.")
 		} else {
 			usage = append([]string{verb + " RULE <0..9> <expression>"}, usage...)
+			if verb == "PASS" {
+				usage = append(usage, "PASS RULE <expression>")
+				notes = append(notes, "The short PASS sets rule 0. Use explicit 0 to replace a REJECT.")
+			} else {
+				notes = append(notes, "Include a number. Pick an empty rule number to keep your PASS rules.")
+			}
 			notes = append(notes, "Old category mutation syntax is refused, not translated; use HELP RULE.")
 		}
 		summary := verb + " - Change separate delivery switches."

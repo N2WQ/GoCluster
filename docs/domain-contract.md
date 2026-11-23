@@ -717,6 +717,11 @@ Boolean personal-rule engine; the old category model has been removed.
 - Slots 0-9 each hold one PASS or REJECT action and one complete expression.
   `PASS RULE <0..9> <expression>` and `REJECT RULE <0..9> <expression>` use the
   GO grammar. CC refuses Boolean rule mutations. Setting a slot replaces its action and expression.
+- GO human input also accepts `PASS RULE <expression>` for empty or PASS rule 0.
+  If rule 0 is a REJECT, refuse before publishing or saving and direct the user
+  to the explicit `PASS RULE 0 <expression>` form. Other slots still apply.
+  A missing or malformed slot never becomes an accepted numbered edit. A
+  complete, validated expression is required in both PASS forms.
 - Any matching active REJECT vetoes delivery. Otherwise active PASS rules are
   ORed. With no active PASS, personal selection is unrestricted except for
   REJECTs; with no rules there is no personal restriction. Slots are not
