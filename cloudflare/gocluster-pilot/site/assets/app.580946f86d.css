@@ -842,5 +842,58 @@ select.txt { appearance: auto; }
 .resize-grip:hover::after { content: ""; position: absolute; inset: 4px 4px; background: var(--accent); }
 @media (max-width: 760px) { .spot-grid { min-width: 0; } }
 
+.repeat-switch.on { color: var(--accent); background: var(--accent-soft); }
+.repeats-on { --repeat-gutter: 32px; }
+.repeats-on .spot-grid { min-width: calc(var(--grid-min) + var(--repeat-gutter)); }
+.repeats-on .spot-grid :is(.thead, .row) { padding-right: calc(16px + var(--repeat-gutter)); }
+.repeat-summary { cursor: default; }
+.repeat-summary .c-path { flex-direction: column; align-items: center; gap: 1px; }
+.repeat-path-label { font-size: 10px; line-height: 1; color: var(--muted); }
+.repeat-count {
+  flex: none;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+}
+.repeat-summary .c-dx b { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.repeat-expand {
+  display: grid;
+  place-items: center;
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  width: 29px;
+  height: 27px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--muted);
+  background: transparent;
+}
+.repeat-expand:hover, .repeat-expand[aria-expanded="true"] {
+  border-color: var(--line);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.repeat-expand .ic { transition: transform .12s ease; }
+.repeat-expand[aria-expanded="true"] .ic { transform: rotate(180deg); }
+.repeat-members { background: var(--surface-2); }
+.repeat-member { border-bottom-style: dashed; }
+.repeat-member::before { opacity: .4; }
+.repeat-member .c-dx b { color: var(--muted); font-weight: 500; }
+.repeat-member-call { overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; }
+
+@media (max-width: 760px) {
+  .repeats-on .spot-grid { min-width: 0; }
+  .repeats-on .spot-grid .row { padding-right: calc(12px + var(--repeat-gutter)); }
+  .stream-actions { flex-wrap: wrap; }
+  :is(.repeat-summary, .repeat-member) > .c-de { display: flex; grid-row: 3; grid-column: 1 / 3; }
+  :is(.repeat-summary, .repeat-member) > .c-rep { display: flex; grid-row: 3; grid-column: 3 / -1; flex-direction: row; justify-self: end; }
+  .repeat-expand { width: 34px; height: 40px; right: 5px; }
+}
+
 /* Balance the reorder grip so the heading text sits over its readings. */
 .th-mode .col-label::after, .th-rep .col-label::after { content: ""; width: 8px; }
