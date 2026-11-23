@@ -4,6 +4,14 @@
 # Safe edits: Set Go runtime controls, telnet ports/messages, default filter policy, and bounded queue values for the local deployment.
 # Source: data/config/README.md.
 
+# Private browser console (optional)
+web:
+  enabled: false                         # Opt-in origin for the private browser console
+  listen_address: "127.0.0.1:8080"       # Literal loopback endpoint used by cloudflared
+  hostname: "gocluster-pilot.n2wq-api.workers.dev" # Exact Host; browser Origin is https:// plus this name
+  heartbeat_seconds: 30                  # WebSocket ping interval, 1 through 300 seconds
+  max_connections: 32                    # All accepted browser-origin TCP connections, 1 through 1024
+
 # Persistence
 buffer:
   capacity: 75000                   # Number of spots held in the in-memory ring buffer (post-primary dedup)

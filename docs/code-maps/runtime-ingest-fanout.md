@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `c191f4715057d47f`
+- Source fingerprint: `040bb14ada42462c`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 61 | 228 |
 | `dxcluster/peer` | `peer` | 63 | 139 |
 | `dxcluster/spot` | `spot` | 47 | 87 |
-| `dxcluster/telnet` | `telnet` | 91 | 189 |
+| `dxcluster/telnet` | `telnet` | 93 | 191 |
 
 ## In-Scope Package Edges
 
@@ -86,6 +86,7 @@
 | `dxcluster/spot` | `dxcluster/strutil` |
 | `dxcluster/telnet` | `dxcluster/archive` |
 | `dxcluster/telnet` | `dxcluster/bulletinhistory` |
+| `dxcluster/telnet` | `dxcluster/config` |
 | `dxcluster/telnet` | `dxcluster/cty` |
 | `dxcluster/telnet` | `dxcluster/filter` |
 | `dxcluster/telnet` | `dxcluster/filter/expr` |
@@ -883,6 +884,8 @@ Source files:
 - `telnet/ve7cc_format.go`
 - `telnet/ve7cc_history.go`
 - `telnet/ve7cc_session.go`
+- `telnet/web_listener.go`
+- `telnet/web_session.go`
 - `telnet/writer_normalize.go`
 
 Test files:
@@ -1070,6 +1073,8 @@ Test files:
 - `telnet/ve7cc_transport_test.go`
 - `telnet/ve7cc_writer_bench_test.go`
 - `telnet/ve7cc_writer_test.go`
+- `telnet/web_listener_test.go`
+- `telnet/web_session_test.go`
 - `telnet/writer_v15_append_test.go`
 - `telnet/writer_v15_bench_test.go`
 - `telnet/writer_v15_fixture_test.go`
@@ -1080,6 +1085,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0375 | Accepted | 2026-11-23 | Worker asset hosting, private WebSocket admission and bounded cluster sessions | `area:internal/cluster` |
 | ADR-0365 | Accepted | 2026-11-20 | telnet user preferences | `area:telnet` |
 | ADR-0359 | Accepted | 2026-11-19 | Telnet history and client compatibility | `area:telnet` |
 | ADR-0354 | Accepted | 2026-11-15 | peer FIFO, one verdict, original relay, retirement | `area:peer` |

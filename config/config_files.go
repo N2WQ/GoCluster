@@ -418,6 +418,11 @@ func collectStructPresenceDiagnostics(raw map[string]any, t reflect.Type, prefix
 			continue
 		}
 		value, present := yamlValueAt(raw, path...)
+		// Pre-pilot installations have no web listener. Once the section is
+		// supplied its full operator contract is required, including enabled.
+		if joined == "web" && !present {
+			continue
+		}
 		if !present {
 			*diagnostics = append(*diagnostics, fmt.Sprintf("required YAML setting %q is missing", joined))
 			continue
@@ -439,6 +444,11 @@ func collectStructPresenceDiagnostics(raw map[string]any, t reflect.Type, prefix
 func validateConfiguredRuntimeValues(cfg Config) error {
 	if err := validateValueTree(reflect.ValueOf(cfg), reflect.TypeOf(cfg), nil); err != nil {
 		return err
+	}
+	if cfg.Web != nil {
+		if err := cfg.Web.Validate(); err != nil {
+			return err
+		}
 	}
 	if cfg.Telnet.AdmissionLogSampleRate < 0 || cfg.Telnet.AdmissionLogSampleRate > 1 {
 		return fmt.Errorf("invalid YAML setting %q: must be between 0 and 1", "telnet.admission_log_sample_rate")
@@ -479,6 +489,9 @@ func validateValueTree(value reflect.Value, t reflect.Type, prefix []string) err
 			continue
 		}
 		fieldValue := value.Field(i)
+		if joined == "web" && fieldValue.IsNil() {
+			continue
+		}
 		fieldType := field.Type
 		for fieldType.Kind() == reflect.Pointer {
 			if fieldValue.IsNil() {

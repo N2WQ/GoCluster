@@ -74,7 +74,13 @@ func (o *jsonWriterOutput) Flush() error {
 		return err
 	}
 	start := time.Now()
-	n, err := c.conn.Write(o.buf)
+	var n int
+	var err error
+	if c.web != nil {
+		n, err = c.web.writeJSON(o.buf)
+	} else {
+		n, err = c.conn.Write(o.buf)
+	}
 	c.clearWriteDeadline()
 	if err == nil && n != len(o.buf) {
 		err = io.ErrShortWrite

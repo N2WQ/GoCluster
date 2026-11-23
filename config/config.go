@@ -137,6 +137,7 @@ func normalizeTelnetHandshakeMode(value TelnetHandshakeMode) (TelnetHandshakeMod
 type Config struct {
 	Server              ServerConfig          `yaml:"server"`
 	Telnet              TelnetConfig          `yaml:"telnet"`
+	Web                 *WebConfig            `yaml:"web,omitempty" json:"-"` // Transport settings do not affect replay pipeline fingerprints.
 	WhoSpotsMe          WhoSpotsMeConfig      `yaml:"who_spots_me"`
 	UI                  UIConfig              `yaml:"ui"`
 	GoRuntime           GoRuntimeConfig       `yaml:"go_runtime"`

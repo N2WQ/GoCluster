@@ -60,6 +60,20 @@ Configuration is split by concern so you only edit the relevant file:
 
 - `app.yaml` - deployment/runtime settings for server identity, stats interval, console UI, system logging, propagation logging, and optional dropped-call logs.
 - `runtime.yaml` - deployment/runtime settings plus operator policy for default filters, telnet messages, and `who_spots_me.window_minutes`.
+- The optional `web` section enables a private browser console origin. Omitting
+  the section or using the shipped `enabled: false` keeps it off. When present,
+  supply every field shown in `runtime.yaml`. Use a literal loopback IP and
+  port for `listen_address` and the public Worker DNS name for `hostname`.
+  The shipped `max_connections: 32` bounds accepted origin sockets from
+  header reading through disconnection. The shipped `heartbeat_seconds: 30`
+  sets the WebSocket ping interval. Changes take effect on restart.
+- To enable the origin, set `GOCLUSTER_WEB_EDGE_SECRET` in the cluster service
+  environment and store the same random value in the pilot Worker's secret
+  binding. Use 32 to 256 printable non-space ASCII characters. The Worker
+  must send the exact public HTTPS Origin and Host, its secret in
+  `X-GoCluster-Edge-Secret`, and matching `CF-Connecting-IP` and
+  `X-GoCluster-Visitor-IP` values across the private tunnel. The listener
+  accepts `GET /ws` only and applies cluster admission to that visitor address.
 - `runtime.yaml` requires `telnet.max_sessions_per_base_call`, a nonnegative
   integer. The shipped value `10` limits registered sessions per normalized
   base callsign; `0` disables this limit. The value is operator policy, not a

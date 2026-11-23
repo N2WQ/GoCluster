@@ -10,3 +10,7 @@ binding = "ASSETS"
 run_worker_first = true
 html_handling = "none"
 not_found_handling = "none"
+
+[[vpc_services]]
+binding = "CLUSTER_ORIGIN"
+service_id = "01a20a0f-6261-7f81-bd95-b64ae9f1e15d"

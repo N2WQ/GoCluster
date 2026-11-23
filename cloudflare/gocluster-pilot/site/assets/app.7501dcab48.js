@@ -2586,7 +2586,7 @@ const LS = {
 };
 const DEFAULT_PREFS = {
   theme: "system", contrast: "system", textSize: "normal", density: "comfortable", timeMode: "utc", rowCap: 250, watch: ["VP8", "ZD7", "T32"],
-  colOrder: ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "path", "conf"], colShow: {},
+  colOrder: ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "path", "conf"], colShow: {}, colWidths: {},
 };
 
 // ---------------------------------------------------------------- the store
@@ -3544,11 +3544,11 @@ const COLUMNS = {
   time: { label: "UTC", tpl: "58px", minW: 0, cell: s => html`<span class="c-time mono" title=${s.t != null ? new Date(s.t).toUTCString() : "No time"}>${fmtTime(s.t)}<i class="age">${fmtAge(s.t)}</i></span>` },
   dx: { label: "DX", tpl: "minmax(104px,148px)", fixed: true, cell: (s, r, x) => html`<span class="c-dx"><b class="mono">${s.dxCall}</b>${x.watch ? html`<span class="wtag" title="On your watch list">watch</span>` : null}${x.own ? html`<span class="wtag own">you</span>` : null}${!r.pass ? html`<span class="why" title=${reasonWords(r.by, workingCards())}><${Icon} name="eyeOff" size=${12} />${r.by && r.by.startsWith("REJECT") ? "Hide #" + r.by.slice(7) : r.by === "no PASS matched" ? "no Show" : r.by}</span>` : null}</span>` },
   freq: { label: "kHz", tpl: "94px", align: "r", cell: s => html`<span class="c-freq mono">${fmtFreq(s.freq)}</span>` },
-  mode: { label: "Mode", tpl: "62px", cell: s => html`<span class="c-mode"><${ModeBadge} mode=${s.mode} /></span>` },
-  rep: { label: "Signal", tpl: "72px", minW: 720, cell: s => html`<span class="c-rep">${s.snr != null ? html`<span class="mono">${fmtReport(s)}</span><span class="meter-s"><i style=${`width:${Math.round(snrMeter(s) * 100)}%`}></i></span>` : null}</span>` },
+  mode: { label: "Mode", align: "c", tpl: "62px", cell: s => html`<span class="c-mode"><${ModeBadge} mode=${s.mode} /></span>` },
+  rep: { label: "SNR", align: "c", tpl: "72px", minW: 720, cell: s => html`<span class="c-rep">${s.snr != null ? html`<span class="mono">${fmtReport(s)}</span><span class="meter-s"><i style=${`width:${Math.round(snrMeter(s) * 100)}%`}></i></span>` : null}</span>` },
   where: { label: "Where", tpl: "minmax(150px,1.3fr)", minW: 600, cell: s => html`<span class="c-where"><span class="cont" style=${`--ch:${CONT_HUE[s.dxCont] || "#94a3b8"}`}>${s.dxCont || "?"}</span><span class="ent">${s.dxEntity || ""}</span><span class="grid mono">${s.dxGrid || ""}</span>${s.events.map(e => html`<span class="ev">${e}</span>`)}</span>` },
   cmt: { label: "Comment", tpl: "minmax(100px,1fr)", minW: 1040, cell: (s, r, x) => html`<span class="c-cmt" title=${x.cmt}>${x.cmt}</span>` },
-  de: { label: "Heard by", tpl: "minmax(112px,156px)", minW: 860, cell: s => html`<span class="c-de"><span class="mono">${s.deCall}</span><span class="src">${s.feed === "PSKReporter" ? "PSKR" : s.feed}</span>${s.node && s.node !== s.deCall ? html`<span class="src" title="Originating node">via ${s.node}</span>` : null}</span>` },
+  de: { label: "Heard by", tpl: "minmax(112px,156px)", minW: 860, cell: s => html`<span class="c-de"><span class="mono">${s.deCall}</span><span class="src">${s.feed === "PSKReporter" ? "PSKR" : s.feed}</span>${s.node && s.node !== s.deCall && !(s.feed === "RBN" && s.node === "RBN") ? html`<span class="src" title="Originating node">via ${s.node}</span>` : null}</span>` },
   path: { label: "Path", tpl: "44px", align: "c", title: "Path to your grid", cell: s => html`<span class="c-path"><${PathGlyph} cls=${s.path} /></span>` },
   conf: { label: "Call", tpl: "36px", align: "c", title: "Callsign confidence", cell: s => html`<span class="c-conf"><${ConfBadge} conf=${s.conf} /></span>` },
 };
@@ -3589,14 +3589,59 @@ function diagText(s, mode) {
     default: return s.comment;
   }
 }
+function columnLayout(cols) {
+  const widths = S.prefs.colWidths || {};
+  let minimum = 35 + 12 * (cols.length - 1);
+  const tracks = cols.map(k => {
+    const width = widths[k];
+    if (Number.isFinite(width) && width >= 32 && width <= 1600) {
+      minimum += width;
+      return width + "px";
+    }
+    const track = COLUMNS[k].tpl;
+    minimum += Number(track.match(/\d+/)[0]);
+    return track;
+  });
+  return `--cols:${tracks.join(" ")};--grid-min:${minimum}px`;
+}
 function ColumnHead({ k, drag, setDrag }) {
   const c = COLUMNS[k];
+  const gesture = useRef(null);
+  function start(e) {
+    if (e.button !== 0 || !e.isPrimary) return;
+    e.preventDefault();
+    const header = e.currentTarget.parentNode;
+    const grid = header.closest(".spot-grid");
+    const widths = Object.fromEntries(Array.from(header.parentNode.children, el =>
+      [el.dataset.column, Math.round(el.getBoundingClientRect().width)]));
+    gesture.current = { grid, widths, x: e.clientX, start: widths[k], id: e.pointerId };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }
+  function move(e) {
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    g.widths[k] = Math.max(32, Math.min(1600, Math.round(g.start + e.clientX - g.x)));
+    const sizes = Object.values(g.widths);
+    g.grid.style.setProperty("--cols", sizes.map(n => n + "px").join(" "));
+    g.grid.style.minWidth = (35 + 12 * (sizes.length - 1) + sizes.reduce((a, b) => a + b, 0)) + "px";
+  }
+  function finish(e, save) {
+    const g = gesture.current;
+    if (!g || g.id !== e.pointerId) return;
+    if (save) move(e);
+    gesture.current = null;
+    g.grid.style.removeProperty("--cols");
+    g.grid.style.removeProperty("min-width");
+    if (save && g.widths[k] !== g.start)
+      setPrefs({ colWidths: { ...S.prefs.colWidths, ...g.widths } });
+  }
   const over = drag && drag.over === k && drag.from !== k ? (drag.after ? "drop-after" : "drop-before") : "";
-  return html`<span class=${cls("th", "th-" + k, c.align === "r" && "r", c.align === "c" && "c", drag && drag.from === k && "dragging", over)} title=${c.title || "Drag to reorder"} draggable="true"
-    onDragStart=${e => { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", k); } catch (x) { /* ignore */ } setDrag({ from: k }); }}
+  return html`<span data-column=${k} class=${cls("th", "th-" + k, c.align === "r" && "r", c.align === "c" && "c", drag && drag.from === k && "dragging", over)} title=${c.title || "Drag to reorder"}
+
     onDragOver=${e => { e.preventDefault(); const rc = e.currentTarget.getBoundingClientRect(); const after = e.clientX > rc.left + rc.width / 2; if (!drag || drag.over !== k || drag.after !== after) setDrag({ ...(drag || {}), over: k, after }); }}
     onDrop=${e => { e.preventDefault(); if (drag && drag.from && drag.from !== k) moveCol(drag.from, k, drag.after); setDrag(null); }}
-    onDragEnd=${() => setDrag(null)}><span class="grip" aria-hidden="true">⋮⋮</span>${c.label}</span>`;
+    onDragEnd=${() => setDrag(null)}><span class="col-label" draggable="true" onDragStart=${e => { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", k); } catch (x) { /* ignore */ } setDrag({ from: k }); }}><span class="grip" aria-hidden="true">⋮⋮</span>${c.label}</span><span class="resize-grip" role="separator" aria-orientation="vertical" aria-label=${"Resize " + c.label} title=${"Drag to resize " + c.label}
+      onPointerDown=${start} onPointerMove=${move} onPointerUp=${e => finish(e, true)} onLostPointerCapture=${e => finish(e, false)} /></span>`;
 }
 function StreamView() {
   const ref = useRef(null);
@@ -3617,7 +3662,7 @@ function StreamView() {
   rows = rows.slice(-S.prefs.rowCap).reverse();
   const mobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches; // phone layout stacks cells itself
   const cols = colOrder().filter(k => colVisible(k) && (mobile || !COLUMNS[k].minW || w >= COLUMNS[k].minW));
-  const tpl = cols.map(k => COLUMNS[k].tpl).join(" ");
+  const layout = columnLayout(cols);
   const onScroll = e => {
     const sc = e.target.scrollTop > 60;
     if (sc !== scrolled) { setScrolled(sc); S.freezeId = sc && rows.length ? rows[0].s.id : 0; }
@@ -3626,16 +3671,17 @@ function StreamView() {
   const preview = isDirty() || S.showHidden;
   const hiddenN = S.showHidden ? rows.filter(r => !r.pass).length : 0;
   const auto = mobile ? [] : colOrder().filter(k => colVisible(k) && COLUMNS[k].minW && w < COLUMNS[k].minW);
-  return html`<section ref=${secRef} class=${cls("stream", S.prefs.density, drag && "is-dragging")} style=${`--cols:${tpl}`} aria-label="Spots">
-    <div class="thead" role="row">${cols.map(k => html`<${ColumnHead} k=${k} drag=${drag} setDrag=${setDrag} />`)}</div>
+  return html`<section ref=${secRef} class=${cls("stream", S.prefs.density, drag && "is-dragging")} style=${layout} aria-label="Spots">
     ${newer > 0 ? html`<button type="button" class="newer" onClick=${() => { ref.current.scrollTo({ top: 0, behavior: "smooth" }); }}><${Icon} name="chevronDown" size=${14} /> ${plural(newer, "newer spot")}</button>` : null}
-    <div class="tbody" role="rowgroup" ref=${ref} onScroll=${onScroll}>
+    <div class="spot-scroll" ref=${ref} onScroll=${onScroll}><div class="spot-grid">
+    <div class="thead" role="row">${cols.map(k => html`<${ColumnHead} key=${k} k=${k} drag=${drag} setDrag=${setDrag} />`)}</div>
+    <div class="tbody" role="rowgroup">
       ${rows.map(r => html`<${SpotRow} key=${r.s.id} cols=${cols} r=${r} sel=${S.selSpot && S.selSpot.id === r.s.id} fresh=${r.s.t > mountT.current && Date.now() - r.s.t < 2500} />`)}
       ${!rows.length ? html`<div class="empty"><${Icon} name="radio" size=${28} /><b>${S.snap.conn.phase === "live" || S.snap.conn.mode === "replay" || S.spots.length ? "No spots match right now" : "Not connected"}</b><span>${S.focusBand !== "ALL" || S.search || S.focusCont ? "Clear the band focus or search to see more." : S.snap.conn.phase === "live" ? "Spots appear here as the node sends them. Quiet periods are normal; if it stays empty, open Filters to check your rules." : S.snap.conn.mode === "replay" ? "The capture's spots appear as it plays." : "Connect to your cluster to see live spots."}</span>
         <button type="button" class="btn" onClick=${() => set(S.focusBand !== "ALL" || S.search || S.focusCont ? { focusBand: "ALL", search: "", focusCont: "" } : S.snap.conn.phase === "live" ? { drawer: "filters" } : { connectOpen: true })}>${S.focusBand !== "ALL" || S.search || S.focusCont ? "Show all" : S.snap.conn.phase === "live" ? "Open filters" : "Connect"}</button></div>` : null}
-    </div>
+    </div></div></div>
     <footer class="tfoot muted small"><span>${preview ? `Preview over the ${plural(Math.min(cluster.sample.length, 1800), "spot")} you have received; spots your current rules already hide are not here${S.showHidden ? ` · ${hiddenN} hidden shown dimmed` : ""}` : `${plural(total, "spot")} received${S.focusBand !== "ALL" ? ` on ${S.focusBand}` : ""}${S.snap.conn.mode === "replay" ? " from the capture" : ""}`} · newest first</span>
-      <span class="grow"></span><span>${auto.length ? `${auto.map(k => COLUMNS[k].label).join(", ")} hidden to fit · ` : ""}Drag column titles to reorder</span></footer>
+      <span class="grow"></span><span>${auto.length ? `${auto.map(k => COLUMNS[k].label).join(", ")} hidden to fit · ` : ""}Drag titles to reorder or edges to resize</span></footer>
   </section>`;
 }
 
@@ -3809,7 +3855,7 @@ function ColumnEditor() {
       ${c.fixed ? html`<span class="ce-fixed muted small">always</span>` : html`<${Toggle} on=${vis} label=${"Show " + c.label} onChange=${v => setPrefs({ colShow: { ...S.prefs.colShow, [k]: v } })} />`}
     </li>`;
   })}</ol>
-  <button type="button" class="link sm" onClick=${() => setPrefs({ colOrder: DEFAULT_ORDER.slice(), colShow: {} })}>Reset columns</button>`;
+  <button type="button" class="link sm" onClick=${() => setPrefs({ colOrder: DEFAULT_ORDER.slice(), colShow: {}, colWidths: {} })}>Reset columns</button>`;
 }
 function SettingsDrawer() {
   const snap = S.snap, st = snap.settings, c = snap.conn;
@@ -4029,6 +4075,7 @@ function HistoryView() {
   const live = c.phase === "live";
   const secRef = useRef(null);
   const [w, setW] = useState(1400);
+  const [drag, setDrag] = useState(null);
   const [sel, setSel] = useState("");
   const [n, setN] = useState("25");
   useEffect(() => {
@@ -4046,13 +4093,13 @@ function HistoryView() {
   const last = h.pages[h.pages.length - 1];
   const mobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches;
   const cols = colOrder().filter(k => colVisible(k) && (mobile || !COLUMNS[k].minW || w >= COLUMNS[k].minW));
-  const tpl = cols.map(k => COLUMNS[k].tpl).join(" ");
+  const layout = columnLayout(cols);
   const mismatch = h.pages.filter(p => p.countMismatch);
   const status = loading ? (h.note || "Searching the node's archive…")
     : h.status === "failed" || h.status === "interrupted" ? h.note
     : last ? `${plural(rows.length, "spot")}${h.pages.length > 1 ? ` across ${h.pages.length} pages` : ""} · ${CONN.END_WORDS[last.end] || last.end}`
     : live ? "Search the node's archive with your current filters." : c.mode === "replay" ? "The capture's history page appears here when it plays." : "Connect to search the archive.";
-  return html`<section ref=${secRef} class=${cls("stream", "hist", S.prefs.density)} style=${`--cols:${tpl}`} aria-label="History">
+  return html`<section ref=${secRef} class=${cls("stream", "hist", S.prefs.density)} style=${layout} aria-label="History">
     <div class="hist-head">
       <form class="hist-form" onSubmit=${search}>
         <label class="sr" for="hsel">Call, prefix or country</label>
@@ -4071,11 +4118,12 @@ function HistoryView() {
       ${last && last.unreadable ? html`<div class="lint warn"><${Icon} name="warn" size=${15} /><span>Some archived records could not be read and were skipped by the node.</span></div>` : null}
       ${mismatch.length ? html`<div class="lint warn"><${Icon} name="warn" size=${15} /><span>The node announced ${mismatch.map(p => p.count).join(", ")} row(s) but sent ${mismatch.map(p => p.rows.length).join(", ")}. All received rows are shown.</span></div>` : null}
     </div>
-    <div class="thead" role="row">${cols.map(k => html`<span class=${cls("th", "th-" + k, COLUMNS[k].align === "r" && "r", COLUMNS[k].align === "c" && "c")}>${COLUMNS[k].label}</span>`)}</div>
+    <div class="spot-scroll"><div class="spot-grid">
+    <div class="thead" role="row">${cols.map(k => html`<${ColumnHead} key=${k} k=${k} drag=${drag} setDrag=${setDrag} />`)}</div>
     <div class="tbody" role="rowgroup">
       ${rows.map(s => html`<${SpotRow} key=${s.id} cols=${cols} r=${{ s, pass: true, by: "" }} sel=${S.selSpot && S.selSpot.id === s.id} fresh=${false} />`)}
       ${!rows.length && !loading ? html`<div class="empty"><${Icon} name="history" size=${28} /><b>${last ? "No matching spots" : "No history loaded"}</b><span>${last ? "Try a different call or a larger count." : status}</span></div>` : null}
-    </div>
+    </div></div></div>
     <footer class="tfoot muted small"><span>Newest first. Rows come from SH DX with your current filters; history rows carry no path rating.</span><span class="grow"></span>
       ${last && last.token ? html`<button type="button" class="btn sm" disabled=${!live || loading} onClick=${() => run(() => cluster.historyOlder())}><${Icon} name="chevronDown" size=${14} /> Older spots</button>` : null}</footer>
   </section>`;

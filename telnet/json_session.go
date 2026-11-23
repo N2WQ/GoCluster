@@ -87,7 +87,7 @@ func (s *Server) handleJSONCommand(c *Client, line string) (bool, bool) {
 			return true, false
 		}
 		if off {
-			c.echoInput = s.echoMode == telnetEchoServer
+			c.echoInput = c.web == nil && s.echoMode == telnetEchoServer
 		}
 		return true, true
 	case <-c.retired:

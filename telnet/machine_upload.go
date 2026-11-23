@@ -3,11 +3,14 @@
 package telnet
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -88,6 +91,15 @@ func (c *Client) receiveYAMLBodyLimitWithHooks(deadline time.Time, limit int, ho
 	if err := c.setReadDeadline(deadline); err != nil {
 		return nil, fmt.Errorf("%w: setting deadline: %w", errYAMLUploadFraming, err)
 	}
+	// Borrow only this message reader after the configuration budget admits the body.
+	if c.web != nil {
+		if c.web.upload == nil {
+			return nil, errYAMLUploadFraming
+		}
+		oldReader := c.reader
+		c.reader = bufio.NewReader(c.web.upload)
+		defer func() { c.reader = oldReader; c.web.upload = nil }()
+	}
 	reception := &yamlReception{client: c, deadline: deadline, limit: limit, now: hooks.now, done: make(chan struct{})}
 	reception.timer = hooks.afterFunc(deadline.Sub(hooks.now()), reception.expire)
 	defer reception.disarm()
@@ -101,6 +113,11 @@ func (c *Client) receiveYAMLBodyLimitWithHooks(deadline time.Time, limit int, ho
 			return nil, err
 		}
 		if complete {
+			if c.web != nil {
+				if !utf8.Valid(body) {
+					return nil, errYAMLUploadFraming
+				}
+			}
 			if err := reception.accept(); err != nil {
 				return nil, err
 			}
@@ -187,9 +204,16 @@ func (r *yamlReception) bodyLine(body *[]byte) (bool, error) {
 	}
 	b, err := r.readByte()
 	if err != nil {
+		// A browser frame has no line ending after the closing marker.
+		if r.client.web != nil && errors.Is(err, io.EOF) {
+			return true, nil
+		}
 		return false, err
 	}
 	if b == '\n' || b == '\r' {
+		if r.client.web != nil {
+			return false, errYAMLUploadFraming
+		}
 		return true, r.lineEnding(b)
 	}
 	if err := r.appendBody(body, probe[:]); err != nil {
@@ -288,7 +312,7 @@ func (r *yamlReception) readByte() (byte, error) {
 		}
 		// ziutek has already removed negotiations and decoded IAC escapes. A
 		// second pass would mistake its literal 0xFF data byte for negotiation.
-		if b != IAC || (r.client.server != nil && r.client.server.useZiutek) {
+		if b != IAC || r.client.web != nil || (r.client.server != nil && r.client.server.useZiutek) {
 			return b, nil
 		}
 		b, err = r.telnetDataByte()

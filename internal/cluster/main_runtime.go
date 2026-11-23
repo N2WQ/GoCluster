@@ -158,6 +158,7 @@ type clusterRuntime struct {
 	bulletinHistory *bulletinhistory.Store
 	processor       *commands.Processor
 	telnetServer    *telnet.Server
+	webListener     *telnet.WebListener
 
 	lastOutput          atomic.Int64
 	secondaryStageCount atomic.Uint64
@@ -1228,6 +1229,14 @@ func (r *clusterRuntime) startNetworkServices() bool {
 	if err := r.telnetServer.Start(); err != nil {
 		return r.failStartup("Failed to start telnet server: %v", err)
 	}
+	if r.cfg.Web != nil && r.cfg.Web.Enabled {
+		listener, err := r.telnetServer.StartWebListener(r.ctx, *r.cfg.Web, os.Getenv("GOCLUSTER_WEB_EDGE_SECRET"))
+		if err != nil {
+			return r.failStartup("Failed to start web console listener: %v", err)
+		}
+		r.webListener = listener
+		log.Printf("Web console: listening on %s for %s", r.cfg.Web.ListenAddress, r.cfg.Web.Hostname)
+	}
 	if r.peerManager != nil {
 		if err := r.peerManager.Start(r.ctx); err != nil {
 			return r.failStartup("Failed to start peering manager: %v", err)
@@ -1764,10 +1773,17 @@ func (r *clusterRuntime) shutdown() {
 	if r.dxsummitClient != nil {
 		r.dxsummitClient.Stop()
 	}
+	r.stopClientListeners()
+	r.stopIngestPipeline()
+}
+
+func (r *clusterRuntime) stopClientListeners() {
 	if r.telnetServer != nil {
 		r.telnetServer.Stop()
 	}
-	r.stopIngestPipeline()
+	if r.webListener != nil {
+		r.webListener.Stop()
+	}
 }
 
 // stopIngestPipeline retires peer work, then joins validation before flood and
@@ -1795,9 +1811,7 @@ func (r *clusterRuntime) close() {
 	}
 	r.stopIngestPipeline()
 	r.stopHumanTelnetFeeds()
-	if r.telnetServer != nil {
-		r.telnetServer.Stop()
-	}
+	r.stopClientListeners()
 	if r.archiveWriter != nil {
 		r.archiveWriter.Stop()
 	}

@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0375 | Private browser console transport | Accepted | 2026-11-23 | Worker asset hosting, private WebSocket admission and bounded cluster sessions | extends ADR-0374 | none | [ADR-0375](decisions/ADR-0375-private-browser-console-transport.md) |
 | ADR-0374 | Session-only JSON v1 output | Accepted | 2026-11-23 | Authenticated output negotiation, spots, history and machine replies | extends ADR-0351 | none | [ADR-0374](decisions/ADR-0374-session-json-output.md) |
 | ADR-0373 | GO PASS Rule 0 Shortcut | Accepted | 2026-11-22 | Human GO rule syntax, onboarding and AR-Cluster migration guidance | extends ADR-0317 human syntax and ADR-0319 onboarding | none | [ADR-0373](decisions/ADR-0373-go-pass-rule-zero-shortcut.md) |
 | ADR-0372 | IPinfo File Credential | Accepted | 2026-11-22 | IPinfo startup and public release configuration | none | none | [ADR-0372](decisions/ADR-0372-ipinfo-file-credential.md) |

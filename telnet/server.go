@@ -397,6 +397,7 @@ type Server struct {
 //
 // The client remains active until they type BYE or their connection drops.
 type Client struct {
+	web                     *webSessionConn     // Non-nil only on the authenticated browser transport.
 	conn                    net.Conn            // TCP connection to client
 	preloginBudget          *preloginBudget     // Admission worker retired before registration publishes
 	reader                  *bufio.Reader       // Buffered reader for client input
@@ -2490,7 +2491,7 @@ func (s *Server) sendKeepalives() {
 	}
 	s.clientsMutex.RUnlock()
 	for _, client := range clients {
-		if client == nil {
+		if client == nil || client.web != nil {
 			continue
 		}
 		if err := client.enqueueControl(controlMessage{kind: controlKeepalive, raw: []byte("\r\n")}); err != nil && !isExpectedClientSendErr(err) {
@@ -3821,7 +3822,12 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		wrapConn = s.wrapConnFn
 	}
 	inputWire := &inputWireConn{Conn: conn}
-	readerConn, writerConn, err := wrapConn(inputWire)
+	web, isWeb := conn.(*webSessionConn)
+	readerConn, writerConn := conn, conn
+	var err error
+	if !isWeb {
+		readerConn, writerConn, err = wrapConn(inputWire)
+	}
 	if err != nil {
 		budget.stop()
 		log.Printf("telnet: failed to wrap connection from %s: %v", address, err)
@@ -3830,12 +3836,13 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	}
 	var inputExposure *singleByteInput
 	var inputReader io.Reader = readerConn
-	if s.useZiutek {
+	if web == nil && s.useZiutek {
 		inputExposure = &singleByteInput{reader: readerConn}
 		inputReader = inputExposure
 	}
 	client := &Client{
 		conn:           conn,
+		web:            web,
 		preloginBudget: budget,
 		inputWire:      inputWire,
 		inputExposure:  inputExposure,
@@ -3856,11 +3863,12 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		noiseClass:     "QUIET",
 		// Echo policy is configured explicitly so we can support local echo even
 		// when clients toggle their own modes.
-		echoInput: s.echoMode == telnetEchoServer,
+		echoInput: web == nil && s.echoMode == telnetEchoServer,
 	}
 	client.dropWindow = newDropWindow(s.dropExtremeWindow)
 
 	closeOnExit := true
+	writerStarted := false
 	registered := false
 	defer func() {
 		budget.stop()
@@ -3877,12 +3885,18 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		if closeOnExit {
 			client.close("")
 		}
+		if web != nil && writerStarted {
+			<-client.writerStopped
+		}
 	}()
 
-	s.negotiateTelnet(client)
+	if web == nil {
+		s.negotiateTelnet(client)
+	}
 	if !budget.canContinue() {
 		return
 	}
+	writerStarted = true
 	go client.writerLoop()
 
 	// Send welcome message with template tokens (uptime, user count, etc.).
@@ -4018,6 +4032,9 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		s.reputationGate.RecordLogin(client.callsign, spotterIP(client.address), time.Now().UTC())
 	}
 	created, prevLogin, prevIP := restored.created, restored.previousLogin, restored.previousIP
+	if web != nil {
+		prevIP = ""
+	}
 	startupWarning := restored.warning
 
 	// Send login confirmation
@@ -4105,9 +4122,18 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	if s.commandRatePerSecond > 0 {
 		pacer = newCommandPacer(s.commandRatePerSecond, s.commandBurst, s.commandPacingNow())
 	}
-	// Read commands from client
+	// After login browser liveness is governed by WebSocket ping/pong. A
+	// timed-out Gorilla read cannot be resumed like a TCP idle read.
+	if web != nil {
+		web.headerLimit = s.commandLineLimit
+		web.allowUpload = true
+	}
 	for {
-		if err := client.setReadDeadline(time.Now().Add(s.readIdleTimeout)); err != nil {
+		var readDeadline time.Time
+		if web == nil {
+			readDeadline = time.Now().Add(s.readIdleTimeout)
+		}
+		if err := client.setReadDeadline(readDeadline); err != nil {
 			log.Printf("Failed to set read deadline for %s: %v", client.callsign, err)
 			return
 		}
@@ -4132,7 +4158,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 				log.Printf("Unsafe command input from %s: %v", client.callsign, err)
 				return
 			}
-			if isTimeoutErr(err) {
+			if web == nil && isTimeoutErr(err) {
 				continue
 			}
 			var inputErr *InputValidationError
@@ -6378,6 +6404,10 @@ func (c *Client) flushWriterBatch(batch []byte) error {
 		return err
 	}
 	defer c.clearWriteDeadline()
+	if c.web != nil {
+		_, err := c.web.Write(batch)
+		return err
+	}
 	if _, err := c.writer.Write(batch); err != nil {
 		return err
 	}
