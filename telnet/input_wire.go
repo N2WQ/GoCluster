@@ -8,16 +8,28 @@ import (
 	"errors"
 	"io"
 	"net"
+	"sync/atomic"
 )
 
 var errHumanRecoveryWireLimit = errors.New("human line recovery exceeds wire budget")
 
 type inputWireConn struct {
 	net.Conn
+	muteCodec  atomic.Bool // Writer owns transitions while the sole reader waits on its switch receipt.
 	total      uint64
 	state      byte
 	remaining  int // Inactive unless recovering; includes all returned wire bytes.
 	recovering bool
+}
+
+// The telnet decoder writes negotiations from inside Read. In JSON the
+// application writer goes directly to Conn. Reporting success here lets the
+// decoder consume the next command even when the network writer is stalled.
+func (c *inputWireConn) Write(p []byte) (int, error) {
+	if c.muteCodec.Load() {
+		return len(p), nil
+	}
+	return c.Conn.Write(p)
 }
 
 func (c *inputWireConn) Read(p []byte) (int, error) {

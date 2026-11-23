@@ -60,8 +60,8 @@ type Manager struct {
 
 	legacyCh          chan legacyWork
 	rawBroadcast      func(string) // optional hook to emit raw lines (e.g., PC26) to telnet clients
-	wwvBroadcast      func(kind, line string, receivedAt time.Time)
-	announceBroadcast func(line string)
+	wwvBroadcast      func(kind, line, from string, receivedAt time.Time)
+	announceBroadcast func(kind, line, from string, receivedAt time.Time)
 	directMessage     func(to, line string)
 	reconnects        atomic.Uint64
 	// Active diagnostic borrows use this lock until the logger Service is
@@ -75,7 +75,7 @@ type Manager struct {
 	stagedRecords, stagedBytes int
 	blockedPeers               *boundedIndex[string, bool]
 	membershipFn               func() LocalMembership
-	currentDirect              func(string, uint64, uint64, string) bool
+	currentDirect              func(string, uint64, uint64, string, string, time.Time) bool
 	pc18Banner                 string
 	pc9xGated                  atomic.Bool
 	stopping                   bool
@@ -520,14 +520,29 @@ func (m *Manager) DiagnosticStats() peerdiag.Stats {
 func (m *Manager) SetWWVBroadcast(fn func(kind, line string, receivedAt time.Time)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.wwvBroadcast = fn
+	m.wwvBroadcast = nil
+	if fn != nil {
+		m.wwvBroadcast = func(kind, line, _ string, at time.Time) { fn(kind, line, at) }
+	}
 }
 
 // SetAnnouncementBroadcast installs a callback used for PC93 announcements ("To ALL").
 func (m *Manager) SetAnnouncementBroadcast(fn func(line string)) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.announceBroadcast = fn
+	m.announceBroadcast = nil
+	if fn != nil {
+		m.announceBroadcast = func(_, line, _ string, _ time.Time) { fn(line) }
+	}
+}
+
+// SetBulletinDelivery passes receipt and sender metadata from the parsed
+// event. The direct callback still requires the exact membership revision
+// and session ID resolved below.
+func (m *Manager) SetBulletinDelivery(broadcast func(kind, line, from string, at time.Time), direct func(login string, id, revision uint64, line, from string, at time.Time) bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.wwvBroadcast, m.announceBroadcast, m.currentDirect = broadcast, broadcast, direct
 }
 
 // SetDirectMessage installs a callback for PC93 talk messages addressed to a specific callsign.
@@ -578,11 +593,19 @@ func (m *Manager) broadcastWWV(ev WWVEvent, receivedAt time.Time) {
 	cb := m.wwvBroadcast
 	m.mu.RUnlock()
 	if cb != nil {
-		cb(kind, line, receivedAt)
+		from := strings.TrimSpace(ev.Logger)
+		if from == "" {
+			from = strings.TrimSpace(ev.Origin)
+		}
+		cb(kind, line, from, receivedAt)
 	}
 }
 
 func (m *Manager) routePC93(msg pc93Message) {
+	m.routePC93At(msg, time.Now().UTC())
+}
+
+func (m *Manager) routePC93At(msg pc93Message, receivedAt time.Time) {
 	if m == nil {
 		return
 	}
@@ -614,7 +637,7 @@ func (m *Manager) routePC93(msg pc93Message) {
 				}
 				reserved := m.protocol.reservedNodes()
 				if count == 1 && reserved != nil && !reserved.Value(target) {
-					currentDirect(match.Login, match.SessionID, snapshot.Revision, line)
+					currentDirect(match.Login, match.SessionID, snapshot.Revision, line, msg.From, receivedAt)
 				}
 			}
 		} else if direct != nil {
@@ -623,7 +646,7 @@ func (m *Manager) routePC93(msg pc93Message) {
 		return
 	}
 	if announce != nil {
-		announce(line)
+		announce("ANNOUNCE", line, msg.From, receivedAt)
 	}
 }
 

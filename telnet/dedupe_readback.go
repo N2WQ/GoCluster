@@ -41,7 +41,7 @@ func (s *Server) formatDedupeStatus(client *Client) string {
 		}
 		if !countOnly {
 			response := string(h.data)
-			if s.autoReadPauseEnabled() && len(response) > maxYAMLBytes-dedupeReadPauseFooterBytes && renderedOutputRows(response) >= s.autoReadPauseMinRows {
+			if !client.jsonRequested.Load() && s.autoReadPauseEnabled() && len(response) > maxYAMLBytes-dedupeReadPauseFooterBytes && renderedOutputRows(response) >= s.autoReadPauseMinRows {
 				return "Readback failed: response exceeds 65,536 bytes.\r\n"
 			}
 			return response

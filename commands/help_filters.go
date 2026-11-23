@@ -36,7 +36,8 @@ func filterExampleHelpLines(dialect string) []string {
 		lines = goFilterExampleHelpLines()
 	}
 	return append(lines,
-		"", show+" pauses live spots while you read.",
+		"", "In text and VE7CC, "+show+" pauses live spots while you read.",
+		"In JSON, only PAUSE pauses live spots.",
 		"RESUME restarts them. Missed spots are not replayed.",
 		"Other filters and delivery settings still apply.",
 		"With SELF on, spots of your own call can bypass these filters.",

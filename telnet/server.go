@@ -228,45 +228,48 @@ type Server struct {
 	autoReadPauseDuration               time.Duration                              // Duration of temporary spot suppression after long command output
 	bulletinDedupe                      *bulletinDedupeCache                       // Bounded duplicate suppression for WWV/WCY/announcements
 	bulletinHistory                     *bulletinhistory.Store
-	bulletinResponseBytes               atomic.Int64                             // Reservations cover queued and in-flight FULL responses.
-	readIdleTimeout                     time.Duration                            // Read deadline for logged-in sessions (timeouts do not disconnect)
-	loginTimeout                        time.Duration                            // Pre-login timeout before disconnect
-	maxPreloginSessions                 int                                      // Hard cap on concurrent unauthenticated sessions
-	preloginTimeout                     time.Duration                            // End-to-end timeout from accept to successful login
-	acceptRatePerIP                     float64                                  // Token refill rate (tokens/sec) for pre-login admission
-	acceptBurstPerIP                    int                                      // Token bucket burst size for pre-login admission
-	acceptRatePerSubnet                 float64                                  // Token refill rate per subnet for pre-login admission
-	acceptBurstPerSubnet                int                                      // Token bucket burst size per subnet for pre-login admission
-	acceptRateGlobal                    float64                                  // Global token refill rate for pre-login admission
-	acceptBurstGlobal                   int                                      // Global token bucket burst size for pre-login admission
-	acceptRatePerASN                    float64                                  // Token refill rate per ASN for pre-login admission
-	acceptBurstPerASN                   int                                      // Token bucket burst size per ASN for pre-login admission
-	acceptRatePerCountry                float64                                  // Token refill rate per country for pre-login admission
-	acceptBurstPerCountry               int                                      // Token bucket burst size per country for pre-login admission
-	preloginConcPerIP                   int                                      // Max concurrent pre-login sessions per source IP
-	preloginMu                          sync.Mutex                               // Guards pre-login admission counters and token buckets
-	preloginActive                      int                                      // Active unauthenticated session count
-	preloginByIP                        map[string]preloginIPState               // Admission state keyed by source IP
-	preloginBySubnet                    map[string]preloginLimiterState          // Admission state keyed by /24 or /48 prefix
-	preloginByASN                       map[string]preloginLimiterState          // Admission state keyed by ASN
-	preloginByCountry                   map[string]preloginLimiterState          // Admission state keyed by country code
-	preloginGlobal                      *rate.Limiter                            // Global admission limiter
-	preloginTrackedMax                  int                                      // Max tracked IP states for bounded memory
-	preloginStateIdleTTL                time.Duration                            // Idle eviction TTL for IP admission state
-	preloginLastGC                      time.Time                                // Last opportunistic GC timestamp
-	admissionLogInterval                time.Duration                            // Interval for aggregated admission reject logs
-	admissionLogSample                  float64                                  // Sample rate for per-event admission reject logs
-	admissionLogMaxLines                int                                      // Max per-event lines emitted per interval
-	admissionLogWindow                  time.Time                                // Start time for current admission log window
-	admissionLogLines                   int                                      // Per-event lines emitted in current window
-	admissionLogCounts                  map[string]uint64                        // Aggregated admission reject counters by reason
-	dropExtremeRate                     float64                                  // Drop ratio threshold for disconnect
-	dropExtremeWindow                   time.Duration                            // Window for extreme drop evaluation
-	dropExtremeMinAtt                   int                                      // Minimum attempts before extreme drop disconnect
-	clientListListener                  atomic.Value                             // optional func()
-	latency                             latencyMetrics                           // latency samples for delivery path
-	loginLineLimit                      int                                      // Maximum bytes accepted for login/callsign input
-	commandLineLimit                    int                                      // Maximum bytes accepted for post-login commands
+	bulletinResponseBytes               atomic.Int64                    // Reservations cover queued and in-flight FULL responses.
+	readIdleTimeout                     time.Duration                   // Read deadline for logged-in sessions (timeouts do not disconnect)
+	loginTimeout                        time.Duration                   // Pre-login timeout before disconnect
+	maxPreloginSessions                 int                             // Hard cap on concurrent unauthenticated sessions
+	preloginTimeout                     time.Duration                   // End-to-end timeout from accept to successful login
+	acceptRatePerIP                     float64                         // Token refill rate (tokens/sec) for pre-login admission
+	acceptBurstPerIP                    int                             // Token bucket burst size for pre-login admission
+	acceptRatePerSubnet                 float64                         // Token refill rate per subnet for pre-login admission
+	acceptBurstPerSubnet                int                             // Token bucket burst size per subnet for pre-login admission
+	acceptRateGlobal                    float64                         // Global token refill rate for pre-login admission
+	acceptBurstGlobal                   int                             // Global token bucket burst size for pre-login admission
+	acceptRatePerASN                    float64                         // Token refill rate per ASN for pre-login admission
+	acceptBurstPerASN                   int                             // Token bucket burst size per ASN for pre-login admission
+	acceptRatePerCountry                float64                         // Token refill rate per country for pre-login admission
+	acceptBurstPerCountry               int                             // Token bucket burst size per country for pre-login admission
+	preloginConcPerIP                   int                             // Max concurrent pre-login sessions per source IP
+	preloginMu                          sync.Mutex                      // Guards pre-login admission counters and token buckets
+	preloginActive                      int                             // Active unauthenticated session count
+	preloginByIP                        map[string]preloginIPState      // Admission state keyed by source IP
+	preloginBySubnet                    map[string]preloginLimiterState // Admission state keyed by /24 or /48 prefix
+	preloginByASN                       map[string]preloginLimiterState // Admission state keyed by ASN
+	preloginByCountry                   map[string]preloginLimiterState // Admission state keyed by country code
+	preloginGlobal                      *rate.Limiter                   // Global admission limiter
+	preloginTrackedMax                  int                             // Max tracked IP states for bounded memory
+	preloginStateIdleTTL                time.Duration                   // Idle eviction TTL for IP admission state
+	preloginLastGC                      time.Time                       // Last opportunistic GC timestamp
+	admissionLogInterval                time.Duration                   // Interval for aggregated admission reject logs
+	admissionLogSample                  float64                         // Sample rate for per-event admission reject logs
+	admissionLogMaxLines                int                             // Max per-event lines emitted per interval
+	admissionLogWindow                  time.Time                       // Start time for current admission log window
+	admissionLogLines                   int                             // Per-event lines emitted in current window
+	admissionLogCounts                  map[string]uint64               // Aggregated admission reject counters by reason
+	dropExtremeRate                     float64                         // Drop ratio threshold for disconnect
+	dropExtremeWindow                   time.Duration                   // Window for extreme drop evaluation
+	dropExtremeMinAtt                   int                             // Minimum attempts before extreme drop disconnect
+	clientListListener                  atomic.Value                    // optional func()
+	latency                             latencyMetrics                  // latency samples for delivery path
+	loginLineLimit                      int                             // Maximum bytes accepted for login/callsign input
+	commandLineLimit                    int                             // Maximum bytes accepted for post-login commands
+	jsonLimits                          jsonSpotLimits                  // Immutable v1 wire ceilings for this node
+	jsonSpotStats                       jsonSpotCounters
+	jsonPauseGeneration                 atomic.Uint64                            // Sampled once at admission, advanced by JSON pause releases.
 	commandRatePerSecond                int                                      // Per-session command rate; zero disables it
 	commandBurst                        int                                      // Initial and maximum per-session allowance
 	filterEngine                        *filterCommandEngine                     // Table-driven filter command parser/executor
@@ -394,36 +397,38 @@ type Server struct {
 //
 // The client remains active until they type BYE or their connection drops.
 type Client struct {
-	conn                    net.Conn               // TCP connection to client
-	preloginBudget          *preloginBudget        // Admission worker retired before registration publishes
-	reader                  *bufio.Reader          // Buffered reader for client input
-	inputWire               *inputWireConn         // Raw recovery accounting, owned by reader goroutine
-	inputExposure           *singleByteInput       // Ziutek human/header byte exposure, same read owner
-	readDeadline            time.Time              // Last installed read deadline, owned by read goroutine
-	writer                  *bufio.Writer          // Buffered writer for client output
-	writeMu                 sync.Mutex             // Guards writer/deadline usage for echo + writer loop
-	callsign                string                 // Client's amateur radio callsign
-	peerSessionID           uint64                 // Assigned once under clientsMutex when this session becomes current
-	broadcastShard          int                    // One-based worker affinity for this session; guarded by clientsMutex
-	connected               time.Time              // Timestamp when client connected
-	server                  *Server                // Back-reference to server for formatting/helpers
-	address                 string                 // Client's IP address
-	ipSessionKey            string                 // Registered IP quota identity; guarded by clientsMutex
-	recentIPs               []string               // Most-recent-first IP history for this callsign
-	spotChan                chan *spotEnvelope     // Buffered channel for spot delivery (configurable capacity)
-	controlChan             chan controlMessage    // Buffered channel for control/bulletin delivery
-	done                    chan struct{}          // Closed to stop writer and prevent new enqueues
-	writerStopped           chan struct{}          // Closed after writer discard/drain; final owner waits before preparation.
-	retired                 chan struct{}          // Closed under clientsMutex when a paced session loses ownership
-	closeOnce               sync.Once              // Ensures close logic runs once
-	bulletinResponseMu      sync.Mutex             // Orders history response enqueue against client close.
-	configurationOutputHeld bool                   // Protected by bulletinResponseMu; held through flush/discard.
-	closeReportStarted      atomic.Bool            // A second close never waits for an already-running reporter
-	preserveRecordOnExit    atomic.Bool            // Rejection retains prior disk state after a failed human save
-	readPauseMu             sync.Mutex             // Serializes every pause-state mutation and writer completion
-	readPauseEpoch          uint64                 // Later valid controls invalidate earlier response completions
-	readPausePending        atomic.Bool            // Suppresses spots during preparation, queueing and delivery
-	readPauseClosed         bool                   // Guarded by readPauseMu; closed clients cannot regain a hold
+	conn                    net.Conn            // TCP connection to client
+	preloginBudget          *preloginBudget     // Admission worker retired before registration publishes
+	reader                  *bufio.Reader       // Buffered reader for client input
+	inputWire               *inputWireConn      // Raw recovery accounting, owned by reader goroutine
+	inputExposure           *singleByteInput    // Ziutek human/header byte exposure, same read owner
+	readDeadline            time.Time           // Last installed read deadline, owned by read goroutine
+	writer                  *bufio.Writer       // Buffered writer for client output
+	writeMu                 sync.Mutex          // Guards writer/deadline usage for echo + writer loop
+	callsign                string              // Client's amateur radio callsign
+	peerSessionID           uint64              // Assigned once under clientsMutex when this session becomes current
+	broadcastShard          int                 // One-based worker affinity for this session; guarded by clientsMutex
+	connected               time.Time           // Timestamp when client connected
+	server                  *Server             // Back-reference to server for formatting/helpers
+	address                 string              // Client's IP address
+	ipSessionKey            string              // Registered IP quota identity; guarded by clientsMutex
+	recentIPs               []string            // Most-recent-first IP history for this callsign
+	spotChan                chan *spotEnvelope  // Buffered channel for spot delivery (configurable capacity)
+	controlChan             chan controlMessage // Buffered channel for control/bulletin delivery
+	done                    chan struct{}       // Closed to stop writer and prevent new enqueues
+	writerStopped           chan struct{}       // Closed after writer discard/drain; final owner waits before preparation.
+	retired                 chan struct{}       // Closed under clientsMutex when this session loses ownership
+	closeOnce               sync.Once           // Ensures close logic runs once
+	bulletinResponseMu      sync.Mutex          // Orders history response enqueue against client close.
+	configurationOutputHeld bool                // Protected by bulletinResponseMu; held through flush/discard.
+	closeReportStarted      atomic.Bool         // A second close never waits for an already-running reporter
+	preserveRecordOnExit    atomic.Bool         // Rejection retains prior disk state after a failed human save
+	readPauseMu             sync.Mutex          // Serializes every pause-state mutation and writer completion
+	readPauseEpoch          uint64              // Later valid controls invalidate earlier response completions
+	readPausePending        atomic.Bool         // Suppresses spots during preparation, queueing and delivery
+	readPauseClosed         bool                // Guarded by readPauseMu; closed clients cannot regain a hold
+	manualPauseUntil        int64               // Guarded by readPauseMu; automatic extensions cannot change this deadline
+	jsonPauseCutoff         atomic.Pointer[jsonPauseFence]
 	readPauseUntilUnixNano  atomic.Int64           // Read-pause deadline; checked lazily, no timer/goroutine
 	readPauseDiscardBefore  atomic.Int64           // Drop queued spot envelopes at/before this enqueue timestamp
 	readPauseSuppressed     atomic.Uint64          // Spots suppressed by the current or most recent read pause
@@ -439,6 +444,8 @@ type Client struct {
 	dedupePolicy            atomic.Uint32          // Secondary dedupe policy (fast/med/slow)
 	diagMode                atomic.Uint32          // Diagnostic comment override mode
 	ve7ccEnabled            bool                   // Requested mode belongs to the configuration lease, not saved settings.
+	jsonRequested           atomic.Bool            // Session setting. Reader waits for the writer's switch receipt before its next read.
+	jsonHistoryMu           sync.Mutex             // Orders structured history commands through page completion.
 	ve7ccDiagnostics        ve7ccDiagnostics
 	// solarMu guards solar summary settings shared across goroutines.
 	solarMu             sync.Mutex
@@ -653,20 +660,22 @@ func (c *Client) pathSnapshot() pathState {
 }
 
 type broadcastPayload struct {
-	spot      *spot.Spot
-	allowFast bool
-	allowMed  bool
-	allowSlow bool
-	enqueueAt time.Time
+	pauseGeneration uint64
+	spot            *spot.Spot
+	allowFast       bool
+	allowMed        bool
+	allowSlow       bool
+	enqueueAt       time.Time
 }
 
 type broadcastJob struct {
-	spot      *spot.Spot
-	allowFast bool
-	allowMed  bool
-	allowSlow bool
-	clients   []*Client
-	enqueueAt time.Time
+	pauseGeneration uint64
+	spot            *spot.Spot
+	allowFast       bool
+	allowMed        bool
+	allowSlow       bool
+	clients         []*Client
+	enqueueAt       time.Time
 }
 
 type clientShardSnapshot struct {
@@ -674,13 +683,22 @@ type clientShardSnapshot struct {
 }
 
 type spotEnvelope struct {
-	spot           *spot.Spot
-	enqueueAt      time.Time
-	pathPrediction *pathPrediction // Optional admission result; bounded by the per-client spot queue.
+	pauseGeneration uint64
+	spot            *spot.Spot
+	enqueueAt       time.Time
+	pathPrediction  *pathPrediction // Optional admission result; bounded by the per-client spot queue.
 }
 
 type controlMessage struct {
-	spotFormat               spotFormatAction // Writer applies this only at the acknowledgement's FIFO position.
+	jsonSwitch               *jsonFormatSwitch
+	jsonPage                 *jsonHistoryDelivery
+	kind                     controlKind
+	bulletinKind             string
+	bulletinAt               time.Time
+	bulletinFrom             string
+	yamlReady                chan controlMessage // One pre-admitted mutation transfers its reply and output lease here.
+	yamlFlushed              chan struct{}       // Unreserved JSON machine reply; reader waits through flush/discard.
+	spotFormat               spotFormatAction    // Writer applies this only at the acknowledgement's FIFO position.
 	line                     string
 	raw                      []byte
 	closeAfter               bool
@@ -2055,6 +2073,7 @@ type ServerOptions struct {
 	AdmissionLogMaxLines      int
 	LoginLineLimit            int
 	CommandLineLimit          int
+	JSONDXSummitResponseBytes int64 // Effective response limit of the enabled feed, or zero.
 	CommandRatePerSecond      int
 	CommandBurst              int
 	DropExtremeRate           float64
@@ -2152,6 +2171,7 @@ func NewServer(opts ServerOptions, processor *commands.Processor) *Server {
 		admissionLogCounts:     make(map[string]uint64),
 		loginLineLimit:         config.LoginLineLimit,
 		commandLineLimit:       config.CommandLineLimit,
+		jsonLimits:             newJSONSpotLimits(config.CommandLineLimit, config.JSONDXSummitResponseBytes, spot.CurrentTaxonomy()),
 		commandRatePerSecond:   config.CommandRatePerSecond,
 		commandBurst:           config.CommandBurst,
 		filterEngine:           newFilterCommandEngine(),
@@ -2473,7 +2493,7 @@ func (s *Server) sendKeepalives() {
 		if client == nil {
 			continue
 		}
-		if err := client.enqueueControl(controlMessage{raw: []byte("\r\n")}); err != nil && !isExpectedClientSendErr(err) {
+		if err := client.enqueueControl(controlMessage{kind: controlKeepalive, raw: []byte("\r\n")}); err != nil && !isExpectedClientSendErr(err) {
 			log.Printf("Failed to enqueue keepalive for %s: %v", client.identity(), err)
 		}
 	}
@@ -2521,7 +2541,7 @@ func (s *Server) dispatchSolarSummary(now time.Time, message string) {
 			continue
 		}
 		if message != "" {
-			s.enqueueBulletin(client, "SOLAR", message)
+			s.enqueueBulletin(client, "SOLAR", message, "", now)
 		}
 		client.advanceSolarSummaryAt(now)
 	}
@@ -2553,11 +2573,12 @@ func (s *Server) TryBroadcastSpotOwned(snapshot *spot.Spot, allowFast, allowMed,
 		return false
 	}
 	payload := &broadcastPayload{
-		spot:      snapshot,
-		allowFast: allowFast,
-		allowMed:  allowMed,
-		allowSlow: allowSlow,
-		enqueueAt: time.Now().UTC(),
+		pauseGeneration: s.jsonPauseGeneration.Load(),
+		spot:            snapshot,
+		allowFast:       allowFast,
+		allowMed:        allowMed,
+		allowSlow:       allowSlow,
+		enqueueAt:       s.now(),
 	}
 	qualificationstage.Observe(qualificationstage.BroadcastReady, snapshot.Comment, -1)
 	select {
@@ -2612,7 +2633,8 @@ func (s *Server) DeliverSelfSpotOwned(dxCall string, snapshot *spot.Spot) {
 		return
 	}
 
-	enqueueAt := time.Now().UTC()
+	generation := s.jsonPauseGeneration.Load()
+	enqueueAt := s.now()
 	for _, client := range clients {
 		client.filterMu.RLock()
 		allowSelf := client.filter.SelfEnabled() && client.filter.AllowsToxicity(snapshot)
@@ -2620,7 +2642,7 @@ func (s *Server) DeliverSelfSpotOwned(dxCall string, snapshot *spot.Spot) {
 		if !allowSelf {
 			continue
 		}
-		client.enqueueSpot(&spotEnvelope{spot: snapshot, enqueueAt: enqueueAt})
+		client.enqueueSpot(&spotEnvelope{spot: snapshot, enqueueAt: enqueueAt, pauseGeneration: generation})
 	}
 }
 
@@ -2645,23 +2667,34 @@ func (s *Server) BroadcastWWV(kind string, line string) {
 
 // BroadcastWWVAt retains source receipt time independently of live recipients.
 func (s *Server) BroadcastWWVAt(kind string, line string, receivedAt time.Time) {
+	kind = normalizeWWVKind(kind)
+	if kind != "" {
+		s.BroadcastSourcedBulletin(kind, line, "", receivedAt)
+	}
+}
+
+// BroadcastSourcedBulletin carries the producer's parsed sender and receipt
+// time through filtering and deduplication, including when no sender is known.
+func (s *Server) BroadcastSourcedBulletin(kind, line, from string, receivedAt time.Time) {
 	if s == nil {
 		return
 	}
-	kind = normalizeWWVKind(kind)
-	if kind == "" {
+	switch kind {
+	case "WWV", "WCY":
+		if s.bulletinHistory != nil {
+			s.bulletinHistory.Record(kind, line, receivedAt)
+		}
+	case "ANNOUNCE":
+	default:
 		return
 	}
-	if s.bulletinHistory != nil {
-		s.bulletinHistory.Record(kind, line, receivedAt)
-	}
-	s.broadcastBulletin(kind, line, true)
+	s.broadcastBulletin(kind, line, from, receivedAt)
 }
 
 // BroadcastAnnouncement sends a PC93 announcement to all connected clients
 // that allow announcements.
 func (s *Server) BroadcastAnnouncement(line string) {
-	s.broadcastBulletin("ANNOUNCE", line, true)
+	s.BroadcastSourcedBulletin("ANNOUNCE", line, "", s.now())
 }
 
 // SendDirectMessage sends a PC93 talk message to a specific callsign when connected.
@@ -2683,10 +2716,10 @@ func (s *Server) SendDirectMessage(callsign string, line string) {
 	if client == nil {
 		return
 	}
-	s.enqueueBulletin(client, "TALK", message)
+	s.enqueueBulletin(client, "TALK", message, "", s.now())
 }
 
-func (s *Server) broadcastBulletin(kind string, line string, applyFilter bool) {
+func (s *Server) broadcastBulletin(kind, line, from string, receivedAt time.Time) {
 	if s == nil {
 		return
 	}
@@ -2694,7 +2727,7 @@ func (s *Server) broadcastBulletin(kind string, line string, applyFilter bool) {
 	if message == "" {
 		return
 	}
-	recipients := s.bulletinRecipients(kind, applyFilter)
+	recipients := s.bulletinRecipients(kind, true)
 	if len(recipients) == 0 {
 		return
 	}
@@ -2702,7 +2735,7 @@ func (s *Server) broadcastBulletin(kind string, line string, applyFilter bool) {
 		return
 	}
 	for _, client := range recipients {
-		s.enqueueBulletin(client, kind, message)
+		s.enqueueBulletin(client, kind, message, from, receivedAt)
 	}
 }
 
@@ -2730,11 +2763,11 @@ func (s *Server) bulletinRecipients(kind string, applyFilter bool) []*Client {
 	return recipients
 }
 
-func (s *Server) enqueueBulletin(client *Client, kind, message string) {
+func (s *Server) enqueueBulletin(client *Client, kind, message, from string, at time.Time) {
 	if client == nil {
 		return
 	}
-	if err := client.enqueueControl(controlMessage{line: message}); err != nil && !isExpectedClientSendErr(err) {
+	if err := client.enqueueControl(controlMessage{kind: controlBulletin, line: message, bulletinKind: kind, bulletinFrom: from, bulletinAt: at}); err != nil && !isExpectedClientSendErr(err) {
 		log.Printf("Failed to enqueue %s bulletin for %s: %v", kind, client.identity(), err)
 	}
 }
@@ -2873,12 +2906,13 @@ func (s *Server) dispatchSpotToWorkers(payload *broadcastPayload, shards [][]*Cl
 			continue
 		}
 		job := broadcastJob{
-			spot:      payload.spot,
-			allowFast: payload.allowFast,
-			allowMed:  payload.allowMed,
-			allowSlow: payload.allowSlow,
-			clients:   clients,
-			enqueueAt: payload.enqueueAt,
+			pauseGeneration: payload.pauseGeneration,
+			spot:            payload.spot,
+			allowFast:       payload.allowFast,
+			allowMed:        payload.allowMed,
+			allowSlow:       payload.allowSlow,
+			clients:         clients,
+			enqueueAt:       payload.enqueueAt,
 		}
 		qualificationstage.Observe(qualificationstage.WorkerDispatched, payload.spot.Comment, i)
 		select {
@@ -3067,7 +3101,7 @@ func (s *Server) deliverJob(job broadcastJob) {
 			}
 			admissionPrediction, haveAdmissionPrediction = prediction, predicted
 		}
-		env := &spotEnvelope{spot: job.spot, enqueueAt: job.enqueueAt}
+		env := &spotEnvelope{spot: job.spot, enqueueAt: job.enqueueAt, pauseGeneration: job.pauseGeneration}
 		if haveAdmissionPrediction {
 			prediction := admissionPrediction
 			env.pathPrediction = &prediction
@@ -3814,6 +3848,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		controlChan:    make(chan controlMessage, controlQueueSize),
 		done:           make(chan struct{}),
 		writerStopped:  make(chan struct{}),
+		retired:        make(chan struct{}),
 		filter:         filter.NewFilter(), // Start with no filters (accept all)
 		dialect:        s.filterEngine.defaultDialect,
 		gridCell:       pathreliability.InvalidCell,
@@ -3822,9 +3857,6 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		// Echo policy is configured explicitly so we can support local echo even
 		// when clients toggle their own modes.
 		echoInput: s.echoMode == telnetEchoServer,
-	}
-	if s.commandRatePerSecond > 0 {
-		client.retired = make(chan struct{})
 	}
 	client.dropWindow = newDropWindow(s.dropExtremeWindow)
 
@@ -4122,10 +4154,13 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			return
 		}
 
-		// Blank lines are client keepalives; preserve the existing response path.
+		// A blank command was suppressed by the text send path. A JSON client
+		// receives one explicitly typed keepalive without disturbing its pause.
 		if strings.TrimSpace(line) == "" {
-			if !s.sendClientMessage(client, "\r\n", "command keepalive") {
-				return
+			if client.jsonRequested.Load() {
+				if err := client.enqueueControl(controlMessage{kind: controlKeepalive, raw: []byte("\r\n")}); err != nil {
+					return
+				}
 			}
 			continue
 		}
@@ -4154,6 +4189,12 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			continue
 		}
 
+		if handled, proceed := s.handleJSONCommand(client, line); handled {
+			if !proceed {
+				return
+			}
+			continue
+		}
 		if handled, proceed := s.handleVE7CCCommand(client, line); handled {
 			if !proceed {
 				return
@@ -5880,7 +5921,7 @@ func (s *Server) autoReadPauseEnabled() bool {
 }
 
 func (s *Server) maybeApplyAutoReadPause(client *Client, message string) string {
-	if !s.autoReadPauseEnabled() || client == nil {
+	if !s.autoReadPauseEnabled() || client == nil || client.jsonRequested.Load() {
 		return message
 	}
 	return appendReadPauseFooter(message, s.autoReadPauseFooter(client, renderedOutputRows(message), false))
@@ -5903,6 +5944,9 @@ func (s *Server) autoReadPauseFooter(client *Client, rows int, legacy bool) stri
 	// Compute extension under the same authority as manual controls and response
 	// completion so a concurrent longer pause cannot be overwritten.
 	duration := client.extendReadPause(now, s.autoReadPauseDuration)
+	if duration == 0 {
+		return ""
+	}
 	if !legacy {
 		return humanPauseFooter(duration)
 	}
@@ -5998,6 +6042,7 @@ func (c *Client) writerLoop() {
 	var resetNotice *v7ResetNoticeReceipt
 	var closeReason string
 	var writerFailure error
+	var enterJSON *jsonFormatSwitch
 	nativeSpots := false // Effective wire mode is owned only by this writer.
 	defer func() {
 		// Discard the enlarged batch before returning its process-wide charge.
@@ -6019,6 +6064,10 @@ func (c *Client) writerLoop() {
 	}()
 
 	appendControl := func(msg controlMessage, closeAfter *bool) {
+		if msg.jsonSwitch != nil {
+			enterJSON = msg.jsonSwitch
+			return
+		}
 		bulletinReserved += msg.bulletinReservation
 		if msg.configurationReservation != nil {
 			configurationReserved = msg.configurationReservation
@@ -6125,7 +6174,7 @@ func (c *Client) writerLoop() {
 			goto collect
 		}
 	collect:
-		if len(batch) == 0 && !closeAfter {
+		if len(batch) == 0 && !closeAfter && enterJSON == nil {
 			continue
 		}
 
@@ -6135,10 +6184,10 @@ func (c *Client) writerLoop() {
 		}
 
 	collectMore:
-		for len(batch) < maxBytes && !closeAfter {
+		for len(batch) < maxBytes && !closeAfter && enterJSON == nil {
 			// Drain all pending control messages before admitting spots.
 		drainControl:
-			for len(batch) < maxBytes && !closeAfter {
+			for len(batch) < maxBytes && !closeAfter && enterJSON == nil {
 				select {
 				case <-shutdown:
 					c.interrupt()
@@ -6151,7 +6200,7 @@ func (c *Client) writerLoop() {
 					break drainControl
 				}
 			}
-			if len(batch) >= maxBytes || closeAfter {
+			if len(batch) >= maxBytes || closeAfter || enterJSON != nil {
 				break
 			}
 
@@ -6243,6 +6292,32 @@ func (c *Client) writerLoop() {
 			c.interrupt()
 			closeReason = "control close"
 			return
+		}
+		if enterJSON != nil {
+			select {
+			case <-c.retired:
+				// Deliver the pending replacement notice in the existing format.
+				enterJSON = nil
+				continue
+			default:
+			}
+			// Earlier legacy bytes and their receipts have completed. An
+			// oversized legacy reply or many tiny legacy spots can grow either
+			// backing array. Release that excess before the long-lived switch.
+			if cap(batch) > maxBytes {
+				batch = make([]byte, 0, maxBytes)
+			}
+			if cap(spotEnqueueTimes) > 64 {
+				spotEnqueueTimes = make([]time.Time, 0, 64)
+			}
+			end, err := c.runJSONWriter(enterJSON, batch[:0], spotEnqueueTimes[:0], shutdown)
+			enterJSON = nil
+			if err != nil || end {
+				c.interrupt()
+				writerFailure = err
+				closeReason = "JSON session ended"
+				return
+			}
 		}
 	}
 }
@@ -6348,11 +6423,11 @@ func (c *Client) enqueueSpot(env *spotEnvelope) {
 	if c == nil || env == nil || env.spot == nil {
 		return
 	}
-	now := time.Now().UTC()
-	if c.server != nil {
-		now = c.server.now()
-	}
+	now := c.server.now()
 	if env.enqueueAt.IsZero() {
+		if c.server != nil {
+			env.pauseGeneration = c.server.jsonPauseGeneration.Load()
+		}
 		env.enqueueAt = now
 	}
 	select {
@@ -6633,7 +6708,7 @@ func (c *Client) SendAndClose(message string) error {
 		c.close("send and close")
 		return nil
 	}
-	return c.enqueueControl(controlMessage{line: message, closeAfter: true})
+	return c.enqueueControl(controlMessage{kind: controlTerminal, line: message, closeAfter: true})
 }
 
 // ReadLine reads a single logical line from the telnet client while enforcing

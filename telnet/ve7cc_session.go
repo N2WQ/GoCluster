@@ -65,6 +65,13 @@ func (s *Server) handleVE7CCCommand(c *Client, line string) (handled, proceed bo
 		return true, s.finishVE7CCSend(c, err, "selection")
 	}
 	enable := strings.EqualFold(fields[0], "SET/VE7CC")
+	if c.jsonRequested.Load() {
+		release()
+		if enable {
+			return true, s.sendJSONRefusal(c, "JSON is on; send SET JSON OFF first")
+		}
+		return true, s.sendClientMessage(c, "VE7CC already disabled for this session.\n", "VE7CC selection")
+	}
 	state, action := "disabled", spotFormatText
 	if enable {
 		state, action = "enabled", spotFormatVE7CC

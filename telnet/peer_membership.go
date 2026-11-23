@@ -3,7 +3,10 @@
 // second user registry. Protocol canonicalization belongs to the peer manager.
 package telnet
 
-import "sort"
+import (
+	"sort"
+	"time"
+)
 
 // MaxPeerMembershipSessions bounds each publication snapshot without changing
 // the local admission policy. Overflow pauses peering instead of publishing a
@@ -82,6 +85,10 @@ func (s *Server) notifyPeerMembershipChange() {
 // admission, even when the original session remains current. Direct messages
 // deliberately bypass bulletin deduplication.
 func (s *Server) SendCurrentDirectMessage(login string, sessionID, revision uint64, line string) bool {
+	return s.SendCurrentDirectMessageAt(login, sessionID, revision, line, "", s.now())
+}
+
+func (s *Server) SendCurrentDirectMessageAt(login string, sessionID, revision uint64, line, from string, receivedAt time.Time) bool {
 	if s == nil || sessionID == 0 {
 		return false
 	}
@@ -102,7 +109,7 @@ func (s *Server) SendCurrentDirectMessage(login string, sessionID, revision uint
 	default:
 	}
 	select {
-	case client.controlChan <- controlMessage{line: message}:
+	case client.controlChan <- controlMessage{kind: controlBulletin, line: message, bulletinKind: "TALK", bulletinFrom: from, bulletinAt: receivedAt}:
 		s.clientsMutex.RUnlock()
 		return true
 	default:

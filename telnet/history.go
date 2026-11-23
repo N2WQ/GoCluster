@@ -7,6 +7,7 @@ package telnet
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"log"
 	"strings"
 	"time"
@@ -35,6 +36,7 @@ type historyRequest struct {
 	cwSpeed      bool
 	diag         diagMode
 	presentation *historyPagePresentation // Request-local only; never retained by cursor or queue.
+	jsonPage     *jsonHistoryDelivery
 }
 
 type historyPagePresentation struct {
@@ -130,21 +132,42 @@ func (s *Server) handleHistoryCommand(c *Client, line string) (bool, bool) {
 	if !historyCommandCandidate(line) {
 		return false, true
 	}
+	json := c.jsonRequested.Load()
+	if json {
+		// The reader waits for he before accepting NEXT. This lock is private
+		// to competing history requests; neither writer nor configuration
+		// invalidation needs it.
+		c.jsonHistoryMu.Lock()
+		defer c.jsonHistoryMu.Unlock()
+	}
 	request, errText, err := s.beginHistory(c, line)
 	if err != nil {
+		if json {
+			s.commandSessionClosed(c)
+		}
 		return true, false
 	}
 	if errText != "" {
 		return true, s.sendCommandResponse(c, errText, "history validation")
 	}
-	page, readErr := s.processor.ReadHistoryPage(request.search.query, request.search.before,
-		func(sp *spot.Spot) bool { return request.filter.matches(s, sp) }, s.now(), c.done)
+	var collect func(*spot.Spot) error
+	if json {
+		request.jsonPage = &jsonHistoryDelivery{
+			generation: request.generation, oldToken: request.search.token,
+			older: request.older, unreadable: request.search.unreadable,
+			hadMatches: request.search.hadMatches, done: make(chan struct{}),
+		}
+		collect = func(sp *spot.Spot) error { return request.jsonPage.rows.collect(s, sp, request.cwSpeed) }
+	}
+	page, readErr := s.processor.CollectHistoryPage(request.search.query, request.search.before,
+		func(sp *spot.Spot) bool { return request.filter.matches(s, sp) }, s.now(), c.done, collect)
+	request.filter = historyFilterSnapshot{}
 	var next *historySearch
 	response := historyFailure
 	if readErr == nil {
 		state := request.search
 		state.unreadable = state.unreadable || page.Unreadable > 0
-		state.hadMatches = state.hadMatches || len(page.Spots) > 0
+		state.hadMatches = state.hadMatches || page.Selected > 0 || len(page.Spots) > 0
 		state.before = append([]byte(nil), page.Before...)
 		state.token = ""
 		if page.End != archive.HistoryExhausted {
@@ -154,14 +177,36 @@ func (s *Server) handleHistoryCommand(c *Client, line string) (bool, bool) {
 			}
 		}
 		if readErr == nil {
-			request.presentation = &historyPagePresentation{
-				page: page, token: state.token, unreadable: state.unreadable,
-				hadMatches: request.search.hadMatches,
+			if json {
+				p := request.jsonPage
+				p.next, p.unreadable, p.hadMatches = next, state.unreadable, state.hadMatches
+				switch page.End {
+				case archive.HistoryCountReached:
+					p.end = "count"
+				case archive.HistoryBudgetReached:
+					p.end = "budget"
+				default:
+					p.end = "exhausted"
+				}
+			} else {
+				request.presentation = &historyPagePresentation{
+					page: page, token: state.token, unreadable: state.unreadable,
+					hadMatches: request.search.hadMatches,
+				}
 			}
 		}
 	}
 	if readErr != nil {
-		log.Printf("History search for %s failed: %v", c.identity(), readErr)
+		busy := errors.Is(readErr, archive.ErrHistoryBusy)
+		if json {
+			request.jsonPage.empty("failed")
+			if busy {
+				request.jsonPage.end = "busy"
+			}
+		}
+		if !busy {
+			log.Printf("History search for %s failed: %v", c.identity(), readErr)
+		}
 	}
 	return true, s.publishHistory(c, request, next, response, readErr == nil)
 }
@@ -172,10 +217,36 @@ func (s *Server) handleHistoryCommand(c *Client, line string) (bool, bool) {
 func (s *Server) publishHistory(c *Client, request historyRequest, next *historySearch, response string, success bool) bool {
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
+		if request.jsonPage != nil {
+			request.jsonPage.discard()
+			s.commandSessionClosed(c)
+		}
 		return false
 	}
 	notes, refused, err := s.publishHistoryOwned(c, request, next, response, success)
 	release()
 	c.reportVE7CC(notes, refused)
+	if p := request.jsonPage; p != nil {
+		if err != nil {
+			p.discard()
+			if s.commandSessionClosed(c) {
+				return false
+			}
+		} else {
+			// The writer publishes the cursor before signaling the reader.
+			// A retired/canceled reader leaves the owned page to writer cleanup.
+			select {
+			case <-p.done:
+				return !s.commandSessionClosed(c) && p.flushed
+			case <-c.done:
+				return false
+			case <-c.retired:
+				s.waitForRetiredWriter(c)
+				return false
+			case <-s.shutdown:
+				return false
+			}
+		}
+	}
 	return s.finishVE7CCSend(c, err, "history publication")
 }

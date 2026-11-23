@@ -26,7 +26,8 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 		"GET YAML FILTER SCHEMA 6 is the active GO legacy view; schema 7 uses a tagged active bank.",
 		"GET YAML CONFIG SCHEMA 7 is the complete both-bank backup; schema 6 is not.",
 		"Preset (modified) means preferences differ from the applied snapshot.",
-		"These readbacks always pause live spots, even if automatic pause is disabled.",
+		"In text and VE7CC, these readbacks always pause spots for reading.",
+		"In JSON, only PAUSE pauses spots.",
 		"The reading interval starts after server delivery; RESUME ends it now.",
 		"Responses are complete within 65,536 bytes or return an explicit size error.",
 	}
@@ -44,9 +45,17 @@ func installConfigurationHelp(catalog *helpCatalog, dialect string) {
 	}
 	add("SHOW SETTINGS", "Display preferences and session behavior.", []string{"SHOW SETTINGS"}, []string{
 		"Shows configured settings separately from effective choices and session state.",
-		"Always pauses live spots during preparation/delivery and for reading afterward.",
+		"In text and VE7CC, spots pause during preparation, delivery and reading.",
+		"In JSON, only PAUSE pauses spots. The JSON setting appears under Session only.",
 		"Uses the positive configured pause duration, or 30 seconds when it is zero.",
 		"The complete response, including its pause footer, is limited to 65,536 bytes.",
+	})
+	add("SET JSON", "Select JSON output for this session.", []string{"SET JSON ON [VERSION 1]", "SET JSON OFF"}, []string{
+		"Every login starts in text. Send SET JSON ON after each login or reconnect.",
+		"After JSON ON 1, read one JSON array per line. The first arrays give the version, limits and field names.",
+		"JSON and VE7CC are mutually exclusive. Turn off the current format first.",
+		"Only PAUSE pauses live spots. RESUME restarts them.",
+		"After SET JSON OFF, wait for the json-off notice before sending another command.",
 	})
 	settingsEntry := catalog.entries["SHOW SETTINGS"]
 	settingsEntry.lines = slices.Insert(settingsEntry.lines, 2, "Aliases: SHOW/SETTINGS, SH/SETTINGS")

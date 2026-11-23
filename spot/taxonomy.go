@@ -557,6 +557,19 @@ func (t *Taxonomy) SupportedFilterModes() []string {
 	return append([]string(nil), t.filterModes...)
 }
 
+// MaxModeLabelBytes bounds labels produced by this node's configured modes,
+// including variants and modes that are invisible in filter menus.
+func (t *Taxonomy) MaxModeLabelBytes() int {
+	var longest int
+	for _, name := range t.modeOrder {
+		longest = max(longest, len(name), len(t.modesByName[name].Display))
+	}
+	for name := range t.modeVariants {
+		longest = max(longest, len(name))
+	}
+	return longest
+}
+
 func (t *Taxonomy) DefaultFilterModes() []string {
 	return append([]string(nil), t.defaultModes...)
 }
@@ -763,6 +776,16 @@ func (t *Taxonomy) EventNames(mask EventMask) []string {
 		}
 	}
 	return out
+}
+
+// VisitEventNames enumerates the configured EVENT names in wire/display order
+// without materializing a per-recipient slice.
+func (t *Taxonomy) VisitEventNames(mask EventMask, visit func(string)) {
+	for i, name := range t.eventOrder {
+		if mask&(EventMask(1)<<uint(i)) != 0 {
+			visit(name)
+		}
+	}
 }
 
 func (t *Taxonomy) EventString(mask EventMask) string {

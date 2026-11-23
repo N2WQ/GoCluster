@@ -40,6 +40,9 @@ func (s *Server) handleV7MachineCommand(c *Client, line string) machineDispatch 
 		queued := s.queueMachineReply(c, renderV7YAMLCommandError(cmd.Resource, request.RequestID, "", v7MachineErrorCode(err), err.Error()), terminal)
 		return machineDispatch{handled: true, terminal: terminal || !queued, closeQueued: terminal && queued}
 	}
+	if c.jsonRequested.Load() {
+		return s.runJSONMachineRequest(c, cmd, request.RequestID, func() string { return s.applyV7MachineRequestOwned(c, cmd, request) })
+	}
 	response := s.applyV7MachineRequest(c, cmd, request)
 	return machineDispatch{handled: true, terminal: !s.queueMachineReply(c, response, false)}
 }
@@ -129,6 +132,10 @@ func (s *Server) applyV7MachineRequest(c *Client, cmd machineCommand, request v7
 		return renderV7YAMLCommandError(cmd.Resource, request.RequestID, "", v7MachineErrorCode(err), err.Error())
 	}
 	defer reservation.Release()
+	return s.applyV7MachineRequestOwned(c, cmd, request)
+}
+
+func (s *Server) applyV7MachineRequestOwned(c *Client, cmd machineCommand, request v7MachineRequest) string {
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
 		return renderV7YAMLCommandError(cmd.Resource, request.RequestID, "", v7MachineErrorCode(err), err.Error())

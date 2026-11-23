@@ -139,7 +139,7 @@ func (c *Client) enqueueV7ResetNotice(message string, receipt *v7ResetNoticeRece
 		return errClientClosed
 	}
 	select {
-	case c.controlChan <- controlMessage{raw: []byte(message), resetNotice: receipt}:
+	case c.controlChan <- controlMessage{kind: controlReset, raw: []byte(message), resetNotice: receipt}:
 		c.bulletinResponseMu.Unlock()
 		return nil
 	default:

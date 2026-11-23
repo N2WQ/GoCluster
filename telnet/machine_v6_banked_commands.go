@@ -33,6 +33,9 @@ func (s *Server) handleBankedV6MachineCommand(c *Client, line string) machineDis
 		queued := s.queueMachineReply(c, renderV6YAMLCommandError(cmd.Resource, request.RequestID, "", v7MachineErrorCode(err), err.Error()), terminal)
 		return machineDispatch{handled: true, terminal: terminal || !queued, closeQueued: terminal && queued}
 	}
+	if c.jsonRequested.Load() {
+		return s.runJSONMachineRequest(c, cmd, request.RequestID, func() string { return s.applyBankedV6MachineRequestOwned(c, cmd, request) })
+	}
 	response := s.applyBankedV6MachineRequest(c, cmd, request)
 	return machineDispatch{handled: true, terminal: !s.queueMachineReply(c, response, false)}
 }
@@ -62,6 +65,10 @@ func (s *Server) applyBankedV6MachineRequest(c *Client, cmd machineCommand, requ
 		return renderV6YAMLCommandError(cmd.Resource, request.RequestID, "", v7MachineErrorCode(err), err.Error())
 	}
 	defer reservation.Release()
+	return s.applyBankedV6MachineRequestOwned(c, cmd, request)
+}
+
+func (s *Server) applyBankedV6MachineRequestOwned(c *Client, cmd machineCommand, request v6MachineRequest) string {
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
 		return renderV6YAMLCommandError(cmd.Resource, request.RequestID, "", machineErrorCode(err), err.Error())

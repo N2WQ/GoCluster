@@ -122,7 +122,12 @@ func (m *Manager) NotifyMembershipChanged() {
 }
 func (m *Manager) SetCurrentDirectMessage(fn func(string, uint64, uint64, string) bool) {
 	m.mu.Lock()
-	m.currentDirect = fn
+	m.currentDirect = nil
+	if fn != nil {
+		m.currentDirect = func(login string, id, revision uint64, line, _ string, _ time.Time) bool {
+			return fn(login, id, revision, line)
+		}
+	}
 	m.mu.Unlock()
 }
 func (m *Manager) SetBuildIdentity(version, releaseTag, commit, buildTime, goVersion string) error {

@@ -8,6 +8,12 @@ import (
 func TestConfigurationCommandHelp(t *testing.T) {
 	p := NewProcessor(nil, nil, nil, nil, nil, nil)
 	for _, dialect := range []string{"go", "cc"} {
+		help := p.ProcessCommandForClient("HELP SET JSON", "W1ABC-1", "", nil, dialect)
+		for _, text := range []string{"SET JSON ON [VERSION 1]", "SET JSON OFF", "Every login starts in text", "json-off"} {
+			if !strings.Contains(help, text) {
+				t.Fatalf("%s JSON help omitted %q: %s", dialect, text, help)
+			}
+		}
 		response := p.ProcessCommandForClient("HELP SHOW FILTER", "W1ABC-1", "", nil, dialect)
 		if dialect == "cc" {
 			for _, want := range []string{"native CC state", "DOC|DOS|DXCTY|DXSTATE|DXBM|MODE|SOURCE", "BEACON|WWV|WCY|ANNOUNCE|PC93|SELF", "INHERIT", "active filter that allows all ranges", "SCHEMA 7", "RESUME", "262,144 bytes"} {

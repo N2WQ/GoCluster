@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `e9f35e07968cb310`
+- Source fingerprint: `c191f4715057d47f`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -13,9 +13,9 @@
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 15 | 26 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 61 | 228 |
-| `dxcluster/peer` | `peer` | 63 | 138 |
+| `dxcluster/peer` | `peer` | 63 | 139 |
 | `dxcluster/spot` | `spot` | 47 | 87 |
-| `dxcluster/telnet` | `telnet` | 83 | 180 |
+| `dxcluster/telnet` | `telnet` | 91 | 189 |
 
 ## In-Scope Package Edges
 
@@ -513,6 +513,7 @@ Test files:
 - `peer/allocation_charge_test.go`
 - `peer/backoff_test.go`
 - `peer/bounded_index_test.go`
+- `peer/bulletin_delivery_test.go`
 - `peer/cc_handshake_test.go`
 - `peer/cc_live_test.go`
 - `peer/cc_response_retry_test.go`
@@ -816,6 +817,7 @@ Source files:
 - `telnet/configuration_v7_admission.go`
 - `telnet/configuration_v7_human.go`
 - `telnet/configuration_v7_startup.go`
+- `telnet/control_kind.go`
 - `telnet/cwspeed.go`
 - `telnet/dedupe_readback.go`
 - `telnet/events.go`
@@ -828,6 +830,13 @@ Source files:
 - `telnet/human_preference_stage.go`
 - `telnet/human_reserved_readback.go`
 - `telnet/input_wire.go`
+- `telnet/json_history_rows.go`
+- `telnet/json_history_stream.go`
+- `telnet/json_limits.go`
+- `telnet/json_session.go`
+- `telnet/json_spot.go`
+- `telnet/json_string.go`
+- `telnet/json_writer.go`
 - `telnet/latency.go`
 - `telnet/login_validation.go`
 - `telnet/machine_commands.go`
@@ -952,6 +961,15 @@ Test files:
 - `telnet/ip_session_quota_test.go`
 - `telnet/ip_session_quota_wait_departure_test.go`
 - `telnet/ip_session_quota_wire_test.go`
+- `telnet/json_get_boundary_test.go`
+- `telnet/json_history_rows_test.go`
+- `telnet/json_history_stream_test.go`
+- `telnet/json_limits_test.go`
+- `telnet/json_producers_test.go`
+- `telnet/json_spot_test.go`
+- `telnet/json_spot_writer_test.go`
+- `telnet/json_string_test.go`
+- `telnet/json_transport_test.go`
 - `telnet/keepalive_test.go`
 - `telnet/latency_test.go`
 - `telnet/login_ssid_test.go`

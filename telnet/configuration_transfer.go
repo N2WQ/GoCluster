@@ -142,7 +142,7 @@ func (c *Client) enqueueConfigurationResponse(reservation *configurationOutputRe
 		return errClientClosed
 	}
 	select {
-	case c.controlChan <- controlMessage{raw: raw, closeAfter: terminal, configurationReservation: reservation}:
+	case c.controlChan <- controlMessage{kind: machineReplyKind(terminal), raw: raw, closeAfter: terminal, configurationReservation: reservation}:
 		c.bulletinResponseMu.Unlock()
 		return nil
 	default:

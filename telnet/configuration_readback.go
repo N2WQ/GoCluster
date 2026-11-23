@@ -164,6 +164,9 @@ func (s *Server) handleHumanReadback(c *Client, line string) bool {
 		duration = s.autoReadPauseDuration
 	}
 	completion := c.beginHumanReadback(s.now(), duration)
+	if c.jsonRequested.Load() {
+		duration = jsonReadbackWithoutPause
+	}
 	var reservation *configurationOutputReservation
 	var err error
 	banked, selectedDialect := c.configurationBankSelection()

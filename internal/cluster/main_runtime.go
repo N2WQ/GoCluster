@@ -1195,9 +1195,7 @@ func (r *clusterRuntime) initializeTelnetServer() bool {
 	})
 	if r.peerManager != nil {
 		r.peerManager.SetRawBroadcast(r.telnetServer.BroadcastRaw)
-		r.peerManager.SetWWVBroadcast(r.telnetServer.BroadcastWWVAt)
-		r.peerManager.SetAnnouncementBroadcast(r.telnetServer.BroadcastAnnouncement)
-		r.peerManager.SetCurrentDirectMessage(r.telnetServer.SendCurrentDirectMessage)
+		r.peerManager.SetBulletinDelivery(r.telnetServer.BroadcastSourcedBulletin, r.telnetServer.SendCurrentDirectMessageAt)
 		r.peerManager.SetMembershipProvider(r.currentPeerMembership)
 		r.telnetServer.SetPeerMembershipListener(r.peerManager.NotifyMembershipChanged)
 	}
@@ -1240,6 +1238,10 @@ func (r *clusterRuntime) startNetworkServices() bool {
 }
 
 func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
+	var dxSummitResponseBytes int64
+	if r.cfg.DXSummit.Enabled {
+		dxSummitResponseBytes = r.cfg.DXSummit.MaxResponseBytes
+	}
 	return telnet.ServerOptions{
 		Port:                      r.cfg.Telnet.Port,
 		WelcomeMessage:            r.cfg.Telnet.WelcomeMessage,
@@ -1300,6 +1302,7 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		AdmissionLogMaxLines:      r.cfg.Telnet.AdmissionLogMaxReasonLinesPerInterval,
 		LoginLineLimit:            r.cfg.Telnet.LoginLineLimit,
 		CommandLineLimit:          r.cfg.Telnet.CommandLineLimit,
+		JSONDXSummitResponseBytes: dxSummitResponseBytes,
 		DropExtremeRate:           r.cfg.Telnet.DropExtremeRate,
 		DropExtremeWindow:         time.Duration(r.cfg.Telnet.DropExtremeWindowSeconds) * time.Second,
 		DropExtremeMinAttempts:    r.cfg.Telnet.DropExtremeMinAttempts,
@@ -1501,7 +1504,7 @@ func (r *clusterRuntime) forwardHumanPassthrough(rawPassthrough <-chan rbn.RawLi
 			continue
 		}
 		if announcement := announcementFromLine(line); announcement != "" {
-			r.telnetServer.BroadcastAnnouncement(announcement)
+			r.telnetServer.BroadcastSourcedBulletin("ANNOUNCE", announcement, "", raw.ReceivedAt)
 		}
 	}
 }

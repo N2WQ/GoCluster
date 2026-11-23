@@ -5,6 +5,133 @@ description: Login, command, configuration and delivery contracts for telnet cli
 
 This directory owns the telnet session layer: login flow, prompt handling, filter commands, client fan-out, and path display.
 
+## JSON output
+
+After login, send `SET JSON ON` or `SET JSON ON VERSION 1`. Every connection
+starts in text, so send the command again after reconnecting. The last text
+line is `JSON ON 1` followed by CRLF. Starting with the very next byte, each
+record is a JSON array ending in a single LF. Server echo is off. Clients
+read one line even when it spans several network reads. `SET JSON OFF` waits
+for current history delivery, writes the final `json-off` notice, then returns
+to text and the configured echo behavior. Wait for that notice before sending
+the next command. `SHOW SETTINGS` lists JSON under **Session only**.
+
+The opening `hello` gives the protocol version, node, full login, server,
+current time and limits. The two schema records name every position,
+including position zero. Clients can ignore unknown record kinds and
+trailing fields. Layouts can gain trailing positions in later schema
+versions. The following opening illustrates a node using the shipped
+taxonomy with DXSummit disabled and the ordinary command limit.
+
+```jsonl
+["hello",1,{"node":"W1ABC-2","login":"K1ABC-1","server":"GoCluster","time":"1700000000000000000","limits":{"spotBytes":4726748,"nodeBytes":256,"dxCountryBytes":256,"deCountryBytes":256}}]
+["schema","s",1,["type","id","time","freq","obsFreq","band","mode","modeProv","report","comment","cwSpeeds","events","source","node","human","beacon","conf","confPct","dx","de","toxic","path","glyph"]]
+["schema","station",1,["call","adif","country","cont","cq","itu","state","grid","gridDerived","grid2","iaru"]]
+```
+
+`spotBytes` bounds a single encoded spot line including its LF. Read the
+node's advertised value. Supported feed limits, command size, configured
+taxonomy and readable archive formats contribute to it. Each of the other
+limits counts raw bytes before JSON escaping. An oversized originating node,
+DX country or reporting country becomes `null` and increments its own
+omission counter. Comments retain their full stored content. Invalid UTF-8
+bytes become U+FFFD. Timestamps are signed decimal Unix nanoseconds in
+strings, or `null` when unavailable.
+
+The following exchange shows a live spot, then a one-row historical page.
+An `s` record may also arrive between the header and trailer. Frequencies
+are kHz. `id` is local to a running node and becomes `null` for a historical
+row, zero or a value above 2^53−1. An enabled CW speed preference supplies
+the full available list. Each station carries at most six normalized grid
+characters, a two-character field when available, and an IARU region of 1,
+2, 3 or `null`. Country and ITU on historical rows require agreement between
+current CTY and the stored ADIF. Path and glyph reflect live recipient
+settings and are `null` in history.
+
+```jsonl
+["s",42,"1700000000000000000",14025.00,null,"20m","CW",null,18,"CQ",["24 WPM"],[],"RBN",null,false,false,null,null,["W1AW",291,"United States","NA",5,8,"CT","FN31",false,"FN",2],["K1ABC",291,"United States","NA",5,8,"MA","FN42",false,"FN",2],false,null,null]
+["hb",{"count":1,"older":false}]
+["h",null,"1700000000000000000",14025.00,null,"20m","CW",null,18,"CQ",["24 WPM"],[],"RBN",null,false,false,null,null,["W1AW",291,"United States","NA",5,8,"CT","FN31",false,"FN",2],["K1ABC",291,"United States","NA",5,8,"MA","FN42",false,"FN",2],false,null,null]
+["he","exhausted",null,{"unreadable":false,"hadMatches":true}]
+```
+
+`SH DX` and `SH DX NEXT` use the same filters, order, scan allowance and
+250-row limit as text history. `hb.count` is the selected count.
+`older` marks a continuation. Keep the page only after `he` with
+`exhausted`, `count` or `budget`. A returned token becomes usable after the
+trailer flushes. A zero-row `budget` can still supply a token. A zero-row
+`busy` can be retried from the starting cursor. `restart` calls for a fresh
+search. Discard an incomplete or `failed` page.
+
+Each line of human command output or a human terminal reply uses `text`.
+Machine readbacks, acknowledgements and machine error replies for schema 6
+and schema 7 use a single `yaml` record. Decoding its second element recovers
+the complete legacy CRLF document with its delimiters. The respective raw
+document limits are 65,536 and 262,144 bytes. With JSON escaping, the line
+is bounded by twice that limit plus 12 bytes. A malformed upload header can
+produce a terminal YAML reply. Unreliable or expired body framing closes
+the connection.
+
+Large YAML transfers share the existing 8 MiB output budget, charged in
+1 MiB slots through flush or discard. A JSON mutation also secures its place
+in the output queue before committing. If the connection drops during a
+write command, reconnect and GET the current configuration and revision
+before retrying. The commit can complete before its reply arrives.
+An unreserved machine reply, such as
+an admission error, occupies the connection's single command reader until
+flush or disconnect. That path retains at most one raw document of 65,536
+bytes per connection. Schema 7 diagnostic replies on it are capped at 4 KiB.
+The writer escapes each value in fixed scratch and streams large records.
+
+```jsonl
+["text","Session only"]
+["text","JSON          On"]
+["yaml","---\r\nschema_version: 7\r\nrequest_id: \"\"\r\nresource: \"\"\r\nerror:\r\n  code: invalid_header\r\n  message: PUT YAML permits only SCHEMA 7 after the resource\r\n...\r\n"]
+["keepalive"]
+["notice","refused","JSON REFUSED already on"]
+["notice","omitted","Invalid spot frequency."]
+["text","73!"]
+```
+
+`BYE` writes the `73!` text record before closing. A login-time reset notice
+arrives before any client can enable JSON. For example, a pending-notice
+line can read `An upgrade notice is still pending. Use SHOW FILTER to inspect your`.
+Ordinary notices and readback lines use `text` while JSON is active. Only
+manual `PAUSE` and `RESUME` pause spots in JSON. Switching on cancels any
+automatic hold and preserves the original manual deadline. Use
+`UNSET/VE7CC` before opting into JSON if CC11 is active. Compression and
+unsupported versions receive a refusal in the currently active format.
+
+Live bulletins carry kind, local receipt or generation time, sender when
+available, and the original display line. The examples show the record
+kinds. The server's private-message route admits only the intended current
+session. A solar message uses the scheduled generation time. Bulletin
+history requested as a human command uses text lines.
+
+```jsonl
+["bulletin","WWV","1700000000000000000","W1AW","WWV de W1AW <00> : SFI=150"]
+["bulletin","WCY","1700000000000000000",null,"WCY de W1AW <00> : K=2"]
+["bulletin","SOLAR","1700000000000000000",null,"Solar conditions active"]
+["bulletin","ANNOUNCE","1700000000000000000","W1AW","To ALL de W1AW: Test announcement"]
+["bulletin","TALK","1700000000000000000","K1ABC","To W1AW de K1ABC: Hello"]
+["notice","json-off",""]
+```
+
+**Fields and disclosure.** The greeting, startup information, operator
+templates and login reset notices use the existing text login path.
+A telnet template can show the previous login address via `<LAST_IP>`.
+The JSON hello publishes the node and login identity. Spot and history rows
+use the two public layouts above. IP addresses from spot ingest, TTL, raw
+skimmer observations, H3 cells, toxicity details, internal caches, NEARBY
+decisions and diagnostic decorations have no output positions. YAML exposes
+the requested configuration, its revision and its defined status fields.
+Human replies retain the command's display contents. Bulletin routing uses
+the formatted public line and sender, excluding private peer frame fields
+such as PC93's IP. User-entered comments and bulletin bodies remain visible
+as supplied. Keepalives carry only their type. Switch notices carry only the
+reason or ending. None of these producers reads connector credentials,
+upstream passwords or service API keys to construct a protocol record.
+
 ## Login And Session Behavior
 
 - Clients log in with a callsign before commands are accepted.
@@ -931,7 +1058,7 @@ delivery`, without claiming that the reading countdown has begun. Both human
 views show the preset row. Its `(modified)` flag compares preferences with the
 applied/saved reference snapshot described below.
 
-Every human readback, including a size error, always suppresses live spots
+In text and VE7CC, every human readback, including a size error, suppresses live spots
 from command acceptance, before preparation or any transaction wait, through
 queueing and delivery. It then provides the full reading interval after a
 successful server write and flush. This does not measure terminal rendering.
@@ -1341,12 +1468,12 @@ counts carry across an active pause; a new pause after expiry starts a fresh
 count. Pause state is temporary and is excluded from saved preferences and
 presets.
 
-Human configuration readbacks use the unconditional delivery/reading hold
+Text and VE7CC configuration readbacks use the unconditional delivery/reading hold
 described above. Later valid PAUSE/RESUME controls override queued readback
 completion. All pause mutators share the same ordering authority, while YAML
 operations do not mutate that authority.
 
-Long command responses can temporarily pause live spot lines so users have time
+Outside JSON mode, long command responses can temporarily pause live spot lines so users have time
 to read the response before the live stream scrolls it away. The shipped config
 uses `telnet.auto_read_pause_min_rows: 10` and
 `telnet.auto_read_pause_seconds: 30`.

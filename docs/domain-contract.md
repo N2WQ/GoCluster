@@ -90,6 +90,18 @@ to be disabled. See [what the safeguards do](cw-call-correction-branch.md#what-t
 - Negotiation and escaped IAC bytes never reach business handlers. Newlines
   inside Telnet subnegotiation do not end application lines.
 
+## Session-only JSON output
+
+An authenticated client selects uncompressed JSON v1 with `SET JSON ON`.
+The writer flushes the text acknowledgement before the first JSON record.
+`SET JSON OFF` ends JSON with a flushed notice. Each login starts in text.
+Live and historical rows use the advertised spot and station layouts, including
+six-character locator display precision and per-recipient CW speed visibility.
+A YAML response for schema 6 or 7 occupies one record. History cursors advance
+after the page trailer flushes. Manual pauses retain their original deadline.
+See the [wire guide](../telnet/README.md#json-output) and
+[ADR-0374](decisions/ADR-0374-session-json-output.md).
+
 ## Session-only CC11 spot output
 
 After login, exact case-insensitive, argument-free `SET/VE7CC` and

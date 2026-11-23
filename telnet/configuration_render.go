@@ -93,6 +93,9 @@ func encodeBoundedYAMLLimit(document any, limit int) (string, error) {
 	return string(response.data), nil
 }
 
+// The zero duration retains the configured/default text-mode reading interval.
+const jsonReadbackWithoutPause time.Duration = -1
+
 func humanReadbackFooter(duration time.Duration) string {
 	if duration <= 0 {
 		duration = defaultReadPauseDuration
@@ -109,10 +112,16 @@ func humanReadbackError(err error, duration time.Duration) string {
 	if h.prose("Readback failed: ", "", message) == nil && writeHumanFooter(&h, duration) == nil {
 		return string(h.data)
 	}
+	if duration == jsonReadbackWithoutPause {
+		return "Readback failed: response exceeds 65,536 bytes.\r\n"
+	}
 	return "Readback failed: response exceeds 65,536 bytes.\r\n\r\n" + strings.ReplaceAll(humanReadbackFooter(duration), "\n", "\r\n")
 }
 
 func writeHumanFooter(h *humanResponse, duration time.Duration) error {
+	if duration == jsonReadbackWithoutPause {
+		return nil
+	}
 	if err := h.line(""); err != nil {
 		return err
 	}
@@ -159,7 +168,7 @@ func (s *Server) renderHumanReadback(c *Client, resource, category string, durat
 			}
 			switch resource {
 			case "SETTINGS":
-				if err := writeHumanSettings(&h, cfg.Settings, status, runtime, duration); err != nil {
+				if err := writeHumanSettings(&h, cfg.Settings, status, runtime, duration, true); err != nil {
 					return err
 				}
 			default:
@@ -196,11 +205,12 @@ type humanRuntimeStatus struct {
 	stationMinimum, beaconMinimum, userMinimum int
 	prediction                                 string
 	dedupeEnabled, solarEnabled                bool
+	jsonEnabled                                bool
 }
 
 func (s *Server) captureHumanRuntime(c *Client) humanRuntimeStatus {
 	state := c.pathSnapshot()
-	runtime := humanRuntimeStatus{prediction: "unavailable", userMinimum: state.pathMinObservationCount}
+	runtime := humanRuntimeStatus{prediction: "unavailable", userMinimum: state.pathMinObservationCount, jsonEnabled: c.jsonRequested.Load()}
 	if s == nil {
 		return runtime
 	}
@@ -300,7 +310,7 @@ func writeHumanDedupe(h *humanResponse, configured string, status configurationR
 	return nil
 }
 
-func writeHumanSettings(h *humanResponse, cfg filter.SettingsConfiguration, status configurationReadbackStatus, runtime humanRuntimeStatus, duration time.Duration) error {
+func writeHumanSettings(h *humanResponse, cfg filter.SettingsConfiguration, status configurationReadbackStatus, runtime humanRuntimeStatus, duration time.Duration, showJSON bool) error {
 	if err := writeHumanSetting(h, "Dialect", cfg.Dialect, status.Effective.Dialect); err != nil {
 		return err
 	}
@@ -356,6 +366,15 @@ func writeHumanSettings(h *humanResponse, cfg filter.SettingsConfiguration, stat
 	}
 	if err := h.line("Session only"); err != nil {
 		return err
+	}
+	if showJSON {
+		jsonMode := "Off"
+		if runtime.jsonEnabled {
+			jsonMode = "On"
+		}
+		if err := h.row("JSON", jsonMode); err != nil {
+			return err
+		}
 	}
 	diagnostics := status.Session.DiagnosticComments
 	if diagnostics == "OFF" {

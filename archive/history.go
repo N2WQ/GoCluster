@@ -2,6 +2,7 @@ package archive
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,44 @@ import (
 )
 
 const historyMaxLimit = 250
+
+// MaxHistoryRecordBytes is the largest value accepted by any readable layout.
+// V7 has seventeen unrestricted uint16-length strings, two two-letter states,
+// and two CW fields limited to 1024 bytes each. Older layouts are smaller.
+const MaxHistoryRecordBytes = recordHeaderSize + fieldDXState*65535 + 2*2 + 2*1024
+
+// MaxHistoryScans limits simultaneous collecting scans across archive instances.
+// A scan owns one iterator and decodes one candidate at a time. Its slot is
+// released after iterator close, before the caller can publish its page.
+//
+// On the 64-bit Go 1.27.1 builds the conservative candidate-work allowance
+// is 128 MiB per slot, independent of the number of rows examined:
+//   - <3 MiB for input plus 21 field copies, <4 MiB for the EVENT, two
+//     toxicity CSV and CW string-header vectors, and 2.5 MiB for the maximum
+//     32,768 legacy comment tokens (80 bytes each).
+//   - Token uppercasing consumes <3 MiB of backing in aggregate. Each raw
+//     byte yields at most four UTF-8 bytes; builder growth and allocator
+//     rounding bound a backing by 16*inputBytes+32, including tiny strings.
+//   - A decoded Spot has 10 normalized strings. The filter's lazy view has
+//     fewer than 24 text fields. Even including active normalization, copied
+//     CTY headers, filter/format temporaries and a growing builder's old and
+//     new storage, there are fewer than 64 full-field derived backings. Each
+//     begins at one uint16 field and costs <1,049,000 bytes by the same bound.
+//     Already canonical taxonomy names share immutable backing.
+//   - CTY's temporary slash-segment vector is <5 MiB; one uncharged compact
+//     projection is <1 MiB. Matching uses fixed-depth programs and fixed
+//     observation captures, with one 1 KiB literal-comment table.
+//
+// These are simultaneous GoCluster candidate resources. Pebble's shared
+// cache/iterator internals, existing process caches, the Go collector and
+// separately charged retained history pages have different owners.
+const MaxHistoryScans = 2
+
+var historyScanSlots = make(chan struct{}, MaxHistoryScans)
+
+// ErrHistoryBusy asks the caller to discard any partial collected projection
+// and keep the previous continuation available for retry.
+var ErrHistoryBusy = errors.New("archive: history capacity busy")
 
 // HistoryEnd describes why a page stopped. Count and budget boundaries retain
 // an exclusive continuation position; Exhausted means the eligible key range
@@ -30,8 +69,13 @@ type HistoryRequest struct {
 	Limit  int
 	Before []byte
 	Match  func(*spot.Spot) bool
-	Now    time.Time
-	Done   <-chan struct{}
+	// Collect receives selected rows newest first while the iterator is open.
+	// It must charge and copy the fields it needs before returning, must not
+	// retain the Spot or block on delivery, and must release all charges if
+	// ReadHistoryPage returns any error. A nil collector requests owned Spots.
+	Collect func(*spot.Spot) error
+	Now     time.Time
+	Done    <-chan struct{}
 }
 
 // HistoryPage selects newest-first rows. Examined includes a non-consuming
@@ -40,6 +84,7 @@ type HistoryRequest struct {
 // and records; callers must preserve this warning across a continued search.
 type HistoryPage struct {
 	Spots      []*spot.Spot
+	Selected   int // Includes rows accepted by Collect when Spots is nil.
 	Before     []byte
 	Examined   int
 	Unreadable int
@@ -95,6 +140,14 @@ func (w *Writer) ReadHistoryPage(request HistoryRequest) (page HistoryPage, err 
 	if err = w.readCanceled(request.Done); err != nil {
 		return page, err
 	}
+	if request.Collect != nil {
+		select {
+		case historyScanSlots <- struct{}{}:
+			defer func() { <-historyScanSlots }()
+		default:
+			return HistoryPage{}, ErrHistoryBusy
+		}
+	}
 	now := request.Now
 	if now.IsZero() {
 		now = time.Now().UTC()
@@ -115,12 +168,18 @@ func (w *Writer) ReadHistoryPage(request HistoryRequest) (page HistoryPage, err 
 		if closeErr := iter.Close(); err == nil && closeErr != nil {
 			err = fmt.Errorf("archive: history close iterator: %w", closeErr)
 		}
+		if err != nil && request.Collect != nil {
+			page = HistoryPage{}
+		}
 	}()
 	return w.scanHistoryPage(iter, request)
 }
 
 func (w *Writer) scanHistoryPage(iter *pebble.Iterator, request HistoryRequest) (HistoryPage, error) {
-	page := HistoryPage{Spots: make([]*spot.Spot, 0, request.Limit)}
+	var page HistoryPage
+	if request.Collect == nil {
+		page.Spots = make([]*spot.Spot, 0, request.Limit)
+	}
 	var valid bool
 	if len(request.Before) == 0 {
 		valid = iter.Last()
@@ -138,14 +197,19 @@ func (w *Writer) scanHistoryPage(iter *pebble.Iterator, request HistoryRequest) 
 			page.Unreadable++
 		} else {
 			page.Before = append(page.Before, iter.Key()...)
-			if row, decodeErr := decodeSpot(ts, iter.Value()); decodeErr != nil {
+			if row, decodeErr := decodeHistorySpot(ts, iter); decodeErr != nil {
 				page.Unreadable++
 			} else if request.Match == nil || request.Match(row) {
-				page.Spots = append(page.Spots, row)
+				if request.Collect == nil {
+					page.Spots = append(page.Spots, row)
+				} else if err := request.Collect(row); err != nil {
+					return HistoryPage{}, err
+				}
+				page.Selected++
 			}
 		}
 		valid = iter.Prev()
-		if len(page.Spots) == request.Limit || page.Examined == recentScanMax-1 {
+		if page.Selected == request.Limit || page.Examined == recentScanMax-1 {
 			if valid {
 				// This visit establishes older search without consuming its row.
 				page.Examined++
@@ -153,7 +217,7 @@ func (w *Writer) scanHistoryPage(iter *pebble.Iterator, request HistoryRequest) 
 					return page, fmt.Errorf("archive: malformed history boundary prevents continuation")
 				}
 				page.End = HistoryBudgetReached
-				if len(page.Spots) == request.Limit {
+				if page.Selected == request.Limit {
 					page.End = HistoryCountReached
 				}
 			}
@@ -170,4 +234,15 @@ func (w *Writer) scanHistoryPage(iter *pebble.Iterator, request HistoryRequest) 
 		page.Before = nil
 	}
 	return page, nil
+}
+
+func decodeHistorySpot(ts int64, iter *pebble.Iterator) (*spot.Spot, error) {
+	// The length of an external Pebble value is available before fetching it.
+	// An oversized value was already unreadable in decodeRecord. Skip it
+	// without materializing a potentially oversized iterator value buffer.
+	value := iter.LazyValue()
+	if value.Len() > MaxHistoryRecordBytes {
+		return nil, errInvalidRecord
+	}
+	return decodeSpot(ts, iter.Value())
 }

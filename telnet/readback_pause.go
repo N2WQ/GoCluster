@@ -14,6 +14,14 @@ type readbackCompletion struct {
 	duration time.Duration
 }
 
+// A JSON release advances the server's generation at the command boundary.
+// On coarse clocks a spot can share the release's timestamp even after the
+// client received RESUME. Every fanout copy carries its original generation.
+type jsonPauseFence struct {
+	wallNS     int64
+	generation uint64
+}
+
 // beginHumanReadback suppresses spots before capture or output preparation.
 // A pending hold has no invented finite deadline: delivery can take longer than
 // the reading interval, and its finite cutoff must not discard future traffic.
@@ -26,7 +34,7 @@ func (c *Client) beginHumanReadback(now time.Time, duration time.Duration) readb
 	}
 	c.readPauseMu.Lock()
 	defer c.readPauseMu.Unlock()
-	if c.readPauseClosed {
+	if c.readPauseClosed || c.jsonRequested.Load() {
 		return readbackCompletion{}
 	}
 	if !c.readPausePending.Load() && c.readPauseUntilUnixNano.Load() <= now.UnixNano() {
@@ -96,6 +104,8 @@ func (c *Client) startReadPause(now time.Time, duration time.Duration) {
 	}
 	c.readPauseEpoch++
 	until := now.Add(duration).UnixNano()
+	c.manualPauseUntil = until
+	c.jsonPauseCutoff.Store(nil) // Natural expiry has only its time boundary.
 	c.readPauseUntilUnixNano.Store(until)
 	c.readPauseDiscardBefore.Store(until)
 	c.readPausePending.Store(false)
@@ -111,7 +121,7 @@ func (c *Client) extendReadPause(now time.Time, duration time.Duration) time.Dur
 	}
 	c.readPauseMu.Lock()
 	defer c.readPauseMu.Unlock()
-	if c.readPauseClosed {
+	if c.readPauseClosed || c.jsonRequested.Load() {
 		return 0
 	}
 	nowNanos := now.UnixNano()
@@ -123,6 +133,32 @@ func (c *Client) extendReadPause(now time.Time, duration time.Duration) time.Dur
 	c.readPauseUntilUnixNano.Store(until)
 	c.readPauseDiscardBefore.Store(until)
 	return time.Duration(until - nowNanos)
+}
+
+// Entering JSON cancels every automatic hold, including an unflushed readback.
+// Keep the cutoff from a past pause. For a canceled active hold, queued spots
+// from that hold remain stale but the old automatic deadline cannot discard
+// fresh arrivals. The manual deadline survives any subsequent automatic extension.
+func (c *Client) enterJSONPausePolicy(now time.Time) {
+	c.readPauseMu.Lock()
+	defer c.readPauseMu.Unlock()
+	nowNS := now.UnixNano()
+	until := c.manualPauseUntil
+	if until <= nowNS {
+		until = 0
+	}
+	cutoff := c.readPauseDiscardBefore.Load()
+	c.jsonPauseCutoff.Store(nil)
+	if c.readPausePending.Load() || (cutoff > 0 && cutoff >= nowNS) {
+		cutoff = max(nowNS, until)
+		if until == 0 {
+			c.setJSONPauseFence(nowNS)
+		}
+	}
+	c.readPauseEpoch++
+	c.readPauseDiscardBefore.Store(cutoff)
+	c.readPauseUntilUnixNano.Store(until)
+	c.readPausePending.Store(false)
 }
 
 // A pending response is active even when it has no finite remaining interval.
@@ -155,6 +191,10 @@ func (c *Client) resumeReadPause(now time.Time) (bool, uint64) {
 	nowNanos := now.UnixNano()
 	active := c.readPausePending.Load() || c.readPauseUntilUnixNano.Load() > nowNanos
 	c.readPauseEpoch++
+	c.manualPauseUntil = 0
+	if c.jsonRequested.Load() {
+		c.setJSONPauseFence(nowNanos)
+	}
 	c.readPauseDiscardBefore.Store(nowNanos)
 	c.readPauseUntilUnixNano.Store(0)
 	c.readPausePending.Store(false)
@@ -178,13 +218,30 @@ func (c *Client) suppressSpotForReadPause(env *spotEnvelope, now time.Time) bool
 	if cutoff <= 0 {
 		return false
 	}
-	enqueueNanos := nowNanos
+	enqueued := now
 	if env != nil && !env.enqueueAt.IsZero() {
-		enqueueNanos = env.enqueueAt.UnixNano()
+		enqueued = env.enqueueAt
 	}
-	if enqueueNanos <= cutoff {
+	ns := enqueued.UnixNano()
+	if ns < cutoff || (ns == cutoff && !c.afterJSONPauseFence(env, cutoff)) {
 		c.readPauseSuppressed.Add(1)
 		return true
 	}
 	return false
+}
+
+func (c *Client) setJSONPauseFence(wallNS int64) {
+	if c.server != nil {
+		c.jsonPauseCutoff.Store(&jsonPauseFence{wallNS: wallNS, generation: c.server.jsonPauseGeneration.Add(1)})
+	}
+}
+
+// Called only on equal wall timestamps. A worker that processes an old queue
+// entry after a release cannot stamp it as fresh. Legacy ties stay suppressed.
+func (c *Client) afterJSONPauseFence(env *spotEnvelope, cutoff int64) bool {
+	if env == nil || !c.jsonRequested.Load() {
+		return false
+	}
+	fence := c.jsonPauseCutoff.Load()
+	return fence != nil && fence.wallNS == cutoff && env.pauseGeneration >= fence.generation
 }

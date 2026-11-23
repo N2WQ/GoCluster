@@ -45,6 +45,9 @@ func (s *Server) handleV6MachineCommand(c *Client, line string) machineDispatch 
 			renderV6YAMLCommandError(cmd.Resource, request.RequestID, "", "invalid_document", err.Error()), false)}
 	}
 	// apply releases the lease before queueing can invoke connection cleanup.
+	if c.jsonRequested.Load() {
+		return s.runJSONMachineRequest(c, cmd, request.RequestID, func() string { return s.applyV6MachineRequest(c, cmd, request) })
+	}
 	response := s.applyV6MachineRequest(c, cmd, request)
 	return machineDispatch{handled: true, terminal: !s.queueMachineReply(c, response, false)}
 }

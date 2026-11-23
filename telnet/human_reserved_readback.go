@@ -44,7 +44,7 @@ func (s *Server) renderNativeHumanSettings(c *Client, duration time.Duration) (s
 		if err := writeHumanHeader(h, c, status); err != nil {
 			return err
 		}
-		if err := writeHumanSettings(h, status.Configured, status, runtime, duration); err != nil {
+		if err := writeHumanSettings(h, status.Configured, status, runtime, duration, true); err != nil {
 			return err
 		}
 		return writeHumanFooter(h, duration)
@@ -56,7 +56,7 @@ func (s *Server) renderNativeHumanSettings(c *Client, duration time.Duration) (s
 // Queue-full and close failures release before invoking the existing policy.
 func (c *Client) enqueueHumanReadback(reservation *configurationOutputReservation, raw []byte, completion readbackCompletion) error {
 	if reservation == nil {
-		return c.enqueueControl(controlMessage{raw: raw, readback: completion})
+		return c.enqueueControl(controlMessage{kind: controlReadback, raw: raw, readback: completion})
 	}
 	if reservation.preparationOnly {
 		reservation.Release()
@@ -77,7 +77,7 @@ func (c *Client) enqueueHumanReadback(reservation *configurationOutputReservatio
 		return errClientClosed
 	}
 	select {
-	case c.controlChan <- controlMessage{raw: raw, readback: completion, configurationReservation: reservation}:
+	case c.controlChan <- controlMessage{kind: controlReadback, raw: raw, readback: completion, configurationReservation: reservation}:
 		c.bulletinResponseMu.Unlock()
 		return nil
 	default:

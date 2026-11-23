@@ -143,7 +143,7 @@ func (p *protocolController) receiveMessage(f *Frame, now time.Time) {
 		return
 	}
 	p.graph.commitWatermark(origin, value, authorityTime, true)
-	p.manager.routePC93(msg)
+	p.manager.routePC93At(msg, now)
 }
 func parseWireTimestamp(s string) (float64, bool) {
 	v, err := ParsePC9xTimestamp(s)

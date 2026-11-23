@@ -198,11 +198,17 @@ func validHistoryPrefix(prefix string) bool {
 // ReadHistoryPage composes selection before counting. Decoded archive spots own
 // DXCallNorm normalized by NormalizeSpotDXCallsign during materialization.
 func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match func(*spot.Spot) bool, now time.Time, done <-chan struct{}) (archive.HistoryPage, error) {
+	return p.CollectHistoryPage(query, before, match, now, done, nil)
+}
+
+// CollectHistoryPage uses the same search and filter rules as text history.
+// A collector copies and charges selected fields before the scan advances.
+func (p *Processor) CollectHistoryPage(query HistoryQuery, before []byte, match func(*spot.Spot) bool, now time.Time, done <-chan struct{}, collect func(*spot.Spot) error) (archive.HistoryPage, error) {
 	if p.archive == nil {
 		return archive.HistoryPage{}, errors.New("archive unavailable")
 	}
 	return p.archive.ReadHistoryPage(archive.HistoryRequest{
-		Limit: query.count, Before: before, Now: now, Done: done,
+		Limit: query.count, Before: before, Now: now, Done: done, Collect: collect,
 		Match: func(s *spot.Spot) bool {
 			if s == nil {
 				return false

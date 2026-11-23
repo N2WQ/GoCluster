@@ -68,7 +68,9 @@ func (s *Server) nativeCCReadback(c *Client, resource, category string, duration
 			}
 		}
 		if strings.EqualFold(resource, "CONFIG") {
-			if err := writeHumanSettings(h, status.Configured, status, runtime, duration); err != nil {
+			// The native CONFIG readback participates in persisted-profile size
+			// admission. Only SHOW SETTINGS adds the connection's JSON setting.
+			if err := writeHumanSettings(h, status.Configured, status, runtime, duration, false); err != nil {
 				return err
 			}
 		}

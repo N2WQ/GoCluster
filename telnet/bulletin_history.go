@@ -69,7 +69,7 @@ func (s *Server) sendBulletinHistoryResponse(client *Client, kind string, full b
 	default:
 	}
 	select {
-	case client.controlChan <- controlMessage{line: message, bulletinReservation: bulletinResponseReservation}:
+	case client.controlChan <- controlMessage{kind: controlReadback, line: message, bulletinReservation: bulletinResponseReservation}:
 		client.bulletinResponseMu.Unlock()
 		return true
 	default:
@@ -96,6 +96,9 @@ func (c *Client) drainBulletinReservations() {
 		select {
 		case msg := <-c.controlChan:
 			msg.raw, msg.line = nil, ""
+			if msg.jsonPage != nil {
+				msg.jsonPage.discard()
+			}
 			c.releaseBulletinReservations(msg.bulletinReservation)
 			msg.configurationReservation.Release()
 		default:

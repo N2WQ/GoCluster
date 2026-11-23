@@ -19,8 +19,104 @@ func (s *Server) queueMachineReply(c *Client, response string, terminal bool) bo
 	if terminal {
 		c.preserveRecordOnExit.Store(true)
 	}
-	err := c.enqueueControl(controlMessage{raw: []byte(response), closeAfter: terminal})
-	return err == nil
+	msg := controlMessage{kind: machineReplyKind(terminal), raw: []byte(response), closeAfter: terminal}
+	// Unreserved replies (including a large-transfer busy error) use the
+	// command reader's one implicit slot. A client cannot pile up a queue of
+	// these while the writer is busy with a history or configuration page.
+	if !c.jsonRequested.Load() {
+		return c.enqueueControl(msg) == nil
+	}
+	msg.yamlFlushed = make(chan struct{})
+	if err := c.admitJSONMachineReply(msg); err != nil {
+		if errors.Is(err, errControlQueueFull) {
+			_ = c.controlQueueFull() //nolint:errcheck // The existing policy reports and disconnects.
+		}
+		return false
+	}
+	msg.raw = nil // Only the writer retains the charged payload while waiting.
+	select {
+	case <-msg.yamlFlushed:
+		return true
+	case <-c.done:
+	case <-s.shutdown:
+	}
+	// A delivered terminal frame can close the socket before this reader
+	// resumes. Its receipt still owns that close.
+	select {
+	case <-msg.yamlFlushed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Both bounded machine output paths share the writer teardown fence. A
+// replacement may retire an open socket while it still owes its FIFO notices.
+func (c *Client) admitJSONMachineReply(msg controlMessage) error {
+	c.bulletinResponseMu.Lock()
+	defer c.bulletinResponseMu.Unlock()
+	if configurationTransferClosed(c) {
+		return errClientClosed
+	}
+	select {
+	case c.controlChan <- msg:
+		return nil
+	default:
+		return errControlQueueFull
+	}
+}
+
+func machineReplyKind(terminal bool) controlKind {
+	if terminal {
+		return controlYAMLTerminal
+	}
+	return controlYAML
+}
+
+// Admit both the expensive output preparation and its FIFO position before
+// a JSON upload is allowed to commit. The reader owns the reservation until
+// the writer takes the result; cancellation cannot leak or release a live
+// preparation early. The selected schema's renderer enforces its raw limit.
+func (s *Server) runJSONMachineRequest(c *Client, cmd machineCommand, id string, apply func() string) machineDispatch {
+	owner, err := c.reserveConfigurationOutput()
+	if err != nil {
+		render := renderV6YAMLCommandError
+		if cmd.SchemaVersion == 7 {
+			render = renderV7YAMLCommandError
+		}
+		return machineDispatch{handled: true, terminal: !s.queueMachineReply(c, render(cmd.Resource, id, "", v7MachineErrorCode(err), err.Error()), false)}
+	}
+	ready := make(chan controlMessage)
+	if err := c.admitJSONMachineReply(controlMessage{kind: controlYAML, yamlReady: ready}); err != nil {
+		owner.Release()
+		if errors.Is(err, errControlQueueFull) {
+			_ = c.controlQueueFull() //nolint:errcheck // Existing disconnect/report policy; command loop exits below.
+		}
+		return machineDispatch{handled: true, terminal: true}
+	}
+	raw := []byte(apply())
+	select {
+	case ready <- controlMessage{kind: controlYAML, raw: raw, configurationReservation: owner}:
+		return machineDispatch{handled: true}
+	case <-c.done:
+	case <-s.shutdown:
+	}
+	owner.Release()
+	return machineDispatch{handled: true, terminal: true}
+}
+
+func (c *Client) receiveJSONMachineReply(pending controlMessage) (controlMessage, bool) {
+	var shutdown <-chan struct{}
+	if c.server != nil {
+		shutdown = c.server.shutdown
+	}
+	select {
+	case msg := <-pending.yamlReady:
+		return msg, true
+	case <-c.done:
+	case <-shutdown:
+	}
+	return controlMessage{}, false
 }
 
 func (s *Server) handleMachineCommand(c *Client, line string) machineDispatch {

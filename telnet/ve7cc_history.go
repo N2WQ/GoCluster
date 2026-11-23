@@ -21,6 +21,25 @@ func (c *Client) historyRequestValidLocked(request historyRequest) bool {
 // No reservation crosses the unlocked archive scan. Unqueued backing and its
 // charge are abandoned before returning to the caller that releases the lease.
 func (s *Server) publishHistoryOwned(c *Client, request historyRequest, next *historySearch, response string, success bool) (notes ve7ccFormatNotes, refused bool, err error) {
+	if p := request.jsonPage; p != nil {
+		c.refreshConfigurationRevision()
+		c.bulletinResponseMu.Lock()
+		defer c.bulletinResponseMu.Unlock()
+		c.historyMu.Lock()
+		defer c.historyMu.Unlock()
+		if c.historyClosed || configurationTransferClosed(c) {
+			return notes, false, errClientClosed
+		}
+		if !c.historyRequestValidLocked(request) {
+			p.empty("restart")
+		}
+		select {
+		case c.controlChan <- controlMessage{jsonPage: p}:
+			return notes, false, nil
+		default:
+			return notes, false, errControlQueueFull
+		}
+	}
 	var frame []byte
 	var reservation *configurationOutputReservation
 	defer func() {
