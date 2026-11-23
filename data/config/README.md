@@ -464,8 +464,9 @@ Telnet message tokens (usable in `runtime.yaml`):
 - Post-login `login_greeting`: same tokens as above (with real values after login),
   plus `<LOGIN_SUMMARY>` for the shipped short login summary and
   `<SETTINGS_FILTERS>` for the full settings/rule block and first-time guidance.
-  Custom templates can place or omit either block. If both are present, the
-  short summary shows the first-login GO filter example once.
+  Custom templates can place or omit either block. The first-login GO filter
+  example appears once, in the first short summary or, if there is no summary,
+  in the first full settings block.
 - `<STARTUP_INFO>` places the startup notices and WWV/WCY history in the
   post-login greeting. Only its first occurrence displays the block; later
   occurrences are removed. The shipped greeting places it before the prompt.

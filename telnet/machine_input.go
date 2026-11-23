@@ -127,7 +127,8 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 		ruleByte := ruleArguments && b >= 32 && b <= 126 && (!atShortExpressionStart || b == '(')
 		humanUnderscore := machineAware && b == '_' && machineIntent(line) == ""
 		dxCommentPlus := machineAware && b == '+' && dxCommentArgumentsStarted(line)
-		if len(line) >= maxLen || (!commentByte && !ruleByte && !humanUnderscore && !dxCommentPlus && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
+		tooLong := len(line) >= maxLen
+		if tooLong || (!commentByte && !ruleByte && !humanUnderscore && !dxCommentPlus && !isAllowedInputByte(b, allowComma, allowWildcard, allowConfidence, allowDot)) {
 			allowed = allowedCharacterList(allowComma, allowWildcard, allowConfidence, allowDot)
 			if machineAware && machineIntent(line) == "" {
 				allowed += ", '_'"
@@ -139,22 +140,20 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 				allowed = "printable ASCII within a RULE expression"
 			}
 		}
-		if len(line) >= maxLen {
-			c.logRejectedInput(context, fmt.Sprintf("exceeded %d-byte limit", maxLen))
-			inputErr := newInputTooLongError(context, maxLen, allowed)
-			if ruleArguments {
-				inputErr.guidance = "No changes applied."
+		if tooLong || allowed != "" {
+			var inputErr *InputValidationError
+			if tooLong {
+				c.logRejectedInput(context, fmt.Sprintf("exceeded %d-byte limit", maxLen))
+				inputErr = newInputTooLongError(context, maxLen, allowed)
+			} else {
+				c.logRejectedInput(context, fmt.Sprintf("forbidden byte 0x%02X", b))
+				inputErr = newInputInvalidCharError(context, maxLen, allowed, b)
 			}
-			return fail(inputErr)
-		}
-		if allowed != "" {
-			c.logRejectedInput(context, fmt.Sprintf("forbidden byte 0x%02X", b))
-			inputErr := newInputInvalidCharError(context, maxLen, allowed, b)
 			if ruleArguments {
 				inputErr.guidance = "No changes applied."
 			}
 			if ruleSyntax {
-				if hint := booleanInputHint(line, b, c.dialect); hint != "" {
+				if hint := booleanInputHint(line, b, c.dialect, tooLong); hint != "" {
 					inputErr.guidance = hint + "\nNo changes applied."
 				}
 			}

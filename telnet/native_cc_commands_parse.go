@@ -111,15 +111,7 @@ func parseNativeCCFilter(words []string) (nativeCCCommand, bool, string) {
 	if booleanSeparateDomain(base) && (!inline || suffix == "ON" || suffix == "OFF") {
 		return nativeCCCommand{}, false, ""
 	}
-	// The final slash belongs to the action: canonical entity labels themselves
-	// may contain a slash, for example 3D2/R in implied-DOC syntax.
-	last := strings.LastIndexByte(operand, '/')
-	action, valuesStart := "", 1
-	if last >= 0 {
-		base, action = operand[:last], operand[last+1:]
-	} else if len(words) > 1 && strings.HasPrefix(words[1], "/") {
-		base, action, valuesStart = operand, strings.ToUpper(strings.TrimPrefix(words[1], "/")), 2
-	}
+	base, action, valuesStart := nativeCCFilterAction(words)
 	if action != "PASS" && action != "REJECT" && action != "OFF" {
 		return nativeCCCommand{}, true, "Use SET/FILTER <category>/PASS <list>, /REJECT <list> or /OFF. Per-band geography terminal syntax is unverified; use schema-seven YAML."
 	}
@@ -155,6 +147,20 @@ func parseNativeCCFilter(words []string) (nativeCCCommand, bool, string) {
 	}
 	command.values = values
 	return command, true, ""
+}
+
+// Both CC parsing and GO refusal guidance read the action from the header.
+// The final slash owns an inline action because entity labels can contain a
+// slash themselves, as in 3D2/R/REJECT.
+func nativeCCFilterAction(words []string) (base, action string, valuesStart int) {
+	operand := strings.ToUpper(words[0])
+	if last := strings.LastIndexByte(operand, '/'); last >= 0 {
+		return operand[:last], operand[last+1:], 1
+	}
+	if len(words) > 1 && strings.HasPrefix(words[1], "/") {
+		return operand, strings.ToUpper(words[1][1:]), 2
+	}
+	return operand, "", 1
 }
 
 func nativeCCList(text string) ([]string, error) {

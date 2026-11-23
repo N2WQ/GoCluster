@@ -75,6 +75,49 @@ func writeBooleanSettingsAndRules(h *humanResponse, c *Client, cfg filter.Config
 const firstGOFilterExample = "  PASS RULE BAND=20M AND SOURCE=HUMAN"
 const firstGOFilterReplacement = "This replaces all of rule 0. Include every condition you want to keep."
 
+var firstGOFilterRecipe = [...]string{
+	"For human reports on 20m, try the PASS RULE shortcut.",
+	firstGOFilterExample,
+	firstGOFilterReplacement,
+	"Coming from AR-Cluster? See HELP FILTERS.",
+}
+
+const loginSummaryToken = "<LOGIN_SUMMARY>"
+const settingsFiltersToken = "<SETTINGS_FILTERS>"
+
+// The bounds cover just the generated recipe, leaving every other line in
+// place when this block is expanded a second time.
+type loginGreetingBlock struct {
+	text                   string
+	recipeStart, recipeEnd int
+}
+
+type loginGreeting struct {
+	data                    templateData
+	recipeToken, recipeText string
+}
+
+func (g *loginGreeting) blockValue(tmpl, token, prefix string, block loginGreetingBlock) string {
+	if block.recipeEnd == block.recipeStart || strings.Count(tmpl, token) < 2 {
+		return prefix + block.text
+	}
+	g.recipeToken, g.recipeText = token, prefix+block.text
+	return prefix + block.text[:block.recipeStart] + block.text[block.recipeEnd:]
+}
+
+// Each fragment belongs to the same login and is formatted in display order.
+// Expand the selected occurrence directly so its generated text is never
+// treated as part of the operator's template.
+func (g *loginGreeting) format(tmpl string) string {
+	if g.recipeToken != "" {
+		if before, after, found := strings.Cut(tmpl, g.recipeToken); found {
+			g.recipeToken = ""
+			return formatGreeting(before, g.data) + g.recipeText + formatGreeting(after, g.data)
+		}
+	}
+	return formatGreeting(tmpl, g.data)
+}
+
 func writeBooleanEditGuidance(h *humanResponse) error {
 	for _, text := range []string{
 		"PASS RULE without a number sets rule 0. Include every condition to keep.",
@@ -91,8 +134,9 @@ func writeBooleanEditGuidance(h *humanResponse) error {
 	return nil
 }
 
-func loginSummary(data templateData, restored restoredLogin, showRecipe bool) string {
+func loginSummary(data templateData, restored restoredLogin, showRecipe bool) loginGreetingBlock {
 	var b strings.Builder
+	var block loginGreetingBlock
 	unit := "users"
 	if data.userCount == 1 {
 		unit = "user"
@@ -110,8 +154,11 @@ func loginSummary(data templateData, restored restoredLogin, showRecipe bool) st
 		case restored.created:
 			fmt.Fprintf(&b, "Starting filters are active (%s).\n", data.dialect)
 			if showRecipe {
-				b.WriteString("For human reports on 20m, try the PASS RULE shortcut.\n" + firstGOFilterExample + "\n" +
-					firstGOFilterReplacement + "\nComing from AR-Cluster? See HELP FILTERS.\n")
+				block.recipeStart = b.Len()
+				for _, line := range firstGOFilterRecipe {
+					b.WriteString(line + "\n")
+				}
+				block.recipeEnd = b.Len()
 			}
 		case !restored.profileReset:
 			fmt.Fprintf(&b, "Saved settings loaded (%s).\n", data.dialect)
@@ -121,7 +168,8 @@ func loginSummary(data templateData, restored restoredLogin, showRecipe bool) st
 		b.WriteString("Grid not set. Type SET GRID <grid>.\n")
 	}
 	b.WriteString(loginFilterCommand(data.dialect) + ": your filters | SHOW SETTINGS: your settings | HELP: commands")
-	return b.String()
+	block.text = b.String()
+	return block
 }
 
 func loginFilterCommand(dialect string) string {
@@ -133,23 +181,24 @@ func loginFilterCommand(dialect string) string {
 
 // Rendering owns the same configuration lease as command readback. It does not
 // start a reading pause or publish defaults while describing restored state.
-func (s *Server) renderBooleanLoginBlock(c *Client, first, reset, showRecipe bool) (string, error) {
+func (s *Server) renderBooleanLoginBlock(c *Client, first, reset, showRecipe bool) (loginGreetingBlock, error) {
 	if c != nil && c.filterBanks != nil && c.dialect == DialectCC {
-		return s.renderV7CCLoginBlock(c, first)
+		text, err := s.renderV7CCLoginBlock(c, first)
+		return loginGreetingBlock{text: text}, err
 	}
 	release, err := s.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
-		return "", err
+		return loginGreetingBlock{}, err
 	}
 	defer release()
 	status, runtime := s.captureReadbackStatus(c, nil), s.captureHumanRuntime(c)
-	var response string
+	var block loginGreetingBlock
 	err = c.withBorrowedConfiguration(func(cfg filter.Configuration) error {
 		if !readbackMetadataFits(status, "", "") {
 			return errReadbackTooLarge
 		}
 		var renderErr error
-		response, renderErr = renderBooleanHumanBody(func(h *humanResponse) error {
+		block.text, renderErr = renderBooleanHumanBody(func(h *humanResponse) error {
 			if err := writeBooleanSettingsAndRules(h, c, cfg, status, runtime, first); err != nil {
 				return err
 			}
@@ -171,16 +220,13 @@ func (s *Server) renderBooleanLoginBlock(c *Client, first, reset, showRecipe boo
 					return err
 				}
 				if showRecipe {
-					for _, text := range []string{
-						"For human reports on 20m, try the PASS RULE shortcut.",
-						firstGOFilterExample,
-						firstGOFilterReplacement,
-						"Coming from AR-Cluster? See HELP FILTERS.",
-					} {
+					block.recipeStart = h.size
+					for _, text := range firstGOFilterRecipe {
 						if err := h.line(text); err != nil {
 							return err
 						}
 					}
+					block.recipeEnd = h.size
 				}
 			}
 			for _, text := range []string{
@@ -196,7 +242,7 @@ func (s *Server) renderBooleanLoginBlock(c *Client, first, reset, showRecipe boo
 		return renderErr
 	})
 	if err != nil {
-		return "", fmt.Errorf("settings/filter display: %w", err)
+		return loginGreetingBlock{}, fmt.Errorf("settings/filter display: %w", err)
 	}
-	return response, nil
+	return block, nil
 }

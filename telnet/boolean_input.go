@@ -36,17 +36,18 @@ func booleanRuleSlotLead(b byte) bool {
 	return b >= '0' && b <= '9' || b == '+' || b == '-'
 }
 
-func booleanInputHint(line []byte, b byte, dialect DialectName) string {
+func booleanInputHint(line []byte, b byte, dialect DialectName, tooLong bool) string {
+	word, _ := nextCommentInputWord(line, 0)
+	reject := asciiWordEqual(word, "REJECT")
+	if reject && dialect != DialectCC {
+		return booleanRejectRuleUsage
+	}
+	if tooLong {
+		return ""
+	}
 	switch b {
 	case '=', '<', '>', '(', ')', '[', ']', '"':
-		word, _ := nextCommentInputWord(line, 0)
-		if asciiWordEqual(word, "REJECT") {
-			if dialect != DialectCC {
-				return booleanRejectRuleUsage
-			}
-			return booleanRuleSetUsage
-		}
-		if asciiWordEqual(word, "PASS") {
+		if reject || asciiWordEqual(word, "PASS") {
 			return booleanRuleSetUsage
 		}
 	}

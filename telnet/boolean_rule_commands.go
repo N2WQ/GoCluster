@@ -108,8 +108,15 @@ func booleanRuleUsage(action filter.RuleAction) string {
 }
 
 func booleanLegacyRuleDiscovery(line string, dialect DialectName) string {
-	verb, _ := takeCommentWord(line)
-	return booleanRuleDiscoveryFor(verb == "REJECT", dialect)
+	verb, tail := takeCommentWord(line)
+	reject := verb == "REJECT"
+	if dialect != DialectCC && verb == "SET/FILTER" {
+		if words := strings.Fields(tail); len(words) > 0 {
+			_, action, _ := nativeCCFilterAction(words)
+			reject = action == "REJECT"
+		}
+	}
+	return booleanRuleDiscoveryFor(reject, dialect)
 }
 
 func booleanRuleDiscoveryFor(reject bool, dialect DialectName) string {

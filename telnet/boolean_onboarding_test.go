@@ -351,7 +351,7 @@ func TestBooleanOnboardingLoginDisplayBudget(t *testing.T) {
 	s, c := readbackTestClient()
 	c.grid = strings.Repeat("X", maxYAMLBytes)
 	response, err := s.renderBooleanLoginBlock(c, false, false, true)
-	if response != "" || !errors.Is(err, errReadbackTooLarge) {
+	if response.text != "" || !errors.Is(err, errReadbackTooLarge) {
 		t.Fatal("oversized login display returned partial success")
 	}
 }
@@ -365,6 +365,10 @@ func TestBooleanOnboardingRecipeAcrossGreetingBlocks(t *testing.T) {
 		for _, test := range []struct{ name, template string }{
 			{"summary", summary}, {"details", details},
 			{"summary-first", summary + details}, {"details-first", details + summary},
+			{"repeated-summary", summary + summary},
+			{"repeated-details", details + details},
+			{"repeated-across-markers", details + "<STARTUP_INFO>" + summary + "<UPGRADE_NOTICE>" + details + summary},
+			{"repeated-details-across-markers", details + "<STARTUP_INFO><UPGRADE_NOTICE>" + details},
 		} {
 			t.Run(transport+"/"+test.name, func(t *testing.T) {
 				s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
@@ -374,17 +378,22 @@ func TestBooleanOnboardingRecipeAcrossGreetingBlocks(t *testing.T) {
 				const call = "LZ3NY-12"
 				conn, _, done, first := connectUpgradeSession(t, s, call)
 				assertHumanWire(t, first)
-				if strings.Count(first, command) != 1 || !strings.Contains(first, command+"\r\n"+replacement) {
+				if strings.Count(first, command) != 1 || strings.Count(first, replacement) != 1 ||
+					!strings.Contains(first, command+"\r\n"+replacement) {
 					t.Fatalf("first login omitted or duplicated the complete recipe:\n%s", first)
 				}
-				hasSummary := strings.Contains(test.template, "<LOGIN_SUMMARY>")
-				hasDetails := strings.Contains(test.template, "<SETTINGS_FILTERS>")
-				if strings.Contains(first, "Starting filters are active (GO).") != hasSummary ||
-					strings.Contains(first, "Default settings and filters:") != hasDetails {
+				summaries := strings.Count(test.template, "<LOGIN_SUMMARY>")
+				details := strings.Count(test.template, "<SETTINGS_FILTERS>")
+				if strings.Count(first, "Starting filters are active (GO).") != summaries ||
+					strings.Count(first, "Default settings and filters:") != details {
 					t.Fatalf("template lost a requested block:\n%s", first)
 				}
-				if hasSummary && strings.Index(first, command) > strings.Index(first, "END SUMMARY") {
-					t.Fatalf("the recipe did not appear in the short summary:\n%s", first)
+				start, end := "DETAILS\r\n", "END DETAILS\r\n"
+				if summaries > 0 {
+					start, end = "SUMMARY\r\n", "END SUMMARY\r\n"
+				}
+				if recipe := strings.Index(first, command); recipe < strings.Index(first, start) || recipe > strings.Index(first, end) {
+					t.Fatalf("the recipe did not appear in the first preferred block:\n%s", first)
 				}
 				closeHandshakeTranscriptSession(t, conn, done)
 				_, _, _, returning := connectUpgradeSession(t, s, call)
@@ -403,6 +412,7 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 				opts.Transport, opts.EchoMode = transport, "off"
 				opts.LoginGreeting = "READY\n"
 				opts.InputInvalidCharMessage = "Invalid command.\n"
+				opts.InputTooLongMessage = "Command too long.\n"
 				opts.AutoReadPauseMinRows, opts.AutoReadPauseDuration = 10, 30*time.Second
 			})
 			s.processor = commands.NewProcessor(nil, nil, nil, nil, nil, nil)
@@ -458,6 +468,12 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 				{"reject band=20m", "Use REJECT RULE <0..9> <expression>."},
 				{"REJECT RULE (BAND=20M)", "Use REJECT RULE <0..9> <expression>."},
 				{"REJECT RULE 9 MODE=NOT_A_MODE", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/FILTER DOC/REJECT K", "Use REJECT RULE <0..9> <expression>."},
+				{"set/filter dxstate /reject ca", "Use REJECT RULE <0..9> <expression>."},
+				{"SET/FILTER DOC/PASS REJECT", "Use PASS RULE <expression> to set rule 0."},
+				{"REJECT\tRULE 9 BAND=20M", "Use REJECT RULE <0..9> <expression>."},
+				{"REJECT RULE 9 COMMENT=\"caf\u00e9\"", "Use REJECT RULE <0..9> <expression>."},
+				{"REJECT RULE 9 COMMENT=\"" + strings.Repeat("A", defaultCommandLineLimit) + "\"", "Use REJECT RULE <0..9> <expression>."},
 			} {
 				got, reply := get(test.command)
 				if !got.Equal(blocked) || !strings.Contains(reply, "\r\nrevision: "+revision+"\r\n") ||
@@ -468,6 +484,9 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 					(!strings.Contains(reply, "Pick an empty rule number to keep your current rules.") ||
 						strings.Contains(reply, "PASS RULE <expression>")) {
 					t.Fatalf("malformed %q steered users toward PASS:\n%s", test.command, reply)
+				}
+				if strings.HasPrefix(strings.ToUpper(test.command), "SET/FILTER ") && !strings.HasPrefix(reply, test.hint+"\r\n") {
+					t.Fatalf("CC-style command %q did not lead with its recovery instruction:\n%s", test.command, reply)
 				}
 			}
 			after, err := os.ReadFile(path)
@@ -516,6 +535,12 @@ func TestBooleanPASSShortcutTCP(t *testing.T) {
 			ccAfter, response := get("PASS RULE (BAND=20M)")
 			if cc.Settings.Dialect != "cc" || !ccAfter.Equal(cc) || !strings.Contains(response, "Use HELP SET/FILTER for native CC filters.") {
 				t.Fatalf("shortcut bypasses CC guidance or changes a bank:\n%s", response)
+			}
+			ccAfter, response = get("SET/FILTER DOC/REJECT 291")
+			if row := ccAfter.Filters.CC.Geography["DOC"].Global; row.Action != filter.CCReject ||
+				!slices.Equal(row.Countries, []int{291}) || !slices.Equal(ccAfter.Filters.GO.Rules, cc.Filters.GO.Rules) ||
+				!strings.Contains(response, "Saved and active.") {
+				t.Fatalf("native CC veto was not saved in the CC bank:\n%s", response)
 			}
 		})
 	}
