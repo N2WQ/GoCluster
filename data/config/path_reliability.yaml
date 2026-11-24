@@ -52,13 +52,13 @@ glyph_symbols:
 
 # Experimental native 160m fallback. This does not predict SNR; it only fills
 # insufficient 160m p50 paths with conservative CLOSED/LOW/UNLIKELY proxy
-# glyphs. Endpoint daylight/twilight gates first; civil-dark path fraction is
-# the secondary score after both endpoints are dark.
+# glyphs. For known geometry, endpoint daylight and twilight take precedence.
+# With the shipped settings, two civil-dark endpoints imply a fully dark shorter arc.
 native_160m_fallback:
   enabled: true
   display_enabled: true
   civil_twilight_degrees: 6
-  # CLOSED is a solar-darkness proxy only; the blank middle band starts above this value.
+  # Whole-arc fraction thresholds apply after both endpoints are civil-dark.
   closed_max_civil_dark_fraction: 0.25
   unlikely_min_civil_dark_fraction: 0.50
   low_min_civil_dark_fraction: 0.75
@@ -187,17 +187,15 @@ fine_only_weight: 20
 # Reverse-direction hint discount applied to effective weight when one direction is missing.
 reverse_hint_discount: 0.5
 
-# Merge weights for combining receive/transmit FT8-equiv dB values (normalized to sum to 1).
+# Coefficients for combining receive/transmit histogram mass (normalized to sum to 1).
 # receive = DX->user (after configured noise penalty, if any), transmit = user->DX.
 merge_receive_weight: 0.6
 merge_transmit_weight: 0.4
 
-# Per-mode glyph thresholds in FT8-equivalent dB.
-# FT8 thresholds follow: >= -13 high, -17..-13 medium, -21..-17 low,
-# below -21 unlikely for bucket predictions, and <= -29 closed for VOACAP.
-# CW/RTTY/PSK thresholds derive from 0/3/7/12 dB buckets with a -7 dB correction.
-# Repeated threshold keys mean: high >= high, medium >= medium, low >= low,
-# unlikely >= unlikely; VOACAP closed fallback uses closed <= closed.
+# Per-mode glyph thresholds in FT8-equivalent dB, after ingest normalization.
+# Observed p50 uses the highest satisfied high/medium/low threshold, or
+# UNLIKELY for any value below low. The unlikely key is required and validated
+# for threshold ordering. The separate VOACAP closed check uses <= closed.
 mode_thresholds:
   ft8:
     high: -13
@@ -250,7 +248,7 @@ glyph_thresholds:
   unlikely: -24
   closed: -29
 
-# Cap per-beacon contribution so a single beacon cannot dominate.
+# Maximum weight for one incoming beacon report. Current ingest passes 1.0.
 beacon_weight_cap: 1.0
 
 # Toggle glyph rendering in telnet output.

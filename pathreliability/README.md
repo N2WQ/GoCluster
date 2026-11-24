@@ -198,6 +198,14 @@ integer rounding, epsilon promotion or lifetime-count fallback. Twenty-one
 fresh unit reports meet 21; after one half-life 10.5 no longer do. Zero means zero.
 Admitted support is explicitly unavailable while cap tracking is off.
 
+The `cap_limited` counter and optional `/c` and `/rx` diagnostics indicate
+evidence reduced by the receiver-cap lane, including usable reports without
+a receiver identity. They compare raw usable with admitted report units at
+the same sampling time, before rounding, and also compare signal weight. A
+reduction must exceed `1e-9` on either comparison. Ageing alone leaves the
+flag clear. The support and receiver-diversity gates use their own checks.
+Group `cap_limited` windows by diagnostic version when analysing a deployment.
+
 Receiver concentration is checked by a separate derived gate:
 the selected capped evidence must include at least
 `ceil(min_observation_count / receiver_max_effective_count)` live attributed
@@ -339,9 +347,12 @@ unknown, display-disabled, endpoint daylight/twilight outcome counters,
 fallback is an opportunity proxy: it can emit only `CLOSED`, `LOW`, or
 `UNLIKELY`, never replaces sufficient p50, and yields to usable current-hour
 VOACAP. Endpoint daylight emits `CLOSED`; endpoint civil twilight emits
-`UNLIKELY`; whole-path civil-dark fraction is only the secondary score after
-both endpoints are dark. `CLOSED` is a solar-darkness proxy bucket, not a VOACAP
-SNR result.
+`UNLIKELY` when the geometry is known. With the shipped 6° cutoff, two
+civil-dark endpoints lie in the same spherical cap and the entire shorter
+great-circle arc stays in it. At the shipped fraction thresholds that yields
+`LOW`. Arc evaluation still supplies `dNN` and aggregate darkness telemetry
+and identifies unknown geometry, including near-antipodal paths. `CLOSED`
+in this fallback is a solar-darkness proxy.
 
 When `voacap_fallback.enabled` is true on Windows, insufficient bucket results
 may start a delayed VOACAP lookup. Linux and other non-Windows builds log that
@@ -577,10 +588,12 @@ The shipped config currently uses:
 - `merge_receive_weight: 0.6`
 - `merge_transmit_weight: 0.4`
 
-If only one direction exists for a non-beacon path, the predictor still uses it,
-but discounts the effective weight with `reverse_hint_discount`. Beacon paths
-are the exception: a missing transmit direction is not weak evidence, so the
-receive leg is used without that discount.
+With two directions, the 0.6 and 0.4 coefficients scale histogram mass before
+taking the combined median. The direction with more retained report mass can
+have more influence. For one direction, `reverse_hint_discount` scales weight
+and histogram mass without imposing a dB penalty. Beacons use only the receive
+leg without the discount. `beacon_weight_cap` limits one incoming report's
+weight. The shipped 1.0 limit equals the weight used by current ingest.
 
 Telnet users can set a stricter personal observation floor with
 `SET PATHSAMPLES <count>`. That setting is applied as
@@ -599,6 +612,12 @@ path evidence and the DX-to-user VOACAP fallback leg at prediction time.
 | Class | Quiet | Rural | Suburban | Urban | Industrial |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | Penalty dB | 0 | 4 | 12 | 17 | 20 |
+
+Reports at or above +24 dB share one overflow bin and shift from +24 dB. With
+the shipped settings, the highest receive-only p50 is +7.5 dB for URBAN and
++4.5 dB for INDUSTRIAL. That limits USB/LSB to MEDIUM and LOW respectively,
+and limits INDUSTRIAL PSK to MEDIUM. Transmit evidence can raise the result
+when both directions are available.
 
 ## Class Mapping
 
@@ -626,9 +645,11 @@ The shipped glyph symbols are:
 - configured `glyph_symbols.closed` for `CLOSED` fallback when VOACAP predicts
   closed SNR or native 160m fallback emits the low-darkness solar proxy bucket
 
-The shipped threshold table is:
+For observed p50, any score below LOW maps to UNLIKELY. The `unlikely`
+setting remains required for configuration and is checked for threshold
+ordering. The table shows shipped configuration values.
 
-| Mode | High | Medium | Low | Unlikely | Closed |
+| Mode | High | Medium | Low | Unlikely (config) | Closed |
 | --- | ---: | ---: | ---: | ---: | ---: |
 | FT8 | -13 | -17 | -21 | -24 | -29 |
 | FT4 | -5 | -10 | -14 | -17 | -22 |

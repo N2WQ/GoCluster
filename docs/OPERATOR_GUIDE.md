@@ -328,6 +328,7 @@ Log in with your callsign. Useful first commands:
 - `RESUME`: end the read pause and resume live spots immediately.
 - `SET GRID <grid>`: set your 4 or 6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
+  See the [receive-only class limits for Urban and Industrial](../data/config/PATH_PREDICTIONS.md#your-noise-environment).
 - `SET PATHSAMPLES <count|DEFAULT>`: require more recent report units than the cluster default, or clear your personal override.
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: choose an aligned cadence for active solar summaries,
@@ -634,12 +635,15 @@ prefixes.
   uses unrounded units before directional weights or discounts. Twenty-one
   fresh unit reports meet a floor of 21; after one half-life 10.5 do not.
   These units measure volume and aging, not independent samples or confidence.
-- `/c<capped>/rx<receivers>` means receiver contribution caps reduced
-  the diagnostic evidence. These legacy integers retain their meanings; `/u`
-  supplies recent support. Each tracked receiver needs at least one accepted
-  aged unit; the same identity's units combine across distinct populations
-  before that test, and a shared bucket is counted once.
+- `/c<capped>/rx<receivers>` indicates evidence reduced by the receiver-cap
+  lane, including otherwise usable reports without a receiver identity. The
+  integers show capped count and qualifying receivers. `/u` supplies recent
+  support. Each tracked receiver needs at least one accepted aged unit. The
+  same identity's units combine across distinct populations before that test,
+  and a shared bucket is counted once.
 - `w<weight>` is the rounded effective weight after decay and path selection.
+  It displays capped weight when cap-lane reduction is flagged, and active
+  weight otherwise.
   Fine and coarse evidence are selected at one common resolution and never
   added. Shared regional evidence receives one ordinary single-direction
   discount. Weight is not SNR or dB; it is a separate evidence-strength gate.
@@ -696,14 +700,14 @@ prefixes.
   endpoint daylight and `bD` means both endpoints. This is a solar-darkness
   proxy, not a VOACAP SNR result. Beacon receive-only native 160m diagnostics
   use the same suffixes with `bn160c`.
-- `n160c|dNN` means no endpoint token was needed; native 160m `CLOSED` came
-  from whole-path civil-dark fraction `NN`.
 - `n160|xT|dNN` means native 160m fallback classified an insufficient 160m
   result as `UNLIKELY` because the DX endpoint was in civil twilight. `uT`
   means user endpoint twilight and `bT` means both endpoints.
-- `n160|dNN` means native 160m fallback filled an insufficient 160m result as
-  `LOW` or `UNLIKELY` from civil-dark path fraction `NN` after both endpoints
-  were dark. Beacon receive-only native 160m diagnostics use `bn160|dNN`.
+- `n160|d100` means a `LOW` native 160m fallback under shipped settings, with
+  both endpoints and the whole shorter arc civil-dark. The arc calculation
+  also supplies darkness percentages for daylight and twilight outcomes and
+  leaves paths with unknown geometry blank. Beacon receive-only paths use
+  `bn160|d100`.
 - `brx|...` means the spot was marked as a beacon and the path decision used
   only the DX-to-user receive leg. `bvcap`, `bvaln`, `bvup`, and `bvop` are the
   equivalent beacon VOACAP fallback diagnostics; their SNR and REL fields are
@@ -816,14 +820,12 @@ Example readings:
 - `n160c|uD|d82`: native 160m fallback classified an insufficient 160m result
   as `CLOSED` because the user endpoint was in daylight. `xD` means DX endpoint
   daylight and `bD` means both endpoints.
-- `n160c|d12`: no endpoint token means native 160m `CLOSED` came from the
-  whole-path civil-dark fraction.
 - `n160|xT|d54`: native 160m fallback classified an insufficient 160m result
   as `UNLIKELY` because the DX endpoint was in civil twilight. `uT` means user
   endpoint twilight and `bT` means both endpoints.
-- `n160|d82`: native 160m fallback filled an insufficient 160m result as
-  `LOW` or `UNLIKELY` from an 82% civil-dark path fraction after both endpoints
-  were dark. Beacon receive-only paths use `bn160|d82`.
+- `n160|d100`: native 160m fallback emitted `LOW` under shipped settings after
+  both endpoints and the whole shorter arc were civil-dark. Beacon
+  receive-only paths use `bn160|d100`.
 - `n1|loww`: one selected observation existed, but the effective weight was
   below the minimum.
 - `n32|w1`: large selected count but low rounded effective weight.

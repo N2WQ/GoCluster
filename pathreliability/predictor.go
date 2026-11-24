@@ -426,7 +426,6 @@ func mergeSamplesWithDistribution(receive sampleWithBins, transmit sampleWithBin
 }
 
 func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
-	active.RecentSupport = mergeReportSupport(active.RecentSupport, other.RecentSupport, cfg.ReceiverContributionMode)
 	rawWeight := sampleRawWeight(active)
 	cappedWeight := sampleCappedWeight(active)
 	active.Weight *= cfg.ReverseHintDiscount
@@ -436,6 +435,8 @@ func singleDirectionMerge(active Sample, other Sample, cfg Config) Sample {
 	active.RawCount = saturatingAddCounts(sampleRawCount(active), sampleRawCount(other))
 	active.CappedCount = saturatingAddCounts(sampleCappedCount(active), sampleCappedCount(other))
 	active.CapLimited = active.CapLimited || other.CapLimited
+	// Read the component's capped diagnostics before replacing its provenance.
+	active.RecentSupport = mergeReportSupport(active.RecentSupport, other.RecentSupport, cfg.ReceiverContributionMode)
 	return sampleWithSamplingTime(active, active, other)
 }
 
@@ -474,7 +475,7 @@ func sampleRawCount(sample Sample) uint32 {
 }
 
 func sampleCappedCount(sample Sample) uint32 {
-	if sample.CappedCount > 0 || sample.CapLimited {
+	if sample.RecentSupport.AdmittedAvailable || sample.CappedCount > 0 || sample.CapLimited {
 		return sample.CappedCount
 	}
 	return sample.Count
@@ -488,7 +489,7 @@ func sampleRawWeight(sample Sample) float64 {
 }
 
 func sampleCappedWeight(sample Sample) float64 {
-	if sample.CappedWeight > 0 || sample.CapLimited {
+	if sample.RecentSupport.AdmittedAvailable || sample.CappedWeight > 0 || sample.CapLimited {
 		return sample.CappedWeight
 	}
 	return sample.Weight

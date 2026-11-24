@@ -499,8 +499,8 @@ func (s *Store) evaluateCaptureInto(capture *bucketCapture, halfLife int, refere
 	if s.cfg.ReceiverContributionMode != ReceiverContributionOff {
 		support.Admitted = capture.cappedCount * decay
 		cappedWeight = decayedMass(capture.cappedWeight, elapsed, halfLife, decay)
-		cappedCount = effectiveCountToUint32(capture.cappedCount * decay)
-		capLimited = receiverCapLimited(capture.count, cappedCount, rawWeight, cappedWeight)
+		cappedCount = effectiveCountToUint32(support.Admitted)
+		capLimited = receiverCapLimited(support.RawUsable, support.Admitted, rawWeight, cappedWeight)
 		capacity = receiverSlotCapacity(receiverSlots)
 		for i := 0; i < min(receiverSlots, maxCoarseReceiverSlots); i++ {
 			slot := capture.slots[i]
@@ -544,9 +544,10 @@ func (s *Store) evaluateCaptureInto(capture *bucketCapture, halfLife int, refere
 	return state
 }
 
-func receiverCapLimited(rawCount uint32, cappedCount uint32, rawWeight float64, cappedWeight float64) bool {
-	const epsilon = 1e-9
-	return rawCount > cappedCount || rawWeight > cappedWeight+epsilon
+// Compare aged cap-lane quantities before diagnostic rounding. This includes
+// usable raw evidence the cap lane could not attribute to a receiver.
+func receiverCapLimited(rawUsable, admitted, rawWeight, cappedWeight float64) bool {
+	return rawUsable > admitted+effectiveCountEpsilon || rawWeight > cappedWeight+effectiveCountEpsilon
 }
 
 func effectiveCountToUint32(count float64) uint32 {
