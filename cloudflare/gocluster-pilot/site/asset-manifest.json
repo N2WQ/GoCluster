@@ -7,9 +7,9 @@
     "access_check": "on"
   },
   "files": {
-    "assets/app.9fce271a96.css": {
-      "bytes": 76333,
-      "sha256": "9fce271a96b1e376b86bf111c43d950fe18afee4dbd086b2ed4d865327d9fc89"
+    "assets/app.3c3b74251a.css": {
+      "bytes": 76875,
+      "sha256": "3c3b74251add891f04591c99f89de7b64eec2715d4d7eb7f7582d27475cb57ed"
     },
     "assets/app.852b762d10.js": {
       "bytes": 286044,
@@ -18,6 +18,18 @@
     "assets/favicon.svg": {
       "bytes": 612,
       "sha256": "149f505246f49f009857b428da57989ff4c65966619b07f0272a9d1a5bebe52c"
+    },
+    "assets/fonts/atkinson-hyperlegible-mono-latin-ext.woff2": {
+      "bytes": 10740,
+      "sha256": "3fa1fa7e990377c87018d62f356cc42b8db39fd88cee5724431e9f0d63b7f32f"
+    },
+    "assets/fonts/atkinson-hyperlegible-mono-latin.woff2": {
+      "bytes": 17752,
+      "sha256": "2706b1ee4f452e744ea91f7e4908cbde9c5d35521bf5ffffc71a382a2de89613"
+    },
+    "assets/fonts/atkinson-hyperlegible-mono-OFL.txt": {
+      "bytes": 4436,
+      "sha256": "1ebb31cf7393164f20d10c1d48406cddb5314feff8465531cf1e4ba37e9dd740"
     },
     "assets/fonts/geist-mono-latin-400-normal.woff2": {
       "bytes": 14712,
@@ -51,13 +63,13 @@
       "bytes": 35484,
       "sha256": "3d59addfafec3452d44717aa0a18911d5c3812487ed06af47f2ef27192ea1eed"
     },
-    "assets/vendor/NOTICES.txt": {
-      "bytes": 17056,
-      "sha256": "fa575f785b3ac7fff32e4e75e338e52960e0f1b82c016fdc249252e839c7d9a5"
-    },
     "assets/vendor/js-yaml-4.1.0.45dc3dd03d.js": {
       "bytes": 39430,
       "sha256": "45dc3dd03dc07a06705a2c2989b8c7f709013f04bd5386e3279d4e447f07ebd7"
+    },
+    "assets/vendor/NOTICES.txt": {
+      "bytes": 17056,
+      "sha256": "fa575f785b3ac7fff32e4e75e338e52960e0f1b82c016fdc249252e839c7d9a5"
     },
     "assets/vendor/preact-htm-3.1.1.62c4ffea40.js": {
       "bytes": 13296,
@@ -65,7 +77,7 @@
     },
     "index.html": {
       "bytes": 1072,
-      "sha256": "a563cd01e8e8a095b7cee6ea091cfae685aa3bad6aac168142e5918cd533fb8b"
+      "sha256": "693ef66735b0b1f2962c2c29f4c9a8ee7fe4f7ec116283045e227e702ddee8b8"
     },
     "replay/session.jsonl": {
       "bytes": 1724,
