@@ -4,6 +4,14 @@ Use this file when a user reports a problem or asks why GoCluster behaved a
 certain way. This is a routing layer, not the source of truth. Cite this file,
 then cite the underlying repo docs or TSRs.
 
+## Browser console layout and scrolling
+
+For missing controls on a phone, a spot list hidden by the command console, or
+a dialog clipped by the keyboard, use the [browser console guide](../cloudflare/gocluster-pilot/README.md#adjust-the-spot-table)
+and [TSR-0144](../docs/troubleshooting/TSR-0144-browser-console-short-screen-controls.md).
+Check the delivered asset hashes, browser version, orientation, and keyboard
+and browser toolbar state before attributing the symptom to a specific release.
+
 ## Human spot comments and upstream wire times
 
 For split numbers displayed as dB reports, missing `CWT` or time phrases in

@@ -86,7 +86,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { color: var(--text); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; overflow: hidden; }
+body { color: var(--text); font: 14px/1.45 var(--font); -webkit-font-smoothing: antialiased; }
 #root { height: 100%; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; }
@@ -102,7 +102,7 @@ h1, h2, h3, h4, h5 { margin: 0; text-wrap: balance; }
 
 /* ---------- app frame ---------- */
 body { background: var(--canvas); background-attachment: fixed; }
-.app { height: 100%; display: grid; grid-template-rows: auto auto 1fr auto; grid-template-columns: minmax(0, 1fr); min-height: 0; }
+.app { height: 100%; height: 100dvh; display: grid; grid-template-rows: auto auto minmax(15rem, 1fr) auto; grid-template-columns: minmax(0, 1fr); min-height: 0; }
 .workspace { position: relative; display: flex; gap: 12px; padding: 0 12px 10px; min-height: 0; overflow: clip; }
 .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
 
@@ -643,17 +643,25 @@ select.txt { appearance: auto; }
 .con-quick { display: flex; gap: 6px; padding: 8px 16px 0; overflow-x: auto; }
 .con-in { display: flex; align-items: center; gap: 10px; padding: 6px 12px 6px 16px; min-height: 44px; }
 .prompt { color: var(--soft); font-size: 12px; flex: none; }
-.con-in input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; font-size: 13px; height: 32px; }
+.con-in input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 13px; height: 32px; }
+.con-in input:focus-visible { outline-offset: 0; }
 .con-in .last { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 40%; }
 .con-in .icon-btn .ic { transform: rotate(180deg); }
 .console.open .con-in .icon-btn .ic { transform: none; }
 
 /* ---------- modal + toasts ---------- */
-.modal-back { position: fixed; inset: 0; z-index: 60; background: rgba(6, 12, 24, .45); display: grid; place-items: center; padding: 16px; }
+.modal-back {
+  position: fixed; inset: auto 0 auto; top: var(--visible-top, 0px);
+  width: 100%; height: 100%; height: var(--visible-height, 100dvh);
+  max-width: none; max-height: none; margin: 0; border: 0; padding: 16px;
+  color: var(--text); background: transparent; overflow: auto; overscroll-behavior: contain;
+}
+.modal-back[open] { display: grid; place-items: safe center; }
+.modal-back::backdrop { background: rgba(6, 12, 24, .45); }
 .modal { width: min(460px, 100%); border-radius: 16px; background: var(--surface); box-shadow: var(--shadow-lg); border: 1px solid var(--line); }
 .modal-body { padding: 0 18px 8px; display: flex; flex-direction: column; gap: 12px; }
-.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.modal-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px; }
+.two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.modal-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding: 12px 18px 16px; }
 .toasts { position: fixed; left: 50%; transform: translateX(-50%); bottom: 64px; z-index: 70; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; width: max-content; max-width: calc(100% - 32px); }
 .toast { display: flex; align-items: flex-start; gap: 9px; max-width: 380px; padding: 10px 14px; border-radius: 11px; background: var(--text); color: var(--surface); box-shadow: var(--shadow-lg); font-size: 13px; animation: pop .2s ease-out; }
 .toast.ok .ic { color: var(--pass); }
@@ -747,28 +755,24 @@ select.txt { appearance: auto; }
 :root[data-text="xl"] .spot-btn { width: 38px; padding: 0; justify-content: center; }
 :root[data-text="xl"] .account { padding: 0 4px; }
 .search { min-width: 150px; }
-.topbar { overflow: hidden; }
+.topbar { flex-wrap: wrap; }
+.actions { flex-wrap: wrap; min-width: 0; max-width: 100%; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1500px) { .preset-pill, .deck-sep { display: none; } .spark { display: none; } }
 @media (max-width: 1320px) { .spot-btn span, .account span:not(.avatar) { display: none; } .spot-btn { width: 38px; padding: 0; justify-content: center; } .account { padding: 0 4px; } }
 @media (max-width: 1180px) {
-  .drawer { position: absolute; top: 0; bottom: 10px; box-shadow: var(--shadow-lg); max-width: calc(100% - 24px); }
-  .drawer.left { left: 12px; } .drawer.right { right: 12px; }
-  .scrim { display: block; position: absolute; inset: 0; z-index: 15; border: 0; background: rgba(6, 12, 24, .32); backdrop-filter: blur(2px); }
   .views a span { display: none; }
   .search kbd { display: none; }
 }
 @media (max-width: 900px) {
   .node-rate { display: none; }
-  .account { display: none; }
   .c-cmt { display: none; }
 }
 @media (max-width: 760px) {
-  .topbar { flex-wrap: wrap; gap: 8px; padding: 8px 10px; }
-  .node, .bwords, .spot-btn, .account, .account { display: none; }
+  .topbar { gap: 8px; padding: 8px 10px; }
+  .node, .bwords { display: none; }
   .workspace { padding: 0 6px 6px; } .console { margin: 0 6px 6px; } .subbar { padding: 8px 6px; }
-  .drawer { left: 6px !important; right: 6px !important; max-width: none; }
   .bt { min-width: 58px; flex-basis: 58px; height: 48px; }
   .c-time .age { display: none; }
   .views a { padding: 6px 9px; }
@@ -777,7 +781,6 @@ select.txt { appearance: auto; }
   .filters-btn { padding: 0 10px; }
   .filters-btn span:not(.fcount):not(.badge-dot) { display: none; }
   .summary { display: none; }
-  .drawer.left, .drawer.right { width: 100%; }
   .thead { display: none; }
   .row { grid-template-columns: 1fr auto auto auto; grid-template-areas: "dx freq path conf" "where where mode time"; height: auto !important; padding: 8px 12px 8px 15px; row-gap: 3px; }
   .row > .c-dx { grid-area: dx; } .row > .c-freq { grid-area: freq; } .row > .c-path { grid-area: path; } .row > .c-conf { grid-area: conf; }
@@ -807,8 +810,8 @@ select.txt { appearance: auto; }
 .conn-banner.error { background: var(--reject-soft); } .conn-banner.error > .ic { color: var(--reject); }
 .conn-banner.replay { background: color-mix(in srgb, var(--violet) 14%, var(--surface)); } .conn-banner.replay > .ic { color: var(--violet); }
 
-.modal.connect { width: min(540px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; }
-.modal.connect .modal-body { overflow-y: auto; padding-top: 4px; }
+.modal.connect { width: min(540px, 100%); }
+.modal.connect .modal-body { padding-top: 4px; }
 .modal.connect form.field { display: flex; flex-direction: column; gap: 6px; }
 .modal.connect label { font-weight: 600; font-size: 13px; }
 .steps { list-style: none; margin: 0; padding: 10px 12px; display: grid; gap: 7px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
@@ -835,14 +838,14 @@ select.txt { appearance: auto; }
 .hist .row { cursor: pointer; }
 @media (max-width: 600px) { .hist-form input.txt, .hist-form select.txt { max-width: none; flex: 1 1 100%; } }
 
-.spot-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.spot-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; scroll-padding-top: 34px; }
 .spot-grid { min-width: var(--grid-min); }
 .spot-grid .thead { position: sticky; top: 0; z-index: 2; }
 .spot-grid .tbody { overflow: visible; }
 .col-label { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; }
 .resize-grip { position: absolute; right: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; }
 .resize-grip:hover::after { content: ""; position: absolute; inset: 4px 4px; background: var(--accent); }
-@media (max-width: 760px) { .spot-grid { min-width: 0; } }
+@media (max-width: 760px) { .spot-grid { min-width: 0; } .spot-scroll { scroll-padding-top: 0; } }
 
 .repeat-switch.on { color: var(--accent); background: var(--accent-soft); }
 .repeat-summary { cursor: default; }
@@ -877,9 +880,63 @@ select.txt { appearance: auto; }
 .repeat-member-call { overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; }
 
 @media (max-width: 760px) {
-  .stream-actions { flex-wrap: wrap; }
+  .status-line { flex-wrap: wrap; }
   :is(.repeat-summary, .repeat-member) > .c-de { display: flex; grid-row: 3; grid-column: 1 / 3; }
   :is(.repeat-summary, .repeat-member) > .c-rep { display: flex; grid-row: 3; grid-column: 3 / -1; flex-direction: row; justify-self: end; }
+}
+
+/* The page owns vertical scrolling when the docked frame cannot fit.
+   Keep the Spots scrollport so its pause-on-scroll behavior still works. */
+@media (max-width: 760px), (max-height: 680px), (pointer: coarse) {
+  .app { height: auto; min-height: 100dvh; grid-template-rows: auto auto 1fr auto; }
+  .workspace { overflow: visible; }
+  :is(.spot-scroll, .bm-scroll, .op-scroll) {
+    flex: 0 0 auto;
+    min-height: 10rem;
+    height: clamp(10rem, 43vh, 28rem);
+    height: clamp(10rem, 43dvh, 28rem);
+  }
+  .spot-scroll { overscroll-behavior-y: auto; }
+  .console.open { height: clamp(9rem, 42dvh, 20rem); }
+  .console .con-log { min-height: 0; }
+}
+
+/* The whole overlay scrolls, including its header and any action footer. */
+.drawer[aria-modal="true"] {
+  position: fixed;
+  top: calc(var(--visible-top, 0px) + 6px);
+  max-height: calc(var(--visible-height, 100dvh) - 12px);
+  max-width: calc(100% - 12px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  scroll-padding-block: 8px;
+}
+.drawer.left[aria-modal="true"] { left: 6px; }
+.drawer.right[aria-modal="true"] { right: 6px; }
+.drawer[aria-modal="true"] > * { flex-shrink: 0; }
+.drawer[aria-modal="true"] > .dr-scroll { flex: none; overflow: visible; }
+.drawer[aria-modal="true"] .review { max-height: none; overflow: visible; }
+.drawer[aria-modal="true"] ~ .scrim {
+  display: block; position: fixed; inset: 0; z-index: 15;
+  border: 0; background: rgba(6, 12, 24, .32); backdrop-filter: blur(2px);
+}
+.modal-back { scroll-padding-block: 8px; }
+.tabs, .ab-row { flex-wrap: wrap; }
+.tabs button { min-width: 0; }
+.tab-note { overflow-wrap: anywhere; }
+.dr-head > div { min-width: 0; overflow-wrap: anywhere; }
+.dr-head > .icon-btn { flex: none; }
+@media (max-width: 760px) {
+  .drawer[aria-modal="true"] { width: calc(100% - 12px); }
+}
+@media (max-width: 420px) {
+  .modal-back { padding: 8px; }
+  .modal .two { grid-template-columns: minmax(0, 1fr); }
+}
+@media (pointer: coarse) {
+  /* iOS otherwise zooms the page when a small text field receives focus. */
+  input:not([type="checkbox"], [type="radio"], [type="file"]), select, textarea { font-size: max(16px, 1em); }
+  .search input, .con-in input { font-size: max(16px, 1em); }
 }
 
 /* Balance the reorder grip so the heading text sits over its readings. */

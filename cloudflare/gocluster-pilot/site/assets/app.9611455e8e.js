@@ -2693,7 +2693,7 @@ const SIM = { baseCallOf: CONN.baseCallOf, gridLatLon: CONN.gridLatLon, spotLine
 // GoCluster UI — store, formatting helpers and icons.
 "use strict";
 
-const { html, render, useState, useEffect, useRef, useMemo, useCallback } = htmPreact;
+const { html, render, useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } = htmPreact;
 
 // ---------------------------------------------------------------- local persistence (one browser only)
 const LS = {
@@ -3727,21 +3727,21 @@ function TopBar() {
     </span>` : null}</div></div>
     <${NodeStatus} />
     <nav class="views" aria-label="View">
-      ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class=${S.view === v ? "on" : ""} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; set({ view: v }); }}><${Icon} name=${ic} size=${16} /><span>${l}</span></a>`)}
+      ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class=${S.view === v ? "on" : ""} aria-label=${l} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; set({ view: v }); }}><${Icon} name=${ic} size=${16} /><span>${l}</span></a>`)}
     </nav>
     <div class="search"><${Icon} name="search" size=${16} /><input id="q" type="search" placeholder="Call, prefix or country" aria-label="Find a call, prefix or country" value=${S.search} onInput=${e => set({ search: e.target.value })} /><kbd>/</kbd></div>
     <div class="actions">
-      <button type="button" class=${cls("filters-btn", S.drawer === "filters" && "on")} onClick=${() => toggleDrawer("filters")} title="Filters (F)">
+      <button type="button" class=${cls("filters-btn", S.drawer === "filters" && "on")} onClick=${() => toggleDrawer("filters")} aria-label=${n ? `Filters (${plural(n, "rule")})` : "Filters"} title="Filters (F)">
         <${Icon} name="sliders" size=${17} /><span>Filters</span><span class="fcount">${n}</span>${isDirty() ? html`<span class="badge-dot"></span>` : null}
       </button>
       <button type="button" class="preset-pill" onClick=${() => set({ drawer: "filters", filterTab: "presets" })} title="Presets">
         <${Icon} name="bookmark" size=${14} /><span class="mono">${snap.preset.name || "No preset"}</span>${snap.preset.modified ? html`<span class="mod" title="Changed since loaded or saved">modified</span>` : null}
       </button>
-      <button type="button" class="spot-btn" onClick=${() => set({ postOpen: true })} title="Post a spot"><${Icon} name="send" size=${15} /><span>Spot</span></button>
+      <button type="button" class="spot-btn" onClick=${() => set({ postOpen: true })} aria-label="Post a spot" title="Post a spot"><${Icon} name="send" size=${15} /><span>Spot</span></button>
       <span class="deck-sep"></span>
       <${IconBtn} icon="pulse" label="Activity and bulletins" active=${S.drawer === "activity"} onClick=${() => toggleDrawer("activity")} dot=${S.messages.length && S.messages[0].t > Date.now() - 20e3} />
       <${IconBtn} icon="gear" label="Settings" kbd="S" active=${S.drawer === "settings"} onClick=${() => toggleDrawer("settings")} />
-      <button type="button" class="account" onClick=${() => set({ connectOpen: true })} title="Cluster login and connection"><span class="avatar mono">${(snap.baseCall || "?").slice(0, 2)}</span><span class="mono">${snap.loginCall || "Connect"}</span></button>
+      <button type="button" class="account" onClick=${() => set({ connectOpen: true })} aria-label="Cluster login and connection" title="Cluster login and connection"><span class="avatar mono">${(snap.baseCall || "?").slice(0, 2)}</span><span class="mono">${snap.loginCall || "Connect"}</span></button>
     </div>
   </header>`;
 }
@@ -3985,6 +3985,7 @@ function ColumnHead({ k, drag, setDrag }) {
 function StreamView() {
   const ref = useRef(null);
   const secRef = useRef(null);
+  const lastScrollSize = useRef(null);
   const [scrolled, setScrolled] = useState(false);
   const [w, setW] = useState(1400);
   const [drag, setDrag] = useState(null);
@@ -4004,16 +4005,31 @@ function StreamView() {
   const mobile = window.matchMedia && window.matchMedia("(max-width: 760px)").matches; // phone layout stacks cells itself
   const cols = colOrder().filter(k => colVisible(k) && (mobile || !COLUMNS[k].minW || w >= COLUMNS[k].minW));
   const layout = columnLayout(cols);
+  const updatePause = paused => {
+    setScrolled(paused);
+    S.freezeId = paused && rows.length ? rows[rows.length - 1].s.id : 0;
+  };
   const onScroll = e => {
-    const sc = e.target.scrollTop > 60;
-    if (sc !== scrolled) { setScrolled(sc); S.freezeId = sc && rows.length ? rows[rows.length - 1].s.id : 0; }
+    const { scrollTop, scrollHeight, clientHeight, clientWidth } = e.currentTarget;
+    const previous = lastScrollSize.current;
+    lastScrollSize.current = { height: clientHeight, width: clientWidth };
+    const paused = scrollTop > 60;
+    // A viewport change can clamp the offset to the end of a now shorter scroll range.
+    const resized = previous && (previous.height !== clientHeight || previous.width !== clientWidth);
+    if (scrolled && !paused && resized && scrollTop >= scrollHeight - clientHeight - 1) return;
+    if (paused !== scrolled) updatePause(paused);
+  };
+  const resume = () => {
+    // A clamped scrollport may already be at the top and emit no scroll event.
+    if (ref.current.scrollTop <= 60) updatePause(false);
+    ref.current.scrollTo({ top: 0, behavior: "smooth" });
   };
   const mountT = useRef(Date.now());
   const preview = isDirty() || S.showHidden;
   const hiddenN = S.showHidden ? rows.filter(r => !r.pass).length : 0;
   const auto = mobile ? [] : colOrder().filter(k => colVisible(k) && COLUMNS[k].minW && w < COLUMNS[k].minW);
   return html`<section ref=${secRef} class=${cls("stream", S.prefs.density, drag && "is-dragging")} style=${layout} aria-label="Spots">
-    ${newer > 0 ? html`<button type="button" class="newer" onClick=${() => { ref.current.scrollTo({ top: 0, behavior: "smooth" }); }}><${Icon} name="chevronDown" size=${14} /> ${plural(newer, "newer spot")}</button>` : null}
+    ${newer > 0 ? html`<button type="button" class="newer" onClick=${resume}><${Icon} name="chevronDown" size=${14} /> ${plural(newer, "newer spot")}</button>` : null}
     <div class="spot-scroll" ref=${ref} onScroll=${onScroll}><div class="spot-grid">
     <div class="thead" role="row">${cols.map(k => html`<${ColumnHead} key=${k} k=${k} drag=${drag} setDrag=${setDrag} />`)}</div>
     <div class="tbody" role="rowgroup">
@@ -4375,6 +4391,23 @@ function ConsoleDock() {
   </section>`;
 }
 
+// Native modal focus and background isolation also apply when opened from a drawer.
+function ModalFrame({ label, labelledBy, onClose, escape = true, children }) {
+  const ref = useRef(null);
+  useLayoutEffect(() => {
+    const dialog = ref.current;
+    const previous = document.activeElement;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (document.activeElement === document.body && previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, []);
+  return html`<dialog class="modal-back" ref=${ref} aria-label=${label} aria-labelledby=${labelledBy}
+    onCancel=${e => { e.preventDefault(); if (escape) onClose(); }}
+    onClick=${e => { if (e.target === e.currentTarget) onClose(); }}>${children}</dialog>`;
+}
+
 // ---------------------------------------------------------------- post spot dialog
 function PostSpotDialog() {
   const sel = S.selSpot;
@@ -4394,8 +4427,8 @@ function PostSpotDialog() {
     } catch (x) { setErr(x.message); } finally { setBusy(false); }
   };
   const len = `DX ${f} ${c} ${t}`.trim().length;
-  return html`<div class="modal-back" onClick=${e => e.target === e.currentTarget && close()}>
-    <form class="modal" role="dialog" aria-label="Post a spot" onSubmit=${submit}>
+  return html`<${ModalFrame} label="Post a spot" onClose=${close}>
+    <form class="modal" onSubmit=${submit}>
       <header class="dr-head"><h2>Post a spot</h2><button type="button" class="icon-btn" aria-label="Close" onClick=${close}><${Icon} name="close" /></button></header>
       <div class="modal-body">
         <div class="two">
@@ -4408,7 +4441,7 @@ function PostSpotDialog() {
       </div>
       <footer class="modal-foot"><button type="button" class="btn ghost" onClick=${close}>Cancel</button><button type="submit" class="btn primary" disabled=${!f || !c || busy || S.snap.conn.phase !== "live"}><${Icon} name="send" size=${15} /> ${busy ? "Posting…" : "Post spot"}</button></footer>
     </form>
-  </div>`;
+  <//>`;
 }
 
 function Toasts() {
@@ -4570,8 +4603,8 @@ function ConnectPanel() {
     return "todo";
   };
   const code = c.error && c.error.code;
-  return html`<div class="modal-back" onClick=${e => e.target === e.currentTarget && close()}>
-    <div class="modal connect" role="dialog" aria-modal="true" aria-labelledby="cp-title">
+  return html`<${ModalFrame} labelledBy="cp-title" onClose=${close} escape=${c.mode !== "off"}>
+    <div class="modal connect">
       <header class="dr-head"><div><h2 id="cp-title">Connect to GoCluster</h2><div class="muted small">Cloudflare has already checked your email. The cluster still needs your callsign.</div></div>
         <button type="button" class="icon-btn" aria-label="Close" onClick=${close}><${Icon} name="close" /></button></header>
       <div class="modal-body">
@@ -4600,12 +4633,101 @@ function ConnectPanel() {
       </div>
       <footer class="modal-foot cp-foot"><span class="muted small mono" title="Set by the gocluster-socket-path deployment setting">Live socket: ${c.socketUrl}</span></footer>
     </div>
-  </div>`;
+  <//>`;
 }
 
 // ---------------------------------------------------------------- root
+function useVisibleViewport() {
+  useLayoutEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const style = document.documentElement.style;
+    let frame = 0;
+    let revealFocus = false;
+    const update = () => {
+      frame = 0;
+      const resized = revealFocus;
+      revealFocus = false;
+      // At pinch zoom, let the browser pan the page normally.
+      if (viewport.scale !== 1) {
+        style.removeProperty("--visible-top");
+        style.removeProperty("--visible-height");
+        return;
+      }
+      style.setProperty("--visible-top", viewport.offsetTop + "px");
+      style.setProperty("--visible-height", viewport.height + "px");
+      // Reveal focus after a resize and let operators scroll freely afterward.
+      if (!resized) return;
+      const focused = document.activeElement;
+      const overlay = focused?.closest(".modal-back, .drawer[aria-modal=true]");
+      if (overlay) {
+        const panel = overlay.getBoundingClientRect(), field = focused.getBoundingClientRect();
+        if (field.bottom > panel.bottom - 8) overlay.scrollTop += field.bottom - panel.bottom + 8;
+        else if (field.top < panel.top + 8) overlay.scrollTop -= panel.top + 8 - field.top;
+      }
+    };
+    const schedule = event => {
+      if (event.type === "resize") revealFocus = true;
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    update();
+    viewport.addEventListener("resize", schedule);
+    viewport.addEventListener("scroll", schedule);
+    return () => {
+      viewport.removeEventListener("resize", schedule);
+      viewport.removeEventListener("scroll", schedule);
+      cancelAnimationFrame(frame);
+      style.removeProperty("--visible-top");
+      style.removeProperty("--visible-height");
+    };
+  }, []);
+}
+
+function useDrawerOverlay(name) {
+  const query = "(max-width: 1180px), (max-height: 680px), (pointer: coarse)";
+  const [overlay, setOverlay] = useState(() => window.matchMedia(query).matches);
+  const opener = useRef(null);
+  useLayoutEffect(() => {
+    const media = window.matchMedia(query);
+    const update = () => setOverlay(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  useLayoutEffect(() => {
+    const focused = document.activeElement;
+    if (name) {
+      if (focused !== document.body && !focused?.closest(".drawer")) opener.current = focused;
+    } else {
+      if (focused === document.body && opener.current?.isConnected && !S.connectOpen && !S.postOpen) {
+        opener.current.focus({ preventScroll: true });
+      }
+      opener.current = null;
+    }
+  }, [name]);
+  useLayoutEffect(() => {
+    if (!name || !overlay) return;
+    const drawer = document.querySelector(".workspace > .drawer");
+    if (!drawer) return;
+    const background = document.querySelectorAll(".app > :is(.topbar, .subbar, .console), .workspace > .main");
+    drawer.setAttribute("aria-modal", "true");
+    for (const region of background) region.inert = true;
+    // Keep an in-progress edit focused when a docked drawer becomes an overlay.
+    const focused = document.activeElement;
+    if (drawer.contains(focused)) focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+    else if (!S.connectOpen && !S.postOpen) drawer.querySelector(".dr-head button")?.focus();
+    return () => {
+      for (const region of background) region.inert = false;
+      drawer.removeAttribute("aria-modal");
+      const focused = document.activeElement;
+      if (drawer.contains(focused)) focused.scrollIntoView({ block: "nearest", inline: "nearest" });
+    };
+  }, [name, overlay]);
+}
+
 function App() {
   useStore();
+  useVisibleViewport();
+  useDrawerOverlay(S.drawer);
   if (!S.snap) return null;
   const left = S.drawer === "filters";
   const right = ["settings", "activity", "spot"].includes(S.drawer);
@@ -4619,7 +4741,7 @@ function App() {
         ${S.view === "bandmap" ? html`<${BandMapView} />` : S.view === "openings" ? html`<${OpeningsView} />` : S.view === "history" ? html`<${HistoryView} />` : html`<${StreamView} />`}
       </main>
       ${S.drawer === "settings" ? html`<${SettingsDrawer} />` : S.drawer === "activity" ? html`<${ActivityDrawer} />` : S.drawer === "spot" ? html`<${SpotDrawer} key=${S.selSpot && S.selSpot.id} />` : null}
-      ${(left || right) ? html`<button type="button" class="scrim" aria-label="Close panel" onClick=${() => set({ drawer: null })}></button>` : null}
+      ${(left || right) ? html`<button type="button" class="scrim" tabindex="-1" aria-hidden="true" onClick=${() => set({ drawer: null })}></button>` : null}
     </div>
     <${ConsoleDock} />
     ${S.postOpen ? html`<${PostSpotDialog} />` : null}
@@ -4637,7 +4759,9 @@ window.addEventListener("hashchange", routeFromHash);
 window.addEventListener("keydown", e => {
   const tag = (e.target.tagName || "").toLowerCase();
   const typing = tag === "input" || tag === "textarea" || tag === "select";
-  if (e.key === "Escape") { if (S.connectOpen && S.snap.conn.mode !== "off") set({ connectOpen: false }); else if (S.postOpen) set({ postOpen: false }); else if (S.drawer) set({ drawer: null }); return; }
+  if (S.connectOpen || S.postOpen) return; // The native dialog owns Escape and focus.
+  if (e.key === "Escape") { if (S.drawer) set({ drawer: null }); return; }
+  if (document.querySelector(".drawer[aria-modal=true]")) return;
   if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "/") { e.preventDefault(); const q = document.getElementById("q"); if (q) q.focus(); }
   else if (e.key === "f" || e.key === "F") set({ drawer: S.drawer === "filters" ? null : "filters" });

@@ -76,15 +76,19 @@ Review `git status --short` and `git diff`. Include the newly named files, remov
 2. To test the UI locally, run `python -m http.server 8000 --bind 127.0.0.1 --directory site`. Open `http://127.0.0.1:8000/`, select **Replay the pilot capture**, and verify the changed behavior. For table changes, check Spots, History, and the narrow-screen layout. Stop the local server with Ctrl+C. Live connections require the production origin or a suitable test bridge.
 3. Run the [repository validation lane](../../docs/dev-runbook.md) for any backend or configuration changes. Commit the intended release, push under the repository's normal approval process, and identify the Git SHA used for the release. Check CI on that SHA. The Worker tests and browser checks above provide evidence beyond repository CI.
 
-For filter-editor changes, also exercise the shipped page against the simulated node. On Windows with Microsoft Edge installed, run this from the Worker directory. The tests submit and read back filter profiles locally.
+For filter-editor and layout changes, exercise the shipped page against the simulated node. On Windows with Microsoft Edge installed, run the relevant browser tests from the Worker directory. The filter tests submit and read back profiles locally. The responsive tests exercise the four views, the console, and overlays at desktop, narrow portrait, short landscape, and 320 CSS pixels. They also simulate the visible area shrinking while a dialog is open.
 
 ```powershell
 $testDeps = Join-Path ([System.IO.Path]::GetTempPath()) "gocluster-worker-tests"
 npm install --prefix $testDeps miniflare@5.20261123.0-beta ws@8.21.0 playwright-core@1.56.1
 $env:NODE_PATH = Join-Path $testDeps "node_modules"
 $env:CHROMIUM_CHANNEL = "msedge"
-node --test test/filters.cjs
+node --test test/filters.cjs test/responsive.cjs
 ```
+
+For a responsive release, check the candidate bundle in a desktop browser at 400% zoom from a 1280 CSS-pixel viewport. Tab through the toolbar, a drawer and a dialog. Check that focused controls can be seen and operated, and that horizontal scrolling stays inside content that needs it, such as the Band map.
+
+Verify real-device behavior on an iPhone in Safari using an authorized test host serving the candidate assets. Open the console in Replay, expand the command dock, and check that you can scroll between the spot list and the dock in both orientations. Open Filters and Post a spot, enter text, rotate while editing, and check that the text is retained. With the keyboard visible, bring the focused field and the dialog actions into view. Repeat with Safari's bars expanded and collapsed. Record the iPhone model, iOS version, asset hashes, and result. Replay leaves posting disabled. The simulated node tests submission.
 
 ## Publish the tested revision
 
