@@ -315,8 +315,8 @@ test("logger notices refresh all four delivery switches in one read", async t =>
     peer.revision++;
     for (let i = 0; i < 5; i++) cluster.session.feed('["notice","config-changed","Logger changed filters.","2"]\n');
   });
-  await page.waitForFunction(() => S.snap.revision === "2");
-  assert.deepEqual(await values(), Array(4).fill("true"));
+  await Promise.all(switches.map(name => page.locator(`#sw-${name}[aria-checked="true"]`).waitFor()));
+  assert.equal(await page.evaluate(() => S.snap.revision), "2");
   await page.locator(".sw-row").filter({ has: page.locator("#sw-beacon") }).getByText("Node default (on)", { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => peer.reads), 2);
   await page.evaluate(() => {
@@ -418,6 +418,61 @@ test("the header shows the build response from the current live session", async 
   assert.equal(await page.evaluate(() => buildCommands.filter(command => command === "SHOW BUILD").length), 2);
 });
 
+test("the blue header icon follows logger presence in either login order and on reconnect", async t => {
+  const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+  t.after(() => page.close());
+  await page.goto(site);
+  await page.evaluate(() => {
+    window.startPresenceSession = loggerAlreadyConnected => {
+      cluster.closeSocket();
+      const session = cluster.session = new GCP.Session({
+        send() {},
+        emit(event, data) { cluster.onSession(session, event, data); },
+      });
+      cluster.mode = "live";
+      cluster.deploy.startupHistory = 0;
+      session.start("TEST-1");
+      session.feed("login: ");
+      session.feed("TEST-1 de N0CALL 18:12Z>\r\n");
+      if (loggerAlreadyConnected) session.feed("Logger connected.\r\n");
+      session.feed('JSON ON 1\r\n["hello",1,{"node":"N0CALL","login":"TEST-1"}]\n["schema","s",1,[]]\n["schema","station",1,[]]\n["text","Build version: 261124"]\n');
+      return session;
+    };
+    window.firstPresenceSession = startPresenceSession(false);
+  });
+  const globe = page.getByRole("img", { name: "Browser only", exact: true });
+  const arrows = page.getByRole("img", { name: "Browser and Telnet share this profile", exact: true });
+  await globe.waitFor({ state: "visible" });
+  assert.equal(await globe.getAttribute("title"), "Browser only");
+  assert.equal(await globe.evaluate(el => getComputedStyle(el.querySelector("path")).stroke), "rgb(92, 176, 255)");
+  const globePath = await globe.locator("path").getAttribute("d");
+
+  assert.equal(await page.evaluate(() => {
+    firstPresenceSession.feed('["text","Logger connected."]\n["notice","config-changed","Logger connected.","2"]\n');
+    return cluster.snapshot().conn.loggerConnected;
+  }), false);
+  await page.evaluate(() => firstPresenceSession.feed('["notice","presence-changed","Logger connected.","2"]\n'));
+  await arrows.waitFor({ state: "visible" });
+  assert.equal(await arrows.getAttribute("title"), "Browser and Telnet share this profile");
+  assert.equal(await arrows.evaluate(el => getComputedStyle(el.querySelector("path")).stroke), "rgb(92, 176, 255)");
+  assert.notEqual(await arrows.locator("path").getAttribute("d"), globePath);
+
+  await page.evaluate(() => firstPresenceSession.feed('["notice","presence-changed","Logger disconnected.","3"]\n'));
+  await globe.waitFor({ state: "visible" });
+  await page.evaluate(() => firstPresenceSession.feed('["notice","presence-changed","Logger connected.","4"]\n'));
+  await arrows.waitFor({ state: "visible" });
+
+  await page.evaluate(() => {
+    startPresenceSession(false);
+    cluster.onSession(firstPresenceSession, "notice", { code: "presence-changed", text: "Logger connected." });
+  });
+  await globe.waitFor({ state: "visible" });
+  await page.evaluate(() => startPresenceSession(true));
+  await arrows.waitFor({ state: "visible" });
+  assert.equal(await page.locator(".bsub-version").textContent(), "v261124");
+  assert.equal(await page.locator(".bsub-ip").count(), 0);
+});
+
 test("the current connection's IPv4 follows the version and a retired reply is ignored", async t => {
   const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
   t.after(() => page.close());
@@ -447,7 +502,11 @@ test("the current connection's IPv4 follows the version and a retired reply is i
     finishVisitor(0, "192.0.2.17");
   });
   const subtitle = page.locator(".bsub");
-  await subtitle.filter({ hasText: /^v261124 · 192\.0\.2\.17$/ }).waitFor({ state: "visible" });
+  const version = subtitle.locator(".bsub-version");
+  const address = subtitle.locator(".bsub-ip");
+  await address.filter({ hasText: "192.0.2.17" }).waitFor({ state: "visible" });
+  assert.equal(await version.textContent(), "v261124");
+  assert.deepEqual(await subtitle.locator(":scope > span").evaluateAll(els => els.map(el => el.className)), ["bsub-version", "bsub-presence", "bsub-ip"]);
   assert.deepEqual(await page.evaluate(() => visitorCalls.map(({ path, opts }) => [path, opts.cache])), [["/visitor-ip", "no-store"]]);
 
   await page.evaluate(() => {
@@ -456,14 +515,15 @@ test("the current connection's IPv4 follows the version and a retired reply is i
     finishVisitor(2, "198.51.100.24");
     finishVisitor(1, "203.0.113.33");
   });
-  await subtitle.filter({ hasText: /^v261126 · 198\.51\.100\.24$/ }).waitFor({ state: "visible" });
+  await address.filter({ hasText: "198.51.100.24" }).waitFor({ state: "visible" });
+  assert.equal(await version.textContent(), "v261126");
   assert.equal(await page.evaluate(() => visitorCalls[1].opts.signal.aborted), true);
 
   await page.evaluate(() => { connectToNode("261127"); finishVisitor(3, null); });
-  await subtitle.filter({ hasText: "v261127" }).waitFor();
-  assert.equal(await subtitle.textContent(), "v261127");
+  await version.filter({ hasText: "v261127" }).waitFor();
+  assert.equal(await address.count(), 0);
 
   await page.evaluate(() => { connectToNode("261128"); finishVisitor(4, "192.0.2.19", false); });
-  await subtitle.filter({ hasText: "v261128" }).waitFor();
-  assert.equal(await subtitle.textContent(), "v261128");
+  await version.filter({ hasText: "v261128" }).waitFor();
+  assert.equal(await address.count(), 0);
 });

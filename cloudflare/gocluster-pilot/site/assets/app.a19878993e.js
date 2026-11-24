@@ -2079,6 +2079,7 @@ const CONN = (() => {
       this.loginCall = LS.get("gcui.login", "");
       this.nodeCall = ""; this.hello = null; this.buildVersion = "";
       this.visitorIP = ""; this.visitorRequest = null;
+      this.loggerConnected = false;
       this.cfg = null; this.cfgDoc = ""; this.cfgAt = 0; this.cfgError = "";
       this.presets = []; this.presetsLoaded = false;
       this.sample = [];
@@ -2128,6 +2129,7 @@ const CONN = (() => {
           configLoaded: !!c, cfgError: this.cfgError, activeDialect: c ? c.activeDialect : "", writing: this.writing, needsReview: this.needsReview,
           replay: this.replay ? { name: this.replay.name, total: this.replay.total, done: this.replay.done } : null,
           socketUrl: socketUrl(), canWrite: this.canWrite, hello: this.hello, buildVersion: this.buildVersion, visitorIP: this.visitorIP,
+          loggerConnected: this.loggerConnected,
         },
       };
     }
@@ -2258,6 +2260,7 @@ const CONN = (() => {
       this.refreshTimer = null; this.refreshPending = false; this.refreshRetries = 0; this.profileRead = null;
       this.buildVersion = "";
       this.visitorRequest?.abort(); this.visitorRequest = null; this.visitorIP = "";
+      this.loggerConnected = false;
     }
 
     // ------------------------------------------------------------ session events
@@ -2266,7 +2269,10 @@ const CONN = (() => {
       switch (ev) {
         case "state": return this.onSessionState(d);
         case "sent": return this.line("out", d);
-        case "text": return this.line("in", d);
+        case "text":
+          // Login can deliver the first presence notice before the JSON switch.
+          if (session.mode === "text" && (session.state === "logging-in" || session.state === "negotiating")) this.observeLoggerPresence(d);
+          return this.line("in", d);
         case "negotiated": return this.line("sys", `${d}: JSON v1 active.`);
         case "hello": this.hello = d; this.nodeCall = d.node || this.nodeCall; return;
         case "build-version": this.buildVersion = d; this.changed(); return;
@@ -2277,6 +2283,7 @@ const CONN = (() => {
           return this.emit("message", { kind: d.kind, t: d.t || Date.now(), from: d.from || "", text: d.text, solar: sol });
         }
         case "notice":
+          if (d.code === "presence-changed") this.observeLoggerPresence(d.text);
           if (d.code === "config-changed" || d.code === "save-status-changed") this.refreshSoon();
           if (d.code === "refused") { this.emit("notice", { text: d.text || "The node refused that request.", kind: "error" }); this.line("sys", "Refused: " + d.text); }
           else if (d.code === "omitted") this.line("sys", "Node notice (omitted): " + d.text);
@@ -2302,6 +2309,14 @@ const CONN = (() => {
         case "yaml-unmatched": this.line("sys", "Received a YAML reply that matched no request."); return;
         default:
       }
+    }
+    observeLoggerPresence(text) {
+      if (this.mode !== "live") return;
+      const connected = text === "Logger connected.";
+      if (!connected && text !== "Logger disconnected.") return;
+      if (this.loggerConnected === connected) return;
+      this.loggerConnected = connected;
+      this.changed();
     }
     renegotiate() {
       const s = this.session;
@@ -2815,6 +2830,8 @@ const ICONS = {
   gear: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z",
   pulse: "M3 12h4l3-8 4 16 3-8h4",
   terminal: "M4 6l6 6-6 6M12 19h8",
+  globe: "M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20ZM2 12h20M12 2c5 5.5 5 14.5 0 20-5-5.5-5-14.5 0-20Z",
+  sync: "M3 7h18l-4-4M21 7l-4 4M21 17H3l4-4M3 17l4 4",
   plus: "M12 5v14M5 12h14",
   close: "M6 6l12 12M18 6L6 18",
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4",
@@ -3698,11 +3715,16 @@ function TopBar() {
   const snap = S.snap;
   const n = workingCards().length;
   const toggleDrawer = d => set({ drawer: S.drawer === d ? null : d });
-  const { buildVersion, visitorIP } = snap.conn;
+  const { buildVersion, visitorIP, loggerConnected } = snap.conn;
   const versionLabel = buildVersion.replace(/^v?/i, "v");
-  const subtitle = visitorIP ? `${versionLabel} · ${visitorIP}` : versionLabel;
+  const subtitle = visitorIP ? `${versionLabel} ${visitorIP}` : versionLabel;
+  const presenceLabel = loggerConnected ? "Browser and Telnet share this profile" : "Browser only";
   return html`<header class="topbar">
-    <div class="brand"><${BrandMark} size=${30} /><div class="bwords"><span class="bname">GoCluster by N2WQ</span>${buildVersion ? html`<span class="bsub mono" title=${subtitle}><span class="bsub-version">${versionLabel}</span>${visitorIP ? html`<span> · ${visitorIP}</span>` : null}</span>` : null}</div></div>
+    <div class="brand"><${BrandMark} size=${30} /><div class="bwords"><span class="bname">GoCluster by N2WQ</span>${buildVersion ? html`<span class="bsub mono" title=${subtitle}>
+      <span class="bsub-version">${versionLabel}</span>
+      <span class="bsub-presence" role="img" aria-label=${presenceLabel} title=${presenceLabel}><${Icon} name=${loggerConnected ? "sync" : "globe"} size=${13} /></span>
+      ${visitorIP ? html`<span class="bsub-ip">${visitorIP}</span>` : null}
+    </span>` : null}</div></div>
     <${NodeStatus} />
     <nav class="views" aria-label="View">
       ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class=${S.view === v ? "on" : ""} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; set({ view: v }); }}><${Icon} name=${ic} size=${16} /><span>${l}</span></a>`)}
