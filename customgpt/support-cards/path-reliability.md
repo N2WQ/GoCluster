@@ -86,8 +86,11 @@ inspect user-visible diagnostics:
   savings. Compare total cluster CPU for equivalent completed work; individual
   median timings are diagnostic evidence. See TSR-0094 for the measured limits.
 - `SET DIAG PATH` `w<weight>` is scalar evidence mass after decay and
-  path selection. Fine and coarse are selected at one common resolution,
-  never added. `a<age>` reflects selected populations; excluded stale local
+  path selection. It shows capped weight when the cap lane reduced usable
+  evidence, including unattributed input, and active weight otherwise.
+  Ageing alone leaves `cap_limited` clear. Group counter windows by diagnostic
+  version when analysing a deployment. Fine and coarse are selected at one
+  common resolution. `a<age>` reflects selected populations; excluded stale local
   evidence does not age a fresh selected regional population.
 - `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
   are sparse bucket p50 aligned with current-hour VOACAP; `vup` diagnostics
@@ -100,15 +103,13 @@ inspect user-visible diagnostics:
   endpoint daylight and `bD` means both endpoints. This is a solar-darkness
   proxy, not a VOACAP SNR result. Beacon receive-only native 160m diagnostics
   use the same suffixes with `bn160c`.
-- `n160c|dNN` means no endpoint token was needed; native 160m `CLOSED` came
-  from whole-path civil-dark fraction `NN`.
 - `n160|xT|dNN` means native 160m fallback classified an insufficient 160m
   result as `UNLIKELY` because the DX endpoint was in civil twilight. `uT`
   means user endpoint twilight and `bT` means both endpoints.
-- `n160|dNN` means native 160m fallback filled an insufficient 160m result as
-  `LOW` or `UNLIKELY` from civil-dark path fraction `NN` after both endpoints
-  were dark. It is not SNR. Beacon receive-only native 160m diagnostics use
-  `bn160|dNN`.
+- `n160|d100` means `LOW` native 160m fallback under shipped settings, with
+  both endpoints and the whole shorter arc civil-dark. The arc calculation
+  supplies the darkness diagnostic and an unknown-geometry guard. Beacon
+  receive-only paths use `bn160|d100`.
 - Insufficient sparse/no-p50 diagnostics can add compact `v*` suffixes such as
   `n0/u0|none|vdly` or `n2/u2|lown|vrel` to explain VOACAP state without changing the
   blank glyph: queued, delayed, inflight, unsupported band, empty/unknown band,

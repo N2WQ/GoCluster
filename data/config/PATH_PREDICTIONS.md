@@ -86,7 +86,11 @@ The system tracks paths **both directions**:
 - **Receive path**: DX station transmitting → You receiving
 - **Transmit path**: You transmitting → DX station receiving
 
-It combines these intelligently: 60% weight on the receive direction (adjusted for your noise), 40% weight on transmit. If it only knows one direction, it uses that with a confidence penalty.
+With two directions, the system multiplies the receive histogram mass by 0.6
+after the noise adjustment and the transmit mass by 0.4, then takes the
+combined median. The amount of evidence in each direction affects its share
+of the result. With one ordinary direction, it discounts the evidence weight
+without subtracting dB from the signal.
 
 ### Time Decay
 
@@ -139,7 +143,9 @@ When you see a glyph next to a spot, here's what happened behind the scenes:
    each applied once. A required selected distribution failure is insufficient
    and cannot silently trigger a layer retry or partial median.
 
-5. **Merge directions**: Receive and transmit paths combine (60/40 split), with the configured receive-side noise penalty applied when nonzero.
+5. **Merge directions**: Scale receive and transmit histogram mass by 0.6 and
+   0.4 respectively, applying the configured noise penalty to the receive
+   histogram before the merge.
    For beacon spots, transmit evidence is not applicable. The system uses only
    the DX-to-user receive leg, still applies your receive-noise penalty, and
    does not apply the one-direction reverse hint discount.
@@ -272,17 +278,15 @@ match CLOSED; use `PATH=UNLIKELY,CLOSED` to select both classes.
 
 The experimental native 160m fallback covers the gap where p50 evidence is
 insufficient and VOACAP has no usable current-hour result for 160m. It measures
-the exact fraction of the great-circle path darker than civil twilight
-(`native_160m_fallback.civil_twilight_degrees`, shipped as 6 degrees), but
-endpoint state is checked first. Either endpoint above the horizon emits
-`CLOSED`; either endpoint in civil twilight emits `UNLIKELY`. Only after both
-endpoints are civil-dark do the path-fraction thresholds apply: at or below
-`native_160m_fallback.closed_max_civil_dark_fraction` it emits `CLOSED`; above
-that and below `unlikely_min_civil_dark_fraction` it stays blank; then
-`unlikely_min_civil_dark_fraction` and `low_min_civil_dark_fraction` emit
-`UNLIKELY` and `LOW`. It can emit only `CLOSED`, `LOW`, or `UNLIKELY`, never
-`HIGH` or `MEDIUM`, never replaces a sufficient p50 result, and remains an
-opportunity proxy rather than an SNR or probability model.
+the fraction of the shorter great-circle arc in civil darkness. If geometry
+is unknown, such as on a near-antipodal path, the result remains blank. For
+known geometry, daylight at either endpoint emits `CLOSED`. If neither is
+in daylight, twilight at either endpoint emits `UNLIKELY`. With the shipped
+6° cutoff, both civil-dark endpoints lie in the same spherical cap, so the
+entire shorter arc stays civil-dark. That yields `LOW` at the shipped fraction
+thresholds. The arc calculation also supplies the `dNN` diagnostic and aggregate
+darkness telemetry. The fallback is a solar-darkness proxy for paths with
+insufficient p50 evidence.
 
 Five-minute propagation logs keep final emit counters in `Path predictions
 (5m)`: `voacap_closed`, `voacap_aligned`, `voacap_sparse_upgrade`, and
@@ -351,9 +355,8 @@ The glyphs help you prioritize. If you see:
   request-SNR REL gate. Sparse p50 can only upgrade by one class in this mode.
 - **Native 160m fallback glyph**: Bucket evidence was insufficient on 160m, no
   usable current-hour VOACAP result had precedence, and the native 160m solar
-  proxy emitted. Endpoint daylight emits `CLOSED`; endpoint civil twilight
-  emits `UNLIKELY`; otherwise whole-path civil-dark fraction decides
-  `CLOSED`, blank, `UNLIKELY`, or `LOW`.
+  proxy emitted. For known geometry and shipped settings, daylight emits
+  `CLOSED`, twilight emits `UNLIKELY`, and two civil-dark endpoints emit `LOW`.
 - **Space**: No prediction available - you're on your own. Could be good or bad.
 
 ### Understanding Limitations

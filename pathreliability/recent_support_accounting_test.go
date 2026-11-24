@@ -363,10 +363,9 @@ func TestRecentSupportStaleDiagnostics(t *testing.T) {
 	}
 }
 
-// The legacy count conversion adds 1e-9 before flooring and the legacy weight
-// flag allows 1e-9 slack. Both can report no limiting even though the exact
-// admitted report quantity misses the floor. Shadow must still expose that
-// failure without changing the raw-supported observed glyph.
+// Capped counts are rounded and the reduction flag has a 1e-9 tolerance.
+// The shadow gate must still expose a smaller exact support shortfall without
+// changing the glyph from the raw evidence.
 func TestRecentSupportShadowIgnoresRoundedCapFlag(t *testing.T) {
 	for _, tc := range []struct {
 		name                 string
