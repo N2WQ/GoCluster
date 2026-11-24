@@ -77,3 +77,27 @@ test("serves the console root with the socket policy", async () => {
   assert.equal(await response.text(), "console");
   assert.ok(response.headers.get("Content-Security-Policy").includes("wss://gocluster-pilot.n2wq-api.workers.dev/ws"));
 });
+
+test("reports the current request's IPv4 without consulting the origin or assets", async () => {
+  const env = {
+    CLUSTER_ORIGIN: { fetch() { assert.fail("visitor address reached the cluster"); } },
+    ASSETS: { fetch() { assert.fail("visitor address reached the assets binding"); } },
+  };
+  for (const [forwarded, expected] of [
+    ["192.0.2.17", "192.0.2.17"], ["198.51.100.24", "198.51.100.24"],
+    ["::ffff:203.0.113.80", "203.0.113.80"], ["2001:db8::42", null],
+    ["192.0.2.1, 192.0.2.2", null], ["192.0.2.256", null], ["192.0.02.4", null], [null, null],
+  ]) {
+    const requestHeaders = { "X-Forwarded-For": "203.0.113.1", "X-GoCluster-Visitor-IP": "203.0.113.2" };
+    if (forwarded !== null) requestHeaders["CF-Connecting-IP"] = forwarded;
+    const response = await worker.fetch(request("/visitor-ip", { headers: requestHeaders }), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("Cache-Control"), "no-store");
+    assert.equal(response.headers.get("Access-Control-Allow-Origin"), null);
+    assert.deepEqual(await response.json(), { ipv4: expected });
+  }
+  const post = await worker.fetch(request("/visitor-ip", { method: "POST", headers: {} }), env);
+  assert.equal(post.status, 405);
+  assert.equal(post.headers.get("Allow"), "GET");
+  assert.equal((await worker.fetch(request("/visitor-ip"), env)).status, 400);
+});

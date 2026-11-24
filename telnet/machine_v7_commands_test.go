@@ -204,7 +204,7 @@ func TestV7MachineCommandNinthOutputIsBusyBeforeCapture(t *testing.T) {
 		assertConfigurationTransferStats(t, initialInput, initialOutput)
 	})
 	for range 8 {
-		owner, err := (&Client{}).reserveConfigurationOutput()
+		owner, err := (&Client{sessionProfile: &sessionProfile{}}).reserveConfigurationOutput()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -235,7 +235,7 @@ func TestV7MachineCommandInputChargeSurvivesDecoderWait(t *testing.T) {
 			}
 		}()
 		for range 4 {
-			release, err := s.acquireYAMLPreparation(&Client{done: make(chan struct{})})
+			release, err := s.acquireYAMLPreparation(&Client{sessionProfile: &sessionProfile{}, done: make(chan struct{})})
 			if err != nil {
 				t.Fatal(err)
 			}

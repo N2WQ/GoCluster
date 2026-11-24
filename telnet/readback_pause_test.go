@@ -29,7 +29,7 @@ func assertReadbackPauseState(t *testing.T, c *Client, want readbackPauseTestSta
 }
 
 func TestHumanReadbackPendingAndFullReadingInterval(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	completion := c.beginHumanReadback(time.Unix(1700000000, 0), 30*time.Second)
 	if completion.epoch != 1 || completion.duration != 30*time.Second {
 		t.Fatalf("completion = %+v", completion)
@@ -65,7 +65,7 @@ func TestHumanReadbackPendingAndFullReadingInterval(t *testing.T) {
 
 func TestHumanReadbackDefaultDuration(t *testing.T) {
 	for _, duration := range []time.Duration{0, -time.Second} {
-		c := &Client{}
+		c := &Client{sessionProfile: &sessionProfile{}}
 		completion := c.beginHumanReadback(time.Unix(1700000000, 0), duration)
 		if completion.duration != 30*time.Second {
 			t.Fatalf("duration %s produced %+v", duration, completion)
@@ -78,7 +78,7 @@ func TestHumanReadbackDefaultDuration(t *testing.T) {
 }
 
 func TestHumanReadbackPreservesLongerFinitePause(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	c.readPauseUntilUnixNano.Store(1700000300000000000)
 	c.readPauseDiscardBefore.Store(1700000300000000000)
 	c.readPauseSuppressed.Store(3)
@@ -93,7 +93,7 @@ func TestHumanReadbackPreservesLongerFinitePause(t *testing.T) {
 }
 
 func TestPendingPauseCarriesSuppressionCount(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	c.readPauseUntilUnixNano.Store(1700000005000000000)
 	c.readPauseDiscardBefore.Store(1700000005000000000)
 	c.readPauseSuppressed.Store(7)
@@ -128,7 +128,7 @@ func TestPendingReadbackManualControlPrecedence(t *testing.T) {
 		},
 	} {
 		t.Run(tc.line, func(t *testing.T) {
-			c := &Client{}
+			c := &Client{sessionProfile: &sessionProfile{}}
 			completion := c.beginHumanReadback(time.Unix(1700000000, 0), 30*time.Second)
 			c.readPauseSuppressed.Store(3)
 			s := &Server{nowFn: func() time.Time { return time.Unix(1700000010, 0) }}
@@ -143,7 +143,7 @@ func TestPendingReadbackManualControlPrecedence(t *testing.T) {
 }
 
 func TestLatestHumanReadbackCompletionOnly(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	first := c.beginHumanReadback(time.Unix(1700000000, 0), 30*time.Second)
 	c.readPauseSuppressed.Store(2)
 	latest := c.beginHumanReadback(time.Unix(1700000010, 0), 45*time.Second)
@@ -157,7 +157,7 @@ func TestLatestHumanReadbackCompletionOnly(t *testing.T) {
 }
 
 func TestGenericPausePreservesPendingAuthority(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	completion := c.beginHumanReadback(time.Unix(1700000000, 0), 30*time.Second)
 	c.readPauseSuppressed.Store(2)
 	if duration := c.extendReadPause(time.Unix(1700000010, 0), 90*time.Second); duration != 90*time.Second {
@@ -180,7 +180,7 @@ func TestGenericPausePreservesPendingAuthority(t *testing.T) {
 }
 
 func TestReadbackInvalidationPreservesState(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	c.readPauseUntilUnixNano.Store(1700000180000000000)
 	c.readPauseDiscardBefore.Store(1700000180000000000)
 	c.readPauseSuppressed.Store(7)
@@ -204,7 +204,7 @@ func TestReadbackInvalidationPreservesState(t *testing.T) {
 }
 
 func TestConcurrentAutomaticPauseAndHumanCompletion(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	completion := c.beginHumanReadback(time.Unix(1700000000, 0), 30*time.Second)
 	c.readPauseSuppressed.Store(4)
 	// Both goroutines are ready to contend for the shared authority before it
@@ -234,7 +234,7 @@ func TestConcurrentAutomaticPauseAndHumanCompletion(t *testing.T) {
 }
 
 func TestConcurrentPendingSuppressionCarriesIntoReading(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	c.readPauseUntilUnixNano.Store(1700000002000000000)
 	c.readPauseDiscardBefore.Store(1700000002000000000)
 	c.readPauseSuppressed.Store(7)
@@ -276,7 +276,7 @@ func TestConcurrentPendingSuppressionCarriesIntoReading(t *testing.T) {
 }
 
 func TestConcurrentLaterManualPauseWins(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	completion := c.beginHumanReadback(time.Unix(1700000000, 0), 30*time.Second)
 	processed := make(chan struct{})
 	var workers sync.WaitGroup
@@ -333,7 +333,7 @@ func BenchmarkReadbackPauseSpotSuppression(b *testing.B) {
 		{name: "fresh", cutoff: 1700000005000000000, enqueueSeconds: 1700000010},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			c := &Client{}
+			c := &Client{sessionProfile: &sessionProfile{}}
 			c.readPausePending.Store(tc.pending)
 			c.readPauseUntilUnixNano.Store(tc.until)
 			c.readPauseDiscardBefore.Store(tc.cutoff)

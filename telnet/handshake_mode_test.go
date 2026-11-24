@@ -8,7 +8,7 @@ import (
 func TestNegotiateTelnetFullPreservesCurrentSequence(t *testing.T) {
 	conn := &recordingConn{}
 	s := &Server{handshakeMode: telnetHandshakeFull, echoMode: telnetEchoServer}
-	client := &Client{conn: conn}
+	client := &Client{sessionProfile: &sessionProfile{}, conn: conn}
 
 	s.negotiateTelnet(client)
 
@@ -26,7 +26,7 @@ func TestNegotiateTelnetFullPreservesCurrentSequence(t *testing.T) {
 func TestNegotiateTelnetMinimalServerEchoEmitsReducedSequence(t *testing.T) {
 	conn := &recordingConn{}
 	s := &Server{handshakeMode: telnetHandshakeMinimal, echoMode: telnetEchoServer}
-	client := &Client{conn: conn}
+	client := &Client{sessionProfile: &sessionProfile{}, conn: conn}
 
 	s.negotiateTelnet(client)
 
@@ -42,7 +42,7 @@ func TestNegotiateTelnetMinimalServerEchoEmitsReducedSequence(t *testing.T) {
 func TestNegotiateTelnetMinimalLocalEchoEmitsReducedSequence(t *testing.T) {
 	conn := &recordingConn{}
 	s := &Server{handshakeMode: telnetHandshakeMinimal, echoMode: telnetEchoLocal}
-	client := &Client{conn: conn}
+	client := &Client{sessionProfile: &sessionProfile{}, conn: conn}
 
 	s.negotiateTelnet(client)
 
@@ -58,7 +58,7 @@ func TestNegotiateTelnetMinimalLocalEchoEmitsReducedSequence(t *testing.T) {
 func TestNegotiateTelnetNoneEmitsNoBytes(t *testing.T) {
 	conn := &recordingConn{}
 	s := &Server{handshakeMode: telnetHandshakeNone, echoMode: telnetEchoServer}
-	client := &Client{conn: conn}
+	client := &Client{sessionProfile: &sessionProfile{}, conn: conn}
 
 	s.negotiateTelnet(client)
 

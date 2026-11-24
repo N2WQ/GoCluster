@@ -265,7 +265,7 @@ func FuzzFixedSettingsArgumentRefusal(f *testing.F) {
 				t.Fatalf("arbitrary tail acquired setting effects: %s %q -> %+v", tc.command, tail, outcome)
 			}
 		}
-		c := &Client{}
+		c := &Client{sessionProfile: &sessionProfile{}}
 		c.setDiagMode(diagModeSource)
 		if response, handled := s.handleDiagCommand(c, "SET DIAG OFF "+tail); !handled || response != diagUsage || c.getDiagMode() != diagModeSource {
 			t.Fatal("arbitrary diagnostic tail changed session mode")

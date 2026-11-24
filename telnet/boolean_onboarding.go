@@ -182,7 +182,7 @@ func loginFilterCommand(dialect string) string {
 // Rendering owns the same configuration lease as command readback. It does not
 // start a reading pause or publish defaults while describing restored state.
 func (s *Server) renderBooleanLoginBlock(c *Client, first, reset, showRecipe bool) (loginGreetingBlock, error) {
-	if c != nil && c.filterBanks != nil && c.dialect == DialectCC {
+	if banked, dialect := c.configurationBankSelection(); banked && dialect == DialectCC {
 		text, err := s.renderV7CCLoginBlock(c, first)
 		return loginGreetingBlock{text: text}, err
 	}

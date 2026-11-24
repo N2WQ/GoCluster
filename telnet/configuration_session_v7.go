@@ -11,6 +11,8 @@ import (
 	"dxcluster/filter"
 )
 
+const unsavedStartingSettingsWarning = "Your starting settings are active but could not be saved. They may be lost when you reconnect.\n"
+
 func (s *Server) prepareV7LoginRuntime(c *Client, record *filter.V7UserRecord, now time.Time) (*Client, string, error) {
 	canonical, goFilter, ccFilter, err := filter.PrepareV7Configuration(record.Configuration)
 	if err != nil {
@@ -71,7 +73,7 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 		result.loadError = reserveErr
 		result.warning = "Configuration preparation is busy; reconnect to retry. Your saved files are unchanged.\n"
 		c.preserveRecordOnExit.Store(true)
-		c.interrupt()
+		result.abort = true
 		return result
 	}
 	defer reservation.Release()
@@ -104,7 +106,7 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 		record, factoryErr = s.newV7LoginRecord(s.configurationDefaultDialect())
 		if factoryErr != nil {
 			result.loadError = errors.Join(err, factoryErr)
-			c.interrupt()
+			result.abort = true
 			return result
 		}
 	} else {
@@ -120,8 +122,8 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 		}
 		if saveErr != nil {
 			if result.created {
-				c.configurationUnsaved = true
-				result.warning += "Your starting settings are active but could not be saved. They may be lost when you reconnect.\n"
+				c.initialRecordMissing = true
+				result.warning += unsavedStartingSettingsWarning
 			} else {
 				result.warning += "Restored your saved configuration, but could not save this login's timestamp/IP.\n"
 			}
@@ -137,7 +139,7 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 	prepared, warning, prepareErr := s.prepareV7LoginRuntime(c, record, loginTime)
 	if prepareErr != nil {
 		result.loadError = fmt.Errorf("prepare temporary login: %w", prepareErr)
-		c.interrupt()
+		result.abort = true
 		return result
 	}
 	// This client is not registered yet; retain its existing Filter identity.
@@ -157,4 +159,40 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 	c.refreshV7ConfigurationRevision()
 	result.warning += warning
 	return result
+}
+
+// prepareSharedLoginMetadataOwned writes only the login fields from the new
+// attempt. The SSID lease guards the authoritative disk read through commit and
+// registration. The live login history advances only once the slot is current.
+func (s *Server) prepareSharedLoginMetadataOwned(c *Client, loginTime time.Time, result *restoredLogin) []string {
+	result.previousLogin = c.lastLoginUTC
+	if len(c.recentIPs) > 0 {
+		result.previousIP = c.recentIPs[0]
+	}
+	recentIPs := filter.UpdateRecentIPs(boundedSessionIPs(c.recentIPs), spotterIP(c.address))
+	if !c.recordProtected {
+		if err := s.writeSharedLoginMetadataOwned(c, loginTime, recentIPs); err != nil {
+			result.warning += "Restored your saved configuration, but could not save this login's timestamp/IP.\n"
+		}
+	}
+	return recentIPs
+}
+
+func (s *Server) writeSharedLoginMetadataOwned(c *Client, loginTime time.Time, recentIPs []string) error {
+	reservation, err := c.reserveConfigurationPreparation()
+	if err != nil {
+		return err
+	}
+	defer reservation.Release()
+	record, err := filter.LoadV7UserRecord(c.callsign)
+	if err != nil {
+		return err
+	}
+	record.LastLoginUTC = loginTime
+	record.RecentIPs = filter.MergeRecentIPs(recentIPs, record.RecentIPs)
+	payload, err := filter.PrepareV7UserRecord(c.callsign, record)
+	if err != nil {
+		return err
+	}
+	return s.commitLoginRecord(payload)
 }

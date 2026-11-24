@@ -89,7 +89,7 @@ func (s *Server) renderV7CCLoginOwned(c *Client, configuration filter.V7Configur
 				return err
 			}
 		}
-		if c.configurationUnsaved {
+		if c.hasUnsavedChanges() {
 			if err := h.prose("", "", "Active preferences include unsaved changes; they may be lost on reconnect."); err != nil {
 				return err
 			}

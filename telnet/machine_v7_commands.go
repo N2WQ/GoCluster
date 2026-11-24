@@ -177,6 +177,9 @@ func (s *Server) applyV7MachineRequestOwned(c *Client, cmd machineCommand, reque
 	if err != nil {
 		return fail(err)
 	}
+	if prepared.dialect == DialectCC && s.browserRequiresGo(c) {
+		return renderV7YAMLCommandError(cmd.Resource, request.RequestID, revision, "browser_requires_go", browserRequiresGo)
+	}
 	refs, err := c.v7PresetReferences.Clone()
 	if err != nil {
 		return fail(err)
@@ -217,6 +220,6 @@ func (s *Server) applyV7MachineRequestOwned(c *Client, cmd machineCommand, reque
 	if changed {
 		s.publishV7Configuration(c, next, prepared, refs, time.Now().UTC())
 	}
-	c.configurationUnsaved = false
+	c.markProfileSaved()
 	return response
 }

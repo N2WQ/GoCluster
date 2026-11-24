@@ -156,6 +156,7 @@ func dedupeKeyLabel(policy dedupePolicy) string {
 //   - BroadcastSpot() is thread-safe (uses mutex)
 //   - Each client goroutine operates independently
 type Server struct {
+	presetNoticeVersion                 atomic.Uint64
 	port                                int                                        // TCP port to listen on
 	welcomeMessage                      string                                     // Welcome message for new connections
 	maxConnections                      int                                        // Maximum concurrent client connections
@@ -173,6 +174,7 @@ type Server struct {
 	clusterCall                         string                                     // Cluster/node callsign for greeting substitution
 	listener                            net.Listener                               // TCP listener
 	clients                             map[string]*Client                         // Map of callsign → Client
+	browserCompanions                   map[string]*Client                         // Browser slots paired with a Telnet slot.
 	clientsMutex                        sync.RWMutex                               // Protects clients and session capacity accounting
 	sessionReservations                 int                                        // New identities preparing login; protected by clientsMutex
 	maxSessionsPerBaseCall              int                                        // Per-station session ceiling; zero disables it
@@ -397,6 +399,8 @@ type Server struct {
 //
 // The client remains active until they type BYE or their connection drops.
 type Client struct {
+	notices                 sessionNotices
+	browserCountry          string              // Validated before registration; display only.
 	web                     *webSessionConn     // Non-nil only on the authenticated browser transport.
 	conn                    net.Conn            // TCP connection to client
 	preloginBudget          *preloginBudget     // Admission worker retired before registration publishes
@@ -413,7 +417,6 @@ type Client struct {
 	server                  *Server             // Back-reference to server for formatting/helpers
 	address                 string              // Client's IP address
 	ipSessionKey            string              // Registered IP quota identity; guarded by clientsMutex
-	recentIPs               []string            // Most-recent-first IP history for this callsign
 	spotChan                chan *spotEnvelope  // Buffered channel for spot delivery (configurable capacity)
 	controlChan             chan controlMessage // Buffered channel for control/bulletin delivery
 	done                    chan struct{}       // Closed to stop writer and prevent new enqueues
@@ -430,54 +433,22 @@ type Client struct {
 	readPauseClosed         bool                // Guarded by readPauseMu; closed clients cannot regain a hold
 	manualPauseUntil        int64               // Guarded by readPauseMu; automatic extensions cannot change this deadline
 	jsonPauseCutoff         atomic.Pointer[jsonPauseFence]
-	readPauseUntilUnixNano  atomic.Int64           // Read-pause deadline; checked lazily, no timer/goroutine
-	readPauseDiscardBefore  atomic.Int64           // Drop queued spot envelopes at/before this enqueue timestamp
-	readPauseSuppressed     atomic.Uint64          // Spots suppressed by the current or most recent read pause
-	echoInput               bool                   // True when we should echo typed characters back to the client
-	dialect                 DialectName            // Active command dialect for filter commands
-	grid                    string                 // User grid (4+ chars) for path reliability
-	gridDerived             bool                   // True when grid was derived from CTY prefix info
-	gridCell                pathreliability.CellID // Cached cell for path reliability
-	gridCoarseCell          pathreliability.CellID // Cached coarse (res-1) cell for nearby filtering
-	noiseClass              string                 // Noise class token (e.g., QUIET, URBAN)
-	pathMinObservationCount int                    // Optional stricter per-user path sample floor
-	skipNextEOL             bool                   // Consume a single LF/NUL after CR (RFC 854 compliance)
-	dedupePolicy            atomic.Uint32          // Secondary dedupe policy (fast/med/slow)
-	diagMode                atomic.Uint32          // Diagnostic comment override mode
-	ve7ccEnabled            bool                   // Requested mode belongs to the configuration lease, not saved settings.
-	jsonRequested           atomic.Bool            // Session setting. Reader waits for the writer's switch receipt before its next read.
-	jsonHistoryMu           sync.Mutex             // Orders structured history commands through page completion.
+	readPauseUntilUnixNano  atomic.Int64  // Read-pause deadline; checked lazily, no timer/goroutine
+	readPauseDiscardBefore  atomic.Int64  // Drop queued spot envelopes at/before this enqueue timestamp
+	readPauseSuppressed     atomic.Uint64 // Spots suppressed by the current or most recent read pause
+	echoInput               bool          // True when we should echo typed characters back to the client
+	skipNextEOL             bool          // Consume a single LF/NUL after CR (RFC 854 compliance)
+	diagMode                atomic.Uint32 // Diagnostic comment override mode
+	ve7ccEnabled            bool          // Requested mode belongs to the configuration lease, not saved settings.
+	jsonRequested           atomic.Bool   // Session setting. Reader waits for the writer's switch receipt before its next read.
+	jsonHistoryMu           sync.Mutex    // Orders structured history commands through page completion.
 	ve7ccDiagnostics        ve7ccDiagnostics
 	// solarMu guards solar summary settings shared across goroutines.
 	solarMu             sync.Mutex
 	solarSummaryMinutes int
 	solarNextSummaryAt  time.Time
 
-	// filterMu guards filter, which is read by telnet broadcast workers while the
-	// client session goroutine mutates it in response to PASS/REJECT commands.
-	// Without this lock, Go's runtime can terminate the process with:
-	// "fatal error: concurrent map read and map write"
-	// because Filter contains many maps.
-	filterMu sync.RWMutex
-	filter   *filter.Filter // Personal spot filter (band, mode, callsign)
-	// pathMu guards grid/noise settings shared across goroutines.
-	pathMu sync.RWMutex
-	// Configuration metadata belongs to the full-callsign transaction stripe,
-	// not the broadcast path. A baseline is immutable and bounded by preset limits.
-	configuredSettings       filter.SettingsConfiguration
-	configurationInitialized bool
-	presetReference          *filter.PresetReference
-	filterBanks              *filter.V7FilterBanks // Immutable published definitions; active edits merge by program kind.
-	v7PresetReferences       filter.V7PresetReferences
-	v7Notice                 filter.V7NoticeState
-	v7LibraryResetGeneration int
-	configurationUnsaved     bool // Transaction-owned; only a complete successful save clears it.
-	recordProtected          bool
-	lastLoginUTC             time.Time
-	configurationEpoch       string
-	configurationRevision    uint64
-	configurationDigest      [32]byte
-	configurationDigestSet   bool
+	*sessionProfile // Assigned before registration; shared by both slots for the SSID.
 	// One cursor is bounded by this connection; close/replacement releases it.
 	historyMu         sync.Mutex
 	historySearch     *historySearch
@@ -522,6 +493,7 @@ func (c *Client) saveFilter() error {
 	if c == nil || c.filter == nil || strings.TrimSpace(c.callsign) == "" {
 		return nil
 	}
+	c.awaitConfigurationWriter()
 	release, err := c.server.acquireConfiguration(c, false, false, time.Time{})
 	if err != nil {
 		return err
@@ -691,6 +663,8 @@ type spotEnvelope struct {
 }
 
 type controlMessage struct {
+	noticeCode               string
+	noticeVersion            string
 	jsonSwitch               *jsonFormatSwitch
 	jsonPage                 *jsonHistoryDelivery
 	kind                     controlKind
@@ -2485,8 +2459,8 @@ func (s *Server) keepaliveLoop() {
 // reporting outside membership locks; each queued raw payload owns its bytes.
 func (s *Server) sendKeepalives() {
 	s.clientsMutex.RLock()
-	clients := make([]*Client, 0, len(s.clients))
-	for _, client := range s.clients {
+	clients := make([]*Client, 0, s.activeConnectionCountLocked())
+	for client := range s.activeConnectionsLocked {
 		clients = append(clients, client)
 	}
 	s.clientsMutex.RUnlock()
@@ -2536,7 +2510,7 @@ func (s *Server) emitSolarSummaries(now time.Time) {
 func (s *Server) dispatchSolarSummary(now time.Time, message string) {
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
-	for _, client := range s.clients {
+	for client := range s.activeConnectionsLocked {
 		nextAt, ok := client.nextSolarSummaryAt(now)
 		if !ok || now.Before(nextAt) {
 			continue
@@ -2624,7 +2598,7 @@ func (s *Server) DeliverSelfSpotOwned(dxCall string, snapshot *spot.Spot) {
 	}
 	s.clientsMutex.RLock()
 	clients := make([]*Client, 0, 1)
-	for _, client := range s.clients {
+	for client := range s.activeConnectionsLocked {
 		if client != nil && normalizedOwnCall(client.callsign) == dxCall {
 			clients = append(clients, client)
 		}
@@ -2655,7 +2629,7 @@ func (s *Server) BroadcastRaw(line string) {
 	}
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
-	for _, client := range s.clients {
+	for client := range s.activeConnectionsLocked {
 		s.sendClientMessage(client, line, "raw broadcast")
 	}
 }
@@ -2713,11 +2687,11 @@ func (s *Server) SendDirectMessage(callsign string, line string) {
 	}
 	s.clientsMutex.RLock()
 	client := s.clients[callsign]
+	revision := s.peerMembershipRevision
 	s.clientsMutex.RUnlock()
-	if client == nil {
-		return
+	if client != nil {
+		s.SendCurrentDirectMessageAt(callsign, client.peerSessionID, revision, message, "", s.now())
 	}
-	s.enqueueBulletin(client, "TALK", message, "", s.now())
 }
 
 func (s *Server) broadcastBulletin(kind, line, from string, receivedAt time.Time) {
@@ -2746,8 +2720,8 @@ func (s *Server) bulletinRecipients(kind string, applyFilter bool) []*Client {
 	}
 	s.clientsMutex.RLock()
 	defer s.clientsMutex.RUnlock()
-	recipients := make([]*Client, 0, len(s.clients))
-	for _, client := range s.clients {
+	recipients := make([]*Client, 0, s.activeConnectionCountLocked())
+	for client := range s.activeConnectionsLocked {
 		if client == nil {
 			continue
 		}
@@ -2952,13 +2926,13 @@ func (s *Server) cachedClientShards() [][]*Client {
 	// A surviving session must stay on its existing ordered worker queue even
 	// when old immutable snapshots still have jobs outstanding. Departures can
 	// leave skew; only new sessions are balanced into the shortest current shard.
-	for _, client := range s.clients {
+	for client := range s.activeConnectionsLocked {
 		if client != nil && client.broadcastShard > 0 {
 			shard := client.broadcastShard - 1
 			shards[shard] = append(shards[shard], client)
 		}
 	}
-	for _, client := range s.clients {
+	for client := range s.activeConnectionsLocked {
 		if client == nil || client.broadcastShard != 0 {
 			continue
 		}
@@ -3841,6 +3815,12 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		inputReader = inputExposure
 	}
 	client := &Client{
+		notices: sessionNotices{wake: make(chan struct{}, 1)}, sessionProfile: &sessionProfile{filter: filter.NewFilter(),
+			dialect:        s.filterEngine.defaultDialect,
+			gridCell:       pathreliability.InvalidCell,
+			gridCoarseCell: pathreliability.InvalidCell,
+			noiseClass:     "QUIET",
+		},
 		conn:           conn,
 		web:            web,
 		preloginBudget: budget,
@@ -3856,11 +3836,8 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		done:           make(chan struct{}),
 		writerStopped:  make(chan struct{}),
 		retired:        make(chan struct{}),
-		filter:         filter.NewFilter(), // Start with no filters (accept all)
-		dialect:        s.filterEngine.defaultDialect,
-		gridCell:       pathreliability.InvalidCell,
-		gridCoarseCell: pathreliability.InvalidCell,
-		noiseClass:     "QUIET",
+		// Start with no filters (accept all)
+
 		// Echo policy is configured explicitly so we can support local echo even
 		// when clients toggle their own modes.
 		echoInput: web == nil && s.echoMode == telnetEchoServer,
@@ -3975,6 +3952,13 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	}
 
 	client.callsign = callsign
+	if web != nil && s.reputationGate != nil {
+		if result, ok := s.reputationGate.LookupIPForAdmission(spotterIP(address), loginTime); ok {
+			if len(result.CountryCode) == 2 {
+				client.browserCountry = result.CountryCode
+			}
+		}
+	}
 	if !budget.canContinue() {
 		return
 	}
@@ -4038,11 +4022,12 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	startupWarning := restored.warning
 
 	// Send login confirmation
-	dialectSource := s.dialectSourceLabel(client.dialect, created, restored.loadError, s.filterEngine.defaultDialect)
+	banked, loginDialect := client.configurationBankSelection()
+	dialectSource := s.dialectSourceLabel(loginDialect, created, restored.loadError, s.filterEngine.defaultDialect)
 	dialectDefault := strings.ToUpper(string(s.filterEngine.defaultDialect))
 	greeting := loginGreeting{data: s.postLoginTemplateData(loginTime, client, prevLogin, prevIP, dialectSource, dialectDefault)}
 	hasLoginSummary := strings.Contains(s.greetingTemplate, loginSummaryToken)
-	showRecipeInSummary := hasLoginSummary && created && restored.loadError == nil && client.dialect == DialectGo
+	showRecipeInSummary := hasLoginSummary && created && restored.loadError == nil && loginDialect == DialectGo
 	if hasLoginSummary {
 		block := loginSummary(greeting.data, restored, showRecipeInSummary)
 		greeting.data.loginSummary = greeting.blockValue(s.greetingTemplate, loginSummaryToken, "", block)
@@ -4083,7 +4068,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	}
 	addStartup(startupWarning)
 	dialectMsg := formatDialectWelcome(s.dialectWelcomeMsg, dialectTemplateData{
-		dialect:        strings.ToUpper(string(client.dialect)),
+		dialect:        strings.ToUpper(string(loginDialect)),
 		source:         dialectSource,
 		defaultDialect: dialectDefault,
 	})
@@ -4110,12 +4095,14 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 	if !s.sendClientMessage(client, after, "greeting") {
 		return
 	}
-	if client.filterBanks != nil && !s.sendV7ResetNotice(client) {
+	if banked && !s.sendV7ResetNotice(client) {
 		return
 	}
 	if noticeMarked && !s.sendClientMessage(client, greeting.format(prompt), "login prompt") {
 		return
 	}
+
+	client.enableSessionNotices()
 
 	// A fresh session gets its own full burst. The reader owns the pacer.
 	var pacer *commandPacer
@@ -4334,7 +4321,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			matches, _, _ := s.matchSnapshot(matching, spotEntry)
 			return matches
 		}
-		response := s.processor.ProcessCommandForClient(line, client.callsign, spotterIP(client.address), filterFn, string(client.dialect))
+		response := s.processRegisteredCommand(client, line, filterFn)
 
 		// Check for disconnect signal
 		if response == "BYE" {
@@ -5889,7 +5876,8 @@ func (s *Server) postLoginTemplateData(now time.Time, client *Client, prevLogin 
 			grid = "unset"
 		}
 		noise = strings.TrimSpace(state.noiseClass)
-		dialect = strings.ToUpper(string(client.dialect))
+		_, selection := client.configurationBankSelection()
+		dialect = strings.ToUpper(string(selection))
 		dedupePolicy = client.getDedupePolicy().label()
 	}
 	return templateData{
@@ -6076,6 +6064,7 @@ func (c *Client) writerLoop() {
 		configurationReserved.Release()
 		c.releaseBulletinReservations(bulletinReserved)
 		c.drainBulletinReservations()
+		c.clearSessionNotices()
 		if c.writerStopped != nil {
 			close(c.writerStopped)
 		}
@@ -6194,6 +6183,8 @@ func (c *Client) writerLoop() {
 				return
 			case msg := <-controlCh:
 				appendControl(msg, &closeAfter)
+			case <-c.notices.wake:
+				appendControl(c.nextSessionNotice(), &closeAfter)
 			case env := <-spotCh:
 				appendSpot(env)
 			}
@@ -6461,6 +6452,8 @@ func (c *Client) enqueueSpot(env *spotEnvelope) {
 		env.enqueueAt = now
 	}
 	select {
+	case <-c.retired:
+		return
 	case <-c.done:
 		return
 	default:
@@ -6713,12 +6706,11 @@ func (s *Server) Stop() {
 			_ = s.listener.Close()
 		}
 
-		// Disconnect all clients
-		s.clientsMutex.Lock()
-		for _, client := range s.clients {
+		// The shutdown gate fences admission. Take the current socket snapshot
+		// before closing, so socket callbacks cannot reenter the registry lock.
+		for _, client := range s.connectionSnapshot() {
 			client.close("server shutdown")
 		}
-		s.clientsMutex.Unlock()
 	})
 }
 
@@ -6935,4 +6927,23 @@ func (c *Client) logRejectedInput(context, reason string) {
 		id = c.address
 	}
 	log.Printf("Rejected %s input from %s: %s", context, id, reason)
+}
+
+func (s *Server) processRegisteredCommand(c *Client, line string, match func(*spot.Spot) bool) string {
+	command := ""
+	for field := range strings.FieldsSeq(line) {
+		command = field
+		break
+	}
+	if strings.EqualFold(command, "DX") {
+		// DX mutates the reputation/ingest path. Tie its effect to the admitted
+		// slot. The processor's admission is in-memory and queues without waiting.
+		release, err := s.acquireConfiguration(c, false, false, time.Time{})
+		if err != nil {
+			return ""
+		}
+		defer release()
+	}
+	_, dialect := c.configurationBankSelection()
+	return s.processor.ProcessCommandForClient(line, c.callsign, spotterIP(c.address), match, string(dialect))
 }

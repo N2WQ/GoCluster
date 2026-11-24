@@ -264,7 +264,7 @@ func TestVE7CCHistorySharesOutputAdmissionAcrossServers(t *testing.T) {
 		assertConfigurationTransferStats(t, input, output)
 	})
 	for i := range 7 {
-		owner, err := (&Client{server: servers[i%2], done: make(chan struct{})}).reserveConfigurationOutput()
+		owner, err := (&Client{sessionProfile: &sessionProfile{}, server: servers[i%2], done: make(chan struct{})}).reserveConfigurationOutput()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -280,7 +280,7 @@ func TestVE7CCHistorySharesOutputAdmissionAcrossServers(t *testing.T) {
 	}
 	owners = append(owners, message.configurationReservation)
 	assertConfigurationTransferStats(t, input, output+8<<20)
-	extra := &Client{server: servers[1], done: make(chan struct{})}
+	extra := &Client{sessionProfile: &sessionProfile{}, server: servers[1], done: make(chan struct{})}
 	if owner, err := extra.reserveConfigurationOutput(); owner != nil || !errors.Is(err, errConfigurationTransferBusy) {
 		t.Fatal("native history did not exhaust shared configuration capacity")
 	}

@@ -209,7 +209,10 @@ func FuzzHumanGridAdmission(f *testing.F) {
 		if len(value) > 128 {
 			return
 		}
-		c := &Client{filter: testRuleFilter(t), grid: "IO91", configuredSettings: filter.SettingsConfiguration{Grid: "IO91"}}
+		c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t),
+			grid:               "IO91",
+			configuredSettings: filter.SettingsConfiguration{Grid: "IO91"},
+		}}
 		before := filter.V6ConfigurationFromFilter(c.filter, c.configuredSettings)
 		fields := strings.Fields("SET GRID " + value)
 		grid := ""

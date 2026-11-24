@@ -12,7 +12,7 @@ import (
 
 func TestHandleDiagCommandOnRejected(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 
 	resp, handled := server.handleDiagCommand(client, "SET DIAG ON")
 	if !handled {
@@ -28,7 +28,7 @@ func TestHandleDiagCommandOnRejected(t *testing.T) {
 
 func TestFormatSpotForClientDedupeDiagComment(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 	client.setDedupePolicy(dedupePolicySlow)
 	client.setDiagMode(diagModeDedupe)
 
@@ -63,7 +63,7 @@ func TestFormatSpotForClientDedupeDiagUsesOrdinaryPolicyWithNearby(t *testing.T)
 		DedupeMedEnabled:  true,
 		DedupeSlowEnabled: true,
 	}, nil)
-	client := &Client{filter: testRuleFilter(t)}
+	client := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t)}}
 	client.setDedupePolicy(dedupePolicySlow)
 	client.setDiagMode(diagModeDedupe)
 	client.filter = passRuleTestFilter(t, "NEARBY")
@@ -89,7 +89,7 @@ func TestFormatSpotForClientDedupeDiagUsesOrdinaryPolicyWithNearby(t *testing.T)
 
 func TestFormatSpotForClientSourceDiagPeerNode(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 	client.setDiagMode(diagModeSource)
 
 	sp := spot.NewSpot("K1ABC", "W1AW", 14025.0, "CW")
@@ -106,7 +106,7 @@ func TestFormatSpotForClientSourceDiagPeerNode(t *testing.T) {
 
 func TestFormatSpotForClientConfidenceDiagComment(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 	client.setDiagMode(diagModeConfidence)
 
 	sp := spot.NewSpot("K1ABC", "W1AW", 14025.0, "CW")
@@ -134,7 +134,7 @@ func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
 		PathDisplayEnabled: true,
 	}, nil)
 	server.nowFn = func() time.Time { return now }
-	client := &Client{grid: "FN31"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31"}}
 	client.setDiagMode(diagModePath)
 
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
@@ -171,7 +171,7 @@ func TestFormatSpotForClientPathDiagUsesUnionWeight(t *testing.T) {
 		PathDisplayEnabled: true,
 	}, nil)
 	server.nowFn = func() time.Time { return now }
-	client := &Client{grid: "FN31"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31"}}
 	client.setDiagMode(diagModePath)
 
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
@@ -242,7 +242,7 @@ func TestDiagPathTagLiteralFormatting(t *testing.T) {
 
 func TestFormatSpotForClientModeDiagComment(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 	client.setDiagMode(diagModeMode)
 
 	sp := spot.NewSpot("K1ABC", "W1AW", 14025.0, "RTTY")
@@ -265,7 +265,7 @@ func TestFormatSpotForClientModeDiagComment(t *testing.T) {
 
 func TestFormatSpotForClientModeDiagBlankRegional(t *testing.T) {
 	server := NewServer(ServerOptions{}, nil)
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 	client.setDiagMode(diagModeMode)
 
 	sp := spot.NewSpot("K1ABC", "W1AW", 14025.0, "")

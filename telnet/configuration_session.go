@@ -21,6 +21,7 @@ import (
 
 type restoredLogin struct {
 	created       bool
+	abort         bool
 	profileReset  bool
 	previousLogin time.Time
 	previousIP    string
@@ -104,9 +105,9 @@ func (s *Server) setBaseSessionCountLocked(base string, count baseSessionCount) 
 // A registered exact identity is a replacement, not a new occupied slot.
 // Global registered-full precedence preserves the existing server-full notice.
 func (s *Server) loginCapacityErrorLocked(c *Client, base, ip string) error {
-	owner := s.clients[c.callsign]
+	owner := s.sameTransportSlotLocked(c)
 	if owner == nil {
-		if s.maxConnections > 0 && len(s.clients) >= s.maxConnections {
+		if s.maxConnections > 0 && s.activeConnectionCountLocked() >= s.maxConnections {
 			return errSessionFull
 		}
 		if s.maxSessionsPerBaseCall > 0 && s.baseSessionCounts[base].registered >= s.maxSessionsPerBaseCall {
@@ -178,13 +179,13 @@ func (s *Server) acquireLoginCapacity(c *Client, deadline time.Time) (release fu
 			release()
 			return nil, loginReservation{}, err
 		}
-		owner := s.clients[c.callsign]
+		owner := s.sameTransportSlotLocked(c)
 		newIdentity := owner == nil
 		needsIP := s.maxSessionsPerIP > 0
 		if needsIP && owner != nil {
 			needsIP = owner.ipSessionKey != ip
 		}
-		globalAvailable := !newIdentity || s.maxConnections <= 0 || len(s.clients)+s.sessionReservations < s.maxConnections
+		globalAvailable := !newIdentity || s.maxConnections <= 0 || s.activeConnectionCountLocked()+s.sessionReservations < s.maxConnections
 		baseCount := s.baseSessionCounts[base]
 		baseAvailable := !newIdentity || s.maxSessionsPerBaseCall <= 0 || baseCount.registered+baseCount.pending < s.maxSessionsPerBaseCall
 		ipCount := s.ipSessionCounts[ip]
@@ -291,7 +292,22 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 	if !deadline.IsZero() && !time.Now().Before(deadline) {
 		return restoredLogin{}, errLoginDeadline
 	}
-	result := s.restoreClientRecordOwned(c, loginTime)
+	s.clientsMutex.RLock()
+	incumbent := s.clients[c.callsign]
+	s.clientsMutex.RUnlock()
+	var result restoredLogin
+	var recentIPs []string
+	joined := incumbent != nil && incumbent.filterBanks != nil
+	if joined {
+		c.sessionProfile = incumbent.sessionProfile
+		c.setSolarSummaryMinutes(c.configuredSettings.SolarSummaryMinutes, loginTime)
+		recentIPs = s.prepareSharedLoginMetadataOwned(c, loginTime, &result)
+	} else {
+		result = s.restoreClientRecordOwned(c, loginTime)
+		if result.abort {
+			return result, errClientClosed
+		}
+	}
 	select {
 	case <-c.done:
 		return result, errClientClosed
@@ -302,11 +318,31 @@ func (s *Server) restoreAndRegisterClient(c *Client, loginTime, deadline time.Ti
 	if !time.Now().Before(deadline) {
 		return result, errLoginDeadline
 	}
+	preparedGo, err := s.prepareBrowserGoOwned(c, loginTime)
+	if err != nil {
+		return result, err
+	}
+	defer preparedGo.owner.Release()
 	evicted, total, err := s.registerClientOwned(c, reserved, deadline)
 	if err != nil {
 		return result, err
 	}
 	reserved = loginReservation{}
+	if joined {
+		c.recentIPs, c.lastLoginUTC = recentIPs, loginTime
+		if (incumbent.web == nil) != (c.web == nil) {
+			c.shared = true
+		}
+	}
+	before := c.profileChangeBaseline()
+	if c.web != nil && c.filterBanks != nil {
+		s.selectBrowserGoOwned(c, preparedGo, loginTime)
+		if result.created && !c.initialRecordMissing {
+			result.warning = strings.Replace(result.warning, unsavedStartingSettingsWarning, "", 1)
+		}
+	}
+	s.publishProfileChangesOwned(c, before)
+	s.publishPresenceOwned(c, false)
 	result.evicted, result.total = evicted, total
 	return result, nil
 }
@@ -426,7 +462,9 @@ func (s *Server) prepareConfiguration(c *Client, cfg filter.Configuration, now t
 // second callsign lookup on an unrelated preference/rule replacement.
 func (s *Server) prepareConfigurationRuntime(c *Client, cfg filter.Configuration, now time.Time, preserveGrid bool) (*Client, string) {
 	f := cfg.FilterValue()
-	prepared := &Client{filter: &f, dialect: normalizeDialectName(cfg.Settings.Dialect)}
+	prepared := &Client{sessionProfile: &sessionProfile{filter: &f,
+		dialect: normalizeDialectName(cfg.Settings.Dialect),
+	}}
 	if cfg.Settings.Dialect == "" {
 		prepared.dialect = s.configurationDefaultDialect()
 	}
@@ -495,7 +533,8 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 	if s.clients == nil {
 		s.clients = make(map[string]*Client)
 	}
-	evicted := s.clients[c.callsign]
+	evicted := s.sameTransportSlotLocked(c)
+	previousRepresentative := s.clients[c.callsign]
 	oldIP := ""
 	if s.maxSessionsPerIP > 0 && evicted != nil {
 		oldIP = evicted.ipSessionKey
@@ -555,7 +594,7 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 	s.peerSessionID++
 	c.peerSessionID = s.peerSessionID
 	c.ipSessionKey = ip
-	s.clients[c.callsign] = c
+	s.installConnectionLocked(c)
 	if evicted != nil && evicted != c && evicted.retired != nil {
 		// Retirement and registry ownership change share this lock. The writer
 		// still owns notice delivery and socket closure after replacement.
@@ -594,8 +633,11 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 		}
 	}
 	s.signalSessionCapacityLocked()
-	s.peerMembershipRevision++
-	total := len(s.clients)
+	if previousRepresentative != s.clients[c.callsign] || c == s.clients[c.callsign] {
+		s.peerMembershipRevision++
+	}
+	total := s.activeConnectionCountLocked()
+	s.clientShardCache.Store(nil)
 	s.shardsDirty.Store(true)
 	s.shutdownRegistrationMu.Unlock()
 	s.clientsMutex.Unlock()
@@ -603,8 +645,13 @@ func (s *Server) registerClientOwned(c *Client, reserved loginReservation, deadl
 }
 
 func (s *Server) finishClientRegistration(c, evicted *Client, total int) {
-	s.notifyPeerMembershipChange()
-	s.notifyClientListChange()
+	s.clientsMutex.RLock()
+	representative := s.clients[c.callsign] == c
+	s.clientsMutex.RUnlock()
+	if representative {
+		s.notifyPeerMembershipChange()
+		s.notifyClientListChange()
+	}
 	if evicted != nil && evicted != c {
 		// Preserve the configured duplicate-login notice and existing serialized
 		// close-after-control policy. Ownership already fences every retired save.
@@ -640,22 +687,39 @@ func (s *Server) unregisterClient(c *Client) {
 	if c == nil {
 		return
 	}
+	// A displaced reader must not wait for the retired socket's writer.
+	// If replacement races this wait, retired wakes it without a socket wait.
+	s.clientsMutex.RLock()
+	current := s.sameTransportSlotLocked(c) == c
+	s.clientsMutex.RUnlock()
+	if !current {
+		return
+	}
+	c.awaitConfigurationWriter()
 	release, err := s.acquireConfiguration(c, true, false, time.Time{})
 	if err != nil {
 		return // A retired session may neither save nor remove its replacement.
 	}
-	// A rejected machine upload must not repair an earlier failed human save.
-	// Keep the final owner fence and registry removal even when autosave is skipped.
-	if !c.preserveRecordOnExit.Load() {
+	// A rejected machine upload preserves the single-session refusal contract.
+	// A paired profile must still retry its already-published changes on either
+	// departure. The rejected upload never published state to that profile.
+	s.clientsMutex.RLock()
+	last := s.otherTransportSlotLocked(c) == nil
+	s.clientsMutex.RUnlock()
+	before := c.profileChangeBaseline()
+	dirty := c.hasUnsavedChanges()
+	if (last || dirty) && (!c.preserveRecordOnExit.Load() || (c.shared && dirty)) {
 		if err := c.saveFilterOwned(); err != nil {
 			log.Printf("Warning: failed to persist filter for %s during unregister: %v", c.callsign, err)
 		}
 	}
+	s.publishProfileChangesOwned(c, before)
 	base := spot.NormalizeOwnCallsign(c.callsign)
 	s.clientsMutex.Lock()
-	removed := s.clients[c.callsign] == c
+	removed := s.sameTransportSlotLocked(c) == c
+	representative := s.clients[c.callsign] == c
 	if removed {
-		delete(s.clients, c.callsign)
+		s.removeConnectionLocked(c)
 		if s.maxSessionsPerBaseCall > 0 {
 			count := s.baseSessionCounts[base]
 			count.registered--
@@ -668,16 +732,22 @@ func (s *Server) unregisterClient(c *Client) {
 			s.setIPSessionCountLocked(ip, count)
 		}
 		s.signalSessionCapacityLocked()
-		s.peerMembershipRevision++
+		if representative {
+			s.peerMembershipRevision++
+		}
+		s.clientShardCache.Store(nil)
 		s.shardsDirty.Store(true)
 	}
-	total := len(s.clients)
+	total := s.activeConnectionCountLocked()
 	s.clientsMutex.Unlock()
+	if removed {
+		s.publishPresenceOwned(c, true)
+	}
 	if removed && s.testAfterClientRemoval != nil {
 		s.testAfterClientRemoval(c)
 	}
 	release()
-	if removed {
+	if removed && representative {
 		s.notifyPeerMembershipChange()
 		s.notifyClientListChange()
 	}

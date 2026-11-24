@@ -22,7 +22,7 @@ func TestClientCloseReportsDisconnect(t *testing.T) {
 			got = ev
 		},
 	}
-	c := &Client{
+	c := &Client{sessionProfile: &sessionProfile{},
 		server:   s,
 		callsign: "K1ABC",
 		address:  "203.0.113.1:1234",

@@ -26,9 +26,14 @@ func nativeCCCommandFixture(t *testing.T) (*Client, *filterCommandEngine, *int) 
 		"ROTUMA": {Prefix: "3D2/R", ADIF: 460}, "W1ABC": {Prefix: "K", ADIF: 291},
 	}}
 	s := &Server{commandLineLimit: 128, ctyLookup: func() *cty.CTYDatabase { *lookups++; return database }}
-	c := &Client{server: s, callsign: "N0CALL-7", dialect: DialectCC, filter: &value,
-		grid: "FN31", noiseClass: "URBAN", configurationInitialized: true,
-		configuredSettings: filter.SettingsConfiguration{Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN"}}
+	c := &Client{sessionProfile: &sessionProfile{dialect: DialectCC,
+		filter:                   &value,
+		grid:                     "FN31",
+		noiseClass:               "URBAN",
+		configurationInitialized: true,
+		configuredSettings:       filter.SettingsConfiguration{Dialect: "cc", Grid: "FN31", NoiseClass: "URBAN"},
+	}, server: s, callsign: "N0CALL-7",
+	}
 	return c, newFilterCommandEngine(), lookups
 }
 

@@ -5,6 +5,44 @@ description: Login, command, configuration and delivery contracts for telnet cli
 
 This directory owns the telnet session layer: login flow, prompt handling, filter commands, client fan-out, and path display.
 
+## Browser and Telnet on one callsign
+
+Sign in to the browser and your logger with the same full callsign, including
+any SSID suffix, to share filters and settings. One browser and one Telnet
+connection can be open at once. A new connection replaces the older connection
+of its own kind. The node counts the pair as one user and charges two connection
+slots against its global, base-call, and per-IP limits.
+
+The browser selects GO for both connections. The CC filter bank remains saved,
+and you can select it again with DIALECT CC after the browser disconnects.
+SH/DX and SHOW/DX work in GO. VE7CC, spot delivery controls such as PAUSE, and
+history continuations belong to the individual connection.
+
+If one connection drops, the other keeps its feed and the live profile. A
+rejoining client sees changes that are still active but unsaved. The node
+retries a guarded profile save on departure when needed. Once the last
+connection leaves, a later login loads the last successfully saved profile.
+A failed final save can leave some changes unsaved.
+
+If the browser switches the profile to GO and the save fails, GO is active.
+The clients receive an unsaved warning, and a later browser login retries that
+save. A reconnect with GO already saved still records the login time, recent
+IP and enabled reputation history. Its metadata write carries forward the
+saved profile. The reconnecting client receives a timestamp/IP warning if
+that write fails.
+
+The logger sees browser connection notices with the observed browser address
+and its country code, or unknown. During heavy output, pending connection
+notices become one summary. The browser sees logger presence only. Logging in
+from a new network can affect base-call self-spot restrictions when reputation
+controls are enabled.
+
+Incoming private PC93 messages from peers go to the logger while it is
+registered, or to the browser when it is alone. If the logger's network path
+fails silently, a message can be lost before the operating system reports the
+failure. Subsequent messages can reach the browser once the logger retires.
+A full ordinary control queue still follows the normal slow-client policy.
+
 ## JSON output
 
 After login, send `SET JSON ON` or `SET JSON ON VERSION 1`. Every connection
@@ -125,6 +163,20 @@ use the two public layouts above. IP addresses from spot ingest, TTL, raw
 skimmer observations, H3 cells, toxicity details, internal caches, NEARBY
 decisions and diagnostic decorations have no output positions. YAML exposes
 the requested configuration, its revision and its defined status fields.
+Shared-SSID advisory notices append the view's version as a decimal string.
+Profile, save-status and preset versions are independent. A configuration
+notice prompts a CONFIG readback, a save-status notice prompts a SETTINGS
+readback, and a preset notice prompts a preset list refresh. The profile
+revision for a write still comes from the schema 7 readback.
+
+```json
+["notice","config-changed","Live profile changed.","5"]
+["notice","save-status-changed","GO is active but unsaved.","2"]
+["notice","presets-changed","Preset library changed.","12"]
+["notice","presence-changed","Logger connected.","3"]
+["notice","go-selected","GO is active while a web console is connected. Use DIALECT CC after it disconnects.","5"]
+```
+
 Human replies retain the command's display contents. Bulletin routing uses
 the formatted public line and sender, excluding private peer frame fields
 such as PC93's IP. User-entered comments and bulletin bodies remain visible
@@ -864,8 +916,8 @@ before counting and continuation; it does not rewrite archive records.
 
 `SHOW DX` and `SHOW MYDX` share archive history selection and paging. Counts
 range from 1 to 250, default 50; selector and count may appear in either order.
-`SH DX` / `SH MYDX` work in both dialects, while `SHOW/DX` / `SH/DX` are `cc`
-aliases. An unambiguous canonical CTY label selects its entity first. Other full
+`SH DX`, `SH MYDX`, `SHOW/DX`, and `SH/DX` work in both dialects. An
+unambiguous canonical CTY label selects its entity first. Other full
 valid calls select their exact normalized stored DX identity; other supported
 prefixes select their resolved entity. Supplied selectors require loaded CTY,
 but valid full calls with unresolved countries still work as exact searches.

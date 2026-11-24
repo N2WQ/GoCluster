@@ -46,9 +46,9 @@ type HistoryCommand struct {
 	Token string
 }
 
-// ParseHistoryCommand recognizes only existing history spellings, preserving
-// dialect restrictions. Invalid requests do not create or replace a search.
-func (p *Processor) ParseHistoryCommand(line, dialect string) (HistoryCommand, bool, string) {
+// ParseHistoryCommand accepts the same read-only history aliases in GO and CC.
+// Invalid requests do not create or replace a search.
+func (p *Processor) ParseHistoryCommand(line, _ string) (HistoryCommand, bool, string) {
 	parts := strings.Fields(line)
 	if len(parts) == 0 {
 		return HistoryCommand{}, false, ""
@@ -58,9 +58,6 @@ func (p *Processor) ParseHistoryCommand(line, dialect string) (HistoryCommand, b
 	argStart := 1
 	switch strings.ToUpper(parts[0]) {
 	case "SHOW/DX", "SH/DX":
-		if normalizeDialectString(dialect) != "cc" {
-			return HistoryCommand{}, true, "Use SHOW DX or SH DX for DX history.\n"
-		}
 		args = parts[1:]
 	case "SHOW", "SH":
 		if len(parts) < 2 || (!strings.EqualFold(parts[1], "DX") && !strings.EqualFold(parts[1], "MYDX")) {

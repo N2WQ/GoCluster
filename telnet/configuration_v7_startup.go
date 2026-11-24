@@ -7,7 +7,7 @@ import (
 )
 
 func (s *Server) validateV7StartingConfiguration() error {
-	c := &Client{server: s, callsign: "N0CALL", done: make(chan struct{})}
+	c := &Client{sessionProfile: &sessionProfile{}, server: s, callsign: "N0CALL", done: make(chan struct{})}
 	reservation, err := c.reserveConfigurationOutput()
 	if err != nil {
 		return err

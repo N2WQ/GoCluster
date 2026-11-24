@@ -175,7 +175,7 @@ func TestWriterLoopBatchesAndPrioritizesControl(t *testing.T) {
 		latency:             newLatencyMetrics(),
 	}
 	conn := &recordingConn{}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		conn:        conn,
 		writer:      bufio.NewWriter(conn),
 		server:      srv,
@@ -236,7 +236,7 @@ func TestCachedClientShardsConcurrentAccess(t *testing.T) {
 
 	for i := 0; i < 8; i++ {
 		call := fmt.Sprintf("INIT%02d", i)
-		s.clients[call] = &Client{callsign: call}
+		s.clients[call] = &Client{sessionProfile: &sessionProfile{}, callsign: call}
 	}
 	s.shardsDirty.Store(true)
 
@@ -256,7 +256,7 @@ func TestCachedClientShardsConcurrentAccess(t *testing.T) {
 		for i := 0; i < 2000; i++ {
 			call := fmt.Sprintf("MUT%04d", i)
 			s.clientsMutex.Lock()
-			s.clients[call] = &Client{callsign: call}
+			s.clients[call] = &Client{sessionProfile: &sessionProfile{}, callsign: call}
 			if i%2 == 0 {
 				delete(s.clients, call)
 			}
@@ -295,7 +295,7 @@ func BenchmarkWriterLoopBurst(b *testing.B) {
 					writerBatchWait:     tc.wait,
 					latency:             newLatencyMetrics(),
 				}
-				client := &Client{
+				client := &Client{sessionProfile: &sessionProfile{},
 					conn:        conn,
 					writer:      bufio.NewWriter(conn),
 					server:      srv,

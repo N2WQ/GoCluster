@@ -67,8 +67,8 @@ func TestHistoryBandModeInvalidRequests(t *testing.T) {
 		}
 	}
 	for _, prefix := range []string{"SHOW/DX", "SH/DX"} {
-		if _, handled, text := p.ParseHistoryCommand(prefix+" BAND 20 MODE CW", "go"); !handled || text != "Use SHOW DX or SH DX for DX history.\n" {
-			t.Fatalf("dialect restriction changed: %q", text)
+		if parsed, handled, text := p.ParseHistoryCommand(prefix+" BAND 20 MODE CW", "go"); !handled || text != "" || !reflect.DeepEqual(parsed.Query.bands, []string{"20m"}) || !reflect.DeepEqual(parsed.Query.modes, []string{"CW"}) {
+			t.Fatalf("GO history alias lost selections: %q", text)
 		}
 	}
 	if _, _, text := p.ParseHistoryCommand("SHOW DX NEXT H1"+strings.Repeat("A", 32)+" BAND 20", "go"); !strings.Contains(text, "Invalid history continuation") {

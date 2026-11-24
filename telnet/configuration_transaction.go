@@ -127,13 +127,20 @@ func (s *Server) acquireConfigurationWithRecheck(c *Client, final, handoff bool,
 	}
 	if !handoff {
 		s.clientsMutex.RLock()
-		current := s.clients[c.callsign]
+		current := s.sameTransportSlotLocked(c)
 		retired := current != c && (current != nil || c.peerSessionID != 0)
 		s.clientsMutex.RUnlock()
 		if retired {
 			release()
 			return nil, errRetiredConfiguration
 		}
+	}
+	if c.notices.wake != nil && !final && !handoff {
+		before := c.profileChangeBaseline()
+		return func() {
+			s.publishProfileChangesOwned(c, before)
+			release()
+		}, nil
 	}
 	return release, nil
 }
@@ -232,12 +239,6 @@ func (c *Client) saveFilterOwned() error {
 		return errProtectedRecord
 	}
 	if c.filterBanks != nil {
-		// Teardown already interrupted the socket. Let the existing writer drop
-		// its pending frame before obtaining a separate bounded save owner. The
-		// SSID lease prevents replacement; the writer never needs that lease.
-		if configurationTransferClosed(c) && c.writerStopped != nil {
-			<-c.writerStopped
-		}
 		reservation, err := c.reserveConfigurationPreparation()
 		if err != nil {
 			return err
@@ -255,7 +256,7 @@ func (c *Client) saveFilterOwned() error {
 		if err := c.server.commitConfigurationRecord(prepared); err != nil {
 			return err
 		}
-		c.configurationUnsaved = false
+		c.markProfileSaved()
 		return nil
 	}
 	cfg, err := c.captureConfiguration(0)
@@ -290,6 +291,9 @@ func (s *Server) handleDialectCommand(c *Client, line string) (string, bool) {
 		if len(fields) == 1 || len(fields) == 2 && strings.EqualFold(fields[1], "LIST") {
 			outcome := s.stageDialectCommand(client, input)
 			return outcome.response, outcome.handled
+		}
+		if len(fields) == 2 && s.filterEngine.dialectAliases[strings.ToLower(fields[1])] == DialectCC && s.browserRequiresGo(client) {
+			return browserRequiresGo + "\n", true
 		}
 		return s.runHumanPreferenceOwned(client, input, s.stageDialectCommand)
 	})

@@ -72,8 +72,8 @@ func TestHistoryCommentModeAliasParser(t *testing.T) {
 			t.Fatalf("invalid request retained partial query: %q %+v %t %q", args, command.Query, handled, text)
 		}
 	}
-	if _, handled, text := p.ParseHistoryCommand("SH/DX MODE COMMENT", "go"); !handled || text != "Use SHOW DX or SH DX for DX history.\n" {
-		t.Fatalf("slash dialect restriction changed: %t %q", handled, text)
+	if _, handled, text := p.ParseHistoryCommand("SH/DX MODE COMMENT", "go"); !handled || text != "" {
+		t.Fatalf("GO slash alias did not parse the mode: %t %q", handled, text)
 	}
 }
 

@@ -22,9 +22,8 @@ func TestHandleDedupeCommandSetShow(t *testing.T) {
 		DedupeMedEnabled:  true,
 		DedupeSlowEnabled: true,
 	}, nil)
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
 		callsign: "N0CALL",
-		filter:   unrestrictedTestFilter(),
 	}
 	client.setDedupePolicy(dedupePolicyFast)
 
@@ -70,9 +69,8 @@ func TestHandleDedupeCommandFallbackToFast(t *testing.T) {
 		DedupeMedEnabled:  true,
 		DedupeSlowEnabled: false,
 	}, nil)
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
 		callsign: "N0CALL",
-		filter:   unrestrictedTestFilter(),
 	}
 	client.setDedupePolicy(dedupePolicyFast)
 
@@ -104,21 +102,21 @@ func TestBroadcastRespectsDedupePolicyWindows(t *testing.T) {
 	server.startWorkerPool()
 	go server.handleBroadcasts()
 
-	fastClient := &Client{
+	fastClient := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
 		callsign: "FAST1",
-		filter:   unrestrictedTestFilter(),
+
 		spotChan: make(chan *spotEnvelope, 16384),
 	}
 	fastClient.setDedupePolicy(dedupePolicyFast)
-	medClient := &Client{
+	medClient := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
 		callsign: "MED1",
-		filter:   unrestrictedTestFilter(),
+
 		spotChan: make(chan *spotEnvelope, 16384),
 	}
 	medClient.setDedupePolicy(dedupePolicyMed)
-	slowClient := &Client{
+	slowClient := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
 		callsign: "SLOW1",
-		filter:   unrestrictedTestFilter(),
+
 		spotChan: make(chan *spotEnvelope, 16384),
 	}
 	slowClient.setDedupePolicy(dedupePolicySlow)
@@ -192,7 +190,10 @@ func TestNearbyRuleUsesOrdinaryDedupeForBroadcast(t *testing.T) {
 			if tc.reject {
 				rule.Action = filter.RuleReject
 			}
-			c := &Client{callsign: "SLOW1", filter: testRuleFilter(t, rule), gridCell: near, gridCoarseCell: pathreliability.EncodeCoarseCell("FN31"), spotChan: make(chan *spotEnvelope, 1)}
+			c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, rule),
+				gridCell:       near,
+				gridCoarseCell: pathreliability.EncodeCoarseCell("FN31"),
+			}, callsign: "SLOW1", spotChan: make(chan *spotEnvelope, 1)}
 			c.setDedupePolicy(policy)
 			sp := spot.NewSpot("DXAAA", "DEBBB", 14030, "CW")
 			sp.DXCellID, sp.DECellID = uint16(tc.cell), uint16(tc.cell)
@@ -210,7 +211,7 @@ func TestNearbyRuleUsesOrdinaryDedupeForBroadcast(t *testing.T) {
 
 func TestNearbyRuleDedupeKeepsOrdinaryDisabledPolicyFallback(t *testing.T) {
 	s := NewServer(ServerOptions{DedupeMedEnabled: true, DedupeSlowEnabled: true}, nil)
-	c := &Client{filter: passRuleTestFilter(t, "NEARBY")}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "NEARBY")}}
 	c.setDedupePolicy(dedupePolicySlow)
 	if s.effectiveDedupePolicyForClient(c) != dedupePolicySlow {
 		t.Fatal("NEARBY overrode enabled SLOW")

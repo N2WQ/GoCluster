@@ -150,7 +150,7 @@ func TestBooleanFilterSnapshotWorstCaseBoundedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	candidate := &Client{filter: &f}
+	candidate := &Client{sessionProfile: &sessionProfile{filter: &f}}
 	before := snapshotBooleanCommand(candidate)
 	body, err := formatBooleanFilterSnapshot(&f)
 	if err != nil {

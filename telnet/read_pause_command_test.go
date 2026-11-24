@@ -30,7 +30,7 @@ func TestManualReadPauseDurations(t *testing.T) {
 				duration time.Duration
 			}{{rows: 10, duration: 90 * time.Second}, {duration: 90 * time.Second}, {rows: 10}} {
 				server := &Server{autoReadPauseMinRows: auto.rows, autoReadPauseDuration: auto.duration, nowFn: func() time.Time { return now }}
-				client, other := &Client{server: server}, &Client{server: server}
+				client, other := &Client{sessionProfile: &sessionProfile{}, server: server}, &Client{sessionProfile: &sessionProfile{}, server: server}
 				server.clients = map[string]*Client{"N0CALL": client, "N1CALL": other}
 				response, handled := server.handleReadPauseCommand(client, tc.line)
 				unit := "seconds"
@@ -76,7 +76,7 @@ func TestReadPauseInvalidCommandsPreserveState(t *testing.T) {
 	} {
 		t.Run(tc.line, func(t *testing.T) {
 			for _, deadline := range []int64{0, now.Add(time.Minute).UnixNano()} {
-				client := &Client{}
+				client := &Client{sessionProfile: &sessionProfile{}}
 				client.readPauseUntilUnixNano.Store(deadline)
 				client.readPauseDiscardBefore.Store(now.Add(-time.Second).UnixNano())
 				client.readPauseSuppressed.Store(7)
@@ -103,7 +103,7 @@ func TestReadPauseReplacementAndCounters(t *testing.T) {
 	start := time.Unix(1700000000, 0).UTC()
 	now := start
 	server := &Server{nowFn: func() time.Time { return now }}
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 	server.handleReadPauseCommand(client, "PAUSE 60")
 	client.readPauseSuppressed.Store(3)
 	now = start.Add(10 * time.Second)
@@ -141,7 +141,7 @@ func TestAutoReadPausePreservesOrExtendsDeadline(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			now := start
 			server := &Server{autoReadPauseMinRows: 1, autoReadPauseDuration: 30 * time.Second, nowFn: func() time.Time { return now }}
-			client := &Client{}
+			client := &Client{sessionProfile: &sessionProfile{}}
 			server.handleReadPauseCommand(client, fmt.Sprintf("PAUSE %d", tc.pauseSeconds))
 			client.readPauseSuppressed.Store(3)
 			now = start.Add(tc.elapsed)
@@ -216,7 +216,7 @@ func TestReadPauseSessionTranscript(t *testing.T) {
 func TestReadPauseConcurrentSpotSuppression(t *testing.T) {
 	now := time.Unix(1700000000, 0).UTC()
 	server := &Server{nowFn: func() time.Time { return now }}
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 	start := make(chan struct{})
 	var workers sync.WaitGroup
 	for range 2 {
@@ -251,7 +251,7 @@ func FuzzReadPauseCommand(f *testing.F) {
 		}
 		now := time.Unix(1700000000, 0).UTC()
 		server := &Server{nowFn: func() time.Time { return now }}
-		client := &Client{}
+		client := &Client{sessionProfile: &sessionProfile{}}
 		deadline := now.Add(time.Minute).UnixNano()
 		client.readPauseUntilUnixNano.Store(deadline)
 		client.readPauseDiscardBefore.Store(deadline)

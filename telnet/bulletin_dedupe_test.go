@@ -131,10 +131,9 @@ func newBulletinDedupeTestServer(now time.Time, window time.Duration, maxEntries
 		bulletinDedupe: newBulletinDedupeCache(window, maxEntries),
 		nowFn:          func() time.Time { return now },
 	}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
 		callsign:    "ALLOW",
 		controlChan: make(chan controlMessage, 8),
-		filter:      unrestrictedTestFilter(),
 	}
 	server.clients[client.callsign] = client
 	return server, client

@@ -58,8 +58,8 @@ func TestCWSpeedReopenedHistoryPreservesCommentSearch(t *testing.T) {
 func TestCWSpeedLiveUsersAndDiagnostics(t *testing.T) {
 	s := NewServer(ServerOptions{}, nil)
 	sp := cwSpeedFixture()
-	off := &Client{}
-	on := &Client{configuredSettings: filter.SettingsConfiguration{CWSpeed: true}}
+	off := &Client{sessionProfile: &sessionProfile{}}
+	on := &Client{sessionProfile: &sessionProfile{configuredSettings: filter.SettingsConfiguration{CWSpeed: true}}}
 	// The same immutable spot is formatted in both orders to detect cache leakage.
 	for _, c := range []*Client{off, on, off, on} {
 		for _, line := range []string{s.formatSpotForClient(c, sp), s.formatSpotForClientWithPrediction(c, sp, pathPrediction{})} {
@@ -92,7 +92,7 @@ func BenchmarkCWSpeedFormat(b *testing.B) {
 			sp := cwSpeedFixture()
 			sp.CWDisplayAvailable = tc.projection
 			sp.Comment = tc.canonical
-			c := &Client{configuredSettings: filter.SettingsConfiguration{CWSpeed: tc.enabled}}
+			c := &Client{sessionProfile: &sessionProfile{configuredSettings: filter.SettingsConfiguration{CWSpeed: tc.enabled}}}
 			_ = sp.FormatDXCluster() // Compare repeated fanout after the base line is cached.
 			line := formatCWSpotForClient(c, sp)
 			if got := cwCommentRegion(line); got != tc.want {
@@ -127,8 +127,8 @@ func TestCWSpeedConcurrentUsersColdAndWarm(t *testing.T) {
 			if tc.warm {
 				_ = sp.FormatDXCluster()
 			}
-			on := &Client{configuredSettings: filter.SettingsConfiguration{CWSpeed: true}}
-			off := &Client{}
+			on := &Client{sessionProfile: &sessionProfile{configuredSettings: filter.SettingsConfiguration{CWSpeed: true}}}
+			off := &Client{sessionProfile: &sessionProfile{}}
 			start := make(chan struct{})
 			errors := make(chan string, 32)
 			var wg sync.WaitGroup

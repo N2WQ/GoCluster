@@ -326,7 +326,7 @@ func TestShutdownWriterReleasesQueuedBulletinReservations(t *testing.T) {
 	server, peer := net.Pipe()
 	defer peer.Close()
 	s := &Server{shutdown: make(chan struct{})}
-	c := &Client{server: s, conn: server, writer: bufio.NewWriter(server), done: make(chan struct{}), controlChan: make(chan controlMessage, 2)}
+	c := &Client{sessionProfile: &sessionProfile{}, server: s, conn: server, writer: bufio.NewWriter(server), done: make(chan struct{}), controlChan: make(chan controlMessage, 2)}
 	for range 2 {
 		if !s.reserveBulletinResponse() {
 			t.Fatal("could not reserve bulletin response")

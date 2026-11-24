@@ -9,7 +9,7 @@ import (
 
 func TestDedupeDiagnosticUsesOwnedDecisionAnchor(t *testing.T) {
 	srv := NewServer(ServerOptions{DedupeFastEnabled: true, DedupeMedEnabled: true, DedupeSlowEnabled: true}, nil)
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	c.setDedupePolicy(dedupePolicySlow)
 	c.setDiagMode(diagModeDedupe)
 	s := spot.NewSpot("K1ABC", "W1XYZ", 14025, "CW")

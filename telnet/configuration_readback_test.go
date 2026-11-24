@@ -16,9 +16,15 @@ const readbackFooterLiteral = "\r\nLive spots paused for 30 seconds. Missed spot
 
 func readbackTestClient() (*Server, *Client) {
 	s := &Server{nowFn: func() time.Time { return time.Unix(1700000000, 0) }}
-	c := &Client{
-		server: s, callsign: "W1ABC-1", filter: unrestrictedTestFilter(), dialect: DialectGo,
-		grid: "FN31", gridDerived: true, noiseClass: "QUIET", configurationInitialized: true,
+	c := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter(),
+		dialect:                  DialectGo,
+		grid:                     "FN31",
+		gridDerived:              true,
+		noiseClass:               "QUIET",
+		configurationInitialized: true,
+	},
+		server: s, callsign: "W1ABC-1",
+
 		done: make(chan struct{}), controlChan: make(chan controlMessage, 8),
 	}
 	return s, c

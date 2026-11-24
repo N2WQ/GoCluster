@@ -42,7 +42,11 @@ func TestS6PopulationSelectionDisplayFilterAndDiag(t *testing.T) {
 				}
 			}
 			s := &Server{pathPredictor: p, pathDisplay: true, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return now }}
-			c := &Client{filter: passRuleTestFilter(t, "MODE=FT8 AND PATH=LOW"), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: rx, noiseClass: "QUIET"}
+			c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "MODE=FT8 AND PATH=LOW"),
+				grid:       "FN31",
+				gridCell:   rx,
+				noiseClass: "QUIET",
+			}, spotChan: make(chan *spotEnvelope, 1)}
 			c.setDiagMode(diagModePath)
 			sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 			sp.BandNorm, sp.DXCellID, sp.DXMetadata.Grid, sp.IsBeacon = "20m", uint16(tx), "IO91", beacon

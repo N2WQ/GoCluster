@@ -17,7 +17,7 @@ func TestHandlePathSettingsPathSamplesStricterThanDefault(t *testing.T) {
 	server := &Server{
 		pathPredictor: pathreliability.NewPredictor(cfg, []string{"20m"}),
 	}
-	client := &Client{}
+	client := &Client{sessionProfile: &sessionProfile{}}
 
 	resp, handled := server.handlePathSettingsCommand(client, "SET PATHSAMPLES 19")
 	if !handled {
@@ -82,11 +82,11 @@ func TestPathPredictionUsesLocationNoisePenalty(t *testing.T) {
 		pathDisplay:   true,
 		noiseModel:    cfg.NoiseModel(),
 	}
-	client := &Client{
-		grid:           "FN31",
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
 		gridCell:       userCell,
 		gridCoarseCell: userCoarse,
 		noiseClass:     "URBAN",
+	},
 	}
 
 	lowBandSpot := spot.NewSpot("DX1AA", "DE1AA", 1810, "FT8")
@@ -133,11 +133,11 @@ func TestPathPredictionStaleEvidenceIsInsufficientForDisplayAndFilter(t *testing
 		noiseModel:    cfg.NoiseModel(),
 		nowFn:         func() time.Time { return now },
 	}
-	client := &Client{
-		grid:           "FN31",
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
 		gridCell:       userCell,
 		gridCoarseCell: userCoarse,
 		noiseClass:     "QUIET",
+	},
 	}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
@@ -174,12 +174,12 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 		noiseModel:    cfg.NoiseModel(),
 		nowFn:         func() time.Time { return now },
 	}
-	client := &Client{
-		grid:                    "FN31",
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
 		gridCell:                userCell,
 		gridCoarseCell:          userCoarse,
 		noiseClass:              "QUIET",
 		pathMinObservationCount: 4,
+	},
 	}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
@@ -228,11 +228,11 @@ func TestBeaconRXPathPredictionAppliesToDisplayAndFilter(t *testing.T) {
 		noiseModel:    cfg.NoiseModel(),
 		nowFn:         func() time.Time { return now },
 	}
-	client := &Client{
-		grid:           "FN31",
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
 		gridCell:       userCell,
 		gridCoarseCell: userCoarse,
 		noiseClass:     "QUIET",
+	},
 	}
 	sp := spot.NewSpot("DX1AA/B", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
@@ -277,10 +277,10 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 			ok: true,
 		},
 	}
-	client := &Client{
-		grid:       "FN31",
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
 		gridCell:   pathreliability.CellID(1),
 		noiseClass: "QUIET",
+	},
 	}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
@@ -313,10 +313,10 @@ func TestPathPredictionAppliesNoiseToVOACAPFallback(t *testing.T) {
 		nowFn:              func() time.Time { return now },
 		pathClosedFallback: noiseAwarePathClosedFallback{},
 	}
-	client := &Client{
-		grid:       "FN31",
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
 		gridCell:   pathreliability.CellID(1),
 		noiseClass: "URBAN",
+	},
 	}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
@@ -352,7 +352,10 @@ func TestPathPredictionUsesVOACAPAlignedFallbackForSparseP50Match(t *testing.T) 
 			ok: true,
 		},
 	}
-	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridCell:   userCell,
+		noiseClass: "QUIET",
+	}}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
 	sp.DXCellID = uint16(dxCell)
@@ -395,7 +398,10 @@ func TestPathPredictionKeepsInsufficientWhenVOACAPSparseP50Mismatch(t *testing.T
 			ok: true,
 		},
 	}
-	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridCell:   userCell,
+		noiseClass: "QUIET",
+	}}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
 	sp.DXCellID = uint16(dxCell)
@@ -428,7 +434,10 @@ func TestPathPredictionKeepsInsufficientWhenVOACAPOpenAndNoSparseP50(t *testing.
 			ok: true,
 		},
 	}
-	client := &Client{grid: "FN31", gridCell: pathreliability.CellID(1), noiseClass: "QUIET"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridCell:   pathreliability.CellID(1),
+		noiseClass: "QUIET",
+	}}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
 	sp.DXCellID = 2
@@ -458,7 +467,10 @@ func TestPathPredictionUsesRELGatedVOACAPOpenWhenNoSparseP50(t *testing.T) {
 			ok:       true,
 		},
 	}
-	client := &Client{grid: "FN31", gridCell: pathreliability.CellID(1), noiseClass: "QUIET"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridCell:   pathreliability.CellID(1),
+		noiseClass: "QUIET",
+	}}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
 	sp.DXCellID = 2
@@ -498,7 +510,10 @@ func TestPathPredictionUsesRELGatedVOACAPSparseUpgrade(t *testing.T) {
 			ok:       true,
 		},
 	}
-	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridCell:   userCell,
+		noiseClass: "QUIET",
+	}}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
 	sp.DXCellID = uint16(dxCell)
@@ -539,7 +554,10 @@ func TestPathPredictionBucketResultWinsOverVOACAPClosedFallback(t *testing.T) {
 		noiseModel:         cfg.NoiseModel(),
 		nowFn:              func() time.Time { return now },
 	}
-	client := &Client{grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridCell:   userCell,
+		noiseClass: "QUIET",
+	}}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"
 	sp.DXCellID = uint16(dxCell)

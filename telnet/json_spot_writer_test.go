@@ -130,7 +130,7 @@ func openJSONQualificationSession(tb testing.TB) *jsonQualificationSession {
 	conn := &jsonQualificationConn{Conn: socket, entered: make(chan struct{}), release: make(chan struct{})}
 	server := &Server{clusterCall: "W1BENCH", writerBatchMaxBytes: 16384, writerBatchWait: 5 * time.Millisecond,
 		jsonLimits: newJSONSpotLimits(128, 1<<20, spot.CurrentTaxonomy()), latency: newLatencyMetrics()}
-	c := &Client{server: server, callsign: "K1BENCH", conn: conn, writer: bufio.NewWriterSize(conn, 32768),
+	c := &Client{sessionProfile: &sessionProfile{}, server: server, callsign: "K1BENCH", conn: conn, writer: bufio.NewWriterSize(conn, 32768),
 		done: make(chan struct{}), controlChan: make(chan controlMessage, 8), spotChan: make(chan *spotEnvelope, 256)}
 	c.configuredSettings.CWSpeed = true
 	session := &jsonQualificationSession{c: c, conn: conn, peer: peer, reader: bufio.NewReaderSize(peer, 32768), joined: writerV15Start(c)}

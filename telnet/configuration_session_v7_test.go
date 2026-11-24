@@ -125,7 +125,7 @@ func TestV7LoginFreshSaveFailureKeepsUnsavedDefaultsWithoutLibraryReset(t *testi
 	}
 	s.commitLoginRecordFn = func(*filter.PreparedUserRecord) error { return os.ErrPermission }
 	result := s.restoreV7ClientRecordOwned(c, time.Now().UTC())
-	if !result.created || result.loadError != nil || c.recordProtected || !c.configurationUnsaved || c.dialect != DialectGo || c.v7Notice.ProfileResetGeneration != 0 {
+	if !result.created || result.loadError != nil || c.recordProtected || !c.hasUnsavedChanges() || c.dialect != DialectGo || c.v7Notice.ProfileResetGeneration != 0 {
 		t.Fatalf("fresh-save failure changed existing contract: %+v", result)
 	}
 	after, err := os.ReadFile(library)
@@ -174,10 +174,13 @@ func TestV7LoginReservationBusyDoesNotPrepareOrWrite(t *testing.T) {
 	if !errors.Is(result.loadError, errConfigurationTransferBusy) || commits != 0 || c.filterBanks != nil || !c.preserveRecordOnExit.Load() {
 		t.Fatal("busy login prepared or wrote unreserved configuration")
 	}
+	if !result.abort {
+		t.Fatal("busy restore did not reject registration")
+	}
 	select {
 	case <-c.done:
+		t.Fatal("busy restore closed the connection inside its configuration lease")
 	default:
-		t.Fatal("busy login was not interrupted")
 	}
 	data, err := os.ReadFile(path)
 	if err != nil || !bytes.Equal(data, []byte(v7LoginOldLiteral)) {

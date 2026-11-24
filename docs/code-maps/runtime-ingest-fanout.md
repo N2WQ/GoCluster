@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `7e71610e1dc3bb6a`
+- Source fingerprint: `392a8160d3d897c5`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 61 | 228 |
 | `dxcluster/peer` | `peer` | 63 | 139 |
 | `dxcluster/spot` | `spot` | 47 | 87 |
-| `dxcluster/telnet` | `telnet` | 93 | 192 |
+| `dxcluster/telnet` | `telnet` | 95 | 194 |
 
 ## In-Scope Package Edges
 
@@ -880,6 +880,8 @@ Source files:
 - `telnet/reuseaddr_other.go`
 - `telnet/reuseaddr_windows.go`
 - `telnet/server.go`
+- `telnet/session_notices.go`
+- `telnet/session_profile.go`
 - `telnet/show_prop.go`
 - `telnet/ve7cc_format.go`
 - `telnet/ve7cc_history.go`
@@ -1028,6 +1030,7 @@ Test files:
 - `telnet/path_timestamp_provenance_test.go`
 - `telnet/peer_membership_test.go`
 - `telnet/persistence_warning_test.go`
+- `telnet/phase3_blackhole_qualification_test.go`
 - `telnet/prelogin_budget_test.go`
 - `telnet/prelogin_gate_test.go`
 - `telnet/preset_commands_test.go`
@@ -1058,6 +1061,7 @@ Test files:
 - `telnet/session_ceiling_recheck_test.go`
 - `telnet/session_ceiling_test.go`
 - `telnet/settings_arity_test.go`
+- `telnet/shared_ssid_test.go`
 - `telnet/show_hold_command_test.go`
 - `telnet/show_hold_delivery_test.go`
 - `telnet/show_prop_solar_test.go`

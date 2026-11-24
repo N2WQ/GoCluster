@@ -11,7 +11,7 @@ import (
 func TestEnqueueControlDisconnectsOnFullQueue(t *testing.T) {
 	srv := &Server{}
 	conn := &errConn{}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		conn:        conn,
 		writer:      bufio.NewWriter(conn),
 		server:      srv,
@@ -45,7 +45,7 @@ func TestEnqueueSpotDisconnectsOnExtremeDrops(t *testing.T) {
 		dropExtremeMinAtt: 10,
 	}
 	conn := &errConn{}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		conn:       conn,
 		writer:     bufio.NewWriter(conn),
 		server:     srv,

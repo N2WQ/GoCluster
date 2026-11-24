@@ -13,7 +13,9 @@ import (
 
 func (s *Server) prepareConfigurationUpdate(c *Client, before, next filter.Configuration, now time.Time) (*Client, string) {
 	f := next.FilterValue()
-	prepared := &Client{filter: &f, dialect: c.dialect}
+	prepared := &Client{sessionProfile: &sessionProfile{filter: &f,
+		dialect: c.dialect,
+	}}
 	prepared.setDedupePolicy(c.getDedupePolicy())
 	state := c.pathSnapshot()
 	prepared.grid, prepared.gridDerived = state.grid, state.gridDerived

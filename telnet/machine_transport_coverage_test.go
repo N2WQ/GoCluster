@@ -291,7 +291,7 @@ func newMachineTransportCoverageClient(t *testing.T, ziutek, blockWrite bool) (*
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Client{conn: conn, reader: bufio.NewReader(reader), writer: bufio.NewWriter(writer), server: s, done: make(chan struct{})}
+	c := &Client{sessionProfile: &sessionProfile{}, conn: conn, reader: bufio.NewReader(reader), writer: bufio.NewWriter(writer), server: s, done: make(chan struct{})}
 	t.Cleanup(c.interrupt)
 	return c, conn
 }

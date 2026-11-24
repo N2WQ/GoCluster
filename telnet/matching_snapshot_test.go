@@ -16,9 +16,12 @@ func TestMatchingSnapshotRetainsProgramControlsAndPath(t *testing.T) {
 	c.filter = testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8 AND PATH=HIGH"})
 	c.filter.SetSelfEnabled(false)
 	captured := c.captureMatchingSnapshot()
-	next := &Client{
-		filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "MODE=FT8"}),
-		grid:   "EM10", gridCell: 3, noiseClass: "URBAN", pathMinObservationCount: 100,
+	next := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "MODE=FT8"}),
+		grid:                    "EM10",
+		gridCell:                3,
+		noiseClass:              "URBAN",
+		pathMinObservationCount: 100,
+	},
 	}
 	s.publishConfigurationState(c, filter.SettingsConfiguration{}, next, nil, time.Now(), false)
 	matches, prediction, predicted := s.matchSnapshot(captured, sp)
@@ -33,16 +36,26 @@ func TestMatchingSnapshotRetainsProgramControlsAndPath(t *testing.T) {
 }
 
 func TestMatchingSnapshotConcurrentPublicationIsCoherent(t *testing.T) {
-	a := &Client{
-		filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW AND PATH=HIGH"}),
-		grid:   "FN31", gridCell: 1, gridCoarseCell: 2, noiseClass: "QUIET", pathMinObservationCount: 3,
+	a := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "MODE=CW AND PATH=HIGH"}),
+		grid:                    "FN31",
+		gridCell:                1,
+		gridCoarseCell:          2,
+		noiseClass:              "QUIET",
+		pathMinObservationCount: 3,
+	},
 	}
 	a.filter.SetSelfEnabled(false)
-	b := &Client{
-		filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8 AND PATH=CLOSED"}),
-		grid:   "EM10", gridCell: 3, gridCoarseCell: 4, noiseClass: "URBAN", pathMinObservationCount: 100,
+	b := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8 AND PATH=CLOSED"}),
+		grid:                    "EM10",
+		gridCell:                3,
+		gridCoarseCell:          4,
+		noiseClass:              "URBAN",
+		pathMinObservationCount: 100,
+	},
 	}
-	c := &Client{filter: testRuleFilter(t), configurationInitialized: true}
+	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t),
+		configurationInitialized: true,
+	}}
 	s := &Server{}
 	s.publishConfigurationState(c, filter.SettingsConfiguration{}, a, nil, time.Time{}, false)
 	done := make(chan struct{})
@@ -83,7 +96,7 @@ func TestMatchingSnapshotConcurrentPublicationIsCoherent(t *testing.T) {
 }
 
 func TestMatchingSnapshotWarmAllocations(t *testing.T) {
-	c := &Client{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: `MODE=CW AND COMMENT="CQ"`})}
+	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: `MODE=CW AND COMMENT="CQ"`})}}
 	sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
 	sp.Comment = "CQ test"
 	s := &Server{}
@@ -99,7 +112,7 @@ func TestMatchingSnapshotWarmAllocations(t *testing.T) {
 }
 
 func BenchmarkMatchingSnapshot(b *testing.B) {
-	c := &Client{filter: testRuleFilter(b, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: `MODE=CW AND COMMENT="CQ"`})}
+	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(b, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: `MODE=CW AND COMMENT="CQ"`})}}
 	sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
 	sp.Comment = "CQ test"
 	s := &Server{}
@@ -112,8 +125,8 @@ func BenchmarkMatchingSnapshot(b *testing.B) {
 }
 
 func BenchmarkMatchingSnapshotOperatingGeography(b *testing.B) {
-	c := &Client{
-		filter:             passRuleTestFilter(b, "DECONT=MYCONT AND DXDXCC<>MYDXCC"),
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(b, "DECONT=MYCONT AND DXDXCC<>MYDXCC")},
+
 		operatingGeography: filter.OperatingGeography{Continent: "NA", DXCC: 1},
 	}
 	value := spot.NewSpot("DL1ABC", "VE3ABC", 14020, "CW")
@@ -131,7 +144,7 @@ func TestMatchingSnapshotMissingFilterFailsClosed(t *testing.T) {
 	var c *Client
 	s := &Server{}
 	sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
-	for _, snapshot := range []clientMatchingSnapshot{c.captureMatchingSnapshot(), (&Client{}).captureMatchingSnapshot()} {
+	for _, snapshot := range []clientMatchingSnapshot{c.captureMatchingSnapshot(), (&Client{sessionProfile: &sessionProfile{}}).captureMatchingSnapshot()} {
 		if matched, _, _ := s.matchSnapshot(snapshot, sp); matched || snapshot.filter.SelfEnabled() {
 			t.Fatal("missing filter broadened admission")
 		}
@@ -156,8 +169,11 @@ func TestMatchingSnapshotNearbyPreservesBooleanDelivery(t *testing.T) {
 	} {
 		t.Run(tc.expression, func(t *testing.T) {
 			s := &Server{dedupeFastEnabled: true}
-			c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, tc.expression),
-				gridCell: near, gridCoarseCell: nearCoarse, spotChan: make(chan *spotEnvelope, 1)}
+			c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, tc.expression),
+				gridCell:       near,
+				gridCoarseCell: nearCoarse,
+			}, callsign: "N0USER",
+				spotChan: make(chan *spotEnvelope, 1)}
 			c.setDedupePolicy(dedupePolicyFast)
 			sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
 			sp.DXCellID, sp.DECellID = uint16(tc.endpoint), uint16(tc.endpoint)
@@ -173,14 +189,18 @@ func TestMatchingSnapshotNearbyPreservesBooleanDelivery(t *testing.T) {
 func TestMatchingSnapshotLocationDemandAndIsolation(t *testing.T) {
 	near, far, nearCoarse, farCoarse := requireDistinctPathCells(t)
 	for _, expression := range []string{"MODE=CW", `COMMENT="NEARBY"`} {
-		c := &Client{filter: passRuleTestFilter(t, expression), grid: "FN31"}
+		c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, expression),
+			grid: "FN31",
+		}}
 		captured := c.captureMatchingSnapshot()
 		if captured.path.gridCell != 0 || captured.path.gridCoarseCell != 0 {
 			t.Fatal("location-free capture introduced mapping work")
 		}
 	}
 	for _, expression := range []string{"NEARBY", "NEARBY AND (PATH=INSUFFICIENT OR MODE=CW)"} {
-		c := &Client{filter: passRuleTestFilter(t, expression), grid: "FN31"}
+		c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, expression),
+			grid: "FN31",
+		}}
 		s := &Server{}
 		captured := c.captureMatchingSnapshot()
 		if captured.path.gridCell != near || captured.path.gridCoarseCell != nearCoarse {
@@ -189,7 +209,11 @@ func TestMatchingSnapshotLocationDemandAndIsolation(t *testing.T) {
 		if expression == "NEARBY" && (c.gridCell != 0 || c.gridCoarseCell != 0) {
 			t.Fatal("NEARBY published snapshot-local geometry")
 		}
-		next := &Client{filter: c.filter, grid: "IO91", gridCell: far, gridCoarseCell: farCoarse}
+		next := &Client{sessionProfile: &sessionProfile{filter: c.filter,
+			grid:           "IO91",
+			gridCell:       far,
+			gridCoarseCell: farCoarse,
+		}}
 		s.publishConfigurationState(c, filter.SettingsConfiguration{Grid: "IO91"}, next, nil, time.Time{}, false)
 		sp := spot.NewSpot("K1ABC", "W1ABC", 14020, "CW")
 		sp.DXCellID, sp.DECellID = uint16(near), uint16(near)
@@ -200,7 +224,7 @@ func TestMatchingSnapshotLocationDemandAndIsolation(t *testing.T) {
 		}
 	}
 	// PATH's existing lazy publication must not fill a newer GRID's cache.
-	c := &Client{grid: "FN31"}
+	c := &Client{sessionProfile: &sessionProfile{grid: "FN31"}}
 	old := c.pathSnapshot()
 	c.grid = "IO91"
 	resolved := c.resolvePathSnapshot(old)
@@ -231,7 +255,9 @@ func BenchmarkMatchingSnapshotLocationContext(b *testing.B) {
 		{"coarse", "NEARBY", true, true, true},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
-			c := &Client{filter: passRuleTestFilter(b, tc.expression), grid: "FN31"}
+			c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(b, tc.expression),
+				grid: "FN31",
+			}}
 			if tc.cached {
 				c.gridCell, c.gridCoarseCell = near, coarse
 			}

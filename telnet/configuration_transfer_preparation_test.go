@@ -21,7 +21,7 @@ func exhaustConfigurationPreparationBudget(t *testing.T) {
 		t.Fatalf("prior owner retained %d configuration output bytes", output)
 	}
 	for range configurationOutputBudget / configurationOutputReservationBytes {
-		owner, err := (&Client{}).reserveConfigurationOutput()
+		owner, err := (&Client{sessionProfile: &sessionProfile{}}).reserveConfigurationOutput()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +174,7 @@ func TestConfigurationPreparationAndOutputMutuallyExcludeAndCannotQueue(t *testi
 	for _, human := range []bool{false, true} {
 		t.Run(map[bool]string{false: "machine", true: "human"}[human], func(t *testing.T) {
 			input, output := configurationTransferBudgetStats()
-			c := &Client{done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+			c := &Client{sessionProfile: &sessionProfile{}, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 			owner, err := c.reserveConfigurationPreparation()
 			if err != nil {
 				t.Fatal(err)

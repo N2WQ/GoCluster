@@ -32,7 +32,7 @@ func taxonomyInputReader(t *testing.T, input string, ziutek bool) (*Client, *tax
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Client{conn: conn, inputWire: wire, server: s, writer: bufio.NewWriter(writer), done: make(chan struct{})}
+	c := &Client{sessionProfile: &sessionProfile{}, conn: conn, inputWire: wire, server: s, writer: bufio.NewWriter(writer), done: make(chan struct{})}
 	var exposed io.Reader = reader
 	if ziutek {
 		c.inputExposure = &singleByteInput{reader: reader}

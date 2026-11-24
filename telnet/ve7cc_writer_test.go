@@ -162,7 +162,7 @@ func TestVE7CCWriterPipelinedTransitions(t *testing.T) {
 	for _, finalNative := range []bool{false, true} {
 		t.Run(map[bool]string{false: "text", true: "native"}[finalNative], func(t *testing.T) {
 			s := &Server{clusterCall: "N2WQ-2", writerBatchMaxBytes: 16384, writerBatchWait: time.Millisecond}
-			c := &Client{server: s, callsign: "W1PIPE"}
+			c := &Client{sessionProfile: &sessionProfile{}, server: s, callsign: "W1PIPE"}
 			conn := ve7ccNewCaptureConn(false)
 			ve7ccAttachWriter(c, conn)
 			c.spotChan <- &spotEnvelope{spot: ve7ccWireFixture()}
@@ -190,7 +190,7 @@ func TestVE7CCWriterRefusalIsExplicitAndThrottled(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			now := time.Unix(1800000000, 0).UTC()
 			s := &Server{clusterCall: "N2WQ-2", writerBatchMaxBytes: 1, writerBatchWait: time.Millisecond, nowFn: func() time.Time { return now }}
-			c := &Client{server: s, callsign: "W1REFUSE"}
+			c := &Client{sessionProfile: &sessionProfile{}, server: s, callsign: "W1REFUSE"}
 			conn := ve7ccNewCaptureConn(false)
 			ve7ccAttachWriter(c, conn)
 			if handled, proceed := s.handleVE7CCCommand(c, "SET/VE7CC"); !handled || !proceed {
@@ -218,7 +218,7 @@ func TestVE7CCWriterRefusalIsExplicitAndThrottled(t *testing.T) {
 }
 
 func TestVE7CCDiagnosticZeroClock(t *testing.T) {
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	epoch := time.Unix(0, 0)
 	if !c.allowVE7CCRefusalNotice(epoch) || c.allowVE7CCRefusalNotice(epoch) ||
 		c.allowVE7CCRefusalNotice(epoch.Add(29*time.Second)) ||
@@ -252,7 +252,7 @@ func TestVE7CCWriterSharedSpotCWAndDiagnostics(t *testing.T) {
 				if mode.mode != diagModeOff {
 					textLine = expected.FormatDXClusterWithComment(mode.tag)
 				}
-				text, cc := &Client{server: s, callsign: "W1TEXT"}, &Client{server: s, callsign: "W1NATIVE"}
+				text, cc := &Client{sessionProfile: &sessionProfile{}, server: s, callsign: "W1TEXT"}, &Client{sessionProfile: &sessionProfile{}, server: s, callsign: "W1NATIVE"}
 				text.configuredSettings.CWSpeed, cc.configuredSettings.CWSpeed = speed, speed
 				text.setDiagMode(mode.mode)
 				cc.setDiagMode(mode.mode)
@@ -300,7 +300,7 @@ func TestVE7CCWriterNativeSkipsGlyphProjection(t *testing.T) {
 	if glyph == "" || textLine == base {
 		t.Fatal("text witness did not actually exercise glyph injection")
 	}
-	cc := &Client{server: s, callsign: "W1NATIVE"}
+	cc := &Client{sessionProfile: &sessionProfile{}, server: s, callsign: "W1NATIVE"}
 	textConn, nativeConn := ve7ccNewCaptureConn(false), ve7ccNewCaptureConn(false)
 	ve7ccAttachWriter(text, textConn)
 	ve7ccAttachWriter(cc, nativeConn)

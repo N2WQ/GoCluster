@@ -77,7 +77,7 @@ func (s *Server) prepareV7ResetNotice(c *Client) (string, v7ResetNoticeEvents, b
 	if err != nil {
 		return "", events, true, err
 	}
-	message, err := renderV7ResetNotice(configuration, c.dialect, events, c.configurationUnsaved)
+	message, err := renderV7ResetNotice(configuration, c.dialect, events, c.hasUnsavedChanges())
 	return message, events, true, err
 }
 

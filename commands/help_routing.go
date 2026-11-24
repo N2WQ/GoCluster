@@ -26,6 +26,9 @@ func installHelpRoutingAliases(catalog *helpCatalog, dialect string) {
 		catalog.aliases["SHOW FILTER"] = filterTopic
 		catalog.aliases["SHOW DX"] = "SHOW/DX"
 		catalog.aliases["SH DX"] = "SHOW/DX"
+	} else {
+		catalog.aliases["SHOW/DX"] = "SHOW DX"
+		catalog.aliases["SH/DX"] = "SHOW DX"
 	}
 	catalog.aliases["SHOW/FILTER"] = filterTopic
 	catalog.aliases["SH/FILTER"] = filterTopic

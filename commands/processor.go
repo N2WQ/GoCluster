@@ -234,20 +234,8 @@ func (p *Processor) ProcessCommandForClient(cmd string, spotter string, spotterI
 	command := parts[0]
 	dialect = normalizeDialectString(dialect)
 
-	if dialect == "cc" {
-		switch command {
-		case "SHOW/DX", "SH/DX":
-			return p.handleShow(append([]string{"DX"}, parts[1:]...), filterFn, dialect, spotter)
-		case "SHOW", "SH":
-			if len(parts) >= 2 && parts[1] == "DX" {
-				return p.handleShow(append([]string{"DX"}, parts[2:]...), filterFn, dialect, spotter)
-			}
-		}
-	} else {
-		switch command {
-		case "SHOW/DX", "SH/DX":
-			return "Use SHOW DX or SH DX for DX history.\n"
-		}
+	if command == "SHOW/DX" || command == "SH/DX" {
+		return p.handleShow(append([]string{"DX"}, parts[1:]...), filterFn, dialect, spotter)
 	}
 
 	switch command {

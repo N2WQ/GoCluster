@@ -141,7 +141,7 @@ func readLineWithEchoBytes(t *testing.T, input []byte, echo bool) (string, strin
 	reader := bufio.NewReader(bytes.NewBuffer(input))
 	var out bytes.Buffer
 	writer := bufio.NewWriter(&out)
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		reader:    reader,
 		writer:    writer,
 		echoInput: echo,
@@ -157,7 +157,7 @@ func readLinesWithEchoBytes(t *testing.T, input []byte, echo bool, count int) []
 	t.Helper()
 	reader := bufio.NewReader(bytes.NewBuffer(input))
 	var writer bytes.Buffer
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		reader:    reader,
 		writer:    bufio.NewWriter(&writer),
 		echoInput: echo,

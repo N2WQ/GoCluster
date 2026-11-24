@@ -1,6 +1,8 @@
 # GoCluster production browser console
 
-Operators can sign in to the [production console](https://gocluster-pilot.n2wq-api.workers.dev/). Cloudflare Access checks your identity first. Choose **Live** and use a callsign with a separate SSID from your logger. Choose **Replay** to explore recorded data. The word `pilot` survives in deployed resource names and the repository path. These identifiers refer to production.
+Operators can sign in to the [production console](https://gocluster-pilot.n2wq-api.workers.dev/). Cloudflare Access checks your identity first. Choose **Live** and use the same callsign and SSID as your logger to share its profile. Choose **Replay** to explore recorded data. The word `pilot` survives in deployed resource names and the repository path. These identifiers refer to production.
+
+The blue globe beside the server version marks a browser-only session. Blue arrows mean a browser and a Telnet logger are connected on the same callsign and SSID and share one profile.
 
 For routine changes, releases, verification and rollback, follow the [production update runbook](PRODUCTION.md). The setup instructions below are for provisioning or restoring the cluster host.
 
@@ -55,6 +57,10 @@ node --test test/worker.test.mjs test/workerd.cjs
 ```
 
 ## Verify the live session
+
+The console header shows the build version followed by the IPv4 observed by
+the Worker when the console connects. An IPv6-only visitor sees the build
+version alone. The local launcher reports its forwarded loopback address.
 
 Open the production hostname in a private browser window. Confirm the Access sign-in challenge, authenticate with an approved identity, select Live, and connect with a dedicated callsign and SSID. In the browser network panel, the same-host `/ws` request should receive HTTP 101. Confirm the profile loads, record a new spot with its timestamp and callsign, and request History. The cluster's client address for the connected callsign should match the visitor's actual public IP. Check both IPv4 and IPv6 when available.
 

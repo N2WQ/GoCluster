@@ -35,7 +35,15 @@ func booleanCommandFixture(t *testing.T, dialect DialectName) (*Client, *Client,
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := &Client{grid: "FN31", gridDerived: true, gridCell: 101, gridCoarseCell: 202, filter: &value, configuredSettings: canonical.Settings, dialect: dialect, configurationInitialized: true}
+	source := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridDerived:              true,
+		gridCell:                 101,
+		gridCoarseCell:           202,
+		filter:                   &value,
+		configuredSettings:       canonical.Settings,
+		dialect:                  dialect,
+		configurationInitialized: true,
+	}}
 	candidate := newHumanPreferenceCandidate(source)
 	if candidate.filter == source.filter {
 		t.Fatal("fixture did not detach candidate")

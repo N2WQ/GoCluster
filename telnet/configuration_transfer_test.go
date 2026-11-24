@@ -19,7 +19,7 @@ func TestConfigurationInputBudgetSpansServersAndSurvivesCancellation(t *testing.
 		assertConfigurationTransferStats(t, initialInput, initialOutput)
 	})
 	for i := range 32 {
-		c := &Client{server: servers[i%2], done: make(chan struct{})}
+		c := &Client{sessionProfile: &sessionProfile{}, server: servers[i%2], done: make(chan struct{})}
 		release, err := acquireConfigurationInput(c)
 		if err != nil {
 			t.Fatalf("input reservation %d: %v", i, err)
@@ -27,7 +27,7 @@ func TestConfigurationInputBudgetSpansServersAndSurvivesCancellation(t *testing.
 		clients, releases = append(clients, c), append(releases, release)
 	}
 	assertConfigurationTransferStats(t, initialInput+8<<20, initialOutput)
-	if release, err := acquireConfigurationInput(&Client{}); !errors.Is(err, errConfigurationTransferBusy) || release != nil {
+	if release, err := acquireConfigurationInput(&Client{sessionProfile: &sessionProfile{}}); !errors.Is(err, errConfigurationTransferBusy) || release != nil {
 		t.Fatalf("33rd input owner admitted: release=%v err=%v", release != nil, err)
 	}
 	clients[0].interrupt()
@@ -39,7 +39,7 @@ func TestConfigurationInputBudgetSpansServersAndSurvivesCancellation(t *testing.
 	if release, err := acquireConfigurationInput(clients[0]); !errors.Is(err, errClientClosed) || release != nil {
 		t.Fatalf("closed input owner admitted: release=%v err=%v", release != nil, err)
 	}
-	release, err := acquireConfigurationInput(&Client{})
+	release, err := acquireConfigurationInput(&Client{sessionProfile: &sessionProfile{}})
 	if err != nil {
 		t.Fatalf("released input slot was not reusable: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestConfigurationOutputBudgetAndOnePendingPerClient(t *testing.T) {
 	})
 	servers := [2]*Server{{}, {}}
 	for i := range 8 {
-		c := &Client{server: servers[i%2], done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+		c := &Client{sessionProfile: &sessionProfile{}, server: servers[i%2], done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 		reservation, err := c.reserveConfigurationOutput()
 		if err != nil {
 			t.Fatalf("output reservation %d: %v", i, err)
@@ -69,7 +69,7 @@ func TestConfigurationOutputBudgetAndOnePendingPerClient(t *testing.T) {
 		}
 	}
 	assertConfigurationTransferStats(t, initialInput, initialOutput+8<<20)
-	if ninth, err := (&Client{}).reserveConfigurationOutput(); !errors.Is(err, errConfigurationTransferBusy) || ninth != nil {
+	if ninth, err := (&Client{sessionProfile: &sessionProfile{}}).reserveConfigurationOutput(); !errors.Is(err, errConfigurationTransferBusy) || ninth != nil {
 		t.Fatalf("ninth output owner admitted: reservation=%v err=%v", ninth != nil, err)
 	}
 	reservations[0].Release()
@@ -84,7 +84,7 @@ func TestConfigurationOutputBudgetAndOnePendingPerClient(t *testing.T) {
 
 func TestConfigurationOutputQueueTransfersOwnerUntilDiscard(t *testing.T) {
 	initialInput, initialOutput := configurationTransferBudgetStats()
-	c := &Client{done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+	c := &Client{sessionProfile: &sessionProfile{}, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 	reservation, err := c.reserveConfigurationOutput()
 	if err != nil {
 		t.Fatal(err)
@@ -110,7 +110,7 @@ func TestConfigurationOutputQueueTransfersOwnerUntilDiscard(t *testing.T) {
 func TestConfigurationOutputFrameLimit(t *testing.T) {
 	for _, size := range []int{262_144, 262_145} {
 		initialInput, initialOutput := configurationTransferBudgetStats()
-		c := &Client{done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+		c := &Client{sessionProfile: &sessionProfile{}, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 		reservation, err := c.reserveConfigurationOutput()
 		if err != nil {
 			t.Fatal(err)
@@ -139,7 +139,7 @@ func TestConfigurationOutputFrameLimit(t *testing.T) {
 func TestConfigurationOutputCloseAndQueueFullRelease(t *testing.T) {
 	for _, closeFirst := range []bool{false, true} {
 		initialInput, initialOutput := configurationTransferBudgetStats()
-		c := &Client{done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+		c := &Client{sessionProfile: &sessionProfile{}, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 		reservation, err := c.reserveConfigurationOutput()
 		if err != nil {
 			t.Fatal(err)
@@ -170,7 +170,7 @@ func TestConfigurationOutputCloseAndQueueFullRelease(t *testing.T) {
 func TestConfigurationOutputConcurrentCloseEnqueueAndRelease(t *testing.T) {
 	initialInput, initialOutput := configurationTransferBudgetStats()
 	for range 200 {
-		c := &Client{done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+		c := &Client{sessionProfile: &sessionProfile{}, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 		reservation, err := c.reserveConfigurationOutput()
 		if err != nil {
 			t.Fatal(err)

@@ -379,9 +379,16 @@ func FuzzVE7CCSessionAdmission(f *testing.F) {
 		before := cfg.Clone()
 		commits := 0
 		s := &Server{commitConfigurationFn: func(*filter.PreparedUserRecord) error { commits++; return os.ErrPermission }}
-		c := &Client{server: s, callsign: "W1FUZZ-1", done: make(chan struct{}), controlChan: make(chan controlMessage, 1),
-			filter: &runtimeFilter, filterBanks: &cfg.Filters, dialect: DialectGo, configuredSettings: cfg.Settings,
-			configurationInitialized: true, configurationEpoch: "session-fuzz", configurationRevision: 17, ve7ccEnabled: initially}
+		c := &Client{sessionProfile: &sessionProfile{filter: &runtimeFilter,
+			filterBanks:              &cfg.Filters,
+			dialect:                  DialectGo,
+			configuredSettings:       cfg.Settings,
+			configurationInitialized: true,
+			configurationEpoch:       "session-fuzz",
+			configurationRevision:    17,
+		}, server: s, callsign: "W1FUZZ-1", done: make(chan struct{}), controlChan: make(chan controlMessage, 1),
+
+			ve7ccEnabled: initially}
 		banks, active := c.filterBanks, c.filter
 		trimmed := strings.TrimSpace(line)
 		head := trimmed

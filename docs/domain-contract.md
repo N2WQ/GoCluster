@@ -277,10 +277,11 @@ The [native output guide](../telnet/README.md#ve7cc-native-spot-output) and
   blocked. A writer already in socket I/O can first reach its existing write
   deadline; scheduling and synchronous work can delay cleanup. Duplicate notice
   delivery remains best effort and is not guaranteed during shutdown.
-- A positive `telnet.max_connections` is a strict ceiling on registered telnet
-  sessions, including concurrent logins. A same-identity replacement does not
-  add a session: identity is the full normalized callsign and SSID. Different
-  SSID spellings, including leading zeroes, remain separate identities.
+- A positive `telnet.max_connections` is a strict ceiling on registered client
+  connections, including concurrent Telnet and browser logins. Each normalized
+  callsign and SSID may have one slot of each transport. Only a replacement
+  of that same transport can reuse the slot. Different SSID spellings,
+  including leading zeroes, remain separate identities.
 - A new identity is rejected when registered sessions fill the ceiling, before
   its profile or shared preset library is changed. The full-server notice is
   best effort; the connection is closed even if the notice cannot be delivered.
@@ -288,9 +289,9 @@ The [native output guide](../telnet/README.md#ve7cc-native-spot-output) and
   for each base callsign. Zero disables this limit. Base identity follows
   `spot.NormalizeOwnCallsign`: numeric SSIDs are removed, while portable
   location forms remain distinct. Full normalized callsigns and SSIDs remain
-  separate profile and replacement identities. Both ceilings are decided and
-  reserved atomically before profile or shared preset writes; a matching
-  registered identity can replace its owner without consuming another slot.
+  separate profile identities. Both ceilings are decided and reserved atomically
+  before profile or shared preset writes. A matching registered transport slot
+  can replace its owner without consuming another slot.
 - A new identity rejected by the station ceiling receives a best-effort
   station-specific notice and is closed. If both ceilings reject it, the global
   full-server notice takes precedence. Capacity rejection does not change the
@@ -315,6 +316,14 @@ The [native output guide](../telnet/README.md#ve7cc-native-spot-output) and
   or arrival order is promised.
   Separate pre-login limits and the existing per-identity profile handoff remain
   in force. Other login failures retain their existing persistence behavior.
+- Both transports share one live profile per SSID and keep separate writers and
+  history cursors. Only current slots can mutate or save a profile. Login
+  metadata commits the latest saved preferences under the SSID lease, while
+  rejoining sockets see the live preferences. Teardown releases the profile
+  after its last current slot leaves. Advisory notices coalesce independently
+  of the ordinary control queue. The browser selects GO and retains the CC
+  bank. User counts and eligible PC92 membership use one representative per
+  SSID, preferring Telnet. See [shared session behavior](../telnet/README.md#browser-and-telnet-on-one-callsign).
 - Runtime YAML requires a positive value for `telnet.max_connections`. Direct
   server callers may set `MaxConnections` to zero or less to disable this
   registered-session ceiling; pre-login limits remain separate.

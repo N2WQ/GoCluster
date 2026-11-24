@@ -40,7 +40,12 @@ func recentConsumerFixture(t *testing.T, cfg pathreliability.Config, at time.Tim
 	}
 	p := pathreliability.NewPredictor(cfg, []string{band})
 	s := &Server{pathPredictor: p, pathDisplay: true, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return at }}
-	c := &Client{filter: passRuleTestFilter(t, "MODE=FT8"), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: rx, gridCoarseCell: rc, noiseClass: "QUIET"}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "MODE=FT8"),
+		grid:           "FN31",
+		gridCell:       rx,
+		gridCoarseCell: rc,
+		noiseClass:     "QUIET",
+	}, spotChan: make(chan *spotEnvelope, 1)}
 	frequency := 14074.0
 	if band == "160m" {
 		frequency = 1840

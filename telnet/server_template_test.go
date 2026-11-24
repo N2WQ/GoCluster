@@ -83,7 +83,9 @@ func TestApplyInputTemplateTokens(t *testing.T) {
 func TestPostLoginTemplateDataLowercasesDerivedGrid(t *testing.T) {
 	now := time.Date(2026, time.January, 6, 20, 12, 18, 0, time.UTC)
 	server := &Server{startTime: now, clusterCall: "DXC"}
-	client := &Client{callsign: "N0CALL", grid: "FN31", gridDerived: true}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridDerived: true,
+	}, callsign: "N0CALL"}
 	data := server.postLoginTemplateData(now, client, time.Time{}, "", "default", "GO")
 	if data.grid != "fn31" {
 		t.Fatalf("expected derived grid to be lowercase, got %q", data.grid)

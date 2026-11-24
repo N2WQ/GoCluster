@@ -101,7 +101,9 @@ func TestPathSnapshotCachePublication(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			captured := pathState{grid: "FN31", gridCell: pathreliability.InvalidCell}
-			client := &Client{grid: test.currentGrid, gridCell: test.currentCell}
+			client := &Client{sessionProfile: &sessionProfile{grid: test.currentGrid,
+				gridCell: test.currentCell,
+			}}
 			resolved := client.resolvePathSnapshot(captured)
 			if resolved.gridCell != oldCell || client.pathSnapshot().gridCell != test.wantCell {
 				t.Fatalf("resolved=%d cache=%d; want resolved=%d cache=%d",
@@ -126,7 +128,9 @@ func TestPathSnapshotCacheWithoutDX(t *testing.T) {
 
 func TestPathSnapshotConcurrentGridChanges(t *testing.T) {
 	requireDistinctPathCells(t)
-	client := &Client{grid: "FN31", gridCell: pathreliability.InvalidCell}
+	client := &Client{sessionProfile: &sessionProfile{grid: "FN31",
+		gridCell: pathreliability.InvalidCell,
+	}}
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -366,12 +370,13 @@ func newPathPredictionReuseFixture(t testing.TB, samples int, sufficient bool, p
 		nowFn:              func() time.Time { return now },
 		pathClosedFallback: fallback,
 	}
-	client := &Client{
-		filter:     testRuleFilter(t),
-		spotChan:   make(chan *spotEnvelope, 1),
+	client := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t),
 		grid:       "FN31",
 		gridCell:   userCell,
 		noiseClass: "QUIET",
+	},
+
+		spotChan: make(chan *spotEnvelope, 1),
 	}
 	sp := spot.NewSpot("DX1AA", "DE1AA", 14074, "FT8")
 	sp.BandNorm = "20m"

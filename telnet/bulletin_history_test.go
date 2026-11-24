@@ -112,7 +112,7 @@ func TestBulletinResponseBudgetReleasedOnDiscard(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	store.Record("WWV", "WWV de K1AAA: data", time.Now())
 	s := &Server{bulletinHistory: store}
-	c := &Client{server: s, done: make(chan struct{}), controlChan: make(chan controlMessage, 128)}
+	c := &Client{sessionProfile: &sessionProfile{}, server: s, done: make(chan struct{}), controlChan: make(chan controlMessage, 128)}
 	for i := 0; i < bulletinResponseBudget/bulletinResponseReservation; i++ {
 		if !s.sendBulletinHistoryResponse(c, "WWV", i%2 == 0, "") {
 			t.Fatalf("reservation %d failed", i)
@@ -142,7 +142,7 @@ func TestBulletinResponseBudgetReleasedOnQueueFull(t *testing.T) {
 	t.Cleanup(func() { _ = store.Close() })
 	store.Record("WWV", "WWV de K1AAA: data", time.Now())
 	s := &Server{bulletinHistory: store}
-	c := &Client{server: s, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+	c := &Client{sessionProfile: &sessionProfile{}, server: s, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 	c.controlChan <- controlMessage{line: "occupied\n"}
 	if s.sendBulletinHistoryResponse(c, "WWV", false, "") {
 		t.Fatal("full control queue accepted a history reply")
@@ -164,7 +164,7 @@ func TestBulletinResponseBudgetReleasedAfterWriterDisconnect(t *testing.T) {
 	serverConn, clientConn := net.Pipe()
 	t.Cleanup(func() { _ = clientConn.Close() })
 	s := &Server{bulletinHistory: store}
-	c := &Client{server: s, conn: serverConn, writer: bufio.NewWriter(serverConn), done: make(chan struct{}), controlChan: make(chan controlMessage, 128)}
+	c := &Client{sessionProfile: &sessionProfile{}, server: s, conn: serverConn, writer: bufio.NewWriter(serverConn), done: make(chan struct{}), controlChan: make(chan controlMessage, 128)}
 	for i := 0; i < bulletinResponseBudget/bulletinResponseReservation; i++ {
 		if !s.sendBulletinHistoryResponse(c, "WWV", true, "") {
 			t.Fatal("failed to queue bounded response")

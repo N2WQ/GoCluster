@@ -12,7 +12,7 @@ import (
 
 func TestMachineCommandLinePreservesIdentifierCase(t *testing.T) {
 	var echoed bytes.Buffer
-	c := &Client{reader: bufio.NewReader(strings.NewReader("get yaml settings schema 6 id noise-Ab1\r\n")), writer: bufio.NewWriter(&echoed), echoInput: true}
+	c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(strings.NewReader("get yaml settings schema 6 id noise-Ab1\r\n")), writer: bufio.NewWriter(&echoed), echoInput: true}
 	line, err := c.readCommandLine(128)
 	if err != nil {
 		t.Fatal(err)
@@ -42,7 +42,7 @@ func TestMachineAwareReaderPreservesHumanEditing(t *testing.T) {
 	} {
 		t.Run(tt.want, func(t *testing.T) {
 			var echoed bytes.Buffer
-			c := &Client{reader: bufio.NewReader(strings.NewReader(tt.input)), writer: bufio.NewWriter(&echoed), echoInput: true}
+			c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(strings.NewReader(tt.input)), writer: bufio.NewWriter(&echoed), echoInput: true}
 			got, err := c.readCommandLine(128)
 			if err != nil || got != tt.want || echoed.String() != tt.echo {
 				t.Fatalf("line=%q echo=%q err=%v; want line=%q echo=%q", got, echoed.String(), err, tt.want, tt.echo)
@@ -66,7 +66,7 @@ func TestMachineInputErrorsRetainEarlyIntent(t *testing.T) {
 		{"eof_during_header", "GET YAML SET", 128, "GET"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			c := &Client{reader: bufio.NewReader(strings.NewReader(tt.input))}
+			c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(strings.NewReader(tt.input))}
 			_, err := c.readCommandLine(tt.limit)
 			var machineErr *machineInputError
 			if !errors.As(err, &machineErr) || machineErr.Verb != tt.verb || !machineErr.Terminal {
@@ -86,7 +86,7 @@ func TestMachineInputErrorsRetainEarlyIntent(t *testing.T) {
 }
 
 func TestMachineHeaderReadTimeoutRetainsIntent(t *testing.T) {
-	c := &Client{reader: bufio.NewReader(io.MultiReader(strings.NewReader("PUT YAML CON"), machineErrorReader{err: os.ErrDeadlineExceeded}))}
+	c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(io.MultiReader(strings.NewReader("PUT YAML CON"), machineErrorReader{err: os.ErrDeadlineExceeded}))}
 	_, err := c.readCommandLine(128)
 	var machineErr *machineInputError
 	if !errors.As(err, &machineErr) || machineErr.Verb != "PUT" || !machineErr.Terminal || !isTimeoutErr(err) {
@@ -134,7 +134,7 @@ func TestParseMachineHeader(t *testing.T) {
 
 func TestMalformedMachineHeaderKeepsTailOutsideHeader(t *testing.T) {
 	for _, verb := range []string{"GET", "PUT", "PATCH", "VALIDATE"} {
-		c := &Client{reader: bufio.NewReader(strings.NewReader(verb + " YAML CONFIG EXTRA\n---\nRESUME\n...\n"))}
+		c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(strings.NewReader(verb + " YAML CONFIG EXTRA\n---\nRESUME\n...\n"))}
 		line, err := c.readCommandLine(128)
 		if err != nil {
 			t.Fatal(err)
