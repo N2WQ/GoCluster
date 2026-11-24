@@ -1258,6 +1258,10 @@ const RULES = (() => {
   function cardFromRule(rule) {
     const items = exprToItems(rule.expr);
     const card = { id: newId(), slot: rule.slot, action: rule.action, expr: rule.expr, expert: !items, items: items || [] };
+    // Keep the node's spelling when the visual editor formats an untouched
+    // expression differently. A later whole-bank PATCH must preserve that rule.
+    card.originalExpr = rule.expr;
+    card.originalEditorExpr = cardExpr(card);
     return card;
   }
   const rulesFromCards = cards => cards.map(c => ({ slot: c.slot, action: c.action, expr: cardExpr(c) }));
@@ -1611,10 +1615,24 @@ const GCP = (() => {
   // The raw document is kept as well; nothing here is written back.
   function configFromDoc(doc) {
     if (!doc || doc.schema_version !== 7 || !doc.configuration) throw new Error("Not a schema 7 configuration document");
-    const c = doc.configuration, go = (c.filters && c.filters.go) || {}, st = c.settings || {}, status = doc.status || {};
-    const rules = Array.isArray(go.rules) ? go.rules.filter(r => r && typeof r.slot === "number").map(r => ({ slot: r.slot, action: String(r.action).toLowerCase(), expr: String(r.expr) })) : [];
+    const c = doc.configuration, go = c.filters?.go, st = c.settings || {}, status = doc.status || {};
+    // Never substitute an empty bank or inherited switch for missing readback
+    // evidence. The same profile is used to confirm saves and recover drafts.
+    if (!doc.revision || !Array.isArray(go?.rules) || go.rules.length > GC.LIM.Slots) throw new Error("The node returned an incomplete filter profile.");
+    const slots = new Set();
+    const rules = go.rules.map(r => {
+      const action = String(r?.action).toLowerCase();
+      if (!Number.isInteger(r?.slot) || r.slot < 0 || r.slot >= GC.LIM.Slots || slots.has(r.slot) ||
+          (action !== "pass" && action !== "reject") || typeof r.expr !== "string" || !r.expr.trim()) throw new Error("The node returned an invalid filter rule.");
+      slots.add(r.slot);
+      return { slot: r.slot, action, expr: r.expr };
+    });
     const switches = {};
-    for (const [k, f] of Object.entries(SWITCH_FIELD)) switches[k] = go[f] === undefined ? "DEFAULT" : go[f];
+    for (const [k, f] of Object.entries(SWITCH_FIELD)) {
+      const value = go[f];
+      if (value !== true && value !== false && value !== "DEFAULT") throw new Error("The node did not return a valid value for " + f + ".");
+      switches[k] = value;
+    }
     const active = status.active_dialect || (status.effective && status.effective.dialect) || st.dialect || "";
     const presets = status.presets || {};
     const goRef = presets.go || {};
@@ -2037,7 +2055,6 @@ const CONN = (() => {
     const v = { sfi: g(/\bSFI\s*=\s*(\d+)/i), a: g(/\bA\s*=\s*(\d+)/), k: g(/\bK\s*=\s*(\d+)/) };
     return v.sfi != null || v.k != null ? v : null;
   }
-  const sameRules = (a, b) => JSON.stringify(a.map(r => [r.slot, r.action]).sort()) === JSON.stringify(b.map(r => [r.slot, r.action]).sort());
   const END_WORDS = { exhausted: "no more matching spots", count: "more may be available", budget: "the node stopped at its search limit; older spots may remain" };
 
   // ================================================================ Cluster
@@ -2352,34 +2369,31 @@ const CONN = (() => {
       try { const r = await fn(); this.needsReview = false; return r; }
       catch (e) {
         if (e.code === "revision_conflict") {
-          await this.refreshConfig().catch(() => {});
+          try { await this.refreshConfig(); }
+          catch (reload) { throw new Error("Your profile changed. Reload the profile before retrying. " + reload.message); }
           throw Object.assign(new Error("Your profile changed on the node (another login or the logger). The latest version is now shown. Review your edits and apply again."), { code: e.code });
         }
         if (e.code === "disconnected" || e.code === "timeout") {
           this.needsReview = true;
           if (this.live) await this.refreshConfig().catch(() => {});
-          throw Object.assign(new Error("The node did not confirm the change. Nothing was resent. Check the reloaded profile before trying again."), { code: e.code });
+          throw Object.assign(new Error("The node did not confirm the change. Nothing was resent. Review the latest profile before trying again."), { code: e.code });
         }
         throw e;
       } finally { this.writing = ""; this.changed(); }
     }
-    // rules: the complete list for the GO bank; switches: the full set from the draft.
-    // Only what differs from the loaded profile is sent.
+    // The review and save use the same patch. A supplied rule list replaces the GO bank.
     async patchFilter({ rules, switches }, baseRev) {
       this.guardWrite(baseRev);
+      if (!baseRev || this.cfgError) throw new Error("Reload the profile before applying filter changes.");
       if (this.cfg.activeDialect && this.cfg.activeDialect !== "go") throw new Error("This login uses the CC dialect. Switch it to GO in Settings before editing rules here.");
       const cur = this.cfg;
-      const norm = rs => JSON.stringify(rs.map(r => [r.slot, r.action, r.expr]).sort((a, b) => a[0] - b[0]));
-      const sendRules = norm(rules) !== norm(cur.rules) ? rules : undefined;
-      const sendSw = {};
-      for (const [k, v] of Object.entries(switches || {})) if (v !== cur.switches[k]) sendSw[k] = v;
-      if (!sendRules && !Object.keys(sendSw).length) return { revision: cur.revision, confirmed: true, unchanged: true };
       return this.write("filters", async () => {
-        const { doc } = await this.session.patchFilter({ revision: cur.revision, rules: sendRules, switches: sendSw });
+        await this.session.patchFilter({ revision: cur.revision, rules, switches });
         const cfg = await this.refreshConfig(); // confirm by readback
-        const okRules = !sendRules || sameRules(sendRules, cfg.rules);
-        const okSw = Object.entries(sendSw).every(([k, v]) => cfg.switches[k] === v);
-        return { revision: cfg.revision, writeRevision: String(doc.revision), confirmed: okRules && okSw };
+        const okRules = !rules || (rules.length === cfg.rules.length &&
+          rules.every(r => sameFilterRule(r, cfg.rules.find(other => other.slot === r.slot))));
+        const okSw = Object.entries(switches).every(([k, v]) => cfg.switches[k] === v);
+        return { confirmed: okRules && okSw, cfg };
       });
     }
     async patchSettings(patch, baseRev) {
@@ -2798,51 +2812,120 @@ function currentCards() {
 const cloneCards = cards => JSON.parse(JSON.stringify(cards));
 function workingCards() { return S.draft ? S.draft.cards : currentCards(); }
 function workingSwitches() { return S.draft ? S.draft.switches : (S.snap ? S.snap.switches : {}); }
+function filterBase(profile) {
+  return { revision: profile.revision, rules: profile.rules, switches: profile.switches };
+}
 function startDraft() {
-  if (!S.draft) S.draft = { baseRev: S.snap.revision, cards: cloneCards(currentCards()), switches: { ...S.snap.switches } };
+  if (!S.draft) S.draft = { base: filterBase(S.snap), cards: cloneCards(currentCards()), switches: { ...S.snap.switches }, conflicts: new Map() };
   return S.draft;
 }
 function editDraft(fn) { const d = startDraft(); fn(d); S.draft = { ...d, cards: RULES.sortCards(d.cards) }; notify(true); }
 function updateCard(id, fn) { editDraft(d => { d.cards = d.cards.map(c => (c.id === id ? fn(c) : c)); }); }
-function cardRule(c) { const r = RULES.checkCard(c); return { slot: c.slot, action: c.action, expr: r.ok ? r.canonical : RULES.cardExpr(c), ok: r.ok }; }
+function cardRule(c) {
+  const checked = RULES.checkCard(c);
+  const text = RULES.cardExpr(c);
+  let expr = checked.ok ? checked.canonical : text;
+  if (checked.ok && text === c.originalEditorExpr) expr = c.originalExpr;
+  return { slot: c.slot, action: c.action, expr, ok: checked.ok };
+}
+function sameFilterRule(a, b) {
+  return a === b || !!(a && b && a.ok !== false && b.ok !== false && a.slot === b.slot && a.action === b.action && a.expr === b.expr);
+}
 function draftChanges() {
   if (!S.draft || !S.snap) return null;
-  const before = new Map(S.snap.rules.map(r => [r.slot, r]));
+  const before = new Map(S.draft.base.rules.map(r => [r.slot, r]));
   const after = new Map(S.draft.cards.map(c => [c.slot, cardRule(c)]));
   const changes = [];
   for (const [slot, r] of after) {
     const b = before.get(slot);
     if (!b) changes.push({ kind: "add", slot, r });
-    else if (b.expr !== r.expr || b.action !== r.action) changes.push({ kind: "edit", slot, r, b });
+    else if (!sameFilterRule(b, r)) changes.push({ kind: "edit", slot, r, b });
   }
   for (const [slot, b] of before) if (!after.has(slot)) changes.push({ kind: "remove", slot, b });
   const sw = [];
-  for (const [k] of DATA.SWITCHES) if (S.draft.switches[k] !== S.snap.switches[k]) sw.push(k);
+  for (const [k] of DATA.SWITCHES) if (S.draft.switches[k] !== S.draft.base.switches[k]) sw.push(k);
   return { changes: changes.sort((a, b) => a.slot - b.slot), sw, count: changes.length + sw.length };
 }
-function isDirty() { const d = draftChanges(); return !!d && d.count > 0; }
+function isDirty() { const d = draftChanges(); return !!d && (d.count > 0 || S.draft.conflicts.size > 0); }
 function draftErrors() { return S.draft ? S.draft.cards.map(c => ({ c, r: RULES.checkCard(c) })).filter(x => !x.r.ok) : []; }
 function discardDraft() { S.draft = null; S.editing = null; notify(true); }
 
-function draftRules() { return S.draft.cards.map(c => ({ slot: c.slot, action: c.action, expr: RULES.checkCard(c).canonical })); }
+function filterPatch(draft, changes) {
+  return {
+    rules: changes.changes.length ? draft.cards.map(cardRule) : undefined,
+    switches: Object.fromEntries(changes.sw.map(k => [k, draft.switches[k]])),
+  };
+}
 // Sends PATCH YAML FILTER SCHEMA 7 with the latest GET revision, then confirms by
 // reading the profile back. A refused or unconfirmed write keeps the draft.
 async function applyDraft() {
+  const draft = S.draft;
+  if (!draft || draft.conflicts.size || draft.base.revision !== S.snap.revision || S.snap.conn.cfgError) return;
   const errs = draftErrors();
   if (errs.length) { toast(`Fix rule ${errs[0].c.slot} first: ${errs[0].r.error}`, "error"); return; }
   const built = RULES.buildSet(S.draft.cards);
   if (built.error) { toast(built.error, "error"); return; }
-  const draft = S.draft;
+  const changes = draftChanges();
+  if (!changes.count) return;
+  const patch = filterPatch(draft, changes);
+  const submitted = { rules: patch.rules || draft.base.rules, switches: { ...draft.switches } };
   try {
-    const n = draftChanges().count;
-    const r = await cluster.patchFilter({ rules: draftRules(), switches: draft.switches }, draft.baseRev);
+    const r = await cluster.patchFilter(patch, draft.base.revision);
+    if (!r.confirmed) throw new Error("The node accepted the change, but the readback differs. Your draft is available for review.");
     if (S.draft === draft) { S.draft = null; S.editing = null; }
-    if (r.confirmed === false) toast("The node accepted the change, but the readback differs from what was sent. Check your rules.", "error");
-    else toast(`Filters applied on the node and confirmed by readback. ${plural(n, "change")} saved.`);
+    else if (S.draft && S.draft.base === draft.base) {
+      // While saving, the operator may even undo a submitted edit. Compare those
+      // later edits with what was sent, rather than with the pre-save profile.
+      mergeFilterDraft(S.draft, submitted, r.cfg);
+    }
+    toast(`Filters applied on the node and confirmed by readback. ${plural(changes.count, "change")} saved.`);
     notify(true);
-  } catch (e) { toast(e.message, "error"); }
+  } catch (e) {
+    if (S.draft && S.draft !== draft && S.draft.base === draft.base) {
+      // A reversal made during an uncertain save is still an edit, even if
+      // its value equals the original base. Preserve it through the next GET.
+      S.draft.uncertainSubmission = submitted;
+    }
+    toast(e.message, "error");
+  }
 }
-function rebaseDraft() { if (S.draft) { S.draft = { ...S.draft, baseRev: S.snap.revision }; notify(true); toast("Your edits now apply to the node's latest filters. Review them, then apply."); } }
+// Only this browser knows the original profile and the unsaved intent. Slots
+// and switch keys are the node's stable identifiers across successive GETs.
+function mergeFilterDraft(draft, base, latest, uncertainSubmission) {
+  const conflicts = new Map(draft.conflicts);
+  const cards = [];
+  for (let slot = 0; slot < RULES.LIM.Slots; slot++) {
+    const old = base.rules.find(r => r.slot === slot);
+    const node = latest.rules.find(r => r.slot === slot);
+    const card = draft.cards.find(c => c.slot === slot);
+    const mine = card && cardRule(card);
+    const edited = !sameFilterRule(mine, old) || (uncertainSubmission && !sameFilterRule(mine, uncertainSubmission.rules.find(r => r.slot === slot)));
+    if (!conflicts.has(slot) && edited && sameFilterRule(node, old)) {
+      if (card) cards.push(card);
+      continue;
+    }
+    if (!conflicts.has(slot) && edited && !sameFilterRule(mine, node)) conflicts.set(slot, mine);
+    if (node) cards.push(RULES.cardFromRule(node));
+  }
+  const switches = { ...latest.switches };
+  for (const [key] of DATA.SWITCHES) {
+    const old = base.switches[key], mine = draft.switches[key], node = switches[key];
+    const edited = mine !== old || (uncertainSubmission && mine !== uncertainSubmission.switches[key]);
+    if (conflicts.has(key) || !edited || mine === node) continue;
+    if (node === old) switches[key] = mine;
+    else conflicts.set(key, mine);
+  }
+  S.draft = { base: filterBase(latest), cards, switches, conflicts };
+}
+function rebaseDraft() {
+  if (!S.draft || !S.snap.conn.configLoaded || S.snap.conn.cfgError || S.snap.conn.writing) return;
+  mergeFilterDraft(S.draft, S.draft.base, S.snap, S.draft.uncertainSubmission);
+  notify(true);
+}
+function nextDraftSlot(draft, action) {
+  const reserved = Array.from(draft.conflicts.keys()).filter(key => typeof key === "number");
+  return RULES.nextSlot(draft.cards.concat(reserved.map(slot => ({ slot }))), action);
+}
 
 // ---------------------------------------------------------------- evaluation (same order as the node)
 function switchOn(sw, name) { const v = sw[name]; return v === "DEFAULT" ? DATA.SWITCH_DEFAULTS[name] : !!v; }
@@ -2898,7 +2981,7 @@ function previewStats() {
 // ---------------------------------------------------------------- card mutations
 function addCard(action, expr) {
   editDraft(d => {
-    const slot = RULES.nextSlot(d.cards, action);
+    const slot = nextDraftSlot(d, action);
     if (slot < 0) { toast("All 10 rule numbers are in use. Remove or combine a rule first.", "error"); return; }
     let card;
     if (expr) {
@@ -2912,13 +2995,13 @@ function addCard(action, expr) {
 }
 function hideFromSpot(field, value) {
   editDraft(d => {
-    const existing = d.cards.find(c => c.action === "reject" && !c.expert && c.items.length === 1 && c.items[0].type === "cond" && c.items[0].field === field && c.items[0].op === "=");
+    const existing = d.cards.find(c => !d.conflicts.has(c.slot) && c.action === "reject" && !c.expert && c.items.length === 1 && c.items[0].type === "cond" && c.items[0].field === field && c.items[0].op === "=");
     if (existing) {
       const it = existing.items[0];
       if (!it.values.includes(value)) it.values.push(value);
       S.editing = existing.id;
     } else {
-      const slot = RULES.nextSlot(d.cards, "reject");
+      const slot = nextDraftSlot(d, "reject");
       if (slot < 0) { toast("All 10 rule numbers are in use.", "error"); return; }
       const card = { id: RULES.newId(), slot, action: "reject", expert: false, expr: "", items: [{ type: "cond", field, op: "=", values: [value] }] };
       d.cards.push(card);
@@ -3115,7 +3198,7 @@ function RuleCard({ card, stats, snapCards }) {
           ${card.expert
             ? (RULES.exprToItems(card.expr) ? html`<button role="menuitem" type="button" onClick=${() => { setMenu(false); upd(c => ({ ...c, expert: false, items: RULES.exprToItems(c.expr) })); }}><${Icon} name="wand" size=${15} /> Edit visually</button>` : null)
             : html`<button role="menuitem" type="button" onClick=${() => { setMenu(false); upd(c => ({ ...c, expert: true, expr: RULES.cardExpr(c) })); set({ editing: card.id }); }}><${Icon} name="code" size=${15} /> Edit as expression</button>`}
-          <button role="menuitem" type="button" onClick=${() => { setMenu(false); editDraft(d => { const slot = RULES.nextSlot(d.cards, card.action); if (slot < 0) return toast("All 10 rule numbers are in use.", "error"); const copy = { ...JSON.parse(JSON.stringify(card)), id: RULES.newId(), slot }; d.cards.push(copy); S.editing = copy.id; }); }}><${Icon} name="copy" size=${15} /> Duplicate</button>
+          <button role="menuitem" type="button" onClick=${() => { setMenu(false); editDraft(d => { const slot = nextDraftSlot(d, card.action); if (slot < 0) return toast("All 10 rule numbers are in use.", "error"); const copy = { ...JSON.parse(JSON.stringify(card)), id: RULES.newId(), slot }; d.cards.push(copy); S.editing = copy.id; }); }}><${Icon} name="copy" size=${15} /> Duplicate</button>
           <button role="menuitem" type="button" class="danger" onClick=${() => { setMenu(false); editDraft(d => { d.cards = d.cards.filter(c => c.id !== card.id); }); }}><${Icon} name="trash" size=${15} /> Delete rule</button>
         </div>` : null}
       </div>
@@ -3213,9 +3296,13 @@ function HowItWorks() {
 
 function RulesTab() {
   const cards = workingCards();
-  const snapCards = currentCards();
+  // Until the operator reviews a newer revision, the card labels and removal
+  // notices must describe edits against the same base as the change count.
+  const base = S.draft?.base;
+  const snapCards = useMemo(() => base ? base.rules.map(RULES.cardFromRule) : currentCards(), [base, S.snap.revision]);
   const stats = previewStats();
-  const pass = cards.filter(c => c.action === "pass"), rej = cards.filter(c => c.action === "reject");
+  const editable = cards.filter(c => !S.draft?.conflicts.has(c.slot));
+  const pass = editable.filter(c => c.action === "pass"), rej = editable.filter(c => c.action === "reject");
   const setLints = RULES.lintSet(cards);
   const [recipes, setRecipes] = useState(false);
   const removed = S.draft ? snapCards.filter(c => !cards.some(d => d.slot === c.slot)) : [];
@@ -3250,7 +3337,7 @@ function SwitchesTab() {
   const sw = workingSwitches();
   return html`<div class="tab-body">
     <p class="lede">These separate controls work alongside your rules. Bulletins and announcements are messages, not spots, so rules never filter them.</p>
-    <div class="sw-list">${DATA.SWITCHES.map(([k, name, label, desc]) => {
+    <div class="sw-list">${DATA.SWITCHES.filter(([k]) => !S.draft?.conflicts.has(k)).map(([k, name, label, desc]) => {
       const on = switchOn(sw, k), def = sw[k] === "DEFAULT";
       return html`<div class="sw-row">
         <div class="sw-text"><label for=${"sw-" + k}>${label}</label><span>${desc}</span>
@@ -3319,13 +3406,64 @@ function PresetsTab() {
 }
 
 // ---------------------------------------------------------------- apply bar
+function resolveConflict(key, update) {
+  const draft = S.draft;
+  if (!draft?.conflicts.has(key) || draft.base.revision !== S.snap.revision || S.snap.conn.cfgError) return;
+  editDraft(d => {
+    update(d);
+    d.conflicts.delete(key);
+  });
+}
+const describeRule = r => r ? `${r.action.toUpperCase()} ${r.expr}` : "Deleted";
+const describeSwitch = v => v === "DEFAULT" ? "Node default" : v ? "On" : "Off";
+function RuleConflict({ slot, mine, node }) {
+  const [expr, setExpr] = useState("");
+  const [action, setAction] = useState(node?.action || mine?.action || "pass");
+  const checked = RULES.checkCard({ expert: true, expr, action });
+  function finish(remove) {
+    resolveConflict(slot, d => {
+      d.cards = d.cards.filter(c => c.slot !== slot);
+      if (!remove) d.cards.push(RULES.cardFromRule({ slot, action, expr: checked.canonical }));
+    });
+  }
+  return html`<fieldset class="rsec">
+    <legend>Re-enter rule ${slot}</legend>
+    <p class="canon"><span>On the node</span><code>${describeRule(node)}</code><span>Your earlier edit</span><code>${describeRule(mine)}</code></p>
+    <select class="op" aria-label=${"Action for rule " + slot} value=${action} onChange=${e => setAction(e.currentTarget.value)}>
+      <option value="pass">Show</option><option value="reject">Hide</option>
+    </select>
+    <textarea class="expr" rows="2" aria-label=${"Re-enter rule " + slot} placeholder="Rule expression" value=${expr} onInput=${e => setExpr(e.currentTarget.value)}></textarea>
+    ${expr && !checked.ok ? html`<p class="field-err">${checked.error}</p>` : null}
+    <div class="btn-row"><button type="button" class="btn" disabled=${!checked.ok} onClick=${() => finish(false)}>Set rule ${slot}</button>
+      <button type="button" class="btn ghost" onClick=${() => finish(true)}>Delete rule ${slot}</button></div>
+  </fieldset>`;
+}
+function FilterConflicts() {
+  const draft = S.draft;
+  if (!draft?.conflicts.size || draft.base.revision !== S.snap.revision || S.snap.conn.cfgError) return null;
+  return html`<section class="tab-body" aria-label="Conflicting edits"><h3>Re-enter conflicting edits</h3>
+    ${Array.from(draft.conflicts, ([key, mine]) => {
+      if (typeof key === "number") return html`<${RuleConflict} key=${draft.base.revision + "/" + key} slot=${key} mine=${mine} node=${draft.base.rules.find(r => r.slot === key)} />`;
+      const label = DATA.SWITCHES.find(([k]) => k === key)[2];
+      return html`<label class="rsec" key=${key}>${label} · On the node: ${describeSwitch(draft.base.switches[key])}. Your earlier edit: ${describeSwitch(mine)}.
+        <select class="op" aria-label=${"Re-enter " + key + " switch"} value="" onChange=${e => {
+          const v = e.currentTarget.value;
+          resolveConflict(key, d => { d.switches[key] = v === "DEFAULT" ? v : v === "on"; });
+        }}><option value="" disabled>Select a value</option><option value="on">On</option><option value="off">Off</option><option value="DEFAULT">Node default</option></select>
+      </label>`;
+    })}
+  </section>`;
+}
 function ApplyBar() {
   const [open, setOpen] = useState(false);
   const [fmt, setFmt] = useState("cmd");
   const d = draftChanges();
-  if (!d || !d.count) return S.draft ? html`<div class="applybar idle"><span class="muted small">No changes yet.</span><button type="button" class="btn ghost sm" onClick=${discardDraft}>Close draft</button></div>` : null;
+  if (!d) return null;
+  const conflicts = S.draft.conflicts.size;
+  const stale = S.draft.base.revision !== S.snap.revision;
+  const reload = S.snap.conn.cfgError;
+  if (!d.count && !conflicts && !stale && !reload) return html`<div class="applybar idle"><span class="muted small">No changes to apply.</span><button type="button" class="btn ghost sm" onClick=${discardDraft}>Close draft</button></div>`;
   const errs = draftErrors();
-  const stale = S.draft.baseRev !== S.snap.revision;
   const cmds = [];
   for (const ch of d.changes) {
     if (ch.kind === "remove") cmds.push(`RESET FILTER RULE ${ch.slot}`);
@@ -3334,13 +3472,16 @@ function ApplyBar() {
   for (const k of d.sw) { const v = S.draft.switches[k]; const name = DATA.SWITCHES.find(x => x[0] === k)[1]; cmds.push(v === "DEFAULT" ? `# ${name}: node default (YAML only)` : `${v ? "PASS" : "REJECT"} ${name}`); }
   let yaml;
   try {
-    yaml = GCP.patchFilterText({ requestId: "flt-<new id>", revision: S.draft.baseRev, rules: d.changes.length ? S.draft.cards.map(cardRule) : undefined, switches: Object.fromEntries(d.sw.map(k => [k, S.draft.switches[k]])) });
+    yaml = GCP.patchFilterText({ requestId: "flt-<new id>", revision: S.draft.base.revision, ...filterPatch(S.draft, d) });
   } catch (e) { yaml = "Fix the draft first: " + e.message; }
   const writing = S.snap.conn.writing === "filters";
   const canApply = S.snap.conn.canWrite && S.snap.conn.activeDialect === "go";
   return html`<div class=${cls("applybar", open && "open")}>
-    ${stale ? html`<div class="lint warn"><${Icon} name="warn" size=${15} /><span>The filters on the node changed after you started editing (revision ${S.snap.revision || "unknown"}). Review your edits against the latest version before applying.</span><button type="button" class="link sm" disabled=${!S.snap.conn.configLoaded} onClick=${rebaseDraft}>Keep my edits</button><button type="button" class="link sm" onClick=${() => { discardDraft(); toast("Draft discarded. You are looking at the node's current filters."); }}>Start over</button></div>` : null}
-    ${open ? html`<div class="review">
+    ${reload ? html`<div class="lint warn">The profile could not be loaded. Your draft is still here.
+      <button type="button" class="link sm" disabled=${!cluster.live || writing} onClick=${() => cluster.refreshConfig().catch(e => toast(e.message, "error"))}>Reload profile</button></div>` : null}
+    ${stale && !reload ? html`<div class="lint warn"><${Icon} name="warn" size=${15} /><span>The profile changed after you started editing. Review your edits against revision ${S.snap.revision || "unknown"}.</span><button type="button" class="link sm" disabled=${!S.snap.conn.configLoaded || writing} onClick=${rebaseDraft}>Keep my edits</button><button type="button" class="link sm" onClick=${discardDraft}>Start over</button></div>` : null}
+    ${conflicts && !stale && !reload ? html`<div class="lint warn">Re-enter ${plural(conflicts, "conflicting edit")} before applying.</div>` : null}
+    ${open && !stale && !conflicts && !reload ? html`<div class="review">
       <ul class="chlist">${d.changes.map(ch => html`<li class=${ch.kind}><span class="chk">${ch.kind === "add" ? "Add" : ch.kind === "remove" ? "Remove" : "Change"}</span> rule ${ch.slot}: ${ch.kind === "remove" ? RULES.cardSentence(RULES.cardFromRule(ch.b)) : RULES.cardSentence(RULES.cardFromRule(ch.r))}</li>`)}
         ${d.sw.map(k => html`<li class="edit"><span class="chk">Switch</span> ${DATA.SWITCHES.find(x => x[0] === k)[2]}: ${S.draft.switches[k] === "DEFAULT" ? "node default" : S.draft.switches[k] ? "on" : "off"}</li>`)}</ul>
       <div class="send-head"><${Seg} small label="Show as" value=${fmt} onChange=${setFmt} options=${[["cmd", "Telnet commands"], ["yaml", "What the console sends"]]} />
@@ -3354,7 +3495,7 @@ function ApplyBar() {
       </button>
       <span class="grow"></span>
       <button type="button" class="btn ghost" onClick=${discardDraft}>Discard</button>
-      <button type="button" class="btn primary" disabled=${errs.length > 0 || stale || !canApply} title=${canApply ? "" : S.snap.conn.mode === "replay" ? "Replay is read-only" : "Connect Live with your profile loaded to apply"} onClick=${applyDraft}><${Icon} name="check" size=${16} /> ${writing ? "Applying…" : "Apply"}</button>
+      <button type="button" class="btn primary" disabled=${!d.count || errs.length > 0 || !!conflicts || stale || !!reload || !canApply} title=${canApply ? "" : S.snap.conn.mode === "replay" ? "Replay is read-only" : "Connect Live with your profile loaded to apply"} onClick=${applyDraft}><${Icon} name="check" size=${16} /> ${writing ? "Applying…" : "Apply"}</button>
     </div>
   </div>`;
 }
@@ -3371,6 +3512,7 @@ function FiltersDrawer() {
       ${[["rules", "Rules"], ["presets", "Presets"], ["switches", "Switches"]].map(([k, l]) => html`<button type="button" role="tab" aria-selected=${tab === k ? "true" : "false"} class=${tab === k ? "on" : ""} onClick=${() => set({ filterTab: k })}>${l}${k === "presets" && snap.preset.name ? html`<span class="tab-note">${snap.preset.name}${snap.preset.modified ? "*" : ""}</span>` : null}</button>`)}
     </nav>
     <div class="dr-scroll" key=${tab}>
+      ${tab !== "presets" ? html`<${FilterConflicts} />` : null}
       ${tab === "rules" ? html`<${RulesTab} />` : tab === "presets" ? html`<${PresetsTab} />` : html`<${SwitchesTab} />`}
     </div>
     ${tab !== "presets" ? html`<${ApplyBar} />` : null}

@@ -76,6 +76,16 @@ Review `git status --short` and `git diff`. Include the newly named files, remov
 2. To test the UI locally, run `python -m http.server 8000 --bind 127.0.0.1 --directory site`. Open `http://127.0.0.1:8000/`, select **Replay the pilot capture**, and verify the changed behavior. For table changes, check Spots, History, and the narrow-screen layout. Stop the local server with Ctrl+C. Live connections require the production origin or a suitable test bridge.
 3. Run the [repository validation lane](../../docs/dev-runbook.md) for any backend or configuration changes. Commit the intended release, push under the repository's normal approval process, and identify the Git SHA used for the release. Check CI on that SHA. The Worker tests and browser checks above provide evidence beyond repository CI.
 
+For filter-editor changes, also exercise the shipped page against the simulated node. On Windows with Microsoft Edge installed, run this from the Worker directory. The tests submit and read back filter profiles locally.
+
+```powershell
+$testDeps = Join-Path ([System.IO.Path]::GetTempPath()) "gocluster-worker-tests"
+npm install --prefix $testDeps miniflare@5.20261123.0-beta ws@8.21.0 playwright-core@1.56.1
+$env:NODE_PATH = Join-Path $testDeps "node_modules"
+$env:CHROMIUM_CHANNEL = "msedge"
+node --test test/filters.cjs
+```
+
 ## Publish the tested revision
 
 Run these commands in `cloudflare/gocluster-pilot` in the release checkout. Use an authorized Cloudflare account. For an interactive deployment, `login` may open a browser for consent. Wrangler performs the upload. Browser automation is optional.

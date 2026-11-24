@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Agent Handoff"
+  short_description: "Check another agent's reasoning and recommend the next action"
+  default_prompt: "Use $review-agent-handoff to assess the other agent's argument against the evidence and explain what we should do next."

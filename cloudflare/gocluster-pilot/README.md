@@ -4,6 +4,14 @@ Operators can sign in to the [production console](https://gocluster-pilot.n2wq-a
 
 For routine changes, releases, verification and rollback, follow the [production update runbook](PRODUCTION.md). The setup instructions below are for provisioning or restoring the cluster host.
 
+## Save filter edits
+
+Open **Filters** and review your unapplied changes before choosing **Apply**. If the profile changes while you are editing, choose **Keep my edits** to bring your draft up to date. For example, if you edited rule 1 and someone added rule 2, the review shows your edit to rule 1 and preserves rule 2. **Start over** discards the draft.
+
+If both edits changed the same rule differently, the console shows the current rule and your earlier edit. Enter the expression you want and choose **Set rule** for that number, or choose **Delete rule** to remove it. For a conflicting switch, select **On**, **Off**, or **Node default**. Apply becomes available once every conflict is resolved and there is a valid change to save.
+
+The console reads the profile back after saving. If confirmation fails, your draft stays open. Use **Reload profile** if prompted, review the latest values, and decide whether to apply again. A failed confirmation can occur after the node has already saved the change.
+
 ## Adjust the spot table
 
 On a desktop, drag the right edge of a column heading to resize it. Drag the label to reorder it. Spots and History share the layout in this browser. Use **Reset columns** in Settings to restore the default layout. On phones, spots use stacked rows.
