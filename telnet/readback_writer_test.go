@@ -40,7 +40,7 @@ func TestReadbackWriterCompletionRequiresSuccessfulWriteAndFlush(t *testing.T) {
 			conn := &readbackDeliveryConn{entered: make(chan struct{}), release: make(chan struct{})}
 			var releaseOnce sync.Once
 			t.Cleanup(func() { releaseOnce.Do(func() { close(conn.release) }) })
-			c := &Client{server: s, conn: conn, writer: bufio.NewWriterSize(conn, 256),
+			c := &Client{sessionProfile: &sessionProfile{}, server: s, conn: conn, writer: bufio.NewWriterSize(conn, 256),
 				done: make(chan struct{}), controlChan: make(chan controlMessage, 8), spotChan: make(chan *spotEnvelope, 1)}
 			old := c.beginHumanReadback(initial, 10*time.Second)
 			latest := c.beginHumanReadback(initial.Add(time.Second), 30*time.Second)

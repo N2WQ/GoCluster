@@ -15,7 +15,7 @@ func TestShowHoldUsesActualWriterCompletionAndSuppression(t *testing.T) {
 	s := &Server{writerBatchMaxBytes: 2048, writerBatchWait: time.Millisecond,
 		nowFn: func() time.Time { return time.Unix(0, clock.Load()) }}
 	conn := &readbackDeliveryConn{entered: make(chan struct{}), release: make(chan struct{})}
-	c := &Client{server: s, conn: conn, writer: bufio.NewWriterSize(conn, 256),
+	c := &Client{sessionProfile: &sessionProfile{}, server: s, conn: conn, writer: bufio.NewWriterSize(conn, 256),
 		done: make(chan struct{}), controlChan: make(chan controlMessage, 1), spotChan: make(chan *spotEnvelope, 2)}
 	completion := c.beginHumanReadback(s.now(), 30*time.Second)
 	c.enqueueSpot(&spotEnvelope{spot: writerV15Spot(), enqueueAt: s.now()})

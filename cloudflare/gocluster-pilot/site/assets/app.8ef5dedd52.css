@@ -114,7 +114,8 @@ body { background: var(--canvas); background-attachment: fixed; }
 .brand svg { filter: drop-shadow(0 4px 14px rgba(34, 184, 240, .45)); }
 .bwords { display: flex; flex-direction: column; line-height: 1.05; }
 .bname { font-weight: 750; font-size: 16.5px; letter-spacing: -.025em; color: #fff; }
-.bsub { font-size: 11.5px; color: var(--deck-muted); letter-spacing: .06em; text-transform: uppercase; margin-top: 3px; }
+.bsub { display: flex; font-size: 11.5px; color: var(--deck-muted); letter-spacing: .06em; margin-top: 3px; white-space: pre; }
+.bsub-version { max-width: 20ch; overflow: hidden; text-overflow: ellipsis; }
 .node { display: flex; align-items: center; gap: 9px; padding: 5px 12px 5px 10px; border-radius: 999px; background: rgba(255, 255, 255, .05); border: 1px solid rgba(255, 255, 255, .09); font-size: 12px; flex: none; }
 .node-call { font-weight: 650; color: #fff; }
 .spark { color: #38c6f4; display: block; }
@@ -739,8 +740,8 @@ select.txt { appearance: auto; }
 :root[data-contrast="high"] .row.fresh { animation: none; }
 
 /* ---------- larger text: zoom enlarges the layout, so collapse the header earlier ---------- */
-:root[data-text="large"] .preset-pill, :root[data-text="large"] .deck-sep, :root[data-text="large"] .spark, :root[data-text="large"] .bsub,
-:root[data-text="xl"] .preset-pill, :root[data-text="xl"] .deck-sep, :root[data-text="xl"] .spark, :root[data-text="xl"] .bsub, :root[data-text="xl"] .views a span,
+:root[data-text="large"] .preset-pill, :root[data-text="large"] .deck-sep, :root[data-text="large"] .spark,
+:root[data-text="xl"] .preset-pill, :root[data-text="xl"] .deck-sep, :root[data-text="xl"] .spark, :root[data-text="xl"] .views a span,
 :root[data-text="xl"] .spot-btn span, :root[data-text="xl"] .account span:not(.avatar), :root[data-text="xl"] .search kbd, :root[data-text="xl"] .node-rate small { display: none; }
 :root[data-text="xl"] .spot-btn { width: 38px; padding: 0; justify-content: center; }
 :root[data-text="xl"] .account { padding: 0 4px; }
@@ -749,7 +750,7 @@ select.txt { appearance: auto; }
 
 /* ---------- responsive ---------- */
 @media (max-width: 1500px) { .preset-pill, .deck-sep { display: none; } .spark { display: none; } }
-@media (max-width: 1320px) { .spot-btn span, .account span:not(.avatar), .bsub { display: none; } .spot-btn { width: 38px; padding: 0; justify-content: center; } .account { padding: 0 4px; } }
+@media (max-width: 1320px) { .spot-btn span, .account span:not(.avatar) { display: none; } .spot-btn { width: 38px; padding: 0; justify-content: center; } .account { padding: 0 4px; } }
 @media (max-width: 1180px) {
   .drawer { position: absolute; top: 0; bottom: 10px; box-shadow: var(--shadow-lg); max-width: calc(100% - 24px); }
   .drawer.left { left: 12px; } .drawer.right { right: 12px; }

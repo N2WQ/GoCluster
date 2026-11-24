@@ -162,7 +162,9 @@ func (s *cursorFuzzSession) apply(operation, argument byte) {
 		s.client.interrupt()
 		s.retire()
 		retired := s.model.retired
-		s.client = &Client{callsign: "N2WQ", dialect: DialectGo, filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
+		s.client = &Client{sessionProfile: &sessionProfile{dialect: DialectGo,
+			filter: unrestrictedTestFilter(),
+		}, callsign: "N2WQ", done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
 		s.server.clients[s.client.callsign] = s.client
 		s.model = cursorModel{retired: retired}
 	case cursorInvalid, cursorStaleToken:

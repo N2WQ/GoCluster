@@ -32,7 +32,7 @@ func solarOutcomeManager(enabled bool) *solarweather.Manager {
 }
 
 func solarOutcomeDispatchClient(s *Server, minutes int) *Client {
-	c := &Client{callsign: fmt.Sprintf("SOLAR%d", minutes), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
+	c := &Client{sessionProfile: &sessionProfile{}, callsign: fmt.Sprintf("SOLAR%d", minutes), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
 	c.setSolarSummaryMinutes(minutes, time.Date(2026, 10, 9, 12, 7, 30, 0, time.UTC))
 	s.clients[c.callsign] = c
 	return c

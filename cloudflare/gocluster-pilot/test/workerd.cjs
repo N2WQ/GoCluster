@@ -38,6 +38,11 @@ test("splices the private upgrade, text frames and normal close", { timeout: 150
     serviceBindings: { CLUSTER_ORIGIN: { external: { address, http: {} } } },
   }));
   t.after(() => runtime.dispose());
+  const addressResponse = await runtime.dispatchFetch(`https://${host}/visitor-ip`, {
+    headers: { "CF-Connecting-IP": "192.0.2.42" },
+  });
+  assert.equal(addressResponse.headers.get("Cache-Control"), "no-store");
+  assert.deepEqual(await addressResponse.json(), { ipv4: "192.0.2.42" });
   const response = await runtime.dispatchFetch(`https://${host}/ws?target=ignored`, {
     headers: {
       Upgrade: "websocket", Origin: `https://${host}`, "CF-Connecting-IP": ip,

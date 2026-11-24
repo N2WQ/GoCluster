@@ -12,7 +12,7 @@ func peerMembershipTestServer() *Server {
 }
 
 func peerMembershipTestClient(server *Server, login, address string) *Client {
-	return &Client{
+	return &Client{sessionProfile: &sessionProfile{},
 		server:      server,
 		callsign:    login,
 		address:     address,

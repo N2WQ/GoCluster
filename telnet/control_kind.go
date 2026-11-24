@@ -14,5 +14,6 @@ const (
 	controlReset
 	controlReadback
 	controlRefused
+	controlAdvisory
 	controlJSONOff
 )

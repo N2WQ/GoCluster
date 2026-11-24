@@ -59,7 +59,7 @@ func TestConfigurationMixedWriterFlushAndFailureReleaseBothOwners(t *testing.T) 
 			}
 			var unblock sync.Once
 			s := &Server{writerBatchMaxBytes: 32 << 10}
-			c := &Client{server: s, conn: conn, writer: bufio.NewWriterSize(conn, 32<<10), done: make(chan struct{}), writerStopped: make(chan struct{}), controlChan: make(chan controlMessage, 4), spotChan: make(chan *spotEnvelope, 1)}
+			c := &Client{sessionProfile: &sessionProfile{}, server: s, conn: conn, writer: bufio.NewWriterSize(conn, 32<<10), done: make(chan struct{}), writerStopped: make(chan struct{}), controlChan: make(chan controlMessage, 4), spotChan: make(chan *spotEnvelope, 1)}
 			owner := queueMixedConfigurationOwners(t, s, c)
 			c.controlChan <- controlMessage{closeAfter: true}
 			done := writerV15Start(c)
@@ -86,7 +86,7 @@ func TestConfigurationMixedWriterShutdownAndClosedQueueDrainBothOwners(t *testin
 			input, output := configurationTransferBudgetStats()
 			conn := &recordingConn{}
 			s := &Server{shutdown: make(chan struct{}), writerBatchMaxBytes: 32 << 10}
-			c := &Client{server: s, conn: conn, writer: bufio.NewWriter(conn), done: make(chan struct{}), writerStopped: make(chan struct{}), controlChan: make(chan controlMessage, 4), spotChan: make(chan *spotEnvelope, 1)}
+			c := &Client{sessionProfile: &sessionProfile{}, server: s, conn: conn, writer: bufio.NewWriter(conn), done: make(chan struct{}), writerStopped: make(chan struct{}), controlChan: make(chan controlMessage, 4), spotChan: make(chan *spotEnvelope, 1)}
 			owner := queueMixedConfigurationOwners(t, s, c)
 			if shutdown {
 				close(s.shutdown)
@@ -144,6 +144,7 @@ func TestConfigurationFinalSaveWaitsForWriterDrainWithoutWaitingForReporter(t *t
 		}
 		saved := make(chan error, 1)
 		go func() {
+			c.awaitConfigurationWriter()
 			release, err := s.acquireConfiguration(c, true, false, time.Time{})
 			if err == nil {
 				defer release()
@@ -157,6 +158,11 @@ func TestConfigurationFinalSaveWaitsForWriterDrainWithoutWaitingForReporter(t *t
 			t.Fatalf("closed owner did not await in-flight writer: %v", err)
 		default:
 		}
+		release, err := s.acquireConfiguration(c, true, false, time.Time{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		release()
 		if commits != 0 {
 			t.Fatal("save prepared/committed while writer retained its old owner")
 		}

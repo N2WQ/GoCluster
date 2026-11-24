@@ -37,8 +37,8 @@ func TestCommandPacingRetirementRegistryState(t *testing.T) {
 
 	t.Run("zero valued signal", func(t *testing.T) {
 		s := &Server{}
-		first := &Client{callsign: "W1ABC-1"}
-		second := &Client{callsign: first.callsign}
+		first := &Client{sessionProfile: &sessionProfile{}, callsign: "W1ABC-1"}
+		second := &Client{sessionProfile: &sessionProfile{}, callsign: first.callsign}
 		if old := register(t, s, first); old != nil {
 			t.Fatalf("unexpected first owner: %p", old)
 		}
@@ -112,8 +112,8 @@ func TestCommandPacingRetirementRegistryState(t *testing.T) {
 
 	t.Run("already closed signal", func(t *testing.T) {
 		s := &Server{}
-		first := &Client{callsign: "W1ABC-1", retired: make(chan struct{})}
-		second := &Client{callsign: first.callsign}
+		first := &Client{sessionProfile: &sessionProfile{}, callsign: "W1ABC-1", retired: make(chan struct{})}
+		second := &Client{sessionProfile: &sessionProfile{}, callsign: first.callsign}
 		register(t, s, first)
 		close(first.retired)
 		if old := register(t, s, second); old != first || s.clients[first.callsign] != second {
@@ -125,7 +125,7 @@ func TestCommandPacingRetirementRegistryState(t *testing.T) {
 func TestCommandPacingRetirementCountsOneWait(t *testing.T) {
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	s := &Server{shutdown: make(chan struct{})}
-	c := &Client{done: make(chan struct{}), retired: make(chan struct{})}
+	c := &Client{sessionProfile: &sessionProfile{}, done: make(chan struct{}), retired: make(chan struct{})}
 	p := newCommandPacer(1, 1, start)
 	if delay := p.take(start); delay != 0 {
 		t.Fatalf("initial burst delay=%v", delay)

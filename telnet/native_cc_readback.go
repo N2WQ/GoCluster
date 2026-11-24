@@ -62,7 +62,7 @@ func (s *Server) nativeCCReadback(c *Client, resource, category string, duration
 				return err
 			}
 		}
-		if c.configurationUnsaved {
+		if c.hasUnsavedChanges() {
 			if err := h.prose("", "", "Active preferences include unsaved changes. They may be lost when you reconnect."); err != nil {
 				return err
 			}

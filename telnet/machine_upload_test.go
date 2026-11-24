@@ -223,7 +223,7 @@ func TestYAMLReceptionJoinsAlreadyRunningWatchdog(t *testing.T) {
 func TestYAMLReceptionCancellationInterruptsBlockedRead(t *testing.T) {
 	for range 4 {
 		serverConn, peerConn := net.Pipe()
-		c := &Client{conn: serverConn, reader: bufio.NewReader(serverConn), done: make(chan struct{})}
+		c := &Client{sessionProfile: &sessionProfile{}, conn: serverConn, reader: bufio.NewReader(serverConn), done: make(chan struct{})}
 		result := make(chan error, 1)
 		go func() {
 			_, err := c.receiveYAMLBody(time.Now().Add(yamlUploadTimeout))
@@ -245,7 +245,7 @@ func TestYAMLReceptionCancellationInterruptsBlockedRead(t *testing.T) {
 func TestYAMLReceptionDeadlineClosesBlockedSocket(t *testing.T) {
 	serverConn, peerConn := net.Pipe()
 	defer peerConn.Close()
-	c := &Client{conn: serverConn, reader: bufio.NewReader(serverConn), done: make(chan struct{})}
+	c := &Client{sessionProfile: &sessionProfile{}, conn: serverConn, reader: bufio.NewReader(serverConn), done: make(chan struct{})}
 	defer c.interrupt()
 	_, err := c.receiveYAMLBody(time.Now().Add(30 * time.Millisecond))
 	if !errors.Is(err, errYAMLUploadDeadline) {
@@ -311,7 +311,7 @@ func TestYAMLBodyNativeAndZiutekTransport(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			c := &Client{conn: conn, reader: bufio.NewReader(readerConn), writer: bufio.NewWriter(writerConn), server: s, done: make(chan struct{})}
+			c := &Client{sessionProfile: &sessionProfile{}, conn: conn, reader: bufio.NewReader(readerConn), writer: bufio.NewWriter(writerConn), server: s, done: make(chan struct{})}
 			line, err := c.readCommandLine(128)
 			if err != nil || line != "put yaml config" {
 				t.Fatalf("header=%q err=%v", line, err)
@@ -387,7 +387,7 @@ func oracleYAMLFrame(frame []byte) ([]byte, []byte, bool) {
 
 func newYAMLTestClient(input string) (*Client, *yamlTestConn) {
 	conn := &yamlTestConn{input: strings.NewReader(input)}
-	return &Client{conn: conn, reader: bufio.NewReader(conn), done: make(chan struct{})}, conn
+	return &Client{sessionProfile: &sessionProfile{}, conn: conn, reader: bufio.NewReader(conn), done: make(chan struct{})}, conn
 }
 
 func fixedYAMLTestHooks() (yamlReceptionHooks, *manualYAMLTestTimer) {

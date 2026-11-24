@@ -25,15 +25,19 @@ async function editor(t, filters = { rules: [cw], include_beacons: false }) {
   page.setDefaultTimeout(7000);
   await page.goto(site);
   await page.evaluate(async initial => {
-    const peer = window.peer = { filters: initial, revision: 1, patches: [] };
+    const peer = window.peer = { filters: initial, revision: 1, patches: [], reads: 0 };
     const session = new GCP.Session({
-      emit() {},
+      emit(event, data) { cluster.onSession(session, event, data); },
       parseYaml: JSON.parse,
       send(text) {
         let reply = { schema_version: 7, revision: String(peer.revision) };
         if (text.startsWith("GET YAML CONFIG SCHEMA 7 ID ")) {
+          peer.reads++;
           reply.request_id = text.split(" ").at(-1);
-          if (peer.failGet) reply.error = { code: "read_failed", message: "Profile read failed" };
+          if (peer.busyReads > 0) {
+            peer.busyReads--;
+            reply.error = { code: "configuration_busy", message: "Configuration transfer is busy" };
+          } else if (peer.failGet) reply.error = { code: "read_failed", message: "Profile read failed" };
           else {
             const go = {
               include_beacons: "DEFAULT", allow_wwv: "DEFAULT", allow_wcy: "DEFAULT",
@@ -137,11 +141,11 @@ for (const [situation, remote] of [["changed", [ft8]], ["deleted", []]]) {
   });
 }
 
-test("a conflicting beacon choice distinguishes default from off and sends only the switch", async t => {
+test("a conflicting beacon choice distinguishes default from explicit on and sends only the switch", async t => {
   const page = await editor(t, { rules: [cw], include_beacons: "DEFAULT" });
   await page.getByRole("tab", { name: "Switches" }).click();
   await page.getByRole("switch", { name: "Beacon spots" }).click();
-  await revise(page, { rules: [cw, second], include_beacons: false });
+  await revise(page, { rules: [cw, second], include_beacons: true });
   await keep(page);
   const select = page.getByLabel("Re-enter beacon switch", { exact: true });
   await select.waitFor();
@@ -167,8 +171,8 @@ test("an expression mismatch keeps the draft despite matching rule number and ac
   assert.deepEqual((await apply(page)).loaded, [rtty]);
 });
 
-test("switch readback distinguishes an explicit off from an equivalent node default", async t => {
-  const page = await editor(t, { rules: [cw], include_beacons: true });
+test("switch readback distinguishes explicit on from an equivalent node default", async t => {
+  const page = await editor(t, { rules: [cw], include_beacons: false });
   await page.getByRole("tab", { name: "Switches" }).click();
   await page.getByRole("switch", { name: "Beacon spots" }).click();
   await page.evaluate(() => { peer.afterPatch = { include_beacons: "DEFAULT" }; });
@@ -179,8 +183,8 @@ test("switch readback distinguishes an explicit off from an equivalent node defa
   await select.waitFor();
   assert.equal(await button(page, "Apply").isDisabled(), true);
   await page.evaluate(() => { delete peer.afterPatch; });
-  await select.selectOption("off");
-  assert.equal((await apply(page)).filters.include_beacons, false);
+  await select.selectOption("on");
+  assert.equal((await apply(page)).filters.include_beacons, true);
 });
 
 test("successful write followed by a failed readback is preserved and never resent on reload", async t => {
@@ -298,4 +302,168 @@ test("simultaneous additions at the same slot conflict; convergent edits survive
   assert.equal(await button(page, "Apply").isDisabled(), true);
   await resolveRule(page, 0, "MODE=CW");
   assert.deepEqual((await apply(page)).loaded, [rule(0, "MODE=CW"), rtty, second]);
+});
+
+test("logger notices refresh all four delivery switches in one read", async t => {
+  const page = await editor(t, { rules: [cw], include_beacons: false, allow_wwv: false, allow_wcy: false, allow_announce: false });
+  await page.getByRole("tab", { name: "Switches" }).click();
+  const switches = ["beacon", "wwv", "wcy", "announce"];
+  const values = async () => Promise.all(switches.map(name => page.locator("#sw-" + name).getAttribute("aria-checked")));
+  assert.deepEqual(await values(), Array(4).fill("false"));
+  await page.evaluate(() => {
+    Object.assign(peer.filters, { include_beacons: "DEFAULT", allow_wwv: true, allow_wcy: true, allow_announce: true });
+    peer.revision++;
+    for (let i = 0; i < 5; i++) cluster.session.feed('["notice","config-changed","Logger changed filters.","2"]\n');
+  });
+  await page.waitForFunction(() => S.snap.revision === "2");
+  assert.deepEqual(await values(), Array(4).fill("true"));
+  await page.locator(".sw-row").filter({ has: page.locator("#sw-beacon") }).getByText("Node default (on)", { exact: true }).waitFor();
+  assert.equal(await page.evaluate(() => peer.reads), 2);
+  await page.evaluate(() => {
+    // The sample contains a real server-delivered beacon. Hidden mode applies
+    // the preview to that sample, including the inherited switch.
+    cluster.sample = [{ dxCall: "4U1UN", deCall: "W1AW", mode: "CW", beacon: true }];
+    S.showHidden = true;
+  });
+  assert.equal(await page.evaluate(() => rowsForView()[0].pass), true);
+});
+
+test("a notice during a pending read gets a follow-up and preserves the draft", async t => {
+  const page = await editor(t);
+  await editRule(page, 1, rtty.expr);
+  await page.evaluate(() => {
+    peer.pauseGet = true;
+    cluster.session.feed('["notice","config-changed","Live profile changed.","1"]\n');
+  });
+  await page.waitForFunction(() => !!peer.finishGet);
+  await page.evaluate(rules => {
+    peer.filters.rules = rules;
+    peer.revision++;
+    peer.pauseGet = false;
+    cluster.session.feed('["notice","config-changed","Live profile changed.","2"]\n');
+  }, [cw, second]);
+  await page.waitForTimeout(850);
+  assert.equal(await page.evaluate(() => peer.reads), 2);
+  await page.evaluate(() => peer.finishGet());
+  await button(page, "Keep my edits").waitFor();
+  assert.equal(await page.evaluate(() => peer.reads), 3);
+  assert.equal(await button(page, "Apply").isDisabled(), true);
+  await keep(page);
+  assert.deepEqual((await apply(page)).loaded, [rtty, second]);
+});
+
+test("a busy automatic read retries and applies the latest settings snapshot", async t => {
+  const page = await editor(t);
+  await page.evaluate(() => {
+    peer.filters.allow_wcy = false;
+    peer.revision++;
+    peer.busyReads = 1;
+    cluster.session.feed('["notice","config-changed","Live profile changed.","2"]\n');
+  });
+  await page.waitForFunction(() => S.snap.revision === "2" && !S.snap.conn.cfgError);
+  assert.equal(await page.evaluate(() => S.snap.switches.wcy), false);
+  assert.equal(await page.evaluate(() => peer.reads), 3);
+});
+
+test("a retiring session's completed read cannot update a new session's profile", async t => {
+  const page = await editor(t);
+  const result = await page.evaluate(async () => {
+    peer.pauseGet = true;
+    const stale = cluster.refreshConfig().catch(error => error.code);
+    peer.finishGet(); // The old reply is ready but its continuation has not run.
+    cluster.closeSocket();
+    const fresh = { schema_version: 7, revision: "new", configuration: { filters: { go: {
+      rules: [], include_beacons: true, allow_wwv: true, allow_wcy: true, allow_announce: true, allow_self: true, allow_toxic: true,
+    } } } };
+    cluster.session = { closed: false, getYaml: async () => ({ doc: fresh, text: "" }) };
+    await cluster.refreshConfig();
+    return { old: await stale, latest: S.snap.revision, error: S.snap.conn.cfgError };
+  });
+  assert.deepEqual(result, { old: "disconnected", latest: "new", error: "" });
+});
+
+test("the header shows the build response from the current live session", async t => {
+  const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+  t.after(() => page.close());
+  await page.goto(site);
+  assert.equal(await page.locator(".bname").textContent(), "GoCluster by N2WQ");
+  assert.equal(await page.locator(".bsub").count(), 0);
+  await page.evaluate(() => {
+    window.buildCommands = [];
+    window.connectForVersion = () => {
+      const session = cluster.session = new GCP.Session({
+        send(text) { buildCommands.push(text); },
+        emit(event, data) { cluster.onSession(session, event, data); },
+      });
+      cluster.mode = "live";
+      cluster.deploy.startupHistory = 0;
+      session.mode = "json";
+      session.setState("live");
+      return session;
+    };
+    window.firstVersionSession = connectForVersion();
+    firstVersionSession.feed('["text","Build version: vdev-previous"]\n');
+  });
+  await page.locator(".bsub").waitFor({ state: "visible" });
+  assert.equal(await page.locator(".bsub").textContent(), "vdev-previous");
+  await page.evaluate(() => {
+    cluster.closeSocket();
+    window.currentVersionSession = connectForVersion();
+    cluster.onSession(firstVersionSession, "build-version", "obsolete");
+  });
+  await page.locator(".bsub").waitFor({ state: "detached" });
+  await page.evaluate(() => currentVersionSession.feed('["text","Build version: 261124"]\n'));
+  await page.locator(".bsub").waitFor({ state: "visible" });
+  assert.equal(await page.locator(".bsub").textContent(), "v261124");
+  assert.equal(await page.evaluate(() => buildCommands.filter(command => command === "SHOW BUILD").length), 2);
+});
+
+test("the current connection's IPv4 follows the version and a retired reply is ignored", async t => {
+  const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+  t.after(() => page.close());
+  await page.route("http://console.test/**", route => {
+    const { pathname } = new URL(route.request().url());
+    return route.fulfill({ path: path.join(__dirname, "../site", pathname === "/" ? "index.html" : pathname.slice(1)) });
+  });
+  await page.goto("http://console.test/");
+  await page.evaluate(() => {
+    window.visitorCalls = [];
+    window.fetch = (path, opts) => new Promise(resolve => visitorCalls.push({ path, opts, resolve }));
+    window.connectToNode = version => {
+      cluster.closeSocket();
+      const session = cluster.session = new GCP.Session({
+        send() {},
+        emit(event, data) { cluster.onSession(session, event, data); },
+      });
+      cluster.mode = "live";
+      cluster.deploy.startupHistory = 0;
+      session.mode = "json";
+      session.setState("live");
+      session.feed(JSON.stringify(["text", "Build version: " + version]) + "\n");
+    };
+    window.finishVisitor = (index, ipv4, ok = true) => visitorCalls[index].resolve({ ok, json: async () => ({ ipv4 }) });
+    connectToNode("261124");
+    cluster.onLive();
+    finishVisitor(0, "192.0.2.17");
+  });
+  const subtitle = page.locator(".bsub");
+  await subtitle.filter({ hasText: /^v261124 · 192\.0\.2\.17$/ }).waitFor({ state: "visible" });
+  assert.deepEqual(await page.evaluate(() => visitorCalls.map(({ path, opts }) => [path, opts.cache])), [["/visitor-ip", "no-store"]]);
+
+  await page.evaluate(() => {
+    connectToNode("261125");
+    connectToNode("261126");
+    finishVisitor(2, "198.51.100.24");
+    finishVisitor(1, "203.0.113.33");
+  });
+  await subtitle.filter({ hasText: /^v261126 · 198\.51\.100\.24$/ }).waitFor({ state: "visible" });
+  assert.equal(await page.evaluate(() => visitorCalls[1].opts.signal.aborted), true);
+
+  await page.evaluate(() => { connectToNode("261127"); finishVisitor(3, null); });
+  await subtitle.filter({ hasText: "v261127" }).waitFor();
+  assert.equal(await subtitle.textContent(), "v261127");
+
+  await page.evaluate(() => { connectToNode("261128"); finishVisitor(4, "192.0.2.19", false); });
+  await subtitle.filter({ hasText: "v261128" }).waitFor();
+  assert.equal(await subtitle.textContent(), "v261128");
 });

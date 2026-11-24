@@ -989,7 +989,7 @@ const DATA = (() => {
     ["wcy", "WCY", "WCY bulletins", "DK0WCY space weather reports."],
     ["toxic", "TOXIC", "Flagged comments", "Human spots whose comment the node flagged as abusive."],
   ];
-  const SWITCH_DEFAULTS = { beacon: false, self: true, announce: true, wwv: true, wcy: true, toxic: false };
+  const SWITCH_DEFAULTS = { beacon: true, self: true, announce: true, wwv: true, wcy: true, toxic: true };
 
   // Shipped runtime.yaml filter.default_modes / default_sources -> new-user PASS rule 0.
   const NEW_USER_RULE = "MODE=CW,LSB,USB,UNKNOWN,RTTY,MSK144,PSK,SSTV AND SOURCE=HUMAN,SKIMMER";
@@ -1660,6 +1660,7 @@ const GCP = (() => {
       this.state = "idle";
       this.call = "";
       this.hello = null;
+      this.buildRequested = false;
       this.schemas = {};
       this.sIdx = null; this.stIdx = null;
       this.timers = {};
@@ -1907,6 +1908,12 @@ const GCP = (() => {
       const requestId = newRequestId("set");
       return this.requestYaml(patchSettingsText({ ...args, requestId }), { requestId, verb: "PATCH", resource: "SETTINGS" });
     }
+    requestBuildVersion() {
+      if (this.buildRequested) return;
+      this.buildRequested = true;
+      this.timer("build", 8000, () => {});
+      try { this.send("SHOW BUILD"); } catch { this.clear("build"); }
+    }
     onYaml(text) {
       let doc;
       try { doc = this.o.parseYaml(String(text)); } catch (e) {
@@ -1945,6 +1952,10 @@ const GCP = (() => {
     observeText(line) {
       const t = line.trim();
       let m;
+      if (this.timers.build != null && (m = /^Build version: (\S.{0,127})$/.exec(t))) {
+        this.clear("build");
+        this.emit("build-version", m[1]);
+      }
       if ((m = /^Saved presets for (\S+) \((\d+)\/(\d+)\):$/.exec(t))) {
         this.flushPresetCollect();
         this.presetCollect = { owner: m[1], limit: Number(m[3]), names: [] };
@@ -2066,7 +2077,8 @@ const CONN = (() => {
       this.phase = "idle";        // idle | connecting | login | negotiating | live | disconnected | failed | replaying | replay-done
       this.error = null;          // { code, message }
       this.loginCall = LS.get("gcui.login", "");
-      this.nodeCall = ""; this.hello = null;
+      this.nodeCall = ""; this.hello = null; this.buildVersion = "";
+      this.visitorIP = ""; this.visitorRequest = null;
       this.cfg = null; this.cfgDoc = ""; this.cfgAt = 0; this.cfgError = "";
       this.presets = []; this.presetsLoaded = false;
       this.sample = [];
@@ -2080,7 +2092,7 @@ const CONN = (() => {
       this.solar = { sfi: null, a: null, k: null };
       this.spotBuf = []; this.spotTimer = null;
       this.waiters = [];
-      this.refreshTimer = null;
+      this.refreshTimer = null; this.refreshPending = false; this.refreshRetries = 0; this.profileRead = null;
       this.nearby = () => false; this.operating = { cont: "", dxcc: 0 };
       this.errorLines = 0;
     }
@@ -2092,7 +2104,7 @@ const CONN = (() => {
 
     get baseCall() { return baseCallOf(this.loginCall); }
     get live() { return this.mode === "live" && this.phase === "live" && this.session && !this.session.closed; }
-    get canWrite() { return this.live && !!this.cfg && !this.writing; }
+    get canWrite() { return this.live && !!this.cfg && !this.writing && !this.profileRead; }
 
     snapshot() {
       const c = this.cfg;
@@ -2115,7 +2127,7 @@ const CONN = (() => {
           retryAt: this.retry.timer ? this.retry.at : 0, attempt: this.retry.attempt, maxAttempts: RETRY_DELAYS.length,
           configLoaded: !!c, cfgError: this.cfgError, activeDialect: c ? c.activeDialect : "", writing: this.writing, needsReview: this.needsReview,
           replay: this.replay ? { name: this.replay.name, total: this.replay.total, done: this.replay.done } : null,
-          socketUrl: socketUrl(), canWrite: this.canWrite, hello: this.hello,
+          socketUrl: socketUrl(), canWrite: this.canWrite, hello: this.hello, buildVersion: this.buildVersion, visitorIP: this.visitorIP,
         },
       };
     }
@@ -2163,11 +2175,14 @@ const CONN = (() => {
     closeSocket() {
       const ws = this.ws; this.ws = null;
       if (this.session) { this.session.close("closed by the console"); this.session = null; }
+      this.clearConnectionViews();
+      if (this.writing) { this.needsReview = true; this.writing = ""; }
       if (ws) try { ws.close(1000, "bye"); } catch (e) { /* already closing */ }
     }
     onSocketGone(opened, code, reason) {
       const s = this.session; this.session = null;
       if (s) s.close("connection lost");
+      this.clearConnectionViews();
       this.flushSpots();
       this.failWaiters("The connection closed before the node replied.");
       if (this.mode !== "live") return;
@@ -2231,11 +2246,18 @@ const CONN = (() => {
       else this.setPhase(this.phase === "idle" ? "idle" : "disconnected");
     }
     resetData() {
+      this.clearConnectionViews();
       this.cfg = null; this.cfgDoc = ""; this.cfgError = ""; this.presets = []; this.presetsLoaded = false;
       this.sample = []; this.stale = false; this.needsReview = false; this.pausedUntil = 0;
       this.history = { status: "idle", note: "", command: "", pages: [], token: null, source: "" };
       this.solar = { sfi: null, a: null, k: null }; this.hello = null; this.nodeCall = "";
       this.emit("reset");
+    }
+    clearConnectionViews() {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null; this.refreshPending = false; this.refreshRetries = 0; this.profileRead = null;
+      this.buildVersion = "";
+      this.visitorRequest?.abort(); this.visitorRequest = null; this.visitorIP = "";
     }
 
     // ------------------------------------------------------------ session events
@@ -2247,6 +2269,7 @@ const CONN = (() => {
         case "text": return this.line("in", d);
         case "negotiated": return this.line("sys", `${d}: JSON v1 active.`);
         case "hello": this.hello = d; this.nodeCall = d.node || this.nodeCall; return;
+        case "build-version": this.buildVersion = d; this.changed(); return;
         case "spot": return this.onSpot(d);
         case "bulletin": {
           const sol = /^(WWV|WCY|SOLAR)$/.test(d.kind) ? solarFrom(d.text) : null;
@@ -2254,6 +2277,7 @@ const CONN = (() => {
           return this.emit("message", { kind: d.kind, t: d.t || Date.now(), from: d.from || "", text: d.text, solar: sol });
         }
         case "notice":
+          if (d.code === "config-changed" || d.code === "save-status-changed") this.refreshSoon();
           if (d.code === "refused") { this.emit("notice", { text: d.text || "The node refused that request.", kind: "error" }); this.line("sys", "Refused: " + d.text); }
           else if (d.code === "omitted") this.line("sys", "Node notice (omitted): " + d.text);
           else this.line("sys", `Node notice (${d.code}): ${d.text}`);
@@ -2310,10 +2334,24 @@ const CONN = (() => {
       this.setPhase("live");
       // A new session always reloads the profile from the node.
       this.refreshConfig().catch(() => { /* reported in cfgError */ });
+      this.session.requestBuildVersion();
+      this.loadVisitorIP();
       this.send("LIST PRESET");
       if (this.deploy.startupHistory > 0 && !this.session.historyBusy) this.historySearch({ count: this.deploy.startupHistory }, true);
     }
     send(text) { if (!this.session || this.session.closed) throw new Error("Not connected."); this.session.send(text); }
+    async loadVisitorIP() {
+      if (this.visitorRequest || !/^https?:$/.test(location.protocol)) return;
+      const request = this.visitorRequest = new AbortController();
+      try {
+        const response = await fetch("/visitor-ip", { cache: "no-store", redirect: "error", signal: request.signal });
+        if (!response.ok) return;
+        const { ipv4 } = await response.json();
+        if (request !== this.visitorRequest || !this.live || typeof ipv4 !== "string") return;
+        this.visitorIP = ipv4;
+        this.changed();
+      } catch { /* The address is optional; the build version can stand alone. */ }
+    }
 
     // ------------------------------------------------------------ spots
     onSpot(s) {
@@ -2336,25 +2374,60 @@ const CONN = (() => {
     whoSpotsMe() { return null; }  // WHOSPOTSME replies are text; run it in the console
 
     // ------------------------------------------------------------ configuration
-    async refreshConfig() {
-      if (!this.live) throw new Error("Not connected.");
+    async refreshConfig(session = this.session) {
+      if (!this.live || session !== this.session) throw Object.assign(new Error("Not connected."), { code: "disconnected" });
+      if (this.profileRead) return this.profileRead;
+      const read = this.readProfile(session);
+      this.profileRead = read;
+      this.changed();
+      try { return await read; }
+      finally {
+        if (this.profileRead === read) {
+          this.profileRead = null;
+          this.changed();
+          this.scheduleProfileRefresh();
+        }
+      }
+    }
+    async readProfile(session) {
       try {
-        const { doc, text } = await this.session.getYaml("CONFIG");
+        const { doc, text } = await session.getYaml("CONFIG");
+        if (session !== this.session || session.closed) throw Object.assign(new Error("The connection closed before the profile arrived."), { code: "disconnected" });
         const cfg = GCP.configFromDoc(doc);
         this.cfg = cfg; this.cfgDoc = text; this.cfgAt = Date.now(); this.cfgError = "";
         this.nearby = nearbyFor(cfg.settings.grid || (cfg.effective && cfg.effective.grid) || "");
         const ent = entityFor(this.loginCall);
         this.operating = { cont: ent ? ent[3] : "", dxcc: ent ? ent[1] : 0 };
-        this.changed();
         return cfg;
       } catch (e) {
-        this.cfgError = e.message; this.changed();
+        if (session === this.session && !session.closed) this.cfgError = e.message;
         throw e;
       }
     }
     refreshSoon() {
-      clearTimeout(this.refreshTimer);
-      this.refreshTimer = setTimeout(() => { if (this.live) { this.refreshConfig().catch(() => {}); } }, 700);
+      if (!this.live) return;
+      this.refreshPending = true;
+      this.refreshRetries = 0;
+      this.scheduleProfileRefresh();
+    }
+    scheduleProfileRefresh() {
+      if (!this.refreshPending || !this.live || this.refreshTimer !== null || this.writing || this.profileRead) return;
+      // Retain one invalidation through a read or a PATCH confirmation. The
+      // node holds its response reservation until the writer flushes it.
+      const session = this.session;
+      this.refreshTimer = setTimeout(async () => {
+        if (session !== this.session) return;
+        this.refreshTimer = null;
+        if (!this.live || this.writing || this.profileRead) return;
+        this.refreshPending = false;
+        try { await this.refreshConfig(session); }
+        catch (error) {
+          if (session !== this.session || error.code !== "configuration_busy" || this.refreshRetries >= 2) return;
+          this.refreshRetries++;
+          this.refreshPending = true;
+          this.scheduleProfileRefresh();
+        }
+      }, 700);
     }
     configYaml() { return this.cfgDoc || "Not loaded yet. Connect Live to read GET YAML CONFIG SCHEMA 7."; }
     guardWrite(baseRev) {
@@ -2362,24 +2435,37 @@ const CONN = (() => {
       if (!this.live) throw new Error("Not connected. Reconnect, then try again.");
       if (!this.cfg) throw new Error("Your profile has not loaded yet.");
       if (this.writing) throw new Error("Another change is still being saved.");
+      if (this.profileRead) throw new Error("The profile is refreshing. Try again when it finishes.");
       if (baseRev && baseRev !== this.cfg.revision) throw Object.assign(new Error("The node's configuration changed after you started editing. Review the latest version first."), { code: "revision_conflict" });
     }
     async write(kind, fn) {
+      const session = this.session;
       this.writing = kind; this.changed();
-      try { const r = await fn(); this.needsReview = false; return r; }
+      try {
+        const r = await fn(session);
+        if (session === this.session) this.needsReview = false;
+        return r;
+      }
       catch (e) {
+        if (session !== this.session) throw e;
         if (e.code === "revision_conflict") {
-          try { await this.refreshConfig(); }
+          try { await this.refreshConfig(session); }
           catch (reload) { throw new Error("Your profile changed. Reload the profile before retrying. " + reload.message); }
           throw Object.assign(new Error("Your profile changed on the node (another login or the logger). The latest version is now shown. Review your edits and apply again."), { code: e.code });
         }
         if (e.code === "disconnected" || e.code === "timeout") {
           this.needsReview = true;
-          if (this.live) await this.refreshConfig().catch(() => {});
+          if (this.live) await this.refreshConfig(session).catch(() => {});
           throw Object.assign(new Error("The node did not confirm the change. Nothing was resent. Review the latest profile before trying again."), { code: e.code });
         }
         throw e;
-      } finally { this.writing = ""; this.changed(); }
+      } finally {
+        if (session === this.session) {
+          this.writing = "";
+          this.changed();
+          this.scheduleProfileRefresh();
+        }
+      }
     }
     // The review and save use the same patch. A supplied rule list replaces the GO bank.
     async patchFilter({ rules, switches }, baseRev) {
@@ -2387,9 +2473,9 @@ const CONN = (() => {
       if (!baseRev || this.cfgError) throw new Error("Reload the profile before applying filter changes.");
       if (this.cfg.activeDialect && this.cfg.activeDialect !== "go") throw new Error("This login uses the CC dialect. Switch it to GO in Settings before editing rules here.");
       const cur = this.cfg;
-      return this.write("filters", async () => {
-        await this.session.patchFilter({ revision: cur.revision, rules, switches });
-        const cfg = await this.refreshConfig(); // confirm by readback
+      return this.write("filters", async session => {
+        await session.patchFilter({ revision: cur.revision, rules, switches });
+        const cfg = await this.refreshConfig(session); // confirm by readback
         const okRules = !rules || (rules.length === cfg.rules.length &&
           rules.every(r => sameFilterRule(r, cfg.rules.find(other => other.slot === r.slot))));
         const okSw = Object.entries(switches).every(([k, v]) => cfg.switches[k] === v);
@@ -2402,9 +2488,9 @@ const CONN = (() => {
       const send = {};
       for (const [k, v] of Object.entries(patch)) if (v !== cur.settings[k]) send[k] = v;
       if (!Object.keys(send).length) return this.snapshot();
-      return this.write("settings", async () => {
-        await this.session.patchSettings({ revision: cur.revision, settings: send });
-        const cfg = await this.refreshConfig();
+      return this.write("settings", async session => {
+        await session.patchSettings({ revision: cur.revision, settings: send });
+        const cfg = await this.refreshConfig(session);
         if (send.grid != null || send.dedupe) this.sample = this.sample.slice();
         const confirmed = Object.entries(send).every(([k, v]) => cfg.settings[k] === v);
         return { ...this.snapshot(), confirmed };
@@ -3612,8 +3698,11 @@ function TopBar() {
   const snap = S.snap;
   const n = workingCards().length;
   const toggleDrawer = d => set({ drawer: S.drawer === d ? null : d });
+  const { buildVersion, visitorIP } = snap.conn;
+  const versionLabel = buildVersion.replace(/^v?/i, "v");
+  const subtitle = visitorIP ? `${versionLabel} · ${visitorIP}` : versionLabel;
   return html`<header class="topbar">
-    <div class="brand"><${BrandMark} size=${30} /><div class="bwords"><span class="bname">GoCluster</span><span class="bsub mono">console · ${snap.conn.mode === "replay" ? "replay" : "pilot"}</span></div></div>
+    <div class="brand"><${BrandMark} size=${30} /><div class="bwords"><span class="bname">GoCluster by N2WQ</span>${buildVersion ? html`<span class="bsub mono" title=${subtitle}><span class="bsub-version">${versionLabel}</span>${visitorIP ? html`<span> · ${visitorIP}</span>` : null}</span>` : null}</div></div>
     <${NodeStatus} />
     <nav class="views" aria-label="View">
       ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class=${S.view === v ? "on" : ""} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; set({ view: v }); }}><${Icon} name=${ic} size=${16} /><span>${l}</span></a>`)}

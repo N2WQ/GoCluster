@@ -31,14 +31,14 @@ func TestCommentInputPunctuationBoundariesAndEditing(t *testing.T) {
 	} {
 		t.Run(tc.input, func(t *testing.T) {
 			var echo bytes.Buffer
-			c := &Client{reader: bufio.NewReader(strings.NewReader(tc.input)), writer: bufio.NewWriter(&echo), echoInput: true}
+			c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(strings.NewReader(tc.input)), writer: bufio.NewWriter(&echo), echoInput: true}
 			line, err := c.readCommandLine(128)
 			if (err != nil) != tc.invalid || (!tc.invalid && line != tc.want) {
 				t.Fatalf("line=%q err=%v want=%q invalid=%v", line, err, tc.want, tc.invalid)
 			}
 		})
 	}
-	c := &Client{reader: bufio.NewReader(strings.NewReader("PASS COMMENT " + strings.Repeat("x", 116) + "\n"))}
+	c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(strings.NewReader("PASS COMMENT " + strings.Repeat("x", 116) + "\n"))}
 	if _, err := c.readCommandLine(128); err == nil {
 		t.Fatal("command byte limit bypassed")
 	}
@@ -52,7 +52,7 @@ func FuzzCommentInput(f *testing.F) {
 		if len(input) > 256 {
 			return
 		}
-		c := &Client{reader: bufio.NewReader(strings.NewReader(input)), writer: bufio.NewWriter(&bytes.Buffer{})}
+		c := &Client{sessionProfile: &sessionProfile{}, reader: bufio.NewReader(strings.NewReader(input)), writer: bufio.NewWriter(&bytes.Buffer{})}
 		line, err := c.readCommandLine(128)
 		if err == nil {
 			if len(line) > 128 {

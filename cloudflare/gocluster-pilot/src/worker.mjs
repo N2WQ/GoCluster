@@ -2,6 +2,12 @@ const pilotHost = "gocluster-pilot.n2wq-api.workers.dev";
 const pilotOrigin = `https://${pilotHost}`;
 const policy = `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' wss://${pilotHost}/ws; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
 
+function visitorIPv4(request) {
+  const ip = request.headers.get("CF-Connecting-IP")?.replace(/^::ffff:/i, "");
+  if (!ip || !/^(?:0|[1-9]\d{0,2})(?:\.(?:0|[1-9]\d{0,2})){3}$/.test(ip)) return null;
+  return ip.split(".").every(octet => Number(octet) <= 255) ? ip : null;
+}
+
 // This binding fixes the destination to one loopback service on the tunnel.
 // The URL supplies the HTTP Host seen by GoCluster. Browser headers, query
 // strings and redirected requests must never steer the authenticated request.
@@ -68,6 +74,12 @@ export default {
     if (url.origin !== pilotOrigin) return new Response(null, { status: 404, headers });
     if (url.pathname === "/ws") return upgrade(request, env, headers);
     if (request.headers.has("Upgrade")) return new Response(null, { status: 400, headers });
+    if (url.pathname === "/visitor-ip") {
+      if (request.method !== "GET") {
+        return new Response(null, { status: 405, headers: { ...headers, Allow: "GET" } });
+      }
+      return Response.json({ ipv4: visitorIPv4(request) }, { headers });
+    }
     if (request.method !== "GET" && request.method !== "HEAD") {
       return new Response(null, { status: 405, headers: { ...headers, Allow: "GET, HEAD" } });
     }

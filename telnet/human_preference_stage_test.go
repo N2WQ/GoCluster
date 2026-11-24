@@ -142,7 +142,7 @@ func TestHumanPreferenceExplicitRefusalAndSaveIntent(t *testing.T) {
 
 func TestHumanPreferenceSettingsRefusalAndFilterlessCallers(t *testing.T) {
 	s := presetTestServer(t)
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	before := c.pathSnapshot()
 	for _, line := range []string{"SET GRID X", "SET NOISE INVALID", "SET PATHSAMPLES 1"} {
 		outcome := s.stagePathSettingsCommand(newHumanPreferenceCandidate(c), line)
@@ -177,7 +177,7 @@ func TestHumanPreferenceSettingsRefusalAndFilterlessCallers(t *testing.T) {
 
 func TestHumanPreferenceWarningArgumentsAreLiteral(t *testing.T) {
 	outcome := humanMutation("", "Grid set to %s (warning: failed to persist: %v)\n", "FN31PR%V")
-	response := outcome.persistenceFailure(&Client{}, errors.New("denied"))
+	response := outcome.persistenceFailure(&Client{sessionProfile: &sessionProfile{}}, errors.New("denied"))
 	if response != "Grid set to FN31PR%V (warning: failed to persist: denied)\n" {
 		t.Fatalf("warning text was reinterpreted as a format: %q", response)
 	}

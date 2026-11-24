@@ -65,7 +65,7 @@ func (a stubAddr) String() string {
 func TestWriterLoopDisconnectsOnSpotSendFailure(t *testing.T) {
 	srv := &Server{}
 	conn := &errConn{writeErr: errors.New("write failed")}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		conn:        conn,
 		writer:      bufio.NewWriter(conn),
 		server:      srv,
@@ -106,7 +106,7 @@ func TestWriterLoopDisconnectsOnSpotSendFailure(t *testing.T) {
 func TestWriterLoopDisconnectsOnControlSendFailure(t *testing.T) {
 	srv := &Server{}
 	conn := &errConn{writeErr: errors.New("write failed")}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		conn:        conn,
 		writer:      bufio.NewWriter(conn),
 		server:      srv,

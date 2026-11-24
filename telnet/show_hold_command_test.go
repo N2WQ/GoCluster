@@ -52,7 +52,7 @@ func TestShowHoldLiteralStatusesAreReadOnly(t *testing.T) {
 		{"closed retained diagnostic state", "Live spots paused for 10s more. Suppressed spots: 7.\n", readbackPauseTestState{until: 1700000010000000000, cutoff: 1700000010000000000, count: 7, epoch: 4, closed: true}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Client{}
+			c := &Client{sessionProfile: &sessionProfile{}}
 			c.readPauseUntilUnixNano.Store(tc.state.until)
 			c.readPauseDiscardBefore.Store(tc.state.cutoff)
 			c.readPauseSuppressed.Store(tc.state.count)
@@ -66,7 +66,7 @@ func TestShowHoldLiteralStatusesAreReadOnly(t *testing.T) {
 func TestShowHoldWholeTokensAndAPISpaceArity(t *testing.T) {
 	now := time.Unix(1700000000, 0)
 	s := &Server{nowFn: func() time.Time { return now }}
-	c := &Client{}
+	c := &Client{sessionProfile: &sessionProfile{}}
 	c.startReadPause(now, time.Minute)
 	c.readPauseSuppressed.Store(9)
 	for _, line := range []string{"SHOW HOLD", "show hold", "  ShOw  HoLd  ", "SHOW       HOLD", "\tshow\thold\t", "show \t hold"} {

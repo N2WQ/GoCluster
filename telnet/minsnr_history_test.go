@@ -11,7 +11,7 @@ import (
 )
 
 func TestMinSNRHistorySnapshotAndDigest(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "MODE=CW AND SNR>=0 AND SOURCE=SKIMMER")}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "MODE=CW AND SNR>=0 AND SOURCE=SKIMMER")}, callsign: "N0USER"}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.HasReport, sp.Report = true, 0
 	sp.IsHuman = false
@@ -76,7 +76,7 @@ func TestMinSNRHistoryPendingPageInvalidation(t *testing.T) {
 
 func TestMinSNRConcurrentMutation(t *testing.T) {
 	first, second := passRuleTestFilter(t, "MODE=CW AND SNR>=0 AND SOURCE=SKIMMER"), passRuleTestFilter(t, "MODE=CW AND SNR>=1 AND SOURCE=SKIMMER")
-	c := &Client{callsign: "N0USER", filter: first}
+	c := &Client{sessionProfile: &sessionProfile{filter: first}, callsign: "N0USER"}
 	states := [2]filter.Filter{*first, *second}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.HasReport, sp.Report = true, 0

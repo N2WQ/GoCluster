@@ -20,8 +20,13 @@ import (
 
 func browserWirePair(t *testing.T, serve func(*websocket.Conn)) (*websocket.Conn, <-chan struct{}) {
 	t.Helper()
+	return browserWirePairWithListener(t, serve, nil)
+}
+
+func browserWirePairWithListener(t *testing.T, serve func(*websocket.Conn), wrap func(net.Listener) net.Listener) (*websocket.Conn, <-chan struct{}) {
+	t.Helper()
 	done := make(chan struct{})
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer close(done)
 		upgrader := websocket.Upgrader{ReadBufferSize: 256, WriteBufferSize: 256}
 		ws, err := upgrader.Upgrade(w, r, nil)
@@ -32,6 +37,10 @@ func browserWirePair(t *testing.T, serve func(*websocket.Conn)) (*websocket.Conn
 		defer ws.Close()
 		serve(ws)
 	}))
+	if wrap != nil {
+		server.Listener = wrap(server.Listener)
+	}
+	server.Start()
 	t.Cleanup(server.Close)
 	client, response, err := websocket.DefaultDialer.DialContext(t.Context(), "ws"+strings.TrimPrefix(server.URL, "http"), nil)
 	if response != nil {
@@ -106,14 +115,26 @@ func browserLogin(t *testing.T, s *Server, call string, heartbeat time.Duration)
 func browserYAML(t *testing.T, ws *websocket.Conn, msg string) map[string]any {
 	t.Helper()
 	browserSend(t, ws, msg)
-	line := browserReceive(t, ws)
-	var row []string
-	if err := json.Unmarshal([]byte(line), &row); err != nil || len(row) != 2 || row[0] != "yaml" {
-		t.Fatalf("expected YAML record: %.150s", line)
-	}
 	var result map[string]any
-	if err := yaml.Unmarshal([]byte(row[1]), &result); err != nil {
-		t.Fatal(err)
+	for result == nil {
+		for _, line := range strings.Split(strings.TrimSuffix(browserReceive(t, ws), "\n"), "\n") {
+			var row []string
+			if err := json.Unmarshal([]byte(line), &row); err != nil || len(row) < 2 {
+				t.Fatalf("invalid JSON reply: %.150s", line)
+			}
+			if len(row) == 4 && row[0] == "notice" {
+				switch row[1] {
+				case "config-changed", "presence-changed", "go-selected", "presets-changed", "save-status-changed":
+					continue // A Phase 3 advisory may arrive before or beside the reply.
+				}
+			}
+			if len(row) != 2 || row[0] != "yaml" || result != nil {
+				t.Fatalf("expected one YAML record: %.150s", line)
+			}
+			if err := yaml.Unmarshal([]byte(row[1]), &result); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	return result
 }
@@ -211,7 +232,7 @@ func TestWebSessionUploadBudgetBeforeBody(t *testing.T) {
 	// fragment. A bounded refusal has to arrive without any YAML body or EOF.
 	s := newHandshakeTranscriptServerWithOptions(t, func(o *ServerOptions) { o.LoginGreeting = "READY\n" })
 	ws, _, _ := browserLogin(t, s, "N0CALL-58", time.Second)
-	c := &Client{done: make(chan struct{})}
+	c := &Client{sessionProfile: &sessionProfile{}, done: make(chan struct{})}
 	for i := 0; i < configurationInputBudget/configurationInputReservation; i++ {
 		release, err := acquireConfigurationInput(c)
 		if err != nil {

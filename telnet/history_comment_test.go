@@ -12,9 +12,10 @@ import (
 )
 
 func TestHistoryCommentSnapshotAndDigest(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: testRuleFilter(t,
+	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t,
 		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=POTA"},
-		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=QRT"})}
+		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=QRT"}),
+	}, callsign: "N0USER"}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.Comment = "POTA up 5"
 	snapshot := c.captureHistoryFilter()
@@ -127,7 +128,7 @@ func TestHistoryCommentConcurrentSnapshotIsolation(t *testing.T) {
 		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=QRT"})
 	second := testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=SOTA"},
 		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=POTA"})
-	c := &Client{callsign: "N0USER", filter: first}
+	c := &Client{sessionProfile: &sessionProfile{filter: first}, callsign: "N0USER"}
 	states := [2]filter.Filter{*first, *second}
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.Comment = "POTA"

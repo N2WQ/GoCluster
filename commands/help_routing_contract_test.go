@@ -189,7 +189,7 @@ func TestHelpRoutingUnknownHeadsAndDialectRestrictions(t *testing.T) {
 			}
 		}
 	}
-	for _, topic := range []string{"SHOW/DX", "SH/DX", "SHOW/DX 5", "SH/DX 5", "SET/ANN", "SET/FILTER BAND 20"} {
+	for _, topic := range []string{"SET/ANN", "SET/FILTER BAND 20"} {
 		if got := p.ProcessCommandForClient("HELP "+topic, "W1ABC", "", nil, "go"); !strings.HasPrefix(got, "Unknown help topic: ") {
 			t.Fatalf("GO HELP advertised a CC-only head %q: %q", topic, got)
 		}
@@ -219,7 +219,7 @@ func TestHelpRoutingReverseAliasMetadata(t *testing.T) {
 			allowed["SHOW FILTER"], allowed["SH/FILTER"] = "SHOW/FILTER", "SHOW/FILTER"
 			allowed["SHOW/FILTER"] = "SHOW/FILTER"
 		} else {
-			allowed["SH DX"] = "SHOW DX"
+			allowed["SH DX"], allowed["SHOW/DX"], allowed["SH/DX"] = "SHOW DX", "SHOW DX", "SHOW DX"
 			allowed["SHOW/FILTER"], allowed["SH/FILTER"] = "SHOW FILTER", "SHOW FILTER"
 		}
 		catalog := buildHelpCatalog(dialect, DedupeHelpConfig{}, WhoSpotsMeHelpConfig{})

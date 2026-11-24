@@ -12,7 +12,9 @@ import (
 )
 
 func newTestClient() *Client {
-	return &Client{filter: unrestrictedTestFilter(), dialect: DialectGo}
+	return &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter(),
+		dialect: DialectGo,
+	}}
 }
 
 // Transport/settings fixtures must not accidentally depend on new-user rule 0.
@@ -160,8 +162,8 @@ func TestNearbyRuleEditingNeedsNoGrid(t *testing.T) {
 
 func TestBroadcastWWVRespectsFilter(t *testing.T) {
 	server := &Server{clients: make(map[string]*Client)}
-	allow := &Client{callsign: "ALLOW", controlChan: make(chan controlMessage, 1), filter: unrestrictedTestFilter()}
-	block := &Client{callsign: "BLOCK", controlChan: make(chan controlMessage, 1), filter: unrestrictedTestFilter()}
+	allow := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "ALLOW", controlChan: make(chan controlMessage, 1)}
+	block := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "BLOCK", controlChan: make(chan controlMessage, 1)}
 	block.filter.SetWWVEnabled(false)
 	server.clients["ALLOW"], server.clients["BLOCK"] = allow, block
 	server.BroadcastWWV("WWV", "WWV de TEST <00> : SFI=1 A=1 K=1")
@@ -172,8 +174,8 @@ func TestBroadcastWWVRespectsFilter(t *testing.T) {
 
 func TestBroadcastAnnouncementRespectsFilter(t *testing.T) {
 	server := &Server{clients: make(map[string]*Client)}
-	allow := &Client{callsign: "ALLOW", controlChan: make(chan controlMessage, 1), filter: unrestrictedTestFilter()}
-	block := &Client{callsign: "BLOCK", controlChan: make(chan controlMessage, 1), filter: unrestrictedTestFilter()}
+	allow := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "ALLOW", controlChan: make(chan controlMessage, 1)}
+	block := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "BLOCK", controlChan: make(chan controlMessage, 1)}
 	block.filter.SetAnnounceEnabled(false)
 	server.clients["ALLOW"], server.clients["BLOCK"] = allow, block
 	server.BroadcastAnnouncement("To ALL de TEST: hello")
@@ -184,8 +186,8 @@ func TestBroadcastAnnouncementRespectsFilter(t *testing.T) {
 
 func TestBroadcastSelfRespectsSelfToggle(t *testing.T) {
 	server := &Server{clients: make(map[string]*Client)}
-	allow := &Client{callsign: "K1ABC", spotChan: make(chan *spotEnvelope, 1), filter: unrestrictedTestFilter()}
-	block := &Client{callsign: "K1ABC-7", spotChan: make(chan *spotEnvelope, 1), filter: unrestrictedTestFilter()}
+	allow := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "K1ABC", spotChan: make(chan *spotEnvelope, 1)}
+	block := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "K1ABC-7", spotChan: make(chan *spotEnvelope, 1)}
 	block.filter.SetSelfEnabled(false)
 	server.clients[allow.callsign], server.clients[block.callsign] = allow, block
 	server.deliverJob(broadcastJob{
@@ -198,7 +200,7 @@ func TestBroadcastSelfRespectsSelfToggle(t *testing.T) {
 }
 
 func TestDeliverSelfSpotRespectsSelfToggle(t *testing.T) {
-	client := &Client{callsign: "K1ABC", spotChan: make(chan *spotEnvelope, 1), filter: unrestrictedTestFilter()}
+	client := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "K1ABC", spotChan: make(chan *spotEnvelope, 1)}
 	server := &Server{clients: map[string]*Client{client.callsign: client}}
 	client.filter.SetSelfEnabled(false)
 	server.DeliverSelfSpot(spot.NewSpot("K1ABC", "W1XYZ", 14025, "CW"))

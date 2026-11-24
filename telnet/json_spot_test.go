@@ -53,7 +53,7 @@ func writeTestJSONLive(t testing.TB, c *Client, sp *spot.Spot) []any {
 }
 
 func TestJSONSpotPublicRecords(t *testing.T) {
-	c := &Client{server: &Server{}}
+	c := &Client{sessionProfile: &sessionProfile{}, server: &Server{}}
 	s := &spot.Spot{
 		ID: 1<<53 - 1, Time: time.Unix(0, 1234567890123456789), Frequency: 14116.19, ObservedFrequency: 14116.125,
 		DXCall: "N2SZ", DECall: "VE9JWW-7", DECallStripped: "VE9JWW-#", Band: "20m", Mode: "USB",
@@ -118,7 +118,7 @@ func TestJSONSpotIndependentOptionalFields(t *testing.T) {
 			*[]*string{&s.SourceNode, &s.DXMetadata.Country, &s.DEMetadata.Country}[i] += "x"
 			want[i], counts[i] = nil, 1
 		}
-		record := writeTestJSONLive(t, &Client{server: server}, s)
+		record := writeTestJSONLive(t, &Client{sessionProfile: &sessionProfile{}, server: server}, s)
 		got := []any{record[13], record[18].([]any)[2], record[19].([]any)[2]}
 		stats := server.JSONSpotStats()
 		if !reflect.DeepEqual(got, want) || record[9] != "full" || !reflect.DeepEqual(counts, []uint64{stats.NodeOmissions, stats.DXCountryOmissions, stats.DECountryOmissions}) {
@@ -133,7 +133,7 @@ func TestJSONSpotExtendedGridArchiveReopen(t *testing.T) {
 	s.SourceType = spot.SourcePSKReporter
 	s.DXMetadata.Grid, s.DEMetadata.Grid = "fn31pr12", "em10aa34"
 	s.EnsureNormalized()
-	c := &Client{server: &Server{}}
+	c := &Client{sessionProfile: &sessionProfile{}, server: &Server{}}
 	check := func(r []any) {
 		t.Helper()
 		dx, de := r[18].([]any), r[19].([]any)
@@ -215,7 +215,7 @@ func TestJSONSpotNativeArchiveRecords(t *testing.T) {
 	}
 	defer w.Stop()
 	ctyDB := ve7ccTestCTY(t)
-	c := &Client{server: &Server{ctyLookup: func() *cty.CTYDatabase { return ctyDB }}}
+	c := &Client{sessionProfile: &sessionProfile{}, server: &Server{ctyLookup: func() *cty.CTYDatabase { return ctyDB }}}
 	var rows jsonHistoryRows
 	defer rows.release()
 	p, err := w.ReadHistoryPage(archive.HistoryRequest{Limit: 50, Now: now, Collect: func(s *spot.Spot) error { return rows.collect(c.server, s, true) }})
@@ -255,7 +255,10 @@ func TestJSONSpotRecipientPathMatchesText(t *testing.T) {
 	if env.pathPrediction == nil {
 		t.Fatal("missing admission prediction")
 	}
-	other := &Client{server: s, grid: "EM10", gridCell: pathreliability.CellID(88), noiseClass: "QUIET"}
+	other := &Client{sessionProfile: &sessionProfile{grid: "EM10",
+		gridCell:   pathreliability.CellID(88),
+		noiseClass: "QUIET",
+	}, server: s}
 	check := func(client *Client) string {
 		t.Helper()
 		textLine := s.formatSpotEnvelopeForClient(client, env)
@@ -317,7 +320,7 @@ func TestJSONSpotBoundedWritesAndAllocations(t *testing.T) {
 	s.Events = spot.EventPOTA | spot.EventSOTA
 	s.DXMetadata.Grid = "fn31pr12"
 	s.EnsureNormalized()
-	client := &Client{server: &Server{}}
+	client := &Client{sessionProfile: &sessionProfile{}, server: &Server{}}
 	client.configuredSettings.CWSpeed = true
 	env := &spotEnvelope{spot: s}
 	var e jsonSpotEncoder
@@ -363,7 +366,7 @@ func FuzzJSONSpotComments(f *testing.F) {
 		if len(comment) > 65535 {
 			t.Skip()
 		}
-		row := writeTestJSONLive(t, &Client{}, &spot.Spot{Time: time.Unix(0, nanos), Frequency: 14030, Comment: comment, SourceType: spot.SourceManual})
+		row := writeTestJSONLive(t, &Client{sessionProfile: &sessionProfile{}}, &spot.Spot{Time: time.Unix(0, nanos), Frequency: 14030, Comment: comment, SourceType: spot.SourceManual})
 		if row[9] != string([]rune(comment)) || row[2] != strconv.FormatInt(nanos, 10) {
 			t.Fatalf("source (%d,%q), decoded (%v,%q)", nanos, comment, row[2], row[9])
 		}
@@ -372,7 +375,7 @@ func FuzzJSONSpotComments(f *testing.F) {
 
 func BenchmarkJSONSpotMixedSources(b *testing.B) {
 	envs, want := mixedJSONWriterSpots(), mixedJSONWire(b)
-	c := &Client{server: &Server{}}
+	c := &Client{sessionProfile: &sessionProfile{}, server: &Server{}}
 	c.configuredSettings.CWSpeed = true
 	var e jsonSpotEncoder
 	var bytesPerSet int

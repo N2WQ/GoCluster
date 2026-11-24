@@ -38,8 +38,8 @@ func TestHistoryCommentParserAndGenericProcessor(t *testing.T) {
 		}
 	}
 	for _, command := range []string{"SHOW/DX", "SH/DX"} {
-		if _, handled, text := p.ParseHistoryCommand(command+" COMMENT POTA", "go"); !handled || text != "Use SHOW DX or SH DX for DX history.\n" {
-			t.Fatalf("dialect restriction changed: %v %q", handled, text)
+		if parsed, handled, text := p.ParseHistoryCommand(command+" COMMENT POTA", "go"); !handled || text != "" || parsed.Query.comment != "POTA" {
+			t.Fatalf("GO history alias lost phrase: %+v %v %q", parsed, handled, text)
 		}
 	}
 	if _, handled, _ := p.ParseHistoryCommand("SHOW COMMENT POTA", "go"); handled {
@@ -82,9 +82,6 @@ func TestGenericHistoryCommentInvalidPhraseGoldens(t *testing.T) {
 	match := func(*spot.Spot) bool { return true }
 	for _, dialect := range []string{"go", "cc"} {
 		for _, prefix := range []string{"SHOW DX", "SH DX", "SHOW MYDX", "SH MYDX", "SHOW/DX", "SH/DX"} {
-			if dialect == "go" && strings.Contains(prefix, "/") {
-				continue
-			}
 			for _, phrase := range []string{"", "   ", "POTA\t", "POTA\u00a0", "\tPOTA", "\u00a0POTA", "POTA\n", "POTA\r", "POTA\v", "POTA\f", "POTA\x00", "POTA\x7f", "PÖTA", "PO\tTA", strings.Repeat("a", 65)} {
 				line := prefix + " COMMENT " + phrase
 				if text := p.ProcessCommandForClient(line, "W1AAA", "", match, dialect); text != invalid {
@@ -105,13 +102,6 @@ func TestGenericHistoryCommentInvalidPhraseGoldens(t *testing.T) {
 				if text := p.ProcessCommandForClient("\t "+ordinary+"\t\u00a0\r\n", "W1AAA", "", predicate, dialect); text != want {
 					t.Errorf("ordinary command whitespace routing changed: %s %s => %q, want %q", dialect, ordinary, text, want)
 				}
-			}
-		}
-	}
-	for _, prefix := range []string{"SHOW/DX", "SH/DX"} {
-		for _, predicate := range []func(*spot.Spot) bool{nil, match} {
-			if text := p.ProcessCommandForClient(prefix+" COMMENT POTA\t", "W1AAA", "", predicate, "go"); text != "Use SHOW DX or SH DX for DX history.\n" {
-				t.Errorf("slash alias restriction changed: %s => %q", prefix, text)
 			}
 		}
 	}

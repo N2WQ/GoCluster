@@ -56,6 +56,10 @@ node --test test/worker.test.mjs test/workerd.cjs
 
 ## Verify the live session
 
+The console header shows the build version followed by the IPv4 observed by
+the Worker when the console connects. An IPv6-only visitor sees the build
+version alone. The local launcher reports its forwarded loopback address.
+
 Open the production hostname in a private browser window. Confirm the Access sign-in challenge, authenticate with an approved identity, select Live, and connect with a dedicated callsign and SSID. In the browser network panel, the same-host `/ws` request should receive HTTP 101. Confirm the profile loads, record a new spot with its timestamp and callsign, and request History. The cluster's client address for the connected callsign should match the visitor's actual public IP. Check both IPv4 and IPv6 when available.
 
 The Worker passes only the upgrade, the public origin, the visitor address and the private edge secret to the fixed origin. GoCluster checks the two address headers for agreement and rejects malformed addresses and mismatches. If the live handshake fails, use the HTTP status to narrow the issue. A 403 can indicate an Origin, address or secret mismatch. A 503 can indicate a missing binding or secret. A 502 can indicate that the tunnel, HTTP origin or WebSocket handshake failed. Check the tunnel health and loopback listener on the cluster host. Capture only the status and sanitized diagnostics.

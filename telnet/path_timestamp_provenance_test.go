@@ -47,7 +47,11 @@ func timestampProvenanceFixture(t *testing.T, cfg pathreliability.Config, reques
 		t.Fatalf("fixture report rejected: %+v", admission)
 	}
 	s := &Server{pathPredictor: p, pathDisplay: true, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return requested }}
-	c := &Client{filter: passRuleTestFilter(t, "MODE=FT8"), spotChan: make(chan *spotEnvelope, 1), grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "MODE=FT8"),
+		grid:       "FN31",
+		gridCell:   userCell,
+		noiseClass: "QUIET",
+	}, spotChan: make(chan *spotEnvelope, 1)}
 	freq := 14074.0
 	if band == "160m" {
 		freq = 1840

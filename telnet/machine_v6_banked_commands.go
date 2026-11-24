@@ -117,6 +117,9 @@ func (s *Server) applyBankedV6MachineRequestOwned(c *Client, cmd machineCommand,
 	if err != nil {
 		return fail(err)
 	}
+	if prepared.dialect == DialectCC && s.browserRequiresGo(c) {
+		return renderV6YAMLCommandError(cmd.Resource, request.RequestID, revision, "browser_requires_go", browserRequiresGo)
+	}
 	refs, err := c.v7PresetReferences.Clone()
 	if err != nil {
 		return fail(err)
@@ -160,6 +163,6 @@ func (s *Server) applyBankedV6MachineRequestOwned(c *Client, cmd machineCommand,
 	if changed {
 		s.publishV7Configuration(c, next, prepared, refs, time.Now().UTC())
 	}
-	c.configurationUnsaved = false
+	c.markProfileSaved()
 	return response
 }

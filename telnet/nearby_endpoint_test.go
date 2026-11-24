@@ -25,7 +25,7 @@ func TestNearbyEndpointsLiveAndCapturedHistory(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%.0f/%s/%s/blockMode=%v", frequency, test.dx, test.de, test.blockMode), func(t *testing.T) {
 				server := &Server{}
-				client := &Client{callsign: "VE3ABC-7", filter: passRuleTestFilter(t, "NEARBY"),
+				client := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "NEARBY")}, callsign: "VE3ABC-7",
 					spotChan: make(chan *spotEnvelope, 1), done: make(chan struct{})}
 				if test.blockMode {
 					client.filter = testRuleFilter(t,

@@ -26,7 +26,7 @@ go_runtime:
 telnet:
   port: 8300        # TCP listen port for telnet users.
   tls_enabled: false
-  max_connections: 100 # Hard cap on logged-in telnet sessions.
+  max_connections: 100 # Hard cap on logged-in Telnet and browser connections.
   max_sessions_per_base_call: 10 # Sessions per base callsign; 0 disables this limit.
   max_sessions_per_ip: 10 # Sessions per observed IP address; 0 disables this limit.
   command_rate_per_second: 5 # Command attempts per session per second; 0 disables pacing.

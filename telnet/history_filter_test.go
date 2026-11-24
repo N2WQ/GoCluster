@@ -20,7 +20,7 @@ func TestHistoryFilterSnapshotOwnsMatchingInputs(t *testing.T) {
 		{"toggle pointer", func(c *Client) { *c.filter.AllowToxic = false }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "DXCALL=K1*")}
+			c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "DXCALL=K1*")}, callsign: "N0USER"}
 			c.filter.AllowToxic = filter.DefaultBoolTrue.Pointer()
 			sp := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
 			sp.ToxicityStatus = spot.ToxicityToxic
@@ -42,7 +42,7 @@ func TestHistoryFilterSnapshotOwnsMatchingInputs(t *testing.T) {
 }
 
 func TestHistoryFilterSnapshotOwnsControlsAndImmutableRules(t *testing.T) {
-	c := &Client{filter: passRuleTestFilter(t, "MODE=CW")}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "MODE=CW")}}
 	c.filter.IncludeBeacons, c.filter.AllowToxic = filter.DefaultBoolTrue.Pointer(), filter.DefaultBoolTrue.Pointer()
 	snapshot := c.captureHistoryFilter()
 	owned := snapshot.client.filter
@@ -60,7 +60,11 @@ func TestHistoryFilterSnapshotOwnsControlsAndImmutableRules(t *testing.T) {
 
 func TestHistoryFilterSnapshotGridOwnedRuntimeCells(t *testing.T) {
 	userCell, dxCell, userCoarse, dxCoarse := requireDistinctPathCells(t)
-	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "NEARBY AND MODE=CW"), grid: "FN31", gridCell: userCell, gridCoarseCell: userCoarse}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "NEARBY AND MODE=CW"),
+		grid:           "FN31",
+		gridCell:       userCell,
+		gridCoarseCell: userCoarse,
+	}, callsign: "N0USER"}
 	sp := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")
 	sp.DXMetadata.Grid, sp.DEMetadata.Grid = "FN31", "FN31"
 	sp.DXCellID, sp.DECellID = uint16(userCell), uint16(userCell)
@@ -84,7 +88,7 @@ func TestHistoryFilterSnapshotGridOwnedRuntimeCells(t *testing.T) {
 }
 
 func TestHistoryFilterSnapshotSelfMatchPreservesHistoryException(t *testing.T) {
-	c := &Client{callsign: "K1ABC-7", filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})}
+	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})}, callsign: "K1ABC-7"}
 	no := false
 	c.filter.AllowSelf = &no
 	c.filter.AllowToxic = &no
@@ -103,7 +107,10 @@ func TestHistoryFilterSnapshotSelfMatchPreservesHistoryException(t *testing.T) {
 }
 
 func TestHistoryFilterDigestRelevantProjection(t *testing.T) {
-	c := &Client{callsign: "N0USER", filter: unrestrictedTestFilter(), grid: "FN31", noiseClass: "QUIET"}
+	c := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter(),
+		grid:       "FN31",
+		noiseClass: "QUIET",
+	}, callsign: "N0USER"}
 	initial := c.historyFilterDigest()
 	no := false
 	c.filter.AllowWWV, c.filter.AllowWCY, c.filter.AllowAnnounce, c.filter.AllowSelf = &no, &no, &no, &no
@@ -125,7 +132,12 @@ func TestHistoryFilterDigestRelevantProjection(t *testing.T) {
 		{"coarse cell", func(c *Client) { c.gridCoarseCell = 202 }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			c := &Client{filter: passRuleTestFilter(t, "NEARBY"), grid: "FN31", gridCell: 10, gridCoarseCell: 11, noiseClass: "QUIET"}
+			c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "NEARBY"),
+				grid:           "FN31",
+				gridCell:       10,
+				gridCoarseCell: 11,
+				noiseClass:     "QUIET",
+			}}
 			before := c.historyFilterDigest()
 			tc.mutate(c)
 			if c.historyFilterDigest() == before {
@@ -139,7 +151,9 @@ func TestHistoryFilterDigestLazyCellCacheStable(t *testing.T) {
 	requireH3Mappings(t)
 	for _, rule := range []string{"MODE=CW", "NEARBY", "PATH=HIGH"} {
 		t.Run(rule, func(t *testing.T) {
-			c := &Client{filter: passRuleTestFilter(t, rule), grid: "FN31"}
+			c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, rule),
+				grid: "FN31",
+			}}
 			before := c.historyFilterDigest()
 			snapshot := c.captureHistoryFilter()
 			c.gridCell, c.gridCoarseCell = pathreliability.EncodeCell(c.grid), pathreliability.EncodeCoarseCell(c.grid)
@@ -160,7 +174,11 @@ func TestHistoryFilterSnapshotSeesCurrentPropagationObservations(t *testing.T) {
 	predictor := pathreliability.NewPredictor(cfg, []string{"20m"})
 	now := time.Now().UTC()
 	s := &Server{pathPredictor: predictor, noiseModel: cfg.NoiseModel(), nowFn: func() time.Time { return now }}
-	c := &Client{callsign: "N0USER", filter: passRuleTestFilter(t, "PATH=HIGH"), grid: "FN31", gridCell: userCell, noiseClass: "QUIET"}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "PATH=HIGH"),
+		grid:       "FN31",
+		gridCell:   userCell,
+		noiseClass: "QUIET",
+	}, callsign: "N0USER"}
 	sp := spot.NewSpot("K1ABC", "N2ABC", 14074, "FT8")
 	sp.DXCellID, sp.DXMetadata.Grid = uint16(dxCell), "IO91"
 	snapshot := c.captureHistoryFilter()
@@ -184,7 +202,7 @@ func TestHistoryFilterSnapshotSeesCurrentPropagationObservations(t *testing.T) {
 
 func TestHistoryFilterSnapshotConcurrentLiveRuleMutation(t *testing.T) {
 	first, second := passRuleTestFilter(t, "DXCALL=K1*"), passRuleTestFilter(t, "BAND=40M AND DXCALL=W6*")
-	c := &Client{callsign: "N0USER", filter: first}
+	c := &Client{sessionProfile: &sessionProfile{filter: first}, callsign: "N0USER"}
 	states := [2]filter.Filter{*first, *second}
 	snapshot := c.captureHistoryFilter()
 	sp := spot.NewSpot("K1ABC", "N2ABC", 14025, "CW")

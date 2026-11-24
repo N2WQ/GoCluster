@@ -70,7 +70,7 @@ func writerV15Spot() *spot.Spot {
 }
 
 func writerV15Client(server *Server, conn *writerV15Conn) *Client {
-	return &Client{
+	return &Client{sessionProfile: &sessionProfile{},
 		conn: conn, writer: bufio.NewWriterSize(conn, 32768), server: server,
 		callsign: "N0CALL", spotChan: make(chan *spotEnvelope, 256),
 		controlChan: make(chan controlMessage, 16), done: make(chan struct{}),

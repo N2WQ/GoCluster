@@ -135,7 +135,7 @@ The runtime supports two command dialects:
 
 - `go`: the default dialect shown in the main README
 - `cc`: native CC mode/source, geography and frequency-slot selections, plus
-  `SHOW/DX`, `SET/FILTER`, `UNSET/FILTER` and `SET/ANN`-style control shortcuts
+  `SET/FILTER`, `UNSET/FILTER` and `SET/ANN`-style control shortcuts
 
 Dialect selection is user-visible and persisted per callsign. HELP is rendered for the active dialect, so the command list and examples change with the selected dialect.
 
@@ -471,7 +471,7 @@ rewrite the archive or change saved filters. Use `HELP BANDS` for memberships.
 `SHOW DX` and `SHOW MYDX` search archived spots using your current filters and
 existing self-spot rules. Both accept a count, a selector, or one of each in
 either order. The default count is 50; the range is 1-250. `SH DX` and `SH MYDX`
-are aliases in both dialects; `SHOW/DX` and `SH/DX` remain `cc`-dialect aliases.
+are aliases in both dialects, as are `SHOW/DX` and `SH/DX`.
 Bare numbers are counts, not ADIF selectors.
 
 ```text

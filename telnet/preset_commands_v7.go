@@ -38,6 +38,7 @@ func (s *Server) handleV7PresetOwned(c *Client, command presetCommand) string {
 		if err := filter.DeleteV7Preset(c.callsign, command.name); err != nil {
 			return presetError(command.verb, command.name, err)
 		}
+		s.publishPresetChange(c)
 		return fmt.Sprintf("Deleted preset %s.\n", command.name)
 	}
 	if c.recordProtected {
@@ -65,13 +66,17 @@ func (s *Server) handleV7PresetOwned(c *Client, command presetCommand) string {
 		saved, err := filter.SaveV7PresetAndRecord(c.callsign, command.name, set, func() (*filter.PreparedUserRecord, error) {
 			return s.prepareV7ConfigurationRecord(c, before, refs)
 		}, s.commitConfigurationRecord)
+		if saved {
+			s.publishPresetChange(c)
+		}
 		if err != nil && !saved {
 			return presetError(command.verb, command.name, err)
 		}
 		if err != nil {
 			return fmt.Sprintf("Saved preset %s, but could not persist its association for %s.\nPrevious preset associations and baselines retained.\n", command.name, c.callsign)
 		}
-		c.v7PresetReferences, c.configurationUnsaved = refs, false
+		c.v7PresetReferences = refs
+		c.markProfileSaved()
 		return fmt.Sprintf("Saved preset %s (%s) for %s.\n", command.name, strings.ToUpper(set.Dialect), spot.NormalizeOwnCallsign(c.callsign))
 	}
 	return s.loadV7PresetOwned(c, command.name, before, refs)
@@ -84,6 +89,9 @@ func (s *Server) loadV7PresetOwned(c *Client, name string, before filter.V7Confi
 	set, err := filter.LoadV7Preset(c.callsign, name)
 	if err != nil {
 		return presetError("LOAD", name, err)
+	}
+	if set.Dialect == string(DialectCC) && s.browserRequiresGo(c) {
+		return presetError("LOAD", name, errBrowserRequiresGo)
 	}
 	next, err := filter.ApplyV7Preset(before, set)
 	if err != nil {
@@ -139,6 +147,6 @@ func (s *Server) loadV7PresetOwned(c *Client, name string, before filter.V7Confi
 	prepared.v7PresetReferences = refs
 	s.publishConfigurationState(c, next.Settings, prepared, nil, now, true)
 	c.refreshV7ConfigurationRevision()
-	c.configurationUnsaved = false
+	c.markProfileSaved()
 	return message + warning
 }

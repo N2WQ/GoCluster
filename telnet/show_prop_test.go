@@ -340,11 +340,11 @@ func TestHandleShowPropGridStoreAndCTYTargets(t *testing.T) {
 }
 
 func testShowPropClient(grid string, noise string) *Client {
-	return &Client{
-		grid:           grid,
+	return &Client{sessionProfile: &sessionProfile{grid: grid,
 		gridCell:       pathreliability.EncodeCell(grid),
 		gridCoarseCell: pathreliability.EncodeCoarseCell(grid),
 		noiseClass:     noise,
+	},
 	}
 }
 

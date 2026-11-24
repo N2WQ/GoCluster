@@ -153,7 +153,8 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 				inputErr.guidance = "No changes applied."
 			}
 			if ruleSyntax {
-				if hint := booleanInputHint(line, b, c.dialect, tooLong); hint != "" {
+				_, dialect := c.configurationBankSelection()
+				if hint := booleanInputHint(line, b, dialect, tooLong); hint != "" {
 					inputErr.guidance = hint + "\nNo changes applied."
 				}
 			}

@@ -161,6 +161,14 @@ func (w *jsonSessionWriter) writeControl(msg controlMessage) error {
 			return err
 		}
 		return w.out.literal("]\n")
+	case controlAdvisory:
+		if err := w.out.literal("[\"notice\",\"" + msg.noticeCode + "\","); err != nil {
+			return err
+		}
+		if err := w.out.quoted(writeJSONString(&w.out, &w.spots.buf, trimJSONLineEnding(msg.line))); err != nil {
+			return err
+		}
+		return w.out.literal(",\"" + msg.noticeVersion + "\"]\n")
 	case controlBulletin:
 		if err := w.out.literal(`["bulletin",`); err != nil {
 			return err
@@ -291,6 +299,11 @@ func (c *Client) runJSONWriter(on *jsonFormatSwitch, batch []byte, enqueueTimes 
 		default:
 			select {
 			case msg = <-c.controlChan:
+			case <-c.notices.wake:
+				msg = c.nextSessionNotice()
+				if msg.line == "" {
+					continue
+				}
 			case env := <-c.spotChan:
 				if err := w.live(env); err != nil {
 					return true, err
@@ -306,6 +319,11 @@ func (c *Client) runJSONWriter(on *jsonFormatSwitch, batch []byte, enqueueTimes 
 				case <-shutdown:
 					return true, nil
 				case msg = <-c.controlChan:
+				case <-c.notices.wake:
+					msg = c.nextSessionNotice()
+					if msg.line == "" {
+						continue
+					}
 				case env := <-c.spotChan:
 					if err := w.live(env); err != nil {
 						return true, err

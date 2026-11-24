@@ -81,13 +81,24 @@ func newHumanPreferenceCandidate(c *Client) *Client {
 			SolarSummaryMinutes: minutes,
 		}
 	}
-	staged := &Client{
-		callsign: c.callsign, server: c.server, dialect: c.dialect,
-		grid: c.grid, gridDerived: c.gridDerived, gridCell: c.gridCell, gridCoarseCell: c.gridCoarseCell,
-		noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
-		configuredSettings: settings, configurationInitialized: true, solarSummaryMinutes: minutes,
-		filterBanks: c.filterBanks, v7PresetReferences: c.v7PresetReferences, v7Notice: c.v7Notice,
-		v7LibraryResetGeneration: c.v7LibraryResetGeneration, configurationUnsaved: c.configurationUnsaved,
+	staged := &Client{sessionProfile: &sessionProfile{dialect: c.dialect,
+		grid:                     c.grid,
+		gridDerived:              c.gridDerived,
+		gridCell:                 c.gridCell,
+		gridCoarseCell:           c.gridCoarseCell,
+		noiseClass:               c.noiseClass,
+		pathMinObservationCount:  c.pathMinObservationCount,
+		configuredSettings:       settings,
+		configurationInitialized: true,
+		filterBanks:              c.filterBanks,
+		v7PresetReferences:       c.v7PresetReferences,
+		v7Notice:                 c.v7Notice,
+		v7LibraryResetGeneration: c.v7LibraryResetGeneration,
+		configurationUnsaved:     c.configurationUnsaved,
+	},
+		callsign: c.callsign, server: c.server,
+
+		solarSummaryMinutes: minutes,
 	}
 	staged.setDedupePolicy(c.getDedupePolicy())
 	if c.filter != nil {

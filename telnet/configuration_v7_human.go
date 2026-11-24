@@ -47,13 +47,17 @@ func (s *Server) runV7HumanPreferenceOwned(c *Client, line string, stage func(*C
 	}
 	s.publishHumanPreference(c, staged, outcome.forceSolar)
 	c.configurationUnsaved = true
+	if c.dialect != DialectGo {
+		// An explicit return to CC supersedes the automatic browser selection.
+		c.goSavePending = false
+	}
 	if prepareErr != nil {
 		return outcome.persistenceFailure(c, prepareErr), outcome.handled
 	}
 	if err := s.commitConfigurationRecord(prepared); err != nil {
 		return outcome.persistenceFailure(c, err), outcome.handled
 	}
-	c.configurationUnsaved = false
+	c.markProfileSaved()
 	if outcome.warning == humanWarningFilter {
 		return outcome.response + "Saved and active.\r\n", outcome.handled
 	}

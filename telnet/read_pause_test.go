@@ -39,7 +39,7 @@ func TestSendCommandResponseStartsAutoReadPause(t *testing.T) {
 		autoReadPauseDuration: 30 * time.Second,
 		nowFn:                 func() time.Time { return now },
 	}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		server:      server,
 		callsign:    "N0CALL",
 		controlChan: make(chan controlMessage, 1),
@@ -64,7 +64,7 @@ func TestSendCommandResponseStartsAutoReadPause(t *testing.T) {
 func TestReadPauseCommandsReportAndResume(t *testing.T) {
 	now := time.Unix(1700000000, 0).UTC()
 	server := &Server{nowFn: func() time.Time { return now }}
-	client := &Client{server: server}
+	client := &Client{sessionProfile: &sessionProfile{}, server: server}
 	client.startReadPause(now, 30*time.Second)
 	client.readPauseSuppressed.Store(2)
 
@@ -93,7 +93,7 @@ func TestReadPauseCommandsReportAndResume(t *testing.T) {
 func TestResumeAllowsFutureSpotsBeforeOriginalPauseDeadline(t *testing.T) {
 	now := time.Unix(1700000000, 0).UTC()
 	server := &Server{nowFn: func() time.Time { return now }}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		server:   server,
 		callsign: "N0CALL",
 		spotChan: make(chan *spotEnvelope, 1),
@@ -124,7 +124,7 @@ func TestReadPauseSuppressesSpotsWithoutSlowClientDrops(t *testing.T) {
 		dropExtremeMinAtt: 1,
 		nowFn:             func() time.Time { return now },
 	}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		server:     server,
 		callsign:   "N0CALL",
 		spotChan:   make(chan *spotEnvelope, 1),
@@ -164,7 +164,7 @@ func TestWriterLoopDropsQueuedReadPauseSpotsButWritesControl(t *testing.T) {
 		nowFn:               func() time.Time { return now },
 	}
 	conn := &recordingConn{}
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{},
 		conn:        conn,
 		writer:      bufio.NewWriter(conn),
 		server:      server,
@@ -224,7 +224,7 @@ func TestReadPauseExpiryAndResumeDiscardStaleEnqueue(t *testing.T) {
 			start := time.Unix(1700000000, 0).UTC()
 			now := start
 			server := &Server{nowFn: func() time.Time { return now }}
-			client := &Client{server: server, spotChan: make(chan *spotEnvelope, 1), done: make(chan struct{})}
+			client := &Client{sessionProfile: &sessionProfile{}, server: server, spotChan: make(chan *spotEnvelope, 1), done: make(chan struct{})}
 			dxSpot := spot.NewSpot("K1ABC", "N0CALL", 14074.0, "FT8")
 			server.handleReadPauseCommand(client, "PAUSE 30")
 			client.enqueueSpot(&spotEnvelope{spot: dxSpot, enqueueAt: now})

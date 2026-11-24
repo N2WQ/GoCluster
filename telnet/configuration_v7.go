@@ -15,6 +15,9 @@ import (
 // Early routing precedes the transaction lease. Publication changes both fields
 // under filterMu, so even a presence/selection probe must take that lock.
 func (c *Client) configurationBankSelection() (bool, DialectName) {
+	if c == nil {
+		return false, DialectGo
+	}
 	c.filterMu.RLock()
 	defer c.filterMu.RUnlock()
 	return c.filterBanks != nil, c.dialect
@@ -114,7 +117,7 @@ func (s *Server) publishV7Configuration(c *Client, next filter.V7Configuration, 
 	prepared.v7PresetReferences = refs
 	s.publishConfigurationState(c, next.Settings, prepared, nil, now, false)
 	c.refreshV7ConfigurationRevision()
-	c.configurationUnsaved = false
+	c.markProfileSaved()
 }
 
 func (c *Client) v7PresetStatuses(cfg filter.V7Configuration) map[string]readbackPresetStatus {

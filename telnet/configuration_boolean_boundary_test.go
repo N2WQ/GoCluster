@@ -144,8 +144,8 @@ func TestBooleanPreparedStateConcurrentPublication(t *testing.T) {
 	*client.filter = first
 	client.configuredSettings, client.configurationInitialized = cfg.Settings, true
 	states := [2]Client{
-		{filter: &first, configuredSettings: cfg.Settings, configurationInitialized: true},
-		{filter: &second, configuredSettings: cfg.Settings, configurationInitialized: true},
+		{sessionProfile: &sessionProfile{filter: &first, configuredSettings: cfg.Settings, configurationInitialized: true}},
+		{sessionProfile: &sessionProfile{filter: &second, configuredSettings: cfg.Settings, configurationInitialized: true}},
 	}
 	originalPointer := client.filter
 	done := make(chan struct{})

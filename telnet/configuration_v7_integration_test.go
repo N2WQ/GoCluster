@@ -216,7 +216,7 @@ func TestV7ConfigurationWriterRetainsAndReleasesCharge(t *testing.T) {
 			if fail {
 				conn.err = errors.New("blocked flush failed")
 			}
-			c := &Client{server: &Server{writerBatchMaxBytes: 1024}, conn: conn, writer: bufio.NewWriterSize(conn, 256), done: make(chan struct{}), controlChan: make(chan controlMessage, 3), spotChan: make(chan *spotEnvelope, 1)}
+			c := &Client{sessionProfile: &sessionProfile{}, server: &Server{writerBatchMaxBytes: 1024}, conn: conn, writer: bufio.NewWriterSize(conn, 256), done: make(chan struct{}), controlChan: make(chan controlMessage, 3), spotChan: make(chan *spotEnvelope, 1)}
 			reservation, err := c.reserveConfigurationOutput()
 			if err != nil {
 				t.Fatal(err)

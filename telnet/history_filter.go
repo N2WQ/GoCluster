@@ -24,12 +24,17 @@ type historyFilterSnapshot struct {
 func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 	c.pathMu.RLock()
 	c.filterMu.RLock()
-	owned := &Client{
-		callsign: c.callsign, dialect: c.dialect, grid: c.grid, gridDerived: c.gridDerived,
+	owned := &Client{sessionProfile: &sessionProfile{dialect: c.dialect,
+		grid:                    c.grid,
+		gridDerived:             c.gridDerived,
+		gridCell:                c.gridCell,
+		gridCoarseCell:          c.gridCoarseCell,
+		noiseClass:              c.noiseClass,
+		pathMinObservationCount: c.pathMinObservationCount,
+		configuredSettings:      filter.SettingsConfiguration{CWSpeed: c.configuredSettings.CWSpeed},
+	},
+		callsign:           c.callsign,
 		operatingGeography: c.operatingGeography,
-		gridCell:           c.gridCell, gridCoarseCell: c.gridCoarseCell,
-		noiseClass: c.noiseClass, pathMinObservationCount: c.pathMinObservationCount,
-		configuredSettings: filter.SettingsConfiguration{CWSpeed: c.configuredSettings.CWSpeed},
 	}
 	if c.filter != nil {
 		value := filter.ConfigurationFromFilter(c.filter, filter.SettingsConfiguration{}).Clone().FilterValue()

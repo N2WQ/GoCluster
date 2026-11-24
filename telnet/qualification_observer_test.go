@@ -15,7 +15,7 @@ func TestQualificationObserverOnlySuccessfulEnqueue(t *testing.T) {
 	var events []QualificationEnqueue
 	SetQualificationEnqueueObserver(func(event QualificationEnqueue) { events = append(events, event) })
 	t.Cleanup(func() { SetQualificationEnqueueObserver(nil) })
-	client := &Client{callsign: "dl1aaa", peerSessionID: 42, done: make(chan struct{}), spotChan: make(chan *spotEnvelope, 1)}
+	client := &Client{sessionProfile: &sessionProfile{}, callsign: "dl1aaa", peerSessionID: 42, done: make(chan struct{}), spotChan: make(chan *spotEnvelope, 1)}
 	s := spot.NewSpot("DL1AABB", "DL1AAA", 14020, "CW")
 	s.Comment = "QID0000001"
 	start := time.Now()
@@ -32,7 +32,7 @@ func TestQualificationObserverOnlySuccessfulEnqueue(t *testing.T) {
 func TestQualificationObserverConcurrentReplacement(t *testing.T) {
 	var seen atomic.Uint64
 	callback := func(QualificationEnqueue) { seen.Add(1) }
-	client := &Client{callsign: "DL1AAA", peerSessionID: 1}
+	client := &Client{sessionProfile: &sessionProfile{}, callsign: "DL1AAA", peerSessionID: 1}
 	env := &spotEnvelope{spot: spot.NewSpot("DL1AABB", "DL1AAA", 14020, "CW")}
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -56,7 +56,7 @@ func TestQualificationObserverConcurrentReplacement(t *testing.T) {
 }
 
 func BenchmarkQualificationEnqueueObserver(b *testing.B) {
-	client := &Client{callsign: "DL1AAA", peerSessionID: 1}
+	client := &Client{sessionProfile: &sessionProfile{}, callsign: "DL1AAA", peerSessionID: 1}
 	env := &spotEnvelope{spot: spot.NewSpot("DL1AABB", "DL1AAA", 14020, "CW")}
 	for _, enabled := range []bool{false, true} {
 		name := "nil"

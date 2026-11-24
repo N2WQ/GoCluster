@@ -742,8 +742,8 @@ func TestShowDXDialectVariants(t *testing.T) {
 	}
 
 	resp = p.ProcessCommandForClient("SHOW/DX", "N2WQ", "", filterFn, "go")
-	if !strings.Contains(resp, "SHOW DX") {
-		t.Fatalf("expected go dialect to reject SHOW/DX with guidance, got %q", resp)
+	if want := p.ProcessCommandForClient("SHOW DX", "N2WQ", "", filterFn, "go"); resp != want {
+		t.Fatalf("GO SHOW/DX = %q, equivalent SHOW DX = %q", resp, want)
 	}
 
 	resp = p.ProcessCommandForClient("SHOW DX", "N2WQ", "", filterFn, "cc")

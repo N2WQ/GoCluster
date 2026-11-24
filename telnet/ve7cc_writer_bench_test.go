@@ -32,7 +32,7 @@ func BenchmarkVE7CCWriterSpotDrain(b *testing.B) {
 		writerV15Conn: writerV15Conn{expected: []byte(ve7ccWireSpot), target: b.N, reached: make(chan struct{})},
 		ready:         make(chan struct{}),
 	}
-	c := &Client{server: s, callsign: "W1BENCH", conn: conn, writer: bufio.NewWriterSize(conn, 32768),
+	c := &Client{sessionProfile: &sessionProfile{}, server: s, callsign: "W1BENCH", conn: conn, writer: bufio.NewWriterSize(conn, 32768),
 		done: make(chan struct{}), controlChan: make(chan controlMessage, 8), spotChan: make(chan *spotEnvelope, 256)}
 	if handled, proceed := s.handleVE7CCCommand(c, "SET/VE7CC"); !handled || !proceed {
 		b.Fatal("native benchmark selection failed")

@@ -149,7 +149,7 @@ func TestClientShardAffinityChurnAndReplacement(t *testing.T) {
 		}
 	}
 	for generation := 0; generation < 128; generation++ {
-		replacement := &Client{callsign: "K1ABC"}
+		replacement := &Client{sessionProfile: &sessionProfile{}, callsign: "K1ABC"}
 		s.clientsMutex.Lock()
 		s.clients[replaceKey] = replacement
 		s.shardsDirty.Store(true)
@@ -165,13 +165,13 @@ func TestClientShardAffinityChurnAndReplacement(t *testing.T) {
 }
 
 func BenchmarkClientShardAffinity(b *testing.B) {
-	b.Logf("client_size=%d", unsafe.Sizeof(Client{}))
+	b.Logf("client_size=%d", unsafe.Sizeof(Client{sessionProfile: &sessionProfile{}}))
 	for _, clients := range []int{100, 1000} {
 		for _, rebuild := range []bool{false, true} {
 			b.Run(fmt.Sprintf("clients_%d/rebuild_%v", clients, rebuild), func(b *testing.B) {
 				s := NewServer(ServerOptions{BroadcastWorkers: 4}, nil)
 				for i := 0; i < clients; i++ {
-					s.clients[fmt.Sprint(i)] = &Client{}
+					s.clients[fmt.Sprint(i)] = &Client{sessionProfile: &sessionProfile{}}
 				}
 				s.shardsDirty.Store(true)
 				s.cachedClientShards()

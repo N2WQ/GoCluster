@@ -105,10 +105,10 @@ func TestDeliverSelfSpotSnapshotsPayload(t *testing.T) {
 	srv := NewServer(ServerOptions{ClientBuffer: 1}, nil)
 	f := unrestrictedTestFilter()
 	f.SetSelfEnabled(true)
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{filter: f},
 		server:   srv,
 		callsign: "K1ABC-2",
-		filter:   f,
+
 		spotChan: make(chan *spotEnvelope, 1),
 		done:     make(chan struct{}),
 	}
@@ -156,10 +156,10 @@ func TestDeliverSelfSpotOwnedReusesSnapshot(t *testing.T) {
 	srv := NewServer(ServerOptions{ClientBuffer: 1}, nil)
 	f := unrestrictedTestFilter()
 	f.SetSelfEnabled(true)
-	client := &Client{
+	client := &Client{sessionProfile: &sessionProfile{filter: f},
 		server:   srv,
 		callsign: "K1ABC-2",
-		filter:   f,
+
 		spotChan: make(chan *spotEnvelope, 1),
 		done:     make(chan struct{}),
 	}

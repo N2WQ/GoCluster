@@ -25,7 +25,9 @@ func (f historyReaderFunc) ReadHistoryPage(req archive.HistoryRequest) (archive.
 func historyTestSession(reader historyReaderFunc) (*Server, *Client) {
 	s := &Server{clients: make(map[string]*Client), shutdown: make(chan struct{})}
 	s.processor = commands.NewProcessor(nil, reader, nil, func() *cty.CTYDatabase { return canonicalTestCTY() }, nil, nil)
-	c := &Client{server: s, callsign: "N2WQ", dialect: DialectGo, filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
+	c := &Client{sessionProfile: &sessionProfile{dialect: DialectGo,
+		filter: unrestrictedTestFilter(),
+	}, server: s, callsign: "N2WQ", done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
 	s.clients[c.callsign] = c
 	return s, c
 }
@@ -317,13 +319,13 @@ func TestHistoryTokensBelongToConnection(t *testing.T) {
 	})
 	runHistory(t, s, first, "SHOW DX 1")
 	token := first.historySearch.token
-	other := &Client{server: s, callsign: "N3WQ", filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+	other := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, server: s, callsign: "N3WQ", done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 	s.clients[other.callsign] = other
 	if text := runHistory(t, s, other, "SHOW DX NEXT "+token); !strings.Contains(text, "Invalid history continuation") || other.historySearch != nil || first.historySearch.token != token {
 		t.Fatalf("token crossed connection: %q", text)
 	}
 	first.interrupt()
-	reconnected := &Client{server: s, callsign: first.callsign, filter: unrestrictedTestFilter(), done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
+	reconnected := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, server: s, callsign: first.callsign, done: make(chan struct{}), controlChan: make(chan controlMessage, 1)}
 	s.clients[first.callsign] = reconnected
 	if text := runHistory(t, s, reconnected, "SHOW DX NEXT "+token); !strings.Contains(text, "Invalid history continuation") || reconnected.historySearch != nil {
 		t.Fatalf("token survived reconnect: %q", text)

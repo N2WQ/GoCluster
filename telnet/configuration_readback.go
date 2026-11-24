@@ -104,7 +104,7 @@ func (s *Server) captureReadbackStatus(c, prepared *Client) configurationReadbac
 			Callsign: c.callsign, DiagnosticComments: readbackDiagnosticName(c.getDiagMode()),
 			PauseActive: active, PausePendingDelivery: pending,
 			PauseRemaining: durationCeilSeconds(remaining), SuppressedSpots: suppressed,
-			TemporaryDefaults: c.recordProtected, UnsavedChanges: c.configurationUnsaved,
+			TemporaryDefaults: c.recordProtected, UnsavedChanges: c.hasUnsavedChanges(),
 		},
 		Server: readbackServerStatus{
 			DefaultDialect: string(s.configurationDefaultDialect()), DefaultDedupePolicy: s.effectiveDefaultDedupePolicy().label(),

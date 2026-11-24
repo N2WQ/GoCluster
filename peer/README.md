@@ -324,8 +324,11 @@ Local published identities follow the pinned receiver normalization, including p
 forms and numeric SSIDs. For example, `K1ABC/P-01` publishes as `K1ABC-1`;
 normalization is not a generic slash removal rule. Canonical callsign collisions, names outside the publication envelope, and
 local/configured-peer name collisions stay local. Private PC93 delivery
-requires exactly one current matching telnet owner. A departed session cannot
-withdraw or receive on behalf of its replacement.
+requires exactly one current matching SSID representative. The Telnet slot is
+preferred while present. The browser is the representative when alone. A
+browser flap beside the same logger does not change the representative or its
+routing revision. A departed session cannot withdraw or receive on behalf of its
+replacement.
 
 Received PC92 identities must first be valid raw wire calls. Invalid spellings
 such as `K1ABC/`, `/K1ABC` and `K1ABC-000` reject the entire record before any
