@@ -77,6 +77,10 @@ inspect user-visible diagnostics:
   50/50 tie. Only a true tie averages occupied representatives. Earlier decay,
   shift and merge rounding remain approximate. See ADR-0301 and TSR-0093 for
   the precision repair and its actual validation status.
+- Reports at or above +24 dB share a histogram bin. For receive-only observed
+  predictions with the shipped noise penalties, USB and LSB top out at MEDIUM
+  in URBAN and LOW in INDUSTRIAL. PSK tops out at MEDIUM in INDUSTRIAL.
+  Transmit evidence can raise the class when both directions are available.
 - For higher path CPU, compare matched build/traffic profiles before assigning
   the increase to p50. The v6 speed experiment passed exactness and allocation
   checks but exceeded sparse/fallback regression limits, so the original exact

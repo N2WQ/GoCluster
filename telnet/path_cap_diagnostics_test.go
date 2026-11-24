@@ -11,16 +11,19 @@ import (
 func TestPathCapDiagnosticRenderedAndRecorded(t *testing.T) {
 	at := time.Date(2026, time.June, 18, 4, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
+		mode        string
 		name        string
 		reports     int
 		wantLimited bool
 		wantTag     string
 	}{
-		{"aged_uncapped", 48, false, "n48/u24|w12|a"},
-		{"cap_reduced", 54, true, "n54/u27/c24/rx6|w12"},
+		{pathreliability.ReceiverContributionShadow, "aged_uncapped", 48, false, "n48/u24|w12|a"},
+		{pathreliability.ReceiverContributionShadow, "cap_reduced", 54, true, "n54/u27/c24/rx6|w12"},
+		{pathreliability.ReceiverContributionEnforce, "aged_uncapped", 48, false, "n48/u24|w12|a"},
+		{pathreliability.ReceiverContributionEnforce, "cap_reduced", 54, true, "n54/u24/c24/rx6|w12"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := recentConsumerConfig(t, pathreliability.ReceiverContributionShadow)
+		t.Run(tc.mode+"/"+tc.name, func(t *testing.T) {
+			cfg := recentConsumerConfig(t, tc.mode)
 			s, c, sp := recentConsumerFixture(t, cfg, at.Add(180*time.Second), "20m", "IO91", false)
 			recentConsumerReports(t, s, c, sp, tc.reports, 6, 1, -10, at, at, false)
 			c.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=HIGH")

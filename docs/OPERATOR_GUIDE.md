@@ -328,6 +328,7 @@ Log in with your callsign. Useful first commands:
 - `RESUME`: end the read pause and resume live spots immediately.
 - `SET GRID <grid>`: set your 4 or 6 character Maidenhead grid.
 - `SET NOISE QUIET|RURAL|SUBURBAN|URBAN|INDUSTRIAL`: set receive noise class.
+  See the [receive-only class limits for Urban and Industrial](../data/config/PATH_PREDICTIONS.md#your-noise-environment).
 - `SET PATHSAMPLES <count|DEFAULT>`: require more recent report units than the cluster default, or clear your personal override.
 - `SET DIAG OFF|DEDUPE|SOURCE|CONF|PATH|MODE`: replace spot comments with compact per-session diagnostics.
 - `SET SOLAR 15|30|60|OFF`: choose an aligned cadence for active solar summaries,

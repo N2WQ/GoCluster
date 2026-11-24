@@ -121,6 +121,12 @@ uses one receive-side penalty per location class:
 The adjustment affects only the receive direction. Your transmit effectiveness
 does not change based on local noise.
 
+For receive-only predictions based on reports, all SNR values at or above
++24 dB share one histogram bin. With the shipped noise penalties, USB and LSB
+can reach at most MEDIUM in URBAN and LOW in INDUSTRIAL. PSK can reach at most
+MEDIUM in INDUSTRIAL. When both directions are available, transmit evidence can
+raise the class.
+
 ### The Final Calculation
 
 When you see a glyph next to a spot, here's what happened behind the scenes:
