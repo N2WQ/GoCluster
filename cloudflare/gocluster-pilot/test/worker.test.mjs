@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import worker from "../src/worker.mjs";
 
-const origin = "https://gocluster-pilot.n2wq-api.workers.dev";
+const origin = "https://ui.n2wq.com";
+const privateOrigin = "https://gocluster-pilot.n2wq-api.workers.dev";
 const ip = "2001:db8::42";
 const headers = { Upgrade: "websocket", Origin: origin, "CF-Connecting-IP": ip };
 const request = (path = "/ws", init = {}) => new Request(origin + path, { headers, ...init });
@@ -16,6 +17,8 @@ test("rejects malformed admission before consulting the private binding", async 
     [request("/ws", { method: "POST" }), 405],
     [request("/ws", { headers: { ...headers, Upgrade: "h2c" } }), 400],
     [request("/ws", { headers: { ...headers, Origin: "https://example.org" } }), 403],
+    [request("/ws", { headers: { ...headers, Origin: privateOrigin } }), 403],
+    [new Request(privateOrigin + "/ws", { headers }), 403],
     [request("/ws", { headers: { ...headers, "CF-Connecting-IP": "192.0.2.1, 192.0.2.2" } }), 403],
     [request("/ws", { headers: { Upgrade: "websocket", Origin: origin, "X-Forwarded-For": ip } }), 403],
     [request("/other"), 400],
@@ -41,11 +44,11 @@ test("fixes destination and forwards only the approved edge attributes", async (
     "X-GoCluster-Edge-Secret": "caller-supplied", "Sec-WebSocket-Protocol": "private",
   } });
   const response = await worker.fetch(req, env);
-  assert.equal(seen.url, origin.replace("https:", "http:") + "/ws");
+  assert.equal(seen.url, "http://gocluster-pilot.n2wq-api.workers.dev/ws");
   assert.equal(seen.init.redirect, "manual");
   assert.equal(seen.init.method, "GET");
   assert.deepEqual(seen.init.headers, {
-    Upgrade: "websocket", Origin: origin, "CF-Connecting-IP": ip,
+    Upgrade: "websocket", Origin: privateOrigin, "CF-Connecting-IP": ip,
     "X-GoCluster-Visitor-IP": ip, "X-GoCluster-Edge-Secret": "private-fixture",
   });
   assert.equal(response.status, 502);
@@ -68,14 +71,20 @@ test("sanitizes origin refusal and failure responses", async () => {
   assert.equal((await worker.fetch(request(), env)).status, 502);
 });
 
-test("serves the console root with the socket policy", async () => {
-  const env = { ASSETS: { fetch(req) {
-    assert.equal(req.url, origin + "/index.html");
-    return new Response("console");
-  } } };
-  const response = await worker.fetch(request("/", { headers: {} }), env);
-  assert.equal(await response.text(), "console");
-  assert.ok(response.headers.get("Content-Security-Policy").includes("wss://gocluster-pilot.n2wq-api.workers.dev/ws"));
+test("serves both console roots with their own socket policy", async () => {
+  for (const [site, socket] of [
+    [origin, "wss://ui.n2wq.com/ws"],
+    [privateOrigin, "wss://gocluster-pilot.n2wq-api.workers.dev/ws"],
+  ]) {
+    const env = { ASSETS: { fetch(req) {
+      assert.equal(req.url, site + "/index.html");
+      return new Response("console");
+    } } };
+    const response = await worker.fetch(new Request(site + "/"), env);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "console");
+    assert.ok(response.headers.get("Content-Security-Policy").includes(`connect-src 'self' ${socket};`));
+  }
 });
 
 test("reports the current request's IPv4 without consulting the origin or assets", async () => {

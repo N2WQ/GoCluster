@@ -2164,7 +2164,7 @@ const CONN = (() => {
     // ------------------------------------------------------------ Live
     connectLive(call) {
       call = String(call || "").toUpperCase().trim();
-      if (!call) throw new Error("Enter your pilot callsign.");
+      if (!call) throw new Error("Enter your callsign.");
       this.stopReplay();
       this.cancelRetry();
       if (this.ws) this.closeSocket();
@@ -4770,11 +4770,11 @@ function ConnectPanel() {
   const code = c.error && c.error.code;
   return html`<${ModalFrame} labelledBy="cp-title" onClose=${close} escape=${c.mode !== "off"}>
     <div class="modal connect">
-      <header class="dr-head"><div><h2 id="cp-title">Connect to GoCluster</h2><div class="muted small">Cloudflare has already checked your email. The cluster still needs your callsign.</div></div>
+      <header class="dr-head"><div><h2 id="cp-title">Connect to GoCluster</h2><div class="muted small">Use the same callsign and SSID as your logger to share its profile.</div></div>
         <button type="button" class="icon-btn" aria-label="Close" onClick=${close}><${Icon} name="close" /></button></header>
       <div class="modal-body">
         <form class="field" onSubmit=${e => { e.preventDefault(); connect(false); }}>
-          <label for="cp-call">Pilot callsign with SSID</label>
+          <label for="cp-call">Callsign with SSID</label>
           <div class="inline-form"><input id="cp-call" class="txt mono" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="N2WQ-9" value=${call} onInput=${e => { setCall(e.target.value.toUpperCase().replace(/\s/g, "")); setErr(""); setWarnSsid(false); }} />
             <button type="submit" class="btn primary" disabled=${!call || connecting}>${connecting ? "Connecting…" : c.phase === "live" && call === S.snap.loginCall ? "Reconnect" : "Connect"}</button></div>
           <p class="hint">Use an SSID your logger does not use, such as ${(call.replace(/-\d{1,2}$/, "") || "N2WQ")}-9. The cluster allows one login per SSID, so reusing your logger's SSID disconnects your logger.</p>

@@ -1,6 +1,7 @@
-const pilotHost = "gocluster-pilot.n2wq-api.workers.dev";
-const pilotOrigin = `https://${pilotHost}`;
-const policy = `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self' wss://${pilotHost}/ws; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`;
+const consoleOrigin = "https://ui.n2wq.com";
+const clusterHost = "gocluster-pilot.n2wq-api.workers.dev";
+const clusterOrigin = `https://${clusterHost}`;
+const legacyOrigin = "https://gocluster-pilot.n2wq-api.workers.dev";
 
 function visitorIPv4(request) {
   const ip = request.headers.get("CF-Connecting-IP")?.replace(/^::ffff:/i, "");
@@ -9,16 +10,16 @@ function visitorIPv4(request) {
 }
 
 // This binding fixes the destination to one loopback service on the tunnel.
-// The URL supplies the HTTP Host seen by GoCluster. Browser headers, query
-// strings and redirected requests must never steer the authenticated request.
-async function upgrade(request, env, headers) {
+// GoCluster checks the fixed Host and Origin on this private hop. The browser
+// origin is validated at the Worker and never controls those upstream headers.
+async function upgrade(request, env, headers, browserOrigin) {
   if (request.method !== "GET") {
     return new Response(null, { status: 405, headers: { ...headers, Allow: "GET" } });
   }
   if (request.headers.get("Upgrade")?.toLowerCase() !== "websocket") {
     return new Response(null, { status: 400, headers });
   }
-  if (request.headers.get("Origin") !== pilotOrigin) {
+  if (request.headers.get("Origin") !== browserOrigin) {
     return new Response(null, { status: 403, headers });
   }
   // Cloudflare supplies this address at ingress. GoCluster strictly parses
@@ -34,13 +35,13 @@ async function upgrade(request, env, headers) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
-    const upstream = await env.CLUSTER_ORIGIN.fetch(`http://${pilotHost}/ws`, {
+    const upstream = await env.CLUSTER_ORIGIN.fetch(`http://${clusterHost}/ws`, {
       method: "GET",
       redirect: "manual",
       signal: controller.signal,
       headers: {
         Upgrade: "websocket",
-        Origin: pilotOrigin,
+        Origin: clusterOrigin,
         "CF-Connecting-IP": ip,
         // The origin checks equality to detect any VPC rewrite of the CF header.
         "X-GoCluster-Visitor-IP": ip,
@@ -66,13 +67,15 @@ async function upgrade(request, env, headers) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    const allowedOrigin = url.origin === consoleOrigin || url.origin === legacyOrigin;
+    const socketPolicy = allowedOrigin ? ` wss://${url.hostname}/ws` : "";
     const headers = {
       "Cache-Control": "no-store",
-      "Content-Security-Policy": policy,
+      "Content-Security-Policy": `default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'${socketPolicy}; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
       "X-Content-Type-Options": "nosniff",
     };
-    if (url.origin !== pilotOrigin) return new Response(null, { status: 404, headers });
-    if (url.pathname === "/ws") return upgrade(request, env, headers);
+    if (!allowedOrigin) return new Response(null, { status: 404, headers });
+    if (url.pathname === "/ws") return upgrade(request, env, headers, url.origin);
     if (request.headers.has("Upgrade")) return new Response(null, { status: 400, headers });
     if (url.pathname === "/visitor-ip") {
       if (request.method !== "GET") {

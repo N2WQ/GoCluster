@@ -8,8 +8,8 @@ const test = require("node:test");
 const { Miniflare, convertV4MiniflareOptions } = require("miniflare");
 const { WebSocketServer } = require("ws");
 
-test("splices the private upgrade, text frames and normal close", { timeout: 15000 }, async (t) => {
-  const host = "gocluster-pilot.n2wq-api.workers.dev";
+async function checkWebSocket(t, host) {
+  const clusterHost = "gocluster-pilot.n2wq-api.workers.dev";
   const ip = "2001:db8::42";
   const origin = http.createServer();
   const sockets = new WebSocketServer({ noServer: true });
@@ -51,8 +51,8 @@ test("splices the private upgrade, text frames and normal close", { timeout: 150
   });
   assert.equal(response.status, 101);
   assert.equal(received.url, "/ws");
-  assert.equal(received.headers.host, host);
-  assert.equal(received.headers.origin, `https://${host}`);
+  assert.equal(received.headers.host, clusterHost);
+  assert.equal(received.headers.origin, `https://${clusterHost}`);
   assert.equal(received.headers["cf-connecting-ip"], ip);
   assert.equal(received.headers["x-gocluster-visitor-ip"], ip);
   assert.equal(received.headers["x-gocluster-edge-secret"], "fixture-only");
@@ -69,4 +69,9 @@ test("splices the private upgrade, text frames and normal close", { timeout: 150
   const [event] = await closed;
   assert.equal(event.code, 1000);
   assert.deepEqual(frames, ["login: ", "N0CALL-2"]);
-});
+}
+
+for (const host of ["ui.n2wq.com", "gocluster-pilot.n2wq-api.workers.dev"]) {
+  test(`splices the private upgrade, text frames and normal close for ${host}`, { timeout: 15000 },
+    (t) => checkWebSocket(t, host));
+}

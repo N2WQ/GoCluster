@@ -63,14 +63,15 @@ Configuration is split by concern so you only edit the relevant file:
 - The optional `web` section enables a private browser console origin. Omitting
   the section or using the shipped `enabled: false` keeps it off. When present,
   supply every field shown in `runtime.yaml`. Use a literal loopback IP and
-  port for `listen_address` and the public Worker DNS name for `hostname`.
+  port for `listen_address` and the hostname the Worker sends on the private
+  tunnel for `hostname`.
   The shipped `max_connections: 32` bounds accepted origin sockets from
   header reading through disconnection. The shipped `heartbeat_seconds: 30`
   sets the WebSocket ping interval. Changes take effect on restart.
 - To enable the origin, set `GOCLUSTER_WEB_EDGE_SECRET` in the cluster service
   environment and store the same random value in the production Worker's secret
   binding. Use 32 to 256 printable non-space ASCII characters. The Worker
-  must send the exact public HTTPS Origin and Host, its secret in
+  must send the configured Host, the HTTPS Origin formed from that hostname, its secret in
   `X-GoCluster-Edge-Secret`, and matching `CF-Connecting-IP` and
   `X-GoCluster-Visitor-IP` values across the private tunnel. The listener
   accepts `GET /ws` only and applies cluster admission to that visitor address.

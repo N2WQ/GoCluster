@@ -4,6 +4,10 @@ compatibility_date = "2026-11-23"
 workers_dev = true
 preview_urls = false
 
+[[routes]]
+pattern = "ui.n2wq.com"
+custom_domain = true
+
 [assets]
 directory = "./site"
 binding = "ASSETS"

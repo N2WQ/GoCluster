@@ -6,9 +6,9 @@
 
 # Private browser console (optional)
 web:
-  enabled: false                         # Opt-in origin for the private browser console
+  enabled: false                         # Opt-in private origin for the browser console
   listen_address: "127.0.0.1:8080"       # Literal loopback endpoint used by cloudflared
-  hostname: "gocluster-pilot.n2wq-api.workers.dev" # Exact Host; browser Origin is https:// plus this name
+  hostname: "gocluster-pilot.n2wq-api.workers.dev" # Exact Host and HTTPS Origin sent by the Worker on the private tunnel
   heartbeat_seconds: 30                  # WebSocket ping interval, 1 through 300 seconds
   max_connections: 32                    # All accepted browser-origin TCP connections, 1 through 1024
 
