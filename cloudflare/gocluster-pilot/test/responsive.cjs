@@ -197,20 +197,21 @@ function contrastRatio(text, background) {
 
 async function textContrast(locator) {
   // These checks use solid surfaces and badge fills. Composite any ancestor opacity over them.
-  const [foreground, background] = await locator.evaluate(el => {
-    const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
-    const pixel = color => {
-      ctx.clearRect(0, 0, 1, 1);
-      ctx.fillStyle = color;
-      ctx.fillRect(0, 0, 1, 1);
-      return [...ctx.getImageData(0, 0, 1, 1).data];
+  const read = el => {
+    if (!el.isConnected) return null;
+    const channels = color => {
+      const normalized = color.startsWith("color(srgb ");
+      if (!normalized && !/^rgba?\(/.test(color)) throw new Error(`Unexpected computed color ${color}`);
+      const [r, g, b, alpha = 1] = color.match(/-?(?:\d*\.)?\d+(?:e[+-]?\d+)?/gi).map(Number);
+      const rgb = [r, g, b].map(channel => normalized ? channel * 255 : channel);
+      return { rgb, alpha };
     };
     const layers = [];
     for (let node = el; node; node = node.parentElement) {
       const style = getComputedStyle(node);
-      const [r, g, b, a] = pixel(style.backgroundColor);
-      layers.unshift({ rgb: [r, g, b], alpha: a / 255, opacity: Number(style.opacity) });
-      if (a === 255 && style.opacity === "1" && layers.length > 1) break;
+      const color = channels(style.backgroundColor);
+      layers.unshift({ ...color, opacity: Number(style.opacity) });
+      if (color.alpha === 1 && style.opacity === "1" && layers.length > 1) break;
     }
     const mix = (fg, bg, alpha) => fg.map((channel, i) => channel * alpha + bg[i] * (1 - alpha));
     let background = [255, 255, 255];
@@ -219,13 +220,18 @@ async function textContrast(locator) {
       if (layer.opacity < 1) opacity.push([background, layer.opacity]);
       background = mix(layer.rgb, background, layer.alpha);
     }
-    let foreground = pixel(getComputedStyle(el).color).slice(0, 3);
+    const ink = channels(getComputedStyle(el).color);
+    let foreground = mix(ink.rgb, background, ink.alpha);
     for (const [under, alpha] of opacity.reverse()) {
       foreground = mix(foreground, under, alpha);
       background = mix(background, under, alpha);
     }
     return [foreground, background];
-  });
+  };
+  // Closing a docked drawer can replace the measured cell as columns reflow.
+  const sample = (await locator.evaluate(read)) ?? (await locator.evaluate(read));
+  assert(sample, "badge or text must be attached when its contrast is measured");
+  const [foreground, background] = sample;
   return contrastRatio(foreground, background);
 }
 
@@ -288,6 +294,7 @@ test("maximum-contrast confidence badges retain legible text in the list and det
       await detailBadge.waitFor();
       assert(await textContrast(detailBadge) >= 7, `${theme} ${letter} in spot details`);
       await button(details, "Close").click();
+      await details.waitFor({ state: "detached" });
     }
   }
 });
@@ -328,6 +335,50 @@ test("keyboard focus has a visible toolbar outline including search", async t =>
       }
     }
   }
+});
+
+test("the desktop icon toolbar fits one row and keeps navigation and spot controls usable", async t => {
+  const page = await openPage(t, { width: 1280, height: 900 }, false);
+  await simulatedNode(page, 1);
+  await page.evaluate(() => {
+    Object.assign(cluster, { buildVersion: "261124-long-review-identifier", visitorIP: "203.255.255.254",
+      nodeCall: "VE3LONG-15", loginCall: "VE3LONG-15" });
+    cluster.changed();
+    setPrefs({ textSize: "normal", contrast: "high" });
+  });
+  await page.locator(".bsub-ip").getByText("203.255.255.254", { exact: true }).waitFor();
+  await page.evaluate(() => document.fonts.ready);
+  for (const width of [1280, 1320, 1321, 1400, 1401, 1440, 1700, 1701, 1920]) {
+    await page.setViewportSize({ width, height: 900 });
+    const layout = await page.locator(".topbar").evaluate(header => {
+      const groups = Array.from(header.children, el => el.getBoundingClientRect());
+      const centers = groups.map(rect => rect.y + rect.height / 2);
+      const sizes = Array.from(header.querySelectorAll(".tool-btn"), el => [el.offsetWidth, el.offsetHeight]);
+      return { spread: Math.max(...centers) - Math.min(...centers), sizes, overflow: document.documentElement.scrollWidth - innerWidth };
+    });
+    assert(layout.spread < 2, `toolbar wrapped at ${width}px`);
+    assert.deepEqual(layout.sizes, Array.from({ length: 8 }, () => [38, 38]));
+    assert.equal(layout.overflow, 0);
+  }
+  await page.keyboard.press("Tab");
+  const history = view(page, "History");
+  await history.focus();
+  await history.locator(".tool-tip").waitFor();
+  await history.press("Enter");
+  await page.locator('.views a[href="#history"][aria-current=page]').waitFor();
+  await view(page, "Spots").click();
+
+  const grouping = page.getByRole("switch", { name: "Group repeats", exact: true });
+  const grouped = await grouping.getAttribute("aria-checked");
+  await grouping.click();
+  await page.locator(`.spot-tools [role="switch"][aria-checked="${grouped === "true" ? "false" : "true"}"]`).waitFor();
+  await button(page, "Pause live spots").click();
+  const resume = button(page, "Resume live spots");
+  await resume.hover();
+  assert.match(await resume.locator(".tool-tip").textContent(), /[0-9]+s$/);
+  await resume.click();
+  await button(page, "Pause live spots").waitFor();
+  assert.deepEqual(await page.evaluate(() => window.commands.filter(c => /^(PAUSE|RESUME)/.test(c))), ["PAUSE 60", "RESUME"]);
 });
 
 test("short landscape scrolls the page and keeps the four views operable", async t => {

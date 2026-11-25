@@ -657,6 +657,37 @@ const GC = (() => {
     return hasPass ? { pass: false, by: "no PASS matched" } : { pass: true, by: "no PASS rules" };
   }
   const matches = (set, spot, ctx) => decideRules(set, spot, ctx).pass;
+
+  // Only band predicates and constants are known without an actual spot.
+  function bandTruth(prog, index, view) {
+    const node = prog.nodes[index];
+    if (node.pred) {
+      const field = node.pred.field;
+      return field === "BAND" || field === "ALLVALUES" ? predMatches(node.pred, view) : null;
+    }
+    const left = bandTruth(prog, node.left, view);
+    if (node.kind === K.Not) return left === null ? null : !left;
+    const shortCircuit = node.kind === K.Or;
+    if (left === shortCircuit) return left;
+    const right = bandTruth(prog, node.right, view);
+    return right === shortCircuit || left !== null ? right : null;
+  }
+
+  function mayPassOnBand(set, band) {
+    if (!set) return true;
+    const view = newView({ band }, null);
+    let possible = false, hasPass = false;
+    for (const { def, program } of set) {
+      const truth = bandTruth(program, program.root, view);
+      if (def.action === "reject") {
+        if (truth === true) return false;
+      } else {
+        hasPass = true;
+        if (truth !== false) possible = true;
+      }
+    }
+    return possible || !hasPass;
+  }
   const needsPath = set => !!set && set.some(r => r.program.needsPath);
   const needsNearby = set => !!set && set.some(r => r.program.needsNearby);
 
@@ -887,7 +918,7 @@ const GC = (() => {
 
   return {
     BANDS, FILTER_MODES, EVENTS, SOURCES, CONTINENTS, CONF_SYMBOLS, PATH_CLASSES, STATES, FIELDS, LIM, GEO,
-    parseExpr, canonical, compileRule, withRule, withoutRule, matches, decideRules, needsPath, needsNearby, readback, counts,
+    parseExpr, canonical, compileRule, withRule, withoutRule, matches, decideRules, mayPassOnBand, needsPath, needsNearby, readback, counts,
     defaultRuleExpr, defaultRuleSet, normalizeBand, upper, goQuote, isState, goAtoi, canonicalModeForFilter, isSupportedMode,
     setCTYTable, ctyResolve, freqToBand, nearbyCells, setCellTable, validGrid, encodeGrid,
     CC_BANDS, CC_SLOTS, CC_GEO, CC_SHORTCUT_MODES, ccDefault, ccWithMode, ccWithSource, ccWithGeography, ccWithDXBM, ccDecide, ccMatches, ccFrequencySlot, CC_CELLS, META_BANDS, metaBandMembers,
@@ -1390,12 +1421,6 @@ const RULES = (() => {
     const s = parts.join(", ");
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
-  function setSummary(cards) {
-    const pass = cards.filter(c => c.action === "pass").map(cardSentence);
-    const rej = cards.filter(c => c.action === "reject").map(cardSentence);
-    return { pass, reject: rej };
-  }
-
   // ---------------------------------------------------------------- slots
   function nextSlot(cards, action) {
     const used = new Set(cards.map(c => c.slot));
@@ -1428,7 +1453,7 @@ const RULES = (() => {
   return {
     F, GROUPS, ENUM, OPS, opsFor, valueLabel, metaFor, searchEntities, ADIF_NAME, ADIF_LABEL, resolve,
     cardExpr, condExpr, exprToItems, cardFromRule, rulesFromCards, checkCard, buildSet, lintCard, lintSet, mergeField,
-    condWords, cardSentence, setSummary, listWords, nextSlot, sortCards, RECIPES, blankCond, newId, quoteValue, LIM,
+    condWords, cardSentence, listWords, nextSlot, sortCards, RECIPES, blankCond, newId, quoteValue, LIM,
   };
 })();
 
@@ -2827,7 +2852,7 @@ function reasonWords(by, cards) {
 
 // ---------------------------------------------------------------- icons
 const ICONS = {
-  filter: "M3 5h18M6 12h12M10 19h4",
+  filter: "M3 5h18l-7 8v5l-4 2v-7L3 5Z",
   sliders: "M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4",
   gear: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z",
   pulse: "M3 12h4l3-8 4 16 3-8h4",
@@ -3034,10 +3059,10 @@ function nextDraftSlot(draft, action) {
 
 // ---------------------------------------------------------------- evaluation (same order as the node)
 function switchOn(sw, name) { const v = sw[name]; return v === "DEFAULT" ? DATA.SWITCH_DEFAULTS[name] : !!v; }
-function decideWith(set, sw, s) {
+function decideWith(set, sw, s, allowSelf = true) {
   if (s.beacon && !switchOn(sw, "beacon")) return { pass: false, by: "BEACON switch" };
   if (s.toxic && !switchOn(sw, "toxic")) return { pass: false, by: "TOXIC switch" };
-  if (SIM.baseCallOf(s.dxCall) === cluster.baseCall && switchOn(sw, "self")) return { pass: true, by: "SELF" };
+  if (allowSelf && SIM.baseCallOf(s.dxCall) === cluster.baseCall && switchOn(sw, "self")) return { pass: true, by: "SELF" };
   return GC.decideRules(set, s, { pathClass: s.path, nearby: cluster.nearby, operating: cluster.operating });
 }
 function recentSample(minutes = 15) {
@@ -3046,11 +3071,14 @@ function recentSample(minutes = 15) {
   return arr.slice(i);
 }
 const _setMemo = { key: null, val: null };
+const _appliedSetMemo = { key: null, val: null };
+function preparedCards(cards, memo) {
+  const key = JSON.stringify(RULES.rulesFromCards(cards));
+  if (memo.key !== key) { memo.key = key; memo.val = RULES.buildSet(cards); }
+  return memo.val;
+}
 function workingSet() {
-  const cards = workingCards();
-  const key = cards.map(c => c.slot + c.action + RULES.cardExpr(c)).join("|");
-  if (_setMemo.key !== key) { _setMemo.key = key; _setMemo.val = RULES.buildSet(cards); }
-  return _setMemo.val;
+  return preparedCards(workingCards(), _setMemo);
 }
 const _prevMemo = { key: "", val: null };
 function previewStats() {
@@ -3652,7 +3680,7 @@ function spotsPerMinute() {
 }
 
 // ---------------------------------------------------------------- derived lists
-function rowsForView() {
+function rowsForView(focusBand = S.focusBand) {
   const dirty = isDirty();
   const preview = dirty || S.showHidden;
   let base;
@@ -3668,7 +3696,7 @@ function rowsForView() {
   } else base = S.spots.map(s => ({ s, pass: true, by: s.by }));
   const q = S.search.trim().toUpperCase();
   return base.filter(({ s }) =>
-    (S.focusBand === "ALL" || s.band === S.focusBand) &&
+    (focusBand === "ALL" || s.band === focusBand) &&
     (!S.focusCont || s.dxCont === S.focusCont) &&
     (!q || s.dxCall.includes(q) || s.deCall.includes(q) || (s.dxEntity || "").toUpperCase().includes(q)));
 }
@@ -3713,6 +3741,36 @@ function IconBtn({ icon, label, onClick, active, badge, dot, kbd }) {
   return html`<button type="button" class=${cls("icon-btn", "top", active && "on")} aria-label=${label} title=${kbd ? `${label} (${kbd})` : label} aria-pressed=${active ? "true" : "false"} onClick=${onClick}>
     <${Icon} name=${icon} size=${19} />${badge ? html`<span class="badge-n">${badge}</span>` : null}${dot ? html`<span class="badge-dot"></span>` : null}</button>`;
 }
+function ToolbarIcon({ icon, hint, dot }) {
+  return html`<span class="tool-glyph" aria-hidden="true"><${Icon} name=${icon} />${dot ? html`<span class="badge-dot"></span>` : null}</span>
+    <span class="tool-tip" aria-hidden="true">${hint}</span>`;
+}
+
+function SpotControls({ filterCount, toggleFilters }) {
+  const pausedUntil = S.snap.session.pausedUntil;
+  const seconds = Math.max(0, Math.ceil((pausedUntil - Date.now()) / 1000));
+  const paused = seconds > 0;
+  const pauseLabel = paused ? "Resume live spots" : "Pause live spots";
+  return html`<div class="spot-tools" role="group" aria-label="Spot controls">
+    <button type="button" class="tool-btn filters-btn" aria-pressed=${S.drawer === "filters" ? "true" : "false"}
+        aria-label=${filterCount ? `Filters (${plural(filterCount, "rule")})` : "Filters"} onClick=${toggleFilters}>
+      <${ToolbarIcon} icon="filter" hint="Filters (F)" dot=${isDirty()} />
+    </button>
+    ${S.view === "stream" ? html`<button type="button" class="tool-btn" role="switch" aria-label="Group repeats"
+        aria-checked=${S.prefs.groupRepeats ? "true" : "false"} onClick=${() => setPrefs({ groupRepeats: !S.prefs.groupRepeats })}>
+      <${ToolbarIcon} icon="layers" hint="Group repeats" />
+    </button>` : null}
+    <button type="button" class="tool-btn" aria-label="Hidden" aria-pressed=${S.showHidden ? "true" : "false"} onClick=${() => set({ showHidden: !S.showHidden })}>
+      <${ToolbarIcon} icon=${S.showHidden ? "eyeOff" : "eye"} hint=${S.showHidden ? "Stop showing hidden spots" : "Show hidden spots"} />
+    </button>
+    <button type="button" class=${cls("tool-btn", paused && "on")} aria-label=${pauseLabel}
+        aria-description=${paused ? `${seconds} seconds remaining.` : "Pauses for 60 seconds. Missed spots are not replayed."}
+        disabled=${S.snap.conn.phase !== "live"} onClick=${() => paused ? cluster.resume() : cluster.pause(60)}>
+      <${ToolbarIcon} icon=${paused ? "play" : "pause"} hint=${paused ? `${pauseLabel} · ${seconds}s` : "Pause live spots for 60s"} />
+    </button>
+  </div>`;
+}
+
 function TopBar() {
   const snap = S.snap;
   const n = workingCards().length;
@@ -3729,14 +3787,12 @@ function TopBar() {
     </span>` : null}</div></div>
     <${NodeStatus} />
     <nav class="views" aria-label="View">
-      ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class=${S.view === v ? "on" : ""} aria-label=${l} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; set({ view: v }); }}><${Icon} name=${ic} size=${16} /><span>${l}</span></a>`)}
+      ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class="tool-btn" aria-label=${l} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; set({ view: v }); }}><${ToolbarIcon} icon=${ic} hint=${l} /></a>`)}
     </nav>
-    <div class="search"><${Icon} name="search" size=${16} /><input id="q" type="search" placeholder="Call, prefix or country" aria-label="Find a call, prefix or country" value=${S.search} onInput=${e => set({ search: e.target.value })} /><kbd>/</kbd></div>
+    <div class="search"><${Icon} name="search" size=${16} /><input id="q" type="search" placeholder="Call, prefix, country" aria-label="Find a call, prefix or country" value=${S.search} onInput=${e => set({ search: e.target.value })} /><kbd>/</kbd></div>
     <div class="actions">
-      <button type="button" class=${cls("filters-btn", S.drawer === "filters" && "on")} onClick=${() => toggleDrawer("filters")} aria-label=${n ? `Filters (${plural(n, "rule")})` : "Filters"} title="Filters (F)">
-        <${Icon} name="sliders" size=${17} /><span>Filters</span><span class="fcount">${n}</span>${isDirty() ? html`<span class="badge-dot"></span>` : null}
-      </button>
-      <button type="button" class="preset-pill" onClick=${() => set({ drawer: "filters", filterTab: "presets" })} title="Presets">
+      <${SpotControls} filterCount=${n} toggleFilters=${() => toggleDrawer("filters")} />
+      <button type="button" class="preset-pill" onClick=${() => set({ drawer: "filters", filterTab: "presets" })} title=${snap.preset.name ? `Preset: ${snap.preset.name}` : "Presets"}>
         <${Icon} name="bookmark" size=${14} /><span class="mono">${snap.preset.name || "No preset"}</span>${snap.preset.modified ? html`<span class="mod" title="Changed since loaded or saved">modified</span>` : null}
       </button>
       <button type="button" class="spot-btn" onClick=${() => set({ postOpen: true })} aria-label="Post a spot" title="Post a spot"><${Icon} name="send" size=${15} /><span>Spot</span></button>
@@ -3749,43 +3805,102 @@ function TopBar() {
 }
 
 // ---------------------------------------------------------------- sub bar: spectrum strip + status
-function SubBar() {
-  const now = Date.now(), B = 12, span = 15 * 60e3;
-  const hist = {}, counts = {};
-  for (const b of DATA.MAIN_BANDS) { hist[b] = new Array(B).fill(0); counts[b] = 0; }
-  for (let i = S.spots.length - 1; i >= 0; i--) {
-    const s = S.spots[i], age = now - s.t;
-    if (age >= span) break;
-    if (!hist[s.band]) continue;
-    hist[s.band][B - 1 - Math.floor(age / (span / B))]++; counts[s.band]++;
+function stripProfile() {
+  const conn = S.snap.conn;
+  if (conn.mode === "replay") return { kind: "replay", label: "Replay · no filter profile" };
+  if (!conn.configLoaded) return { kind: "unknown", label: "Band counts awaiting filter profile" };
+
+  const dirty = isDirty(), draft = S.draft;
+  if (dirty && !draft.conflicts.size && draft.base.revision === S.snap.revision && !conn.cfgError && !conn.needsReview) {
+    const built = workingSet();
+    if (!built.error) return { kind: "preview", set: built.set, cards: draft.cards, switches: draft.switches };
   }
-  const peak = Math.max(1, ...Object.values(hist).flat());
-  const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const dirty = isDirty();
-  const sum = RULES.setSummary(workingCards());
-  const paused = S.snap.session.pausedUntil > Date.now();
+  if (conn.activeDialect !== "go") return { kind: "unknown", label: "GO rules inactive · band counts unavailable" };
+  const cards = currentCards();
+  const built = preparedCards(cards, _appliedSetMemo);
+  if (built.error) return { kind: "unknown", label: "Applied rules unavailable · band counts unavailable" };
+  return { kind: "applied", set: built.set, cards, switches: S.snap.switches, pendingDraft: dirty };
+}
+
+const stripBandsMemo = new WeakMap();
+function stripBands(set) {
+  if (!set) return DATA.MAIN_BANDS;
+  if (stripBandsMemo.has(set)) return stripBandsMemo.get(set);
+  const bands = DATA.MAIN_BANDS.filter(band => GC.mayPassOnBand(set, band));
+  stripBandsMemo.set(set, bands);
+  return bands;
+}
+
+// Keep decisions for the current filter context only. The existing buffers
+// own the spot records, and the time window is recomputed even on a quiet feed.
+let stripDecisionMemo;
+function matchingStripReports({ kind, set, switches }) {
+  if (kind === "replay") return () => true;
+  const { beacon, toxic } = switches;
+  const { nearby, operating } = cluster;
+  const old = stripDecisionMemo;
+  if (!old || old.set !== set || old.beacon !== beacon || old.toxic !== toxic || old.nearby !== nearby || old.operating !== operating) {
+    stripDecisionMemo = { set, beacon, toxic, nearby, operating, decisions: new WeakMap() };
+  }
+  const { decisions } = stripDecisionMemo;
+  return spot => {
+    if (!decisions.has(spot)) decisions.set(spot, decideWith(set, switches, spot, false).pass);
+    return decisions.get(spot);
+  };
+}
+
+function stripActivity(profile, bands, now) {
+  if (profile.kind === "unknown") return null;
+  const bins = 12, span = 15 * 60e3;
+  const byBand = new Map(bands.map(band => [band, { count: 0, hist: new Array(bins).fill(0) }]));
+  const matches = matchingStripReports(profile);
+  let peak = 1, total = 0;
+  for (const spot of S.spots) {
+    const stat = byBand.get(spot.band), age = now - spot.t;
+    if (!stat || !Number.isFinite(spot.t) || age < 0 || age >= span || !matches(spot)) continue;
+    const bin = bins - 1 - Math.floor(age / (span / bins));
+    peak = Math.max(peak, ++stat.hist[bin]);
+    stat.count++;
+    total++;
+  }
+  return { byBand, total, peak };
+}
+
+function FilterSummary({ profile }) {
+  const cards = profile.cards || [];
+  const shows = cards.filter(card => card.action === "pass");
+  const hides = cards.filter(card => card.action === "reject");
+  const rules = shows.length && hides.length ? [shows[0], hides[0]] : cards.slice(0, 2);
+  const more = cards.length - rules.length;
+  return html`<div class="status-line">
+    ${profile.kind === "preview" ? html`<span class="pill draft" role="status"><${Icon} name="eye" size=${14} /> ${S.snap.conn.activeDialect === "go" ? "Previewing unapplied rules" : "Previewing unapplied GO rules"}</span>`
+      : profile.pendingDraft ? html`<span class="pill draft" role="status">Showing applied rules</span>` : null}
+    ${S.showHidden ? html`<span class="pill hid"><${Icon} name="eyeOff" size=${14} /> Showing hidden spots, dimmed</span>` : null}
+    ${S.focusCont ? html`<button type="button" class="pill focus" onClick=${() => set({ focusCont: "" })}>DX in ${DATA.CONT_NAME[S.focusCont]} <${Icon} name="close" size=${12} /></button>` : null}
+    <button type="button" class="summary" onClick=${() => set({ drawer: "filters", filterTab: "rules" })} title="Open filters">
+      ${rules.length ? rules.map(card => {
+        const description = card.expert ? RULES.cardExpr(card) : RULES.cardSentence(card);
+        return html`<span class="summary-rule" key=${card.id} title=${description}><b>${card.action === "pass" ? "Show" : "Hide"}</b> <span>${description}</span></span>`;
+      }) : html`<span>${profile.label || "No Show/Hide rules"}</span>`}
+      ${more > 0 ? html`<span class="summary-more" title=${plural(more, "more rule")}>+${more}</span>` : null}
+    </button>
+  </div>`;
+}
+
+function SubBar({ profile, bands, focusBand }) {
+  const activity = stripActivity(profile, bands, Date.now());
   return html`<div class="subbar">
+    <${FilterSummary} profile=${profile} />
     <div class="bandstrip" role="tablist" aria-label="Focus on a band (display only)">
-      <button type="button" role="tab" aria-selected=${S.focusBand === "ALL" ? "true" : "false"} class=${cls("bt", "all", S.focusBand === "ALL" && "on")} onClick=${() => set({ focusBand: "ALL" })}>
-        <span class="bt-top"><span class="bl">All</span><span class="bc mono">${total}</span></span><span class="bt-sub">15 min</span></button>
-      ${DATA.MAIN_BANDS.map(b => html`<button type="button" role="tab" aria-selected=${S.focusBand === b ? "true" : "false"} title=${`${b}: ${counts[b]} spots in 15 minutes`}
-          class=${cls("bt", S.focusBand === b && "on", !counts[b] && "quiet")} style=${`--bc:${BAND_COLOR[b]}`} onClick=${() => set({ focusBand: S.focusBand === b ? "ALL" : b })}>
-        <span class="bt-top"><span class="bl">${b}</span><span class="bc mono">${counts[b] || ""}</span></span>
-        <span class="bt-bars" aria-hidden="true">${hist[b].map(v => html`<i style=${`height:${v ? 12 + (v / peak) * 88 : 6}%`} class=${v ? "" : "z"}></i>`)}</span></button>`)}
-    </div>
-    <div class=${cls("status-line", S.view === "stream" && "stream-actions")}>
-      ${dirty ? html`<span class="pill draft"><${Icon} name="eye" size=${14} /> Previewing unapplied rules</span>`
-        : S.showHidden ? html`<span class="pill hid"><${Icon} name="eyeOff" size=${14} /> Showing hidden spots, dimmed</span>` : null}
-      ${S.focusCont ? html`<button type="button" class="pill focus" onClick=${() => set({ focusCont: "" })}>DX in ${DATA.CONT_NAME[S.focusCont]} <${Icon} name="close" size=${12} /></button>` : null}
-      <button type="button" class="summary" onClick=${() => set({ drawer: "filters", filterTab: "rules" })} title="Open filters">
-        ${sum.pass.length ? html`<span class="sum-pass"><i></i>${sum.pass.slice(0, 2).join(" · ")}${sum.pass.length > 2 ? ` +${sum.pass.length - 2}` : ""}</span>` : html`<span class="sum-pass"><i></i>Everything</span>`}
-        ${sum.reject.length ? html`<span class="sum-rej"><i></i>${sum.reject.slice(0, 1).join("; ")}${sum.reject.length > 1 ? ` +${sum.reject.length - 1}` : ""}</span>` : null}
-      </button>
-      <span class="grow"></span>
-      ${S.view === "stream" ? html`<button type="button" class=${cls("chipbtn", "repeat-switch", S.prefs.groupRepeats && "on")} role="switch" aria-checked=${S.prefs.groupRepeats ? "true" : "false"} onClick=${() => setPrefs({ groupRepeats: !S.prefs.groupRepeats })}>Group repeats</button>` : null}
-      <button type="button" class=${cls("chipbtn", S.showHidden && "on")} onClick=${() => set({ showHidden: !S.showHidden })} title="See which recent spots your rules hide and why"><${Icon} name=${S.showHidden ? "eyeOff" : "eye"} size=${15} /> Hidden</button>
-      <button type="button" class=${cls("chipbtn", paused && "on")} disabled=${S.snap.conn.phase !== "live"} onClick=${() => (paused ? cluster.resume() : cluster.pause(60))} title=${paused ? "Resume live spots" : "Pause live spots for 60 seconds. Missed spots are not replayed."}>
-        <${Icon} name=${paused ? "play" : "pause"} size=${14} /> ${paused ? `Resume · ${Math.max(0, Math.round((S.snap.session.pausedUntil - Date.now()) / 1000))}s` : "Pause"}</button>
+      <button type="button" role="tab" aria-selected=${focusBand === "ALL" ? "true" : "false"} class=${cls("bt", "all", focusBand === "ALL" && "on")} onClick=${() => set({ focusBand: "ALL" })}>
+        <span class="bt-top"><span class="bl">All</span><span class="bc mono">${activity?.total ?? ""}</span></span><span class="bt-sub">15 min</span></button>
+      ${bands.map(b => {
+        const stat = activity?.byBand.get(b);
+        return html`<button type="button" role="tab" key=${b} aria-selected=${focusBand === b ? "true" : "false"} title=${stat ? `${b}: ${stat.count} spots in 15 minutes` : `${b}: band count unavailable`}
+            class=${cls("bt", focusBand === b && "on", !stat?.count && "quiet")} style=${`--bc:${BAND_COLOR[b]}`} onClick=${() => set({ focusBand: focusBand === b ? "ALL" : b })}>
+          <span class="bt-top"><span class="bl">${b}</span><span class="bc mono">${stat?.count || ""}</span></span>
+          ${stat ? html`<span class="bt-bars" aria-hidden="true">${stat.hist.map(v => html`<i style=${`height:${v ? 12 + (v / activity.peak) * 88 : 6}%`} class=${v ? "" : "z"}></i>`)}</span>` : null}</button>`;
+      })}
     </div>
   </div>`;
 }
@@ -4031,7 +4146,7 @@ function ColumnHead({ k, drag, setDrag }) {
     onDragEnd=${() => setDrag(null)}><span class="col-label" draggable="true" onDragStart=${e => { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", k); } catch (x) { /* ignore */ } setDrag({ from: k }); }}><span class="grip" aria-hidden="true">⋮⋮</span>${c.label}</span><span class="resize-grip" role="separator" aria-orientation="vertical" aria-label=${"Resize " + c.label} title=${"Drag to resize " + c.label}
       onPointerDown=${start} onPointerMove=${move} onPointerUp=${e => finish(e, true)} onLostPointerCapture=${e => finish(e, false)} /></span>`;
 }
-function StreamView() {
+function StreamView({ focusBand }) {
   const ref = useRef(null);
   const secRef = useRef(null);
   const lastScrollSize = useRef(null);
@@ -4044,7 +4159,7 @@ function StreamView() {
     ro.observe(secRef.current);
     return () => ro.disconnect();
   }, []);
-  let rows = rowsForView();
+  let rows = rowsForView(focusBand);
   const total = rows.length;
   let newer = 0;
   if (scrolled && S.freezeId) { const before = rows.length; rows = rows.filter(r => r.s.id <= S.freezeId); newer = before - rows.length; }
@@ -4089,10 +4204,10 @@ function StreamView() {
           ? html`<${RepeatGroup} key=${"group-" + group[0].s.id} group=${group} cols=${cols} fresh=${fresh} />`
           : html`<${SpotRow} key=${r.s.id} cols=${cols} r=${r} sel=${S.selSpot && S.selSpot.id === r.s.id} fresh=${fresh} />`;
       })}
-      ${!rows.length ? html`<div class="empty"><${Icon} name="radio" size=${28} /><b>${S.snap.conn.phase === "live" || S.snap.conn.mode === "replay" || S.spots.length ? "No spots match right now" : "Not connected"}</b><span>${S.focusBand !== "ALL" || S.search || S.focusCont ? "Clear the band focus or search to see more." : S.snap.conn.phase === "live" ? "Spots appear here as the node sends them. Quiet periods are normal; if it stays empty, open Filters to check your rules." : S.snap.conn.mode === "replay" ? "The capture's spots appear as it plays." : "Connect to your cluster to see live spots."}</span>
-        <button type="button" class="btn" onClick=${() => set(S.focusBand !== "ALL" || S.search || S.focusCont ? { focusBand: "ALL", search: "", focusCont: "" } : S.snap.conn.phase === "live" ? { drawer: "filters" } : { connectOpen: true })}>${S.focusBand !== "ALL" || S.search || S.focusCont ? "Show all" : S.snap.conn.phase === "live" ? "Open filters" : "Connect"}</button></div>` : null}
+      ${!rows.length ? html`<div class="empty"><${Icon} name="radio" size=${28} /><b>${S.snap.conn.phase === "live" || S.snap.conn.mode === "replay" || S.spots.length ? "No spots match right now" : "Not connected"}</b><span>${focusBand !== "ALL" || S.search || S.focusCont ? "Clear the band focus or search to see more." : S.snap.conn.phase === "live" ? "Spots appear here as the node sends them. Quiet periods are normal; if it stays empty, open Filters to check your rules." : S.snap.conn.mode === "replay" ? "The capture's spots appear as it plays." : "Connect to your cluster to see live spots."}</span>
+        <button type="button" class="btn" onClick=${() => set(focusBand !== "ALL" || S.search || S.focusCont ? { focusBand: "ALL", search: "", focusCont: "" } : S.snap.conn.phase === "live" ? { drawer: "filters" } : { connectOpen: true })}>${focusBand !== "ALL" || S.search || S.focusCont ? "Show all" : S.snap.conn.phase === "live" ? "Open filters" : "Connect"}</button></div>` : null}
     </div></div></div>
-    <footer class="tfoot muted small"><span>${preview ? `Preview over the ${plural(Math.min(cluster.sample.length, 1800), "spot")} you have received; spots your current rules already hide are not here${S.showHidden ? ` · ${hiddenN} hidden shown dimmed` : ""}` : `${plural(total, "spot")} received${S.focusBand !== "ALL" ? ` on ${S.focusBand}` : ""}${S.snap.conn.mode === "replay" ? " from the capture" : ""}`} · newest first</span>
+    <footer class="tfoot muted small"><span>${preview ? `Preview over the ${plural(Math.min(cluster.sample.length, 1800), "spot")} you have received; spots your current rules already hide are not here${S.showHidden ? ` · ${hiddenN} hidden shown dimmed` : ""}` : `${plural(total, "spot")} received${focusBand !== "ALL" ? ` on ${focusBand}` : ""}${S.snap.conn.mode === "replay" ? " from the capture" : ""}`} · newest first</span>
       <span class="grow"></span><span>${auto.length ? `${auto.map(k => COLUMNS[k].label).join(", ")} hidden to fit · ` : ""}Drag titles to reorder or edges to resize</span></footer>
   </section>`;
 }
@@ -4115,11 +4230,11 @@ function passingSpots(minutes) {
 }
 
 // ---------------------------------------------------------------- band map
-function BandMapView() {
+function BandMapView({ focusBand }) {
   const counts = {};
   const pass = passingSpots(10);
   for (const s of pass) counts[s.band] = (counts[s.band] || 0) + 1;
-  const band = S.focusBand !== "ALL" ? S.focusBand : (Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || ["20m"])[0];
+  const band = focusBand !== "ALL" ? focusBand : (Object.entries(counts).sort((a, b) => b[1] - a[1])[0] || ["20m"])[0];
   const [lo, hi] = DATA.BAND_PLAN[band] || [14000, 14350];
   const span = Math.min(hi - lo, band === "10m" ? 700 : band === "6m" ? 400 : band === "2m" ? 500 : hi - lo);
   const hiShown = lo + span;
@@ -4778,17 +4893,23 @@ function App() {
   useStore();
   useVisibleViewport();
   useDrawerOverlay(S.drawer);
-  if (!S.snap) return null;
+  const profile = stripProfile();
+  const bands = stripBands(profile.set);
+  const selectedBand = S.focusBand;
+  const focusBand = bands.includes(selectedBand) ? selectedBand : "ALL";
+  useEffect(() => {
+    if (focusBand !== selectedBand && S.focusBand === selectedBand) set({ focusBand });
+  }, [focusBand, selectedBand]);
   const left = S.drawer === "filters";
   const right = ["settings", "activity", "spot"].includes(S.drawer);
   return html`<div class=${cls("app", left && "has-left", right && "has-right", S.consoleOpen && "con-open")}>
     <${TopBar} />
-    <${SubBar} />
+    <${SubBar} profile=${profile} bands=${bands} focusBand=${focusBand} />
     <div class="workspace">
       ${left ? html`<${FiltersDrawer} />` : null}
       <main class="main" id="main">
         <${ConnectionBanner} />
-        ${S.view === "bandmap" ? html`<${BandMapView} />` : S.view === "openings" ? html`<${OpeningsView} />` : S.view === "history" ? html`<${HistoryView} />` : html`<${StreamView} />`}
+        ${S.view === "bandmap" ? html`<${BandMapView} focusBand=${focusBand} />` : S.view === "openings" ? html`<${OpeningsView} />` : S.view === "history" ? html`<${HistoryView} />` : html`<${StreamView} focusBand=${focusBand} />`}
       </main>
       ${S.drawer === "settings" ? html`<${SettingsDrawer} />` : S.drawer === "activity" ? html`<${ActivityDrawer} />` : S.drawer === "spot" ? html`<${SpotDrawer} key=${S.selSpot && S.selSpot.id} />` : null}
       ${(left || right) ? html`<button type="button" class="scrim" tabindex="-1" aria-hidden="true" onClick=${() => set({ drawer: null })}></button>` : null}

@@ -15,6 +15,11 @@ and browser toolbar state before attributing the symptom to a specific release.
 For a missing Azimuth or Distance column, a dash in either column, or a
 distance-unit question, use the [spot table settings](../cloudflare/gocluster-pilot/README.md#adjust-the-spot-table).
 
+For a missing band badge, an unexpectedly low or blank band count, or a badge
+that changes during a filter draft, use the [browser band-count guide](../cloudflare/gocluster-pilot/README.md#toolbar-and-band-counts).
+Check the draft label and whether the spot passed ordinary rules or was delivered
+solely because of SELF.
+
 ## Human spot comments and upstream wire times
 
 For split numbers displayed as dB reports, missing `CWT` or time phrases in

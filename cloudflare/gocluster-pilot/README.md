@@ -14,6 +14,33 @@ If both edits changed the same rule differently, the console shows the current r
 
 The console reads the profile back after saving. If confirmation fails, your draft stays open. Use **Reload profile** if prompted, review the latest values, and decide whether to apply again. A failed confirmation can occur after the node has already saved the change.
 
+## Toolbar and band counts
+
+The toolbar groups the four view icons and the spot controls. Hover over an icon
+or tab to it to read its label. The Pause icon changes to Resume while delivery
+is paused, and its label shows the remaining time.
+
+The row below the toolbar summarizes up to two Show or Hide rules. Selecting
+the summary opens Filters. A valid draft updates the summary and the band strip
+under **Previewing unapplied rules**. An invalid, stale, or conflicting draft
+leaves both on the last confirmed rules.
+
+The band strip hides a band when the Show/Hide rules rule out the entire band.
+Quiet bands and bands whose eligibility depends on an actual spot stay in the
+strip. A count represents matching reports still in the browser's recent buffer
+with timestamps in the last 15 minutes. **All** adds the displayed band counts.
+A spot that gets through solely because of **SELF** can still appear in Spots.
+Band counts use ordinary matching
+with SELF bypass disabled. **Hidden** lets you inspect filtered spots while the
+counts continue to reflect the rules. When your selected band becomes excluded,
+the display returns to **All**.
+
+When the current filter profile is unavailable, the console keeps the band
+buttons available and labels the counts unavailable. A native CC session shows
+counts only when you preview a valid GO draft, which the summary labels as GO.
+Replay shows activity from the capture and ages recorded timestamps against the
+current clock.
+
 ## Adjust the spot table
 
 On a desktop, drag the right edge of a column heading to resize it. Drag the label to reorder it. Spots and History share the layout in this browser. Use **Reset columns** in Settings to restore the default layout. On phones, spots use stacked rows.

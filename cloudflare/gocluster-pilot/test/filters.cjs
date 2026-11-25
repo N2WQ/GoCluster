@@ -1,10 +1,12 @@
 const assert = require("node:assert/strict");
 const { before, after, test } = require("node:test");
+const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 const { chromium } = require("playwright-core");
 
 const site = pathToFileURL(path.resolve(__dirname, "../site/index.html")).href;
+const capture = readFileSync(path.join(__dirname, "../site/replay/session.jsonl"), "utf8").trim().split("\n").map(line => JSON.parse(line));
 const rule = (slot, expr, action = "pass") => ({ slot, action, expr });
 const cw = rule(1, "MODE=CW");
 const rtty = rule(1, "MODE=RTTY");
@@ -45,7 +47,7 @@ async function editor(t, filters = { rules: [cw], include_beacons: false }) {
               ...peer.filters,
             };
             if (peer.omitField) delete go[peer.omitField];
-            reply.configuration = { settings: { dialect: "go" }, filters: { go } };
+            reply.configuration = { settings: { dialect: peer.dialect || "go" }, filters: { go } };
           }
           if (peer.pauseGet) {
             peer.finishGet = () => session.onYaml(JSON.stringify(reply));
@@ -108,6 +110,134 @@ async function resolveRule(page, slot, expression) {
   await page.getByLabel("Re-enter rule " + slot, { exact: true }).fill(expression);
   await button(page, "Set rule " + slot).click();
 }
+
+async function feedReports(page, reports) {
+  await page.evaluate(({ records, reports }) => {
+    const feed = record => cluster.session.feed(JSON.stringify(record) + "\n");
+    records.filter(record => record[0] === "schema").forEach(feed);
+    const sample = records.find(record => record[0] === "s");
+    for (const [index, [call, band, mode, age, beacon = false]] of reports.entries()) {
+      const record = [...sample];
+      record[1] = index + 1;
+      record[2] = String(BigInt(Date.now() - age) * 1_000_000n);
+      record[3] = band === "20m" ? 14025 : 7025;
+      record[5] = band;
+      record[6] = mode;
+      record[15] = beacon;
+      record[18] = [call, ...sample[18].slice(1)];
+      feed(record);
+    }
+  }, { records: capture, reports });
+  await page.waitForFunction(n => S.spots.length === n, reports.length);
+}
+
+const bandNames = page => page.locator(".bandstrip .bl").allTextContents();
+const bandTile = (page, band) => page.locator(".bandstrip .bt").filter({ has: page.getByText(band, { exact: true }) });
+
+async function waitForAllCount(page, count) {
+  await bandTile(page, "All").locator(".bc").getByText(String(count), { exact: true }).waitFor();
+}
+
+test("band badges follow a valid draft and count ordinary matches, including on a quiet feed", async t => {
+  const page = await editor(t);
+  await feedReports(page, [["K1CW", "20m", "CW", 1000], ["K2CW", "40m", "CW", 1000], ["TEST", "40m", "FT8", 1000]]);
+  await waitForAllCount(page, 2);
+  await bandTile(page, "40m").click();
+  await page.locator(".bandstrip .bt[aria-selected=true]").getByText("40m", { exact: true }).waitFor();
+
+  await editRule(page, 1, "BAND=20m AND MODE=CW");
+  await page.getByText("Previewing unapplied rules", { exact: true }).waitFor();
+  await waitForAllCount(page, 1);
+  assert.deepEqual(await bandNames(page), ["All", "20m"]);
+  assert.equal(await bandTile(page, "All").getAttribute("aria-selected"), "true");
+  assert.equal(await bandTile(page, "20m").locator(".bc").textContent(), "1");
+  await page.locator(".summary").getByText("BAND=20m AND MODE=CW", { exact: true }).waitFor();
+  await page.locator(".stream .row .c-dx b").getByText("TEST", { exact: true }).waitFor();
+
+  await button(page, "Hidden").click();
+  await page.locator(".stream .row.hidden .c-dx b").getByText("K2CW", { exact: true }).waitFor();
+  await waitForAllCount(page, 1);
+  assert.deepEqual(await bandNames(page), ["All", "20m"]);
+
+  await card(page, 1).getByLabel("Expression", { exact: true }).fill("BAND=");
+  await page.getByText("Showing applied rules", { exact: true }).waitFor();
+  await waitForAllCount(page, 2);
+  assert(await bandTile(page, "40m").isVisible());
+  await page.locator(".summary").getByText("CW", { exact: true }).waitFor();
+
+  await card(page, 1).getByLabel("Expression", { exact: true }).fill("BAND=20m");
+  await revise(page, { rules: [rule(1, "BAND=40m AND MODE=CW")] });
+  await keep(page);
+  await page.getByText("Showing applied rules", { exact: true }).waitFor();
+  assert.deepEqual(await bandNames(page), ["All", "40m"]);
+  assert.equal(await button(page, "Apply").isDisabled(), true);
+});
+
+test("band eligibility respects Boolean band predicates and keeps unproven exclusions quiet", async t => {
+  const page = await editor(t, { rules: [rule(1, "BAND=40m AND MODE=FT8", "reject")] });
+  await feedReports(page, [["K1FT", "40m", "FT8", 1000], ["K1CW", "40m", "CW", 1000]]);
+  await waitForAllCount(page, 1);
+  assert.equal(await bandTile(page, "40m").locator(".bc").textContent(), "1");
+  assert.equal(await bandTile(page, "20m").locator(".bc").textContent(), "");
+  const known = ["160m", "80m", "60m", "40m", "30m", "20m", "17m", "15m", "12m", "10m", "6m", "2m"];
+  for (const [rules, expected] of [
+    [[rule(1, "BAND=40m OR MODE=FT8", "reject")], known.filter(b => b !== "40m")],
+    [[rule(1, "BAND=20m OR MODE=CW")], known],
+    [[rule(1, "NOT (BAND=20m OR MODE=CW)")], known.filter(b => b !== "20m")],
+    [[rule(1, "BAND=HFCONTEST AND BAND<>40m")], ["160m", "80m", "20m", "15m", "10m"]],
+    [[rule(1, "MODE=CW"), rule(2, "MODE=CW", "reject")], known],
+    [[rule(1, "BAND<>ALL")], []],
+  ]) {
+    await revise(page, { rules });
+    await page.waitForFunction(bands => {
+      const shown = [...document.querySelectorAll(".bandstrip .bl")].map(el => el.textContent);
+      return JSON.stringify(shown) === JSON.stringify(bands);
+    }, ["All", ...expected]);
+  }
+  await waitForAllCount(page, 0);
+});
+
+test("the 15-minute band window handles out-of-order reports, future reports, and idle expiry", async t => {
+  const page = await editor(t, { rules: [] });
+  const now = new Date("2026-11-25T12:00:00Z");
+  await page.clock.setFixedTime(now);
+  await feedReports(page, [["TEST", "20m", "CW", 899_000], ["K1OLD", "40m", "CW", 900_000],
+    ["K1FAST", "40m", "CW", -3_600_000], ["K1NOW", "40m", "CW", 1000]]);
+  await waitForAllCount(page, 2);
+  assert.equal(await bandTile(page, "20m").locator(".bc").textContent(), "1");
+  assert.equal(await bandTile(page, "40m").locator(".bc").textContent(), "1");
+  await page.clock.setFixedTime(new Date(Number(now) + 1000));
+  await waitForAllCount(page, 1);
+  assert.equal(await bandTile(page, "20m").locator(".bc").textContent(), "");
+});
+
+test("native CC leaves band counts unavailable and labels a valid GO draft as a preview", async t => {
+  const page = await editor(t, { rules: [rule(1, "BAND=20m")] });
+  await feedReports(page, [["K1CW", "20m", "CW", 1000]]);
+  await waitForAllCount(page, 1);
+  await page.evaluate(async () => { peer.dialect = "cc"; peer.revision++; await cluster.refreshConfig(); });
+  await page.getByText("GO rules inactive · band counts unavailable", { exact: true }).waitFor();
+  assert(await bandTile(page, "40m").isVisible());
+  assert.equal(await bandTile(page, "All").locator(".bc").textContent(), "");
+  assert.equal(await bandTile(page, "20m").locator(".bc").textContent(), "");
+  await editRule(page, 1, "BAND=40m");
+  await page.getByText("Previewing unapplied GO rules", { exact: true }).waitFor();
+  await waitForAllCount(page, 0);
+  assert.deepEqual(await bandNames(page), ["All", "40m"]);
+});
+
+test("the summary displays one Show and one Hide with a count of remaining rules", async t => {
+  const page = await editor(t, { rules: [rule(0, "BAND=20m"), rule(1, "BAND=40m"), second] });
+  const summary = page.locator(".summary");
+  assert.deepEqual(await summary.locator(".summary-rule b").allTextContents(), ["Show", "Hide"]);
+  assert.match(await summary.locator(".summary-rule").first().textContent(), /20m/);
+  assert.match(await summary.locator(".summary-rule").last().textContent(), /FT4/);
+  assert.equal(await summary.locator(".summary-more").textContent(), "+1");
+  await button(page, "Close filters").click();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await summary.click();
+  await page.getByRole("dialog", { name: "Filters", exact: true }).waitFor();
+});
 
 test("review, PATCH and reload preserve unrelated rule and beacon changes", async t => {
   const page = await editor(t);
