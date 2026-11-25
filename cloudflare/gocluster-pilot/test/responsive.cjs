@@ -187,6 +187,149 @@ async function inViewport(locator) {
   }), true, "control must be hit-testable in the viewport");
 }
 
+function contrastRatio(text, background) {
+  const luminance = color => color.map(channel => channel / 255)
+    .map(channel => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, channel, i) => sum + channel * [0.2126, 0.7152, 0.0722][i], 0);
+  const [darker, lighter] = [luminance(text), luminance(background)].sort((a, b) => a - b);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+async function textContrast(locator) {
+  // These checks use solid surfaces and badge fills. Composite any ancestor opacity over them.
+  const [foreground, background] = await locator.evaluate(el => {
+    const ctx = document.createElement("canvas").getContext("2d", { willReadFrequently: true });
+    const pixel = color => {
+      ctx.clearRect(0, 0, 1, 1);
+      ctx.fillStyle = color;
+      ctx.fillRect(0, 0, 1, 1);
+      return [...ctx.getImageData(0, 0, 1, 1).data];
+    };
+    const layers = [];
+    for (let node = el; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const [r, g, b, a] = pixel(style.backgroundColor);
+      layers.unshift({ rgb: [r, g, b], alpha: a / 255, opacity: Number(style.opacity) });
+      if (a === 255 && style.opacity === "1" && layers.length > 1) break;
+    }
+    const mix = (fg, bg, alpha) => fg.map((channel, i) => channel * alpha + bg[i] * (1 - alpha));
+    let background = [255, 255, 255];
+    const opacity = [];
+    for (const layer of layers) {
+      if (layer.opacity < 1) opacity.push([background, layer.opacity]);
+      background = mix(layer.rgb, background, layer.alpha);
+    }
+    let foreground = pixel(getComputedStyle(el).color).slice(0, 3);
+    for (const [under, alpha] of opacity.reverse()) {
+      foreground = mix(foreground, under, alpha);
+      background = mix(background, under, alpha);
+    }
+    return [foreground, background];
+  });
+  return contrastRatio(foreground, background);
+}
+
+test("filter-hidden text retains contrast in light and dark", async t => {
+  const page = await openPage(t, { width: 1440, height: 900 }, false);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await simulatedNode(page, 1);
+  await page.evaluate(sample => {
+    const record = [...sample];
+    record[1] = 2;
+    record[2] = String(BigInt(Date.now()) * 1000000n);
+    record[11] = ["POTA"];
+    cluster.session.onJsonLine(JSON.stringify(record));
+  }, capture.filter(record => record[0] === "s")[1]);
+  await button(page, "Hidden").click();
+  await page.mouse.move(0, 0);
+  const row = page.locator(".stream .row.hidden");
+  await row.waitFor();
+  const call = row.locator(".c-dx b");
+  assert.match(await call.evaluate(el => getComputedStyle(el).textDecorationLine), /line-through/);
+  await row.locator(".why").filter({ hasText: "no Show" }).waitFor();
+  for (const theme of ["light", "dark"]) {
+    for (const contrast of ["standard", "high"]) {
+      await page.evaluate(prefs => setPrefs(prefs), { theme, contrast });
+      const minimum = contrast === "high" ? 7 : 4.5;
+      for (const selector of [".age", ".c-dx b", ".why", ".mode", ".conf", ".ev"]) {
+        const ratio = await textContrast(row.locator(selector));
+        assert(ratio >= minimum, `${theme} ${contrast} ${selector}: ${ratio.toFixed(2)} < ${minimum}`);
+      }
+    }
+  }
+});
+
+test("maximum-contrast confidence badges retain legible text in the list and details", async t => {
+  const page = await openPage(t, { width: 1440, height: 900 }, false);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await simulatedNode(page, 1);
+  await page.evaluate(sample => {
+    for (const [i, confidence] of ["C", "?", "B"].entries()) {
+      const record = [...sample];
+      record[1] = i + 2;
+      record[2] = String(BigInt(Date.now()) * 1000000n);
+      record[16] = confidence;
+      record[18] = [`K1ZZ${i}`, ...sample[18].slice(1)];
+      cluster.session.onJsonLine(JSON.stringify(record));
+    }
+  }, capture.find(record => record[0] === "s"));
+  const badge = (scope, letter) => scope.locator(".conf").getByText(letter, { exact: true });
+  for (const theme of ["light", "dark"]) {
+    await page.evaluate(theme => setPrefs({ theme, contrast: "high" }), theme);
+    for (const [i, letter] of ["C", "?", "B"].entries()) {
+      const row = page.getByRole("row").filter({ hasText: `K1ZZ${i}` });
+      const listBadge = badge(row, letter);
+      await listBadge.waitFor();
+      const ratio = await textContrast(listBadge);
+      assert(ratio >= 7, `${theme} ${letter}: ${ratio.toFixed(2)} < 7`);
+      await row.click();
+      const details = page.getByRole("dialog", { name: `Spot details for K1ZZ${i}` });
+      const detailBadge = badge(details, letter);
+      await detailBadge.waitFor();
+      assert(await textContrast(detailBadge) >= 7, `${theme} ${letter} in spot details`);
+      await button(details, "Close").click();
+    }
+  }
+});
+
+test("keyboard focus has a visible toolbar outline including search", async t => {
+  const page = await openPage(t, { width: 1440, height: 900 }, false);
+  await simulatedNode(page, 1);
+  for (const width of [1920, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const theme of ["light", "dark"]) {
+      for (const contrast of ["high", "standard"]) {
+        const expected = await page.evaluate(prefs => {
+          setPrefs(prefs);
+          const toolbar = document.querySelector(".topbar");
+          toolbar.tabIndex = -1;
+          toolbar.focus();
+          return [...toolbar.querySelectorAll("a[href], button, input")]
+            .filter(el => el.getClientRects().length && !el.disabled).length;
+        }, { theme, contrast });
+        for (let i = 0; i < expected; i++) {
+          await page.keyboard.press("Tab");
+          const [name, style, thickness, ink, deck] = await page.evaluate(() => {
+            const el = document.activeElement;
+            const toolbar = el.closest(".topbar");
+            if (!toolbar || !el.matches(":focus-visible")) return [];
+            const cue = getComputedStyle(el.closest(".search") || el);
+            return [el.getAttribute("aria-label") || el.textContent.trim(), cue.outlineStyle, parseFloat(cue.outlineWidth),
+              cue.outlineColor, getComputedStyle(toolbar).backgroundColor];
+          });
+          assert(name, `Tab ${i + 1} at ${width}px must reach the toolbar`);
+          assert(style === "solid" && thickness >= 2, `${width}px ${theme} ${contrast}: ${name} needs a visible ring`);
+          // The maximum-contrast deck is solid. Standard mode has a gradient and is checked visually.
+          if (contrast === "high") {
+            const rgb = color => color.match(/\d+/g).slice(0, 3).map(Number);
+            assert(contrastRatio(rgb(ink), rgb(deck)) >= 3, `${width}px ${theme} ${contrast}: ${name} focus contrast`);
+          }
+        }
+      }
+    }
+  }
+});
+
 test("short landscape scrolls the page and keeps the four views operable", async t => {
   const page = await openPage(t, short);
   await simulatedNode(page);

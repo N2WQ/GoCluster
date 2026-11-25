@@ -11,8 +11,8 @@
 /* GoCluster UI. Layout: one-screen operator console. Top bar + band strip, a full-height spot list,
    with Filters drawer on the left, Settings/Activity/Spot on the right and a console dock at the bottom.
    Drawers push the list aside on wide screens and overlay it on narrow ones. */
-/* Contrast: every text color below is checked against WCAG 2.2 AA (4.5:1) on every surface it
-   sits on; borders of controls reach 3:1. Maximum contrast (data-contrast="high") targets AAA 7:1. */
+/* Contrast targets: 4.5:1 for text, 7:1 in maximum contrast, and 3:1 for control cues.
+   Check the rendered colors on their actual surfaces, including hover and selection. */
 :root {
   --bg: #eef2f7; --surface: #ffffff; --surface-2: #f6f8fb; --sunken: #e9eef5; --line: #d0d7e2; --line-2: #8692a6;
   --text: #0a1222; --muted: #3b4659; --soft: #525e72;
@@ -28,7 +28,8 @@
   --r: 12px; --r-sm: 8px;
   --drawer-l: 560px; --drawer-r: 420px;
   --deck-text: #f1f5fc; --deck-muted: #b3c0d6;
-  --focus: #0758a8; --dim: .62;
+  --focus: #0758a8;
+  --conf-red-fill: #b4232d; --conf-corrected-fill: #185aaf;
   --canvas: radial-gradient(1200px 500px at 12% -10%, rgba(34, 184, 240, .10), transparent 60%), radial-gradient(900px 500px at 100% 0%, rgba(124, 108, 242, .09), transparent 60%), #eaeff6;
   color-scheme: light;
 }
@@ -60,7 +61,7 @@
   --canvas: radial-gradient(1200px 520px at 10% -10%, rgba(34, 184, 240, .10), transparent 60%), radial-gradient(900px 520px at 100% 0%, rgba(124, 108, 242, .12), transparent 60%), #050a14;
   color-scheme: dark;
 }
-/* Maximum contrast: pure black/white text, solid strong borders, no translucent dimming. */
+/* Maximum contrast: pure black/white main text and solid strong borders. */
 :root[data-contrast="high"] {
   --bg: #ffffff; --surface: #ffffff; --surface-2: #ffffff; --sunken: #eef1f5; --line: #6b7587; --line-2: #3c4555;
   --text: #000000; --muted: #1d2533; --soft: #2f3848;
@@ -69,7 +70,8 @@
   --medium: #005f56; --warnbar: #8a5c00;
   --m-cw: #003f94; --m-cw-bg: #e1edfa; --m-ft: #3d27b8; --m-ft-bg: #ece8fd; --m-rtty: #004f54; --m-rtty-bg: #dcf3f3; --m-ssb: #5c3c00; --m-ssb-bg: #fcefd5; --m-psk: #6b1258; --m-psk-bg: #f8e4f3;
   --row-hover: #eef3fb; --row-sel: #dce9fb; --row-line: #9aa4b5;
-  --deck-text: #ffffff; --deck-muted: #d5deec; --focus: #000000; --dim: 1;
+  --deck-text: #ffffff; --deck-muted: #d5deec; --focus: #000000;
+  --conf-red-fill: #9b1c24; --conf-corrected-fill: #134b94;
   --canvas: #e4e9f0;
 }
 :root[data-contrast="high"][data-ui="dark"] {
@@ -80,7 +82,7 @@
   --medium: #5ce6d6; --warnbar: #ffd27a;
   --m-cw: #a9d6ff; --m-cw-bg: #0b2240; --m-ft: #d6ceff; --m-ft-bg: #1d1745; --m-rtty: #8ff0f4; --m-rtty-bg: #082a2e; --m-ssb: #ffdc8f; --m-ssb-bg: #2c2108; --m-psk: #ffc2f0; --m-psk-bg: #30112c;
   --row-hover: #0e1726; --row-sel: #102847; --row-line: #3a4659;
-  --deck-text: #ffffff; --deck-muted: #e3e9f3; --focus: #ffffff; --dim: 1;
+  --deck-text: #ffffff; --deck-muted: #e3e9f3; --focus: #ffffff;
   --canvas: #000000;
 }
 
@@ -107,7 +109,7 @@ body { background: var(--canvas); background-attachment: fixed; }
 .main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; min-height: 0; overflow: hidden; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
 
 /* ---------- top bar: a dark "command deck" in both themes, matching the website header ---------- */
-.topbar { position: relative; display: flex; align-items: center; gap: 14px; padding: 9px 16px; min-height: 60px; color: var(--deck-text);
+.topbar { --focus: var(--deck-text); position: relative; display: flex; align-items: center; gap: 14px; padding: 9px 16px; min-height: 60px; color: var(--deck-text);
   background: radial-gradient(120% 220% at 0% 0%, rgba(34, 184, 240, .16), transparent 42%), radial-gradient(90% 200% at 100% 0%, rgba(124, 108, 242, .18), transparent 45%), linear-gradient(180deg, #0b1528, #070d1a); }
 .topbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: linear-gradient(90deg, transparent, rgba(34, 184, 240, .7) 25%, rgba(124, 108, 242, .7) 70%, transparent); }
 .brand { display: flex; align-items: center; gap: 10px; flex: none; }
@@ -131,7 +133,7 @@ body { background: var(--canvas); background-attachment: fixed; }
 .views a:hover { color: #fff; }
 .views a.on { background: rgba(255, 255, 255, .13); color: #fff; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08), 0 2px 10px -4px rgba(0, 0, 0, .6); }
 .search { display: flex; align-items: center; gap: 8px; flex: 1 1 200px; max-width: 340px; min-width: 120px; padding: 0 10px; height: 38px; border: 1px solid rgba(255, 255, 255, .09); border-radius: 11px; background: rgba(255, 255, 255, .05); color: var(--deck-muted); }
-.search:focus-within { border-color: rgba(56, 198, 244, .7); background: rgba(255, 255, 255, .08); box-shadow: 0 0 0 3px rgba(56, 198, 244, .18); }
+.search:focus-within { border-color: rgba(56, 198, 244, .7); background: rgba(255, 255, 255, .08); outline: 3px solid var(--focus); outline-offset: 2px; }
 .search input { flex: 1; min-width: 0; border: 0; background: transparent; outline: none; color: #fff; }
 .search input::placeholder { color: var(--deck-muted); }
 .search kbd { font: 500 12px var(--mono); border: 1px solid rgba(255, 255, 255, .14); border-radius: 5px; padding: 1px 5px; color: var(--deck-muted); }
@@ -216,7 +218,6 @@ body { background: var(--canvas); background-attachment: fixed; }
 .row.sel { background: var(--row-sel); }
 .row.fresh { animation: fresh 1.8s ease-out; }
 @keyframes fresh { 0% { background: color-mix(in srgb, var(--accent-2) 16%, transparent); } 100% { background: transparent; } }
-.row.hidden .c-dx b { text-decoration: line-through; text-decoration-color: var(--reject); }
 .row.own { background: color-mix(in srgb, var(--violet) 9%, transparent); }
 .row.watch { background: color-mix(in srgb, var(--warn) 10%, transparent); }
 .row > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -224,7 +225,7 @@ body { background: var(--canvas); background-attachment: fixed; }
 .c-dx b { font-weight: 650; font-size: 14.5px; letter-spacing: .01em; }
 .stream.compact .c-dx :is(b, .repeat-dx) { font-size: 13.5px; }
 .wtag { margin-left: 6px; font: 600 11.5px var(--font); text-transform: uppercase; letter-spacing: .05em; color: var(--warn); background: var(--warn-soft); padding: 2px 5px; border-radius: 4px; vertical-align: 2px; }
-.wtag.own { color: var(--violet); background: color-mix(in srgb, var(--violet) 14%, transparent); }
+.wtag.own { color: var(--violet); background: color-mix(in srgb, var(--violet) 14%, var(--surface)); }
 .c-freq { text-align: right; font-weight: 500; }
 .c-rep { text-align: right; color: var(--muted); font-size: 12.5px; }
 .c-where { display: flex; align-items: center; gap: 7px; }
@@ -257,9 +258,8 @@ body { background: var(--canvas); background-attachment: fixed; }
 .conf-v { background: #176337; color: #fff; }
 .conf-p { background: #b8e7af; color: #163b20; }
 .conf-s { background: #ffda67; color: #392b06; }
-.conf-q { background: #b4232d; color: #fff; }
-.conf-c { background: #185aaf; color: #fff; }
-.conf-b { background: #b4232d; color: #fff; }
+.conf-q, .conf-b { background: var(--conf-red-fill); color: #fff; }
+.conf-c { background: var(--conf-corrected-fill); color: #fff; }
 .conf-none { color: var(--soft); }
 .pathg { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; }
 .pathg i { width: 4px; border-radius: 1.5px; background: var(--line-2); }
@@ -696,9 +696,9 @@ select.txt { appearance: auto; }
 .c-dx { display: flex; align-items: center; gap: 6px; }
 .c-dx :is(b, .repeat-dx) { font-size: 15px; font-weight: 700; letter-spacing: .015em; }
 .why { display: inline-flex; align-items: center; gap: 3px; font: 600 11.5px var(--font); color: var(--reject); background: var(--reject-soft); padding: 2px 6px; border-radius: 5px; flex: none; }
-.row.hidden { opacity: 1; }
-.row.hidden > span:not(.c-dx) { opacity: var(--dim); }
-.row.hidden .c-dx b { opacity: var(--dim); text-decoration: line-through 2px var(--reject); }
+/* Use a muted text color so the row stays readable on hover and selection. */
+.row.hidden { color: var(--muted); }
+.row.hidden .c-dx b { text-decoration: line-through 2px var(--reject); }
 .c-mode { text-align: center; }
 .c-rep { display: flex; flex-direction: column; align-items: center; gap: 3px; text-align: center; }
 .c-rep .mono { font-size: 12.5px; color: var(--text); line-height: 1; }
@@ -744,6 +744,7 @@ select.txt { appearance: auto; }
 :root[data-contrast="high"] .row:hover, :root[data-contrast="high"] .row.sel { background: var(--row-sel); box-shadow: inset 0 0 0 2px var(--accent); }
 :root[data-contrast="high"] .row::before { width: 5px; opacity: 1; }
 :root[data-contrast="high"] .c-dx :is(b, .repeat-dx) { font-weight: 800; }
+:root[data-contrast="high"] .row .ev { color: color-mix(in srgb, var(--pass) 90%, var(--text)); }
 :root[data-contrast="high"] .pathg i { box-shadow: inset 0 0 0 1px var(--line-2); }
 :root[data-contrast="high"] .meter { background: var(--surface); border: 2px solid var(--line-2); }
 :root[data-contrast="high"] .toast { border: 2px solid var(--surface); }
