@@ -44,4 +44,4 @@ data/config/openai.yaml
 !.claude/skills/
 .vscode/
 data/bulletins/history.json
-
+data/bulletins/history.json

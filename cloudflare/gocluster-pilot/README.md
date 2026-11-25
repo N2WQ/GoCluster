@@ -18,6 +18,8 @@ The console reads the profile back after saving. If confirmation fails, your dra
 
 On a desktop, drag the right edge of a column heading to resize it. Drag the label to reorder it. Spots and History share the layout in this browser. Use **Reset columns** in Settings to restore the default layout. On phones, spots use stacked rows.
 
+Under **Settings → Display → Columns**, show or hide **Azimuth** and **Distance** independently. Azimuth is on by default and shows the initial short-path bearing clockwise from true north. Distance is off by default. Use **Distance units** to switch between kilometers and miles. Both columns estimate the short path between your operating grid and the DX grid, using the center of each four- or six-character locator. A dash indicates an unavailable value, and `≈` marks an estimate that uses a derived locator.
+
 On a short screen, scroll the page to move between the views and the command console. You can also scroll within the Spots list to read older rows. If new spots arrive while that list is paused, select the **newer spots** button to resume. Scroll within an open drawer or dialog to reach its actions.
 
 The call confidence badge shows `?` and `B` in red, `S` in yellow, `P` in light green, `V` in dark green, and `C` in blue. An unrated spot shows a neutral dot.

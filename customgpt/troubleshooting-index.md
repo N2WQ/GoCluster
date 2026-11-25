@@ -12,6 +12,9 @@ and [TSR-0144](../docs/troubleshooting/TSR-0144-browser-console-short-screen-con
 Check the delivered asset hashes, browser version, orientation, and keyboard
 and browser toolbar state before attributing the symptom to a specific release.
 
+For a missing Azimuth or Distance column, a dash in either column, or a
+distance-unit question, use the [spot table settings](../cloudflare/gocluster-pilot/README.md#adjust-the-spot-table).
+
 ## Human spot comments and upstream wire times
 
 For split numbers displayed as dB reports, missing `CWT` or time phrases in

@@ -2114,6 +2114,8 @@ const CONN = (() => {
         rules: c ? c.rules.map(r => ({ ...r })) : [],
         switches: c ? { ...c.switches } : { beacon: "DEFAULT", self: "DEFAULT", announce: "DEFAULT", wwv: "DEFAULT", wcy: "DEFAULT", toxic: "DEFAULT" },
         settings: c ? { ...c.settings } : { dialect: "", grid: "", noise: "", dedupe: "", pathSamples: 0, solar: 0, cwSpeed: false },
+        operatingGrid: c?.settings.grid || c?.effective.grid || "",
+        operatingGridDerived: !c?.settings.grid && c?.effective.grid_derived === true,
         preset: c ? { ...c.preset } : { name: "", modified: false },
         presets: this.presets.slice(),
         operating: this.operating,
@@ -2703,7 +2705,7 @@ const LS = {
 const DEFAULT_PREFS = {
   theme: "system", contrast: "system", textSize: "normal", density: "comfortable", timeMode: "utc", rowCap: 250, watch: ["VP8", "ZD7", "T32"],
   groupRepeats: true,
-  colOrder: ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "path", "conf"], colShow: {}, colWidths: {},
+  distanceUnit: "km", colOrder: [], colShow: {}, colWidths: {},
 };
 
 // ---------------------------------------------------------------- the store
@@ -3802,6 +3804,37 @@ function repeatCount(call, { group, expanded, toggle }) {
   return html`<button type="button" class="repeat-count mono" title=${label} aria-label=${label}
     aria-expanded=${expanded ? "true" : "false"} aria-controls=${"repeat-" + group[0].s.id} onClick=${toggle}>×${group.length}</button>`;
 }
+function locatorCenter(grid) {
+  if (typeof grid !== "string") return null;
+  const locator = grid.trim().toUpperCase();
+  if (!/^[A-R]{2}[0-9]{2}(?:[A-X]{2})?$/.test(locator)) return null;
+  const west = (locator.charCodeAt(0) - 65) * 20 - 180 + Number(locator[2]) * 2;
+  const south = (locator.charCodeAt(1) - 65) * 10 - 90 + Number(locator[3]);
+  const fine = locator.length === 6;
+  const lon = west + (fine ? (locator.charCodeAt(4) - 65 + 0.5) / 12 : 1);
+  const lat = south + (fine ? (locator.charCodeAt(5) - 65 + 0.5) / 24 : 0.5);
+  return { lat: lat * Math.PI / 180, lon: lon * Math.PI / 180 };
+}
+function shortPath(userGrid, dxGrid) {
+  const from = locatorCenter(userGrid);
+  const to = locatorCenter(dxGrid);
+  if (!from || !to) return null;
+  const deltaLon = to.lon - from.lon;
+  const sinFrom = Math.sin(from.lat), cosFrom = Math.cos(from.lat);
+  const sinTo = Math.sin(to.lat), cosTo = Math.cos(to.lat);
+  const east = Math.sin(deltaLon) * cosTo;
+  const north = cosFrom * sinTo - sinFrom * cosTo * Math.cos(deltaLon);
+  const dot = sinFrom * sinTo + cosFrom * cosTo * Math.cos(deltaLon);
+  const cross = Math.hypot(east, north);
+  // Coincident and antipodal centers have no unique initial direction.
+  const bearing = cross < 1e-12 ? null : (Math.round(Math.atan2(east, north) * 180 / Math.PI) + 360) % 360;
+  return { km: 6371.0088 * Math.atan2(cross, dot), bearing };
+}
+function pathMetric(label, kind, value, derived) {
+  const mark = value !== null && derived;
+  return html`<span class=${"c-metric c-" + kind} title=${mark ? `Estimate using ${derived}` : undefined}>
+    <span class="metric-label">${label} </span><span class="mono">${mark ? "≈" : ""}${value ?? "—"}</span></span>`;
+}
 const COLUMNS = {
   time: { label: "UTC", tpl: "58px", minW: 0, cell: s => html`<span class="c-time mono" title=${s.t != null ? new Date(s.t).toUTCString() : "No time"}>${fmtTime(s.t)}<i class="age">${fmtAge(s.t)}</i></span>` },
   dx: { label: "DX", tpl: "minmax(104px,148px)", fixed: true, cell: (s, r, x) => html`<span class="c-dx">
@@ -3811,18 +3844,28 @@ const COLUMNS = {
   mode: { label: "Mode", align: "c", tpl: "62px", cell: s => html`<span class="c-mode"><${ModeBadge} mode=${s.mode} /></span>` },
   rep: { label: "SNR", align: "c", tpl: "72px", minW: 720, cell: (s, r, x) => html`<span class="c-rep" title=${x.best?.snr ? `Best SNR: ${fmtReport(x.best.snr)} dB · ${x.best.snr.deCall}` : undefined}>${s.snr != null ? html`<span class="mono">${fmtReport(s)}</span><span class="meter-s"><i style=${`width:${Math.round(snrMeter(s) * 100)}%`}></i></span>` : null}</span>` },
   where: { label: "Where", tpl: "minmax(150px,1.3fr)", minW: 600, cell: s => html`<span class="c-where"><span class="cont" style=${`--ch:${CONT_HUE[s.dxCont] || "#94a3b8"}`}>${s.dxCont || "?"}</span><span class="ent">${s.dxEntity || ""}</span><span class="grid mono">${s.dxGrid || ""}</span>${s.events.map(e => html`<span class="ev">${e}</span>`)}</span>` },
+  azimuth: { label: "Azimuth", tpl: "74px", align: "r", title: "Initial short-path bearing from true north", cell: (s, r, x) =>
+    pathMetric("Azimuth", "azimuth", x.geometry?.bearing == null ? null : `${String(x.geometry.bearing).padStart(3, "0")}°`, x.derived) },
+  distance: { label: "Distance", tpl: "96px", align: "r", defaultHidden: true, title: "Short-path distance", cell: (s, r, x) => {
+    const miles = S.prefs.distanceUnit === "mi";
+    const km = x.geometry?.km;
+    return pathMetric("Distance", "distance", km == null ? null : `${Math.round(miles ? km / 1.609344 : km)} ${miles ? "mi" : "km"}`, x.derived);
+  } },
   cmt: { label: "Comment", tpl: "minmax(100px,1fr)", minW: 1040, cell: (s, r, x) => html`<span class="c-cmt" title=${x.group ? undefined : x.cmt}>${x.group ? "" : x.cmt}</span>` },
   de: { label: "Heard by", tpl: "minmax(112px,156px)", minW: 860, cell: (s, r, x) => html`<span class="c-de"><span class="mono" title=${x.group ? s.deCall : undefined}>${s.deCall}</span>${x.group ? repeatCount(s.dxCall, x) : null}<span class="src">${s.feed === "PSKReporter" ? "PSKR" : s.feed}</span>${!x.group && s.node && s.node !== s.deCall && !(s.feed === "RBN" && s.node === "RBN") ? html`<span class="src" title="Originating node">via ${s.node}</span>` : null}</span>` },
   path: { label: "Path", tpl: "44px", align: "c", title: "Path to your grid", cell: (s, r, x) => html`<span class="c-path"><${PathGlyph} cls=${x.group ? x.best.path?.path : s.path} reportedBy=${x.best?.path?.deCall} /></span>` },
   conf: { label: "Call", tpl: "36px", align: "c", title: "Callsign confidence", cell: (s, r, x) => html`<span class="c-conf"><${ConfBadge} conf=${x.group ? x.best.conf?.conf : s.conf} reportedBy=${x.best?.conf?.deCall} /></span>` },
 };
-const DEFAULT_ORDER = ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "path", "conf"];
+const DEFAULT_ORDER = ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "path", "conf", "azimuth", "distance"];
 function colOrder() {
   const o = (S.prefs.colOrder || []).filter(k => COLUMNS[k]);
   for (const k of DEFAULT_ORDER) if (!o.includes(k)) o.push(k);
   return o;
 }
-function colVisible(k) { return COLUMNS[k].fixed || S.prefs.colShow[k] !== false; }
+function colVisible(k) {
+  const saved = S.prefs.colShow[k];
+  return COLUMNS[k].fixed || (typeof saved === "boolean" ? saved : !COLUMNS[k].defaultHidden);
+}
 function moveCol(from, to, after) {
   const o = colOrder().filter(k => k !== from);
   let i = o.indexOf(to); if (after) i++;
@@ -3832,11 +3875,17 @@ function moveCol(from, to, after) {
 
 function SpotRow({ r, sel, fresh, cols, group, best, member, expanded, toggle }) {
   const s = r.s;
+  const userGrid = S.snap.operatingGrid;
+  const dxGrid = s.dxGrid || "";
+  const showGeometry = cols.includes("azimuth") || cols.includes("distance");
+  const geometry = useMemo(() => showGeometry ? shortPath(userGrid, dxGrid) : null, [showGeometry, userGrid, dxGrid]);
+  const derived = S.snap.operatingGridDerived ? (s.dx?.gridDerived ? "derived user and DX locators" : "a derived user locator")
+    : s.dx?.gridDerived ? "a derived DX locator" : "";
   const openDetails = () => set({ selSpot: best?.snr || s, drawer: "spot" });
   const x = {
     own: SIM.baseCallOf(s.dxCall) === S.snap.baseCall, watch: watchHit(s.dxCall),
     cmt: (s.cwSpeeds && s.cwSpeeds.length ? fmtCw(s) + " " : "") + (s.comment || ""),
-    group, best, member, expanded, toggle, openDetails, showSpotter: cols.includes("de"),
+    group, best, member, expanded, toggle, openDetails, showSpotter: cols.includes("de"), geometry, derived,
   };
   return html`<div role="row" tabindex=${group ? undefined : "0"} class=${cls("row", group && "repeat-summary", member && "repeat-member", !r.pass && "hidden", sel && "sel", fresh && "fresh", x.own && "own", x.watch && "watch", s.beacon && "beacon")} style=${`--bc:${BAND_COLOR[s.band] || "var(--line)"}`}
       onClick=${group ? undefined : openDetails} onKeyDown=${group ? undefined : e => { if (e.key === "Enter") openDetails(); }}>
@@ -4300,6 +4349,7 @@ function SettingsDrawer() {
         <div class="field"><span class="flabel">Row density</span><${Seg} label="Density" value=${S.prefs.density} onChange=${v => setPrefs({ density: v })} options=${[["comfortable", "Comfortable"], ["compact", "Compact"]]} /></div>
         <div class="field"><span class="flabel">Time</span><${Seg} label="Time" value=${S.prefs.timeMode} onChange=${v => setPrefs({ timeMode: v })} options=${[["utc", "UTC"], ["local", "Local"]]} /></div>
         <div class="field"><span class="flabel">Columns</span><${ColumnEditor} /><p class="hint">Or drag the column titles in the spot list. Narrow windows hide Comment, Heard by and Signal first.</p></div>
+        <div class="field"><span class="flabel">Distance units</span><${Seg} label="Distance units" value=${S.prefs.distanceUnit} onChange=${v => setPrefs({ distanceUnit: v })} options=${[["km", "Kilometers"], ["mi", "Miles"]]} /></div>
         <div class="field">
           <label for="watch">Watch list</label>
           <div class="inline-form"><input id="watch" class="txt mono" value=${watch} placeholder="VP8 ZD7 K1ABC" onInput=${e => setWatch(e.target.value.toUpperCase())} />
