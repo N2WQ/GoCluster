@@ -107,6 +107,10 @@ func BenchmarkB32DecisionSilentConsumer(b *testing.B) {
 
 func TestB32ResolverPressureSummaryActualOwnerLifecycle(t *testing.T) {
 	r, d, key := correctionLossResolver(t, 2, 4)
+	pressureLine := func() string {
+		_, pressure := formatResolverLines(r)
+		return pressure
+	}
 	if err := d.SetProcessElapsed(0); err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +125,7 @@ func TestB32ResolverPressureSummaryActualOwnerLifecycle(t *testing.T) {
 	correctionLossAdmit(t, r, d, key, "K1ABE", 14020, at.Add(time.Millisecond), 2*time.Minute, "N0C1")
 	correctionLossEvictions(t, r, 1, 0)
 	want := "Resolver Pressure: 1 (C) / 0 (R) evict 1 (C) / 0 (R) hw 2 (C) / 4 (R) | loss rows=3 protected=1 recover=0 idle-retire=0"
-	if got := formatResolverPressureSummary(r); got != want {
+	if got := pressureLine(); got != want {
 		t.Fatalf("one candidate eviction discards three shared-receiver observations:\n got %q\nwant %q", got, want)
 	}
 	correctionLossAdmit(t, r, d, key, "K1ABC", 14020, at.Add(2*time.Millisecond), 2*time.Minute, "N0A5")
@@ -131,32 +135,32 @@ func TestB32ResolverPressureSummaryActualOwnerLifecycle(t *testing.T) {
 		if s, ok := r.LookupEligible(key, at.Add(time.Hour)); !ok || s.EvidenceLoss || s.TotalReporters != 0 {
 			t.Fatal("far query must expire eligible rows without owner mutation")
 		}
-		if got := formatResolverPressureSummary(r); got != want {
+		if got := pressureLine(); got != want {
 			t.Fatalf("query-only expiry changed owner summary: got %q want %q", got, want)
 		}
 	}
 	correctionLossAdmit(t, r, d, key, "K1ABC", 14020, at.Add(2*time.Second), time.Second, "N0A5")
 	want = "Resolver Pressure: 1 (C) / 1 (R) evict 1 (C) / 1 (R) hw 2 (C) / 4 (R) | loss rows=4 protected=0 recover=1 idle-retire=0"
-	if got := formatResolverPressureSummary(r); got != want {
+	if got := pressureLine(); got != want {
 		t.Fatalf("actual owner recovery summary: got %q want %q", got, want)
 	}
 	correctionLossAdmit(t, r, d, key, "K1ABC", 14020, at.Add(3*time.Second), 2*time.Minute, "N0A5")
 	want = "Resolver Pressure: 1 (C) / 1 (R) evict 1 (C) / 1 (R) hw 2 (C) / 4 (R) | loss rows=4 protected=1 recover=1 idle-retire=0"
-	if got := formatResolverPressureSummary(r); got != want {
+	if got := pressureLine(); got != want {
 		t.Fatalf("window expansion reactivates existing loss: got %q want %q", got, want)
 	}
 	if err := d.SetProcessElapsed(10 * time.Minute); err != nil {
 		t.Fatal(err)
 	}
 	want = "Resolver Pressure: 1 (C) / 1 (R) evict 1 (C) / 1 (R) hw 2 (C) / 4 (R) | loss rows=4 protected=0 recover=1 idle-retire=0"
-	if _, ok := r.Lookup(key); ok || r.MetricsSnapshot().ActiveKeys != 1 || formatResolverPressureSummary(r) != want {
+	if _, ok := r.Lookup(key); ok || r.MetricsSnapshot().ActiveKeys != 1 || pressureLine() != want {
 		t.Fatal("logical retirement must hide published loss before physical owner retirement")
 	}
 	d.Sweep(at.Add(3 * time.Second))
 	want = "Resolver Pressure: 1 (C) / 1 (R) evict 1 (C) / 1 (R) hw 2 (C) / 4 (R) | loss rows=4 protected=0 recover=1 idle-retire=1"
 	for i := 0; i < 5; i++ {
 		d.Sweep(at.Add(3 * time.Second))
-		if got := formatResolverPressureSummary(r); got != want || r.MetricsSnapshot().ActiveKeys != 0 {
+		if got := pressureLine(); got != want || r.MetricsSnapshot().ActiveKeys != 0 {
 			t.Fatalf("physical retirement must count once: got %q want %q", got, want)
 		}
 	}

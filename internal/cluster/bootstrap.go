@@ -602,12 +602,12 @@ func formatStabilizerGlyphSummary(tracker *stats.Tracker) string {
 	return "Stabilizer Glyph: avg turns " + strings.Join(parts, " | ")
 }
 
-func formatResolverSummary(resolver *spot.SignalResolver) string {
+func formatResolverLines(resolver *spot.SignalResolver) (string, string) {
 	if resolver == nil {
-		return "Resolver: n/a"
+		return "Resolver: n/a", "Resolver Pressure: n/a"
 	}
 	metrics := resolver.MetricsSnapshot()
-	return fmt.Sprintf(
+	summary := fmt.Sprintf(
 		"Resolver: %s (C) / %s (P) / %s (U) / %s (S) | q=%d drop %s (Q) / %s (K) / %s (C) / %s (R)",
 		humanize.Comma(int64(metrics.StateConfident)),
 		humanize.Comma(int64(metrics.StateProbable)),
@@ -619,14 +619,7 @@ func formatResolverSummary(resolver *spot.SignalResolver) string {
 		humanize.Comma(int64(metrics.DropMaxCandidates)),
 		humanize.Comma(int64(metrics.DropMaxReporters)),
 	)
-}
-
-func formatResolverPressureSummary(resolver *spot.SignalResolver) string {
-	if resolver == nil {
-		return "Resolver Pressure: n/a"
-	}
-	metrics := resolver.MetricsSnapshot()
-	return fmt.Sprintf(
+	pressure := fmt.Sprintf(
 		"Resolver Pressure: %s (C) / %s (R) evict %s (C) / %s (R) hw %s (C) / %s (R) | loss rows=%s protected=%d recover=%s idle-retire=%s",
 		humanize.Comma(int64(metrics.CapPressureCandidates)),
 		humanize.Comma(int64(metrics.CapPressureReporters)),
@@ -639,6 +632,7 @@ func formatResolverPressureSummary(resolver *spot.SignalResolver) string {
 		humanize.Comma(int64(metrics.LossPublicationRecoveries)),
 		humanize.Comma(int64(metrics.LossIdleRetirements)),
 	)
+	return summary, pressure
 }
 
 func formatTemporalSummary(tracker *stats.Tracker) string {
@@ -786,8 +780,7 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 		corrDecisionLine := formatCorrectionDecisionSummary(tracker)
 		stabilizerLine := formatStabilizerSummary(tracker)
 		stabilizerGlyphLine := formatStabilizerGlyphSummary(tracker)
-		resolverLine := formatResolverSummary(signalResolver)
-		resolverPressureLine := formatResolverPressureSummary(signalResolver)
+		resolverLine, resolverPressureLine := formatResolverLines(signalResolver)
 		temporalLine := formatTemporalSummary(tracker)
 		toxicityLine := formatToxicitySummary(toxicityClassifier)
 
@@ -936,9 +929,9 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 
 		lines := make([]string, 0, 11)
 		lines = append(lines,
-			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(buf, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache)), // 1
-			formatGridLineOrPlaceholder(gridStats, gridDB, pathPredictor),                                                                                      // 2
-			formatDataLineOrPlaceholder(ctyLookup, ctyState, fccSnap),                                                                                          // 3
+			fmt.Sprintf("%s   %s", formatUptimeLine(tracker.GetUptime()), formatMemoryLine(mem.Alloc, buf, dedup, secondaryFast, secondaryMed, secondarySlow, metaCache)), // 1
+			formatGridLineOrPlaceholder(gridStats, gridDB, pathPredictor), // 2
+			formatDataLineOrPlaceholder(ctyLookup, ctyState, fccSnap),     // 3
 			fmt.Sprintf("%s: %d TOTAL / %d CW / %d RTTY / %d FT8 / %d FT4 / %d FT2",
 				withIngestStatusLabel("RBN", rbnLive), combinedRBN, rbnCW, rbnRTTY, rbnFT8, rbnFT4, rbnFT2), // 4
 			fmt.Sprintf("%s: %s TOTAL / %s CW / %s RTTY / %s FT8 / %s FT4 / %s FT2 / %s MSK144",
@@ -3692,10 +3685,8 @@ func sqlNullString(v string) sql.NullString {
 // Key aspects: Reports ring buffer occupancy and cache hit stats.
 // Upstream: displayStatsWithFCC.
 // Downstream: buffer.RingBuffer stats and cache lookups.
-func formatMemoryLine(buf *buffer.RingBuffer, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, metaCache *callMetaCache) string {
-	var mem runtime.MemStats
-	runtime.ReadMemStats(&mem)
-	execMB := bytesToMB(mem.Alloc)
+func formatMemoryLine(allocatedBytes uint64, buf *buffer.RingBuffer, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, metaCache *callMetaCache) string {
+	execMB := bytesToMB(allocatedBytes)
 
 	ringMB := 0.0
 	if buf != nil {
