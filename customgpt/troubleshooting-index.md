@@ -20,6 +20,10 @@ that changes during a filter draft, use the [browser band-count guide](../cloudf
 Check the draft label and whether the spot passed ordinary rules or was delivered
 solely because of SELF.
 
+For a missing Openings row or a question about the prefixes in a cell, use the
+[Openings guide](../cloudflare/gocluster-pilot/README.md#read-the-openings-grid)
+for band eligibility, the recent report window, and country ranking.
+
 ## Human spot comments and upstream wire times
 
 For split numbers displayed as dB reports, missing `CWT` or time phrases in

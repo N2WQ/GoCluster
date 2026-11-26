@@ -511,7 +511,7 @@ test("short landscape scrolls the page and keeps the four views operable", async
   await details.waitFor();
   await button(details, "Close").click();
   await view(page, "Openings").click();
-  await button(page, "20m to North America: 70 stations").click();
+  await button(page, "20m to North America: 70 stations. Top DX countries: K").click();
   await page.getByRole("region", { name: "Spots" }).waitFor();
 });
 

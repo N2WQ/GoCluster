@@ -116,7 +116,7 @@ async function feedReports(page, reports) {
     const feed = record => cluster.session.feed(JSON.stringify(record) + "\n");
     records.filter(record => record[0] === "schema").forEach(feed);
     const sample = records.find(record => record[0] === "s");
-    for (const [index, [call, band, mode, age, beacon = false]] of reports.entries()) {
+    for (const [index, [call, band, mode, age, beacon = false, dx = []]] of reports.entries()) {
       const record = [...sample];
       record[1] = index + 1;
       record[2] = String(BigInt(Date.now() - age) * 1_000_000n);
@@ -124,11 +124,11 @@ async function feedReports(page, reports) {
       record[5] = band;
       record[6] = mode;
       record[15] = beacon;
-      record[18] = [call, ...sample[18].slice(1)];
+      record[18] = [call, ...dx, ...sample[18].slice(1 + dx.length)];
       feed(record);
     }
   }, { records: capture, reports });
-  await page.waitForFunction(n => S.spots.length === n, reports.length);
+  await page.waitForFunction(() => !cluster.spotTimer);
 }
 
 const bandNames = page => page.locator(".bandstrip .bl").allTextContents();
@@ -224,6 +224,98 @@ test("native CC leaves band counts unavailable and labels a valid GO draft as a 
   await page.getByText("Previewing unapplied GO rules", { exact: true }).waitFor();
   await waitForAllCount(page, 0);
   assert.deepEqual(await bandNames(page), ["All", "40m"]);
+});
+
+const openOpenings = page => page.getByRole("link", { name: "Openings", exact: true }).click();
+const openingsCell = (page, label) => page.getByRole("region", { name: "Openings", exact: true })
+  .getByRole("button", { name: label, exact: true });
+
+async function waitForOpeningsBands(page, expected) {
+  await page.waitForFunction(bands => {
+    const rows = [...document.querySelectorAll(".op-table tbody th")].map(el => el.textContent);
+    return JSON.stringify(rows) === JSON.stringify(bands);
+  }, expected);
+  assert.deepEqual(await bandNames(page), ["All", ...expected]);
+}
+
+test("Openings rows follow the band strip, including quiet bands and filter previews", async t => {
+  const page = await editor(t, { rules: [rule(1, "BAND=20m OR BAND=2m")] });
+  await feedReports(page, [["W1AW", "20m", "CW", 1000]]);
+  await openOpenings(page);
+  await waitForOpeningsBands(page, ["20m", "2m"]);
+  assert.equal(await openingsCell(page, "2m to North America: 0 stations").isDisabled(), true);
+
+  await editRule(page, 1, "BAND=40m");
+  await waitForOpeningsBands(page, ["40m"]);
+  const expression = card(page, 1).getByLabel("Expression", { exact: true });
+  await expression.fill("BAND=");
+  await waitForOpeningsBands(page, ["20m", "2m"]);
+
+  await expression.fill("BAND<>ALL");
+  await waitForOpeningsBands(page, []);
+  await page.getByText("No bands match your filters.", { exact: true }).waitFor();
+});
+
+test("Openings ranks matching reports by DXCC while keeping the station count and drill-down", async t => {
+  const page = await editor(t, { rules: [rule(1, "BAND=20m AND MODE=CW")] });
+  const italy = [248, "Italy", "EU"], sicily = [248, "Sicily", "EU"];
+  const germany = [230, "Fed. Rep. of Germany", "EU"], france = [227, "France", "EU"], england = [223, "England", "EU"];
+  const report = (call, country, mode = "CW", band = "20m") => [call, band, mode, 1000, false, country];
+  await feedReports(page, [
+    report("G1AA", england), report("G2AA", england),
+    report("I1AA", italy), report("I1AA", italy), report("IT9AA", sicily), report("IT9AA", sicily),
+    report("DL1AA", germany), report("DL2AA", germany), report("DL3AA", germany),
+    report("F1AA", france), report("F2AA", france), report("ZZ1AA", [null, null, "EU"]),
+    report("M1AA", england, "FT8"), report("M1AA", england, "CW", "40m"),
+    report("IG9AA", [248, "African Italy", "AF"]),
+    report("3D2C", [489, "Conway Reef", "OC"]), report("E51AAA", [191, "North Cook Islands", "OC"]),
+    report("E51BBB", [234, "South Cook Islands", "OC"]),
+  ]);
+  await button(page, "Close filters").click();
+  await openOpenings(page);
+  const europe = openingsCell(page, "20m to Europe: 10 stations. Top DX countries: I, DL, F");
+  await europe.waitFor();
+  assert.deepEqual(await europe.locator(".op-prefixes > span").allTextContents(), ["I", "DL", "F"]);
+  await openingsCell(page, "20m to Africa: 1 station. Top DX countries: I").waitFor();
+
+  const oceania = openingsCell(page, "20m to Oceania: 3 stations. Top DX countries: 3D2/C, E5/N, E5/S");
+  for (const width of [1400, 320]) {
+    await page.setViewportSize({ width, height: 920 });
+    await oceania.scrollIntoViewIfNeeded();
+    const boxes = await oceania.evaluate(cell => {
+      const bounds = cell.getBoundingClientRect();
+      return [...cell.querySelectorAll(".op-prefixes > span")].map(prefix => {
+        const { left, right, top, bottom } = prefix.getBoundingClientRect();
+        return { top, fits: left >= bounds.left && right <= bounds.right && bottom <= bounds.bottom };
+      });
+    });
+    assert.equal(boxes.length, 3);
+    assert(boxes.every(box => box.fits), `Prefixes fit inside the cell at ${width}px`);
+    if (width === 320) assert(boxes.at(-1).top > boxes[0].top, "Long labels wrap in the narrow grid");
+  }
+
+  await europe.click();
+  await page.getByRole("region", { name: "Spots", exact: true }).waitFor();
+  await page.getByRole("button", { name: "DX in Europe", exact: true }).waitFor();
+  assert.equal(await bandTile(page, "20m").getAttribute("aria-selected"), "true");
+});
+
+test("Openings picks up new reports at capacity and ages the ranking on a quiet feed", async t => {
+  const page = await editor(t, { rules: [rule(1, "BAND=20m")] });
+  const now = new Date("2026-11-25T12:00:00Z");
+  await page.clock.setFixedTime(now);
+  await openOpenings(page);
+  await feedReports(page, Array.from({ length: 4000 }, () => ["I1AA", "20m", "CW", 899_000, false, [248, "Italy", "EU"]]));
+  await openingsCell(page, "20m to Europe: 1 station. Top DX countries: I").waitFor();
+  await feedReports(page, [
+    ["DL1AA", "20m", "CW", 1000, false, [230, "Fed. Rep. of Germany", "EU"]],
+    ["G1FAST", "20m", "CW", -60_000, false, [223, "England", "EU"]],
+    ["F1OLD", "20m", "CW", 900_000, false, [227, "France", "EU"]],
+  ]);
+  assert.equal(await page.evaluate(() => cluster.sample.length), 4000);
+  await openingsCell(page, "20m to Europe: 2 stations. Top DX countries: I, DL").waitFor();
+  await page.clock.setFixedTime(new Date(Number(now) + 1000));
+  await openingsCell(page, "20m to Europe: 1 station. Top DX countries: DL").waitFor();
 });
 
 test("the summary displays one Show and one Hide with a count of remaining rules", async t => {

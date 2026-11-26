@@ -41,6 +41,16 @@ counts only when you preview a valid GO draft, which the summary labels as GO.
 Replay shows activity from the capture and ages recorded timestamps against the
 current clock.
 
+## Read the Openings grid
+
+Openings shows the same bands as the band strip, including quiet bands. Each
+cell covers one band and DX continent. The main number counts distinct spotted
+callsigns in the last 15 minutes. The prefixes underneath show up to three DXCC
+entities with the most matching reports still in the browser's recent buffer.
+Repeat reports count toward the ranking, and Sicily (`IT9`) contributes to
+Italy (`I`). Shading shows the average path class from your grid. Select a
+cell to open Spots focused on that band and DX continent.
+
 ## Adjust the spot table
 
 On a desktop, drag the right edge of a column heading to resize it. Drag the label to reorder it. Spots and History share the layout in this browser. Use **Reset columns** in Settings to restore the default layout. On phones, spots use stacked rows.

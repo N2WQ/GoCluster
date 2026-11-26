@@ -4232,19 +4232,21 @@ function StreamView({ focusBand }) {
   </section>`;
 }
 
-// Spots from the observer feed that pass the rules in force right now (or the
-// draft being previewed). Map views use this so a filter change takes effect at
-// once, including on stations heard before the change.
+// Apply the map views' rules and local focus to reports already received.
+function matchingMapSpots(sample, set, sw) {
+  const q = S.search.trim().toUpperCase();
+  return sample.filter(s => decideWith(set, sw, s).pass &&
+    (!S.focusCont || s.dxCont === S.focusCont) &&
+    (!q || s.dxCall.includes(q) || s.deCall.includes(q) || (s.dxEntity || "").toUpperCase().includes(q)));
+}
+
 const _passMemo = { key: "", val: [] };
 function passingSpots(minutes) {
   const built = workingSet();
-  const key = `${minutes}|${_setMemo.key}|${JSON.stringify(workingSwitches())}|${cluster.sample.length}|${S.focusCont}|${S.search}`;
-  if (_passMemo.key === key) return _passMemo.val;
   const sw = workingSwitches();
-  const q = S.search.trim().toUpperCase();
-  const val = built.error ? [] : recentSample(minutes).filter(s => decideWith(built.set, sw, s).pass &&
-    (!S.focusCont || s.dxCont === S.focusCont) &&
-    (!q || s.dxCall.includes(q) || s.deCall.includes(q) || (s.dxEntity || "").toUpperCase().includes(q)));
+  const key = `${minutes}|${_setMemo.key}|${JSON.stringify(sw)}|${cluster.sample.length}|${S.focusCont}|${S.search}`;
+  if (_passMemo.key === key) return _passMemo.val;
+  const val = built.error ? [] : matchingMapSpots(recentSample(minutes), built.set, sw);
   _passMemo.key = key; _passMemo.val = val;
   return val;
 }
@@ -4296,36 +4298,48 @@ function BandMapView({ focusBand }) {
 }
 
 // ---------------------------------------------------------------- openings
-function OpeningsView() {
+function OpeningsView({ bands }) {
   const conts = ["NA", "SA", "EU", "AF", "AS", "OC"];
-  const bands = DATA.MAIN_BANDS.filter(b => b !== "2m");
-  const cut = Date.now() - 15 * 60e3;
+  const bandSet = new Set(bands);
+  const now = Date.now();
+  const sample = cluster.sample, built = workingSet(), sw = workingSwitches();
+  // Batches replace the last report even when the retained sample is full.
+  // Window membership is recomputed as time advances, including on idle feeds.
+  const matches = useMemo(() => built.error ? [] : matchingMapSpots(sample, built.set, sw),
+    [sample, sample.at(-1), built, sw.beacon, sw.self, sw.toxic, cluster.baseCall, cluster.nearby, cluster.operating, S.focusCont, S.search]);
   const grid = {};
   const rank = { HIGH: 4, MEDIUM: 3, LOW: 2, UNLIKELY: 1, CLOSED: 0 };
   let max = 1;
-  for (const s of passingSpots(15)) {
-    if (s.t < cut) continue;
+  for (const s of matches) {
+    const age = now - s.t;
+    if (!(age >= 0 && age < 15 * 60e3) || !bandSet.has(s.band) || !conts.includes(s.dxCont)) continue;
     const k = s.band + "|" + s.dxCont;
-    const g = grid[k] = grid[k] || { n: 0, calls: new Set(), p: 0, pn: 0 };
-    g.n++; g.calls.add(s.dxCall);
+    const g = grid[k] = grid[k] || { calls: new Set(), countries: new Map(), p: 0, pn: 0 };
+    g.calls.add(s.dxCall);
+    const prefix = RULES.ADIF_LABEL.get(s.dxAdif);
+    if (prefix) g.countries.set(prefix, (g.countries.get(prefix) || 0) + 1);
     if (s.path in rank) { g.p += rank[s.path]; g.pn++; }
     max = Math.max(max, g.calls.size);
   }
   return html`<section class="openings" aria-label="Openings">
     <div class="op-head"><h2>Where the bands are open</h2><span class="muted">Stations that pass your ${isDirty() ? "edited " : ""}filters in the last 15 minutes, by band and DX continent. Shade shows the average path from ${S.snap.settings.grid || "your grid"}.</span></div>
-    <div class="op-scroll"><table class="op-table"><colgroup><col class="bandcol" />${conts.map(() => html`<col />`)}</colgroup>
+    <div class="op-scroll">${bands.length ? html`<table class="op-table"><colgroup><col class="bandcol" />${conts.map(() => html`<col />`)}</colgroup>
       <thead><tr><th></th>${conts.map(c => html`<th scope="col">${DATA.CONT_NAME[c]}</th>`)}</tr></thead>
       <tbody>${bands.map(b => html`<tr><th scope="row"><span class="bdot" style=${`--bc:${BAND_COLOR[b]}`}></span>${b}</th>${conts.map(c => {
         const g = grid[b + "|" + c];
         const n = g ? g.calls.size : 0;
         const avg = g && g.pn ? g.p / g.pn : -1;
         const tone = avg < 0 ? "none" : avg >= 3.2 ? "high" : avg >= 2.4 ? "med" : avg >= 1.6 ? "low" : "poor";
+        const prefixes = g ? [...g.countries].sort(([a, ac], [b, bc]) => bc - ac || a.localeCompare(b, "en"))
+          .slice(0, 3).map(([prefix]) => prefix) : [];
+        const label = `${b} to ${DATA.CONT_NAME[c]}: ${plural(n, "station")}` + (prefixes.length ? `. Top DX countries: ${prefixes.join(", ")}` : "");
         return html`<td><button type="button" class=${cls("cell", "t-" + tone, !n && "zero")} style=${`--fill:${(n / max).toFixed(2)}`} disabled=${!n}
-          aria-label=${`${b} to ${DATA.CONT_NAME[c]}: ${n} stations`} onClick=${() => { location.hash = "stream"; set({ view: "stream", focusBand: b, focusCont: c }); }}>
-          <span class="n">${n || "·"}</span>${n ? html`<span class="bar"><i style=${`width:${Math.round((n / max) * 100)}%`}></i></span>` : null}</button></td>`;
+          aria-label=${label} onClick=${() => { location.hash = "stream"; set({ view: "stream", focusBand: b, focusCont: c }); }}>
+          <span class="n">${n || "·"}</span>${prefixes.length ? html`<span class="op-prefixes">${prefixes.map(prefix => html`<span>${prefix}</span>`)}</span>` : null}
+          ${n ? html`<span class="bar"><i style=${`width:${Math.round((n / max) * 100)}%`}></i></span>` : null}</button></td>`;
       })}</tr>`)}</tbody>
-    </table></div>
-    <div class="op-legend muted small"><span class="sw t-high"></span>favorable <span class="sw t-med"></span>workable <span class="sw t-low"></span>weak <span class="sw t-poor"></span>poor <span class="sw t-none"></span>not rated · Select a cell to see those spots.</div>
+    </table>` : html`<p class="muted">No bands match your filters.</p>`}</div>
+    ${bands.length ? html`<div class="op-legend muted small"><span class="sw t-high"></span>favorable <span class="sw t-med"></span>workable <span class="sw t-low"></span>weak <span class="sw t-poor"></span>poor <span class="sw t-none"></span>not rated · Select a cell to see those spots.</div>` : null}
   </section>`;
 }
 
@@ -4929,7 +4943,7 @@ function App() {
       ${left ? html`<${FiltersDrawer} />` : null}
       <main class="main" id="main">
         <${ConnectionBanner} />
-        ${S.view === "bandmap" ? html`<${BandMapView} focusBand=${focusBand} />` : S.view === "openings" ? html`<${OpeningsView} />` : S.view === "history" ? html`<${HistoryView} />` : html`<${StreamView} focusBand=${focusBand} />`}
+        ${S.view === "bandmap" ? html`<${BandMapView} focusBand=${focusBand} />` : S.view === "openings" ? html`<${OpeningsView} bands=${bands} />` : S.view === "history" ? html`<${HistoryView} />` : html`<${StreamView} focusBand=${focusBand} />`}
       </main>
       ${S.drawer === "settings" ? html`<${SettingsDrawer} />` : S.drawer === "activity" ? html`<${ActivityDrawer} />` : S.drawer === "spot" ? html`<${SpotDrawer} key=${S.selSpot && S.selSpot.id} />` : null}
       ${(left || right) ? html`<button type="button" class="scrim" tabindex="-1" aria-hidden="true" onClick=${() => set({ drawer: null })}></button>` : null}

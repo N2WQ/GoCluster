@@ -619,9 +619,10 @@ select.txt { appearance: auto; }
 .op-table thead th { text-align: center; }
 .op-table tbody th { font: 600 13px var(--mono); color: var(--text); width: 64px; }
 .bdot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--bc); margin-right: 7px; }
-.cell { width: 100%; height: 44px; border-radius: 9px; border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4px; padding: 0 10px; background: color-mix(in srgb, var(--tone, var(--accent)) calc(var(--fill) * 32% + 6%), var(--surface)); }
+.cell { width: 100%; min-height: 58px; border-radius: 9px; border: 1px solid var(--line); display: flex; flex-direction: column; justify-content: center; align-items: flex-start; gap: 4px; padding: 6px 10px; background: color-mix(in srgb, var(--tone, var(--accent)) calc(var(--fill) * 32% + 6%), var(--surface)); }
 .cell.zero { background: var(--surface-2); border-style: dashed; }
 .cell .n { font: 700 14px var(--mono); }
+.cell .op-prefixes { display: flex; flex-wrap: wrap; gap: 0 6px; font: 600 11px/1.2 var(--mono); }
 .cell .bar { width: 100%; height: 3px; background: color-mix(in srgb, var(--text) 8%, transparent); }
 .cell .bar i { display: block; height: 100%; border-radius: 2px; background: var(--tone, var(--accent)); position: static; }
 .cell:hover:not(:disabled) { border-color: var(--tone, var(--accent)); box-shadow: var(--shadow); }
