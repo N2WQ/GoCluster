@@ -919,6 +919,12 @@ func decodeRecord(raw []byte) (archiveRecord, error) {
 }
 
 func decodeSpot(ts int64, raw []byte) (*spot.Spot, error) {
+	return decodeSpotInto(ts, raw, nil)
+}
+
+// decodeSpotInto uses caller-owned storage when supplied. Field strings still
+// own their decoded bytes, including calls passed to the normalization cache.
+func decodeSpotInto(ts int64, raw []byte, s *spot.Spot) (*spot.Spot, error) {
 	rec, err := decodeRecord(raw)
 	if err != nil {
 		return nil, err
@@ -927,7 +933,10 @@ func decodeSpot(ts int64, raw []byte) (*spot.Spot, error) {
 	if band == "" {
 		band = spot.FreqToBand(rec.freq)
 	}
-	s := &spot.Spot{
+	if s == nil {
+		s = new(spot.Spot)
+	}
+	*s = spot.Spot{
 		DXCall:             rec.dxCall,
 		DECall:             rec.deCall,
 		DECallStripped:     rec.deCallStripped,

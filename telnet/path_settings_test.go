@@ -192,7 +192,7 @@ func TestPathSamplesOverrideAppliesToDisplayFilterAndDiag(t *testing.T) {
 		t.Fatalf("expected user path sample floor to return insufficient class, got %q", got)
 	}
 	client.setDiagMode(diagModePath)
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "n3/u3|lown") {
 		t.Fatalf("expected low-count diagnostic from user floor, got %q", line)
 	}
@@ -247,7 +247,7 @@ func TestBeaconRXPathPredictionAppliesToDisplayAndFilter(t *testing.T) {
 		t.Fatalf("expected beacon RX PATH class HIGH, got %q", got)
 	}
 	client.setDiagMode(diagModePath)
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "brx|n11/u11|w11|") {
 		t.Fatalf("expected beacon RX diagnostic with 11/2 gate evidence, got %q", line)
 	}
@@ -294,7 +294,7 @@ func TestPathPredictionUsesVOACAPClosedFallbackOnlyWhenInsufficient(t *testing.T
 		t.Fatalf("expected closed fallback PATH class CLOSED, got %q", got)
 	}
 	client.setDiagMode(diagModePath)
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "vcap|-34|h20|s112") {
 		t.Fatalf("expected VOACAP closed diagnostic, got %q", line)
 	}
@@ -368,7 +368,7 @@ func TestPathPredictionUsesVOACAPAlignedFallbackForSparseP50Match(t *testing.T) 
 		t.Fatalf("expected VOACAP-aligned PATH class MEDIUM, got %q", got)
 	}
 	client.setDiagMode(diagModePath)
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "valn|-15/-15h20s112") {
 		t.Fatalf("expected VOACAP-aligned diagnostic, got %q", line)
 	}
@@ -483,7 +483,7 @@ func TestPathPredictionUsesRELGatedVOACAPOpenWhenNoSparseP50(t *testing.T) {
 		t.Fatalf("expected REL-gated VOACAP open PATH class LOW, got %q", got)
 	}
 	client.setDiagMode(diagModePath)
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "vop|-19r75h20s112") {
 		t.Fatalf("expected REL-gated VOACAP open diagnostic, got %q", line)
 	}
@@ -526,7 +526,7 @@ func TestPathPredictionUsesRELGatedVOACAPSparseUpgrade(t *testing.T) {
 		t.Fatalf("expected REL-gated sparse p50 upgrade PATH class MEDIUM, got %q", got)
 	}
 	client.setDiagMode(diagModePath)
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "vup|-19/-15r84s112") {
 		t.Fatalf("expected REL-gated sparse upgrade diagnostic, got %q", line)
 	}

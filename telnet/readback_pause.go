@@ -243,5 +243,9 @@ func (c *Client) afterJSONPauseFence(env *spotEnvelope, cutoff int64) bool {
 		return false
 	}
 	fence := c.jsonPauseCutoff.Load()
-	return fence != nil && fence.wallNS == cutoff && env.pauseGeneration >= fence.generation
+	var generation uint64
+	if env.publication != nil {
+		generation = env.publication.pauseGeneration
+	}
+	return fence != nil && fence.wallNS == cutoff && generation >= fence.generation
 }

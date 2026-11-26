@@ -15,19 +15,36 @@ The accepted native layouts bound each ordinary variable-length field with an un
 | 6 | 1,114,173 |
 | 7 | 1,116,225 |
 
-Each admitted scan decodes and matches one candidate at a time. These allowances cover simultaneously reachable GoCluster-owned candidate work on Go 1.27.1 amd64.
+Each admitted scan decodes and matches one candidate at a time. The telnet history matcher borrows that spot until the callback returns. A text page takes ownership of each selected spot. A JSON page copies its charged projection before the scan reuses the candidate. Archive callers using the default matcher contract continue to receive independent spots. These allowances cover simultaneously reachable GoCluster-owned candidate work on Go 1.27.1 amd64.
 
 | Candidate storage | Conservative allowance and derivation |
 | --- | --- |
 | Value and decoded strings | Under 3 MiB for one admitted raw value and the 21 copied fields, including allocation rounding. |
-| Comment, event, toxicity and CW processing | Under 4 MiB for split-field and compacted string-header vectors. A 65,535-byte legacy comment can produce at most 32,768 one-byte tokens separated by whitespace. At 80 bytes per token the token vector takes 2.5 MiB. Uppercased token backings add under 3 MiB in aggregate. |
+| Comment, event, toxicity and CW processing | Under 4 MiB for split-field and compacted string-header vectors. For records with missing or empty EVENT metadata, the reader classifies one comment word at a time. Uppercased word backings total under 3 MiB, even for a 65,535-byte comment. |
 | Normalization and matching | Ten normalized spot strings and fewer than 24 text slots in the filter view. An allowance of 64 full-field derived backings covers those slots plus concurrent builder generations and temporary lookups. Each native field starts at 65,535 bytes or less. Four output bytes per input byte, builder growth and allocator rounding give a conservative bound of `16 × input bytes + 32` per backing, below 1,049,000 bytes per full field. Canonical taxonomy values share their immutable backing. |
 | CTY and projection | Under 5 MiB for slash-segment lookups. CTY supplemental results copy fixed headers. Optional country and node text are length-checked before copying. One candidate awaiting reservation uses under 1 MiB of projection storage. |
 | Remaining candidate work | Boolean programs admit up to 128 nodes, the literal-comment matcher has a fixed 1 KiB table, and path observations use fixed receiver slots. The 128 MiB allowance includes slack above the listed working sets. |
 
 The preexisting detached filter snapshot belongs to the command and is captured once per request. The handler drops it before writer publication. Shared CTY, taxonomy, normalization and path-service caches, Pebble blocks, decompression and iterator-internal storage, per-connection command state, goroutine stacks, allocator arenas and memory awaiting garbage collection have separate lifetimes. The allowances above describe GoCluster candidate backing. Process RSS also includes those other resources. [Matcher snapshot](../../telnet/history_filter.go) · [Comment parser](../../spot/comment_parser.go) · [Archive admission](../../archive/history.go)
 
-An offline linux/amd64 benchmark used a 1,116,225-byte valid V7 value with 32,768 legacy tokens, comma-heavy fields, case-normalization expansion and 170 CW labels. Two six-iteration runs on an Intel Core i9-10900 with Go 1.27.1 allocated 12,209,446 and 12,092,472 bytes per decode. These figures measure cumulative allocation per operation. The simultaneous-memory allowance comes from the structural bounds above. [Benchmark and independent native fixtures](../../archive/history_collect_test.go)
+An offline linux/amd64 benchmark of the earlier decoder used a 1,116,225-byte valid V7 value with 32,768 legacy tokens, comma-heavy fields, case-normalization expansion and 170 CW labels. Two six-iteration runs on an Intel Core i9-10900 with Go 1.27.1 allocated 12,209,446 and 12,092,472 bytes per decode. These figures measure cumulative allocation before streaming event extraction. The simultaneous-memory allowance comes from the structural bounds above. [Benchmark and independent native fixtures](../../archive/history_collect_test.go)
+
+## Selective history scans
+
+An offline Windows amd64 comparison used Go 1.27.1, the native text command,
+and identical reopened Pebble fixtures at baseline `ee3964a1` and after
+candidate reuse and streaming EVENT extraction. Across eight alternating
+pairs, an absent callsign examining 200,000 rows allocated 203.0 MiB per
+page at baseline and 7.64 MiB after the change. Each run checked the warning
+count, exact cursor, and the three remaining rows visited by NEXT.
+
+With eight matches among 4,096 populated rows, allocation fell from 6.50 MiB
+to 0.82 MiB per page for both an explicit callsign and a plain search using a
+saved band/mode rule. Equal-work profiles sampled 26% less scan CPU across
+those two searches and 23% less for the absent-callsign budget scan.
+Variation in the paired wall times precluded a latency conclusion.
+[Archive ownership checks](../../archive/history_collect_test.go) ·
+[Maintained dense and selective scan benchmarks](../../archive/history_test.go)
 
 ## Retained pages and socket writers
 

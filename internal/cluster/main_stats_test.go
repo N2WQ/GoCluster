@@ -12,6 +12,20 @@ import (
 	"dxcluster/spot"
 )
 
+func TestStatsSnapshotLines(t *testing.T) {
+	if line := formatMemoryLine(3<<20, nil, nil, nil, nil, nil, nil); line != "Memory MB: 3.0 / 0.0 / 0.0 (0.0%) / 0.0 / 0.0 (0.0%)" {
+		t.Fatal(line)
+	}
+	if summary, pressure := formatResolverLines(nil); summary != "Resolver: n/a" || pressure != "Resolver Pressure: n/a" {
+		t.Fatal(summary, pressure)
+	}
+	summary, pressure := formatResolverLines(&spot.SignalResolver{})
+	if summary != "Resolver: 0 (C) / 0 (P) / 0 (U) / 0 (S) | q=0 drop 0 (Q) / 0 (K) / 0 (C) / 0 (R)" ||
+		pressure != "Resolver Pressure: 0 (C) / 0 (R) evict 0 (C) / 0 (R) hw 0 (C) / 0 (R) | loss rows=0 protected=0 recover=0 idle-retire=0" {
+		t.Fatal(summary, pressure)
+	}
+}
+
 func TestSourceStatsLabel(t *testing.T) {
 	cases := []struct {
 		name string

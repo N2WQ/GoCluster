@@ -45,16 +45,22 @@ func TestMetaBandHistoryQueryLocalView(t *testing.T) {
 	if text != "" {
 		t.Fatal(text)
 	}
-	seen := false
-	page, err := p.ReadHistoryPage(command.Query, nil, func(s *spot.Spot) bool {
-		seen = true
-		return s != old && s.Band == "4m" && s.BandNorm == "4m"
-	}, time.Now(), nil)
-	if err != nil || !seen || len(page.Spots) != 1 || page.Spots[0] != old || old.Band != "???" || old.BandNorm != "???" {
-		t.Fatalf("query view changed owned archive object or callback: %+v %v", page, err)
+	for _, borrow := range []bool{false, true} {
+		read := p.CollectHistoryPage
+		if borrow {
+			read = p.CollectBorrowedHistoryPage
+		}
+		seen := false
+		page, err := read(command.Query, nil, func(s *spot.Spot) bool {
+			seen = true
+			return s != old && s.Band == "4m" && s.BandNorm == "4m"
+		}, time.Now(), nil, nil)
+		if err != nil || !seen || len(page.Spots) != 1 || page.Spots[0] != old || old.Band != "???" || old.BandNorm != "???" {
+			t.Fatalf("query view changed owned archive object or callback: %+v %v", page, err)
+		}
 	}
 	ordinary, _, _ := p.ParseHistoryCommand("SHOW DX BAND 4m", "go")
-	page, err = p.ReadHistoryPage(ordinary.Query, nil, func(*spot.Spot) bool { return true }, time.Now(), nil)
+	page, err := p.ReadHistoryPage(ordinary.Query, nil, func(*spot.Spot) bool { return true }, time.Now(), nil)
 	if err != nil || len(page.Spots) != 0 {
 		t.Fatal("ordinary physical history silently reclassified old archive labels")
 	}

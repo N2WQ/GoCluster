@@ -95,6 +95,7 @@ func TestCommentParserLegacyDifferential(t *testing.T) {
 		"", " \t ", ",;:!.", "ÿ CW", "ı CW", "ﬃ CW", "ȿ CW", "ı DB CW", "ı!DB CW",
 		"ı CW FT8", "ı 1200ZCW", "ÿ 1200ZCW", "ﬃ 1200ZCW", "ȿ 1200ZCW", "ſS CW", "ß CW",
 		"CQ CW", "CQ +12dB CW", "1200ZFT8 POTA 10 dB", "i\xff CW", "ı XXCW", "ı A ACW",
+		"\u2003,pota-k-1234.\tSoTa-ABC;\u2003", "CW\u00a0POTA", "1200ZPOTA", "pota\nsota", "\xffpota\t!iota",
 		"ııı XX CW", "ıııı XX XAA", "FT8 73 88 CQ", "RTTY 45 BPS TEST", "SSB CQ", "\u00a0CW\u00a0",
 	}
 	alphabet := []string{"ı", "ȿ", "ÿ", "ﬃ", "ſ", "ß", " ", "\t", ",", "1200Z", "CW", "DB", "FT8", "A", "AA", "X", "CWT", "BPS", "+3", "\xff"}
@@ -122,6 +123,13 @@ func TestCommentParserLegacyDifferential(t *testing.T) {
 
 func checkCommentParserDifferential(t testing.TB, comment string, frequency float64) {
 	t.Helper()
+	var archiveEvents EventMask
+	for _, tok := range legacyCommentTokenize(strings.TrimSpace(comment)) {
+		archiveEvents |= eventFromCommentToken(tok.upper)
+	}
+	if got := ParseSpotEvents(comment); got != archiveEvents {
+		t.Fatalf("archive event mask for %q: got %v, legacy %v", comment[:min(len(comment), 128)], got, archiveEvents)
+	}
 	want, fallback := legacyCommentParseWithFallbackTrace(comment, frequency)
 	if fallback {
 		// S1a intentionally retires the substring fallback. Keep comparing all

@@ -46,6 +46,14 @@ upgrade. A filter or search can match text hidden from a displayed spot.
 Missing input speed remains unknown. Fixed-width output may omit speeds that
 do not fit, and diagnostics override the preference.
 
+For classic text, one live broadcast or direct SELF delivery to multiple
+recipients can share its two undecorated CW lines. A writer requests its
+current speed setting when it consumes the spot and applies its own path glyph.
+At most 256 bytes per variant, including LF, are cached. Wider layouts use
+the ordinary formatter. Ownership ends when the publication's jobs and
+queued deliveries are released, so storing the spot in the ring adds no
+reference to these lines.
+
 ## Operational impact
 
 Stop the server and remove the configured spot archive database before

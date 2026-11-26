@@ -193,6 +193,8 @@ type commentToken struct {
 	trimEnd   int
 }
 
+const commentEdgePunctuation = ",;:!."
+
 func tokenizeComment(comment string) []commentToken {
 	// Purpose: Tokenize a comment into word-like segments with trim metadata.
 	// Key aspects: Tracks original and trimmed offsets for keyword alignment.
@@ -218,14 +220,14 @@ func tokenizeComment(comment string) []commentToken {
 		trimStart := start
 		trimEnd := end
 		for trimStart < end {
-			if strings.ContainsRune(",;:!.", rune(comment[trimStart])) {
+			if strings.ContainsRune(commentEdgePunctuation, rune(comment[trimStart])) {
 				trimStart++
 			} else {
 				break
 			}
 		}
 		for trimEnd > trimStart {
-			if strings.ContainsRune(",;:!.", rune(comment[trimEnd-1])) {
+			if strings.ContainsRune(commentEdgePunctuation, rune(comment[trimEnd-1])) {
 				trimEnd--
 			} else {
 				break
@@ -631,16 +633,14 @@ func parseSpotComment(comment string, freq float64, reorderSpeed bool, trace *[]
 }
 
 // ParseSpotEvents extracts EVENT families from a preserved comment without
-// applying mode/report cleanup. It is used for legacy archive records that
-// predate persisted EVENT metadata.
+// applying mode/report cleanup. Archive reads use it when stored EVENT
+// metadata is missing or empty.
 func ParseSpotEvents(comment string) EventMask {
-	comment = strings.TrimSpace(comment)
-	if comment == "" {
-		return 0
-	}
 	var events EventMask
-	for _, tok := range tokenizeComment(comment) {
-		events |= eventFromCommentToken(tok.upper)
+	// Match the comment tokenizer's ASCII word boundaries. Archive scans only
+	// need the event mask, so each word can be discarded as soon as it is read.
+	for word := range strings.FieldsFuncSeq(strings.TrimSpace(comment), func(r rune) bool { return r == ' ' || r == '\t' }) {
+		events |= CurrentTaxonomy().EventFromCommentToken(strings.Trim(word, commentEdgePunctuation))
 	}
 	return events
 }

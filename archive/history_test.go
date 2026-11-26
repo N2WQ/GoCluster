@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -304,8 +305,9 @@ func TestHistoryConcurrentStartStop(t *testing.T) {
 }
 
 func BenchmarkReadHistoryPage(b *testing.B) {
-	for _, shape := range []string{"dense", "sparse", "absent", "rejected", "legacy", "absent-budget"} {
-		b.Run(shape, func(b *testing.B) {
+	for _, name := range []string{"dense", "sparse", "absent", "rejected", "legacy", "absent-budget", "borrowed-dense", "borrowed-sparse", "borrowed-absent-budget"} {
+		b.Run(name, func(b *testing.B) {
+			shape, borrow := strings.CutPrefix(name, "borrowed-")
 			w := historyTestWriter(b, 86400)
 			now := time.Now().UTC()
 			base := now.Add(-time.Second).UnixNano()
@@ -331,7 +333,7 @@ func BenchmarkReadHistoryPage(b *testing.B) {
 			if err := batch.Commit(pebble.NoSync); err != nil {
 				b.Fatal(err)
 			}
-			request := HistoryRequest{Limit: 10, Now: now, Match: func(s *spot.Spot) bool { return shape != "rejected" && s.DXCallNorm == "K1ABC" }}
+			request := HistoryRequest{Limit: 10, Now: now, BorrowMatch: borrow, Match: func(s *spot.Spot) bool { return shape != "rejected" && s.DXCallNorm == "K1ABC" }}
 			want := 10
 			wantExamined, wantEnd := 11, HistoryCountReached
 			if shape == "sparse" {

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -25,6 +26,72 @@ func nativeHistoryFixture(t *testing.T, version int) []byte {
 		t.Fatal(err)
 	}
 	return raw
+}
+
+// Successful Match calls in the ordinary API may retain every pointer, even
+// on rejection. Borrowing is independent of result collection and preserves
+// every selected value after later candidates, additional scans and DB close.
+func TestHistoryCandidateOwnership(t *testing.T) {
+	w := historyTestWriter(t, 60)
+	now := time.Now().UTC()
+	base := now.Add(-time.Second).UnixNano()
+	for i, version := range []int{3, 4, 5, 6, 2, 7} {
+		putHistoryRow(t, w, spotKeyBytes(base+int64(i), 0), nativeHistoryFixture(t, version))
+	}
+	bad := append(nativeHistoryFixture(t, 7), 0)
+	putHistoryRow(t, w, spotKeyBytes(base+4, 1), bad)
+	selected := func(s *spot.Spot) bool { return (s.Time.UnixNano()-base)%2 == 0 }
+	request := HistoryRequest{Limit: 10, Now: now}
+	var retained []*spot.Spot
+	request.Match = func(s *spot.Spot) bool {
+		retained = append(retained, s)
+		return selected(s)
+	}
+	owned, err := w.ReadHistoryPage(request)
+	if err != nil || owned.End != HistoryExhausted || owned.Before != nil || owned.Examined != 7 ||
+		owned.Selected != 3 || len(owned.Spots) != 3 || owned.Unreadable != 1 || len(retained) != 6 {
+		t.Fatalf("owned page=%+v retained=%d err=%v", owned, len(retained), err)
+	}
+	request.BorrowMatch = true
+	var firstRejected uintptr
+	request.Match = func(s *spot.Spot) bool {
+		address := reflect.ValueOf(s).Pointer()
+		switch s.Time.UnixNano() - base {
+		case 5:
+			firstRejected = address
+		case 4:
+			if address != firstRejected {
+				t.Fatal("malformed candidate discarded reusable storage")
+			}
+		}
+		return selected(s)
+	}
+	borrowed, err := w.ReadHistoryPage(request)
+	if err != nil || !reflect.DeepEqual(borrowed, owned) {
+		t.Fatalf("borrowed page differs: got %+v want %+v err=%v", borrowed, owned, err)
+	}
+	var collected []*spot.Spot
+	request.Collect = func(s *spot.Spot) error {
+		collected = append(collected, s.Clone())
+		return nil
+	}
+	page, err := w.ReadHistoryPage(request)
+	if err != nil || page.Spots != nil || page.Selected != 3 || page.Examined != 7 ||
+		page.End != HistoryExhausted || page.Before != nil || page.Unreadable != 1 || len(collected) != 3 {
+		t.Fatalf("collected page=%+v rows=%d err=%v", page, len(collected), err)
+	}
+	w.Stop()
+	for i, s := range retained {
+		if s.Time.UnixNano() != base+int64(5-i) {
+			t.Fatalf("ordinary matcher lost row %d after later reads", i)
+		}
+	}
+	for i, s := range borrowed.Spots {
+		if s.Time.UnixNano() != base+int64(4-2*i) || !reflect.DeepEqual(s, owned.Spots[i]) ||
+			!reflect.DeepEqual(s.Clone(), collected[i]) {
+			t.Fatalf("selected row %d changed after scan or database close", i)
+		}
+	}
 }
 
 func TestCollectHistoryNativeVersions(t *testing.T) {

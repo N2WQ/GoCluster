@@ -44,7 +44,7 @@ func TestFormatSpotForClientDedupeDiagComment(t *testing.T) {
 	sp.Confidence = "S"
 	sp.Comment = "ORIG"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if strings.Contains(line, "ORIG") {
 		t.Fatalf("expected diagnostic comment to replace original, got %q", line)
 	}
@@ -78,7 +78,7 @@ func TestFormatSpotForClientDedupeDiagUsesOrdinaryPolicyWithNearby(t *testing.T)
 	sp.DXMetadata.Grid = "FN31"
 	sp.Comment = "ORIG"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "291|05|S|S") {
 		t.Fatalf("expected ordinary SLOW diagnostic tag, got %q", line)
 	}
@@ -98,7 +98,7 @@ func TestFormatSpotForClientSourceDiagPeerNode(t *testing.T) {
 	sp.SourceNode = "n0call-15-extra"
 	sp.DXMetadata.Grid = "FN31"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "P:N0CAL") {
 		t.Fatalf("expected capped peer source diagnostic in output, got %q", line)
 	}
@@ -116,7 +116,7 @@ func TestFormatSpotForClientConfidenceDiagComment(t *testing.T) {
 	sp.ConfidencePercentOK = true
 	sp.DXMetadata.Grid = "FN31"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "37%") {
 		t.Fatalf("expected confidence diagnostic in output, got %q", line)
 	}
@@ -148,7 +148,7 @@ func TestFormatSpotForClientPathDiagCommentIncludesCount(t *testing.T) {
 	sp.DXMetadata.Grid = "IO91"
 	sp.Confidence = "V"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "n") || !strings.Contains(line, "|w") || !strings.Contains(line, "|a") {
 		t.Fatalf("expected path diagnostic in output, got %q", line)
 	}
@@ -185,7 +185,7 @@ func TestFormatSpotForClientPathDiagUsesUnionWeight(t *testing.T) {
 	sp.DXMetadata.Grid = "IO91"
 	sp.Confidence = "V"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "n6/u5.9|w3|") {
 		t.Fatalf("expected one-way union diagnostic weight n6|w3, got %q", line)
 	}
@@ -251,7 +251,7 @@ func TestFormatSpotForClientModeDiagComment(t *testing.T) {
 	sp.DXMetadata.Grid = "FN31"
 	sp.Comment = "ORIG"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if strings.Contains(line, "ORIG") {
 		t.Fatalf("expected mode diagnostic to replace original comment, got %q", line)
 	}
@@ -273,7 +273,7 @@ func TestFormatSpotForClientModeDiagBlankRegional(t *testing.T) {
 	sp.ModeProvenance = spot.ModeProvenanceRegionalMixedBlank
 	sp.DXMetadata.Grid = "FN31"
 
-	line := server.formatSpotForClient(client, sp)
+	line := server.formatSpotForClient(client, &spotEnvelope{spot: sp})
 	if !strings.Contains(line, "--|RMIX") {
 		t.Fatalf("expected blank mode provenance diagnostic in output, got %q", line)
 	}

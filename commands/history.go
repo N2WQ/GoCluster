@@ -201,11 +201,22 @@ func (p *Processor) ReadHistoryPage(query HistoryQuery, before []byte, match fun
 // CollectHistoryPage uses the same search and filter rules as text history.
 // A collector copies and charges selected fields before the scan advances.
 func (p *Processor) CollectHistoryPage(query HistoryQuery, before []byte, match func(*spot.Spot) bool, now time.Time, done <-chan struct{}, collect func(*spot.Spot) error) (archive.HistoryPage, error) {
+	return p.collectHistoryPage(query, before, match, now, done, collect, false)
+}
+
+// CollectBorrowedHistoryPage allows the archive to reuse rejected or collected
+// candidates. The synchronous matcher must neither mutate nor retain its Spot.
+// Ownership of the collector's projection and returned page is unchanged.
+func (p *Processor) CollectBorrowedHistoryPage(query HistoryQuery, before []byte, match func(*spot.Spot) bool, now time.Time, done <-chan struct{}, collect func(*spot.Spot) error) (archive.HistoryPage, error) {
+	return p.collectHistoryPage(query, before, match, now, done, collect, true)
+}
+
+func (p *Processor) collectHistoryPage(query HistoryQuery, before []byte, match func(*spot.Spot) bool, now time.Time, done <-chan struct{}, collect func(*spot.Spot) error, borrowMatch bool) (archive.HistoryPage, error) {
 	if p.archive == nil {
 		return archive.HistoryPage{}, errors.New("archive unavailable")
 	}
 	return p.archive.ReadHistoryPage(archive.HistoryRequest{
-		Limit: query.count, Before: before, Now: now, Done: done, Collect: collect,
+		Limit: query.count, Before: before, Now: now, Done: done, Collect: collect, BorrowMatch: borrowMatch,
 		Match: func(s *spot.Spot) bool {
 			if s == nil {
 				return false
