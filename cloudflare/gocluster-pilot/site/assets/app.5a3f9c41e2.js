@@ -4316,7 +4316,8 @@ function OpeningsView({ bands }) {
     const k = s.band + "|" + s.dxCont;
     const g = grid[k] = grid[k] || { calls: new Set(), countries: new Map(), p: 0, pn: 0 };
     g.calls.add(s.dxCall);
-    const prefix = RULES.ADIF_LABEL.get(s.dxAdif);
+    // CTY uses ADIF 248 for both Italy in Europe and African Italy.
+    const prefix = s.dxAdif === 248 && s.dxCont === "AF" ? "IG9" : RULES.ADIF_LABEL.get(s.dxAdif);
     if (prefix) g.countries.set(prefix, (g.countries.get(prefix) || 0) + 1);
     if (s.path in rank) { g.p += rank[s.path]; g.pn++; }
     max = Math.max(max, g.calls.size);
