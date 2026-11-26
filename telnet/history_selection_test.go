@@ -115,6 +115,9 @@ func TestHistoryBandModeNarrowSavedFilters(t *testing.T) {
 		t.Run(domain, func(t *testing.T) {
 			wanted := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 			s, c := historyTestSession(func(req archive.HistoryRequest) (archive.HistoryPage, error) {
+				if !req.BorrowMatch {
+					t.Fatal("telnet matcher did not permit scan-local candidate reuse")
+				}
 				if req.Match(wanted) {
 					t.Fatal("explicit query overrode the saved category block")
 				}

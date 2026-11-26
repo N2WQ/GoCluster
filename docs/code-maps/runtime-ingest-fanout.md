@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d623b40d61a96871`
+- Source fingerprint: `c84896aa87c7baf0`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -14,8 +14,8 @@
 | `dxcluster/commands` | `commands` | 15 | 26 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 61 | 228 |
 | `dxcluster/peer` | `peer` | 63 | 139 |
-| `dxcluster/spot` | `spot` | 47 | 87 |
-| `dxcluster/telnet` | `telnet` | 95 | 195 |
+| `dxcluster/spot` | `spot` | 47 | 88 |
+| `dxcluster/telnet` | `telnet` | 95 | 197 |
 
 ## In-Scope Package Edges
 
@@ -745,6 +745,7 @@ Test files:
 - `spot/cw_speed_display_test.go`
 - `spot/dedupe_key_test.go`
 - `spot/f1_f2_test.go`
+- `spot/frequency_averager_test.go`
 - `spot/ft_frequency_test.go`
 - `spot/harmonics_test.go`
 - `spot/harmonics_v16_reference_test.go`
@@ -930,6 +931,8 @@ Test files:
 - `telnet/configuration_v7_integration_test.go`
 - `telnet/cty_grid_test.go`
 - `telnet/cty_jurisdiction_test.go`
+- `telnet/cw_publication_bench_test.go`
+- `telnet/cw_publication_test.go`
 - `telnet/cwspeed_test.go`
 - `telnet/dedupe_collision_test.go`
 - `telnet/dedupe_policy_test.go`

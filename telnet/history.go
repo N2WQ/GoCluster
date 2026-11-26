@@ -159,7 +159,7 @@ func (s *Server) handleHistoryCommand(c *Client, line string) (bool, bool) {
 		}
 		collect = func(sp *spot.Spot) error { return request.jsonPage.rows.collect(s, sp, request.cwSpeed) }
 	}
-	page, readErr := s.processor.CollectHistoryPage(request.search.query, request.search.before,
+	page, readErr := s.processor.CollectBorrowedHistoryPage(request.search.query, request.search.before,
 		func(sp *spot.Spot) bool { return request.filter.matches(s, sp) }, s.now(), c.done, collect)
 	request.filter = historyFilterSnapshot{}
 	var next *historySearch

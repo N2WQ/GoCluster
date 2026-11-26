@@ -26,8 +26,8 @@ const MaxHistoryRecordBytes = recordHeaderSize + fieldDXState*65535 + 2*2 + 2*10
 // On the 64-bit Go 1.27.1 builds the conservative candidate-work allowance
 // is 128 MiB per slot, independent of the number of rows examined:
 //   - <3 MiB for input plus 21 field copies, <4 MiB for the EVENT, two
-//     toxicity CSV and CW string-header vectors, and 2.5 MiB for the maximum
-//     32,768 legacy comment tokens (80 bytes each).
+//     toxicity CSV and CW string-header vectors. Legacy comment EVENT
+//     recovery examines one token at a time.
 //   - Token uppercasing consumes <3 MiB of backing in aggregate. Each raw
 //     byte yields at most four UTF-8 bytes; builder growth and allocator
 //     rounding bound a backing by 16*inputBytes+32, including tiny strings.
@@ -69,6 +69,11 @@ type HistoryRequest struct {
 	Limit  int
 	Before []byte
 	Match  func(*spot.Spot) bool
+	// BorrowMatch permits a reader to reuse the candidate after Match returns.
+	// Set only for a synchronous matcher that neither mutates nor retains the
+	// Spot. Readers may always supply owned candidates. Selected Spots in a
+	// non-collecting result remain independently owned in either case.
+	BorrowMatch bool
 	// Collect receives selected rows newest first while the iterator is open.
 	// It must charge and copy the fields it needs before returning, must not
 	// retain the Spot or block on delivery, and must release all charges if
@@ -177,6 +182,7 @@ func (w *Writer) ReadHistoryPage(request HistoryRequest) (page HistoryPage, err 
 
 func (w *Writer) scanHistoryPage(iter *pebble.Iterator, request HistoryRequest) (HistoryPage, error) {
 	var page HistoryPage
+	var scratch *spot.Spot
 	if request.Collect == nil {
 		page.Spots = make([]*spot.Spot, 0, request.Limit)
 	}
@@ -197,15 +203,25 @@ func (w *Writer) scanHistoryPage(iter *pebble.Iterator, request HistoryRequest) 
 			page.Unreadable++
 		} else {
 			page.Before = append(page.Before, iter.Key()...)
-			if row, decodeErr := decodeHistorySpot(ts, iter); decodeErr != nil {
+			row, decodeErr := decodeHistorySpot(ts, iter, scratch)
+			if decodeErr != nil {
 				page.Unreadable++
 			} else if request.Match == nil || request.Match(row) {
 				if request.Collect == nil {
 					page.Spots = append(page.Spots, row)
+					row = nil // The page owns it through native text/CC11 presentation.
 				} else if err := request.Collect(row); err != nil {
 					return HistoryPage{}, err
 				}
 				page.Selected++
+			}
+			if request.BorrowMatch && decodeErr == nil {
+				scratch = row
+				if scratch != nil {
+					// Release strings and vectors before fetching the next candidate.
+					// A collector has already copied the selected fields it retains.
+					*scratch = spot.Spot{}
+				}
 			}
 		}
 		valid = iter.Prev()
@@ -236,7 +252,7 @@ func (w *Writer) scanHistoryPage(iter *pebble.Iterator, request HistoryRequest) 
 	return page, nil
 }
 
-func decodeHistorySpot(ts int64, iter *pebble.Iterator) (*spot.Spot, error) {
+func decodeHistorySpot(ts int64, iter *pebble.Iterator, scratch *spot.Spot) (*spot.Spot, error) {
 	// The length of an external Pebble value is available before fetching it.
 	// An oversized value was already unreadable in decodeRecord. Skip it
 	// without materializing a potentially oversized iterator value buffer.
@@ -244,5 +260,5 @@ func decodeHistorySpot(ts int64, iter *pebble.Iterator) (*spot.Spot, error) {
 	if value.Len() > MaxHistoryRecordBytes {
 		return nil, errInvalidRecord
 	}
-	return decodeSpot(ts, iter.Value())
+	return decodeSpotInto(ts, iter.Value(), scratch)
 }
