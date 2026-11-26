@@ -62,7 +62,7 @@ func TestCommentFanout(t *testing.T) {
 				}
 			}
 			if tc.self {
-				job.clients[0].callsign = job.spot.DXCall + "/P"
+				job.clients[0].setLoginCallsign(job.spot.DXCall + "/P")
 				job.clients[0].filter.SetSelfEnabled(!tc.selfDisabled)
 			}
 			job.allowFast, job.allowMed, job.allowSlow = tc.policyAllowed, tc.policyAllowed, tc.policyAllowed
@@ -97,9 +97,9 @@ func newCommentFanoutFixture(t testing.TB, count, commentBytes int) (*Server, br
 	prepared := testRuleFilter(t, definitions...)
 	for i := range job.clients {
 		client := newBroadcastWorkerTestClient(server, 1)
-		client.callsign = fmt.Sprintf("N%dCMT", i)
+		client.setLoginCallsign(fmt.Sprintf("N%dCMT", i))
 		*client.filter = *prepared
-		if isSelfMatch(s, client.callsign) {
+		if client.matchesOwnCall(normalizedDXCall(s)) {
 			t.Fatal("fanout benchmark fixture unexpectedly matches SELF")
 		}
 		job.clients[i] = client

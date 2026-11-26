@@ -88,7 +88,8 @@ func TestHistoryFilterSnapshotGridOwnedRuntimeCells(t *testing.T) {
 }
 
 func TestHistoryFilterSnapshotSelfMatchPreservesHistoryException(t *testing.T) {
-	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})}, callsign: "K1ABC-7"}
+	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t, filter.RuleDefinition{Slot: 0, Action: filter.RuleReject, Expr: "BAND=20M"})}}
+	c.setLoginCallsign("K1ABC-7")
 	no := false
 	c.filter.AllowSelf = &no
 	c.filter.AllowToxic = &no

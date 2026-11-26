@@ -96,7 +96,7 @@ func newHumanPreferenceCandidate(c *Client) *Client {
 		v7LibraryResetGeneration: c.v7LibraryResetGeneration,
 		configurationUnsaved:     c.configurationUnsaved,
 	},
-		callsign: c.callsign, server: c.server,
+		callsign: c.callsign, ownCall: c.ownCall, server: c.server,
 
 		solarSummaryMinutes: minutes,
 	}

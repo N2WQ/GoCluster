@@ -65,6 +65,14 @@ func TestSharedSSIDSlotsAndPrivateRouting(t *testing.T) {
 				first, firstDone = connectSharedBrowser(t, s, call, "192.0.2.57")
 			}
 			ceilingReadThrough(t, logger, "192.0.2.57 (unknown).")
+			// Direct SELF bypasses the ordinary fan-out when all lanes suppress
+			// a spot. Both registered transports must still see the same bytes.
+			self := spot.NewSpot(call+"-9/P", "W1AW", 14025, "CW")
+			s.DeliverSelfSpot(self)
+			wire := self.FormatDXCluster() + "\r\n"
+			ceilingReadThrough(t, logger, wire)
+			for !strings.Contains(browserReceive(t, first), wire) {
+			}
 			snapshot := s.CurrentPeerMembership()
 			initialPeerChanges := peerChanges.Load()
 			if snapshot.RawCount != 1 || snapshot.Users[0].IP != "127.0.0.1" || s.GetClientCount() != 1 {

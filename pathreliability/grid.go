@@ -22,3 +22,13 @@ func EncodeCell(grid string) CellID {
 func EncodeCoarseCell(grid string) CellID {
 	return encodeH3Cell(grid, coarseMapper)
 }
+
+// CoarseCellForGrid reads a coarse ID captured with its grid. Archive rows
+// and spots without a populated cell resolve from the grid without writing
+// back to the shared spot or session.
+func CoarseCellForGrid(grid string, cached CellID) CellID {
+	if cached != InvalidCell {
+		return cached
+	}
+	return EncodeCoarseCell(grid)
+}

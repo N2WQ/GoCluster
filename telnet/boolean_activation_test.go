@@ -17,7 +17,8 @@ func TestBooleanActivationLiveAndHistoryUsePreparedRules(t *testing.T) {
 		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "BAND=ALL AND MODE=FT8"},
 		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: `BAND=ALL AND COMMENT="blocked"`},
 	)
-	c := &Client{sessionProfile: &sessionProfile{filter: f}, callsign: "W1ABC", spotChan: make(chan *spotEnvelope, 1)}
+	c := &Client{sessionProfile: &sessionProfile{filter: f}, spotChan: make(chan *spotEnvelope, 1)}
+	c.setLoginCallsign("W1ABC")
 	s := &Server{}
 	for _, test := range []struct {
 		name, dx, mode, comment string

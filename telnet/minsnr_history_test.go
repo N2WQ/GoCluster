@@ -11,7 +11,8 @@ import (
 )
 
 func TestMinSNRHistorySnapshotAndDigest(t *testing.T) {
-	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "MODE=CW AND SNR>=0 AND SOURCE=SKIMMER")}, callsign: "N0USER"}
+	c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "MODE=CW AND SNR>=0 AND SOURCE=SKIMMER")}}
+	c.setLoginCallsign("N0USER")
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.HasReport, sp.Report = true, 0
 	sp.IsHuman = false

@@ -104,6 +104,42 @@ func TestNearbyUnavailableUserAndUnknownBand(t *testing.T) {
 	}
 }
 
+func TestNearbyCoarseCellFallbackPerEndpoint(t *testing.T) {
+	requireH3Mappings(t)
+	f := nearbyEndpointFilter(t)
+	ctx := nearbyEndpointContext()
+	for _, grids := range [][2]string{{"fn31", "io91cd"}, {"io91cd", "fn31"}, {"em10", "io91cd"}} {
+		dx, de := pathreliability.EncodeCoarseCell(grids[0]), pathreliability.EncodeCoarseCell(grids[1])
+		if dx == 0 || de == 0 || dx == de {
+			t.Fatal("fixture requires distinct mapped coarse cells")
+		}
+		want := grids[0] == "fn31" || grids[1] == "fn31"
+		for _, cells := range [][2]uint16{{0, 0}, {uint16(dx), 0}, {0, uint16(de)}, {uint16(dx), uint16(de)}} {
+			s := spot.NewSpotNormalized("W6ABC", "N0XYZ", 3520, "CW")
+			s.DXMetadata.Grid, s.DEMetadata.Grid = grids[0], grids[1]
+			s.DXCoarseCellID, s.DECoarseCellID = cells[0], cells[1]
+			if got := f.MatchesWithContext(s, ctx); got != want {
+				t.Fatalf("coarse NEARBY with grids %v and cached cells %v = %v, want %v", grids, cells, got, want)
+			}
+			// Lowercase grids exercise normalization allocations. Only the
+			// endpoints without a cached ID may pay that backend-specific cost.
+			var missing []string
+			for i, id := range cells {
+				if id == 0 {
+					missing = append(missing, grids[i])
+				}
+			}
+			limit := nearbyRequiredConversionAllocations(missing, true)
+			if got := testing.AllocsPerRun(100, func() { f.MatchesWithContext(s, ctx) }); got > limit {
+				t.Fatalf("coarse NEARBY with cached cells %v allocated %g times, allowed %g", cells, got, limit)
+			}
+			if s.DXCoarseCellID != cells[0] || s.DECoarseCellID != cells[1] {
+				t.Fatalf("matcher changed shared spot cells %v", cells)
+			}
+		}
+	}
+}
+
 // The table loader is process-owned through sync.Once. A joined fresh child
 // loads private count-valid tables with the distant cells removed, exercising a
 // genuine mapping miss without altering the parent's maps or checked-in files.

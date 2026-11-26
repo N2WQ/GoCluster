@@ -107,11 +107,10 @@ func TestDeliverSelfSpotSnapshotsPayload(t *testing.T) {
 	f.SetSelfEnabled(true)
 	client := &Client{sessionProfile: &sessionProfile{filter: f},
 		server:   srv,
-		callsign: "K1ABC-2",
-
 		spotChan: make(chan *spotEnvelope, 1),
 		done:     make(chan struct{}),
 	}
+	client.setLoginCallsign("K1ABC-2")
 	srv.clients["K1ABC-2"] = client
 
 	src := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8")
@@ -158,11 +157,10 @@ func TestDeliverSelfSpotOwnedReusesSnapshot(t *testing.T) {
 	f.SetSelfEnabled(true)
 	client := &Client{sessionProfile: &sessionProfile{filter: f},
 		server:   srv,
-		callsign: "K1ABC-2",
-
 		spotChan: make(chan *spotEnvelope, 1),
 		done:     make(chan struct{}),
 	}
+	client.setLoginCallsign("K1ABC-2")
 	srv.clients["K1ABC-2"] = client
 
 	snapshot := spot.NewSpot("K1ABC", "W1XYZ", 14074.0, "FT8").SnapshotForAsync()

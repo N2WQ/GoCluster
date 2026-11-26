@@ -206,13 +206,13 @@ func BenchmarkDispatchSpotToWorkersValueJobs(b *testing.B) {
 }
 
 func newBroadcastWorkerTestClient(server *Server, buffer int) *Client {
-	return &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
+	client := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()},
 		server:   server,
-		callsign: "N0CALL",
-
 		spotChan: make(chan *spotEnvelope, buffer),
 		done:     make(chan struct{}),
 	}
+	client.setLoginCallsign("N0CALL")
+	return client
 }
 
 func waitForSpotCount(t *testing.T, ch <-chan *spotEnvelope, want int) {

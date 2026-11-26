@@ -243,16 +243,17 @@ func BenchmarkMatchingSnapshotLocationContext(b *testing.B) {
 		b.Fatal("benchmark needs mapped user cells")
 	}
 	for _, tc := range []struct {
-		name, expression string
-		cached, coarse   bool
-		want             bool
+		name, expression                 string
+		cached, coarse, spotCoarseCached bool
+		want                             bool
 	}{
-		{"no-nearby-missing-user-cache", "MODE=CW", false, false, true},
-		{"single-cached", "NEARBY", true, false, true},
-		{"repeated-cached", "NEARBY AND NEARBY", true, false, true},
-		{"short-circuit", "MODE=FT8 AND NEARBY", true, false, false},
-		{"missing-user-cache", "NEARBY", false, false, true},
-		{"coarse", "NEARBY", true, true, true},
+		{"no-nearby-missing-user-cache", "MODE=CW", false, false, false, true},
+		{"single-cached", "NEARBY", true, false, false, true},
+		{"repeated-cached", "NEARBY AND NEARBY", true, false, false, true},
+		{"short-circuit", "MODE=FT8 AND NEARBY", true, false, false, false},
+		{"missing-user-cache", "NEARBY", false, false, false, true},
+		{"coarse", "NEARBY", true, true, false, true},
+		{"coarse-cached", "NEARBY", true, true, true, true},
 	} {
 		b.Run(tc.name, func(b *testing.B) {
 			c := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(b, tc.expression),
@@ -266,6 +267,9 @@ func BenchmarkMatchingSnapshotLocationContext(b *testing.B) {
 			sp.DXMetadata.Grid, sp.DEMetadata.Grid = "FN31", "FN31"
 			if tc.coarse {
 				sp.BandNorm, sp.Band, sp.Frequency = "80m", "80m", 3520
+			}
+			if tc.spotCoarseCached {
+				sp.DXCoarseCellID, sp.DECoarseCellID = uint16(coarse), uint16(coarse)
 			}
 			s := &Server{}
 			b.ReportAllocs()

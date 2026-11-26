@@ -27,7 +27,8 @@ func historyTestSession(reader historyReaderFunc) (*Server, *Client) {
 	s.processor = commands.NewProcessor(nil, reader, nil, func() *cty.CTYDatabase { return canonicalTestCTY() }, nil, nil)
 	c := &Client{sessionProfile: &sessionProfile{dialect: DialectGo,
 		filter: unrestrictedTestFilter(),
-	}, server: s, callsign: "N2WQ", done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
+	}, server: s, done: make(chan struct{}), controlChan: make(chan controlMessage, 8)}
+	c.setLoginCallsign("N2WQ")
 	s.clients[c.callsign] = c
 	return s, c
 }

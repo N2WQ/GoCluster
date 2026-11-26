@@ -25,8 +25,9 @@ func TestNearbyEndpointsLiveAndCapturedHistory(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%.0f/%s/%s/blockMode=%v", frequency, test.dx, test.de, test.blockMode), func(t *testing.T) {
 				server := &Server{}
-				client := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "NEARBY")}, callsign: "VE3ABC-7",
+				client := &Client{sessionProfile: &sessionProfile{filter: passRuleTestFilter(t, "NEARBY")},
 					spotChan: make(chan *spotEnvelope, 1), done: make(chan struct{})}
+				client.setLoginCallsign("VE3ABC-7")
 				if test.blockMode {
 					client.filter = testRuleFilter(t,
 						filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "NEARBY"},
@@ -37,7 +38,7 @@ func TestNearbyEndpointsLiveAndCapturedHistory(t *testing.T) {
 				s := spot.NewSpotNormalized("W6ABC", "N0XYZ", frequency, "CW")
 				s.DXMetadata = spot.CallMetadata{Grid: test.dx, Continent: "NA"}
 				s.DEMetadata = spot.CallMetadata{Grid: test.de, Continent: "NA"}
-				if isSelfMatch(s, client.callsign) {
+				if client.matchesOwnCall(normalizedDXCall(s)) {
 					t.Fatal("consumer control accidentally uses the own-call exemption")
 				}
 				snapshot := client.captureHistoryFilter()

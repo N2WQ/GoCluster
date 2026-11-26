@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"dxcluster/filter"
+	"dxcluster/internal/testsupport"
 	"dxcluster/pathreliability"
 	"dxcluster/spot"
 )
@@ -310,8 +311,75 @@ func TestPathPredictionEnvelopeSparseTraceRecordedOnlyAtFormatting(t *testing.T)
 	}
 }
 
+func TestPathCoarseCellsPreservePredictionAndReuse(t *testing.T) {
+	server, client, sp := newMappedPathPredictionFixture(t, true, true)
+	userCoarse, dxCoarse := client.gridCoarseCell, sp.DXCoarseCellID
+	client.gridCoarseCell, sp.DXCoarseCellID = 0, 0
+	want, ok := server.computePathPredictionForClient(client, sp)
+	if !ok || want.userCoarseCell != userCoarse || want.dxCoarseCell != pathreliability.CellID(dxCoarse) ||
+		want.result.Source != pathreliability.SourceCombined {
+		t.Fatalf("grid-only control did not produce the expected observed path: %+v", want)
+	}
+	wantLine := server.formatSpotForClientWithPrediction(client, sp, want)
+	for _, tc := range []struct {
+		name string
+		user pathreliability.CellID
+		dx   uint16
+	}{
+		{"both missing", 0, 0}, {"user cached", userCoarse, 0},
+		{"DX cached", 0, dxCoarse}, {"both cached", userCoarse, dxCoarse},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client.gridCoarseCell, sp.DXCoarseCellID = tc.user, tc.dx
+			pred, ok := server.computePathPredictionForClient(client, sp)
+			if !ok || pred != want {
+				t.Fatalf("prediction changed with cache availability: got %+v, want %+v", pred, want)
+			}
+			reused, ok := server.reusablePathPredictionForClient(client, sp, &want)
+			if !ok || reused != want || server.formatSpotForClientWithPrediction(client, sp, reused) != wantLine {
+				t.Fatal("admission-to-writer reuse changed the prediction or glyph line")
+			}
+			if client.gridCoarseCell != tc.user || sp.DXCoarseCellID != tc.dx {
+				t.Fatal("read-only prediction published a missing coarse cell")
+			}
+		})
+	}
+}
+
+func BenchmarkPathCoarseCellReuse(b *testing.B) {
+	for _, cache := range []string{"cached", "missing"} {
+		b.Run(cache, func(b *testing.B) {
+			server, client, sp := newMappedPathPredictionFixture(b, true, true)
+			if cache == "missing" {
+				client.gridCoarseCell, sp.DXCoarseCellID = 0, 0
+			}
+			state := client.pathSnapshot()
+			pred, ok := server.computePathPredictionForState(state, sp)
+			if !ok || pred.result.Source != pathreliability.SourceCombined {
+				b.Fatal("fixture did not produce an observed path")
+			}
+			b.Run("compute", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					if _, ok := server.computePathPredictionForState(state, sp); !ok {
+						b.Fatal("missing prediction")
+					}
+				}
+			})
+			b.Run("revalidate", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					if _, ok := server.reusablePathPredictionForClient(client, sp, &pred); !ok {
+						b.Fatal("prediction was not reusable")
+					}
+				}
+			})
+		})
+	}
+}
+
 func BenchmarkPathPredictionEnvelopeNoFilterDisplay(b *testing.B) {
-	server, client, sp := newPathPredictionReuseBenchmarkFixture(b, 1, false, true)
+	server, client, sp := newMappedPathPredictionFixture(b, false, true)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		server.deliverJob(broadcastJob{spot: sp, clients: []*Client{client}, allowFast: true, allowMed: true, allowSlow: true})
@@ -321,7 +389,7 @@ func BenchmarkPathPredictionEnvelopeNoFilterDisplay(b *testing.B) {
 }
 
 func BenchmarkPathPredictionEnvelopePathFilterDisplay(b *testing.B) {
-	server, client, sp := newPathPredictionReuseBenchmarkFixture(b, 1, true, true)
+	server, client, sp := newMappedPathPredictionFixture(b, true, true)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		server.deliverJob(broadcastJob{spot: sp, clients: []*Client{client}, allowFast: true, allowMed: true, allowSlow: true})
@@ -331,7 +399,7 @@ func BenchmarkPathPredictionEnvelopePathFilterDisplay(b *testing.B) {
 }
 
 func BenchmarkPathPredictionEnvelopePathFilterNoDisplay(b *testing.B) {
-	server, client, sp := newPathPredictionReuseBenchmarkFixture(b, 1, true, false)
+	server, client, sp := newMappedPathPredictionFixture(b, true, false)
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
 		server.deliverJob(broadcastJob{spot: sp, clients: []*Client{client}, allowFast: true, allowMed: true, allowSlow: true})
@@ -388,11 +456,29 @@ func newPathPredictionReuseFixture(t testing.TB, samples int, sufficient bool, p
 	return server, client, sp, fallback
 }
 
-func newPathPredictionReuseBenchmarkFixture(b *testing.B, samples int, pathFilter bool, pathDisplay bool) (*Server, *Client, *spot.Spot) {
-	b.Helper()
-	server, client, sp, _ := newPathPredictionReuseFixture(b, samples, true, pathDisplay)
+// Standalone benchmark runs also need real H3 tables and observations in the
+// mapped cells. Otherwise the missing-mapper fast path bypasses the geometry.
+func newMappedPathPredictionFixture(t testing.TB, pathFilter, pathDisplay bool) (*Server, *Client, *spot.Spot) {
+	t.Helper()
+	if err := pathreliability.InitH3MappingsFromDir(testsupport.H3TableDir(t)); err != nil {
+		t.Fatal(err)
+	}
+	server, client, sp, _ := newPathPredictionReuseFixture(t, 0, true, pathDisplay)
+	sp.DXMetadata.Grid = "io91cd"
+	client.gridCell = pathreliability.EncodeCell(client.grid)
+	client.gridCoarseCell = pathreliability.EncodeCoarseCell(client.grid)
+	dx := pathreliability.EncodeCell(sp.DXMetadata.Grid)
+	dxCoarse := pathreliability.EncodeCoarseCell(sp.DXMetadata.Grid)
+	if client.gridCell == 0 || dx == 0 || client.gridCoarseCell == 0 || dxCoarse == 0 ||
+		client.gridCell == dx || client.gridCoarseCell == dxCoarse {
+		t.Fatal("fixture requires distinct mapped fine and coarse endpoints")
+	}
+	sp.DXCellID, sp.DXCoarseCellID = uint16(dx), uint16(dxCoarse)
+	now := server.now()
+	server.pathPredictor.UpdateWithReceiverHash(pathreliability.BucketCombined, client.gridCell, dx, client.gridCoarseCell, dxCoarse,
+		"20m", -12, 1, pathreliability.ObservationTimes{ObservedAt: now, ArrivedAt: now}, false, 1)
 	if pathFilter {
-		client.filter = testRuleFilter(b, filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "MODE=FT8 AND PATH=HIGH"})
+		client.filter = passRuleTestFilter(t, "MODE=FT8 AND PATH=HIGH")
 	}
 	return server, client, sp
 }

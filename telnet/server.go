@@ -411,6 +411,7 @@ type Client struct {
 	writer                  *bufio.Writer       // Buffered writer for client output
 	writeMu                 sync.Mutex          // Guards writer/deadline usage for echo + writer loop
 	callsign                string              // Client's amateur radio callsign
+	ownCall                 string              // Immutable SELF key set before registration; login retains its SSID.
 	peerSessionID           uint64              // Assigned once under clientsMutex when this session becomes current
 	broadcastShard          int                 // One-based worker affinity for this session; guarded by clientsMutex
 	connected               time.Time           // Timestamp when client connected
@@ -2599,7 +2600,7 @@ func (s *Server) DeliverSelfSpotOwned(dxCall string, snapshot *spot.Spot) {
 	s.clientsMutex.RLock()
 	clients := make([]*Client, 0, 1)
 	for client := range s.activeConnectionsLocked {
-		if client != nil && normalizedOwnCall(client.callsign) == dxCall {
+		if client != nil && client.matchesOwnCall(dxCall) {
 			clients = append(clients, client)
 		}
 	}
@@ -3015,22 +3016,16 @@ func normalizedDXCall(s *spot.Spot) string {
 	return spot.NormalizeSpotDXCallsign(s.DXCall)
 }
 
-// isSelfMatch reports whether the spot DX call matches the provided callsign.
-// Both values are normalized for portable/SSID consistency.
-func isSelfMatch(s *spot.Spot, callsign string) bool {
-	callsign = normalizedOwnCall(callsign)
-	if callsign == "" {
-		return false
-	}
-	dxCall := normalizedDXCall(s)
-	if dxCall == "" {
-		return false
-	}
-	return dxCall == callsign
+// setLoginCallsign initializes both identities before publishing the connection.
+// The registry uses the full login; SELF delivery ignores numeric SSIDs.
+func (c *Client) setLoginCallsign(login string) {
+	c.callsign = login
+	c.ownCall = spot.NormalizeOwnCallsign(login)
 }
 
-func normalizedOwnCall(callsign string) string {
-	return spot.NormalizeOwnCallsign(callsign)
+// matchesOwnCall takes a normalized DX-side key. Two absent calls never match.
+func (c *Client) matchesOwnCall(dxCall string) bool {
+	return dxCall != "" && c.ownCall == dxCall
 }
 
 func (job broadcastJob) valid() bool {
@@ -3046,6 +3041,7 @@ func (s *Server) deliverJob(job broadcastJob) {
 	if !job.valid() {
 		return
 	}
+	dxCall := normalizedDXCall(job.spot)
 	for _, client := range job.clients {
 		if client == nil {
 			continue
@@ -3059,13 +3055,12 @@ func (s *Server) deliverJob(job broadcastJob) {
 		case dedupePolicySlow:
 			policyAllowed = job.allowSlow
 		}
-		if !policyAllowed {
-			if !isSelfMatch(job.spot, client.callsign) {
-				continue
-			}
+		self := client.matchesOwnCall(dxCall)
+		if !policyAllowed && !self {
+			continue
 		}
 		matching := client.captureMatchingSnapshot()
-		if isSelfMatch(job.spot, client.callsign) {
+		if self {
 			if !matching.filter.SelfEnabled() || !matching.filter.AllowsToxicity(job.spot) {
 				continue
 			}
@@ -3951,7 +3946,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 		break
 	}
 
-	client.callsign = callsign
+	client.setLoginCallsign(callsign)
 	if web != nil && s.reputationGate != nil {
 		if result, ok := s.reputationGate.LookupIPForAdmission(spotterIP(address), loginTime); ok {
 			if len(result.CountryCode) == 2 {
@@ -4315,7 +4310,7 @@ func (s *Server) handleAcceptedClient(conn net.Conn, ticket *preloginTicket, acc
 			if spotEntry == nil {
 				return false
 			}
-			if isSelfMatch(spotEntry, client.callsign) {
+			if client.matchesOwnCall(normalizedDXCall(spotEntry)) {
 				return matching.filter.AllowsToxicity(spotEntry)
 			}
 			matches, _, _ := s.matchSnapshot(matching, spotEntry)
@@ -4608,7 +4603,7 @@ func (s *Server) reusablePathPredictionForClient(client *Client, sp *spot.Spot, 
 	if state.gridCell == pathreliability.InvalidCell || state.gridCell != pred.userCell || !strings.EqualFold(grid, pred.grid) {
 		return pathPrediction{}, false
 	}
-	if pathreliability.EncodeCoarseCell(grid) != pred.userCoarseCell {
+	if pathreliability.CoarseCellForGrid(grid, state.gridCoarseCell) != pred.userCoarseCell {
 		return pathPrediction{}, false
 	}
 	dxCell := pathreliability.InvalidCell
@@ -4625,7 +4620,7 @@ func (s *Server) reusablePathPredictionForClient(client *Client, sp *spot.Spot, 
 	if !strings.EqualFold(dxGrid, strings.TrimSpace(pred.dxGrid)) {
 		return pathPrediction{}, false
 	}
-	if pathreliability.EncodeCoarseCell(dxGrid) != pred.dxCoarseCell {
+	if pathreliability.CoarseCellForGrid(dxGrid, pathreliability.CellID(sp.DXCoarseCellID)) != pred.dxCoarseCell {
 		return pathPrediction{}, false
 	}
 	if pathPredictionBand(sp) != pred.band || pathPredictionMode(sp) != pred.mode {
@@ -4732,8 +4727,8 @@ func (s *Server) computePathPredictionForState(state pathState, sp *spot.Spot) (
 	if dxCell == pathreliability.InvalidCell {
 		return pathPrediction{}, false
 	}
-	userCoarse := pathreliability.EncodeCoarseCell(grid)
-	dxCoarse := pathreliability.EncodeCoarseCell(sp.DXMetadata.Grid)
+	userCoarse := pathreliability.CoarseCellForGrid(grid, state.gridCoarseCell)
+	dxCoarse := pathreliability.CoarseCellForGrid(sp.DXMetadata.Grid, pathreliability.CellID(sp.DXCoarseCellID))
 
 	band := pathPredictionBand(sp)
 	mode := pathPredictionMode(sp)

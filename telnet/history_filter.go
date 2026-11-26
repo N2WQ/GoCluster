@@ -34,6 +34,7 @@ func (c *Client) captureHistoryFilter() historyFilterSnapshot {
 		configuredSettings:      filter.SettingsConfiguration{CWSpeed: c.configuredSettings.CWSpeed},
 	},
 		callsign:           c.callsign,
+		ownCall:            c.ownCall,
 		operatingGeography: c.operatingGeography,
 	}
 	if c.filter != nil {
@@ -104,7 +105,7 @@ func (snapshot historyFilterSnapshot) matches(s *Server, sp *spot.Spot) bool {
 		return false
 	}
 	f := snapshot.client.filter
-	if isSelfMatch(sp, snapshot.client.callsign) {
+	if snapshot.client.matchesOwnCall(normalizedDXCall(sp)) {
 		return f.AllowsToxicity(sp)
 	}
 	if f == nil {

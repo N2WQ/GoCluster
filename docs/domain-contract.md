@@ -959,7 +959,8 @@ Preserve the actual geometry helper exactly. Either endpoint can match the
 user's H3 cell; a missing opposite endpoint cannot veto it. 160m, 80m and 60m
 use coarse resolution; other supported bands use fine resolution. Preserve
 normalized-band/raw-band/frequency fallback and fine endpoint-cache precedence;
-coarse matching converts grids rather than reusing fine cells. Only empty or
+coarse matching uses each endpoint's cached coarse cell when available and
+converts that endpoint's grid when the coarse cell is missing. Only empty or
 ??? after fallback forces false for the band; unsupported nonempty labels retain
 current fine-cell behavior. A missing required user cell or no matching endpoint
 makes NEARBY false. NOT negates that result and is not positive evidence of

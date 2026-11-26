@@ -15,7 +15,8 @@ import (
 
 func configurationTestClient(s *Server, call string) *Client {
 	c := newTestClient()
-	c.server, c.callsign, c.address = s, call, "192.0.2.8:8000"
+	c.server, c.address = s, "192.0.2.8:8000"
+	c.setLoginCallsign(call)
 	c.done = make(chan struct{})
 	c.controlChan = make(chan controlMessage, 8)
 	return c

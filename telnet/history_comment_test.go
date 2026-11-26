@@ -15,7 +15,8 @@ func TestHistoryCommentSnapshotAndDigest(t *testing.T) {
 	c := &Client{sessionProfile: &sessionProfile{filter: testRuleFilter(t,
 		filter.RuleDefinition{Slot: 0, Action: filter.RulePass, Expr: "COMMENT=POTA"},
 		filter.RuleDefinition{Slot: 1, Action: filter.RuleReject, Expr: "COMMENT=QRT"}),
-	}, callsign: "N0USER"}
+	}}
+	c.setLoginCallsign("N0USER")
 	sp := spot.NewSpot("K1ABC", "W1AAA", 14030, "CW")
 	sp.Comment = "POTA up 5"
 	snapshot := c.captureHistoryFilter()

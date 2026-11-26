@@ -186,8 +186,10 @@ func TestBroadcastAnnouncementRespectsFilter(t *testing.T) {
 
 func TestBroadcastSelfRespectsSelfToggle(t *testing.T) {
 	server := &Server{clients: make(map[string]*Client)}
-	allow := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "K1ABC", spotChan: make(chan *spotEnvelope, 1)}
-	block := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "K1ABC-7", spotChan: make(chan *spotEnvelope, 1)}
+	allow := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, spotChan: make(chan *spotEnvelope, 1)}
+	block := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, spotChan: make(chan *spotEnvelope, 1)}
+	allow.setLoginCallsign("K1ABC")
+	block.setLoginCallsign("K1ABC-7")
 	block.filter.SetSelfEnabled(false)
 	server.clients[allow.callsign], server.clients[block.callsign] = allow, block
 	server.deliverJob(broadcastJob{
@@ -200,11 +202,37 @@ func TestBroadcastSelfRespectsSelfToggle(t *testing.T) {
 }
 
 func TestDeliverSelfSpotRespectsSelfToggle(t *testing.T) {
-	client := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, callsign: "K1ABC", spotChan: make(chan *spotEnvelope, 1)}
+	client := &Client{sessionProfile: &sessionProfile{filter: unrestrictedTestFilter()}, spotChan: make(chan *spotEnvelope, 1)}
+	client.setLoginCallsign("K1ABC")
 	server := &Server{clients: map[string]*Client{client.callsign: client}}
 	client.filter.SetSelfEnabled(false)
 	server.DeliverSelfSpot(spot.NewSpot("K1ABC", "W1XYZ", 14025, "CW"))
 	if len(client.spotChan) != 0 {
 		t.Fatal("direct self delivery ignored independent control")
+	}
+}
+
+func TestSelfMatchUsesDXIdentityAndPreservesLogin(t *testing.T) {
+	for _, tc := range []struct {
+		login, dx, dxNorm string
+		match             bool
+	}{
+		{"K1ABC-7", " k1abc/P ", "", true},
+		{"K1ABC-7", "W1XYZ", "K1ABC/P-2", true},
+		{"K1ABC-7", "K1ABC", "W1XYZ", false},
+		{"W6/K1ABC-2", "K1ABC", "", false},
+		{"W6/K1ABC-2", "W6/K1ABC/P", "", true},
+		{"K1ABC", "", "", false},
+		{"", "", "", false},
+	} {
+		c := newTestClient()
+		c.setLoginCallsign(tc.login)
+		dx := normalizedDXCall(&spot.Spot{DXCall: tc.dx, DXCallNorm: tc.dxNorm})
+		for _, client := range []*Client{c, newHumanPreferenceCandidate(c), c.captureHistoryFilter().client} {
+			if client.callsign != tc.login || client.matchesOwnCall(dx) != tc.match {
+				t.Errorf("login=%q DX=%q DXNorm=%q: kept login %q, matched %v, want %v",
+					tc.login, tc.dx, tc.dxNorm, client.callsign, client.matchesOwnCall(dx), tc.match)
+			}
+		}
 	}
 }

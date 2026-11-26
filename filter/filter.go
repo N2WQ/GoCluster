@@ -405,12 +405,12 @@ func nearbySpotCells(s *spot.Spot, useCoarse bool) (pathreliability.CellID, path
 	if s == nil {
 		return pathreliability.InvalidCell, pathreliability.InvalidCell
 	}
+	if useCoarse {
+		return pathreliability.CoarseCellForGrid(s.DXMetadata.Grid, pathreliability.CellID(s.DXCoarseCellID)),
+			pathreliability.CoarseCellForGrid(s.DEMetadata.Grid, pathreliability.CellID(s.DECoarseCellID))
+	}
 	dxGrid := strings.TrimSpace(s.DXMetadata.Grid)
 	deGrid := strings.TrimSpace(s.DEMetadata.Grid)
-	if useCoarse {
-		return pathreliability.EncodeCoarseCell(dxGrid),
-			pathreliability.EncodeCoarseCell(deGrid)
-	}
 	dxCell := pathreliability.InvalidCell
 	if s.DXCellID != 0 {
 		dxCell = pathreliability.CellID(s.DXCellID)
