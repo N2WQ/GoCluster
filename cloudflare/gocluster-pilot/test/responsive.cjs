@@ -76,6 +76,106 @@ async function simulatedNode(page, count = 70, grid = "") {
   await page.locator(".stream .row").first().waitFor();
 }
 
+test("Spotter and Via keep independent preferences and identify the same report", async t => {
+  const page = await openPage(t, { width: 1440, height: 900 }, false);
+  await page.evaluate(() => localStorage.setItem("gcui.prefs", JSON.stringify({
+    colOrder: ["dx", "de", "freq"], colShow: { de: false }, colWidths: { de: 143, conf: 36 },
+  })));
+  await page.reload();
+  await simulatedNode(page, 1);
+
+  const spots = page.getByRole("region", { name: "Spots" });
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  const toggle = name => settings.getByRole("switch", { name, exact: true });
+  const columns = () => spots.locator(".thead > .th").evaluateAll(cells => cells.map(cell => cell.dataset.column));
+  await button(page, "Settings").click();
+  assert.equal(await toggle("Show Spotter").getAttribute("aria-checked"), "false");
+  assert.equal(await toggle("Show Via").getAttribute("aria-checked"), "true");
+  await toggle("Show Spotter").click();
+  await button(settings, "Close settings").click();
+  assert.deepEqual((await columns()).slice(0, 4), ["dx", "de", "via", "freq"]);
+  assert.equal((await spots.locator(".th-de").boundingBox()).width, 143);
+  const confidence = spots.locator(".th-conf .col-label");
+  assert.match(await confidence.textContent(), /CONF$/);
+  assert.equal(await confidence.evaluate(el => el.scrollWidth <= el.clientWidth), true);
+  const viaHeader = spots.locator(".th-via");
+  const grip = await viaHeader.getByRole("separator", { name: "Resize Via" }).boundingBox();
+  const viaWidth = Math.round((await viaHeader.boundingBox()).width);
+  const gripX = Math.round(grip.x + grip.width / 2);
+  const gripY = Math.round(grip.y + grip.height / 2);
+  await page.mouse.move(gripX, gripY);
+  await page.mouse.down();
+  await page.mouse.move(gripX + 20, gripY);
+  await page.mouse.up();
+  await page.waitForFunction(width => S.prefs.colWidths.via === width, viaWidth + 20);
+  await page.waitForFunction(width => document.querySelector(".th-via")?.offsetWidth === width, viaWidth + 20);
+  assert.equal((await spots.locator(".th-de").boundingBox()).width, 143);
+
+  const reports = [
+    ["K1RBN", "EA8BFK-#", "RBN", "RBN", 31, "RBN"],
+    ["K1PSK", "N1PSK", "PSKREPORTER", "PSKREPORTER", 9, "PSKr"],
+    ["K1DXS", "N1DXS", "UPSTREAM", "DXSUMMIT", null, "DXs"],
+    ["K1UP", "N1UP", "UPSTREAM", "N2UP-1", null, "N2UP-1"],
+    ["K1UP0", "N1UP", "UPSTREAM", null, null, "Upstream"],
+    ["K1FT", "N1FT-#", "FT8", "RBN-DIGITAL", 3, "RBN"],
+    ["K1UNK", "N1UNK", "PEER", null, null, "Peer"],
+    ["K1RBN", "UA9BA", "PEER", "EA2CW-1", 5, "EA2CW-1"],
+  ];
+  const sample = capture.find(record => record[0] === "s");
+  await page.evaluate(({ sample, reports }) => {
+    reports.forEach(([dx, de, source, node, snr], index) => {
+      const record = [...sample];
+      record[1] = 100 + index;
+      record[2] = String(BigInt(Date.now() + index) * 1000000n);
+      record[8] = snr;
+      record[12] = source;
+      record[13] = node;
+      record[14] = source === "UPSTREAM";
+      record[18] = [dx, ...sample[18].slice(1)];
+      record[19] = [de, ...sample[19].slice(1)];
+      cluster.session.onJsonLine(JSON.stringify(record));
+    });
+  }, { sample, reports });
+  const cells = async (row, spotter, via) => {
+    assert.equal(await row.locator(".c-de .mono").first().textContent(), spotter);
+    assert.equal(await row.locator(".c-via").textContent(), via);
+  };
+  for (const [dx, de, , , , via] of reports.slice(1, -1)) {
+    await cells(spots.getByRole("row").filter({ has: page.getByText(dx, { exact: true }) }), de, via);
+  }
+  const group = spots.locator(".repeat-group").filter({ hasText: "K1RBN" });
+  await cells(group.locator(".repeat-summary"), "EA8BFK-#", "RBN");
+  await group.getByRole("button", { name: /2 reports/ }).click();
+  await cells(group.locator(".repeat-member").first(), "UA9BA", "EA2CW-1");
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await group.locator(".repeat-summary .c-via").waitFor();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth), 320);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await button(page, "Settings").click();
+  await toggle("Show Via").click();
+  await button(settings, "Move Via left").click();
+  await button(settings, "Close settings").click();
+  assert.equal((await columns()).includes("via"), false);
+  assert.equal((await columns()).includes("de"), true);
+
+  await page.reload();
+  await simulatedNode(page, 1);
+  await view(page, "History").click();
+  await button(page, "Search").click();
+  const history = page.getByRole("region", { name: "History" });
+  const archived = history.getByRole("row").filter({ hasText: "W1AW" });
+  await archived.locator(".c-de").waitFor();
+  assert.equal(await history.locator(".th-via").count(), 0);
+  await button(page, "Settings").click();
+  assert.equal(await toggle("Show Via").getAttribute("aria-checked"), "false");
+  await toggle("Show Via").click();
+  await button(settings, "Close settings").click();
+  assert.deepEqual(await history.locator(".th").evaluateAll(cells => cells.slice(0, 4).map(cell => cell.dataset.column)),
+    ["dx", "via", "de", "freq"]);
+  await cells(archived, "K9XYZ", "Local");
+});
+
 test("spot geometry shares column preferences and the current grid across Spots and History", async t => {
   const page = await openPage(t, { width: 1440, height: 1000 }, false);
   await page.evaluate(() => localStorage.setItem("gcui.prefs", JSON.stringify({ colOrder: ["dx", "time"], colShow: { conf: false } })));

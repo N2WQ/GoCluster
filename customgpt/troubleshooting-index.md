@@ -12,8 +12,8 @@ and [TSR-0144](../docs/troubleshooting/TSR-0144-browser-console-short-screen-con
 Check the delivered asset hashes, browser version, orientation, and keyboard
 and browser toolbar state before attributing the symptom to a specific release.
 
-For a missing Azimuth or Distance column, a dash in either column, or a
-distance-unit question, use the [spot table settings](../cloudflare/gocluster-pilot/README.md#adjust-the-spot-table).
+For questions about the Spotter or Via columns, a missing Azimuth or Distance
+column, a dash in either path column, or distance units, use the [spot table settings](../cloudflare/gocluster-pilot/README.md#adjust-the-spot-table).
 
 For a missing band badge, an unexpectedly low or blank band count, or a badge
 that changes during a filter draft, use the [browser band-count guide](../cloudflare/gocluster-pilot/README.md#toolbar-and-band-counts).

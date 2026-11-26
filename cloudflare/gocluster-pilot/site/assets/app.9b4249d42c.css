@@ -234,7 +234,7 @@ body { background: var(--canvas); background-attachment: fixed; }
 .c-cmt { color: var(--muted); font-size: 13px; }
 .c-de { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; color: var(--muted); }
 .c-de .mono { overflow: hidden; text-overflow: ellipsis; }
-.src { font: 600 11.5px var(--font); text-transform: uppercase; letter-spacing: .05em; color: var(--soft); flex: none; }
+.c-via { font: 600 11.5px var(--font); letter-spacing: .03em; color: var(--soft); }
 .c-path, .c-conf { display: flex; justify-content: center; }
 .tfoot { padding: 6px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
 .newer { position: absolute; top: 40px; left: 50%; transform: translateX(-50%) rotate(0); z-index: 3; display: inline-flex; align-items: center; gap: 5px; padding: 6px 12px; border-radius: 999px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; font-size: 12px; box-shadow: var(--shadow); }
@@ -782,9 +782,21 @@ select.txt { appearance: auto; }
   .row { grid-template-columns: 1fr auto auto auto; grid-template-areas: "dx freq path conf" "where where mode time"; height: auto !important; padding: 8px 12px 8px 15px; row-gap: 3px; }
   .row > .c-dx { grid-area: dx; } .row > .c-freq { grid-area: freq; } .row > .c-path { grid-area: path; } .row > .c-conf { grid-area: conf; }
   .row > .c-where { grid-area: where; font-size: 12.5px; color: var(--muted); } .row > .c-mode { grid-area: mode; justify-self: end; } .row > .c-time { grid-area: time; justify-self: end; }
-  .row > .c-rep, .row > .c-cmt, .row > .c-de { display: none; }
+  .row > .c-rep, .row > .c-cmt { display: none; }
   .row:has(> .c-metric) { grid-template-areas: "dx freq path conf" "where where mode time" "azimuth distance distance distance"; }
+  .row:has(> :is(.c-de, .c-via)), :is(.repeat-summary, .repeat-member):has(> .c-rep) {
+    grid-template-areas: "dx freq path conf" "where where mode time" "spotter via snr snr";
+  }
+  .row:has(> .c-metric):has(> :is(.c-de, .c-via)), :is(.repeat-summary, .repeat-member):has(> .c-metric):has(> .c-rep) {
+    grid-template-areas: "dx freq path conf" "where where mode time" "spotter via snr snr" "azimuth distance distance distance";
+  }
+  .row:not(.repeat-summary, .repeat-member):has(> :is(.c-de, .c-via)):has(> .c-azimuth):not(:has(> .c-distance)) {
+    grid-template-areas: "dx freq path conf" "where where mode time" "spotter via azimuth azimuth";
+  }
+  .row > .c-de { grid-area: spotter; }
+  .row > .c-via { grid-area: via; }
   .row > .c-azimuth { grid-area: azimuth; text-align: left; }
+  .row:not(.repeat-summary, .repeat-member):has(> :is(.c-de, .c-via)):not(:has(> .c-distance)) > .c-azimuth { text-align: right; }
   .row > .c-distance { grid-area: distance; }
   .metric-label { display: inline; color: var(--muted); }
   .recipe-grid { grid-template-columns: 1fr; }
@@ -844,6 +856,7 @@ select.txt { appearance: auto; }
 .spot-grid .thead { position: sticky; top: 0; z-index: 2; }
 .spot-grid .tbody { overflow: visible; }
 .col-label { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; }
+.th-conf .grip { display: none; }
 .resize-grip { position: absolute; right: -5px; top: 0; bottom: 0; width: 10px; cursor: col-resize; touch-action: none; }
 .resize-grip:hover::after { content: ""; position: absolute; inset: 4px 4px; background: var(--accent); }
 @media (max-width: 760px) { .spot-grid { min-width: 0; } .spot-scroll { scroll-padding-top: 0; } }
@@ -880,11 +893,7 @@ select.txt { appearance: auto; }
 .repeat-member-call { overflow: hidden; text-overflow: ellipsis; color: var(--muted); font-size: 11px; }
 
 @media (max-width: 760px) {
-  :is(.repeat-summary, .repeat-member) > .c-de { display: flex; grid-row: 3; grid-column: 1 / 3; }
-  :is(.repeat-summary, .repeat-member) > .c-rep { display: flex; grid-row: 3; grid-column: 3 / -1; flex-direction: row; justify-self: end; }
-  :is(.repeat-summary, .repeat-member):has(> .c-metric):has(> :is(.c-de, .c-rep)) {
-    grid-template-areas: "dx freq path conf" "where where mode time" ". . . ." "azimuth distance distance distance";
-  }
+  :is(.repeat-summary, .repeat-member) > .c-rep { display: flex; grid-area: snr; flex-direction: row; justify-self: end; }
 }
 
 /* The page owns vertical scrolling when the docked frame cannot fit.

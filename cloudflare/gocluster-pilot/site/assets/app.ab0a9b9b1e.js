@@ -3950,6 +3950,16 @@ function pathMetric(label, kind, value, derived) {
   return html`<span class=${"c-metric c-" + kind} title=${mark ? `Estimate using ${derived}` : undefined}>
     <span class="metric-label">${label} </span><span class="mono">${mark ? "≈" : ""}${value ?? "—"}</span></span>`;
 }
+function viaLabel(s) {
+  switch (s.source) {
+    case "RBN": case "FT8": case "FT4": return "RBN";
+    case "PSKREPORTER": return "PSKr";
+    case "UPSTREAM": return s.node?.toUpperCase() === "DXSUMMIT" ? "DXs" : s.node || s.feed;
+    case "PEER": return s.node || s.feed;
+    default: return s.feed;
+  }
+}
+
 const COLUMNS = {
   time: { label: "UTC", tpl: "58px", minW: 0, cell: s => html`<span class="c-time mono" title=${s.t != null ? new Date(s.t).toUTCString() : "No time"}>${fmtTime(s.t)}<i class="age">${fmtAge(s.t)}</i></span>` },
   dx: { label: "DX", tpl: "minmax(104px,148px)", fixed: true, cell: (s, r, x) => html`<span class="c-dx">
@@ -3967,14 +3977,23 @@ const COLUMNS = {
     return pathMetric("Distance", "distance", km == null ? null : `${Math.round(miles ? km / 1.609344 : km)} ${miles ? "mi" : "km"}`, x.derived);
   } },
   cmt: { label: "Comment", tpl: "minmax(100px,1fr)", minW: 1040, cell: (s, r, x) => html`<span class="c-cmt" title=${x.group ? undefined : x.cmt}>${x.group ? "" : x.cmt}</span>` },
-  de: { label: "Heard by", tpl: "minmax(112px,156px)", minW: 860, cell: (s, r, x) => html`<span class="c-de"><span class="mono" title=${x.group ? s.deCall : undefined}>${s.deCall}</span>${x.group ? repeatCount(s.dxCall, x) : null}<span class="src">${s.feed === "PSKReporter" ? "PSKR" : s.feed}</span>${!x.group && s.node && s.node !== s.deCall && !(s.feed === "RBN" && s.node === "RBN") ? html`<span class="src" title="Originating node">via ${s.node}</span>` : null}</span>` },
+  de: { label: "Spotter", tpl: "minmax(96px,132px)", minW: 860, cell: (s, r, x) => html`<span class="c-de"><span class="mono" title=${s.deCall || undefined}>${s.deCall}</span>${x.group ? repeatCount(s.dxCall, x) : null}</span>` },
+  via: { label: "Via", tpl: "minmax(66px,96px)", minW: 860, cell: s => {
+    const label = viaLabel(s);
+    return html`<span class="c-via" title=${label || undefined}>${label}</span>`;
+  } },
   path: { label: "Path", tpl: "44px", align: "c", title: "Path to your grid", cell: (s, r, x) => html`<span class="c-path"><${PathGlyph} cls=${x.group ? x.best.path?.path : s.path} reportedBy=${x.best?.path?.deCall} /></span>` },
-  conf: { label: "Call", tpl: "36px", align: "c", title: "Callsign confidence", cell: (s, r, x) => html`<span class="c-conf"><${ConfBadge} conf=${x.group ? x.best.conf?.conf : s.conf} reportedBy=${x.best?.conf?.deCall} /></span>` },
+  conf: { label: "CONF", tpl: "48px", align: "c", title: "Callsign confidence", cell: (s, r, x) => html`<span class="c-conf"><${ConfBadge} conf=${x.group ? x.best.conf?.conf : s.conf} reportedBy=${x.best?.conf?.deCall} /></span>` },
 };
-const DEFAULT_ORDER = ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "path", "conf", "azimuth", "distance"];
+const DEFAULT_ORDER = ["time", "dx", "freq", "mode", "rep", "where", "cmt", "de", "via", "path", "conf", "azimuth", "distance"];
 function colOrder() {
   const o = (S.prefs.colOrder || []).filter(k => COLUMNS[k]);
-  for (const k of DEFAULT_ORDER) if (!o.includes(k)) o.push(k);
+  for (const k of DEFAULT_ORDER) {
+    if (o.includes(k)) continue;
+    // Older saved orders keep their Spotter position and gain Via beside it.
+    if (k === "via") o.splice(o.indexOf("de") + 1, 0, k);
+    else o.push(k);
+  }
   return o;
 }
 function colVisible(k) {
@@ -3997,6 +4016,7 @@ function SpotRow({ r, sel, fresh, cols, group, best, member, expanded, toggle })
   const derived = S.snap.operatingGridDerived ? (s.dx?.gridDerived ? "derived user and DX locators" : "a derived user locator")
     : s.dx?.gridDerived ? "a derived DX locator" : "";
   const openDetails = () => set({ selSpot: best?.snr || s, drawer: "spot" });
+  const reported = best?.snr || s;
   const x = {
     own: SIM.baseCallOf(s.dxCall) === S.snap.baseCall, watch: watchHit(s.dxCall),
     cmt: (s.cwSpeeds && s.cwSpeeds.length ? fmtCw(s) + " " : "") + (s.comment || ""),
@@ -4004,7 +4024,7 @@ function SpotRow({ r, sel, fresh, cols, group, best, member, expanded, toggle })
   };
   return html`<div role="row" tabindex=${group ? undefined : "0"} class=${cls("row", group && "repeat-summary", member && "repeat-member", !r.pass && "hidden", sel && "sel", fresh && "fresh", x.own && "own", x.watch && "watch", s.beacon && "beacon")} style=${`--bc:${BAND_COLOR[s.band] || "var(--line)"}`}
       onClick=${group ? undefined : openDetails} onKeyDown=${group ? undefined : e => { if (e.key === "Enter") openDetails(); }}>
-    ${cols.map(k => COLUMNS[k].cell((k === "freq" || k === "rep" || k === "de") && best?.snr ? best.snr : s, r, x))}
+    ${cols.map(k => COLUMNS[k].cell(k === "freq" || k === "rep" || k === "de" || k === "via" ? reported : s, r, x))}
   </div>`;
 }
 
@@ -4463,7 +4483,7 @@ function SettingsDrawer() {
         <h3>Display <span class="muted small">this browser</span></h3>
         <div class="field"><span class="flabel">Row density</span><${Seg} label="Density" value=${S.prefs.density} onChange=${v => setPrefs({ density: v })} options=${[["comfortable", "Comfortable"], ["compact", "Compact"]]} /></div>
         <div class="field"><span class="flabel">Time</span><${Seg} label="Time" value=${S.prefs.timeMode} onChange=${v => setPrefs({ timeMode: v })} options=${[["utc", "UTC"], ["local", "Local"]]} /></div>
-        <div class="field"><span class="flabel">Columns</span><${ColumnEditor} /><p class="hint">Or drag the column titles in the spot list. Narrow windows hide Comment, Heard by and Signal first.</p></div>
+        <div class="field"><span class="flabel">Columns</span><${ColumnEditor} /><p class="hint">Or drag the column titles in the spot list. Narrow desktop windows hide some columns to fit.</p></div>
         <div class="field"><span class="flabel">Distance units</span><${Seg} label="Distance units" value=${S.prefs.distanceUnit} onChange=${v => setPrefs({ distanceUnit: v })} options=${[["km", "Kilometers"], ["mi", "Miles"]]} /></div>
         <div class="field">
           <label for="watch">Watch list</label>
