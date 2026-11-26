@@ -256,7 +256,7 @@ test("Openings rows follow the band strip, including quiet bands and filter prev
   await page.getByText("No bands match your filters.", { exact: true }).waitFor();
 });
 
-test("Openings ranks matching reports by DXCC while keeping the station count and drill-down", async t => {
+test("Openings ranks up to five DXCC entities while keeping the station count and drill-down", async t => {
   const page = await editor(t, { rules: [rule(1, "BAND=20m AND MODE=CW")] });
   const italy = [248, "Italy", "EU"], sicily = [248, "Sicily", "EU"];
   const germany = [230, "Fed. Rep. of Germany", "EU"], france = [227, "France", "EU"], england = [223, "England", "EU"];
@@ -266,19 +266,21 @@ test("Openings ranks matching reports by DXCC while keeping the station count an
     report("I1AA", italy), report("I1AA", italy), report("IT9AA", sicily), report("IT9AA", sicily),
     report("DL1AA", germany), report("DL2AA", germany), report("DL3AA", germany),
     report("F1AA", france), report("F2AA", france), report("ZZ1AA", [null, null, "EU"]),
+    report("PA1AA", [263, "Netherlands", "EU"]), report("ON1AA", [209, "Belgium", "EU"]),
     report("M1AA", england, "FT8"), report("M1AA", england, "CW", "40m"),
     report("IG9AA", [248, "African Italy", "AF"]),
     report("3D2C", [489, "Conway Reef", "OC"]), report("E51AAA", [191, "North Cook Islands", "OC"]),
     report("E51BBB", [234, "South Cook Islands", "OC"]),
+    report("KH8S", [515, "Swains Island", "OC"]), report("VK9W", [303, "Willis Island", "OC"]),
   ]);
   await button(page, "Close filters").click();
   await openOpenings(page);
-  const europe = openingsCell(page, "20m to Europe: 10 stations. Top DX countries: I, DL, F");
+  const europe = openingsCell(page, "20m to Europe: 12 stations. Top DX countries: I, DL, F, G, ON");
   await europe.waitFor();
-  assert.deepEqual(await europe.locator(".op-prefixes > span").allTextContents(), ["I", "DL", "F"]);
+  assert.deepEqual(await europe.locator(".op-prefixes > span").allTextContents(), ["I", "DL", "F", "G", "ON"]);
   await openingsCell(page, "20m to Africa: 1 station. Top DX countries: I").waitFor();
 
-  const oceania = openingsCell(page, "20m to Oceania: 3 stations. Top DX countries: 3D2/C, E5/N, E5/S");
+  const oceania = openingsCell(page, "20m to Oceania: 5 stations. Top DX countries: 3D2/C, E5/N, E5/S, KH8/S, VK9W");
   for (const width of [1400, 320]) {
     await page.setViewportSize({ width, height: 920 });
     await oceania.scrollIntoViewIfNeeded();
@@ -289,7 +291,7 @@ test("Openings ranks matching reports by DXCC while keeping the station count an
         return { top, fits: left >= bounds.left && right <= bounds.right && bottom <= bounds.bottom };
       });
     });
-    assert.equal(boxes.length, 3);
+    assert.equal(boxes.length, 5);
     assert(boxes.every(box => box.fits), `Prefixes fit inside the cell at ${width}px`);
     if (width === 320) assert(boxes.at(-1).top > boxes[0].top, "Long labels wrap in the narrow grid");
   }

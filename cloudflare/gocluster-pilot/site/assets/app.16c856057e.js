@@ -4331,7 +4331,7 @@ function OpeningsView({ bands }) {
         const avg = g && g.pn ? g.p / g.pn : -1;
         const tone = avg < 0 ? "none" : avg >= 3.2 ? "high" : avg >= 2.4 ? "med" : avg >= 1.6 ? "low" : "poor";
         const prefixes = g ? [...g.countries].sort(([a, ac], [b, bc]) => bc - ac || a.localeCompare(b, "en"))
-          .slice(0, 3).map(([prefix]) => prefix) : [];
+          .slice(0, 5).map(([prefix]) => prefix) : [];
         const label = `${b} to ${DATA.CONT_NAME[c]}: ${plural(n, "station")}` + (prefixes.length ? `. Top DX countries: ${prefixes.join(", ")}` : "");
         return html`<td><button type="button" class=${cls("cell", "t-" + tone, !n && "zero")} style=${`--fill:${(n / max).toFixed(2)}`} disabled=${!n}
           aria-label=${label} onClick=${() => { location.hash = "stream"; set({ view: "stream", focusBand: b, focusCont: c }); }}>

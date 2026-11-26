@@ -45,7 +45,7 @@ current clock.
 
 Openings shows the same bands as the band strip, including quiet bands. Each
 cell covers one band and DX continent. The main number counts distinct spotted
-callsigns in the last 15 minutes. The prefixes underneath show up to three DXCC
+callsigns in the last 15 minutes. The prefixes underneath show up to five DXCC
 entities with the most matching reports still in the browser's recent buffer.
 Repeat reports count toward the ranking, and Sicily (`IT9`) contributes to
 Italy (`I`). Shading shows the average path class from your grid. Select a
