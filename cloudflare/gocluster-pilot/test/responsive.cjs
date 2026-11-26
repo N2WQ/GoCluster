@@ -76,6 +76,170 @@ async function simulatedNode(page, count = 70, grid = "") {
   await page.locator(".stream .row").first().waitFor();
 }
 
+const legacyReplacement = "Another login with your call. This session is being closed (multiple logins are not allowed).";
+
+async function controlledConnection(t) {
+  const page = await openPage(t, { width: 1440, height: 900 }, false);
+  const time = Date.parse("2026-11-24T00:00:00Z");
+  await page.clock.install({ time: new Date(time) });
+  await page.clock.pauseAt(new Date(time + 1000));
+  await page.evaluate(schemas => {
+    window.sockets = [];
+    window.accessChecks = [];
+    Math.random = () => 0.5;
+    cluster.deploy.startupHistory = 0;
+    cluster.checkAccess = () => new Promise(resolve => window.accessChecks.push(resolve));
+    class ControlledSocket {
+      constructor() { this.readyState = 0; window.sockets.push(this); }
+      open() { this.readyState = 1; this.onopen(); }
+      message(data) { this.onmessage({ data }); }
+      record(record) { this.message(JSON.stringify(record) + "\n"); }
+      drop() { this.readyState = 3; this.onclose({ code: 1006, reason: "" }); }
+      close(code, reason) {
+        this.readyState = 3;
+        queueMicrotask(() => this.onclose({ code, reason }));
+      }
+      send(text) {
+        if (!text.startsWith("GET YAML CONFIG")) return;
+        queueMicrotask(() => this.record(["yaml", JSON.stringify({
+          schema_version: 7, request_id: text.split(" ").at(-1), revision: "1",
+          configuration: { settings: { dialect: "go" }, filters: { go: {
+            include_beacons: "DEFAULT", allow_wwv: "DEFAULT", allow_wcy: "DEFAULT", allow_announce: "DEFAULT",
+            allow_self: "DEFAULT", allow_toxic: "DEFAULT", rules: [],
+          } } },
+        })]));
+      }
+    }
+    window.WebSocket = ControlledSocket;
+    window.finishJSONLogin = () => {
+      const socket = window.sockets.at(-1);
+      socket.message("JSON ON 1\r\n");
+      socket.record(["hello", 1, { node: "N0DE-1", login: "K1ABC-7" }]);
+      schemas.forEach(row => socket.record(row));
+    };
+    window.ready = () => {
+      const socket = window.sockets.at(-1);
+      socket.open();
+      socket.message("login:");
+      socket.message("K1ABC-7 de N0DE-1>");
+      window.finishJSONLogin();
+    };
+    cluster.connectLive("K1ABC-7");
+    set({ connectOpen: false });
+  }, capture.filter(row => row[0] === "schema"));
+  return page;
+}
+
+for (const [description, message] of [
+  ["typed with custom prose", JSON.stringify(["notice", "session-replaced", "Your browser was replaced."])],
+  ["typed with blank prose", JSON.stringify(["notice", "session-replaced", ""])],
+  ["legacy JSON text", JSON.stringify(["text", legacyReplacement])],
+  ["legacy startup text", legacyReplacement],
+]) {
+  test(`browser takeover stops retries for ${description}`, async t => {
+    const page = await controlledConnection(t);
+    await page.evaluate(({ message, inText, legacyReplacement }) => {
+      if (inText) window.sockets.at(-1).open();
+      else {
+        window.ready();
+        const socket = window.sockets.at(-1);
+        socket.record(["notice", "session-replaced", { toString: null, valueOf: null }]);
+        socket.record(["notice", "refused", legacyReplacement]);
+        socket.record(["text", legacyReplacement + " Extra text."]);
+        if (!cluster.live) throw new Error("An unrelated record stopped the connection");
+      }
+      window.sockets.at(-1).message(message + "\n");
+    }, { message, inText: description === "legacy startup text", legacyReplacement });
+    await page.clock.runFor(120000);
+    assert.deepEqual(await page.evaluate(() => [window.sockets.length, cluster.phase, cluster.snapshot().conn.retryAt]), [1, "failed", 0]);
+    const banner = page.locator(".conn-banner");
+    assert.match(await banner.textContent(), /Another browser connected as K1ABC-7/);
+    await button(banner, "Reconnect").click({ force: true });
+    assert.deepEqual(await page.evaluate(() => [window.sockets.length, cluster.snapshot().conn.attempt]), [2, 0]);
+  });
+}
+
+test("eight automatic retries bound repeated short Live connections after a lost notice", async t => {
+  const page = await controlledConnection(t);
+  for (const [attempt, delay] of [1000, 2000, 5000, 10000, 20000, 30000, 60000, 60000].entries()) {
+    await page.evaluate(() => { window.ready(); window.sockets.at(-1).drop(); });
+    await page.clock.runFor(delay - 1);
+    assert.equal(await page.evaluate(() => window.sockets.length), attempt + 1);
+    await page.clock.runFor(1);
+    assert.equal(await page.evaluate(() => window.sockets.length), attempt + 2);
+  }
+  await page.evaluate(() => { window.ready(); window.sockets.at(-1).drop(); });
+  await page.clock.runFor(120000);
+  assert.deepEqual(await page.evaluate(() => [window.sockets.length, cluster.snapshot().conn.error.code]), [9, "gave-up"]);
+  assert.match(await page.locator(".conn-banner").textContent(), /Automatic retries have stopped/);
+});
+
+for (const elapsed of [59999, 60000]) {
+  test(`a completed Live interval of ${elapsed} ms settles the retry budget at the boundary`, async t => {
+    const page = await controlledConnection(t);
+    await page.evaluate(() => { window.ready(); window.sockets.at(-1).drop(); });
+    await page.clock.runFor(1000);
+    await page.evaluate(() => window.ready());
+    await page.clock.runFor(elapsed);
+    await page.evaluate(() => window.sockets.at(-1).drop());
+    const delay = elapsed === 60000 ? 1000 : 2000;
+    await page.clock.runFor(delay - 1);
+    assert.equal(await page.evaluate(() => window.sockets.length), 2);
+    await page.clock.runFor(1);
+    assert.equal(await page.evaluate(() => window.sockets.length), 3);
+  });
+}
+
+test("JSON renegotiation interrupts the Live interval without spending a retry", async t => {
+  const page = await controlledConnection(t);
+  await page.evaluate(() => { window.ready(); window.sockets.at(-1).drop(); });
+  await page.clock.runFor(1000);
+  await page.evaluate(() => window.ready());
+  await page.clock.runFor(30000);
+  await page.evaluate(() => window.sockets.at(-1).record(["notice", "json-off", ""]));
+  assert.equal(await page.evaluate(() => cluster.phase), "negotiating");
+  await page.evaluate(() => window.finishJSONLogin());
+  await page.clock.runFor(30000);
+  await page.evaluate(() => window.sockets.at(-1).drop());
+  await page.clock.runFor(1999);
+  assert.equal(await page.evaluate(() => window.sockets.length), 2);
+  await page.clock.runFor(1);
+  assert.equal(await page.evaluate(() => window.sockets.length), 3);
+});
+
+test("retired socket and Access callbacks cannot change or duplicate the current retry", async t => {
+  const page = await controlledConnection(t);
+  await page.evaluate(async () => {
+    const first = window.sockets.at(-1);
+    first.drop();
+    cluster.retryNow();
+    const second = window.sockets.at(-1);
+    second.drop();
+    first.message("Another login with your call.\n");
+    first.drop();
+    window.accessChecks[0](true);
+    window.accessChecks[1](false);
+    await Promise.resolve();
+    cluster.scheduleRetry();
+  });
+  assert.deepEqual(await page.evaluate(() => [cluster.snapshot().conn.attempt, cluster.snapshot().conn.accessExpired]), [1, false]);
+  await page.clock.runFor(1000);
+  assert.equal(await page.evaluate(() => window.sockets.length), 3);
+  await page.clock.runFor(5000);
+  assert.equal(await page.evaluate(() => window.sockets.length), 3);
+});
+
+test("replacement records in Replay do not schedule or stop a Live connection", async t => {
+  const page = await controlledConnection(t);
+  const records = [
+    ...capture.filter(record => ["hello", "schema"].includes(record[0])),
+    ["notice", "session-replaced", ""], ["text", legacyReplacement],
+  ];
+  await page.evaluate(text => cluster.startReplay(text, "replacement capture"), records.map(JSON.stringify).join("\n"));
+  await page.clock.runFor(10000);
+  assert.deepEqual(await page.evaluate(() => [window.sockets.length, cluster.phase, cluster.snapshot().conn.error]), [1, "replay-done", null]);
+});
+
 test("Spotter and Via keep independent preferences and identify the same report", async t => {
   const page = await openPage(t, { width: 1440, height: 900 }, false);
   await page.evaluate(() => localStorage.setItem("gcui.prefs", JSON.stringify({

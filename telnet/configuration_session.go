@@ -656,7 +656,16 @@ func (s *Server) finishClientRegistration(c, evicted *Client, total int) {
 		// Preserve the configured duplicate-login notice and existing serialized
 		// close-after-control policy. Ownership already fences every retired save.
 		message := strings.TrimSpace(s.duplicateLoginMsg)
-		if message != "" {
+		if evicted.web != nil {
+			// The writer knows whether the browser has switched to JSON at this
+			// position in the queue. Even empty prose carries a reason in JSON.
+			if message != "" {
+				message += "\n"
+			}
+			if err := evicted.enqueueControl(controlMessage{kind: controlSessionReplaced, line: message, closeAfter: true}); err != nil && !isExpectedClientSendErr(err) {
+				log.Printf("Failed to enqueue replacement notice for %s: %v", evicted.identity(), err)
+			}
+		} else if message != "" {
 			_ = evicted.SendAndClose(message + "\n")
 		} else {
 			evicted.close("duplicate login")

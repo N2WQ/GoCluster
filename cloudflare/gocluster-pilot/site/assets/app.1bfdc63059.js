@@ -1469,6 +1469,7 @@ const RULES = (() => {
 const GCP = (() => {
   const ACK = "JSON ON 1";
   const NEGOTIATE = "SET JSON ON VERSION 1";
+  const LEGACY_REPLACEMENT = "Another login with your call. This session is being closed (multiple logins are not allowed).";
   const COMMIT_ENDS = new Set(["exhausted", "count", "budget"]);
   const MAX_PAGE_ROWS = 250;
   const MAX_TEXT_LINE = 4096;
@@ -1779,7 +1780,13 @@ const GCP = (() => {
         case "hb": return this.onHistoryBegin(rec);
         case "h": return this.onHistoryRow(rec);
         case "he": return this.onHistoryEnd(rec);
-        case "text": { const l = cleanText(rec[1]); this.emit("text", l); this.observeText(l); return; }
+        case "text": {
+          if (rec[1] === LEGACY_REPLACEMENT) return this.emit("notice", { code: "session-replaced", text: rec[1] });
+          const text = cleanText(rec[1]);
+          this.emit("text", text);
+          this.observeText(text);
+          return;
+        }
         case "yaml": return this.onYaml(rec[1]);
         case "bulletin": return this.emit("bulletin", { kind: str(rec[1]) || "MESSAGE", t: nsToMs(rec[2]), timeNs: str(rec[2]), from: str(rec[3]), text: cleanText(rec[4]) });
         case "notice": return this.onNotice(rec);
@@ -1816,7 +1823,13 @@ const GCP = (() => {
     }
     onSpot(rec) { const s = this.decode(rec); if (s) this.emit("spot", s); }
     onNotice(rec) {
-      const code = str(rec[1]) || "", text = cleanText(rec[2]);
+      const code = str(rec[1]) || "";
+      if (code === "session-replaced" && typeof rec[2] !== "string") {
+        this.counters.malformed++;
+        this.emit("protocol-error", { reason: "invalid session-replaced notice" });
+        return;
+      }
+      const text = cleanText(rec[2]);
       if (code === "json-off") {
         this.mode = "text";
         this.discardOpenPage("json-off");
@@ -2054,6 +2067,7 @@ const CONN = (() => {
     return (location.protocol === "https:" ? "wss://" : "ws://") + location.host + p;
   }
   const RETRY_DELAYS = [1, 2, 5, 10, 20, 30, 60, 60]; // seconds, then stop and offer Retry
+  const RETRY_RESET_MS = 60000;
   const MAX_SAMPLE = 4000;     // received spots kept for previews and the drawer
   const MAX_HISTORY_ROWS = 1000;
   const REPLAY_STEP_MS = 350;
@@ -2109,6 +2123,7 @@ const CONN = (() => {
       this.presets = []; this.presetsLoaded = false;
       this.sample = [];
       this.session = null; this.ws = null;
+      this.connectionAttempt = 0; this.liveSince = null;
       this.retry = { attempt: 0, timer: null, at: 0 };
       this.manual = false; this.fatal = false; this.stale = false; this.accessExpired = false;
       this.pausedUntil = 0;
@@ -2126,7 +2141,14 @@ const CONN = (() => {
     emit(ev, data) { for (const fn of this.handlers[ev] || []) fn(data); }
     line(dir, text) { this.emit("line", { dir, text, t: Date.now() }); }
     changed() { this.emit("state", this.snapshot()); }
-    setPhase(p) { this.phase = p; this.changed(); }
+    setPhase(p) {
+      if (p !== this.phase) {
+        if (this.phase === "live") this.finishLiveInterval();
+        if (p === "live") this.liveSince = performance.now();
+      }
+      this.phase = p;
+      this.changed();
+    }
 
     get baseCall() { return baseCallOf(this.loginCall); }
     get live() { return this.mode === "live" && this.phase === "live" && this.session && !this.session.closed; }
@@ -2175,6 +2197,7 @@ const CONN = (() => {
       this.open();
     }
     open() {
+      this.connectionAttempt++;
       this.setPhase("connecting");
       let ws;
       try { ws = new WebSocket(socketUrl()); }
@@ -2203,12 +2226,15 @@ const CONN = (() => {
     }
     closeSocket() {
       const ws = this.ws; this.ws = null;
+      this.liveSince = null;
       if (this.session) { this.session.close("closed by the console"); this.session = null; }
       this.clearConnectionViews();
       if (this.writing) { this.needsReview = true; this.writing = ""; }
       if (ws) try { ws.close(1000, "bye"); } catch (e) { /* already closing */ }
     }
     onSocketGone(opened, code, reason) {
+      const attempt = this.connectionAttempt;
+      this.finishLiveInterval();
       const s = this.session; this.session = null;
       if (s) s.close("connection lost");
       this.clearConnectionViews();
@@ -2224,7 +2250,7 @@ const CONN = (() => {
       this.line("sys", `Connection closed${why}.`);
       if (!opened) {
         this.checkAccess().then(expired => {
-          if (this.mode !== "live" || this.manual || this.ws) return;
+          if (attempt !== this.connectionAttempt || this.mode !== "live" || this.manual || this.fatal || this.ws) return;
           if (expired) {
             this.accessExpired = true;
             this.error = { code: "access", message: "Your Cloudflare sign-in has expired." };
@@ -2232,6 +2258,12 @@ const CONN = (() => {
           } else this.scheduleRetry();
         });
       } else this.scheduleRetry();
+    }
+    // A brief successful login still spends a retry. Settle the current socket's
+    // uninterrupted Live interval on exit, before deciding whether to retry.
+    finishLiveInterval() {
+      if (this.liveSince !== null && performance.now() - this.liveSince >= RETRY_RESET_MS) this.retry.attempt = 0;
+      this.liveSince = null;
     }
     // A WebSocket to an Access-protected host fails without a status when the
     // Access session has expired. A same-origin request shows the redirect.
@@ -2243,16 +2275,22 @@ const CONN = (() => {
       } catch (e) { return false; }
     }
     scheduleRetry() {
+      if (this.mode !== "live" || this.manual || this.fatal || this.ws || this.retry.timer !== null) return;
       const n = this.retry.attempt;
       if (n >= RETRY_DELAYS.length) {
-        this.error = this.error || { code: "gave-up", message: "Could not reach the cluster." };
+        this.error = { code: "gave-up", message: this.error?.message || "Could not reach the cluster." };
         this.setPhase("disconnected");
         return;
       }
       const ms = RETRY_DELAYS[n] * 1000 * (0.85 + Math.random() * 0.3);
       this.retry.attempt = n + 1;
       this.retry.at = Date.now() + ms;
-      this.retry.timer = setTimeout(() => { this.retry.timer = null; if (this.mode === "live" && !this.manual) this.open(); }, ms);
+      const timer = setTimeout(() => {
+        if (this.retry.timer !== timer) return;
+        this.cancelRetry();
+        if (this.mode === "live" && !this.manual && !this.fatal && !this.ws) this.open();
+      }, ms);
+      this.retry.timer = timer;
       this.setPhase("disconnected");
     }
     cancelRetry() { if (this.retry.timer) clearTimeout(this.retry.timer); this.retry.timer = null; this.retry.at = 0; }
@@ -2292,7 +2330,7 @@ const CONN = (() => {
 
     // ------------------------------------------------------------ session events
     onSession(session, ev, d) {
-      if (session !== this.session) return;
+      if (session !== this.session || (this.mode === "live" && this.fatal)) return;
       switch (ev) {
         case "state": return this.onSessionState(d);
         case "sent": return this.line("out", d);
@@ -2310,6 +2348,7 @@ const CONN = (() => {
           return this.emit("message", { kind: d.kind, t: d.t || Date.now(), from: d.from || "", text: d.text, solar: sol });
         }
         case "notice":
+          if (d.code === "session-replaced" && this.mode === "live") return session.fail("evicted", d.text);
           if (d.code === "presence-changed") this.observeLoggerPresence(d.text);
           if (d.code === "config-changed" || d.code === "save-status-changed") this.refreshSoon();
           if (d.code === "refused") { this.emit("notice", { text: d.text || "The node refused that request.", kind: "error" }); this.line("sys", "Refused: " + d.text); }
@@ -2362,8 +2401,10 @@ const CONN = (() => {
       if (state === "negotiating" || state === "await-hello") return this.setPhase("negotiating");
       if (state === "live") return this.onLive();
       if (state === "failed") {
-        this.error = detail;
-        this.line("sys", detail.message);
+        this.error = detail.code === "evicted"
+          ? { ...detail, message: `Another browser connected as ${this.loginCall}. Reconnect to take over here.` }
+          : detail;
+        this.line("sys", detail.message || this.error.message);
         if (FATAL.has(detail.code)) { this.fatal = true; this.cancelRetry(); }
         const ws = this.ws;
         if (ws) { try { ws.close(1000, "login failed"); } catch (e) { /* closing */ } }
@@ -2371,7 +2412,7 @@ const CONN = (() => {
       }
     }
     onLive() {
-      this.retry.attempt = 0; this.stale = false; this.error = null; this.accessExpired = false;
+      this.stale = false; this.error = null; this.accessExpired = false;
       this.line("sys", `Live on ${this.nodeCall || "the node"} as ${(this.hello && this.hello.login) || this.loginCall}.`);
       this.setPhase("live");
       // A new session always reloads the profile from the node.
@@ -4727,7 +4768,7 @@ function ConnectionBanner() {
   } else if (c.mode === "live" && c.phase === "failed") {
     kind = "error";
     body = html`${(c.error && c.error.message) || "The connection failed."}`;
-    acts = [["Change login", openPanel], ["Retry", () => cluster.retryNow()]];
+    acts = [["Change login", openPanel], [c.error?.code === "evicted" ? "Reconnect" : "Retry", () => cluster.retryNow()]];
   } else if (c.mode === "live" && c.phase === "disconnected") {
     kind = "warn";
     const secs = c.retryAt ? Math.max(0, Math.ceil((c.retryAt - Date.now()) / 1000)) : 0;
@@ -4758,7 +4799,6 @@ function ConnectionBanner() {
 // ---------------------------------------------------------------- connect panel
 const CONNECT_STEPS = [["connecting", "Open the secure connection"], ["login", "Log in with your callsign"], ["negotiating", "Switch to JSON (SET JSON ON VERSION 1)"], ["profile", "Load your profile"]];
 const ERROR_HELP = {
-  evicted: call => `Another login with ${call} replaced this one, usually your logger. Use an SSID that no other program uses.`,
   "login-refused": call => `The cluster did not accept ${call}.`,
   "json-refused": () => "The cluster refused JSON mode.",
   version: () => "This cluster speaks a different JSON version.",
@@ -4811,10 +4851,10 @@ function ConnectPanel() {
         <form class="field" onSubmit=${e => { e.preventDefault(); connect(false); }}>
           <label for="cp-call">Callsign with SSID</label>
           <div class="inline-form"><input id="cp-call" class="txt mono" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="N2WQ-9" value=${call} onInput=${e => { setCall(e.target.value.toUpperCase().replace(/\s/g, "")); setErr(""); setWarnSsid(false); }} />
-            <button type="submit" class="btn primary" disabled=${!call || connecting}>${connecting ? "Connecting…" : c.phase === "live" && call === S.snap.loginCall ? "Reconnect" : "Connect"}</button></div>
-          <p class="hint">Use an SSID your logger does not use, such as ${(call.replace(/-\d{1,2}$/, "") || "N2WQ")}-9. The cluster allows one login per SSID, so reusing your logger's SSID disconnects your logger.</p>
+            <button type="submit" class="btn primary" disabled=${!call || connecting}>${connecting ? "Connecting…" : (c.phase === "live" || c.error?.code === "evicted") && call === S.snap.loginCall ? "Reconnect" : "Connect"}</button></div>
+          <p class="hint">One browser and one Telnet logger can share a callsign and SSID. Connecting here replaces any other browser using that login.</p>
         </form>
-        ${warnSsid ? html`<div class="lint warn"><${Icon} name="warn" size=${15} /><span>${call} has no SSID. If your logger logs in as ${call}, connecting here will disconnect it.</span><button type="button" class="link sm" onClick=${() => connect(true)}>Connect anyway</button></div>` : null}
+        ${warnSsid ? html`<div class="lint warn"><${Icon} name="warn" size=${15} /><span>${call} has no SSID. Connect with this exact login?</span><button type="button" class="link sm" onClick=${() => connect(true)}>Connect anyway</button></div>` : null}
         ${err ? html`<div class="field-err" role="alert">${err}</div>` : null}
         ${c.mode === "live" ? html`<ol class="steps">${CONNECT_STEPS.map(([k, label], i) => {
           const st = stepState(i);

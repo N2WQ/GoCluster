@@ -92,6 +92,13 @@ Verify real-device behavior on an iPhone in Safari using an authorized test host
 
 ## Publish the tested revision
 
+For the reconnect change, publish the browser assets before upgrading the Go
+node. With an older node, the new browser recognizes the shipped duplicate-login
+message and bounds retries when no reason arrives. Once both are upgraded, test
+two browser tabs and a Telnet logger on the same full SSID using a test identity.
+Confirm the first tab offers **Reconnect**, the newer tab stays live, and the
+logger continues receiving spots.
+
 Run these commands in `cloudflare/gocluster-pilot` in the release checkout. Use an authorized Cloudflare account. For an interactive deployment, `login` may open a browser for consent. Wrangler performs the upload. Browser automation is optional.
 
 ```powershell

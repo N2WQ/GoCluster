@@ -270,6 +270,21 @@ func TestHumanRecoveryClockStopsTrickleBeforeBoundary(t *testing.T) {
 		if !errors.Is(err, errHumanRecoveryDeadline) || string(input.data) != "x\nSHOW OWN\n" || !timer.isStopped() {
 			t.Fatalf("ziutek=%v trickle consumed beyond five seconds: remaining=%q err=%v", ziutek, input.data, err)
 		}
+
+		// Ziutek can consume several complete NOPs within one codec read.
+		// Even if that read returns the newline late, it cannot accept it as
+		// a recovery boundary or consume the following command.
+		hooks, timer = humanManualHooks()
+		now.Store(hooks.now().UnixNano())
+		hooks.now = func() time.Time { return time.Unix(0, now.Load()) }
+		data := append(bytes.Repeat([]byte{IAC, telnetNOP}, 3), "\nSHOW OWN\n"...)
+		input = &humanTrickleReader{data: data, now: &now}
+		c, conn = newHumanRecoveryClient(t, nil, ziutek)
+		conn.input = input
+		err = c.recoverHumanLineWithHooks(hooks)
+		if !errors.Is(err, errHumanRecoveryDeadline) || !bytes.HasSuffix(input.data, []byte("SHOW OWN\n")) || !timer.isStopped() {
+			t.Fatalf("ziutek=%v NOP trickle changed recovery deadline: remaining=%x err=%v", ziutek, input.data, err)
+		}
 	}
 }
 
@@ -440,7 +455,7 @@ func FuzzHumanRecoveryBoundary(f *testing.F) {
 		// inside it must not create a command boundary in either real codec.
 		body := bytes.ReplaceAll(payload, []byte{IAC}, []byte{IAC, IAC})
 		input := append([]byte{'!', IAC, SB, 31}, body...)
-		input = append(input, IAC, SE, '\r', '\n')
+		input = append(input, IAC, SE, IAC, telnetNOP, '\r', '\n')
 		input = append(input, []byte("SHOW OWN\n")...)
 		for _, ziutek := range []bool{false, true} {
 			c, _ := newHumanRecoveryClient(t, input, ziutek)

@@ -255,11 +255,18 @@ func TestJSONRetiredPendingSwitchKeepsTerminalFraming(t *testing.T) {
 					t.Fatal("switch did not reach FIFO")
 				}
 				close(c.retired)
-				if err := c.SendAndClose("replacement notice\n"); err != nil {
+				if err := c.enqueueControl(controlMessage{kind: controlSessionReplaced, line: "replacement notice\n", closeAfter: true}); err != nil {
 					t.Fatal(err)
 				}
 				for _, line := range []string{"before retirement", "replacement notice"} {
 					if active {
+						if line == "replacement notice" {
+							f := jsonWireRecord(t, r, "notice")
+							if len(f) != 3 || string(f[1]) != `"session-replaced"` || string(f[2]) != fmt.Sprintf("%q", line) {
+								t.Fatalf("terminal notice framing %s", f)
+							}
+							continue
+						}
 						f := jsonWireRecord(t, r, "text")
 						if len(f) != 2 || string(f[1]) != fmt.Sprintf("%q", line) {
 							t.Fatalf("terminal framing %s", f)

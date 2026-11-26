@@ -172,7 +172,7 @@ func TestYAMLTrickleUsesFixedAbsoluteDeadline(t *testing.T) {
 				data    string
 			}{
 				{0, "---\n"}, {10 * time.Second, "value: "}, {20 * time.Second, "U"},
-				{29 * time.Second, "R"}, {30 * time.Second, "BAN\n...\nRESUME\n"},
+				{29 * time.Second, string([]byte{IAC, telnetNOP}) + "R"}, {30 * time.Second, "BAN\n...\nRESUME\n"},
 			}
 			for _, chunk := range chunks {
 				// A new raw read proves the previous chunk was drained before the
@@ -287,11 +287,12 @@ func newMachineTransportCoverageClient(t *testing.T, ziutek, blockWrite bool) (*
 		conn.writeEntered, conn.writeExited = make(chan []byte), make(chan struct{})
 	}
 	s := &Server{useZiutek: ziutek}
-	reader, writer, err := s.defaultWrapConn(conn)
+	wire := &inputWireConn{Conn: conn}
+	reader, writer, err := s.defaultWrapConn(wire)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &Client{sessionProfile: &sessionProfile{}, conn: conn, reader: bufio.NewReader(reader), writer: bufio.NewWriter(writer), server: s, done: make(chan struct{})}
+	c := &Client{sessionProfile: &sessionProfile{}, conn: conn, inputWire: wire, reader: bufio.NewReader(reader), writer: bufio.NewWriter(writer), server: s, done: make(chan struct{})}
 	t.Cleanup(c.interrupt)
 	return c, conn
 }

@@ -89,12 +89,20 @@ to be disabled. See [what the safeguards do](cw-call-correction-branch.md#what-t
   `native` transport strips supported IAC sequences in the input reader.
 - Negotiation and escaped IAC bytes never reach business handlers. Newlines
   inside Telnet subnegotiation do not end application lines.
+- Both inbound TCP transports silently consume a complete Telnet NOP, even
+  between a CR and its following LF or NUL. It has no application or pacing
+  effect. A complete NOP alone does not make an idle command partial. Its
+  bytes still count toward raw recovery limits, with existing deadlines and
+  incomplete framing safeguards.
 
 ## Session-only JSON output
 
 An authenticated client selects uncompressed JSON v1 with `SET JSON ON`.
 The writer flushes the text acknowledgement before the first JSON record.
 `SET JSON OFF` ends JSON with a flushed notice. Each login starts in text.
+An older browser displaced by a new browser on the same full SSID receives a
+terminal `session-replaced` notice when the writer is in JSON and can deliver
+it. See [ADR-0379](decisions/ADR-0379-browser-replacement-and-telnet-nop.md).
 Live and historical rows use the advertised spot and station layouts, including
 six-character locator display precision and per-recipient CW speed visibility.
 A YAML response for schema 6 or 7 occupies one record. History cursors advance

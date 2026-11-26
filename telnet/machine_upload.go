@@ -304,44 +304,39 @@ func (r *yamlReception) readByte() (byte, error) {
 			}
 			return 0, fmt.Errorf("%w: %w", errYAMLUploadFraming, err)
 		}
+		// Ziutek has already removed negotiations and decoded escaped IAC.
+		// Native NOP is transparent even while a CR companion is pending.
+		if b == IAC && r.client.web == nil && !r.client.decodedInput() {
+			cmd, err := r.readTelnetCommand()
+			if err != nil {
+				return 0, err
+			}
+			if cmd == telnetNOP {
+				continue
+			}
+			r.client.skipNextEOL = false
+			if cmd == IAC {
+				return IAC, nil
+			}
+			continue
+		}
 		if r.client.skipNextEOL {
 			r.client.skipNextEOL = false
 			if b == '\n' || b == 0 {
 				continue
 			}
 		}
-		// ziutek has already removed negotiations and decoded IAC escapes. A
-		// second pass would mistake its literal 0xFF data byte for negotiation.
-		if b != IAC || r.client.web != nil || (r.client.server != nil && r.client.server.useZiutek) {
-			return b, nil
-		}
-		b, err = r.telnetDataByte()
-		if err != nil {
-			return 0, err
-		}
-		if b == IAC {
-			return b, nil
-		}
+		return b, nil
 	}
 }
 
-func (r *yamlReception) telnetDataByte() (byte, error) {
-	cmd, err := r.client.reader.ReadByte()
-	if err == nil {
-		switch cmd {
-		case IAC:
-			return IAC, nil
-		case DO, DONT, WILL, WONT:
-			_, err = r.client.reader.ReadByte()
-		case SB:
-			err = r.client.consumeSubnegotiation()
-		}
-	}
+func (r *yamlReception) readTelnetCommand() (byte, error) {
+	cmd, err := r.client.readIACCommand()
 	if err != nil {
 		if isTimeoutErr(err) || !r.now().Before(r.deadline) {
 			return 0, errYAMLUploadDeadline
 		}
 		return 0, fmt.Errorf("%w: %w", errYAMLUploadFraming, err)
 	}
-	return 0, nil
+	return cmd, nil
 }

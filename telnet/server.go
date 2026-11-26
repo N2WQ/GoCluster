@@ -1923,7 +1923,9 @@ const (
 	// SB starts a telnet subnegotiation block.
 	SB = 250
 	// SE ends a telnet subnegotiation block.
-	SE = 240
+	SE        = 240
+	telnetNOP = 241
+	telnetGA  = 249
 )
 
 const (
@@ -2198,6 +2200,9 @@ func (s *Server) defaultWrapConn(conn net.Conn) (net.Conn, net.Conn, error) {
 	tconn, err := ztelnet.NewConn(conn)
 	if err != nil {
 		return nil, nil, err
+	}
+	if wire, ok := conn.(*inputWireConn); ok {
+		wire.ziutekNOP = true
 	}
 	return tconn, tconn, nil
 }
@@ -6444,7 +6449,7 @@ func (c *Client) enqueueControl(msg controlMessage) error {
 	if c == nil {
 		return errors.New("nil client")
 	}
-	if msg.raw == nil && strings.TrimSpace(msg.line) == "" {
+	if msg.kind != controlSessionReplaced && msg.raw == nil && strings.TrimSpace(msg.line) == "" {
 		return nil
 	}
 	select {
@@ -6796,24 +6801,20 @@ func (c *Client) ReadLine(maxLen int, context string, allowComma, allowWildcard,
 	return c.readInputLine(maxLen, context, allowComma, allowWildcard, allowConfidence, allowDot, false)
 }
 
-func (c *Client) consumeIACSequence() error {
+// readIACCommand consumes one native Telnet command and its operands. Callers
+// use the command byte to distinguish an escaped IAC or a complete NOP.
+func (c *Client) readIACCommand() (byte, error) {
 	cmd, err := c.reader.ReadByte()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	switch cmd {
-	case IAC:
-		// Escaped 0xFF byte; ignore because telnet input is ASCII-only here.
-		return nil
 	case DO, DONT, WILL, WONT:
 		_, err = c.reader.ReadByte()
-		return err
 	case SB:
-		return c.consumeSubnegotiation()
-	default:
-		// Single-byte command; ignore.
-		return nil
+		err = c.consumeSubnegotiation()
 	}
+	return cmd, err
 }
 
 // consumeSubnegotiation drains bytes until IAC SE, honoring IAC escapes.

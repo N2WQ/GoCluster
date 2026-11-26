@@ -2,6 +2,7 @@ package telnet
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -73,6 +74,7 @@ func TestSharedSSIDSlotsAndPrivateRouting(t *testing.T) {
 			ceilingReadThrough(t, logger, wire)
 			for !strings.Contains(browserReceive(t, first), wire) {
 			}
+			enableBrowserJSON(t, first)
 			snapshot := s.CurrentPeerMembership()
 			initialPeerChanges := peerChanges.Load()
 			if snapshot.RawCount != 1 || snapshot.Users[0].IP != "127.0.0.1" || s.GetClientCount() != 1 {
@@ -83,6 +85,7 @@ func TestSharedSSIDSlotsAndPrivateRouting(t *testing.T) {
 			ceilingReadThrough(t, refused, "Server full")
 			second, secondDone := connectSharedBrowser(t, s, call, "192.0.2.58")
 			ceilingReadThrough(t, logger, "192.0.2.58 (unknown).")
+			assertBrowserReplacementNotice(t, first, "Replaced by another login")
 			closeSharedBrowser(t, first, firstDone)
 			current := s.CurrentPeerMembership()
 			if current.Revision != snapshot.Revision || current.Users[0] != snapshot.Users[0] || peerChanges.Load() != initialPeerChanges {
@@ -92,6 +95,9 @@ func TestSharedSSIDSlotsAndPrivateRouting(t *testing.T) {
 				t.Fatal("healthy logger refused a private message after the browser flap")
 			}
 			ceilingReadThrough(t, logger, "private to logger")
+			self = spot.NewSpot(call+"-9/P", "K1ABC", 14026, "CW")
+			s.DeliverSelfSpot(self)
+			ceilingReadThrough(t, logger, self.FormatDXCluster()+"\r\n")
 			_ = logger.Close()
 			waitSessionCeiling(t, func() bool {
 				now := s.CurrentPeerMembership()
@@ -111,6 +117,42 @@ func TestSharedSSIDSlotsAndPrivateRouting(t *testing.T) {
 				t.Fatalf("final departure did not publish removal: %+v", current)
 			}
 		})
+	}
+}
+
+func TestBrowserReplacementNoticeWithBlankProse(t *testing.T) {
+	s := newSessionCeilingServer(t, 2)
+	s.duplicateLoginMsg = " \n"
+	old, oldDone, _ := browserLogin(t, s, "VE3EID", 10*time.Second)
+	next, nextDone := connectSharedBrowser(t, s, "VE3EID", "192.0.2.58")
+	assertBrowserReplacementNotice(t, old, "")
+	closeSharedBrowser(t, old, oldDone)
+	browserSend(t, next, "DIALECT")
+	for !strings.Contains(browserReceive(t, next), "Current dialect: GO") {
+	}
+	closeSharedBrowser(t, next, nextDone)
+}
+
+func assertBrowserReplacementNotice(t *testing.T, ws *websocket.Conn, prose string) {
+	t.Helper()
+	for {
+		lines := strings.Split(strings.TrimSuffix(browserReceive(t, ws), "\n"), "\n")
+		for i, line := range lines {
+			var fields []string
+			if err := json.Unmarshal([]byte(line), &fields); err != nil || len(fields) < 2 {
+				t.Fatalf("unexpected record before replacement: %q (%v)", line, err)
+			}
+			if fields[0] != "notice" || fields[1] != "session-replaced" {
+				continue
+			}
+			if len(fields) != 3 || fields[2] != prose || i != len(lines)-1 {
+				t.Fatalf("invalid terminal replacement notice: %q", line)
+			}
+			if _, _, err := ws.ReadMessage(); err == nil || isTimeoutErr(err) {
+				t.Fatalf("expected WebSocket close after terminal notice, got %v", err)
+			}
+			return
+		}
 	}
 }
 
@@ -147,7 +189,13 @@ func TestSharedSSIDCapacityDuringDualReplacementAndShutdown(t *testing.T) {
 	for _, ip := range []string{"192.0.2.58", "192.0.2.57", "192.0.2.58"} {
 		nextLogger := ceilingConnect(t, address, call)
 		ceilingReadThrough(t, nextLogger, "READY\r\n")
+		ceilingReadThrough(t, logger, "Replaced by another login\r\n")
+		browserSend(t, browser, "DIALECT")
+		for !strings.Contains(browserReceive(t, browser), "Current dialect: GO") {
+		}
 		nextBrowser, nextDone := connectSharedBrowser(t, s, call, ip)
+		for !strings.Contains(browserReceive(t, browser), "Replaced by another login\r\n") {
+		}
 		_ = logger.Close()
 		closeSharedBrowser(t, browser, done)
 		logger, browser, done = nextLogger, nextBrowser, nextDone
