@@ -76,6 +76,9 @@ func LoadConfusionModel(path string) (*ConfusionModel, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := rejectCorrectionLFSPointer(path, data); err != nil {
+		return nil, err
+	}
 	var raw confusionModelFile
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parse confusion model: %w", err)

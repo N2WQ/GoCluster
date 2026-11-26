@@ -205,7 +205,7 @@ func newClusterRuntime(versionInfo BuildInfo, cfg *config.Config, configSource s
 
 func (r *clusterRuntime) failStartup(format string, args ...any) bool {
 	message := fmt.Sprintf(format, args...)
-	log.Print(message)
+	log.Print(startupAbortPrefix + message)
 	r.startupErr = errors.New(message)
 	return false
 }
@@ -664,6 +664,10 @@ func loadSpotterReliabilityWithLog(path, label string) (spot.SpotterReliability,
 	if err != nil {
 		return nil, err
 	}
+	if n == 0 {
+		log.Printf("Warning: loaded 0 %sspotter reliability weights from %s", label, relPath)
+		return rel, nil
+	}
 	log.Printf("Loaded %d %sspotter reliability weights from %s", n, label, relPath)
 	return rel, nil
 }
@@ -780,8 +784,7 @@ func (r *clusterRuntime) initializeSignalResolverAndRecentStore() bool {
 		}
 		opened, err := openCustomSCPStoreWithRecovery(r.ctx, customOpts)
 		if err != nil {
-			log.Printf("Failed to open custom SCP database: %v", err)
-			return false
+			return r.failStartup("Failed to open custom SCP database: %v", err)
 		}
 		r.customSCPStore = opened
 		r.customSCPStore.StartCleanup()
@@ -1111,8 +1114,7 @@ func (r *clusterRuntime) initializeToxicityClassifier() bool {
 	cfgPath := filepath.Join(r.configSource, "toxicity.yaml")
 	toxicityCfg, present, err := toxicity.LoadConfig(cfgPath)
 	if err != nil {
-		log.Printf("Failed to load toxicity classifier config: %v", err)
-		return false
+		return r.failStartup("Failed to load toxicity classifier config: %v", err)
 	}
 	if !present || !toxicityCfg.Enabled {
 		log.Printf("Toxicity classifier disabled")
@@ -1124,8 +1126,7 @@ func (r *clusterRuntime) initializeToxicityClassifier() bool {
 	}
 	gate, err := toxicity.LoadSafeGate(safeGatePath)
 	if err != nil {
-		log.Printf("Failed to load toxicity safe gate: %v", err)
-		return false
+		return r.failStartup("Failed to load toxicity safe gate: %v", err)
 	}
 	classifier := toxicity.NewClassifier(toxicityCfg, gate, toxicity.NewClient(toxicityCfg, nil))
 	if classifier == nil {

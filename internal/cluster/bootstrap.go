@@ -273,20 +273,25 @@ func gridDBCheckOnMissEnabled(cfg *config.Config) (bool, string) {
 	return parsed, envGridDBCheckOnMiss
 }
 
+const startupAbortPrefix = "FATAL: startup aborted — "
+
 // Run is the live-binary entrypoint behind the root package main wrapper.
 // It preserves the existing configuration load, startup, and shutdown flow.
 func Run(versionInfo BuildInfo) (runErr error) {
 	currentBuildInfo = versionInfo
 	logging, err := newV6LogRuntime(os.Stderr)
 	if err != nil {
-		return err
+		// Only possible on a second Run while another in-process caller owns
+		// logging. Its destinations belong to that caller.
+		return fmt.Errorf("%s%w", startupAbortPrefix, err)
 	}
 	log.SetFlags(0)
 	log.SetOutput(&sharedProcessLogRouter)
 	var cluster *clusterRuntime
+	failurePrefix := startupAbortPrefix
 	defer func() {
 		if runErr != nil {
-			logging.startupFailure(fmt.Sprintf("Startup failed: %v", runErr))
+			logging.reportFailureToStderr(failurePrefix + runErr.Error())
 		}
 		if cluster != nil {
 			cluster.close()
@@ -305,8 +310,9 @@ func Run(versionInfo BuildInfo) (runErr error) {
 		if cluster.startupErr != nil {
 			return cluster.startupErr
 		}
-		return fmt.Errorf("cluster startup aborted")
+		return errors.New("initialization did not complete")
 	}
+	failurePrefix = "Cluster stopped: "
 	return cluster.waitForShutdown()
 }
 

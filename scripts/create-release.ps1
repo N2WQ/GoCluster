@@ -34,7 +34,9 @@
 	for local package testing.
 
 .NOTES
-	Prerequisites: Go toolchain, git, and GitHub CLI authentication for publishing.
+	Prerequisites: Native Windows, Go, hydrated Git LFS assets, and GitHub CLI
+	authentication for publishing. A networked build host requires elevation
+	for the clean-extract test's temporary program-specific firewall blocks.
 	Executed Go helpers disable CGO temporarily; caller CGO settings are restored.
 	Packaged binaries retain the caller CGO settings.
 	Side effects: builds a binary, creates package directories/zips, and can
@@ -274,6 +276,7 @@ function Copy-TrackedPayload {
         }
 
         $source = Join-Path $RepoRoot ($normalized -replace "/", [IO.Path]::DirectorySeparatorChar)
+        Assert-NoReparsePath $source
         $destination = Join-Path $StageRoot ($normalized -replace "/", [IO.Path]::DirectorySeparatorChar)
         $destinationDir = Split-Path -Parent $destination
         New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
@@ -294,9 +297,7 @@ function Assert-ForbiddenPayloadAbsent {
         "logs",
         "data/users",
         "data/reputation",
-        "data/secrets",
-        "data/fcc",
-        "data/rbn"
+        "data/secrets"
     )
 
     foreach ($pattern in $forbiddenPatterns) {
@@ -305,6 +306,64 @@ function Assert-ForbiddenPayloadAbsent {
             throw "Forbidden release payload path found: $pattern"
         }
     }
+}
+
+function Assert-ReleaseArchive {
+    param([string]$ZipPath, [string]$PackageDirectoryName, [object[]]$Inventory, [string]$AssetManifest)
+
+    # The working tree and staging directory are not authorities for release
+    # assets. Their expected hashes come from the captured release commit.
+    $required = @{}
+    foreach ($asset in (Get-Content -Raw -LiteralPath $AssetManifest | ConvertFrom-Json)) {
+        $required.Add($asset.path, $asset.sha256)
+    }
+    if (-not $required.Count) { throw 'Empty release asset manifest.' }
+    $expected = @{}
+    $directories = @{}
+    $directories[$PackageDirectoryName] = $true
+    foreach ($item in $Inventory) {
+        if ($item.Kind -eq 'directory') {
+            if ($item.Path -match '^data/(fcc|rbn)(/|$)' -and -not @($required.Keys | Where-Object { $_.StartsWith($item.Path + '/', [StringComparison]::Ordinal) }).Count) {
+                throw "Unexpected restricted release directory: $($item.Path)"
+            }
+            $directories.Add("$PackageDirectoryName/$($item.Path)", $true)
+            continue
+        }
+        if ($item.Path -match '^data/(fcc|rbn)/' -and -not $required.ContainsKey($item.Path)) {
+            throw "Unexpected restricted release asset: $($item.Path)"
+        }
+        if ($required.ContainsKey($item.Path) -and $item.Sha256 -ine $required[$item.Path]) {
+            throw "Release commit SHA-256 mismatch in staging: $($item.Path)"
+        }
+        $expected.Add("$PackageDirectoryName/$($item.Path)", $item.Sha256)
+    }
+    foreach ($path in $required.Keys) {
+        if (-not $expected.ContainsKey("$PackageDirectoryName/$path")) { throw "Missing required release asset: $path" }
+    }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $zip = [IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            foreach ($entry in $zip.Entries) {
+                $name = $entry.FullName.Replace('\', '/')
+                if ($name.EndsWith('/')) {
+                    # Empty directory entries are permitted only for genuine staged directories.
+                    if (-not $directories.ContainsKey($name.Substring(0, $name.Length - 1))) {
+                        throw "Unexpected ZIP directory: $name"
+                    }
+                    continue
+                }
+                if (-not $expected.ContainsKey($name)) { throw "Unexpected or duplicate ZIP file: $name" }
+                $stream = $entry.Open()
+                try { $actual = [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '') }
+                finally { $stream.Dispose() }
+                if ($actual -ine $expected[$name]) { throw "Release ZIP SHA-256 mismatch: $name" }
+                $expected.Remove($name)
+            }
+            if ($expected.Count) { throw "Missing ZIP file: $(($expected.Keys | Sort-Object) -join ', ')" }
+        } finally { $sha.Dispose() }
+    } finally { $zip.Dispose() }
 }
 
 function Copy-ReleaseDocument {
@@ -891,10 +950,13 @@ try {
     Copy-TrackedPayload -RepoRoot $repoRoot -StageRoot $stageRoot -AllowlistPrefixes @(
         "data/config",
         "data/cty",
-        "data/h3",
-        "data/peers/topology.db",
-        "data/skm_correction/rbnskew.json"
+        "data/h3"
     )
+    # Check the working config before canonicalizing committed inputs, including
+    # package-only previews, so a private config never silently becomes public.
+    Assert-PublicReleaseConfig -StageRoot $stageRoot
+    $assetManifest = $stageRoot + '.assets.json'
+    Invoke-GoRunHost @('run', './cmd/release_assets', '-repo', $repoRoot, '-commit', $commitId, '-stage', $stageRoot, '-manifest', $assetManifest)
     Render-ReleaseReadme -RepoRoot $repoRoot -StageRoot $stageRoot
     Copy-ReleaseDocument -RepoRoot $repoRoot -StageRoot $stageRoot `
         -SourceRelativePath "docs/OPERATOR_GUIDE.md" `
@@ -935,6 +997,8 @@ try {
 
     Compress-Archive -LiteralPath $stageRoot -DestinationPath $preparedZip
     $owner = Write-ReleaseOwnership -Paths $paths -PreparedStage $stageRoot -PreparedZip $preparedZip
+    Assert-ReleaseArchive $preparedZip $PackageDirectoryName $owner.Entries $assetManifest
+    & (Join-Path $PSScriptRoot 'test-release-smoke.ps1') -ZipPath $preparedZip -PackageDirectoryName $PackageDirectoryName
     Assert-ReleaseSourceUnchanged -RepoRoot $repoRoot -CommitId $commitId -AllowDirty:$AllowDirty
     Complete-ReleaseOutputs -Paths $paths -PreparedStage $stageRoot -PreparedZip $preparedZip -RunRoot $runRoot -NewOwner $owner
 

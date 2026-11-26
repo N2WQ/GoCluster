@@ -49,6 +49,12 @@ function New-ReleaseFixture {
     New-Item -ItemType Directory -Path (Join-Path $repo 'scripts') -Force | Out-Null
     Copy-Item -LiteralPath $script:Source -Destination (Join-Path $repo 'scripts/create-release.ps1')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'release-upgrade.ps1') -Destination (Join-Path $repo 'scripts/release-upgrade.ps1')
+    Write-FixtureFile (Join-Path $repo 'scripts/test-release-smoke.ps1') @'
+param($ZipPath, $PackageDirectoryName)
+if (-not (Test-Path -LiteralPath $ZipPath -PathType Leaf)) { throw 'Smoke did not receive a prepared ZIP.' }
+$global:ReleaseSafetyFixture.Calls.Add([pscustomobject]@{ Operation = 'smoke' })
+if ($global:ReleaseSafetyFixture.Fault -eq 'smoke') { throw 'Injected smoke failure.' }
+'@
     Write-FixtureFile (Join-Path $repo '.gitignore') ".tmp/`nready_to_run/`ngocluster-windows-amd64.zip`ndata/config.local/`n"
     Write-FixtureFile (Join-Path $repo 'main.go') "package main`nfunc main() {}`n"
     Write-FixtureFile (Join-Path $repo 'go.mod') "module example.test/releasefixture`n`ngo 1.26`n"
@@ -188,12 +194,24 @@ function global:go {
     $op = if ($nativeArgs[0] -eq 'mod') { 'go-tidy' }
         elseif ($nativeArgs -contains './cmd/codemap') { 'go-map' }
         elseif ($nativeArgs -contains './cmd/release_readme') { 'go-readme' }
+        elseif ($nativeArgs -contains './cmd/release_assets') { 'go-assets' }
         elseif ($nativeArgs[0] -eq 'build') { 'go-build-main' }
         else { throw "Unplanned Go operation: $($nativeArgs -join ' ')" }
     if ($state.Fault -cne $op) {
         if ($op -eq 'go-readme') {
             $out = [Array]::IndexOf($nativeArgs, '-out')
             [IO.File]::WriteAllText($nativeArgs[$out + 1], 'rendered public fixture README')
+        } elseif ($op -eq 'go-assets') {
+            $stage = $nativeArgs[[Array]::IndexOf($nativeArgs, '-stage') + 1]
+            $manifest = $nativeArgs[[Array]::IndexOf($nativeArgs, '-manifest') + 1]
+            $items = foreach ($path in @('data/rbn/priors/table.txt', 'data/fcc/allowlist.txt')) {
+                $file = Join-Path $stage $path
+                Write-FixtureFile $file 'fixture release bytes'
+                @{ path = $path; sha256 = (Get-FileHash -LiteralPath $file).Hash }
+            }
+            [IO.File]::WriteAllText($manifest, (ConvertTo-Json -InputObject @($items)))
+            if ($state.Fault -eq 'extra-fcc') { Write-FixtureFile (Join-Path $stage 'data/fcc/private.db') 'private fixture' }
+            if ($state.Fault -eq 'extra-rbn') { Write-FixtureFile (Join-Path $stage 'data/rbn/backup/table.txt') 'private fixture' }
         } elseif ($op.StartsWith('go-build-')) {
             $out = [Array]::IndexOf($nativeArgs, '-o')
             [IO.File]::WriteAllText($nativeArgs[$out + 1], "$op-$($state.BuildSerial)")
@@ -273,6 +291,22 @@ function global:Compress-Archive {
     $state.Calls.Add([pscustomobject]@{ Operation = 'archive'; Arguments = @($LiteralPath, $DestinationPath); GOOS = $env:GOOS; GOARCH = $env:GOARCH; CGO = $env:CGO_ENABLED })
     if ($state.Fault -eq 'archive') { throw 'Injected archive preparation failed.' }
     Microsoft.PowerShell.Archive\Compress-Archive -LiteralPath $LiteralPath -DestinationPath $DestinationPath
+    if ($state.Fault -in @('zip-missing', 'zip-altered', 'zip-pointer')) {
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $z = [IO.Compression.ZipFile]::Open($DestinationPath, [IO.Compression.ZipArchiveMode]::Update)
+        try {
+            $entry = @($z.Entries | Where-Object { $_.FullName.Replace('\','/').EndsWith('/data/rbn/priors/table.txt') })[0]
+            $name = $entry.FullName
+            $entry.Delete()
+            if ($state.Fault -ne 'zip-missing') {
+                $writer = [IO.StreamWriter]::new($z.CreateEntry($name).Open())
+                try {
+                    if ($state.Fault -eq 'zip-pointer') { $writer.WriteLine('version https://git-lfs.github.com/spec/v1') }
+                    else { $writer.WriteLine('altered fixture') }
+                } finally { $writer.Dispose() }
+            }
+        } finally { $z.Dispose() }
+    }
 }
 function Invoke-ActualRelease([string]$Repo, [hashtable]$Parameters, [string]$ExpectedFailure = '') {
     $Parameters = $Parameters.Clone()
@@ -387,6 +421,28 @@ try {
         foreach ($hash in $hashes) { Assert-Fixture ($hash.sha256 -ceq (Get-FileHash -LiteralPath (Join-Path $repo ('ready_to_run/' + $hash.file)) -Algorithm SHA256).Hash) 'Binary manifest checksum mismatch.' }
         $env:GOOS = 'linux'; $env:GOARCH = 'arm64'
     }
+    Run-ReleaseCase 'bad packaged assets and failed smoke preserve previous release' {
+        $repo = New-ReleaseFixture
+        Reset-ReleaseNative $repo
+        Invoke-ActualRelease $repo @{ PackageOnly = $true }
+        $oldStage = Get-FixtureBytes (Join-Path $repo 'ready_to_run')
+        $zip = Join-Path $repo 'gocluster-windows-amd64.zip'
+        $oldHash = (Get-FileHash -LiteralPath $zip).Hash
+        foreach ($fault in @('zip-missing','zip-altered','zip-pointer','extra-rbn','extra-fcc','smoke')) {
+            Reset-ReleaseNative $repo $fault
+            $pattern = switch -Wildcard ($fault) {
+                'zip-*' { 'data/rbn/priors/table.txt' }
+                'extra-*' { 'Unexpected restricted release (directory|asset)' }
+                'smoke' { 'Injected smoke failure' }
+            }
+            Invoke-ActualRelease $repo @{} $pattern
+            Assert-FixtureBytes (Join-Path $repo 'ready_to_run') $oldStage
+            Assert-Fixture ((Get-FileHash -LiteralPath $zip).Hash -ceq $oldHash) "Prior ZIP changed after $fault."
+            $operations = $global:ReleaseSafetyFixture.Calls.Operation
+            Assert-Fixture ($operations -notcontains 'git-tag') "Publication reached after $fault."
+            Assert-Fixture (($operations -contains 'smoke') -eq ($fault -eq 'smoke')) "Invalid smoke order for $fault."
+        }
+    }
     Run-ReleaseCase 'custom bracket paths and explicit publication target' {
         $repo = New-ReleaseFixture; Reset-ReleaseNative $repo
         Invoke-ActualRelease $repo @{ PackageDirectoryName = 'package[one]'; PackageName = 'asset[two]'; OutputDir = 'custom-out' }
@@ -432,7 +488,7 @@ try {
         Reset-ReleaseNative $repo
         $global:ReleaseSafetyFixture.RemoteBase = 'moved'
         Invoke-ActualRelease $repo @{ BaseReleaseTag = '261016r429e' } 'does not match local commit'
-        [IO.File]::AppendAllText((Join-Path $repo 'data/config/app.yaml'), "`r`n# private preview edit`r`n")
+        [IO.File]::AppendAllText((Join-Path $repo 'main.go'), "`r`n// private preview edit`r`n")
         Invoke-ActualRelease $repo @{ PackageOnly = $true; AllowDirty = $true; BaseReleaseTag = '261016r429e' } 'clean worktree'
         Invoke-ActualRelease $repo @{ PackageOnly = $true; AllowDirty = $true }
         $zip = [IO.Compression.ZipFile]::OpenRead((Join-Path $repo 'gocluster-windows-amd64.zip'))
@@ -552,7 +608,7 @@ try {
         Assert-Fixture (@($global:ReleaseSafetyFixture.Calls | Where-Object { $_.Operation -in @('git-tag', 'git-push', 'gh-create') }).Count -eq 0) 'PackageOnly created publication operations.'
     }
     foreach ($cgo in @('unset', '0', '1')) {
-        foreach ($fault in @('', 'go-map', 'go-readme', 'go-build-main')) {
+        foreach ($fault in @('', 'go-map', 'go-assets', 'go-readme', 'go-build-main')) {
             Run-ReleaseCase "helper CGO isolation: $cgo / $fault" {
                 if ($cgo -eq 'unset') { Remove-Item Env:CGO_ENABLED -ErrorAction SilentlyContinue }
                 else { $env:CGO_ENABLED = $cgo }
@@ -561,7 +617,7 @@ try {
                 $expectedFailure = if ($fault) { 'failed' } else { '' }
                 Invoke-ActualRelease $repo @{ PackageOnly = $true } $expectedFailure
                 $calls = $global:ReleaseSafetyFixture.Calls
-                $helpers = @($calls | Where-Object { $_.Operation -in @('go-map', 'go-readme') })
+                $helpers = @($calls | Where-Object { $_.Operation -in @('go-map', 'go-assets', 'go-readme') })
                 Assert-Fixture ($helpers.Count -gt 0) 'No executed helper was reached.'
                 foreach ($call in $helpers) {
                     Assert-Fixture ($call.CGO -ceq '0') "Helper inherited CGO: $($call.Operation)"
@@ -570,7 +626,7 @@ try {
                     Assert-Fixture ($call.CGO -ceq $expectedCGO) "Caller CGO changed for $($call.Operation)"
                 }
                 if (-not $fault) {
-                    Assert-Fixture ($helpers.Count -eq 2) 'Successful release did not execute both helpers.'
+                    Assert-Fixture ($helpers.Count -eq 3) 'Successful release did not execute every preparation helper.'
                     Assert-Fixture (@($calls | Where-Object Operation -like 'go-build-*').Count -eq 1) 'Cluster binary build was not checked exactly once.'
                 } else { Assert-NoReleaseAfter $fault }
             }

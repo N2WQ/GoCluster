@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -151,6 +152,49 @@ func TestCorrectionNumericRuntimeValidAndDisabledControls(t *testing.T) {
 	disabled.initializeCorrectionModels()
 	if disabled.startupErr != nil || disabled.confusionModel != nil {
 		t.Errorf("disabled model must ignore its unused asset and parameter: %v", disabled.startupErr)
+	}
+}
+
+func TestCorrectionAssetsReportWarningAndAbortInSystemLog(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "system")
+	writer, err := newV6LogRuntime(io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { writer.close(time.Now().Add(2 * time.Second)) })
+	writer.startFiles(config.LoggingConfig{Enabled: true, Dir: dir, RetentionDays: 7}, nil, false)
+	oldWriter := log.Writer()
+	log.SetOutput(&sharedProcessLogRouter)
+	t.Cleanup(func() { log.SetOutput(oldWriter) })
+
+	global := correctionNumericFile(t, "weights.txt", "N0ABC 0\n")
+	cw := correctionNumericFile(t, "empty.txt", "# deliberately empty\n")
+	model := correctionNumericFile(t, "model.json", "version https://git-lfs.github.com/spec/v1\r\noid sha256:"+strings.Repeat("f", 64)+"\r\nsize 292827\r\n")
+	r := correctionNumericRuntime(t, config.CallCorrectionConfig{
+		SpotterReliabilityFile: global, SpotterReliabilityFileCW: cw,
+		ConfusionModelEnabled: true, ConfusionModelFile: model,
+	})
+	if r.initializeCorrectionModels() || r.startupErr == nil || r.confusionModel != nil || r.spotterReliabilityCW == nil {
+		t.Fatalf("expected empty CW table to load and pointer model to abort: %v", r.startupErr)
+	}
+	writer.close(time.Now().Add(2 * time.Second))
+	data, err := os.ReadFile(filepath.Join(dir, "system.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for _, want := range []string{
+		"Loaded 1 spotter reliability weights from " + global,
+		"Warning: loaded 0 CW spotter reliability weights from " + cw,
+		"FATAL: startup aborted — Invalid call_correction.confusion_model_file",
+		model + " is a Git LFS pointer", "Download raw file",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("system log missing %q: %s", want, got)
+		}
+	}
+	if strings.Contains(got, "RTTY") {
+		t.Errorf("unset RTTY table produced a message: %s", got)
 	}
 }
 

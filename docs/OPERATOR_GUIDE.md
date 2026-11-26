@@ -922,6 +922,12 @@ Common startup failures are usually config-path or config-content issues:
   generates or rewrites them. Relative paths use the process working directory.
   Replay requires the same tables when CustomSCP is enabled. See
   [ADR-0344](decisions/ADR-0344-required-shared-geography.md).
+- The Windows release supplies its public RBN models, FCC allowlist, and H3
+  tables. The public Windows config also enables the separately installed
+  VOACAP engine. Set `voacap_fallback.voacap_home` in the active
+  `path_reliability.yaml` to your installation, or set
+  `voacap_fallback.enabled: false` to run without it. The isolated release
+  smoke test disables VOACAP to avoid accessing the host installation.
 - On Linux and other non-Windows builds, `voacap_fallback.enabled: true` does
   not fail startup only because the Windows VOACAP engine is unavailable.
   Startup logs that the VOACAP fallback is disabled and continues without the

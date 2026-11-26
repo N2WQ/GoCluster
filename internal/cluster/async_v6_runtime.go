@@ -213,7 +213,7 @@ func (l *v6LogRuntime) startFiles(cfg config.LoggingConfig, hook logRotateHook, 
 	}
 }
 
-func (l *v6LogRuntime) startupFailure(message string) {
+func (l *v6LogRuntime) reportFailureToStderr(message string) {
 	if len(message) <= asynclog.MaxRecordBytes {
 		l.early.EmitString(time.Now().UTC(), 0, message)
 	}

@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0378 | Windows release startup assets | Accepted | 2026-11-26 | Commit-bound inputs, ZIP integrity and isolated startup | refines ADR-0076 and ADR-0242 | none | [ADR-0378](decisions/ADR-0378-windows-release-startup-assets.md) |
 | ADR-0377 | Browser band strip filter scope | Accepted | 2026-11-25 | Band eligibility, draft previews and matching report counts | none | none | [ADR-0377](decisions/ADR-0377-browser-band-strip-filter-scope.md) |
 | ADR-0376 | Shared browser and Telnet profile | Accepted | 2026-11-24 | Full-SSID ownership, generation fencing and bounded notices | extends ADR-0375 | none | [ADR-0376](decisions/ADR-0376-shared-browser-telnet-profile.md) |
 | ADR-0375 | Private browser console transport | Accepted | 2026-11-23 | Worker asset hosting, private WebSocket admission and bounded cluster sessions | extends ADR-0374 | none | [ADR-0375](decisions/ADR-0375-private-browser-console-transport.md) |

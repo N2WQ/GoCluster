@@ -60,6 +60,12 @@ capture that OS error separately from YAML/config diagnostics. See
   load error. Nonfinite weights, negative counts, invalid edges and overflowing
   totals fail. An enabled model still loads at weight zero. Disabling the model
   is a separate explicit setting, not an automatic recovery action.
+- For `FATAL: startup aborted` with a missing correction asset or a Git LFS
+  pointer, use the [Windows release recovery table](../../download/README.md#recover-an-older-windows-zip)
+  for the binary's tag. A zero-weight warning identifies a table that parsed
+  with no usable rows. The missing FCC allowlist warning has a separate
+  effect on licensing exceptions. FCC/ISED cancellation immediately after a
+  fatal startup error can be a consequence of shutdown.
 
 ## Must Avoid
 

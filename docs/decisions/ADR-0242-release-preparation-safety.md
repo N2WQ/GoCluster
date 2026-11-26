@@ -4,6 +4,9 @@
 - Date: 2026-10-04
 - Decision Origin: Troubleshooting chat
 
+[ADR-0378](ADR-0378-windows-release-startup-assets.md) adds commit-bound
+runtime assets and a clean-extraction startup check before output replacement.
+
 ## Context
 
 Release preflight hid the Git paths responsible for dirty-worktree refusal.

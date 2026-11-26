@@ -7,6 +7,8 @@ contracts remain.
 
 [ADR-0242](ADR-0242-release-preparation-safety.md) refines preparation,
 output replacement, source rechecks, and publication destination/commit binding.
+[ADR-0378](ADR-0378-windows-release-startup-assets.md) specifies startup asset
+selection, commit-bound ZIP checks and clean-extraction validation.
 
 - Status: Accepted
 - Date: 2026-04-24

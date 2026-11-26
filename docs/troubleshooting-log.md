@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0145 | Missing correction assets in Windows releases | Monitoring | 2026-11-26 | Fresh installation, Git LFS and release packaging | ADR-0378 | [TSR-0145](troubleshooting/TSR-0145-windows-release-models.md) |
 | TSR-0144 | Browser Console Controls Clipped on Short Screens | Monitoring | 2026-11-24 | browser console layout and focus | none | `docs/troubleshooting/TSR-0144-browser-console-short-screen-controls.md` |
 | TSR-0143 | Path Cap Diagnostic Ageing | Monitoring | 2026-11-24 | path reliability, receiver accounting, Telnet diagnostics | none | `docs/troubleshooting/TSR-0143-path-cap-diagnostic-ageing.md` |
 | TSR-0142 | IPinfo Startup Credential | Monitoring | 2026-11-22 | IPinfo startup configuration and release packaging | ADR-0372 | `docs/troubleshooting/TSR-0142-ipinfo-startup-credential.md` |

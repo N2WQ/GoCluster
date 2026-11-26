@@ -40,11 +40,21 @@ also replace peer hosts, login callsigns, and passwords in `peering.yaml`.
 
 ## Check Runtime Data
 
-Before a fresh start, confirm that the active `pipeline.yaml` model files
-exist. The supplied configuration refers to three spotter-reliability files
-and a confusion model under `data/rbn/priors`. If the ZIP omits them, copy them
-from the matching tagged source. See the [download guide](https://github.com/N2WQ/GoCluster/blob/main/download/README.md)
-for the paths required by release 261121r74c2.
+Extract the entire ZIP. It includes the three spotter reliability tables and
+the confusion model under `data/rbn/priors`, plus the FCC exception list at
+`data/fcc/allowlist.txt`. Keep this directory layout beside `gocluster.exe`.
+On startup the system log reports a weight count for each table and confirms
+that the confusion model loaded. A zero-weight warning names the table to
+check. If startup stops, look for `FATAL: startup aborted` and the named path.
+
+The public Windows config also enables the VOACAP forecast fallback. This
+requires a separate VOACAP installation at the `voacap_home` set in
+`path_reliability.yaml` (the default is `C:\itshfbc`). If you run without
+VOACAP, set `enabled: false` under `voacap_fallback` in your private copy of
+that file before starting the node.
+
+For a previously published ZIP with missing data, follow the
+[recovery instructions for your release tag](https://github.com/N2WQ/GoCluster/blob/main/download/README.md#recover-an-older-windows-zip).
 
 Use the release tag in `data/config-bundle.json` to open matching source docs
 for references outside the ZIP.

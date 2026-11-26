@@ -118,6 +118,26 @@ func TestB21ReplayReliabilityRefusalBeforeScratchAndOwners(t *testing.T) {
 	}
 }
 
+func TestReplayRejectsLFSPointerAssets(t *testing.T) {
+	for _, key := range []string{"spotter_reliability_file", "confusion_model_file"} {
+		t.Run(key, func(t *testing.T) {
+			r, sentinel, contents := b21ReplayRunner(t)
+			path := b21ReplayWriteAsset(t, "version https://git-lfs.github.com/spec/v1\noid sha256:"+strings.Repeat("a", 64)+"\nsize 6868\n")
+			if key == "confusion_model_file" {
+				r.cfg.CallCorrection.ConfusionModelEnabled = true
+				r.cfg.CallCorrection.ConfusionModelFile = path
+			} else {
+				r.cfg.CallCorrection.SpotterReliabilityFile = path
+			}
+			err := r.buildReplayRuntime()
+			b21ReplayAssertRefused(t, r, sentinel, contents, err, key)
+			if err == nil || !strings.Contains(err.Error(), "Git LFS pointer") || !strings.Contains(err.Error(), "Download raw file") {
+				t.Fatalf("expected actionable pointer error, got %v", err)
+			}
+		})
+	}
+}
+
 func TestB21ReplayConfusionRefusalBeforeScratchAndOwners(t *testing.T) {
 	for _, tc := range []struct{ name, from, to string }{
 		{"negative_substitution", "[[1,0],[0,1]]", "[[-1,0],[0,1]]"},

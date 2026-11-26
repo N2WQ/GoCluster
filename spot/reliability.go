@@ -7,6 +7,7 @@ package spot
 
 import (
 	"bufio"
+	"bytes"
 	"dxcluster/strutil"
 	"fmt"
 	"math"
@@ -19,6 +20,17 @@ import (
 // minimum are ignored by call correction consensus. Callers must not mutate a
 // borrowed table while a resolver uses it; loaded tables are read-only assets.
 type SpotterReliability map[string]float64
+
+// Both correction formats are distributed through Git LFS. Check before
+// parsing: the permissive weights parser otherwise accepts "size N" as a row.
+func rejectCorrectionLFSPointer(path string, data []byte) error {
+	const header = "version https://git-lfs.github.com/spec/v1"
+	rest, found := bytes.CutPrefix(data, []byte(header))
+	if found && (len(rest) == 0 || rest[0] == '\n' || bytes.HasPrefix(rest, []byte("\r\n"))) {
+		return fmt.Errorf("%s is a Git LFS pointer; use GitHub's Download raw file button on the matching release tag to get the data", path)
+	}
+	return nil
+}
 
 // LoadSpotterReliability loads per-spotter reliability weights from a text file.
 // Key aspects: Parses SPOTTER WEIGHT lines and clamps to [0,1].
@@ -43,6 +55,11 @@ func LoadSpotterReliability(path string) (SpotterReliability, int, error) {
 	lineNumber := 0
 	for scanner.Scan() {
 		lineNumber++
+		if lineNumber == 1 {
+			if err := rejectCorrectionLFSPointer(path, scanner.Bytes()); err != nil {
+				return nil, 0, err
+			}
+		}
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

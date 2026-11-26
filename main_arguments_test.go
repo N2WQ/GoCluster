@@ -118,7 +118,7 @@ func TestRootExecutableArguments(t *testing.T) {
 					t.Fatalf("unknown streams: %q / %q", out, diag)
 				}
 			case "startup":
-				if !strings.Contains(diag, "Startup failed:") || !strings.Contains(diag, "config path") || !strings.Contains(diag, "missing-config") {
+				if !strings.Contains(diag, "FATAL: startup aborted — ") || !strings.Contains(diag, "config path") || !strings.Contains(diag, "missing-config") {
 					t.Fatalf("fixture did not exercise ordinary config startup failure: %q / %q", out, diag)
 				}
 			case "output-error":
@@ -126,7 +126,7 @@ func TestRootExecutableArguments(t *testing.T) {
 					t.Fatalf("child did not exercise help output failure: %q / %q", out, diag)
 				}
 			}
-			if tc.want != "startup" && (strings.Contains(out+diag, "Startup failed:") || strings.Contains(out+diag, "unable to load config")) {
+			if tc.want != "startup" && (strings.Contains(out+diag, "FATAL: startup aborted — ") || strings.Contains(out+diag, "unable to load config")) {
 				t.Fatalf("non-startup invocation entered config: %q / %q", out, diag)
 			}
 			entries, err := os.ReadDir(dir)
