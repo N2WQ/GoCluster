@@ -52,7 +52,10 @@ func (fa *FrequencyAverager) Average(call string, freq float64, now time.Time, w
 
 	fa.mu.Lock()
 	defer fa.mu.Unlock()
-	fa.cleanup(now, window)
+	fa.opCount++
+	if fa.opCount%128 == 0 {
+		fa.sweepLocked(now, window)
+	}
 
 	list := fa.entries[call]
 	pruned := list[:0]
@@ -91,17 +94,8 @@ func (fa *FrequencyAverager) Average(call string, freq float64, now time.Time, w
 	return sum / float64(corroborators), corroborators, total
 }
 
-// Purpose: Drop inactive calls to bound memory usage.
-// Key aspects: Runs every N ops to keep cleanup lightweight.
-// Upstream: Average and StartCleanup.
-// Downstream: map deletes for entries/lastSeen.
-// cleanup drops inactive calls to prevent unbounded map growth as calls churn.
-// It runs cheaply on every call; for larger maps you could adjust the cadence.
-func (fa *FrequencyAverager) cleanup(now time.Time, window time.Duration) {
-	fa.opCount++
-	if fa.opCount%128 != 0 {
-		return
-	}
+// sweepLocked expires inactive calls on every timer tick and every 128 updates.
+func (fa *FrequencyAverager) sweepLocked(now time.Time, window time.Duration) {
 	cutoff := now.Add(-window)
 	for call, last := range fa.lastSeen {
 		if last.Before(cutoff) {
@@ -126,7 +120,7 @@ func (fa *FrequencyAverager) StartCleanup(interval, window time.Duration) {
 	}
 	startPeriodicCleanup(&fa.mu, &fa.sweepQuit, interval, func() {
 		fa.mu.Lock()
-		fa.cleanup(time.Now().UTC(), window)
+		fa.sweepLocked(time.Now().UTC(), window)
 		fa.mu.Unlock()
 	})
 }
