@@ -320,7 +320,7 @@ func TestPathCoarseCellsPreservePredictionAndReuse(t *testing.T) {
 		want.result.Source != pathreliability.SourceCombined {
 		t.Fatalf("grid-only control did not produce the expected observed path: %+v", want)
 	}
-	wantLine := server.formatSpotForClientWithPrediction(client, sp, want)
+	wantLine := server.formatSpotForClientWithPrediction(client, &spotEnvelope{spot: sp}, want)
 	for _, tc := range []struct {
 		name string
 		user pathreliability.CellID
@@ -336,7 +336,7 @@ func TestPathCoarseCellsPreservePredictionAndReuse(t *testing.T) {
 				t.Fatalf("prediction changed with cache availability: got %+v, want %+v", pred, want)
 			}
 			reused, ok := server.reusablePathPredictionForClient(client, sp, &want)
-			if !ok || reused != want || server.formatSpotForClientWithPrediction(client, sp, reused) != wantLine {
+			if !ok || reused != want || server.formatSpotForClientWithPrediction(client, &spotEnvelope{spot: sp}, reused) != wantLine {
 				t.Fatal("admission-to-writer reuse changed the prediction or glyph line")
 			}
 			if client.gridCoarseCell != tc.user || sp.DXCoarseCellID != tc.dx {

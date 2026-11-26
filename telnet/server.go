@@ -633,23 +633,28 @@ func (c *Client) pathSnapshot() pathState {
 	return state
 }
 
-type broadcastPayload struct {
+type spotPublication struct {
 	pauseGeneration uint64
-	spot            *spot.Spot
-	allowFast       bool
-	allowMed        bool
-	allowSlow       bool
-	enqueueAt       time.Time
+	cw              *cwBroadcastLines
+}
+
+type broadcastPayload struct {
+	spotPublication
+	spot      *spot.Spot
+	allowFast bool
+	allowMed  bool
+	allowSlow bool
+	enqueueAt time.Time
 }
 
 type broadcastJob struct {
-	pauseGeneration uint64
-	spot            *spot.Spot
-	allowFast       bool
-	allowMed        bool
-	allowSlow       bool
-	clients         []*Client
-	enqueueAt       time.Time
+	publication *spotPublication
+	spot        *spot.Spot
+	allowFast   bool
+	allowMed    bool
+	allowSlow   bool
+	clients     []*Client
+	enqueueAt   time.Time
 }
 
 type clientShardSnapshot struct {
@@ -657,10 +662,10 @@ type clientShardSnapshot struct {
 }
 
 type spotEnvelope struct {
-	pauseGeneration uint64
-	spot            *spot.Spot
-	enqueueAt       time.Time
-	pathPrediction  *pathPrediction // Optional admission result; bounded by the per-client spot queue.
+	publication    *spotPublication
+	spot           *spot.Spot
+	enqueueAt      time.Time
+	pathPrediction *pathPrediction // Optional admission result; bounded by the per-client spot queue.
 }
 
 type controlMessage struct {
@@ -2549,7 +2554,7 @@ func (s *Server) TryBroadcastSpotOwned(snapshot *spot.Spot, allowFast, allowMed,
 		return false
 	}
 	payload := &broadcastPayload{
-		pauseGeneration: s.jsonPauseGeneration.Load(),
+		spotPublication: spotPublication{pauseGeneration: s.jsonPauseGeneration.Load()},
 		spot:            snapshot,
 		allowFast:       allowFast,
 		allowMed:        allowMed,
@@ -2611,6 +2616,14 @@ func (s *Server) DeliverSelfSpotOwned(dxCall string, snapshot *spot.Spot) {
 
 	generation := s.jsonPauseGeneration.Load()
 	enqueueAt := s.now()
+	var publication *spotPublication
+	shareCW := len(clients) > 1 && canShareCWLines(snapshot)
+	if generation != 0 || shareCW {
+		publication = &spotPublication{pauseGeneration: generation}
+		if shareCW {
+			publication.cw = &cwBroadcastLines{}
+		}
+	}
 	for _, client := range clients {
 		client.filterMu.RLock()
 		allowSelf := client.filter.SelfEnabled() && client.filter.AllowsToxicity(snapshot)
@@ -2618,7 +2631,7 @@ func (s *Server) DeliverSelfSpotOwned(dxCall string, snapshot *spot.Spot) {
 		if !allowSelf {
 			continue
 		}
-		client.enqueueSpot(&spotEnvelope{spot: snapshot, enqueueAt: enqueueAt, pauseGeneration: generation})
+		client.enqueueSpot(&spotEnvelope{spot: snapshot, enqueueAt: enqueueAt, publication: publication})
 	}
 }
 
@@ -2877,18 +2890,35 @@ func (s *Server) enqueueReject(conn net.Conn, addr, banner, reason string) {
 }
 
 func (s *Server) dispatchSpotToWorkers(payload *broadcastPayload, shards [][]*Client) {
+	// This dispatcher owns the payload until the first job is published.
+	// Initialize only projected, potentially shared lines. Queued recipients
+	// demand each variant independently when their classic writer consumes it.
+	if canShareCWLines(payload.spot) {
+		recipients := 0
+		for _, clients := range shards {
+			recipients += len(clients)
+			if recipients > 1 {
+				payload.cw = &cwBroadcastLines{}
+				break
+			}
+		}
+	}
+	var publication *spotPublication
+	if payload.cw != nil || payload.pauseGeneration != 0 {
+		publication = &payload.spotPublication
+	}
 	for i, clients := range shards {
 		if len(clients) == 0 {
 			continue
 		}
 		job := broadcastJob{
-			pauseGeneration: payload.pauseGeneration,
-			spot:            payload.spot,
-			allowFast:       payload.allowFast,
-			allowMed:        payload.allowMed,
-			allowSlow:       payload.allowSlow,
-			clients:         clients,
-			enqueueAt:       payload.enqueueAt,
+			publication: publication,
+			spot:        payload.spot,
+			allowFast:   payload.allowFast,
+			allowMed:    payload.allowMed,
+			allowSlow:   payload.allowSlow,
+			clients:     clients,
+			enqueueAt:   payload.enqueueAt,
 		}
 		qualificationstage.Observe(qualificationstage.WorkerDispatched, payload.spot.Comment, i)
 		select {
@@ -2983,6 +3013,9 @@ func (s *Server) broadcastWorker(id int, jobs <-chan broadcastJob) {
 			qualificationstage.Observe(qualificationstage.WorkerStarted, job.spot.Comment, id)
 			s.deliverJob(job)
 		}
+		// Idle workers keep this backing array. Drop publication, spot and
+		// retired-client references as soon as the received jobs are delivered.
+		clear(batch)
 		batch = batch[:0]
 	}
 
@@ -3071,7 +3104,7 @@ func (s *Server) deliverJob(job broadcastJob) {
 			}
 			admissionPrediction, haveAdmissionPrediction = prediction, predicted
 		}
-		env := &spotEnvelope{spot: job.spot, enqueueAt: job.enqueueAt, pauseGeneration: job.pauseGeneration}
+		env := &spotEnvelope{spot: job.spot, enqueueAt: job.enqueueAt, publication: job.publication}
 		if haveAdmissionPrediction {
 			prediction := admissionPrediction
 			env.pathPrediction = &prediction
@@ -4442,7 +4475,8 @@ func (s *Server) noisePenaltyForClass(class string) float64 {
 }
 
 // formatSpotForClient renders a spot with optional reliability glyphs.
-func (s *Server) formatSpotForClient(client *Client, sp *spot.Spot) string {
+func (s *Server) formatSpotForClient(client *Client, env *spotEnvelope) string {
+	sp := env.spot
 	if sp == nil {
 		return ""
 	}
@@ -4453,15 +4487,15 @@ func (s *Server) formatSpotForClient(client *Client, sp *spot.Spot) string {
 	if mode != diagModeOff {
 		return s.formatSpotForClientWithDiag(client, sp, mode)
 	}
-	base := formatCWSpotForClient(client, sp)
+	base := env.cwLineForClient(client)
 	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
-		return base + "\n"
+		return base
 	}
 	glyphs := s.pathGlyphsForClient(client, sp)
 	if glyphs != "" {
-		base = injectGlyphs(base, glyphs)
+		base = injectCWLineGlyph(base, glyphs)
 	}
-	return base + "\n"
+	return base
 }
 
 func (s *Server) formatSpotForClientWithDiag(client *Client, sp *spot.Spot, mode diagMode) string {
@@ -4501,10 +4535,10 @@ func (s *Server) formatSpotEnvelopeForClient(client *Client, env *spotEnvelope) 
 	}
 	if s != nil && env.pathPrediction != nil && s.pathPredictionNeededForFormatting(client) {
 		if prediction, ok := s.reusablePathPredictionForClient(client, env.spot, env.pathPrediction); ok {
-			return s.formatSpotForClientWithPrediction(client, env.spot, prediction)
+			return s.formatSpotForClientWithPrediction(client, env, prediction)
 		}
 	}
-	return s.formatSpotForClient(client, env.spot)
+	return s.formatSpotForClient(client, env)
 }
 
 func (s *Server) pathPredictionNeededForFormatting(client *Client) bool {
@@ -4518,7 +4552,8 @@ func (s *Server) pathPredictionNeededForFormatting(client *Client) bool {
 	return mode == diagModePath || (s.pathPredictor != nil && s.pathDisplay)
 }
 
-func (s *Server) formatSpotForClientWithPrediction(client *Client, sp *spot.Spot, prediction pathPrediction) string {
+func (s *Server) formatSpotForClientWithPrediction(client *Client, env *spotEnvelope, prediction pathPrediction) string {
+	sp := env.spot
 	if sp == nil {
 		return ""
 	}
@@ -4529,16 +4564,16 @@ func (s *Server) formatSpotForClientWithPrediction(client *Client, sp *spot.Spot
 	if mode != diagModeOff {
 		return s.formatSpotForClientWithDiagPrediction(client, sp, mode, prediction)
 	}
-	base := formatCWSpotForClient(client, sp)
+	base := env.cwLineForClient(client)
 	if s == nil || s.pathPredictor == nil || !s.pathDisplay {
-		return base + "\n"
+		return base
 	}
 	s.recordDisplayedPathPrediction(prediction)
 	glyphs := s.pathGlyphFromPrediction(prediction)
 	if glyphs != "" {
-		base = injectGlyphs(base, glyphs)
+		base = injectCWLineGlyph(base, glyphs)
 	}
-	return base + "\n"
+	return base
 }
 
 func (s *Server) formatSpotForClientWithDiagPrediction(client *Client, sp *spot.Spot, mode diagMode, prediction pathPrediction) string {
@@ -5636,8 +5671,12 @@ func diagPolicyToken(policy dedupePolicy) string {
 }
 
 func injectGlyphs(base string, glyph string) string {
+	return injectGlyphsInBody(base, glyph, len(base))
+}
+
+func injectGlyphsInBody(base string, glyph string, bodyBytes int) string {
 	layout := spot.CurrentDXClusterLayout()
-	if layout.LineLength <= 0 || len(glyph) < 1 || len(base) < layout.LineLength {
+	if layout.LineLength <= 0 || len(glyph) < 1 || bodyBytes < layout.LineLength {
 		return base
 	}
 	// Glyph column is anchored to the configured tail layout.
@@ -6442,7 +6481,14 @@ func (c *Client) enqueueSpot(env *spotEnvelope) {
 	now := c.server.now()
 	if env.enqueueAt.IsZero() {
 		if c.server != nil {
-			env.pauseGeneration = c.server.jsonPauseGeneration.Load()
+			generation := c.server.jsonPauseGeneration.Load()
+			if env.publication == nil {
+				if generation != 0 {
+					env.publication = &spotPublication{pauseGeneration: generation}
+				}
+			} else if generation != env.publication.pauseGeneration {
+				env.publication = &spotPublication{pauseGeneration: generation, cw: env.publication.cw}
+			}
 		}
 		env.enqueueAt = now
 	}

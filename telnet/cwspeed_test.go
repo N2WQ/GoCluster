@@ -62,7 +62,7 @@ func TestCWSpeedLiveUsersAndDiagnostics(t *testing.T) {
 	on := &Client{sessionProfile: &sessionProfile{configuredSettings: filter.SettingsConfiguration{CWSpeed: true}}}
 	// The same immutable spot is formatted in both orders to detect cache leakage.
 	for _, c := range []*Client{off, on, off, on} {
-		for _, line := range []string{s.formatSpotForClient(c, sp), s.formatSpotForClientWithPrediction(c, sp, pathPrediction{})} {
+		for _, line := range []string{s.formatSpotForClient(c, &spotEnvelope{spot: sp}), s.formatSpotForClientWithPrediction(c, &spotEnvelope{spot: sp}, pathPrediction{})} {
 			if strings.Contains(line, "22 WPM") != (c == on) || !strings.Contains(line, "POTA") {
 				t.Fatalf("unexpected user display: %q", line)
 			}
@@ -70,7 +70,7 @@ func TestCWSpeedLiveUsersAndDiagnostics(t *testing.T) {
 	}
 	for _, mode := range []diagMode{diagModeDedupe, diagModeSource, diagModeConfidence, diagModePath, diagModeMode} {
 		on.setDiagMode(mode)
-		for _, line := range []string{s.formatSpotForClient(on, sp), s.formatSpotForClientWithPrediction(on, sp, pathPrediction{})} {
+		for _, line := range []string{s.formatSpotForClient(on, &spotEnvelope{spot: sp}), s.formatSpotForClientWithPrediction(on, &spotEnvelope{spot: sp}, pathPrediction{})} {
 			if strings.Contains(line, "22 WPM") || strings.Contains(line, "30 WPM") {
 				t.Fatalf("diagnostic mode %v leaked CW speed: %q", mode, line)
 			}

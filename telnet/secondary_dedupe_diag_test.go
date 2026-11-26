@@ -26,7 +26,7 @@ func TestDedupeDiagnosticUsesOwnedDecisionAnchor(t *testing.T) {
 		t.Fatalf("tag=%s", tag)
 	}
 	queued.HasReport, queued.Report = true, -20
-	if line := srv.formatSpotForClient(c, queued); !strings.Contains(line, "07@14024000") {
+	if line := srv.formatSpotForClient(c, &spotEnvelope{spot: queued}); !strings.Contains(line, "07@14024000") {
 		t.Fatalf("anchor clipped from wire: %q", line)
 	}
 	queued.SecondaryDedupe[2].HasAnchor = false
