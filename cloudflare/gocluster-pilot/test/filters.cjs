@@ -278,7 +278,9 @@ test("Openings ranks up to five DXCC entities while keeping the station count an
   const europe = openingsCell(page, "20m to Europe: 12 stations. Top DX countries: I, DL, F, G, ON");
   await europe.waitFor();
   assert.deepEqual(await europe.locator(".op-prefixes > span").allTextContents(), ["I", "DL", "F", "G", "ON"]);
-  await openingsCell(page, "20m to Africa: 1 station. Top DX countries: I").waitFor();
+  const africa = openingsCell(page, "20m to Africa: 1 station. Top DX countries: IG9");
+  await africa.waitFor();
+  assert.deepEqual(await africa.locator(".op-prefixes > span").allTextContents(), ["IG9"]);
 
   const oceania = openingsCell(page, "20m to Oceania: 5 stations. Top DX countries: 3D2/C, E5/N, E5/S, KH8/S, VK9W");
   for (const width of [1400, 320]) {
