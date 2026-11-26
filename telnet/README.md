@@ -13,6 +13,10 @@ connection can be open at once. A new connection replaces the older connection
 of its own kind. The node counts the pair as one user and charges two connection
 slots against its global, base-call, and per-IP limits.
 
+If a second browser connects on the same SSID, the first browser offers
+**Reconnect** and waits for the user to take over again. The paired logger
+continues using the shared profile.
+
 The browser selects GO for both connections. The CC filter bank remains saved,
 and you can select it again with DIALECT CC after the browser disconnects.
 SH/DX and SHOW/DX work in GO. VE7CC, spot delivery controls such as PAUSE, and
@@ -128,12 +132,17 @@ The writer escapes each value in fixed scratch and streams large records.
 ["keepalive"]
 ["notice","refused","JSON REFUSED already on"]
 ["notice","omitted","Invalid spot frequency."]
+["notice","session-replaced","Another login with your call."]
 ["text","73!"]
 ```
 
 `BYE` writes the `73!` text record before closing. A login-time reset notice
 arrives before any client can enable JSON. For example, a pending-notice
 line can read `An upgrade notice is still pending. Use SHOW FILTER to inspect your`.
+`session-replaced` is terminal and applies to a displaced browser whose writer
+has entered JSON mode. It carries the configured duplicate-login message, or
+an empty string. Use the reason code to stop browser auto-reconnect. The
+writer attempts to deliver the record before closing within its write budget.
 Ordinary notices and readback lines use `text` while JSON is active. Only
 manual `PAUSE` and `RESUME` pause spots in JSON. Switching on cancels any
 automatic hold and preserves the original manual deadline. Use

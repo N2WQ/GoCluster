@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `d623b40d61a96871`
+- Source fingerprint: `45b6459db8d13020`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -15,7 +15,7 @@
 | `dxcluster/internal/cluster` | `internal/cluster` | 61 | 228 |
 | `dxcluster/peer` | `peer` | 63 | 139 |
 | `dxcluster/spot` | `spot` | 47 | 87 |
-| `dxcluster/telnet` | `telnet` | 95 | 195 |
+| `dxcluster/telnet` | `telnet` | 95 | 196 |
 
 ## In-Scope Package Edges
 
@@ -1019,6 +1019,7 @@ Test files:
 - `telnet/native_cc_tcp_test.go`
 - `telnet/nearby_endpoint_test.go`
 - `telnet/nofilter_nearby_test.go`
+- `telnet/nop_test.go`
 - `telnet/operating_geography_test.go`
 - `telnet/path_cap_diagnostics_test.go`
 - `telnet/path_first_wave_comparison_test.go`
@@ -1091,6 +1092,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0379 | Accepted | 2026-11-26 | Terminal browser notice, retry bounds, and inbound Telnet framing | `area:telnet` |
 | ADR-0375 | Accepted | 2026-11-23 | Worker asset hosting, private WebSocket admission and bounded cluster sessions | `area:internal/cluster` |
 | ADR-0365 | Accepted | 2026-11-20 | telnet user preferences | `area:telnet` |
 | ADR-0359 | Accepted | 2026-11-19 | Telnet history and client compatibility | `area:telnet` |

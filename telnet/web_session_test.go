@@ -89,6 +89,12 @@ func browserLogin(t *testing.T, s *Server, call string, heartbeat time.Duration)
 	for !strings.Contains(greeting.String(), "READY\r\n") {
 		greeting.WriteString(browserReceive(t, ws))
 	}
+	enableBrowserJSON(t, ws)
+	return ws, done, greeting.String()
+}
+
+func enableBrowserJSON(t *testing.T, ws *websocket.Conn) {
+	t.Helper()
 	browserSend(t, ws, "SET JSON ON VERSION 1")
 	if ack := browserReceive(t, ws); ack != "JSON ON 1\r\n" {
 		t.Fatalf("ack %q", ack)
@@ -110,7 +116,6 @@ func browserLogin(t *testing.T, s *Server, call string, heartbeat time.Duration)
 			count++
 		}
 	}
-	return ws, done, greeting.String()
 }
 func browserYAML(t *testing.T, ws *websocket.Conn, msg string) map[string]any {
 	t.Helper()

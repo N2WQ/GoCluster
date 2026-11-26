@@ -6,6 +6,8 @@ Use when a telnet user or node operator reports connection refused, timeout,
 missing login prompt, local-only success, remote-only failure, or asks which
 port controls telnet. Also use for an invalid-input response or a disconnect
 after malformed, overlong or incomplete human input.
+For browser replacement or repeated reconnects, use the shared-SSID rules in
+the browser console README and the evidence in TSR-0146.
 
 ## First Safe Check
 
@@ -27,6 +29,11 @@ rejection/disconnect log first; use the recovery contract in `telnet/README.md`.
 - A partial read can disconnect even after Ctrl-U/backspace erases the text.
   Empty logged-in idle timeouts remain retryable. Machine uploads use separate
   framing limits; do not apply human recovery advice to a rejected upload.
+- One browser and one Telnet logger may share a full SSID. A second browser
+  replaces the first browser. **Reconnect** takes it over manually.
+- A complete Telnet NOP has no command effect in either inbound transport.
+  Older builds can log `unknown command: 241` when Ziutek receives one.
+  `Prelogin T` counts connections that did not finish login by their deadline.
 - For manual DX comments, ASCII letters, digits, spaces and `/ # @ - . , * ? _`
   are accepted. Other punctuation and non-ASCII input is refused. The whole
   edited command uses the node's byte limit (default 128), excluding its ending.
@@ -44,3 +51,5 @@ rejection/disconnect log first; use the recovery contract in `telnet/README.md`.
 - `docs/OPERATOR_GUIDE.md`
 - `data/config/README.md`
 - `telnet/README.md`
+- `cloudflare/gocluster-pilot/README.md`
+- `docs/troubleshooting/TSR-0146-session-eviction-retry-and-telnet-nop.md`

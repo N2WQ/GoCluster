@@ -16,7 +16,9 @@ var errHumanRecoveryWireLimit = errors.New("human line recovery exceeds wire bud
 type inputWireConn struct {
 	net.Conn
 	muteCodec  atomic.Bool // Writer owns transitions while the sole reader waits on its switch receipt.
+	ziutekNOP  bool        // Set at wrapping, before the reader starts.
 	total      uint64
+	progress   uint64 // Monotonic activity marker that excludes complete top-level NOPs.
 	state      byte
 	remaining  int // Inactive unless recovering; includes all returned wire bytes.
 	recovering bool
@@ -50,22 +52,36 @@ func (c *inputWireConn) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// observeTelnet records only incomplete wire negotiation, not application
-// parsing. When an idle read fails, hidden codec progress cannot be mistaken for
-// a safely empty read. Normal ASCII chunks skip the state loop without allocation.
+// observeTelnet classifies wire progress before the codec can hide it. Defer
+// counting a leading IAC until its command byte arrives, even across reads.
+// An open negotiation is independently visible through state. Recovery still
+// charges the actual wire bytes, including NOP, before this observation.
 func (c *inputWireConn) observeTelnet(data []byte) {
 	for len(data) > 0 {
 		if c.state == 0 {
 			i := bytes.IndexByte(data, IAC)
 			if i < 0 {
+				c.progress += uint64(len(data))
 				return
 			}
+			c.progress += uint64(i)
 			data = data[i+1:]
 			c.state = 1
 			continue
 		}
 		b := data[0]
+		if c.state == 1 && b == telnetNOP {
+			if c.ziutekNOP {
+				// Ziutek v0.1.0 silently consumes IAC GA but rejects IAC NOP.
+				// Change just the codec-facing byte, without shrinking the read.
+				data[0] = telnetGA
+			}
+			c.state = 0
+			data = data[1:]
+			continue
+		}
 		data = data[1:]
+		c.progress++
 		switch c.state {
 		case 1:
 			switch b {

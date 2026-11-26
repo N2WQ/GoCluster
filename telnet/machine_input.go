@@ -51,7 +51,7 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 	progress := false
 	var wireStart uint64
 	if c.inputWire != nil {
-		wireStart = c.inputWire.total
+		wireStart = c.inputWire.progress
 	}
 	if c.inputExposure != nil {
 		c.inputExposure.enabled = true
@@ -67,7 +67,7 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 		if errors.As(err, &validationErr) {
 			return c.rejectHumanInput(err)
 		}
-		wireProgress := c.inputWire != nil && (c.inputWire.total != wireStart || c.inputWire.state != 0)
+		wireProgress := c.inputWire != nil && (c.inputWire.progress != wireStart || c.inputWire.state != 0)
 		if progress || wireProgress {
 			return c.terminalHumanInput(err)
 		}
@@ -78,24 +78,30 @@ func (c *Client) readInputLineWithRuleSyntax(maxLen int, context string, allowCo
 		if err != nil {
 			return fail(err)
 		}
+		if b == IAC && !c.decodedInput() {
+			cmd, err := c.readIACCommand()
+			if err == nil && cmd == telnetNOP {
+				continue // Leave any pending CR companion for the next data byte.
+			}
+			c.skipNextEOL = false
+			progress = true
+			if err != nil {
+				return fail(err)
+			}
+			continue
+		}
 		if c.skipNextEOL {
 			c.skipNextEOL = false
 			if b == '\n' || b == 0x00 {
 				if c.inputWire != nil {
-					wireStart = c.inputWire.total // Completes the previous CR, not a partial new line.
+					wireStart = c.inputWire.progress // Completes the previous CR, not a partial new line.
 				}
 				continue
 			}
 		}
 		if b == IAC {
 			progress = true
-			if c.decodedInput() {
-				continue // Already decoded literal IAC; do not consume following data.
-			}
-			if err := c.consumeIACSequence(); err != nil {
-				return fail(err)
-			}
-			continue
+			continue // Ziutek has already decoded this literal IAC.
 		}
 		if b == '\n' || b == '\r' {
 			if c.echoInput {

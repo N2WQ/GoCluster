@@ -1,4 +1,4 @@
-// The authenticated connection writer retains exclusive ownership from the ON
+// File role: The authenticated connection writer retains ownership from the ON
 // acknowledgement through the final json-off flush. Each socket write has the
 // ordinary send deadline. A partial record retires the connection.
 package telnet
@@ -153,8 +153,12 @@ func (w *jsonSessionWriter) writeControl(msg controlMessage) error {
 		return w.out.literal("[\"keepalive\"]\n")
 	case controlYAML, controlYAMLTerminal:
 		return w.out.quoted(writeJSONYAML(&w.out, &w.spots.buf, msg.raw))
-	case controlRefused:
-		if err := w.out.literal(`["notice","refused",`); err != nil {
+	case controlRefused, controlSessionReplaced:
+		prefix := `["notice","refused",`
+		if msg.kind == controlSessionReplaced {
+			prefix = `["notice","session-replaced",`
+		}
+		if err := w.out.literal(prefix); err != nil {
 			return err
 		}
 		if err := w.out.quoted(writeJSONString(&w.out, &w.spots.buf, trimJSONLineEnding(msg.line))); err != nil {

@@ -4,6 +4,8 @@ Open the [production console](https://ui.n2wq.com/). Choose **Live** and enter y
 
 The blue globe beside the server version marks a browser-only session. Blue arrows mean a browser and a Telnet logger are connected on the same callsign and SSID and share one profile.
 
+A second browser using the same callsign and SSID takes over the browser connection. The logger stays connected. The displaced browser offers **Reconnect** so you can take over manually. For an ordinary connection loss the browser tries to reconnect automatically, with up to eight attempts shared across short-lived reconnects. A connection that stays live for 60 seconds earns a fresh set of attempts.
+
 For routine changes, releases, verification and rollback, follow the [production update runbook](PRODUCTION.md). The setup instructions below are for provisioning or restoring the cluster host.
 
 ## Save filter edits
