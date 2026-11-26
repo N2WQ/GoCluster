@@ -88,13 +88,10 @@ func (s *Server) restoreV7ClientRecordOwned(c *Client, loginTime time.Time) rest
 	if errors.Is(err, filter.ErrLoginUpgradeProfileMissing) {
 		record, err = s.newV7LoginRecord(DialectGo)
 		result.created = err == nil
-		if err == nil {
-			err = s.admitV7LoginRecord(c, record, loginTime)
-		}
 	}
 	if err == nil {
-		// Current records also need view admission before ordinary login metadata
-		// is written. This path does not recreate defaults or reset a v7 record.
+		// Admit both starting and restored views before writing login metadata.
+		// An old profile also has its separate pre-backup admission in the upgrade.
 		err = s.admitV7LoginRecord(c, record, loginTime)
 	}
 	if err != nil {
