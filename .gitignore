@@ -18,7 +18,7 @@ data/archive/*
 data/bulletins/*
 #data/cty/*
 data/grids/*
-#data/ised/*
+/data/ised/*.zip.status.json
 data/logs/*
 data/reports/*
 data/ipinfo/*
