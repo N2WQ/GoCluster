@@ -36,6 +36,21 @@ taxonomy ownership remain unchanged. Unsupported SH readback spellings and
 GO slash history are not introduced. ADR-0264's compiled-help contract and
 ADR-0089's SOLAR discovery remain authoritative; no new ADR is required.
 
+Later evidence: commit `0d4d4693` added GO execution and HELP routing for
+`SHOW/DX` and `SH/DX`. The earlier CC-only statement describes the original
+fix, not the current contract. A stale command-qualification expectation then
+waited for an unknown-topic reply even though the server sent valid GO help.
+The qualification now checks both aliases against each dialect's displayed
+history topic and keeps unsupported-topic checks separate.
+
+The same qualification also reused a long-lived posting connection for HOLD.
+Preset changes from other sessions had queued legitimate advisory notices on
+that connection; the exact reply reader encountered a notice before its spot
+acknowledgement. HOLD now owns a fresh, explicitly paused posting session;
+the pause also prevents its own live spots from interleaving with replies.
+The reader still rejects unexpected output rather than discarding notices or
+accepting them as replies.
+
 ## Checker Boundaries
 
 Independent literal heads derived from executable owners check the intended

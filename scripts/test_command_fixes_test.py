@@ -313,7 +313,7 @@ class DriverControls(unittest.TestCase):
                 driver.require_fixture_unchanged(before, after, record, b"unchanged")
 
     def test_fixture_login_allocation_has_exact_stable_spelling(self):
-        expected_main = """K1ABC-01 K1ABC-02 K1ABC-04 K1ABC-05 K1ABC-06 K1ABC-07
+        expected_main = """K1ABC-01 K1ABC-02 K1ABC-03 K1ABC-04 K1ABC-05 K1ABC-06 K1ABC-07
             K1ABC-08 K1ABC-09 K1ABC-10 K1ABC-11 K1ABC-12 K1ABC-13
             K1ABC-21 K1ABC-22 K1ABC-23 K1ABC-24 K1ABC-25 K1ABC-26 K1ABC-27 K1ABC-28 K1ABC-29
             K1ABC-34 K1ABC-50 K1ABC-51 K1ABC-52 K1ABC-53 K1ABC-54 K1ABC-55
@@ -566,7 +566,11 @@ class DriverControls(unittest.TestCase):
                  isinstance(node.func, ast.Name) and node.func.id == "hold_command_cases"]
         self.assertEqual(len(calls), 2)
         for call in calls:
-            self.assertEqual([node.id for node in call.args], ["suite", "root", "generation", "saved_hold", "session"])
+            self.assertEqual([node.id for node in call.args], ["suite", "root", "generation", "saved_hold"])
+        poster_calls = [node for node in ast.walk(functions["hold_command_cases"]) if isinstance(node, ast.Call) and
+                        isinstance(node.func, ast.Name) and node.func.id == "fixture_session" and
+                        len(node.args) == 2 and isinstance(node.args[1], ast.Constant) and node.args[1].value == "K1ABC-03"]
+        self.assertEqual(len(poster_calls), 1)
 
     def test_hold_decoder_requires_complete_literal_status_counter_and_finite_seconds(self):
         query = "  ShOw   HoLd  "
@@ -940,7 +944,7 @@ class DriverControls(unittest.TestCase):
             self.assertEqual(current.send.call_count, 1)
             current.frame.assert_not_called()
             self.assertTrue(current.suite.log.getvalue().endswith(raw.splitlines(keepends=True)[0] + b"PENDING"))
-        for fault in (b"Unknown filter type.\r\n", b"X" * 65537):
+        for fault in (b"Unknown filter type.\r\n", b"Preset library changed.\r\n", b"X" * 65537):
             current = session()
             current.reader.line.side_effect = [fault]
             with self.assertRaises(ValueError):
@@ -1189,8 +1193,10 @@ class DriverControls(unittest.TestCase):
         for topic in ("SET/NOFILTER EXTRA", "SET/ANN EXTRA", "SET/NOANN EXTRA"):
             self.assertEqual(cc[topic], topic.split()[0])
         go = dict(driver.help_routing_topics("go"))
-        self.assertIsNone(go["SHOW/DX 1"])
-        self.assertIsNone(go["SH/DX 1"])
+        self.assertEqual(go["SHOW/DX 1"], "SHOW DX")
+        self.assertEqual(go["SH/DX 1"], "SHOW DX")
+        self.assertEqual(cc["SHOW/DX 1"], "SHOW/DX")
+        self.assertEqual(cc["SH/DX 1"], "SHOW/DX")
         self.assertEqual(driver.help_route_contract("PASS", "cc")[0], "PASS - Change separate delivery switches.")
         self.assertEqual(driver.help_route_contract("REJECT", "cc")[0], "REJECT - Change separate delivery switches.")
 

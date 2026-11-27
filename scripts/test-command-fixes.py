@@ -35,7 +35,7 @@ spec.loader.exec_module(harness)
 # an allocation, while independent cases get distinct full identities.
 FIXTURE_LOGINS = {
     "main": tuple(f"{base}-{number:02d}" for base, numbers in (
-        ("K1ABC", (1, 2, *range(4, 14), *range(21, 30), 34, *range(50, 56))),
+        ("K1ABC", (1, 2, 3, *range(4, 14), *range(21, 30), 34, *range(50, 56))),
         ("VE3ABC", (3, *range(33, 36), *range(40, 50), 56, 57, *range(63, 72), *range(73, 81))),
     ) for number in numbers),
     "dedupe": ("K1ABC-58", "K1ABC-59", "VE3ABC-60", "VE3ABC-61", "VE3ABC-62"),
@@ -1729,7 +1729,7 @@ def profile(binary, root, source, transport):
                 case(f"{transport}/0: DX comment alphabet and whole-command limit reach archive",
                      lambda: dx_input_contract_cases(suite, root))
                 case(f"{transport}/0: HOLD controls preserve countdown counters and delivery",
-                     lambda: hold_command_cases(suite, root, generation, saved_hold, session))
+                     lambda: hold_command_cases(suite, root, generation, saved_hold))
             else:
                 def restored():
                     settings = session.get()["configuration"]["settings"]
@@ -1950,7 +1950,7 @@ def profile(binary, root, source, transport):
                 case(f"{transport}/1: discovery wording and full preferences survive fresh child",
                      lambda: filter_discovery_cases(suite, root, generation, saved_discovery))
                 case(f"{transport}/1: HOLD preferences and delivery survive fresh child",
-                     lambda: hold_command_cases(suite, root, generation, saved_hold, session))
+                     lambda: hold_command_cases(suite, root, generation, saved_hold))
         finally:
             try:
                 if suite:
@@ -2735,15 +2735,16 @@ def help_routing_topics(dialect):
     topics += [("VALIDATE YAML CONFIG EXTRA", "VALIDATE YAML CONFIG")]
     unknown = ["SH FILTER", "SH SETTINGS", "SH DEDUPE", "SH HOLD", "SHOW/MYDX 1", "SHOW BUILDX", "SH OWNX",
                "SHOW DXCCX DL", "GET YAML CONFIGX ID ROUTE18", "SET SOLARX 30"]
+    topics += [(head + " 1", "SHOW/DX" if dialect == "cc" else "SHOW DX")
+               for head in ("SHOW/DX", "SH/DX")]
     if dialect == "cc":
-        topics += [(head + " 1", "SHOW/DX") for head in ("SHOW/DX", "SH/DX")]
         topics += [("SET/FILTER BAND 40", "SET/FILTER"), ("UNSET/FILTER MODE CW", "UNSET/FILTER"),
                    ("SET/NOFILTER EXTRA", "SET/NOFILTER"), ("SET/ANN EXTRA", "SET/ANN"), ("SET/NOANN EXTRA", "SET/NOANN")]
         topics += [("SET/" + token + " EXTRA", "SET/<MODE>") for token in ("CW_ALIAS", "COMMENT", "BAND", "MODE")]
         topics += [("SET/NO" + token + " EXTRA", "SET/NO<MODE>") for token in ("CW_ALIAS", "COMMENT")]
         unknown += ["SET/TEST_MODE EXTRA", "SET/NOTEST_MODE EXTRA", "SET/UNLISTED EXTRA"]
     else:
-        unknown += ["SHOW/DX 1", "SH/DX 1", "SET/CW_ALIAS EXTRA", "SET/COMMENT EXTRA"]
+        unknown += ["SET/CW_ALIAS EXTRA", "SET/COMMENT EXTRA"]
     return topics + [(topic, None) for topic in unknown]
 
 
@@ -3394,11 +3395,17 @@ def dx_input_contract_cases(suite, root):
             require(not archive_rows(current, label), "refused DX input reached the archive")
 
 
-def hold_command_cases(suite, root, generation, saved_hold, poster):
+def hold_command_cases(suite, root, generation, saved_hold):
     private = stored_document((root / "config" / "runtime.yaml").read_bytes())["telnet"]
     require(type(private["auto_read_pause_min_rows"]) is int and private["auto_read_pause_min_rows"] == 10,
             "HOLD checkout keeps the loaded threshold ten; threshold-one bypass proof belongs to Go sessions")
     library = root / "users" / "presets" / ("VE3ABC".encode().hex() + ".yaml")
+    # This case owns its posting session. The profile's shared connection can
+    # contain advisory notices from earlier preset changes by other SSIDs.
+    poster = fixture_session(suite, "K1ABC-03")
+    _, poster_state = poster.human("PAUSE 300", harness.pause_footer(300))
+    require(poster_state["status"]["session"]["pause_active"] is True,
+            "HOLD poster must not receive its own live spots during reply checks")
     for index, (dialect, call) in enumerate((("go", "VE3ABC-77"), ("cc", "VE3ABC-78"))):
         record, name = root / "users" / (call + ".yaml"), "HOLD19" + dialect.upper()
         if not generation:
