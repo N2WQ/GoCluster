@@ -624,6 +624,7 @@ func TestFamilyDeliveryArchiveSpeedBytes(t *testing.T) {
 }
 
 func familyDeliveryExpectedSCPBytes(inputs []familyDeliveryInput) map[string][]byte {
+	const refreshCooldownSeconds = int64((6 * time.Hour) / time.Second)
 	want := make(map[string][]byte)
 	for _, in := range inputs {
 		if in.glyph != "V" {
@@ -633,14 +634,21 @@ func familyDeliveryExpectedSCPBytes(inputs []familyDeliveryInput) map[string][]b
 		if in.call == "KP4/N2WQ" || in.call == "N2WQ/KP4" {
 			calls = []string{"N2WQ/KP4", "N2WQ"}
 		}
+		seenUnix := in.at.Unix()
 		for _, call := range calls {
-			membership := make([]byte, 8)
-			binary.BigEndian.PutUint64(membership, uint64(in.at.Unix()))
-			want["m|"+call] = membership
-			observation := make([]byte, 10)
-			binary.BigEndian.PutUint64(observation[:8], uint64(in.at.Unix()))
-			// The input supplies no grid; the persisted cell must remain zero.
-			want["o|"+call+"|20m|cw|"+in.receiver] = observation
+			metaKey := "m|" + call
+			if prev, exists := want[metaKey]; !exists || seenUnix-int64(binary.BigEndian.Uint64(prev)) >= refreshCooldownSeconds {
+				membership := make([]byte, 8)
+				binary.BigEndian.PutUint64(membership, uint64(seenUnix))
+				want[metaKey] = membership
+			}
+			obsKey := "o|" + call + "|20m|cw|" + in.receiver
+			if prev, exists := want[obsKey]; !exists || seenUnix-int64(binary.BigEndian.Uint64(prev[:8])) >= refreshCooldownSeconds {
+				observation := make([]byte, 10)
+				binary.BigEndian.PutUint64(observation[:8], uint64(seenUnix))
+				// The input supplies no grid; the persisted cell must remain zero.
+				want[obsKey] = observation
+			}
 		}
 	}
 	return want
