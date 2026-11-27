@@ -14,6 +14,7 @@ This index tracks troubleshooting records (`TSR-XXXX`) that can lead to ADRs.
 ## TSR Index
 | TSR | Title | Status | Date | Area | Led To ADR | Links |
 |---|---|---|---|---|---|---|
+| TSR-0147 | Openings cell selection carried into Spots | Monitoring | 2026-11-26 | Browser console navigation | none | `docs/troubleshooting/TSR-0147-openings-cell-focus.md` |
 | TSR-0146 | Browser eviction loops and Telnet NOP disconnects | Monitoring | 2026-11-26 | Reconnect loops, prelogin diagnostics and inbound Telnet control bytes | ADR-0379 | `docs/troubleshooting/TSR-0146-session-eviction-retry-and-telnet-nop.md` |
 | TSR-0145 | Missing correction assets in Windows releases | Monitoring | 2026-11-26 | Fresh installation, Git LFS and release packaging | ADR-0378 | [TSR-0145](troubleshooting/TSR-0145-windows-release-models.md) |
 | TSR-0144 | Browser Console Controls Clipped on Short Screens | Monitoring | 2026-11-24 | browser console layout and focus | none | `docs/troubleshooting/TSR-0144-browser-console-short-screen-controls.md` |

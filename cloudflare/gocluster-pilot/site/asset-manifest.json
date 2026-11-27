@@ -7,9 +7,9 @@
     "access_check": "on"
   },
   "files": {
-    "assets/app.1bfdc63059.js": {
-      "bytes": 316227,
-      "sha256": "1bfdc63059214680e69a75e2a288abeda55404e47ab53d19d5448f7280301900"
+    "assets/app.6e03cd4d32.js": {
+      "bytes": 316688,
+      "sha256": "6e03cd4d3249e04b2dfdae9726b735916f80f36a5ccd8bc5ab23fef9178c5614"
     },
     "assets/app.aa07e352fa.css": {
       "bytes": 79684,
@@ -77,7 +77,7 @@
     },
     "index.html": {
       "bytes": 1072,
-      "sha256": "e1a48513acd50e2ef8e69144d96f8d07d70397789c373d0ef762ca78f7d8901d"
+      "sha256": "72ce2f77e28b5cc6f06869b0837619b8e735c9a522fecd6b27ef850c28d6ba61"
     },
     "replay/session.jsonl": {
       "bytes": 1724,

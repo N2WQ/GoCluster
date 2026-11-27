@@ -52,7 +52,10 @@ entities with the most matching reports still in the browser's recent buffer.
 Repeat reports count toward the ranking. Sicily (`IT9`) contributes to
 Italy (`I`) in Europe, and African Italy appears as `IG9` in Africa.
 Shading shows the average path class from your grid. Select a cell to open
-Spots focused on that band and DX continent.
+Spots focused on that band and DX continent. Select the **Spots** toolbar icon
+to return to **All** bands under your current rules and search. Leaving the
+cell view also clears its band and continent, so you can explore the rest of
+the grid when you return to **Openings**.
 
 ## Adjust the spot table
 

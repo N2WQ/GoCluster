@@ -304,6 +304,60 @@ test("Openings ranks up to five DXCC entities while keeping the station count an
   assert.equal(await bandTile(page, "20m").getAttribute("aria-selected"), "true");
 });
 
+test("leaving an Openings cell returns Spots to All and restores the full grid", async t => {
+  const page = await editor(t);
+  const europe = [230, "Fed. Rep. of Germany", "EU"], northAmerica = [291, "United States", "NA"];
+  await feedReports(page, [
+    ["DL1AA", "20m", "CW", 1000, false, europe],
+    ["K1AA", "20m", "CW", 1000, false, northAmerica],
+    ["DL2AA", "40m", "CW", 1000, false, europe],
+    ["K3ZZ", "40m", "CW", 1000, false, northAmerica],
+  ]);
+  await button(page, "Close filters").click();
+
+  const spots = page.getByRole("link", { name: "Spots", exact: true });
+  const search = page.getByRole("searchbox", { name: "Find a call, prefix or country", exact: true });
+  const rows = page.locator(".stream .row .c-dx b");
+  const continent = button(page, "DX in Europe");
+  const cell = openingsCell(page, "20m to Europe: 1 station. Top DX countries: DL");
+  async function expectCalls(band, ...calls) {
+    await bandTile(page, band).and(page.locator('[aria-selected="true"]')).waitFor();
+    for (const call of calls) await rows.getByText(call, { exact: true }).waitFor();
+    assert.deepEqual((await rows.allTextContents()).sort(), calls.sort());
+  }
+
+  await search.fill("AA");
+  await bandTile(page, "40m").click();
+  await openOpenings(page);
+  await page.goBack();
+  await expectCalls("40m", "DL2AA");
+  await openOpenings(page);
+  await spots.click();
+  await expectCalls("40m", "DL2AA");
+
+  await openOpenings(page);
+  await cell.click();
+  await continent.waitFor();
+  await expectCalls("20m", "DL1AA");
+  await continent.click();
+  await expectCalls("20m", "DL1AA", "K1AA");
+  await spots.click();
+  await expectCalls("All", "DL1AA", "K1AA", "DL2AA");
+  assert.equal(await search.inputValue(), "AA");
+
+  await openOpenings(page);
+  await cell.click();
+  await continent.waitFor();
+  await expectCalls("20m", "DL1AA");
+  await page.goBack();
+  const otherCell = openingsCell(page, "20m to North America: 1 station. Top DX countries: K");
+  await otherCell.waitFor();
+  assert.equal(await otherCell.isEnabled(), true);
+  await continent.waitFor({ state: "hidden" });
+  await page.goForward();
+  await expectCalls("All", "DL1AA", "K1AA", "DL2AA");
+});
+
 test("Openings picks up new reports at capacity and ages the ranking on a quiet feed", async t => {
   const page = await editor(t, { rules: [rule(1, "BAND=20m")] });
   const now = new Date("2026-11-25T12:00:00Z");

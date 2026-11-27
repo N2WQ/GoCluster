@@ -24,6 +24,10 @@ For a missing Openings row or a question about the prefixes in a cell, use the
 [Openings guide](../cloudflare/gocluster-pilot/README.md#read-the-openings-grid)
 for band eligibility, the recent report window, and country ranking.
 
+If Spots stays on the cell's band and continent or reopening the grid shows
+activity for only one continent, use the [Openings guide](../cloudflare/gocluster-pilot/README.md#read-the-openings-grid)
+and [TSR-0147](../docs/troubleshooting/TSR-0147-openings-cell-focus.md).
+
 ## Human spot comments and upstream wire times
 
 For split numbers displayed as dB reports, missing `CWT` or time phrases in
