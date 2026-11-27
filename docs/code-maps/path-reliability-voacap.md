@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `99d45225290f623c`
+- Source fingerprint: `082191250b8c4bbc`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -13,7 +13,7 @@
 |---|---|---:|---:|
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 13 | 11 |
-| `dxcluster/pathreliability` | `pathreliability` | 32 | 80 |
+| `dxcluster/pathreliability` | `pathreliability` | 33 | 81 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
@@ -108,6 +108,7 @@ Source files:
 - `pathreliability/store.go`
 - `pathreliability/store_compaction.go`
 - `pathreliability/store_reporting.go`
+- `pathreliability/voacap_delay_shortlist.go`
 - `pathreliability/voacap_fallback.go`
 - `pathreliability/voacap_forecast_cache_index.go`
 - `pathreliability/voacap_forecast_cache_index_heap.go`
@@ -178,6 +179,7 @@ Test files:
 - `pathreliability/voacap_cache_index_work_test.go`
 - `pathreliability/voacap_coherent_input_test.go`
 - `pathreliability/voacap_daily_retention_heap_test.go`
+- `pathreliability/voacap_delay_shortlist_test.go`
 - `pathreliability/voacap_fallback_test.go`
 - `pathreliability/voacap_forecast_cache_store_test.go`
 - `pathreliability/voacap_forecaster_calendar_test.go`

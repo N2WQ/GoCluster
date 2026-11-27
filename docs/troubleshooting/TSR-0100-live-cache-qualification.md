@@ -213,6 +213,40 @@ artifacts and interpretation limits are retained in the execution record.
   Do not merge or deploy it as an accepted performance change. A later design
   must satisfy the unchanged guards under a newly reviewed frozen protocol.
 
+## Contest replay on 2026-11-26
+
+On revision `10b37a6b`, admitting new paths to the full delay map under the
+fallback mutex consumed 64.05% of sampled server CPU with 300 CW-only
+subscribers. Client queues lost spots before the ten-minute warmup elapsed.
+The unpatched 15-minute CW baseline recorded 1,702 unplanned disconnects
+and 7,496,009 recipient queue drops. All 300 users authenticated with their
+assigned grids and printed a CW prediction before replay.
+
+A local 64-entry shortlist preserved the victim order and shared one scan
+across 63.94–63.97 evictions per five-minute phase. Four clean runs at 300
+clients, half Telnet and half browser protocol, recorded zero unplanned
+disconnects and zero recipient drops. Across the two runs for each subscription,
+101,400 of 101,400 eligible CW copies and 405,594 of 405,600 mixed CW/FT copies
+arrived within 90 seconds. Both arms used identical mixed-source input and the
+same 50,000-entry cap and 600-second wait.
+
+The original used 52.99% of sampled server CPU for delay admission and
+maintenance in the mixed profile. The shortlist used 8.90% in CW and 7.83%
+in mixed traffic. Rebuilding the shortlist accounted for 76.09 of 77.51
+maintenance CPU-seconds in CW and 93.53 of 95.61 in mixed traffic.
+Both candidate CPU shares exceed the
+agreed limit of less than 5% per mode. Forced contention after revisiting every
+path added up to 0.27 ms to blocked-reader p99. Full expiry added up to
+1.81 ms. The owner's acceptance of those waits required both CPU profiles
+to pass. The trial therefore closed with a reproducible local candidate and
+an unmet qualification gate. ADR-0310 retains its prior status.
+
+Capacity eviction counts include repeated admissions of the same path. In
+the patched CW diagnostic, 2,049,799 of 2,107,971 eviction events occurred
+within one minute of admission. Only 1,278 occurred between five and ten
+minutes. Worker capacity and visible sparse-path coverage require their own
+measurements when evaluating a change to the forecast delay.
+
 ## References
 
 - Issue(s): owner review and approval conversation.

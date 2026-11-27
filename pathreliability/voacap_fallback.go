@@ -445,6 +445,8 @@ type VOACAPClosedFallback struct {
 	mu                  sync.Mutex
 	cache               map[voacapCacheKey]voacapCacheEntry
 	delays              map[voacapDelayKey]voacapDelayEntry
+	delayShortlist      []voacapDelayVictim
+	delayCutoff         time.Time
 	inflight            map[voacapCacheKey]*voacapPendingWork
 	forecastCacheStore  *VOACAPForecastCacheStore
 	lastPrune           time.Time
@@ -1027,6 +1029,9 @@ func (f *VOACAPClosedFallback) delayElapsedLocked(key voacapDelayKey, now time.T
 		return true
 	}
 	entry.lastSeen = now
+	if len(f.delayShortlist) != 0 && now.Compare(f.delayCutoff) <= 0 {
+		f.invalidateDelayShortlistLocked()
+	}
 	f.delays[key] = entry
 	return !now.Before(entry.firstSeen.Add(delay))
 }
@@ -1486,22 +1491,12 @@ func (f *VOACAPClosedFallback) addCacheLocked(key voacapCacheKey, entry voacapCa
 
 func (f *VOACAPClosedFallback) addDelayLocked(key voacapDelayKey, entry voacapDelayEntry) {
 	if len(f.delays) >= f.fallback.MaxDelayEntries {
-		if _, exists := f.delays[key]; exists {
-			f.delays[key] = entry
-			return
+		if _, exists := f.delays[key]; !exists {
+			f.evictDelayLocked()
 		}
-		var oldestKey voacapDelayKey
-		var oldest time.Time
-		first := true
-		for candidate, existing := range f.delays {
-			order := existing.lastSeen.Compare(oldest)
-			if first || order < 0 || (order == 0 && compareLiveDelayKey(&candidate, &oldestKey) > 0) {
-				oldestKey = candidate
-				oldest = existing.lastSeen
-				first = false
-			}
-		}
-		delete(f.delays, oldestKey)
+	}
+	if len(f.delayShortlist) != 0 && entry.lastSeen.Compare(f.delayCutoff) <= 0 {
+		f.invalidateDelayShortlistLocked()
 	}
 	f.delays[key] = entry
 }
