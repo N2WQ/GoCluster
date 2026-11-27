@@ -2777,7 +2777,7 @@ const DEFAULT_PREFS = {
 // ---------------------------------------------------------------- the store
 const S = {
   snap: null, spots: [], messages: [], lines: [],
-  view: "stream", focusBand: "ALL", focusCont: "", search: "",
+  view: "stream", focusBand: "ALL", focusCont: "", openingFocus: false, search: "",
   drawer: null, consoleOpen: false, selSpot: null, postOpen: false,
   draft: null, filterTab: "rules", editing: null, showHidden: false, connectOpen: false,
   freezeId: 0, prefs: { ...DEFAULT_PREFS, ...LS.get("gcui.prefs", {}) },
@@ -2799,6 +2799,11 @@ function notify(immediate) {
   setTimeout(() => requestAnimationFrame(() => { renderQueued = false; lastRender = performance.now(); S.now = Date.now(); for (const f of subs) f(); }), wait);
 }
 function set(patch) { Object.assign(S, typeof patch === "function" ? patch(S) : patch); notify(true); }
+function showView(view, patch = {}) {
+  // Navigating away from an Openings cell clears its focus with the view change.
+  const clearFocus = S.openingFocus ? { openingFocus: false, focusBand: "ALL", focusCont: "" } : {};
+  set({ ...clearFocus, view, ...patch });
+}
 function useStore() {
   const [, force] = useState(0);
   useEffect(() => { const f = () => force(n => n + 1); subs.add(f); return () => subs.delete(f); }, []);
@@ -3712,7 +3717,7 @@ cluster.on("message", m => { S.messages = [m, ...S.messages].slice(0, 60); notif
 cluster.on("notice", n => toast(n.text || String(n), n.kind || "info"));
 cluster.on("line", l => { S.lines = [...S.lines, l].slice(-400); notify(); });
 cluster.on("history", () => notify(true));
-cluster.on("show-history", () => { location.hash = "history"; set({ view: "history" }); });
+cluster.on("show-history", () => { location.hash = "history"; showView("history"); });
 
 function spotsPerMinute() {
   const cut = Date.now() - 60e3;
@@ -3828,7 +3833,7 @@ function TopBar() {
     </span>` : null}</div></div>
     <${NodeStatus} />
     <nav class="views" aria-label="View">
-      ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class="tool-btn" aria-label=${l} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; set({ view: v }); }}><${ToolbarIcon} icon=${ic} hint=${l} /></a>`)}
+      ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class="tool-btn" aria-label=${l} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; showView(v); }}><${ToolbarIcon} icon=${ic} hint=${l} /></a>`)}
     </nav>
     <div class="search"><${Icon} name="search" size=${16} /><input id="q" type="search" placeholder="Call, prefix, country" aria-label="Find a call, prefix or country" value=${S.search} onInput=${e => set({ search: e.target.value })} /><kbd>/</kbd></div>
     <div class="actions">
@@ -4376,7 +4381,7 @@ function OpeningsView({ bands }) {
           .slice(0, 5).map(([prefix]) => prefix) : [];
         const label = `${b} to ${DATA.CONT_NAME[c]}: ${plural(n, "station")}` + (prefixes.length ? `. Top DX countries: ${prefixes.join(", ")}` : "");
         return html`<td><button type="button" class=${cls("cell", "t-" + tone, !n && "zero")} style=${`--fill:${(n / max).toFixed(2)}`} disabled=${!n}
-          aria-label=${label} onClick=${() => { location.hash = "stream"; set({ view: "stream", focusBand: b, focusCont: c }); }}>
+          aria-label=${label} onClick=${() => { location.hash = "stream"; showView("stream", { focusBand: b, focusCont: c, openingFocus: true }); }}>
           <span class="n">${n || "·"}</span>${prefixes.length ? html`<span class="op-prefixes">${prefixes.map(prefix => html`<span>${prefix}</span>`)}</span>` : null}
           ${n ? html`<span class="bar"><i style=${`width:${Math.round((n / max) * 100)}%`}></i></span>` : null}</button></td>`;
       })}</tr>`)}</tbody>
@@ -4394,7 +4399,7 @@ function SpotDrawer() {
   const prop = useMemo(() => cluster.prop(s.dxCont, s.band, s.mode), [s.id, S.snap.settings.grid, S.snap.settings.noise]);
   const hist = cluster.sampleFor(s.dxCall).filter(h => h.id !== s.id).slice().reverse().slice(0, 8);
   const live = S.snap.conn.phase === "live";
-  const showHistory = () => { try { cluster.historySearch({ selector: s.dxCall, count: 10 }); location.hash = "history"; set({ view: "history", drawer: null }); } catch (e) { toast(e.message, "error"); } };
+  const showHistory = () => { try { cluster.historySearch({ selector: s.dxCall, count: 10 }); location.hash = "history"; showView("history", { drawer: null }); } catch (e) { toast(e.message, "error"); } };
   const d = decideWith(workingSet().set, workingSwitches(), s);
   const close = () => set({ drawer: null, selSpot: null });
   return html`<aside class="drawer right spot-dr" role="dialog" aria-label=${"Spot details for " + s.dxCall} style=${`--bc:${BAND_COLOR[s.band] || "var(--accent)"}`}>
@@ -4824,13 +4829,13 @@ function ConnectPanel() {
     setWarnSsid(false);
     try { started.current = true; cluster.connectLive(call); } catch (x) { setErr(x.message); }
   };
-  const replay = async () => { setErr(""); setBusy(true); try { await cluster.startReplayFromUrl(); set({ connectOpen: false, view: "stream" }); } catch (x) { setErr(x.message); } finally { setBusy(false); } };
+  const replay = async () => { setErr(""); setBusy(true); try { await cluster.startReplayFromUrl(); showView("stream", { connectOpen: false }); } catch (x) { setErr(x.message); } finally { setBusy(false); } };
   const replayFile = async e => {
     const f = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!f) return;
     setErr("");
-    try { if (f.size > 8 << 20) throw new Error("That file is over 8 MB."); cluster.startReplay(await f.text(), f.name); set({ connectOpen: false, view: "stream" }); }
+    try { if (f.size > 8 << 20) throw new Error("That file is over 8 MB."); cluster.startReplay(await f.text(), f.name); showView("stream", { connectOpen: false }); }
     catch (x) { setErr(x.message); }
   };
   const order = ["connecting", "login", "negotiating", "live"];
@@ -4998,8 +5003,12 @@ function App() {
 
 // ---------------------------------------------------------------- boot
 function routeFromHash() {
-  const h = location.hash.replace("#", "");
-  if (["stream", "history", "bandmap", "openings"].includes(h)) set({ view: h });
+  const hash = location.hash.slice(1);
+  const view = hash || "stream";
+  if (!["stream", "history", "bandmap", "openings"].includes(view)) return;
+  // An in-app hash update has already selected the view and any cell focus.
+  if (view !== S.view) showView(view);
+  else if (hash) notify(true);
 }
 window.addEventListener("hashchange", routeFromHash);
 window.addEventListener("keydown", e => {
