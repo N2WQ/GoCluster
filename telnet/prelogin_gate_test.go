@@ -2,9 +2,13 @@ package telnet
 
 import (
 	"errors"
+	"maps"
+	"math"
 	"net"
 	"testing"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 func newPreloginTestServer(now *time.Time) *Server {
@@ -257,6 +261,171 @@ func TestTryAcquirePreloginHonorsGlobalRate(t *testing.T) {
 	}
 }
 
+func TestTryAcquirePreloginGlobalRatePrecedesSourceAndTrackerCleanup(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	s := newPreloginTestServer(&now)
+	s.acceptRateGlobal, s.acceptBurstGlobal = 1, 1
+	s.acceptRatePerSubnet, s.acceptBurstPerSubnet = 1, 1
+	s.preloginInitLocked()
+	seed, reason := s.tryAcquirePrelogin(tcpAddr("192.0.2.8", 7001))
+	if seed == nil || reason != "" {
+		t.Fatalf("seed admission: ticket=%v reason=%q", seed, reason)
+	}
+	defer seed.Release()
+
+	const ip, staleIP = "203.0.113.8", "198.51.100.9"
+	state, ok := s.preloginAcquireIPStateLocked(ip, now.Add(-time.Second))
+	if !ok {
+		t.Fatal("could not seed a fresh IP tracker")
+	}
+	if _, ok := s.preloginAcquireIPStateLocked(staleIP, now.Add(-2*s.preloginStateIdleTTL)); !ok {
+		t.Fatal("could not seed an expired IP tracker")
+	}
+	key := subnetAdmissionKey(ip)
+	subnet, ok := s.preloginAcquireLimiterStateLocked(s.preloginBySubnet, key, now, s.acceptRatePerSubnet, s.acceptBurstPerSubnet)
+	if !ok || !subnet.limiter.AllowN(now, 1) || s.preloginGlobal.TokensAt(now) != 0 {
+		t.Fatal("could not initialize both rate limits")
+	}
+	s.preloginLastGC = now.Add(-defaultPreloginGCInterval)
+	lastGC := s.preloginLastGC
+	ips, subnets := maps.Clone(s.preloginByIP), maps.Clone(s.preloginBySubnet)
+	asns, countries := maps.Clone(s.preloginByASN), maps.Clone(s.preloginByCountry)
+	ipTokens, subnetTokens := state.limiter.TokensAt(now), subnet.limiter.TokensAt(now)
+	before := s.PreloginAdmissionMetricSnapshot()
+
+	addr := tcpAddr(ip, 7000)
+	if ticket, reason := s.tryAcquirePrelogin(addr); ticket != nil || reason != preloginRejectGlobalRate {
+		t.Fatalf("overlapping limits: ticket=%v reason=%q, want global_rate and no ticket", ticket, reason)
+	}
+	if got := state.limiter.TokensAt(now); got != ipTokens {
+		t.Errorf("refusal charged the IP: before=%v after=%v", ipTokens, got)
+	}
+	if got := subnet.limiter.TokensAt(now); got != subnetTokens {
+		t.Errorf("refusal changed the subnet allowance: before=%v after=%v", subnetTokens, got)
+	}
+	if !maps.Equal(ips, s.preloginByIP) || !maps.Equal(subnets, s.preloginBySubnet) ||
+		!maps.Equal(asns, s.preloginByASN) || !maps.Equal(countries, s.preloginByCountry) || s.preloginLastGC != lastGC {
+		t.Error("global rate refusal changed trackers, timestamps, or cleanup bookkeeping")
+	}
+	if got := s.PreloginAdmissionMetricSnapshot(); got != before {
+		t.Errorf("global rate refusal changed tracker metrics: before=%+v after=%+v", before, got)
+	}
+
+	s.preloginGlobal = rate.NewLimiter(rate.Limit(s.acceptRateGlobal), s.acceptBurstGlobal)
+	if ticket, reason := s.tryAcquirePrelogin(addr); ticket != nil || reason != preloginRejectSubnetRate {
+		t.Fatalf("same source with shared capacity: ticket=%v reason=%q, want subnet_rate", ticket, reason)
+	}
+	if _, present := s.preloginByIP[staleIP]; present || s.preloginLastGC != now {
+		t.Error("due cleanup did not resume once shared capacity was available")
+	}
+	if got := state.limiter.TokensAt(now); got != ipTokens-1 {
+		t.Errorf("subnet refusal with shared capacity must preserve the existing IP charge: got %v", got)
+	}
+}
+
+func TestTryAcquirePreloginSourceRefusalsLeaveSharedAllowance(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		ip     string
+		reason preloginRejectReason
+	}{
+		{"IP concurrency", "203.0.113.8", preloginRejectIPConcurrency},
+		{"IP rate", "203.0.113.8", preloginRejectIPRate},
+		{"subnet rate", "203.0.113.9", preloginRejectSubnetRate},
+		{"IPv6 subnet rate", "2001:db8:1::9", preloginRejectSubnetRate},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			now := time.Unix(100, 0).UTC()
+			s := newPreloginTestServer(&now)
+			s.acceptRateGlobal, s.acceptBurstGlobal = 1, 2
+			seedIP := "203.0.113.8"
+			switch tt.name {
+			case "IP concurrency":
+				s.preloginConcPerIP = 1
+			case "IP rate":
+				s.acceptBurstPerIP = 1
+			case "IPv6 subnet rate":
+				seedIP = "2001:db8:1::8"
+				s.acceptBurstPerSubnet = 1
+			default:
+				s.acceptBurstPerSubnet = 1
+			}
+			seed, why := s.tryAcquirePrelogin(tcpAddr(seedIP, 7100))
+			if seed == nil || why != "" {
+				t.Fatalf("seed admission: ticket=%v reason=%q", seed, why)
+			}
+			defer seed.Release()
+			if ticket, reason := s.tryAcquirePrelogin(tcpAddr(tt.ip, 7101)); ticket != nil || reason != tt.reason {
+				t.Fatalf("source check: ticket=%v reason=%q, want %s", ticket, reason, tt.reason)
+			}
+			if active := s.PreloginAdmissionMetricSnapshot().Active; active != 1 {
+				t.Fatalf("active pre-login gauge = %d, want 1", active)
+			}
+			other := tcpAddr("198.51.100.9", 7102)
+			if ticket, reason := s.tryAcquirePrelogin(other); ticket == nil || reason != "" {
+				t.Fatalf("independent client: ticket=%v reason=%q, want remaining shared allowance", ticket, reason)
+			} else {
+				ticket.Release()
+			}
+			other = tcpAddr("192.0.2.9", 7103)
+			if ticket, reason := s.tryAcquirePrelogin(other); ticket != nil || reason != preloginRejectGlobalRate {
+				t.Fatalf("exhausted shared burst: ticket=%v reason=%q", ticket, reason)
+			}
+			now = now.Add(time.Second)
+			if ticket, reason := s.tryAcquirePrelogin(other); ticket == nil || reason != "" {
+				t.Fatalf("one token of refill: ticket=%v reason=%q", ticket, reason)
+			} else {
+				ticket.Release()
+			}
+		})
+	}
+}
+
+func TestTryAcquirePreloginThrottledSubnetSkipsNewIPTracker(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
+	s := newPreloginTestServer(&now)
+	s.preloginTrackedMax = 2
+	s.acceptBurstPerSubnet = 1
+	for _, ip := range []string{"203.0.113.8", "198.51.100.8"} {
+		ticket, reason := s.tryAcquirePrelogin(tcpAddr(ip, 7200))
+		if ticket == nil || reason != "" {
+			t.Fatalf("seed admission: ticket=%v reason=%q", ticket, reason)
+		}
+		ticket.Release()
+	}
+	trackers := maps.Clone(s.preloginByIP)
+	before := s.PreloginAdmissionMetricSnapshot()
+	if ticket, reason := s.tryAcquirePrelogin(tcpAddr("203.0.113.9", 7201)); ticket != nil || reason != preloginRejectSubnetRate {
+		t.Fatalf("new IP in limited subnet: ticket=%v reason=%q, want subnet_rate", ticket, reason)
+	}
+	after := s.PreloginAdmissionMetricSnapshot()
+	if !maps.Equal(trackers, s.preloginByIP) || before.StateEvictions != after.StateEvictions || before.StateFullRejects != after.StateFullRejects {
+		t.Error("subnet refusal altered a full IP tracker or its counters")
+	}
+}
+
+func TestPreloginAllowsNowMatchesRateLimiter(t *testing.T) {
+	start := time.Unix(100, 0).UTC()
+	extremelySlow := rate.Limit(float64(time.Second) / float64(math.MaxInt64))
+	for _, limit := range []rate.Limit{extremelySlow, 1, 300, 100_000_000, rate.Inf} {
+		for _, elapsed := range []time.Duration{0, time.Nanosecond, time.Second/300 - time.Nanosecond, time.Second / 300, time.Second - time.Nanosecond, time.Second} {
+			limiter := rate.NewLimiter(limit, 1)
+			if !limiter.AllowN(start, 1) {
+				t.Fatalf("could not initialize limiter at %v", limit)
+			}
+			at := start.Add(elapsed)
+			before := limiter.TokensAt(at)
+			got := preloginAllowsNow(limiter, at)
+			if after := limiter.TokensAt(at); before != after {
+				t.Fatalf("limit %v at %v: probe changed tokens from %v to %v", limit, elapsed, before, after)
+			}
+			if want := limiter.AllowN(at, 1); got != want {
+				t.Errorf("limit %v at %v: probe = %v, AllowN = %v", limit, elapsed, got, want)
+			}
+		}
+	}
+}
+
 func TestTryAcquirePreloginHonorsSubnetRate(t *testing.T) {
 	now := time.Unix(100, 0).UTC()
 	s := newPreloginTestServer(&now)
@@ -318,9 +487,13 @@ func TestTryAcquirePreloginHonorsASNAndCountryRate(t *testing.T) {
 	}
 	t1.Release()
 
+	before := s.preloginGlobal.TokensAt(now)
 	t2, reason := s.tryAcquirePrelogin(tcpAddr("203.0.114.11", 9001))
 	if t2 != nil || reason != preloginRejectASNRate {
 		t.Fatalf("expected ASN rate reject, got ticket=%v reason=%q", t2, reason)
+	}
+	if got := s.preloginGlobal.TokensAt(now); got != before-1 {
+		t.Fatalf("ASN refusal charged %v shared tokens, want 1", before-got)
 	}
 
 	now = now.Add(1100 * time.Millisecond)
@@ -330,9 +503,13 @@ func TestTryAcquirePreloginHonorsASNAndCountryRate(t *testing.T) {
 	}
 	t3.Release()
 
+	before = s.preloginGlobal.TokensAt(now)
 	t4, reason := s.tryAcquirePrelogin(tcpAddr("198.51.100.11", 9101))
 	if t4 != nil || reason != preloginRejectCountryRate {
 		t.Fatalf("expected country rate reject, got ticket=%v reason=%q", t4, reason)
+	}
+	if got := s.preloginGlobal.TokensAt(now); got != before-1 {
+		t.Fatalf("country refusal charged %v shared tokens, want 1", before-got)
 	}
 }
 

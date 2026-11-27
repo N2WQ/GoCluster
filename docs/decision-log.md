@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0380 | Shared pre-login allowance accounting | Accepted | 2026-11-27 | Telnet and browser admission, rate accounting and tracker maintenance | refines ADR-0048 | none | [ADR-0380](decisions/ADR-0380-prelogin-shared-allowance-accounting.md) |
 | ADR-0379 | Browser replacement and Telnet NOP handling | Accepted | 2026-11-26 | Terminal browser notice, retry bounds, and inbound Telnet framing | extends ADR-0376 | none | [ADR-0379](decisions/ADR-0379-browser-replacement-and-telnet-nop.md) |
 | ADR-0378 | Windows release startup assets | Accepted | 2026-11-26 | Commit-bound inputs, ZIP integrity and isolated startup | refines ADR-0076 and ADR-0242 | none | [ADR-0378](decisions/ADR-0378-windows-release-startup-assets.md) |
 | ADR-0377 | Browser band strip filter scope | Accepted | 2026-11-25 | Band eligibility, draft previews and matching report counts | none | none | [ADR-0377](decisions/ADR-0377-browser-band-strip-filter-scope.md) |
@@ -377,7 +378,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 | ADR-0045 | 10 Hz Frequency Resolution and Fixed Telnet Mode Column | Accepted | 2026-02-28 | spot, skew, main output pipeline, telnet formatting | - | - | `docs/decisions/ADR-0045-10hz-frequency-resolution-fixed-telnet-mode-column.md` |
 | ADR-0046 | Stabilizer Delay Eligibility Scoped to ?, S, and P Glyphs | Accepted | 2026-03-01 | internal/correctionflow, main output pipeline, replay parity, docs | - | - | `docs/decisions/ADR-0046-stabilizer-delay-eligibility-unknown-s-p-only.md` |
 | ADR-0047 | Peering Outbound Sessions Require Explicit Enablement | Accepted | 2026-03-03 | config, peer | - | - | `docs/decisions/ADR-0047-peering-explicit-enable-semantics.md` |
-| ADR-0048 | Multi-Dimensional Prelogin Admission and Guardrailed Reject Logging | Accepted | 2026-03-03 | telnet/session admission, reputation integration, config, observability | ADR-0041 (extended admission dimensions and logging controls) | - | `docs/decisions/ADR-0048-multi-dimensional-prelogin-admission-and-logging-guardrails.md` |
+| ADR-0048 | Multi-Dimensional Prelogin Admission and Guardrailed Reject Logging | Accepted | 2026-03-03 | telnet/session admission, reputation integration, config, observability | ADR-0041 (extended admission dimensions and logging controls) | ADR-0380 (refines shared charging order) | `docs/decisions/ADR-0048-multi-dimensional-prelogin-admission-and-logging-guardrails.md` |
 | ADR-0049 | Peer Publish Limited to Local Non-Test Human/Manual Sources | Accepted | 2026-03-03 | main output pipeline, peer | - | - | `docs/decisions/ADR-0049-peer-publish-local-human-only.md` |
 | ADR-0050 | Peering Hop-Suffix Canonicalization, Semantic PC92 Dedupe, and Overlong Diagnostics | Accepted | 2026-03-05 | peer/protocol, peer/manager, peer/reader | - | - | `docs/decisions/ADR-0050-peering-hop-canonicalization-pc92-dedupe-and-overlong-diagnostics.md` |
 | ADR-0051 | Mode Inference Provenance and Band Default Policy | Superseded | 2026-03-06 | spot, rbn, pskreporter, commands | - | ADR-0052 | `docs/decisions/ADR-0051-mode-inference-provenance-and-band-default-policy.md` |

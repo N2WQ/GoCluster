@@ -265,6 +265,15 @@ The [native output guide](../telnet/README.md#ve7cc-native-spot-output) and
 
 ## Telnet session capacity
 
+- Telnet and browser share the concurrent pre-login cap and rate allowance.
+  The concurrent cap takes precedence. An empty shared allowance returns
+  `global_rate` ahead of source accounting and admission tracker maintenance.
+  Otherwise, an IP concurrency, IP rate or subnet rate refusal preserves the
+  shared allowance. A subnet refusal can charge an existing IP tracker, while
+  an untracked IP in that subnet leaves the IP tracker table untouched. New
+  tracker allocation, capacity eviction, and ASN and country checks require the
+  shared charge. Periodic tracker cleanup resumes when capacity is available
+  or a pre-login ticket is released.
 - An admitted connection has one pre-login time budget from listener accept
   through its registration decision. After admission, timeout or shutdown
   interrupts socket I/O, subject to scheduling and prior admission delay;

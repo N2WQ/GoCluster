@@ -88,6 +88,66 @@ func TestWebListenerSecretValidation(t *testing.T) {
 	}
 }
 
+func TestWebListenerSharesPreloginAllowanceWithTelnet(t *testing.T) {
+	s := newHandshakeTranscriptServerWithOptions(t, func(opts *ServerOptions) {
+		opts.Transport, opts.EchoMode = "native", "off"
+		opts.AcceptRateGlobal, opts.AcceptBurstGlobal = 0.001, 4
+	})
+	telnetAddr := startSessionCeilingListener(t, s)
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := s.serveWebListener(listener, config.WebConfig{Hostname: testWebHost, HeartbeatSeconds: 30, MaxConnections: 2}, testWebSecret)
+	t.Cleanup(w.Stop)
+	url := "ws://" + listener.Addr().String() + "/ws"
+	headers := testWebHeaders()
+	headers.Set("Host", testWebHost)
+	dial := websocket.Dialer{HandshakeTimeout: 2 * time.Second}
+
+	for range 2 {
+		conn, err := (&net.Dialer{Timeout: 2 * time.Second}).DialContext(t.Context(), "tcp", telnetAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = conn.Close() })
+		ceilingReadThrough(t, conn, "login: ")
+
+		ws, response, err := dial.DialContext(t.Context(), url, headers)
+		if response != nil {
+			_ = response.Body.Close()
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = ws.Close() })
+		if err := ws.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if _, prompt, err := ws.ReadMessage(); err != nil || !strings.Contains(string(prompt), "login:") {
+			t.Fatalf("web login prompt: %q %v", prompt, err)
+		}
+		_ = conn.Close()
+		waitSessionCeiling(t, func() bool { return s.PreloginAdmissionMetricSnapshot().Active == 1 })
+		_ = ws.Close()
+		waitSessionCeiling(t, func() bool { return s.PreloginAdmissionMetricSnapshot().Active == 0 })
+	}
+
+	ws, response, err := dial.DialContext(t.Context(), url, headers)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	if ws != nil {
+		_ = ws.Close()
+	}
+	if err == nil || response == nil || response.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("expected shared allowance refusal, response=%v err=%v", response, err)
+	}
+	if got := s.PreloginAdmissionMetricSnapshot(); got.RejectGlobalRate != 1 || got.Active != 0 {
+		t.Fatalf("expected one shared rate rejection and no held tickets, got %+v", got)
+	}
+}
+
 func TestWebListenerTransportAdmissionAndStop(t *testing.T) {
 	s := newHandshakeTranscriptServer(t)
 	s.preloginConcPerIP = 1

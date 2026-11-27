@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `a5b6379abd98a3fe`
+- Source fingerprint: `4ee87ad689e12346`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -1095,6 +1095,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0380 | Accepted | 2026-11-27 | Telnet and browser admission, rate accounting and tracker maintenance | `area:telnet` |
 | ADR-0379 | Accepted | 2026-11-26 | Terminal browser notice, retry bounds, and inbound Telnet framing | `area:telnet` |
 | ADR-0375 | Accepted | 2026-11-23 | Worker asset hosting, private WebSocket admission and bounded cluster sessions | `area:internal/cluster` |
 | ADR-0365 | Accepted | 2026-11-20 | telnet user preferences | `area:telnet` |

@@ -1011,22 +1011,31 @@ func (s *Server) tryAcquirePrelogin(addr net.Addr) (*preloginTicket, preloginRej
 		s.setPreloginActive(active)
 	}()
 	s.preloginInitLocked()
+	active = s.preloginActive
 
-	s.preloginMaybeGCLocked(now)
 	if s.maxPreloginSessions > 0 && s.preloginActive >= s.maxPreloginSessions {
+		s.preloginMaybeGCLocked(now)
 		reason = preloginRejectGlobalCap
 		active = s.preloginActive
 		return nil, reason
 	}
+	if !preloginAllowsNow(s.preloginGlobal, now) {
+		return nil, preloginRejectGlobalRate
+	}
+
+	s.preloginMaybeGCLocked(now)
+	if reason := s.preloginKnownSourceRejectLocked(ip, subnetKey, now); reason != "" {
+		return nil, reason
+	}
+	// Charge before work that can allocate a tracker or scan for an eviction.
 	if s.preloginGlobal != nil && !s.preloginGlobal.AllowN(now, 1) {
 		reason = preloginRejectGlobalRate
 		active = s.preloginActive
 		return nil, reason
 	}
 
-	state, ok, acquired := s.preloginAcquireIPStateLocked(ip, now)
+	state, acquired := s.preloginAcquireIPStateLocked(ip, now)
 	if !acquired {
-		_ = ok
 		reason = preloginRejectGlobalCap
 		active = s.preloginActive
 		return nil, reason
@@ -1103,6 +1112,65 @@ func (s *Server) tryAcquirePrelogin(addr net.Addr) (*preloginTicket, preloginRej
 		server: s,
 		ip:     ip,
 	}, ""
+}
+
+// preloginAllowsNow is the read-only, one-token equivalent of AllowN under
+// preloginMu. AllowN rounds a fractional wait down to whole nanoseconds.
+func preloginAllowsNow(limiter *rate.Limiter, now time.Time) bool {
+	if limiter == nil {
+		return true
+	}
+	tokens := limiter.TokensAt(now)
+	if tokens >= 1 {
+		return true
+	}
+	limit := limiter.Limit()
+	if limit == rate.Inf {
+		return true
+	}
+	if limiter.Burst() < 1 {
+		return false
+	}
+	if !(tokens < 1) {
+		return true
+	}
+	if limit <= 0 {
+		return false
+	}
+	wait := (1 - tokens) / float64(limit) * float64(time.Second)
+	return wait <= float64(math.MaxInt64) && time.Duration(wait) <= 0
+}
+
+// preloginKnownSourceRejectLocked uses existing trackers only. If neither
+// source limit refuses, the caller still owns the actual quota charges.
+func (s *Server) preloginKnownSourceRejectLocked(ip, subnetKey string, now time.Time) preloginRejectReason {
+	ipState, tracked := s.preloginByIP[ip]
+	if tracked && ipState.active >= s.preloginConcPerIP {
+		ipState.lastSeen = now
+		s.preloginByIP[ip] = ipState
+		return preloginRejectIPConcurrency
+	}
+	if !preloginAllowsNow(ipState.limiter, now) {
+		ipState.lastSeen = now
+		s.preloginByIP[ip] = ipState
+		return preloginRejectIPRate
+	}
+	subnetState := s.preloginBySubnet[subnetKey]
+	if preloginAllowsNow(subnetState.limiter, now) {
+		return ""
+	}
+	// Preserve earlier IP accounting for an existing tracker. A subnet
+	// refusal never creates an IP tracker or evicts another source's state.
+	if tracked {
+		if ipState.limiter != nil {
+			ipState.limiter.AllowN(now, 1)
+		}
+		ipState.lastSeen = now
+		s.preloginByIP[ip] = ipState
+	}
+	subnetState.lastSeen = now
+	s.preloginBySubnet[subnetKey] = subnetState
+	return preloginRejectSubnetRate
 }
 
 func (s *Server) preloginInitLocked() {
@@ -1183,15 +1251,15 @@ func (s *Server) preloginInitLocked() {
 	}
 }
 
-func (s *Server) preloginAcquireIPStateLocked(ip string, now time.Time) (preloginIPState, bool, bool) {
+func (s *Server) preloginAcquireIPStateLocked(ip string, now time.Time) (preloginIPState, bool) {
 	if s == nil {
-		return preloginIPState{}, false, false
+		return preloginIPState{}, false
 	}
 	state, ok := s.preloginByIP[ip]
 	if !ok {
 		if len(s.preloginByIP) >= s.preloginTrackedMax && !s.preloginEvictOldestIdleIPLocked() {
 			atomic.AddUint64(&s.metrics.preloginStateFullRejects, 1)
-			return preloginIPState{}, false, false
+			return preloginIPState{}, false
 		}
 		state = preloginIPState{
 			limiter:  rate.NewLimiter(rate.Limit(s.acceptRatePerIP), s.acceptBurstPerIP),
@@ -1203,7 +1271,7 @@ func (s *Server) preloginAcquireIPStateLocked(ip string, now time.Time) (prelogi
 	}
 	state.lastSeen = now
 	s.preloginByIP[ip] = state
-	return state, ok, true
+	return state, true
 }
 
 func (s *Server) preloginAcquireLimiterStateLocked(states map[string]preloginLimiterState, key string, now time.Time, refillRate float64, burst int) (preloginLimiterState, bool) {

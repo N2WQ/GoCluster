@@ -21,7 +21,7 @@ Tags: telnet, dos, ddos, admission-control, ipinfo, observability
   - global
   - per-ASN (IPinfo)
   - per-country (IPinfo)
-- Enforce limiters in deterministic order: global cap -> global rate -> per-IP concurrency/rate -> subnet rate -> ASN rate -> country rate.
+- Enforce limiters in deterministic order: global cap -> global rate -> per-IP concurrency/rate -> subnet rate -> ASN rate -> country rate. [ADR-0380](ADR-0380-prelogin-shared-allowance-accounting.md) refines the shared charge and tracker maintenance order.
 - Replace custom token refill math with `x/time/rate` for all prelogin admission token buckets.
 - Use a store-only IPinfo lookup path for prelogin (`LookupIPForAdmission`) so admission remains bounded and deterministic under load (no live API/Cymru dependency).
 - Add reject-log guardrails:
