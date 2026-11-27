@@ -247,7 +247,8 @@ func TestB11CustomSCPQualificationPreservesBytesAndReopen(t *testing.T) {
 		for _, row := range rows {
 			requireCustomSCPCleanupRaw(t, s, observationKeyString(key, row.receiver), customSCPCleanupObservationBytes(row.seen, row.cell))
 		}
-		requireCustomSCPCleanupRaw(t, s, customSCPMetaPrefix+key.call, customSCPCleanupStaticBytes(rows[3].seen))
+		// rows[3] arrives 2 minutes after rows[2], so static membership stays at rows[2] under the 6h cooldown.
+		requireCustomSCPCleanupRaw(t, s, customSCPMetaPrefix+key.call, customSCPCleanupStaticBytes(rows[2].seen))
 	}
 	checkQueries := func(s *CustomSCPStore) {
 		t.Helper()

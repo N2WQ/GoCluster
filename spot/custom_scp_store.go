@@ -51,6 +51,13 @@ const (
 	customSCPDefaultFloorExactCells   = 2
 	customSCPDefaultFloorFamilyCells  = 3
 
+	// Live refresh cooldown for already-retained static membership (m|<call>)
+	// and same-spotter observations (o|<call>|<band>|<bucket>|<spotter>). New
+	// spotters and H3 cell changes still admit immediately; 6h keeps active
+	// receivers well inside the 12h T0 tier while suppressing hot-path rewrites.
+	customSCPDefaultRefreshCooldown        = 6 * time.Hour
+	customSCPDefaultRefreshCooldownSeconds = int64(customSCPDefaultRefreshCooldown / time.Second)
+
 	customSCPMetaPrefix = "m|"
 	customSCPObsPrefix  = "o|"
 )
@@ -532,18 +539,20 @@ func (s *CustomSCPStore) RecordSpot(sp *Spot) {
 	if !ok {
 		key = call
 	}
-	// Cover both family keys with one lifetime reader; nested readers can
-	// deadlock when Close is waiting for the writer lock between the two keys.
+	// Cover both family keys and the single batch commit with one lifetime
+	// reader; nested readers can deadlock when Close waits for the writer lock.
 	s.dbMu.RLock()
 	defer s.dbMu.RUnlock()
 	s.diskMu.Lock()
 	defer s.diskMu.Unlock()
+	var batch *pebble.Batch
 	if key != "" {
-		s.recordObservationWithDiskLocked(key, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt)
+		s.recordObservationWithDiskLocked(key, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt, &batch)
 	}
 	if baseKey != "" {
-		s.recordObservationWithDiskLocked(baseKey, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt)
+		s.recordObservationWithDiskLocked(baseKey, band, mode, spotter, cell, sp.Report, sp.HasReport, seenAt, &batch)
 	}
+	s.commitAndCloseBatchLocked(batch)
 }
 
 // recordObservation owns the mutation path for one retained observation. It
@@ -557,11 +566,15 @@ func (s *CustomSCPStore) recordObservation(call, band, mode, spotter string, cel
 	defer s.dbMu.RUnlock()
 	s.diskMu.Lock()
 	defer s.diskMu.Unlock()
-	s.recordObservationWithDiskLocked(call, band, mode, spotter, cellRes1, report, hasReport, seenAt)
+	var batch *pebble.Batch
+	s.recordObservationWithDiskLocked(call, band, mode, spotter, cellRes1, report, hasReport, seenAt, &batch)
+	s.commitAndCloseBatchLocked(batch)
 }
 
 // Callers hold dbMu and diskMu, including for memory-only stores after Close.
-func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spotter string, cellRes1 uint16, report int, hasReport bool, seenAt time.Time) {
+// In-memory state mutates under s.mu; all Pebble staging happens after s.mu is
+// released while diskMu still serializes persistence against cleanup.
+func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spotter string, cellRes1 uint16, report int, hasReport bool, seenAt time.Time, batch **pebble.Batch) {
 	call = NormalizeCallsign(call)
 	band = NormalizeBand(band)
 	bucket, ok := customSCPBucketForMode(mode)
@@ -571,42 +584,63 @@ func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spott
 	if !s.snrPasses(bucket, report, hasReport) {
 		return
 	}
+	now := time.Now().UTC()
 	seenUnix := seenAt.UTC().Unix()
 	if seenUnix <= 0 {
-		seenUnix = time.Now().UTC().Unix()
+		seenUnix = now.Unix()
 	}
-	cutoff := s.observationHorizonCutoffUnix(time.Now().UTC())
+	cutoff := s.observationHorizonCutoffUnix(now)
 	if seenUnix < cutoff {
 		return
 	}
+	staticCutoff := s.staticHorizonCutoffUnix(now)
+
+	var (
+		staticCall       string
+		staticSeen       int64
+		staticChanged    bool
+		evictedVictim    customSCPKey
+		hasEvictedVictim bool
+		deletedEmptyKey  bool
+		obsKey           customSCPKey
+		obsToPersist     customSCPSpotterObs
+		hasObsToPersist  bool
+		removed          []string
+	)
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	call, staticChanged := s.retainStaticCallLocked(call, seenUnix)
+	staticCall, staticChanged = s.retainStaticCallWithCooldownLocked(call, seenUnix, staticCutoff, customSCPDefaultRefreshCooldownSeconds)
 	if staticChanged {
-		s.upsertStaticExpiryLocked(call, s.static[call])
+		staticSeen = s.static[staticCall]
+		s.upsertStaticExpiryLocked(staticCall, staticSeen)
 	}
 
-	key := customSCPKey{call: call, band: band, bucket: bucket}
+	key := customSCPKey{call: staticCall, band: band, bucket: bucket}
 	entry := s.entries[key]
 	wasActive := customSCPEntryActive(entry)
 	if entry == nil {
-		if len(s.entries) >= s.opts.MaxKeys && s.evictOldestKeyLocked() {
-			s.diag.liveKeyEvictions++
+		if len(s.entries) >= s.opts.MaxKeys {
+			if victim, evicted := s.evictOldestKeyMemoryOnlyLocked(); evicted {
+				evictedVictim = victim
+				hasEvictedVictim = true
+				s.diag.liveKeyEvictions++
+			}
 		}
 		if len(s.entries) >= s.opts.MaxKeys {
+			s.mu.Unlock()
+			if hasEvictedVictim {
+				s.stageDeleteObservationPrefixLocked(evictedVictim, batch)
+			}
 			return
 		}
 		key = customSCPKey{
-			call:   s.retainInternedStringLocked(call),
+			call:   s.retainInternedStringLocked(staticCall),
 			band:   s.retainInternedStringLocked(band),
 			bucket: s.retainInternedStringLocked(bucket),
 		}
 		entry = &customSCPEntry{spotters: makeCustomSCPSpotters(s.opts.MaxSpottersPerKey)}
 		s.entries[key] = entry
 	}
-	var removed []string
 	s.pruneEntryLocked(entry, cutoff, &removed)
 	obs := customSCPSpotterObs{seenUnix: seenUnix, cellRes1: cellRes1}
 	persistSpotter := spotter
@@ -626,13 +660,17 @@ func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spott
 		)
 		s.observationSpotters++
 		updated = true
-	} else if seenUnix > decodeCustomSCPSpotterSeenUnix(entry.spotters[idx].seenUnix) {
-		entry.spotters[idx].seenUnix = encodeCustomSCPSpotterSeenUnix(obs.seenUnix)
-		entry.spotters[idx].cellRes1 = obs.cellRes1
-		persistSpotter = entry.spotters[idx].spotter
-		updated = true
+	} else {
+		prevSeen := decodeCustomSCPSpotterSeenUnix(entry.spotters[idx].seenUnix)
+		prevCell := entry.spotters[idx].cellRes1
+		if seenUnix > prevSeen && (seenUnix-prevSeen >= customSCPDefaultRefreshCooldownSeconds || cellRes1 != prevCell) {
+			entry.spotters[idx].seenUnix = encodeCustomSCPSpotterSeenUnix(obs.seenUnix)
+			entry.spotters[idx].cellRes1 = obs.cellRes1
+			persistSpotter = entry.spotters[idx].spotter
+			updated = true
+		}
 	}
-	if seenUnix > entry.lastSeen {
+	if updated && seenUnix > entry.lastSeen {
 		entry.lastSeen = seenUnix
 	}
 	if len(entry.spotters) > s.opts.MaxSpottersPerKey {
@@ -641,20 +679,47 @@ func (s *CustomSCPStore) recordObservationWithDiskLocked(call, band, mode, spott
 	}
 	if len(entry.spotters) == 0 {
 		s.deleteEntryLocked(key)
-		s.deleteObservationPrefixLocked(key)
+		deletedEmptyKey = true
+		obsKey = key
+		s.mu.Unlock()
+		if hasEvictedVictim {
+			s.stageDeleteObservationPrefixLocked(evictedVictim, batch)
+		}
+		if deletedEmptyKey {
+			s.stageDeleteObservationPrefixLocked(obsKey, batch)
+		}
 		return
 	}
-	s.markEntryForCleanupLocked(key, entry)
+	if !wasActive || updated || len(removed) > 0 {
+		s.markEntryForCleanupLocked(key, entry)
+	}
 	if !wasActive {
 		s.active.Add(key.call, key.band)
 	}
+	obsKey = key
+	if updated {
+		obsToPersist, hasObsToPersist = entrySpotterObs(entry, persistSpotter)
+	}
+	if len(removed) > 0 {
+		removed = filterRemovedSpottersLocked(entry, removed)
+	}
+	s.mu.Unlock()
+
+	if s.db == nil {
+		return
+	}
+	if hasEvictedVictim {
+		s.stageDeleteObservationPrefixLocked(evictedVictim, batch)
+	}
 	if staticChanged {
-		s.persistStaticLocked(call, s.static[call])
+		s.stagePersistStaticLocked(staticCall, staticSeen, batch)
 	}
-	if obs, ok := entrySpotterObs(entry, persistSpotter); updated && ok {
-		s.persistObservationLocked(key, spotter, obs)
+	if hasObsToPersist {
+		s.stagePersistObservationLocked(obsKey, spotter, obsToPersist, batch)
 	}
-	s.deleteObservationSpottersLocked(key, entry, removed, nil)
+	if len(removed) > 0 {
+		s.stageDeleteObservationSpottersLocked(obsKey, removed, batch)
+	}
 }
 
 // StaticContains reports process-clock eligible persisted custom SCP membership.
@@ -996,7 +1061,7 @@ func (s *CustomSCPStore) loadFromDB() error {
 				pendingDeletes++
 				continue
 			}
-			call, _ = s.retainStaticCallLocked(call, seen)
+			call, _ = s.retainStaticCallForLoadLocked(call, seen)
 			s.upsertStaticExpiryLocked(call, seen)
 		case bytes.HasPrefix(k, customSCPObsPrefixBytes):
 			call, band, bucket, spotter, ok := parseObservationKeyBytes(k)
@@ -1044,33 +1109,69 @@ func (s *CustomSCPStore) loadFromDB() error {
 	return nil
 }
 
+func (s *CustomSCPStore) ensureBatchLocked(batch **pebble.Batch) *pebble.Batch {
+	if *batch == nil {
+		*batch = s.db.NewBatch()
+	}
+	return *batch
+}
+
+func (s *CustomSCPStore) commitAndCloseBatchLocked(batch *pebble.Batch) {
+	if batch == nil {
+		return
+	}
+	if !batch.Empty() {
+		ignoreCustomSCPDiskError(batch.Commit(pebble.NoSync))
+	}
+	ignoreCustomSCPDiskError(batch.Close())
+}
+
 func (s *CustomSCPStore) persistStaticLocked(call string, seenUnix int64) {
 	if s == nil || s.db == nil || call == "" {
 		return
 	}
-	value := make([]byte, 8)
-	binary.BigEndian.PutUint64(value, uint64(seenUnix))
-	ignoreCustomSCPDiskError(s.db.Set([]byte(customSCPMetaPrefix+call), value, pebble.NoSync))
+	var keyBuf [48]byte
+	var value [8]byte
+	binary.BigEndian.PutUint64(value[:], uint64(seenUnix))
+	ignoreCustomSCPDiskError(s.db.Set(appendStaticKey(keyBuf[:0], call), value[:], pebble.NoSync))
 }
 
-func (s *CustomSCPStore) persistObservationLocked(key customSCPKey, spotter string, obs customSCPSpotterObs) {
+func (s *CustomSCPStore) stagePersistStaticLocked(call string, seenUnix int64, batch **pebble.Batch) {
+	if s == nil || s.db == nil || call == "" {
+		return
+	}
+	var keyBuf [48]byte
+	var value [8]byte
+	binary.BigEndian.PutUint64(value[:], uint64(seenUnix))
+	ignoreCustomSCPDiskError(s.ensureBatchLocked(batch).Set(appendStaticKey(keyBuf[:0], call), value[:], nil))
+}
+
+func (s *CustomSCPStore) stagePersistObservationLocked(key customSCPKey, spotter string, obs customSCPSpotterObs, batch **pebble.Batch) {
 	if s == nil || s.db == nil {
 		return
 	}
-	value := make([]byte, 10)
+	var keyBuf [96]byte
+	var value [10]byte
 	binary.BigEndian.PutUint64(value[:8], uint64(obs.seenUnix))
 	binary.BigEndian.PutUint16(value[8:10], obs.cellRes1)
-	ignoreCustomSCPDiskError(s.db.Set([]byte(observationKeyString(key, spotter)), value, pebble.NoSync))
+	ignoreCustomSCPDiskError(s.ensureBatchLocked(batch).Set(appendObservationKey(keyBuf[:0], key, spotter), value[:], nil))
 }
 
-func (s *CustomSCPStore) evictOldestKeyLocked() bool {
+func (s *CustomSCPStore) evictOldestKeyMemoryOnlyLocked() (customSCPKey, bool) {
 	if len(s.eviction) == 0 {
-		return false
+		return customSCPKey{}, false
 	}
 	victim := s.eviction[0].key
 	s.deleteEntryLocked(victim)
+	return victim, true
+}
+
+func (s *CustomSCPStore) evictOldestKeyLocked() {
+	victim, ok := s.evictOldestKeyMemoryOnlyLocked()
+	if !ok {
+		return
+	}
 	s.deleteObservationPrefixLocked(victim)
-	return true
 }
 
 func (s *CustomSCPStore) retainInternedStringLocked(value string) string {
@@ -1088,6 +1189,14 @@ func (s *CustomSCPStore) releaseInternedStringLocked(value string) {
 }
 
 func (s *CustomSCPStore) retainStaticCallLocked(call string, seenUnix int64) (string, bool) {
+	return s.retainStaticCallWithCooldownLocked(call, seenUnix, 0, customSCPDefaultRefreshCooldownSeconds)
+}
+
+func (s *CustomSCPStore) retainStaticCallForLoadLocked(call string, seenUnix int64) (string, bool) {
+	return s.retainStaticCallWithCooldownLocked(call, seenUnix, 0, 0)
+}
+
+func (s *CustomSCPStore) retainStaticCallWithCooldownLocked(call string, seenUnix, staticCutoff, cooldownSeconds int64) (string, bool) {
 	if s == nil || call == "" {
 		return call, false
 	}
@@ -1095,11 +1204,15 @@ func (s *CustomSCPStore) retainStaticCallLocked(call string, seenUnix int64) (st
 		s.static = make(map[string]int64, 1024)
 	}
 	if current, ok := s.static[call]; ok {
-		if seenUnix > current {
-			s.static[call] = seenUnix
-			return s.interner.canonical(call), true
+		if seenUnix <= current {
+			return s.interner.canonical(call), false
 		}
-		return s.interner.canonical(call), false
+		stale := staticCutoff > 0 && current < staticCutoff
+		if !stale && cooldownSeconds > 0 && current >= 0 && seenUnix-current < cooldownSeconds {
+			return s.interner.canonical(call), false
+		}
+		s.static[call] = seenUnix
+		return s.interner.canonical(call), true
 	}
 	retained := s.retainInternedStringLocked(call)
 	s.static[retained] = seenUnix
@@ -1249,6 +1362,39 @@ func (s *CustomSCPStore) deleteStaticAfterExpiryPopLocked(call string) bool {
 	return true
 }
 
+func filterRemovedSpottersLocked(entry *customSCPEntry, spotters []string) []string {
+	if len(spotters) == 0 {
+		return nil
+	}
+	if len(spotters) == 1 {
+		sp := spotters[0]
+		if sp == "" || entryHasSpotter(entry, sp) {
+			return nil
+		}
+		return spotters
+	}
+	write := 0
+	var uniq map[string]struct{}
+	for _, spotter := range spotters {
+		if spotter == "" || entryHasSpotter(entry, spotter) {
+			continue
+		}
+		if write > 0 {
+			if uniq == nil {
+				uniq = make(map[string]struct{}, len(spotters))
+				uniq[spotters[0]] = struct{}{}
+			}
+			if _, dup := uniq[spotter]; dup {
+				continue
+			}
+			uniq[spotter] = struct{}{}
+		}
+		spotters[write] = spotter
+		write++
+	}
+	return spotters[:write]
+}
+
 func (s *CustomSCPStore) deleteObservationSpotterLocked(key customSCPKey, entry *customSCPEntry, spotter string, batch *pebble.Batch) bool {
 	if s == nil || s.db == nil || spotter == "" {
 		return false
@@ -1256,7 +1402,8 @@ func (s *CustomSCPStore) deleteObservationSpotterLocked(key customSCPKey, entry 
 	if entryHasSpotter(entry, spotter) {
 		return false
 	}
-	keyBytes := []byte(observationKeyString(key, spotter))
+	var keyBuf [96]byte
+	keyBytes := appendObservationKey(keyBuf[:0], key, spotter)
 	if batch != nil {
 		ignoreCustomSCPDiskError(batch.Delete(keyBytes, nil))
 	} else {
@@ -1265,49 +1412,46 @@ func (s *CustomSCPStore) deleteObservationSpotterLocked(key customSCPKey, entry 
 	return true
 }
 
-func (s *CustomSCPStore) deleteObservationSpottersLocked(key customSCPKey, entry *customSCPEntry, spotters []string, batch *pebble.Batch) int {
+func (s *CustomSCPStore) stageDeleteObservationSpottersLocked(key customSCPKey, spotters []string, batch **pebble.Batch) {
 	if s == nil || s.db == nil || len(spotters) == 0 {
-		return 0
+		return
 	}
-	uniq := make(map[string]struct{}, len(spotters))
-	deleted := 0
+	b := s.ensureBatchLocked(batch)
+	var keyBuf [96]byte
 	for _, spotter := range spotters {
 		if spotter == "" {
 			continue
 		}
-		if entryHasSpotter(entry, spotter) {
-			continue
-		}
-		if _, ok := uniq[spotter]; ok {
-			continue
-		}
-		uniq[spotter] = struct{}{}
-		if s.deleteObservationSpotterLocked(key, nil, spotter, batch) {
-			deleted++
-		}
+		ignoreCustomSCPDiskError(b.Delete(appendObservationKey(keyBuf[:0], key, spotter), nil))
 	}
-	return deleted
 }
 
 func (s *CustomSCPStore) deleteObservationPrefixLocked(key customSCPKey) {
+	var batch *pebble.Batch
+	s.stageDeleteObservationPrefixLocked(key, &batch)
+	s.commitAndCloseBatchLocked(batch)
+}
+
+func (s *CustomSCPStore) stageDeleteObservationPrefixLocked(key customSCPKey, batch **pebble.Batch) {
 	if s == nil || s.db == nil {
 		return
 	}
-	prefix := []byte(observationPrefixForKey(key))
+	var prefixBuf [80]byte
+	prefix := appendObservationPrefix(prefixBuf[:0], key)
+	upper := make([]byte, len(prefix)+1)
+	copy(upper, prefix)
+	upper[len(prefix)] = 0xff
 	iter, err := s.db.NewIter(&pebble.IterOptions{
 		LowerBound: prefix,
-		UpperBound: append(prefix, 0xff),
+		UpperBound: upper,
 	})
 	if err != nil {
 		return
 	}
 	defer iter.Close()
-	batch := s.db.NewBatch()
-	defer batch.Close()
 	for iter.First(); iter.Valid(); iter.Next() {
-		ignoreCustomSCPDiskError(batch.Delete(iter.Key(), nil))
+		ignoreCustomSCPDiskError(s.ensureBatchLocked(batch).Delete(iter.Key(), nil))
 	}
-	ignoreCustomSCPDiskError(batch.Commit(pebble.NoSync))
 }
 
 func (s *CustomSCPStore) snrPasses(bucket string, report int, hasReport bool) bool {
@@ -1430,6 +1574,26 @@ func scoreForTier(tier int) int {
 	default:
 		return customSCPScoreT6
 	}
+}
+
+func appendStaticKey(dst []byte, call string) []byte {
+	dst = append(dst, customSCPMetaPrefix...)
+	return append(dst, call...)
+}
+
+func appendObservationPrefix(dst []byte, key customSCPKey) []byte {
+	dst = append(dst, customSCPObsPrefix...)
+	dst = append(dst, key.call...)
+	dst = append(dst, '|')
+	dst = append(dst, key.band...)
+	dst = append(dst, '|')
+	dst = append(dst, key.bucket...)
+	return append(dst, '|')
+}
+
+func appendObservationKey(dst []byte, key customSCPKey, spotter string) []byte {
+	dst = appendObservationPrefix(dst, key)
+	return append(dst, strutil.NormalizeUpper(spotter)...)
 }
 
 func observationKeyString(key customSCPKey, spotter string) string {

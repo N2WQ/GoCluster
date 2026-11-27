@@ -42,7 +42,10 @@ func BenchmarkCustomSCPPersistedObservation(b *testing.B) {
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				s.recordObservation("K1BEN", "20m", "CW", "N0BBB", 202, 10, true, now.Add(time.Duration(i)*time.Second))
+				// Alternate H3 cell so every iteration forces a real persisted write
+				// even with the 6-hour same-spotter refresh cooldown.
+				cell := uint16(202 + (i & 1))
+				s.recordObservation("K1BEN", "20m", "CW", "N0BBB", cell, 10, true, now.Add(time.Duration(i)*time.Second))
 			}
 			b.StopTimer()
 			if concurrentCleanup {
@@ -54,14 +57,15 @@ func BenchmarkCustomSCPPersistedObservation(b *testing.B) {
 			key := customSCPKey{call: "K1BEN", band: "20m", bucket: "cw"}
 			obs, ok := entrySpotterObs(s.entries[key], "N0BBB")
 			want := now.Add(time.Duration(b.N-1) * time.Second).Unix()
-			if !ok || obs.seenUnix != want || obs.cellRes1 != 202 {
+			wantCell := uint16(202 + ((b.N - 1) & 1))
+			if !ok || obs.seenUnix != want || obs.cellRes1 != wantCell {
 				b.Fatalf("benchmark did not retain the final write: %+v, ok=%v", obs, ok)
 			}
 			value, closer, err := s.db.Get([]byte(observationKeyString(key, "N0BBB")))
 			if err != nil {
 				b.Fatal(err)
 			}
-			if len(value) != 10 || int64(binary.BigEndian.Uint64(value[:8])) != want || binary.BigEndian.Uint16(value[8:]) != 202 {
+			if len(value) != 10 || int64(binary.BigEndian.Uint64(value[:8])) != want || binary.BigEndian.Uint16(value[8:]) != wantCell {
 				b.Fatal("benchmark did not persist the final timestamp")
 			}
 			if err := closer.Close(); err != nil {
@@ -110,7 +114,8 @@ func BenchmarkCustomSCPCleanupDeletesWithWriter(b *testing.B) {
 		go func() {
 			defer close(done)
 			for j := 0; j < 64; j++ {
-				s.recordObservation("K1LIVE", "20m", "CW", "N0LIVE", 202, 10, true, now.Add(time.Duration(i*64+j)*time.Second))
+				cell := uint16(202 + (j & 1))
+				s.recordObservation("K1LIVE", "20m", "CW", "N0LIVE", cell, 10, true, now.Add(time.Duration(i*64+j)*time.Second))
 			}
 		}()
 		s.cleanup(now)
@@ -126,19 +131,43 @@ func BenchmarkCustomSCPCleanupDeletesWithWriter(b *testing.B) {
 			}
 		}
 		obs, ok := entrySpotterObs(s.entries[customSCPKey{call: "K1LIVE", band: "20m", bucket: "cw"}], "N0LIVE")
-		if !ok || obs.seenUnix != now.Add(time.Duration(i*64+63)*time.Second).Unix() || obs.cellRes1 != 202 {
+		if !ok || obs.seenUnix != now.Add(time.Duration(i*64+63)*time.Second).Unix() || obs.cellRes1 != 203 {
 			b.Fatalf("cleanup benchmark lost the final live observation: %+v ok=%v", obs, ok)
 		}
 		value, closer, err := s.db.Get([]byte("o|K1LIVE|20m|cw|N0LIVE"))
 		if err != nil {
 			b.Fatal(err)
 		}
-		persisted := len(value) == 10 && int64(binary.BigEndian.Uint64(value[:8])) == now.Add(time.Duration(i*64+63)*time.Second).Unix() && binary.BigEndian.Uint16(value[8:]) == 202
+		persisted := len(value) == 10 && int64(binary.BigEndian.Uint64(value[:8])) == now.Add(time.Duration(i*64+63)*time.Second).Unix() && binary.BigEndian.Uint16(value[8:]) == 203
 		if err := closer.Close(); err != nil {
 			b.Fatal(err)
 		}
 		if !persisted {
 			b.Fatal("cleanup benchmark did not persist the final live timestamp/cell")
 		}
+	}
+}
+
+// BenchmarkCustomSCPCooldownHitObservation measures the hot-path repeat-spot
+// fast path when the same spotter reports the same call/band/mode/cell within
+// the 6-hour refresh cooldown.
+func BenchmarkCustomSCPCooldownHitObservation(b *testing.B) {
+	s, err := OpenCustomSCPStore(CustomSCPOptions{Path: filepath.Join(b.TempDir(), "scp")})
+	if err != nil {
+		b.Fatal(err)
+	}
+	defer s.Close()
+	now := time.Now().UTC().Truncate(time.Second)
+	s.recordObservation("K1COOL", "20m", "CW", "N0BBB", 202, 10, true, now)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		s.recordObservation("K1COOL", "20m", "CW", "N0BBB", 202, 10, true, now.Add(time.Minute))
+	}
+	b.StopTimer()
+	key := customSCPKey{call: "K1COOL", band: "20m", bucket: "cw"}
+	obs, ok := entrySpotterObs(s.entries[key], "N0BBB")
+	if !ok || obs.seenUnix != now.Unix() || obs.cellRes1 != 202 {
+		b.Fatalf("cooldown hit mutated observation: %+v ok=%v", obs, ok)
 	}
 }

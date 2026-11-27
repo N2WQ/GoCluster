@@ -58,11 +58,16 @@ func TestCustomSCPCleanupCandidateRefresh(t *testing.T) {
 			}
 			applyCustomSCPCleanupTestDeletes(store, candidates)
 			requireCustomSCPCleanupRaw(t, store, obsKey, customSCPCleanupObservationBytes(refreshed.Unix(), 202))
-			requireCustomSCPCleanupRaw(t, store, metaKey, customSCPCleanupStaticBytes(refreshed.Unix()))
+			wantMetaUnix := refreshed.Unix()
+			if kind == "memory_overflow" {
+				// Static membership was already fresh at now-1m (within the 6h cooldown).
+				wantMetaUnix = now.Add(-time.Minute).Unix()
+			}
+			requireCustomSCPCleanupRaw(t, store, metaKey, customSCPCleanupStaticBytes(wantMetaUnix))
 			assertCustomSCPCleanupCoupling(t, store)
 			reopened := reopenCustomSCPCleanupTestStore(t, store)
 			requireCustomSCPCleanupRaw(t, reopened, obsKey, customSCPCleanupObservationBytes(refreshed.Unix(), 202))
-			requireCustomSCPCleanupRaw(t, reopened, metaKey, customSCPCleanupStaticBytes(refreshed.Unix()))
+			requireCustomSCPCleanupRaw(t, reopened, metaKey, customSCPCleanupStaticBytes(wantMetaUnix))
 			// Recovery is queried after the refreshed stored timestamp, not at
 			// the earlier deletion-capture clock when that row is still future.
 			if !reopened.StaticContains(key.call) || reopened.RecentSupportCount(key.call, key.band, "CW", refreshed) == 0 {

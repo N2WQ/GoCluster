@@ -96,3 +96,19 @@ func TestOpenArchiveDBCreatesMissingDirectory(t *testing.T) {
 		t.Fatalf("expected archive path to be directory")
 	}
 }
+
+func TestArchivePebbleOptionsDefaults(t *testing.T) {
+	opts := archivePebbleOptions()
+	if opts == nil {
+		t.Fatal("archivePebbleOptions() returned nil")
+	}
+	if opts.MemTableSize != archivePebbleMemTableSize {
+		t.Fatalf("MemTableSize = %d, want %d", opts.MemTableSize, archivePebbleMemTableSize)
+	}
+	if opts.L0CompactionThreshold != archivePebbleL0CompactionThreshold {
+		t.Fatalf("L0CompactionThreshold = %d, want %d", opts.L0CompactionThreshold, archivePebbleL0CompactionThreshold)
+	}
+	if opts.L0StopWritesThreshold != archivePebbleL0StopWritesThreshold {
+		t.Fatalf("L0StopWritesThreshold = %d, want %d", opts.L0StopWritesThreshold, archivePebbleL0StopWritesThreshold)
+	}
+}

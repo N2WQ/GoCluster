@@ -841,12 +841,21 @@ func TestCustomSCPRetainStaticCallReportsOnlyTimestampAdvances(t *testing.T) {
 	if got := store.static["K1STATIC"]; got != 100 {
 		t.Fatalf("older retain changed timestamp to %d", got)
 	}
-	call, changed = store.retainStaticCallLocked("K1STATIC", 101)
-	if call != "K1STATIC" || !changed {
-		t.Fatalf("newer retain call=%q changed=%v, want changed K1STATIC", call, changed)
+	withinCooldown := int64(100) + customSCPDefaultRefreshCooldownSeconds - 1
+	call, changed = store.retainStaticCallLocked("K1STATIC", withinCooldown)
+	if call != "K1STATIC" || changed {
+		t.Fatalf("within-cooldown retain call=%q changed=%v, want unchanged K1STATIC", call, changed)
 	}
-	if got := store.static["K1STATIC"]; got != 101 {
-		t.Fatalf("newer retain left timestamp %d, want 101", got)
+	if got := store.static["K1STATIC"]; got != 100 {
+		t.Fatalf("within-cooldown retain changed timestamp to %d, want 100", got)
+	}
+	atCooldown := int64(100) + customSCPDefaultRefreshCooldownSeconds
+	call, changed = store.retainStaticCallLocked("K1STATIC", atCooldown)
+	if call != "K1STATIC" || !changed {
+		t.Fatalf("cooldown-elapsed retain call=%q changed=%v, want changed K1STATIC", call, changed)
+	}
+	if got := store.static["K1STATIC"]; got != atCooldown {
+		t.Fatalf("cooldown-elapsed retain left timestamp %d, want %d", got, atCooldown)
 	}
 }
 

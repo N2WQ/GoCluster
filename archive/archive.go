@@ -27,6 +27,14 @@ import (
 const (
 	spotPrefix = "s|"
 	spotKeyLen = len(spotPrefix) + 8 + 4
+
+	// Internal Pebble write-buffer and L0 compaction thresholds. Pebble's empty
+	// defaults (4 MiB memtable, L0 compaction at 4 files) flush and compact
+	// roughly every 16 MiB of archived spots; 16 MiB / L0=8 reduces flush and
+	// compaction frequency while keeping extra RAM and restart WAL replay bounded.
+	archivePebbleMemTableSize          = uint64(16 << 20)
+	archivePebbleL0CompactionThreshold = 8
+	archivePebbleL0StopWritesThreshold = 16
 )
 
 var (
@@ -179,12 +187,20 @@ func NewWriter(cfg config.ArchiveConfig) (*Writer, error) {
 // Key aspects: Ensures a directory exists; deletes corrupt DB when configured.
 // Upstream: NewWriter.
 // Downstream: pebble.Open.
+func archivePebbleOptions() *pebble.Options {
+	return &pebble.Options{
+		MemTableSize:          archivePebbleMemTableSize,
+		L0CompactionThreshold: archivePebbleL0CompactionThreshold,
+		L0StopWritesThreshold: archivePebbleL0StopWritesThreshold,
+	}
+}
+
 func openArchiveDB(cfg config.ArchiveConfig) (*pebble.DB, error) {
 	path, err := prepareArchiveDBDir(cfg.DBPath, cfg.AutoDeleteCorruptDB)
 	if err != nil {
 		return nil, err
 	}
-	db, err := pebbleutil.Open(path, &pebble.Options{})
+	db, err := pebbleutil.Open(path, archivePebbleOptions())
 	if err == nil {
 		return db, nil
 	}
@@ -196,7 +212,7 @@ func openArchiveDB(cfg config.ArchiveConfig) (*pebble.DB, error) {
 		if err != nil {
 			return nil, err
 		}
-		db, err = pebbleutil.Open(path, &pebble.Options{})
+		db, err = pebbleutil.Open(path, archivePebbleOptions())
 		if err != nil {
 			return nil, fmt.Errorf("archive: open after delete: %w", err)
 		}

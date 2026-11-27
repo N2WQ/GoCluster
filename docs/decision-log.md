@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0381 | Custom SCP 6-hour refresh cooldown and Pebble batching | Accepted | 2026-11-27 | Custom SCP persistence batching/cooldown and archive Pebble defaults | refines ADR-0279 and ADR-0285 | none | [ADR-0381](decisions/ADR-0381-custom-scp-refresh-cooldown-and-pebble-batching.md) |
 | ADR-0380 | Shared pre-login allowance accounting | Accepted | 2026-11-27 | Telnet and browser admission, rate accounting and tracker maintenance | refines ADR-0048 | none | [ADR-0380](decisions/ADR-0380-prelogin-shared-allowance-accounting.md) |
 | ADR-0379 | Browser replacement and Telnet NOP handling | Accepted | 2026-11-26 | Terminal browser notice, retry bounds, and inbound Telnet framing | extends ADR-0376 | none | [ADR-0379](decisions/ADR-0379-browser-replacement-and-telnet-nop.md) |
 | ADR-0378 | Windows release startup assets | Accepted | 2026-11-26 | Commit-bound inputs, ZIP integrity and isolated startup | refines ADR-0076 and ADR-0242 | none | [ADR-0378](decisions/ADR-0378-windows-release-startup-assets.md) |
