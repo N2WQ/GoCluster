@@ -35,6 +35,8 @@ import (
 	"dxcluster/gridstore"
 	"dxcluster/internal/correctionflow"
 	"dxcluster/internal/peerdiag"
+	"dxcluster/internal/propprior"
+	proppriorfeed "dxcluster/internal/propprior/feed"
 	"dxcluster/internal/toxicity"
 	"dxcluster/internal/voacap"
 	"dxcluster/pathreliability"
@@ -77,11 +79,15 @@ type clusterRuntime struct {
 	ulsDone      <-chan struct{}
 	canadianDone <-chan struct{}
 
-	pathCfg        pathreliability.Config
-	pathPredictor  *pathreliability.Predictor
-	voacapSSN      *voacap.SunspotMonitor
-	voacapFallback *pathreliability.VOACAPClosedFallback
-	allowedBandSet map[string]struct{}
+	pathCfg           pathreliability.Config
+	pathPredictor     *pathreliability.Predictor
+	voacapSSN         *voacap.SunspotMonitor
+	voacapFallback    *pathreliability.VOACAPClosedFallback
+	propPriorFallback *pathreliability.PropPriorFallback
+	propPriorWeather  *propprior.SpaceWeatherStore
+	propPriorPoller   *proppriorfeed.Poller
+	propCapture       *propCaptureWriter
+	allowedBandSet    map[string]struct{}
 
 	solarCfg solarweather.Config
 	solarMgr *solarweather.Manager
@@ -270,6 +276,9 @@ func (r *clusterRuntime) setupLoggingAndUI() bool {
 	if err := pathreliability.InitRequiredH3Mappings(r.cfg.H3TablePath); err != nil {
 		return r.failStartup("Shared geography H3 mapping initialization failed (h3_table_path=%q): %v", r.cfg.H3TablePath, err)
 	}
+	if !r.loadPropPriorFeedsConfig() {
+		return false
+	}
 	if !r.loadPathReliabilityConfig() {
 		return false
 	}
@@ -297,6 +306,20 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 	r.pathCfg = pathCfg
 	r.allowedBandSet = allowedBandSet
 	r.pathPredictor = pathPredictor
+	if pathCfg.PropPriorFallbackActive() {
+		model, err := propprior.LoadEmbedded()
+		if err != nil {
+			return r.failStartup("Prop prior embedded model load failed: %v", err)
+		}
+		if r.propPriorWeather == nil {
+			r.propPriorWeather = propprior.NewSpaceWeatherStore()
+		}
+		fallback, err := pathreliability.NewPropPriorFallback(pathCfg, model, r.propPriorWeather)
+		if err != nil {
+			return r.failStartup("Prop prior fallback config failed: %v", err)
+		}
+		r.propPriorFallback = fallback
+	}
 	if pathCfg.VOACAPFallback.Enabled {
 		if !voacapFallbackSupportedOnGOOS(runtime.GOOS) {
 			log.Printf("VOACAP fallback disabled: runtime VOACAP execution is supported only on Windows (goos=%s)", runtime.GOOS)
@@ -354,6 +377,101 @@ func (r *clusterRuntime) loadPathReliabilityConfig() bool {
 	return true
 }
 
+func (r *clusterRuntime) activePathClosedFallback() pathreliability.ClosedFallback {
+	if r == nil {
+		return nil
+	}
+	if r.propPriorFallback != nil {
+		return r.propPriorFallback
+	}
+	if r.voacapFallback != nil {
+		return r.voacapFallback
+	}
+	return nil
+}
+
+func (r *clusterRuntime) activeVOACAPOverview() voacapFallbackSnapshotProvider {
+	if r == nil || r.voacapFallback == nil {
+		return nil
+	}
+	return r.voacapFallback
+}
+
+func (r *clusterRuntime) activePropPriorOverview() propPriorFallbackSnapshotProvider {
+	if r == nil || r.propPriorFallback == nil {
+		return nil
+	}
+	return r.propPriorFallback
+}
+
+func (r *clusterRuntime) initializePropCapture() {
+	if r == nil {
+		return
+	}
+	dir := strings.TrimSpace(os.Getenv(envPropCaptureDir))
+	if dir == "" {
+		return
+	}
+	var ssnMonitor propCaptureSSNSource
+	if r.voacapSSN != nil {
+		ssnMonitor = r.voacapSSN
+	}
+	writer, err := newPropCaptureWriter(propCaptureConfig{
+		Dir:          dir,
+		Weather:      r.propPriorWeather,
+		Poller:       r.propPriorPoller,
+		SSNMonitor:   ssnMonitor,
+		SSNStatePath: r.pathCfg.VOACAPFallback.SSNStatePath,
+		Logger:       log.Default(),
+	})
+	if err != nil {
+		log.Printf("Warning: prop capture disabled (%s=%q): %v", envPropCaptureDir, dir, err)
+		return
+	}
+	r.propCapture = writer
+	r.propCapture.Start()
+	log.Printf("Prop capture enabled: dir=%s (queue=%d flush=%s)", dir, propCaptureQueueCap, propCaptureFlushInterval)
+}
+
+func (r *clusterRuntime) loadPropPriorFeedsConfig() bool {
+	feedYAML := r.cfg.PathReliability.PropPriorFeeds
+	if feedYAML == nil || !feedYAML.Enabled {
+		return true
+	}
+	feedCfg := proppriorfeed.Config{
+		Enabled:                   feedYAML.Enabled,
+		Hp30PrimaryURL:            feedYAML.Hp30PrimaryURL,
+		Hp30FallbackURL:           feedYAML.Hp30FallbackURL,
+		SFIPrimaryURL:             feedYAML.SFIPrimaryURL,
+		SFIFallbackURL:            feedYAML.SFIFallbackURL,
+		RTSWMagURL:                feedYAML.RTSWMagURL,
+		RTSWWindURL:               feedYAML.RTSWWindURL,
+		DstPrimaryURL:             feedYAML.DstPrimaryURL,
+		DstFallbackURL:            feedYAML.DstFallbackURL,
+		Hp30PollInterval:          time.Duration(feedYAML.Hp30PollIntervalSeconds) * time.Second,
+		SFIPollInterval:           time.Duration(feedYAML.SFIPollIntervalSeconds) * time.Second,
+		RTSWPollInterval:          time.Duration(feedYAML.RTSWPollIntervalSeconds) * time.Second,
+		DstPollInterval:           time.Duration(feedYAML.DstPollIntervalSeconds) * time.Second,
+		RequestTimeout:            time.Duration(feedYAML.RequestTimeoutSeconds) * time.Second,
+		UserAgent:                 feedYAML.UserAgent,
+		MaxBodyBytesStandard:      feedYAML.MaxBodyBytesStandard,
+		MaxBodyBytesRTSW:          feedYAML.MaxBodyBytesRTSW,
+		MaxBodyBytesGeospace:      feedYAML.MaxBodyBytesGeospace,
+		Hp30StaleAfter:            time.Duration(feedYAML.Hp30StaleAfterSeconds) * time.Second,
+		SFIStaleAfter:             time.Duration(feedYAML.SFIStaleAfterSeconds) * time.Second,
+		DstStaleAfter:             time.Duration(feedYAML.DstStaleAfterSeconds) * time.Second,
+		FailoverConsecutiveErrors: feedYAML.FailoverConsecutiveErrors,
+	}
+	store := propprior.NewSpaceWeatherStore()
+	poller, err := proppriorfeed.NewPoller(feedCfg, store, log.Default())
+	if err != nil {
+		return r.failStartup("Prop prior space-weather poller config failed: %v", err)
+	}
+	r.propPriorWeather = store
+	r.propPriorPoller = poller
+	return true
+}
+
 func (r *clusterRuntime) loadSolarWeatherConfig() {
 	r.solarCfg = r.cfg.SolarWeather
 }
@@ -399,6 +517,20 @@ func (r *clusterRuntime) startBackgroundServices() {
 		r.voacapFallback.Start(r.ctx)
 		log.Printf("VOACAP closed fallback enabled")
 	}
+	if r.propPriorFallback != nil {
+		if r.propPriorPoller != nil {
+			log.Printf("Prop prior fallback enabled (live GFZ/NOAA space-weather feeds active)")
+		} else {
+			log.Printf("Prop prior fallback enabled (space-weather feeds disabled; using quiet defaults)")
+		}
+	}
+	if r.propPriorPoller != nil {
+		r.propPriorPoller.Start(r.ctx)
+		if r.propPriorFallback == nil {
+			log.Printf("Prop prior space-weather poller enabled (ingestion only)")
+		}
+	}
+	r.initializePropCapture()
 
 	if r.solarCfg.Enabled {
 		r.solarMgr = solarweather.NewManager(r.solarCfg, log.Default())
@@ -1318,7 +1450,7 @@ func (r *clusterRuntime) buildTelnetServerOptions() telnet.ServerOptions {
 		DropExtremeMinAttempts:    r.cfg.Telnet.DropExtremeMinAttempts,
 		ReputationGate:            r.repGate,
 		PathPredictor:             r.pathPredictor,
-		PathClosedFallback:        r.voacapFallback,
+		PathClosedFallback:        r.activePathClosedFallback(),
 		PathDisplayEnabled:        r.pathCfg.DisplayEnabled,
 		NoiseModel:                r.pathCfg.NoiseModel(),
 		GridLookup:                r.gridLookup,
@@ -1381,6 +1513,7 @@ func (r *clusterRuntime) startOutputPipeline() {
 	if r.ingestValidator != nil {
 		r.outputPipeline.cwBursts = r.ingestValidator.cwBursts
 	}
+	r.outputPipeline.propCapture = r.propCapture
 	go r.outputPipeline.run()
 	startPipelineHealthMonitor(r.ctx, r.deduplicator, &r.lastOutput, r.peerManager)
 }
@@ -1583,7 +1716,7 @@ func (r *clusterRuntime) connectPSKReporterFeed() {
 		forwardSpots(r.pskrClient.GetSpotChannel(), r.ingestInput, "PSKReporter", r.cfg.SpotPolicy, nil)
 	})
 	r.pskrConsumers.Go(func() {
-		processPSKRPathOnlySpots(r.pskrClient, r.pathPredictor, r.pathReport, r.pskrPathOnlyStats, r.cfg.SpotPolicy, r.allowedBandSet)
+		processPSKRPathOnlySpots(r.pskrClient, r.pathPredictor, r.pathReport, r.pskrPathOnlyStats, r.cfg.SpotPolicy, r.allowedBandSet, r.propCapture)
 	})
 	name := ingestSourceName(r.cfg.PSKReporter.Name, "PSKReporter")
 	endpoint := r.pskrClient.Endpoint()
@@ -1643,7 +1776,7 @@ func (r *clusterRuntime) startMonitors() {
 		r.cfg.FCCULS.DBPath,
 		r.pathPredictor,
 		r.voacapSSN,
-		r.voacapFallback,
+		r.activeVOACAPOverview(),
 		r.modeAssigner,
 		r.toxicityClassifier,
 		r.rbnClient,
@@ -1656,6 +1789,7 @@ func (r *clusterRuntime) startMonitors() {
 		r.cfg.Server.NodeID,
 		r.cfg.Skew.File,
 		dashboardIngestSourceConfigFromConfig(r.cfg),
+		r.activePropPriorOverview(),
 	)
 	if r.pathCfg.Enabled {
 		go startPathPredictionLogger(r.ctx, r.propagationLog, r.telnetServer, r.pathPredictor, r.pathReport)
@@ -1854,6 +1988,12 @@ func (r *clusterRuntime) close() {
 	}
 	if r.voacapSSN != nil {
 		r.voacapSSN.Wait()
+	}
+	if r.propPriorPoller != nil {
+		r.propPriorPoller.Stop()
+	}
+	if r.propCapture != nil {
+		r.propCapture.Stop()
 	}
 	// Every logging destination shares one shutdown deadline. A stuck file,
 	// console, dashboard, or report worker must not hold shutdown indefinitely.

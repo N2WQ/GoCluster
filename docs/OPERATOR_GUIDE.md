@@ -832,15 +832,14 @@ Example readings:
 
 ### Reading `SHOW PROP`
 
-`SHOW PROP <call|prefix|grid> [band] [mode]` exposes the same rolling VOACAP
-forecast window used by the fallback. Omitted mode defaults to CW. If an
-explicit single-band request has no rows, or fewer rows than
-`voacap_fallback.forecast_hours`, the command starts a refresh through the
-existing fallback worker and waits briefly. All-band requests show cached rows
-immediately while refreshing missing or partial bands in the background.
-
-On Linux and other non-Windows builds the VOACAP fallback provider is not
-started, so `SHOW PROP` reports that VOACAP fallback is disabled.
+`SHOW PROP <call|prefix|grid> [band] [mode]` exposes the active propagation
+fallback outlook (`prop_prior_fallback` by default on Windows and Linux, or
+legacy Windows `voacap_fallback` if explicitly rolled back). Omitted mode
+defaults to CW. Under `prop_prior_fallback`, both single-band and all-band
+outlooks compute immediately in pure Go with `engine=propprior` in the header
+(zero warm-up delay and zero VOACAP subprocesses). Under legacy Windows
+`voacap_fallback`, missing/partial single-band requests wait briefly for the
+VOACAP worker, and non-Windows builds do not start VOACAP.
 
 The target can be an explicit Maidenhead grid, a callsign found in the grid
 store, or a CTY-derived prefix/callsign center. With no band, the command

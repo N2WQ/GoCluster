@@ -40,6 +40,12 @@ func TestGeographyStartup(t *testing.T) {
 		cfg.CallCorrection.SpotterReliabilityFileRTTY = weights
 		cfg.PathReliability.Enabled = mode == "prediction_on_missing"
 		cfg.PathReliability.Native160Fallback.Enabled = false
+		if cfg.PathReliability.PropPriorFallback != nil {
+			cfg.PathReliability.PropPriorFallback.Enabled = false
+		}
+		if cfg.PathReliability.PropPriorFeeds != nil {
+			cfg.PathReliability.PropPriorFeeds.Enabled = false
+		}
 		cfg.CallCorrection.Enabled, cfg.CallCorrection.CustomSCP.Enabled = true, true
 		cfg.CallCorrection.CustomSCP.BlockCacheMB, cfg.CallCorrection.CustomSCP.MemTableSizeMB = 1, 4
 		cfg.CallCorrection.CustomSCP.ResolverMinUniqueSpotters = 2

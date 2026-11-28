@@ -57,6 +57,8 @@ func configure(dir string, port, sinkPort int, prompt string) error {
 		{"path_reliability", "", "enabled", false},
 		{"path_reliability", "voacap_fallback", "enabled", false},
 		{"path_reliability", "voacap_fallback", "voacap_home", "data/release-smoke/voacap"},
+		{"path_reliability", "prop_prior_fallback", "enabled", false},
+		{"path_reliability", "prop_prior_feeds", "enabled", false},
 		{"voacap_experiment", "", "voacap_home", "data/release-smoke/voacap"},
 		{"toxicity", "", "enabled", false},
 		{"path_reliability", "native_160m_fallback", "enabled", false},

@@ -126,6 +126,7 @@ type Result struct {
 	CapLimited                    bool
 	CapWouldBlock                 bool
 	Source                        PredictionSource
+	PropPrior                     bool
 	BeaconRX                      bool
 	InsufficientReason            InsufficientReason
 	VOACAPFT8SNRDB                int

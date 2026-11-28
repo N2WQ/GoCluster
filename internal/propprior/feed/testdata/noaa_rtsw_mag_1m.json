@@ -1,0 +1,11 @@
+[
+  {"time_tag":"2026-11-27T17:12:00","active":true,"source":"SOLAR1","bz_gsm":6.41},
+  {"time_tag":"2026-11-27T16:59:00","active":false,"source":"IMAP","bz_gsm":-50.0},
+  {"time_tag":"2026-11-27T16:58:02","active":false,"source":"ACE","bz_gsm":-40.0},
+  {"time_tag":"2026-11-27T16:30:00","active":true,"source":"SOLAR1","bz_gsm":null},
+  {"time_tag":"2026-11-27T16:02:00","active":true,"source":"SOLAR1","bz_gsm":0.0},
+  {"time_tag":"2026-11-27T16:01:00","active":true,"source":"SOLAR1","bz_gsm":-6.0},
+  {"time_tag":"2026-11-27T16:01:00","active":true,"source":"SOLAR1","bz_gsm":-99.0},
+  {"time_tag":"2026-11-27T15:30:00","active":true,"source":"SOLAR1","bz_gsm":4.0},
+  {"time_tag":"2026-11-27T15:00:00","active":true,"source":"SOLAR1","bz_gsm":-2.0}
+]

@@ -63,14 +63,11 @@ native_160m_fallback:
   unlikely_min_civil_dark_fraction: 0.50
   low_min_civil_dark_fraction: 0.75
 
-# Optional Windows VOACAP fallback for paths with insufficient bucket evidence.
-# A cached current-hour forecast can supply CLOSED, confirm a sparse p50
-# class, upgrade sparse p50 by one class, or supply an open class without p50.
-# Open results supplied or upgraded by VOACAP require the corresponding REL
-# gate. For directional forecasts, subtract the user's noise penalty from
-# the receive leg before applying the receive and transmit merge weights.
+# Optional Windows VOACAP fallback (soft-retired in favor of pure-Go
+# prop_prior_fallback; mutually exclusive with prop_prior_fallback.enabled).
+# Keep disabled unless explicitly rolling back to Windows VOACAP.
 voacap_fallback:
-  enabled: true
+  enabled: false
   ssn_fetch_interval_seconds: 1800
   ssn_request_timeout_seconds: 30
   # Per-node v3 count continuity. Old Wolf/flux states are not reused.
@@ -123,6 +120,73 @@ voacap_fallback:
   reliability_min_unlikely: 0.50
   # Sparse/no-p50 diagnostics include no usable p50 plus insufficient p50 evidence at or below this selected observation count. This does not change glyph decisions.
   sparse_p50_diagnostic_max_observation_count: 2
+
+# Pure-Go HF propagation prior fallback (internal/propprior) for sparse/empty
+# path buckets and instant 24-hour multi-band SHOW PROP outlooks (Windows and
+# Linux, zero subprocesses, zero forecast DB). Mutually exclusive with
+# voacap_fallback.enabled.
+prop_prior_fallback:
+  enabled: true
+  # Reciprocal prediction cache bucket width in seconds (60..3600).
+  cache_bucket_seconds: 300
+  # Fixed power-of-2 reciprocal cache capacity (256..262144; 16384 ≈ 1 MiB).
+  cache_capacity: 16384
+  # Reference SNR floor (dB, 2500 Hz FT8 BW) used to evaluate REL = P(SNR >= req_snr_db).
+  req_snr_db: -24.0
+  # Optional global calibration offset (dB) added to predicted SNR before noise/thresholds.
+  snr_offset_db: 0.0
+  # Rolling hourly horizon for SHOW PROP outlooks (1..24).
+  forecast_hours: 24
+  # Supported HF skywave bands (80m-10m). 160m stays owned by native_160m_fallback.
+  center_frequencies_mhz:
+    - 3.75
+    - 5.37
+    - 7.15
+    - 10.13
+    - 14.18
+    - 18.12
+    - 21.23
+    - 24.94
+    - 28.85
+  # Enable REL-gated open glyphs when live bucket evidence has no p50.
+  reliability_gated_open_enabled: true
+  # Allow sparse p50 to upgrade by one glyph tier when propprior is stronger and REL passes.
+  reliability_sparse_upgrade_enabled: true
+  # Minimum REL = P(SNR >= req_snr_db) gates for open classes.
+  reliability_min_high: 0.70
+  reliability_min_medium: 0.50
+  reliability_min_low: 0.35
+  reliability_min_unlikely: 0.25
+  # Sparse/no-p50 diagnostic observation-count threshold (does not change glyph decisions).
+  sparse_p50_diagnostic_max_observation_count: 5
+
+# Live space-weather feed pollers for internal/propprior's causal
+# SpaceWeatherStore (GFZ Hp30/Fobs + NOAA F10.7/Kp/RTSW/Kyoto/Geospace).
+# When enabled: false, zero poller goroutines start and prop_prior_fallback runs
+# cleanly on quiet defaults.
+prop_prior_feeds:
+  enabled: true
+  hp30_primary_url: "https://kp.gfz.de/app/json/"
+  hp30_fallback_url: "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
+  sfi_primary_url: "https://services.swpc.noaa.gov/json/f107_cm_flux.json"
+  sfi_fallback_url: "https://kp.gfz.de/app/json/"
+  rtsw_mag_url: "https://services.swpc.noaa.gov/json/rtsw/rtsw_mag_1m.json"
+  rtsw_wind_url: "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json"
+  dst_primary_url: "https://services.swpc.noaa.gov/products/kyoto-dst.json"
+  dst_fallback_url: "https://services.swpc.noaa.gov/json/geospace/geospace_dst_7_day.json"
+  hp30_poll_interval_seconds: 600
+  sfi_poll_interval_seconds: 1800
+  rtsw_poll_interval_seconds: 300
+  dst_poll_interval_seconds: 900
+  request_timeout_seconds: 15
+  user_agent: "GoCluster-PropPrior/1.0"
+  max_body_bytes_standard: 1048576
+  max_body_bytes_rtsw: 8388608
+  max_body_bytes_geospace: 4194304
+  hp30_stale_after_seconds: 5400
+  sfi_stale_after_seconds: 129600
+  dst_stale_after_seconds: 10800
+  failover_consecutive_errors: 3
 
 # Decay half-life in seconds when no per-band override applies.
 default_half_life_seconds: 420

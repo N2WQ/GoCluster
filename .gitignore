@@ -19,7 +19,11 @@ data/bulletins/*
 #data/cty/*
 data/grids/*
 /data/ised/*.zip.status.json
+/data/fcc/fcc_uls.db
+/data/fcc/*.json
 data/logs/*
+data/prop_capture/
+data/prop_loro*/
 data/reports/*
 data/ipinfo/*
 data/reputation/*

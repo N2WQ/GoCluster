@@ -149,9 +149,13 @@ type VOACAPCachedForecast struct {
 	Record                VOACAPHourlyForecast
 	EffectiveFT8SNRDB     float64
 	HasEffectiveFT8SNRDB  bool
+	ExactReceiveFT8SNRDB  float64
+	ExactTransmitFT8SNRDB float64
+	HasExactDirectionalDB bool
 	ReceiveNoisePenaltyDB float64
 	SSN                   int
 	AgeSec                int64
+	PropPrior             bool
 }
 
 func (f VOACAPCachedForecast) EffectiveDB() float64 {
@@ -186,6 +190,9 @@ func (f VOACAPCachedForecast) ReceiveReqSNRReliability() (float64, bool) {
 // ReceiveDB returns the target-to-user receive leg after the request-specific
 // receive-noise penalty. Non-directional legacy records fall back to EffectiveDB.
 func (f VOACAPCachedForecast) ReceiveDB() float64 {
+	if f.HasExactDirectionalDB {
+		return f.ExactReceiveFT8SNRDB
+	}
 	if !f.Record.HasDirectionalSNR {
 		return f.EffectiveDB()
 	}
@@ -195,6 +202,9 @@ func (f VOACAPCachedForecast) ReceiveDB() float64 {
 // TransmitDB returns the user-to-target transmit leg. Non-directional legacy
 // records fall back to EffectiveDB.
 func (f VOACAPCachedForecast) TransmitDB() float64 {
+	if f.HasExactDirectionalDB {
+		return f.ExactTransmitFT8SNRDB
+	}
 	if !f.Record.HasDirectionalSNR {
 		return f.EffectiveDB()
 	}
@@ -223,20 +233,9 @@ func (r VOACAPReliabilityGateReason) String() string {
 }
 
 // VOACAPReliabilityThresholdForClass returns the YAML-owned minimum REL gate
-// for an ordinary open VOACAP class.
+// for an ordinary open fallback class from the active fallback engine.
 func VOACAPReliabilityThresholdForClass(class string, cfg Config) (float64, bool) {
-	switch class {
-	case classHigh:
-		return cfg.VOACAPFallback.ReliabilityMinHigh, true
-	case classMedium:
-		return cfg.VOACAPFallback.ReliabilityMinMedium, true
-	case classLow:
-		return cfg.VOACAPFallback.ReliabilityMinLow, true
-	case classUnlikely:
-		return cfg.VOACAPFallback.ReliabilityMinUnlikely, true
-	default:
-		return 0, false
-	}
+	return cfg.FallbackReliabilityThresholdForClass(class)
 }
 
 // VOACAPReqSNRReliabilityGate evaluates VOACAP REL as reliability of the
@@ -1363,6 +1362,7 @@ func attachVOACAPDiagnostics(res *Result, forecast VOACAPCachedForecast) {
 	if res == nil {
 		return
 	}
+	res.PropPrior = forecast.PropPrior
 	res.VOACAPFT8SNRDB = forecast.Record.FT8SNRDB
 	res.VOACAPSSN = forecast.SSN
 	res.VOACAPAgeSec = forecast.AgeSec
@@ -1378,6 +1378,7 @@ func attachReceiveVOACAPDiagnostics(res *Result, forecast VOACAPCachedForecast) 
 	if res == nil {
 		return
 	}
+	res.PropPrior = forecast.PropPrior
 	res.VOACAPFT8SNRDB = int(math.Round(forecast.ReceiveDB()))
 	res.VOACAPSSN = forecast.SSN
 	res.VOACAPAgeSec = forecast.AgeSec

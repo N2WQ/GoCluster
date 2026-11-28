@@ -4999,7 +4999,7 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 	}
 	if !res.HasP50 {
 		s.vStageNoP50.Add(1)
-		if cfg.VOACAPFallback.ReliabilityGatedOpenEnabled {
+		if cfg.FallbackReliabilityGatedOpenEnabled() {
 			_, _, reason := pathreliability.VOACAPReqSNRReliabilityGate(forecast, voacapClass, cfg)
 			if reason == pathreliability.VOACAPReliabilityGateOK {
 				s.vStageOpenNoP50REL.Add(1)
@@ -5033,7 +5033,7 @@ func (s *Server) pathResultWithClosedFallbackTrace(res pathreliability.Result, r
 		}
 		return res, trace
 	}
-	if upgradeSteps == 1 && cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled {
+	if upgradeSteps == 1 && cfg.FallbackReliabilitySparseUpgradeEnabled() {
 		_, _, reason := pathreliability.VOACAPReqSNRReliabilityGate(forecast, voacapClass, cfg)
 		if reason == pathreliability.VOACAPReliabilityGateOK {
 			s.vStageSparseUpgrade.Add(1)
@@ -5077,7 +5077,7 @@ func sparseP50VOACAPTraceForResult(res pathreliability.Result, cfg pathreliabili
 		res.InsufficientReason == pathreliability.InsufficientNone ||
 		res.InsufficientReason == pathreliability.InsufficientNoSample
 	count := sparseP50DiagnosticObservationCount(res)
-	threshold := cfg.VOACAPFallback.SparseP50DiagnosticMaxObservationCount
+	threshold := cfg.FallbackSparseP50DiagnosticMaxObservationCount()
 	veryLowCount := res.HasP50 && threshold > 0 && count <= uint32(threshold)
 	if !noP50 && !veryLowCount {
 		return sparseP50VOACAPTrace{}
@@ -5126,7 +5126,7 @@ func (s *Server) pathResultWithBeaconReceiveFallback(res pathreliability.Result,
 	}
 	if !res.HasP50 {
 		s.vStageNoP50.Add(1)
-		if cfg.VOACAPFallback.ReliabilityGatedOpenEnabled {
+		if cfg.FallbackReliabilityGatedOpenEnabled() {
 			_, _, reason := pathreliability.VOACAPReceiveReqSNRReliabilityGate(forecast, voacapClass, cfg)
 			if reason == pathreliability.VOACAPReliabilityGateOK {
 				s.vStageOpenNoP50REL.Add(1)
@@ -5160,7 +5160,7 @@ func (s *Server) pathResultWithBeaconReceiveFallback(res pathreliability.Result,
 		}
 		return res, trace
 	}
-	if upgradeSteps == 1 && cfg.VOACAPFallback.ReliabilitySparseUpgradeEnabled {
+	if upgradeSteps == 1 && cfg.FallbackReliabilitySparseUpgradeEnabled() {
 		_, _, reason := pathreliability.VOACAPReceiveReqSNRReliabilityGate(forecast, voacapClass, cfg)
 		if reason == pathreliability.VOACAPReliabilityGateOK {
 			s.vStageSparseUpgrade.Add(1)
@@ -5433,6 +5433,12 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 		return tag
 	}
 	if res.Source == pathreliability.SourceVOACAPClosed {
+		if res.PropPrior {
+			if res.BeaconRX {
+				return fmt.Sprintf("bppcap|%d|h%02d", res.VOACAPFT8SNRDB, res.VOACAPHourUTC)
+			}
+			return fmt.Sprintf("ppcap|%d|h%02d", res.VOACAPFT8SNRDB, res.VOACAPHourUTC)
+		}
 		if res.BeaconRX {
 			return fmt.Sprintf("bvcap|%d|h%02d|s%d", res.VOACAPFT8SNRDB, res.VOACAPHourUTC, res.VOACAPSSN)
 		}
@@ -5440,6 +5446,12 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	}
 	if res.Source == pathreliability.SourceVOACAPAligned {
 		p50 := strconv.FormatFloat(math.Round(res.P50DB), 'f', 0, 64)
+		if res.PropPrior {
+			if res.BeaconRX {
+				return fmt.Sprintf("bppaln|%s/%dh%02d", p50, res.VOACAPFT8SNRDB, res.VOACAPHourUTC)
+			}
+			return fmt.Sprintf("ppaln|%s/%dh%02d", p50, res.VOACAPFT8SNRDB, res.VOACAPHourUTC)
+		}
 		if res.BeaconRX {
 			return fmt.Sprintf("bvaln|%s/%dh%02ds%d", p50, res.VOACAPFT8SNRDB, res.VOACAPHourUTC, res.VOACAPSSN)
 		}
@@ -5447,12 +5459,24 @@ func diagPathTag(prediction pathPrediction, havePrediction bool) string {
 	}
 	if res.Source == pathreliability.SourceVOACAPSparseUpgrade {
 		p50 := strconv.FormatFloat(math.Round(res.P50DB), 'f', 0, 64)
+		if res.PropPrior {
+			if res.BeaconRX {
+				return fmt.Sprintf("bppup|%s/%dr%02d", p50, res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res))
+			}
+			return fmt.Sprintf("ppup|%s/%dr%02d", p50, res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res))
+		}
 		if res.BeaconRX {
 			return fmt.Sprintf("bvup|%s/%dr%02ds%d", p50, res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPSSN)
 		}
 		return fmt.Sprintf("vup|%s/%dr%02ds%d", p50, res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPSSN)
 	}
 	if res.Source == pathreliability.SourceVOACAPOpen {
+		if res.PropPrior {
+			if res.BeaconRX {
+				return fmt.Sprintf("bppop|%dr%02dh%02d", res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPHourUTC)
+			}
+			return fmt.Sprintf("ppop|%dr%02dh%02d", res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPHourUTC)
+		}
 		if res.BeaconRX {
 			return fmt.Sprintf("bvop|%dr%02dh%02ds%d", res.VOACAPFT8SNRDB, diagVOACAPReliabilityPercent(res), res.VOACAPHourUTC, res.VOACAPSSN)
 		}

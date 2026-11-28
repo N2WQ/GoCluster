@@ -96,6 +96,14 @@ inspect user-visible diagnostics:
   version when analysing a deployment. Fine and coarse are selected at one
   common resolution. `a<age>` reflects selected populations; excluded stale local
   evidence does not age a fresh selected regional population.
+- `ppcap` / `ppaln` / `ppup` / `ppop` (and beacon `bppcap` / `bppaln` / `bppup`
+  / `bppop`) diagnostics are pure-Go `prop_prior_fallback` (`internal/propprior`)
+  results for closed, sparse-aligned, REL-gated one-tier sparse upgrade, and
+  REL-gated no-p50 open fallbacks (omitting VOACAP's `s<SSN>` suffix; `SHOW PROP`
+  headers emit `engine=propprior`). Legacy Windows VOACAP tags (`vcap` / `valn`
+  / `vup` / `vop` and `bv*`) appear when rolled back to `voacap_fallback.enabled: true`.
+  `Path predictions (5m)` retains existing `voacap_*` counter keys for
+  `cmd/prop_report` compatibility. See ADR-0383.
 - `vcap` diagnostics are VOACAP closed fallback results; `valn` diagnostics
   are sparse bucket p50 aligned with current-hour VOACAP; `vup` diagnostics
   are REL-gated one-tier sparse p50 upgrades; `vop` diagnostics are REL-gated

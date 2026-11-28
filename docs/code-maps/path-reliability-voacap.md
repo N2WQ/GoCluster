@@ -2,7 +2,7 @@
 # Code Map: Path Reliability And VOACAP
 
 - Map ID: `path-reliability-voacap`
-- Source fingerprint: `082191250b8c4bbc`
+- Source fingerprint: `8f3098026c4b1cd0`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map path-reliability-voacap`
 - Check: `go run ./cmd/codemap check -map path-reliability-voacap`
@@ -11,15 +11,20 @@
 
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
+| `dxcluster/internal/propprior` | `internal/propprior` | 4 | 5 |
+| `dxcluster/internal/propprior/feed` | `internal/propprior/feed` | 5 | 4 |
 | `dxcluster/internal/solarpath` | `internal/solarpath` | 3 | 1 |
 | `dxcluster/internal/voacap` | `internal/voacap` | 13 | 11 |
-| `dxcluster/pathreliability` | `pathreliability` | 33 | 81 |
+| `dxcluster/pathreliability` | `pathreliability` | 36 | 83 |
 | `dxcluster/solarweather` | `solarweather` | 9 | 8 |
 
 ## In-Scope Package Edges
 
 | From | Imports |
 |---|---|
+| `dxcluster/internal/propprior` | `dxcluster/internal/solarpath` |
+| `dxcluster/internal/propprior/feed` | `dxcluster/internal/propprior` |
+| `dxcluster/pathreliability` | `dxcluster/internal/propprior` |
 | `dxcluster/pathreliability` | `dxcluster/internal/solarpath` |
 | `dxcluster/pathreliability` | `dxcluster/internal/voacap` |
 | `dxcluster/solarweather` | `dxcluster/internal/solarpath` |
@@ -29,6 +34,7 @@
 
 | From | Imports |
 |---|---|
+| `dxcluster/internal/propprior/feed` | `dxcluster/internal/logutil` |
 | `dxcluster/internal/voacap` | `dxcluster/internal/yamlconfig` |
 | `dxcluster/pathreliability` | `dxcluster/internal/fsutil` |
 | `dxcluster/pathreliability` | `dxcluster/internal/pebbleutil` |
@@ -39,6 +45,36 @@
 | `dxcluster/solarweather` | `dxcluster/strutil` |
 
 ## Package Files
+
+### `dxcluster/internal/propprior`
+
+Source files:
+- `internal/propprior/geometry.go`
+- `internal/propprior/infer.go`
+- `internal/propprior/loader.go`
+- `internal/propprior/spaceweather.go`
+
+Test files:
+- `internal/propprior/golden_test.go`
+- `internal/propprior/loader_test.go`
+- `internal/propprior/race_disabled_test.go`
+- `internal/propprior/race_enabled_test.go`
+- `internal/propprior/spaceweather_test.go`
+
+### `dxcluster/internal/propprior/feed`
+
+Source files:
+- `internal/propprior/feed/client.go`
+- `internal/propprior/feed/config.go`
+- `internal/propprior/feed/parse_gfz.go`
+- `internal/propprior/feed/parse_noaa.go`
+- `internal/propprior/feed/poller.go`
+
+Test files:
+- `internal/propprior/feed/fuzz_test.go`
+- `internal/propprior/feed/parse_gfz_test.go`
+- `internal/propprior/feed/parse_noaa_test.go`
+- `internal/propprior/feed/poller_test.go`
 
 ### `dxcluster/internal/solarpath`
 
@@ -101,6 +137,9 @@ Source files:
 - `pathreliability/normalize.go`
 - `pathreliability/observation_times.go`
 - `pathreliability/predictor.go`
+- `pathreliability/prop_prior_fallback.go`
+- `pathreliability/prop_prior_fallback_config.go`
+- `pathreliability/prop_prior_feeds_config.go`
 - `pathreliability/receiver.go`
 - `pathreliability/report_support.go`
 - `pathreliability/snr_histogram.go`
@@ -147,6 +186,8 @@ Test files:
 - `pathreliability/population_histogram_test.go`
 - `pathreliability/population_identity_test.go`
 - `pathreliability/population_selection_test.go`
+- `pathreliability/prop_prior_fallback_test.go`
+- `pathreliability/prop_prior_feeds_config_test.go`
 - `pathreliability/receiver_test.go`
 - `pathreliability/recent_receiver_units_test.go`
 - `pathreliability/recent_support_accounting_test.go`
@@ -227,6 +268,7 @@ Test files:
 
 | ADR | Status | Date | Area | Match |
 |---|---|---|---|---|
+| ADR-0382 | Accepted | 2026-11-27 | Propagation-prior HTTP feed ingestion, config contract, failover parity and shutdown | `area:internal/propprior/feed` |
 | [ADR-0310](docs/decisions/ADR-0310-live-forecast-cache-retention.md) | Proposed | 2026-10-16 | replacement-only refresh, deterministic live eviction, original map scans | `path:pathreliability` |
 | [ADR-0309](docs/decisions/ADR-0309-recent-report-support-and-receiver-units.md) | Accepted | 2026-10-15 | recent fractional report support, receiver qualification, observed provenance | `path:pathreliability` |
 | [ADR-0308](docs/decisions/ADR-0308-path-population-identity.md) | Accepted | 2026-10-15 | regional SNR selection, physical evidence and receiver identity | `path:pathreliability` |

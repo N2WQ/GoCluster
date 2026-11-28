@@ -526,13 +526,13 @@ func TestLoadFileRejectsInvalidVOACAPFallbackBounds(t *testing.T) {
 		body string
 		want string
 	}{
-		{name: "enabled while path disabled", body: "enabled: false\nvoacap_fallback:\n  enabled: true\n", want: "voacap_fallback.enabled"},
+		{name: "enabled while path disabled", body: "enabled: false\nprop_prior_fallback:\n  enabled: false\nvoacap_fallback:\n  enabled: true\n", want: "voacap_fallback.enabled"},
 		{name: "worker count", body: "voacap_fallback:\n  worker_count: 2\n", want: "voacap_fallback.worker_count"},
 		{name: "cache entries", body: "voacap_fallback:\n  max_cache_entries: 0\n", want: "voacap_fallback.max_cache_entries"},
 		{name: "show prop wait negative", body: "voacap_fallback:\n  show_prop_wait_milliseconds: -1\n", want: "voacap_fallback.show_prop_wait_milliseconds"},
 		{name: "show prop wait too high", body: "voacap_fallback:\n  show_prop_wait_milliseconds: 2001\n", want: "voacap_fallback.show_prop_wait_milliseconds"},
-		{name: "empty ssn state path", body: "voacap_fallback:\n  ssn_state_path: \"\"\n", want: "voacap_fallback.ssn_state_path"},
-		{name: "empty forecast cache path", body: "voacap_fallback:\n  forecast_cache_db_path: \"\"\n", want: "voacap_fallback.forecast_cache_db_path"},
+		{name: "empty ssn state path", body: "prop_prior_fallback:\n  enabled: false\nvoacap_fallback:\n  enabled: true\n  ssn_state_path: \"\"\n", want: "voacap_fallback.ssn_state_path"},
+		{name: "empty forecast cache path", body: "prop_prior_fallback:\n  enabled: false\nvoacap_fallback:\n  enabled: true\n  forecast_cache_db_path: \"\"\n", want: "voacap_fallback.forecast_cache_db_path"},
 		{name: "negative flux weight", body: "voacap_fallback:\n  ssn_recent_flux_weight: -0.1\n", want: "ssn_recent_flux_weight"},
 		{name: "excess flux weight", body: "voacap_fallback:\n  ssn_recent_flux_weight: 1.1\n", want: "ssn_recent_flux_weight"},
 		{name: "nonfinite flux weight", body: "voacap_fallback:\n  ssn_recent_flux_weight: .nan\n", want: "ssn_recent_flux_weight"},

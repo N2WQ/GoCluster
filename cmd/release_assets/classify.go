@@ -36,7 +36,10 @@ var publicTextSettings = map[string]string{
 		rbn_digital.host rbn_digital.name rbn_digital.telnet_transport`,
 	"mode_seeds.yaml": `mode_inference.digital_seeds.mode`,
 	"path_reliability.yaml": `allowed_bands glyph_symbols.closed glyph_symbols.high glyph_symbols.insufficient
-		glyph_symbols.low glyph_symbols.medium glyph_symbols.unlikely receiver_contribution_mode
+		glyph_symbols.low glyph_symbols.medium glyph_symbols.unlikely prop_prior_feeds.dst_fallback_url
+		prop_prior_feeds.dst_primary_url prop_prior_feeds.hp30_fallback_url prop_prior_feeds.hp30_primary_url
+		prop_prior_feeds.rtsw_mag_url prop_prior_feeds.rtsw_wind_url prop_prior_feeds.sfi_fallback_url
+		prop_prior_feeds.sfi_primary_url prop_prior_feeds.user_agent receiver_contribution_mode
 		voacap_fallback.output_name_prefix`,
 	"peering.yaml": `peering.legacy_version peering.local_callsign peering.node_build peering.node_version
 		peering.peers.direction peering.peers.family peering.peers.host peering.peers.login_callsign

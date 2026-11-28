@@ -1,0 +1,8 @@
+[
+  {"time_tag":"2026-11-27T17:11:00","active":true,"source":"SOLAR1","proton_speed":323.0},
+  {"time_tag":"2026-11-27T16:59:00","active":false,"source":"ACE","proton_speed":900.0},
+  {"time_tag":"2026-11-27T16:40:00","active":true,"source":"SOLAR1","proton_speed":null},
+  {"time_tag":"2026-11-27T16:10:00","active":true,"source":"SOLAR1","proton_speed":420.0},
+  {"time_tag":"2026-11-27T16:00:00","active":true,"source":"SOLAR1","proton_speed":380.0},
+  {"time_tag":"2026-11-27T15:00:00","active":true,"source":"SOLAR1","proton_speed":500.0}
+]

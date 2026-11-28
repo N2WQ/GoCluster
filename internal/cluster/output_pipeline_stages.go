@@ -402,9 +402,15 @@ func (p *outputPipeline) prepareFanoutSpot(ctx *outputSpotContext) bool {
 						// Arrival validates source observation only for path learning;
 						// rejection must not drop fanout or rewrite the source timestamp.
 						arrival := time.Now().UTC()
-						admission := p.pathPredictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, pathreliability.ObservationTimes{ObservedAt: s.Time, ArrivedAt: arrival}, s.IsBeacon, pathReceiverHash(s))
-						if admission.Accepted() && p.pathReport != nil {
-							p.pathReport.ObserveWithCells(s, admission.EffectiveObservation, cells.deCoarse, cells.dxCoarse)
+						receiverHash := pathReceiverHash(s)
+						admission := p.pathPredictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, pathreliability.ObservationTimes{ObservedAt: s.Time, ArrivedAt: arrival}, s.IsBeacon, receiverHash)
+						if admission.Accepted() {
+							if p.pathReport != nil {
+								p.pathReport.ObserveWithCells(s, admission.EffectiveObservation, cells.deCoarse, cells.dxCoarse)
+							}
+							if p.propCapture != nil {
+								p.propCapture.EnqueueSpot(s, admission.EffectiveObservation, arrival, band, mode, ft8, receiverHash)
+							}
 						}
 					}
 				}

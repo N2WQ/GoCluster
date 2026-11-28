@@ -27,6 +27,8 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0383 | Pure-Go propprior sparse-path fallback and soft VOACAP cutover | Accepted | 2026-11-27 | Pure-Go HF fallback, reciprocal cache, SHOW PROP, Overview, staleness fix and shipped defaults | soft-retires default voacap_fallback enablement | none | [ADR-0383](decisions/ADR-0383-propprior-fallback-voacap-cutover.md) |
+| ADR-0382 | Opt-in live space-weather pollers for propagation prior | Accepted | 2026-11-27 | Propagation-prior HTTP feed ingestion, config contract, failover parity and shutdown | none | default enablement updated by ADR-0383 | [ADR-0382](decisions/ADR-0382-propprior-live-space-weather-pollers.md) |
 | ADR-0381 | Custom SCP 6-hour refresh cooldown and Pebble batching | Accepted | 2026-11-27 | Custom SCP persistence batching/cooldown and archive Pebble defaults | refines ADR-0279 and ADR-0285 | none | [ADR-0381](decisions/ADR-0381-custom-scp-refresh-cooldown-and-pebble-batching.md) |
 | ADR-0380 | Shared pre-login allowance accounting | Accepted | 2026-11-27 | Telnet and browser admission, rate accounting and tracker maintenance | refines ADR-0048 | none | [ADR-0380](decisions/ADR-0380-prelogin-shared-allowance-accounting.md) |
 | ADR-0379 | Browser replacement and Telnet NOP handling | Accepted | 2026-11-26 | Terminal browser notice, retry bounds, and inbound Telnet framing | extends ADR-0376 | none | [ADR-0379](decisions/ADR-0379-browser-replacement-and-telnet-nop.md) |

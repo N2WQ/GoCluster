@@ -75,6 +75,7 @@ type outputPipeline struct {
 	lastOutput             *atomic.Int64
 	pathPredictor          *pathreliability.Predictor
 	pathReport             *pathReportMetrics
+	propCapture            *propCaptureWriter
 	allowedBands           map[string]struct{}
 	secondaryActive        bool
 	stabilizerEnabled      bool

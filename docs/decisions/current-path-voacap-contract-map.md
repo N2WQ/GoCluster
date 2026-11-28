@@ -53,7 +53,18 @@ current source/tests.
   superseded the LOW/UNLIKELY-only experiment contract in
   [ADR-0196](ADR-0196-native-160m-solar-darkness-fallback.md).
 
-## Active VOACAP Chain
+## Active Propagation Prior (`propprior`) Fallback Chain
+
+- Pure-Go HF sparse-path fallback (`prop_prior_fallback`), fixed-capacity
+  reciprocal cache, instant 24-hour `SHOW PROP` on Windows/Linux, `SET DIAG PATH`
+  `pp*` provenance tags, `Prop prior` Overview lines, and soft retirement of
+  default `voacap_fallback` enablement are in
+  [ADR-0383](ADR-0383-propprior-fallback-voacap-cutover.md).
+- Bounded live GFZ/NOAA space-weather feed pollers (`prop_prior_feeds`),
+  completed-bin causality, completed-bin-end primary staleness, and non-overwrite
+  failover are in [ADR-0382](ADR-0382-propprior-live-space-weather-pollers.md).
+
+## Legacy / Rollback VOACAP Chain
 
 - Start with [ADR-0350](ADR-0350-voacap-observation-count-input.md) for current
   NOAA observation counts, 48-hour EWMA, validated reduction and state migration.

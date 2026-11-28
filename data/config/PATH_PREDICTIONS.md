@@ -330,19 +330,20 @@ reports `candidates`, `emitted`, class splits, `not_dark`, `unknown`,
 `dark_le_closed`, and fixed darkness buckets `dark_ge_50`, `dark_ge_75`, and
 `dark_ge_90`.
 
-`SHOW PROP <call|prefix|grid> [band] [mode]` is the on-demand view of the same
-rolling VOACAP horizon. It starts from your saved `SET GRID`, applies your
-`SET NOISE` receive penalty to the RX leg, merges RX and TX into `EFF`, and
-maps `EFF`, `RX`, and `TX` to mode-specific glyphs. `REL` remains the text class
-for the requested mode and merged path. With no band, it shows each configured
-VOACAP fallback band. With no mode, it uses CW. Empty or partial single-band
-lookups enqueue a refresh through the existing VOACAP fallback worker and wait
-up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests return
-cached rows while refreshing missing or partial bands in the background. The row
-count follows `voacap_fallback.forecast_hours`, but rows whose `REL` prediction
-is `UNLIKELY` or `CLOSED` are hidden.
-The header identifies the actual cached SSN. If bands differ, it shows
-`ssn=mixed` and gives each band's SSN. This can occur while replacements run.
+`SHOW PROP <call|prefix|grid> [band] [mode]` is the on-demand view of the active
+propagation fallback horizon (`prop_prior_fallback` by default, or legacy
+Windows `voacap_fallback` if rolled back). It starts from your saved `SET GRID`,
+applies your `SET NOISE` receive penalty to the RX leg, merges RX and TX into
+`EFF`, and maps `EFF`, `RX`, and `TX` to mode-specific glyphs. `REL` remains the
+text class for the requested mode and merged path. With no band, it shows each
+configured fallback band (`80m`–`10m` for `prop_prior_fallback`). With no mode,
+it uses CW. Under `prop_prior_fallback`, single-band and all-band outlooks
+compute instantly in pure Go on Windows and Linux with `engine=propprior` in the
+header (no warm-up delay and no `ssn=`). Under legacy Windows `voacap_fallback`,
+empty or partial single-band lookups enqueue a refresh through the VOACAP worker
+and wait up to `voacap_fallback.show_prop_wait_milliseconds`, and the header
+identifies the cached `ssn=` (or `ssn=mixed`). Rows whose `REL` prediction is
+`UNLIKELY` or `CLOSED` are hidden.
 
 ## How to Use This Information
 

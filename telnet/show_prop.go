@@ -56,12 +56,12 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 		return "Path reliability is disabled.\n", true
 	}
 	if s.pathClosedFallback == nil {
-		return "VOACAP fallback is disabled.\n", true
+		return "Propagation fallback is disabled.\n", true
 	}
 	provider, providerOK := s.pathClosedFallback.(pathreliability.VOACAPForecastWindowProvider)
 	waitProvider, waitProviderOK := s.pathClosedFallback.(pathreliability.VOACAPForecastWindowWaitProvider)
 	if !providerOK && !waitProviderOK {
-		return "VOACAP outlook is unavailable.\n", true
+		return "Propagation outlook is unavailable.\n", true
 	}
 
 	cfg := s.pathPredictor.Config()
@@ -93,7 +93,7 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 		noiseClass = "QUIET"
 	}
 	noisePenalty := s.noisePenaltyForClass(noiseClass)
-	hours := cfg.VOACAPFallback.ForecastHours
+	hours := cfg.FallbackForecastHours()
 	rows := make([]showPropBandRows, 0, len(bands))
 	singleBand := strings.TrimSpace(cmd.band) != ""
 	for _, band := range bands {
@@ -112,7 +112,7 @@ func (s *Server) handleShowPropCommand(client *Client, line string) (string, boo
 		}
 		if waitProviderOK {
 			wait := time.Duration(0)
-			if singleBand {
+			if singleBand && !cfg.PropPriorFallbackActive() {
 				wait = time.Duration(cfg.VOACAPFallback.ShowPropWaitMilliseconds) * time.Millisecond
 			}
 			window, status := waitProvider.CheckForecastWindowWait(req, now, wait)
@@ -231,14 +231,18 @@ func showPropTargetFromGrid(input string, grid string, source string) (showPropT
 func showPropBands(raw string, cfg pathreliability.Config) ([]string, string) {
 	if strings.TrimSpace(raw) != "" {
 		band := spot.NormalizeBand(raw)
-		if _, ok := pathreliability.VOACAPFallbackCenterFrequencyMHz(cfg.VOACAPFallback, band); !ok {
-			return nil, fmt.Sprintf("Unsupported VOACAP band: %s\nSupported: %s\n", band, strings.Join(pathreliability.VOACAPFallbackBands(cfg.VOACAPFallback), ", "))
+		if _, ok := cfg.FallbackCenterFrequencyMHz(band); !ok {
+			engineLabel := "VOACAP"
+			if cfg.PropPriorFallbackActive() {
+				engineLabel = "SHOW PROP"
+			}
+			return nil, fmt.Sprintf("Unsupported %s band: %s\nSupported: %s\n", engineLabel, band, strings.Join(cfg.FallbackBands(), ", "))
 		}
 		return []string{band}, ""
 	}
-	bands := pathreliability.VOACAPFallbackBands(cfg.VOACAPFallback)
+	bands := cfg.FallbackBands()
 	if len(bands) == 0 {
-		return nil, "No VOACAP fallback bands are configured.\n"
+		return nil, "No propagation fallback bands are configured.\n"
 	}
 	return bands, ""
 }
@@ -246,7 +250,7 @@ func showPropBands(raw string, cfg pathreliability.Config) ([]string, string) {
 func normalizeShowPropModeForBand(mode string, band string, cfg pathreliability.Config) (string, bool) {
 	mode = spot.CanonicalMode(mode)
 	if mode == "SSB" {
-		if freq, ok := pathreliability.VOACAPFallbackCenterFrequencyMHz(cfg.VOACAPFallback, band); ok {
+		if freq, ok := cfg.FallbackCenterFrequencyMHz(band); ok {
 			mode = spot.NormalizeVoiceMode(mode, freq*1000)
 		}
 	}
@@ -284,13 +288,20 @@ func formatShowPropResponse(userGrid string, target showPropTarget, cmd showProp
 	}
 	b.WriteString(" noise=")
 	b.WriteString(noiseClass)
-	ssn, hasSSN, mixedSSN := showPropSSNState(rows)
-	if hasSSN {
-		b.WriteString(" ssn=")
-		if mixedSSN {
-			b.WriteString("mixed")
-		} else {
-			b.WriteString(strconv.Itoa(ssn))
+	isPropPrior := showPropIsPropPrior(rows)
+	var mixedSSN bool
+	if isPropPrior {
+		b.WriteString(" engine=propprior")
+	} else {
+		ssn, hasSSN, mixed := showPropSSNState(rows)
+		mixedSSN = mixed
+		if hasSSN {
+			b.WriteString(" ssn=")
+			if mixedSSN {
+				b.WriteString("mixed")
+			} else {
+				b.WriteString(strconv.Itoa(ssn))
+			}
 		}
 	}
 	if hours > 0 {
@@ -442,6 +453,17 @@ func showPropStatusMessage(status pathreliability.VOACAPForecastWindowStatus, ha
 		}
 		return "Still computing; ask again shortly."
 	}
+}
+
+func showPropIsPropPrior(rows []showPropBandRows) bool {
+	for _, row := range rows {
+		for i := range row.records {
+			if row.records[i].PropPrior {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // SSN belongs to the returned forecast, including valid zero. Bands can finish

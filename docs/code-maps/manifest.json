@@ -20,6 +20,8 @@
       "packages": [
         "./pathreliability",
         "./internal/solarpath",
+        "./internal/propprior",
+        "./internal/propprior/feed",
         "./solarweather",
         "./internal/voacap"
       ]

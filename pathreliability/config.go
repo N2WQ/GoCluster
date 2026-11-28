@@ -47,6 +47,8 @@ type Config struct {
 	GlyphSymbols                       GlyphSymbols               `yaml:"glyph_symbols"`                           // glyph mapping for high/medium/low/unlikely/insufficient/closed
 	Native160Fallback                  Native160FallbackConfig    `yaml:"native_160m_fallback"`                    // optional solar-darkness fallback for 160m insufficient p50
 	VOACAPFallback                     VOACAPFallbackConfig       `yaml:"voacap_fallback"`                         // optional VOACAP sparse-data fallback
+	PropPriorFallback                  *PropPriorFallbackConfig   `yaml:"prop_prior_fallback,omitempty" json:"-"`  // pure-Go propprior sparse-path fallback; omitted from replay pipeline fingerprints
+	PropPriorFeeds                     *PropPriorFeedsConfig      `yaml:"prop_prior_feeds,omitempty" json:"-"`     // live space-weather feed poller settings; omitted from replay pipeline fingerprints
 	NoiseOffsets                       map[string]float64         `yaml:"noise_offsets"`                           // noise class -> dB penalty
 
 	noiseModel NoiseModel
@@ -503,8 +505,20 @@ func (c *Config) finalize() error {
 	if err := c.Native160Fallback.finalize(); err != nil {
 		return err
 	}
+	if err := c.PropPriorFallback.finalize(); err != nil {
+		return err
+	}
+	if err := c.PropPriorFeeds.finalize(); err != nil {
+		return err
+	}
 	if c.VOACAPFallback.Enabled && !c.Enabled {
 		return fmt.Errorf("voacap_fallback.enabled requires path reliability enabled")
+	}
+	if c.PropPriorFallbackActive() && !c.Enabled {
+		return fmt.Errorf("prop_prior_fallback.enabled requires path reliability enabled")
+	}
+	if c.VOACAPFallback.Enabled && c.PropPriorFallbackActive() {
+		return fmt.Errorf("voacap_fallback.enabled and prop_prior_fallback.enabled are mutually exclusive")
 	}
 	if c.Native160Fallback.Enabled && !c.Enabled {
 		return fmt.Errorf("native_160m_fallback.enabled requires path reliability enabled")
@@ -776,6 +790,16 @@ func LoadFileWithDiagnostics(path string) (Config, []string, []string, error) {
 	if err != nil {
 		return cfg, nil, nil, err
 	}
+	propPriorDiags, err := propPriorFeedsPresenceDiagnostics(path, bs)
+	if err != nil {
+		return cfg, nil, nil, err
+	}
+	required = append(required, propPriorDiags...)
+	propPriorFallbackDiags, err := propPriorFallbackPresenceDiagnostics(path, bs)
+	if err != nil {
+		return cfg, nil, nil, err
+	}
+	required = append(required, propPriorFallbackDiags...)
 	warnings := make([]string, 0, len(unknown))
 	errors := make([]string, 0, len(required))
 	for _, diag := range unknown {

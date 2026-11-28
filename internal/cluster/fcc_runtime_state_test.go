@@ -129,6 +129,9 @@ func fccRuntimeTestConfig(t *testing.T) (*config.Config, string) {
 	cfg.FCCULS.Enabled, cfg.Reputation.Enabled, cfg.Skew.Enabled = false, false, false
 	cfg.SolarWeather.Enabled, cfg.PropReport.Enabled, cfg.Peering.Enabled = false, false, false
 	cfg.PathReliability.VOACAPFallback.Enabled = false
+	if cfg.PathReliability.PropPriorFeeds != nil {
+		cfg.PathReliability.PropPriorFeeds.Enabled = false
+	}
 	cfg.CallCorrection.Enabled, cfg.CallCorrection.StabilizerEnabled, cfg.CallCorrection.TemporalDecoder.Enabled = false, false, false
 	configureFCCQualificationSource(t, cfg)
 	cfg.CTY.File, cfg.CTY.URL = filepath.Join(repo, "data", "cty", "cty.plist"), ""

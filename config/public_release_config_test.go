@@ -46,6 +46,21 @@ func TestCheckedInPublicConfigLoads(t *testing.T) {
 	if cfg.Reputation.IPInfoAPIEnabled {
 		t.Fatalf("reputation.ipinfo_api_enabled = true, want public config API disabled by default")
 	}
+	if cfg.PathReliability.VOACAPFallback.Enabled {
+		t.Fatalf("path_reliability.voacap_fallback.enabled = true, want soft-retired false by default")
+	}
+	if cfg.PathReliability.PropPriorFallback == nil {
+		t.Fatalf("path_reliability.prop_prior_fallback missing from public config")
+	}
+	if !cfg.PathReliability.PropPriorFallback.Enabled {
+		t.Fatalf("path_reliability.prop_prior_fallback.enabled = false, want enabled by default")
+	}
+	if cfg.PathReliability.PropPriorFeeds == nil {
+		t.Fatalf("path_reliability.prop_prior_feeds missing from public config")
+	}
+	if !cfg.PathReliability.PropPriorFeeds.Enabled {
+		t.Fatalf("path_reliability.prop_prior_feeds.enabled = false, want enabled by default")
+	}
 }
 
 func TestCheckedInPublicConfigPeerExamples(t *testing.T) {

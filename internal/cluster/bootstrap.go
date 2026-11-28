@@ -714,7 +714,11 @@ func formatTopCounterSummary(counts map[string]uint64, limit int) string {
 // Key aspects: Uses a ticker, diff counters, and optional secondary dedupe stats.
 // Upstream: main stats goroutine.
 // Downstream: tracker accessors, loadFCCSnapshot, and UI/log output.
-func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, voacapFallback voacapFallbackSnapshotProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, humanTelnetFeeds []humanTelnetFeed, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig) {
+func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *stats.Tracker, ingestStats *ingestValidator, dedup *dedup.Deduplicator, secondaryFast *dedup.SecondaryDeduper, secondaryMed *dedup.SecondaryDeduper, secondarySlow *dedup.SecondaryDeduper, secondaryStage *atomic.Uint64, buf *buffer.RingBuffer, ctyLookup func() *cty.CTYDatabase, metaCache *callMetaCache, ctyState *ctyRefreshState, recentBandStore spot.RecentSupportStore, signalResolver *spot.SignalResolver, telnetSrv *telnet.Server, dash ui.Surface, gridStats *gridMetrics, gridDB *gridStoreHandle, fccDBPath string, pathPredictor *pathreliability.Predictor, voacapSSN pathreliability.VOACAPSSNProvider, voacapFallback voacapFallbackSnapshotProvider, modeAssigner *spot.ModeAssigner, toxicityClassifier *toxicity.Classifier, rbnClient *rbn.Client, rbnDigitalClient *rbn.Client, humanTelnetFeeds []humanTelnetFeed, pskrClient *pskreporter.Client, dxsummitClient *dxsummit.Client, pskrPathOnly *pathOnlyStats, peerManager *peer.Manager, clusterCall string, skewPath string, ingestSourceCfg dashboardIngestSourceConfig, propPriorProviders ...propPriorFallbackSnapshotProvider) {
+	var propPriorFallback propPriorFallbackSnapshotProvider
+	if len(propPriorProviders) > 0 {
+		propPriorFallback = propPriorProviders[0]
+	}
 	if ctx.Err() != nil {
 		return
 	}
@@ -990,6 +994,7 @@ func displayStatsWithFCC(ctx context.Context, interval time.Duration, tracker *s
 				skewPath,
 				&mem,
 				gcP99Label,
+				propPriorFallback,
 			)
 			snapshot := ui.Snapshot{
 				GeneratedAt:   time.Now().UTC(),
@@ -1113,27 +1118,27 @@ func diffPathOnly(current, prev pathOnlySnapshot) pathOnlySnapshot {
 // Key aspects: No CTY validation, no dedup/broadcast/archive; drops on missing grids or disabled predictor.
 // Upstream: PSKReporter path-only channel.
 // Downstream: pathreliability.Predictor.Update, pathReportMetrics.
-func processPSKRPathOnlySpots(client *pskreporter.Client, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}) {
+func processPSKRPathOnlySpots(client *pskreporter.Client, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}, propCaptures ...*propCaptureWriter) {
 	if client == nil {
 		return
 	}
-	processPSKRPathOnlyChannel(client.GetPathOnlyChannel(), predictor, pathReport, stats, spotPolicy, allowedBands)
+	processPSKRPathOnlyChannel(client.GetPathOnlyChannel(), predictor, pathReport, stats, spotPolicy, allowedBands, propCaptures...)
 }
 
 // processPSKRPathOnlyChannel owns iteration only; it adds no queue or worker.
 // Each report receives one path-ingestion arrival, independent of source time.
-func processPSKRPathOnlyChannel(spotChan <-chan *spot.Spot, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}) {
+func processPSKRPathOnlyChannel(spotChan <-chan *spot.Spot, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}, propCaptures ...*propCaptureWriter) {
 	if spotChan == nil {
 		return
 	}
 	for s := range spotChan {
-		processPSKRPathOnlySpot(s, time.Now().UTC(), predictor, pathReport, stats, spotPolicy, allowedBands)
+		processPSKRPathOnlySpot(s, time.Now().UTC(), predictor, pathReport, stats, spotPolicy, allowedBands, propCaptures...)
 	}
 }
 
 // processPSKRPathOnlySpot keeps the original path-only qualification gates.
 // Its arrival is request-local and never inferred from the source observation.
-func processPSKRPathOnlySpot(s *spot.Spot, arrival time.Time, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}) {
+func processPSKRPathOnlySpot(s *spot.Spot, arrival time.Time, predictor *pathreliability.Predictor, pathReport *pathReportMetrics, stats *pathOnlyStats, spotPolicy config.SpotPolicy, allowedBands map[string]struct{}, propCaptures ...*propCaptureWriter) {
 	if s == nil {
 		return
 	}
@@ -1192,7 +1197,8 @@ func processPSKRPathOnlySpot(s *spot.Spot, arrival time.Time, predictor *pathrel
 		return
 	}
 	// Spot SNR reflects DX -> DE (spotter is the receiver).
-	admission := predictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, pathreliability.ObservationTimes{ObservedAt: s.Time, ArrivedAt: arrival}, s.IsBeacon, pathReceiverHash(s))
+	receiverHash := pathReceiverHash(s)
+	admission := predictor.UpdateWithReceiverHash(bucket, cells.deFine, cells.dxFine, cells.deCoarse, cells.dxCoarse, band, ft8, 1.0, pathreliability.ObservationTimes{ObservedAt: s.Time, ArrivedAt: arrival}, s.IsBeacon, receiverHash)
 	if !admission.Accepted() {
 		if admission.Status == pathreliability.AdmissionRejectedTime {
 			recordPathOnlyDrop(stats, pathOnlyDropTime)
@@ -1201,6 +1207,9 @@ func processPSKRPathOnlySpot(s *spot.Spot, arrival time.Time, predictor *pathrel
 	}
 	if pathReport != nil {
 		pathReport.ObserveWithCells(s, admission.EffectiveObservation, cells.deCoarse, cells.dxCoarse)
+	}
+	if len(propCaptures) > 0 && propCaptures[0] != nil {
+		propCaptures[0].EnqueueSpot(s, admission.EffectiveObservation, arrival, band, mode, ft8, receiverHash)
 	}
 	if stats != nil {
 		stats.updates.Add(1)
@@ -3947,6 +3956,7 @@ func buildOverviewLines(
 	skewPath string,
 	mem *runtime.MemStats,
 	gcP99Label string,
+	propPriorProviders ...propPriorFallbackSnapshotProvider,
 ) []string {
 	now := time.Now().UTC()
 	if mem == nil {
@@ -4091,7 +4101,11 @@ func buildOverviewLines(
 		fmt.Sprintf("[yellow]CTY[-]: %s  [yellow]FCC[-]: %s  [yellow]Skew[-]: %s  [yellow]VOACAP SSN[-]: %s", ctyTime, fccTime, skewTime, voacapSSNLabel),
 		"PATH PREDICTIONS",
 	)
-	lines = append(lines, formatPathLines(pathPredictor, voacapFallback, now, currentVOACAPSSN, currentVOACAPSSNKnown)...)
+	var propPriorFallback propPriorFallbackSnapshotProvider
+	if len(propPriorProviders) > 0 {
+		propPriorFallback = propPriorProviders[0]
+	}
+	lines = append(lines, formatPathLinesWithPropPrior(pathPredictor, voacapFallback, propPriorFallback, now, currentVOACAPSSN, currentVOACAPSSNKnown)...)
 	lines = append(lines, "INGEST SOURCES")
 	lines = append(lines, formatIngestSourceLines(ingestSources)...)
 	lines = append(lines, "NETWORK")
@@ -4364,27 +4378,84 @@ type voacapFallbackDiagnosticProvider interface {
 	DedicatedDiagnosticSnapshot(time.Time, int, bool) pathreliability.VOACAPClosedFallbackSnapshot
 }
 
+type propPriorFallbackSnapshotProvider interface {
+	Snapshot(time.Time) pathreliability.PropPriorFallbackSnapshot
+}
+
 func formatPathLines(predictor *pathreliability.Predictor, provider voacapFallbackSnapshotProvider, now time.Time, ssn int, ssnKnown bool) []string {
-	var snapshot pathreliability.VOACAPClosedFallbackSnapshot
-	available := provider != nil
-	if detailed, ok := provider.(voacapFallbackDiagnosticProvider); ok {
-		// Exactly one inventory pass. Every label below shares this publication
-		// and the same SSN captured for the overview's solar-input label.
-		snapshot = detailed.DedicatedDiagnosticSnapshot(now, ssn, ssnKnown)
-	} else if available {
-		snapshot = provider.Snapshot()
-	}
+	return formatPathLinesWithPropPrior(predictor, provider, nil, now, ssn, ssnKnown)
+}
+
+func formatPathLinesWithPropPrior(predictor *pathreliability.Predictor, provider voacapFallbackSnapshotProvider, propPrior propPriorFallbackSnapshotProvider, now time.Time, ssn int, ssnKnown bool) []string {
 	lines := make([]string, 0, 6)
-	lines = append(lines, formatVOACAPCacheLine(snapshot, available))
-	lines = append(lines, formatVOACAPCacheIndexLine(snapshot, available))
-	if available {
-		lines = append(lines, formatVOACAPWorkLines(snapshot, ssn, ssnKnown)...)
+	if propPrior != nil && provider == nil {
+		lines = append(lines, formatPropPriorLines(propPrior.Snapshot(now))...)
+	} else {
+		var snapshot pathreliability.VOACAPClosedFallbackSnapshot
+		available := provider != nil
+		if detailed, ok := provider.(voacapFallbackDiagnosticProvider); ok {
+			// Exactly one inventory pass. Every label below shares this publication
+			// and the same SSN captured for the overview's solar-input label.
+			snapshot = detailed.DedicatedDiagnosticSnapshot(now, ssn, ssnKnown)
+		} else if available {
+			snapshot = provider.Snapshot()
+		}
+		lines = append(lines, formatVOACAPCacheLine(snapshot, available))
+		lines = append(lines, formatVOACAPCacheIndexLine(snapshot, available))
+		if available {
+			lines = append(lines, formatVOACAPWorkLines(snapshot, ssn, ssnKnown)...)
+		}
 	}
 	if predictor == nil || !predictor.Config().Enabled {
 		lines = append(lines, "[yellow]H3 path pairs[-]: n/a")
 		return lines
 	}
 	return formatPathSnapshotLines(lines, predictor.StatsSnapshot())
+}
+
+func formatPropPriorLines(snap pathreliability.PropPriorFallbackSnapshot) []string {
+	total := snap.CacheHits + snap.CacheMisses
+	hitPct := 0.0
+	if total > 0 {
+		hitPct = 100.0 * float64(snap.CacheHits) / float64(total)
+	}
+	sw := snap.SpaceWeather
+	liveCount := 0
+	if sw.SFI.HasValid {
+		liveCount++
+	}
+	if sw.Hp30.HasValid {
+		liveCount++
+	}
+	if sw.Bz.HasValid {
+		liveCount++
+	}
+	if sw.Vsw.HasValid {
+		liveCount++
+	}
+	if sw.Dst.HasValid {
+		liveCount++
+	}
+	sourceLabel := "quiet-defaults"
+	if liveCount > 0 {
+		sourceLabel = fmt.Sprintf("live %d/5", liveCount)
+	}
+	return []string{
+		fmt.Sprintf("[yellow]Prop prior cache[-]: %s / %s (hit %.1f%%, evict %s)",
+			humanize.Comma(int64(snap.CacheEntries)),
+			humanize.Comma(int64(snap.CacheCapacity)),
+			hitPct,
+			humanize.Comma(int64(snap.CacheEvictions)),
+		),
+		fmt.Sprintf("[yellow]Prop prior weather[-]: SFI=%.0f Hp30=%.1f Dst=%.0f Bz-=%.1f Vsw=%.0f (%s)",
+			sw.Features.SFINow,
+			sw.Features.Hp30Lag1,
+			sw.Features.DstNow,
+			sw.Features.BzSouth3h,
+			sw.Features.Vsw3h,
+			sourceLabel,
+		),
+	}
 }
 
 // formatPathSnapshotLines consumes one copied publication for the title and

@@ -137,6 +137,12 @@ func replayGeographyConfig(t *testing.T, mode string) (string, string) {
 			raw["enabled"] = false
 			raw["voacap_fallback"].(map[string]any)["enabled"] = false
 			raw["native_160m_fallback"].(map[string]any)["enabled"] = false
+			if sec, ok := raw["prop_prior_fallback"].(map[string]any); ok {
+				sec["enabled"] = false
+			}
+			if sec, ok := raw["prop_prior_feeds"].(map[string]any); ok {
+				sec["enabled"] = false
+			}
 		case "pipeline.yaml":
 			correction := raw["call_correction"].(map[string]any)
 			correction["enabled"] = mode != "global_disabled"

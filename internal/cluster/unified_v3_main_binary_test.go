@@ -142,6 +142,12 @@ func TestV6MainExecutablePeerLoggingWithoutCompanion(t *testing.T) {
 			doc["enabled"] = false
 			section("voacap_fallback")["enabled"] = false
 			section("native_160m_fallback")["enabled"] = false
+			if sec, ok := doc["prop_prior_fallback"].(map[string]any); ok {
+				sec["enabled"] = false
+			}
+			if sec, ok := doc["prop_prior_feeds"].(map[string]any); ok {
+				sec["enabled"] = false
+			}
 		case "solarweather.yaml":
 			doc["enabled"] = false
 		}

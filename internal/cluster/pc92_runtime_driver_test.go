@@ -207,6 +207,9 @@ func configureRuntimeQualification(t *testing.T, cfg *config.Config, repo string
 	configureFCCQualificationSource(t, cfg)
 	cfg.SolarWeather.Enabled, cfg.PropReport.Enabled = false, false
 	cfg.PathReliability.VOACAPFallback.Enabled = false
+	if cfg.PathReliability.PropPriorFeeds != nil {
+		cfg.PathReliability.PropPriorFeeds.Enabled = false
+	}
 	cfg.CTY.File, cfg.CTY.URL = filepath.Join(repo, "data", "cty", "cty.plist"), ""
 	cfg.H3TablePath = filepath.Join(repo, "data", "h3")
 	for _, path := range []*string{&cfg.CallCorrection.ConfusionModelFile, &cfg.CallCorrection.SpotterReliabilityFile, &cfg.CallCorrection.SpotterReliabilityFileCW, &cfg.CallCorrection.SpotterReliabilityFileRTTY} {

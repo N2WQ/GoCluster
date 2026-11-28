@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `74e6bff0e1339a74`
+- Source fingerprint: `1e4325294522206f`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -12,10 +12,10 @@
 | Package | Directory | Go files | Test files |
 |---|---|---:|---:|
 | `dxcluster/commands` | `commands` | 15 | 26 |
-| `dxcluster/internal/cluster` | `internal/cluster` | 61 | 228 |
+| `dxcluster/internal/cluster` | `internal/cluster` | 62 | 230 |
 | `dxcluster/peer` | `peer` | 63 | 139 |
 | `dxcluster/spot` | `spot` | 47 | 89 |
-| `dxcluster/telnet` | `telnet` | 95 | 198 |
+| `dxcluster/telnet` | `telnet` | 95 | 199 |
 
 ## In-Scope Package Edges
 
@@ -60,6 +60,8 @@
 | `dxcluster/internal/cluster` | `dxcluster/internal/logutil` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/pebbleresilience` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/peerdiag` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/propprior` |
+| `dxcluster/internal/cluster` | `dxcluster/internal/propprior/feed` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/propreport` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/qualificationstage` |
 | `dxcluster/internal/cluster` | `dxcluster/internal/ratelimit` |
@@ -191,6 +193,7 @@ Source files:
 - `internal/cluster/path_report_metrics.go`
 - `internal/cluster/path_reporting.go`
 - `internal/cluster/peer_publication.go`
+- `internal/cluster/prop_capture.go`
 - `internal/cluster/prop_report_scheduler.go`
 - `internal/cluster/replacement_license.go`
 - `internal/cluster/resolver_correction_outcome.go`
@@ -385,6 +388,8 @@ Test files:
 - `internal/cluster/peer_publication_bench_test.go`
 - `internal/cluster/peer_runtime_test.go`
 - `internal/cluster/peer_spot_admission_test.go`
+- `internal/cluster/prop_capture_test.go`
+- `internal/cluster/prop_prior_feeds_runtime_test.go`
 - `internal/cluster/prop_report_rooted_test.go`
 - `internal/cluster/prop_report_scheduler_test.go`
 - `internal/cluster/pskr_recovery_test.go`
@@ -1041,6 +1046,7 @@ Test files:
 - `telnet/preset_commands_test.go`
 - `telnet/preset_transaction_test.go`
 - `telnet/preset_v7_fallback_test.go`
+- `telnet/prop_prior_integration_test.go`
 - `telnet/pskr_zero_wire_test.go`
 - `telnet/qualification_observer_test.go`
 - `telnet/qualification_stage_test.go`

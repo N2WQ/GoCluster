@@ -507,22 +507,23 @@ index trust; the next operation repairs from actual disk contents. Live memory
 publication and waiter notification still precede warning-only persistence,
 and shutdown waits for persistence before closing the database. See ADR-0304.
 
-`SHOW PROP <call|prefix|grid> [band] [mode]` exposes those cached hourly
-VOACAP records directly as a point-to-point outlook from the user's grid to the
-target when the fallback provider is running. Omitted mode defaults to CW.
-Empty or partial single-band command
-lookups enqueue an immediate refresh through the existing fallback worker and
-wait up to `voacap_fallback.show_prop_wait_milliseconds`; all-band requests
-show cached rows immediately while refreshing missing or partial bands in the
-background. Rows start at the current UTC hour and cover the available part of
-the `voacap_fallback.forecast_hours` window. Only rows whose `REL` prediction is
-`HIGH`, `MEDIUM`, or `LOW` are displayed. The displayed `RX` glyph is
-DX-to-user after the requesting user's receive-noise penalty, `TX` is
+`SHOW PROP <call|prefix|grid> [band] [mode]` exposes the active fallback's
+hourly point-to-point outlook from the user's grid to the target (`prop_prior_fallback`
+by default, or legacy Windows `voacap_fallback` when rolled back). Omitted mode
+defaults to CW. With `prop_prior_fallback`, both single-band and all-band
+requests compute immediately in pure Go across Windows and Linux (`engine=propprior`
+in the header, omitting `ssn=`), using the bounded reciprocal cache and live
+`SpaceWeatherStore` (`ADR-0383`). With legacy `voacap_fallback`, empty or
+partial single-band lookups enqueue an immediate refresh through the VOACAP
+worker and wait up to `voacap_fallback.show_prop_wait_milliseconds`; all-band
+requests show cached rows while refreshing missing or partial bands in the
+background, reporting `ssn=` (or `ssn=mixed`). Rows start at the current UTC
+hour and cover the configured `forecast_hours` horizon; only rows whose `REL`
+prediction is `HIGH`, `MEDIUM`, or `LOW` are displayed. The displayed `RX` glyph
+is DX-to-user after the requesting user's receive-noise penalty, `TX` is
 user-to-DX, `EFF` is the configured receive/transmit merge glyph, and `REL` is
 the configured path class for the requested mode and merged path. Bucket p50
 remains internal to the live glyph decision and is not shown in this command.
-The header reports the actual cached SSN, including valid zero. If returned
-bands use different SSNs, it reports `ssn=mixed` and identifies the SSN per band.
 
 The shipped config currently uses:
 
