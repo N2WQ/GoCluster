@@ -2,7 +2,7 @@
 # Code Map: Runtime Ingest And Fanout
 
 - Map ID: `runtime-ingest-fanout`
-- Source fingerprint: `f42492c6be531301`
+- Source fingerprint: `2c3450a3a25b8eb6`
 - Generated from: `docs/code-maps/manifest.json`
 - Regenerate: `go run ./cmd/codemap generate -map runtime-ingest-fanout`
 - Check: `go run ./cmd/codemap check -map runtime-ingest-fanout`
@@ -14,7 +14,7 @@
 | `dxcluster/commands` | `commands` | 15 | 26 |
 | `dxcluster/internal/cluster` | `internal/cluster` | 62 | 230 |
 | `dxcluster/peer` | `peer` | 63 | 139 |
-| `dxcluster/spot` | `spot` | 48 | 90 |
+| `dxcluster/spot` | `spot` | 48 | 91 |
 | `dxcluster/telnet` | `telnet` | 95 | 199 |
 
 ## In-Scope Package Edges
@@ -770,6 +770,7 @@ Test files:
 - `spot/recent_band_clock_test.go`
 - `spot/recent_band_test.go`
 - `spot/reliability_integrity_fuzz_test.go`
+- `spot/reliability_test.go`
 - `spot/resolver_ambiguity_population_test.go`
 - `spot/resolver_cw_decay_test.go`
 - `spot/resolver_evidence_filter_test.go`

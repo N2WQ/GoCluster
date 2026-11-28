@@ -96,44 +96,49 @@ func LoadSpotterReliability(path string) (SpotterReliability, int, error) {
 	return out, applied, nil
 }
 
-// Purpose: Return a reporter reliability weight with default 1.0.
-// Key aspects: Normalizes reporter and falls back when absent.
-// Upstream: call correction weighting logic.
-// Downstream: NormalizeCallsign.
-// reliabilityFor returns the weight for a reporter (defaults to 1.0).
+// reliabilityFor applies the same exact and marker-free lookup to the global table.
 func reliabilityFor(r SpotterReliability, reporter string) float64 {
-	if w, ok := reliabilityLookup(r, reporter); ok {
+	return reliabilityForTables(nil, r, reporter)
+}
+
+// reliabilityForMode returns the weight for the reporter in the given mode.
+// For each spelling, the mode-specific table takes precedence over the global table.
+func reliabilityForMode(global, cw, rtty SpotterReliability, mode, reporter string) float64 {
+	switch strutil.NormalizeUpper(mode) {
+	case "CW":
+		return reliabilityForTables(cw, global, reporter)
+	case "RTTY":
+		return reliabilityForTables(rtty, global, reporter)
+	default:
+		return reliabilityFor(global, reporter)
+	}
+}
+
+func reliabilityForTables(mode, global SpotterReliability, reporter string) float64 {
+	if len(mode) == 0 && len(global) == 0 {
+		return 1.0
+	}
+	reporter = NormalizeCallsign(reporter)
+	if reporter == "" {
+		return 1.0
+	}
+	// An exact entry in either table wins over any alias. The fallback
+	// changes only the lookup key, so numeric IDs and evidence identity survive.
+	if w, ok := reliabilityLookupExact(mode, global, reporter); ok {
 		return w
+	}
+	if bare, tagged := strings.CutSuffix(reporter, "-#"); tagged && bare != "" && !strings.HasSuffix(bare, "-#") {
+		if w, ok := reliabilityLookupExact(mode, global, bare); ok {
+			return w
+		}
 	}
 	return 1.0
 }
 
-// reliabilityForMode returns the reporter weight for the given mode, preferring
-// mode-specific tables and falling back to the global table when absent.
-func reliabilityForMode(global, cw, rtty SpotterReliability, mode, reporter string) float64 {
-	switch strutil.NormalizeUpper(mode) {
-	case "CW":
-		if w, ok := reliabilityLookup(cw, reporter); ok {
-			return w
-		}
-	case "RTTY":
-		if w, ok := reliabilityLookup(rtty, reporter); ok {
-			return w
-		}
-	}
-	return reliabilityFor(global, reporter)
-}
-
-func reliabilityLookup(r SpotterReliability, reporter string) (float64, bool) {
-	if r == nil {
-		return 0, false
-	}
-	reporter = NormalizeCallsign(reporter)
-	if reporter == "" {
-		return 0, false
-	}
-	if w, ok := r[reporter]; ok {
+func reliabilityLookupExact(mode, global SpotterReliability, reporter string) (float64, bool) {
+	if w, ok := mode[reporter]; ok {
 		return w, true
 	}
-	return 0, false
+	w, ok := global[reporter]
+	return w, ok
 }
