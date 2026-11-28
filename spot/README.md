@@ -100,6 +100,18 @@ All candidate members of an admitted settled population may nominate; this is
 not a winners-only nomination rule. Canonical union retains the existing raw
 owner caps rather than imposing a new 64-receiver cap on a merged identity.
 
+The live CW resolver and the ordinary replay tools allow up to 256 receiver
+memberships per raw callsign and share 256 memberships above the base of 64
+across each exact frequency bucket. The live 16-candidate bucket can hold at
+most 1,280 memberships. The same receiver can count toward the storage limit
+for different raw callsigns, while confidence still uses the existing receiver
+union. Age pruning and candidate deletion return shared capacity. At either
+receiver limit, the resolver evicts the oldest report of the arriving candidate
+with a callsign tie-break on the receiver and publishes loss under
+[ADR-0292](../docs/decisions/ADR-0292-resolver-cap-loss-authority.md). RTTY and
+voice retain the base limit. See the
+[CW receiver budget decision](../docs/decisions/ADR-0384-cw-resolver-receiver-budget.md).
+
 The percentage keeps the meaning of the supplied evidence:
 
 | Evidence | Percentage |

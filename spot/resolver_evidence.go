@@ -101,8 +101,8 @@ type resolverEvidenceCandidate struct {
 }
 
 // ResolverEvidenceView is an immutable generation owned by a resolver key.
-// Its rows are bounded by MaxCandidatesPerKey * MaxReportersPerCand; deletion
-// and eviction are coupled to the owner's existing key/candidate/receiver paths.
+// Rows are bounded by MaxCandidatesPerKey * MaxReportersPerCand plus the
+// shared CW allowance when enabled. The owner returns capacity on removal.
 type ResolverEvidenceView struct {
 	window             time.Duration
 	count              int

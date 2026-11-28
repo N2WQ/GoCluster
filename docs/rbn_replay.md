@@ -82,6 +82,13 @@ and resolver gates, without the live S floor or separate FT history. Unused
 settings do not impose those capacities on replay. See
 [legacy history contract](../spot/README.md#historical-receiver-freshness).
 
+Ordinary replay and the reverse-engineering tool use the live CW resolver
+budget of 64 base memberships per raw callsign, 256 extra memberships shared
+per exact bucket, and 256 maximum per raw callsign. Frozen study runs keep their
+64-receiver, 16-spelling owner and import limits so captured diagnostic evidence
+continues to match the study format. These resolver limits are separate from
+the historical support store.
+
 ## Inputs and dependency model
 
 Replay downloads:

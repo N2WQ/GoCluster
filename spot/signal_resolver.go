@@ -185,6 +185,7 @@ type SignalResolverMetrics struct {
 //
 // All bounds are hard caps. Enqueue is always fail-open/non-blocking.
 type SignalResolverConfig struct {
+	ExpandCWReporterCapacity  bool // Opt in to the live CW bucket budget. Frozen studies retain the base cap.
 	CWDecayComparison         bool // Maintain the independent CW decay decision for the live veto.
 	QueueSize                 int
 	MaxActiveKeys             int
@@ -262,6 +263,7 @@ type resolverCandidate struct {
 	lastHasReport bool
 	lastFreqKHz   float64
 	reporters     map[string]resolverReporterObservation
+	reporterPeak  int // CW map high-water count since construction or compaction.
 	identity      correctionCallIdentity
 	callRunes     []rune
 }
@@ -280,8 +282,11 @@ type resolverKeyState struct {
 	candidates    map[string]*resolverCandidate
 	// reporterRefs tracks how many active candidates currently reference each
 	// reporter for this key. Invariant: refCount is always >=1 when present.
-	reporterRefs map[string]resolverReporterRef
-	lastSeen     time.Time
+	reporterRefs     map[string]resolverReporterRef
+	reporterRefsPeak int // CW map high-water count since construction or compaction.
+	cwReporterBase   int // Zero unless this CW key can expand.
+	cwExtraRows      int // Sum of receiver memberships above the base across raw candidates.
+	lastSeen         time.Time
 
 	dirty      bool
 	nextEvalAt time.Time
@@ -500,8 +505,10 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 				key:           ev.Key,
 				recencyWindow: ev.RecencyWindow,
 				candidates:    make(map[string]*resolverCandidate, r.cfg.MaxCandidatesPerKey),
-				reporterRefs:  make(map[string]resolverReporterRef, r.cfg.MaxReportersPerCand),
 				lastSeen:      ev.ObservedAt,
+			}
+			if r.cfg.ExpandCWReporterCapacity && ev.Key.Mode == "CW" && r.cfg.MaxReportersPerCand < CWResolverReporterLimit {
+				st.cwReporterBase = r.cfg.MaxReportersPerCand
 			}
 			states[ev.Key] = st
 		}
@@ -544,17 +551,17 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 					}
 				}
 				removeResolverCandidate(st, evictCall)
+				st.compactReporterRefs()
 				r.evictedCandidates.Add(1)
 			}
 			candidate = &resolverCandidate{
-				reporters: make(map[string]resolverReporterObservation, r.cfg.MaxReportersPerCand),
 				identity:  normalizeCorrectionCallIdentity(ev.DXCall),
 				callRunes: []rune(ev.DXCall),
 			}
 			st.candidates[ev.DXCall] = candidate
 		}
 		updateAtomicMax(&r.highWaterCandidates, uint64(len(st.candidates)))
-		if _, exists := candidate.reporters[ev.Spotter]; !exists && len(candidate.reporters) >= r.cfg.MaxReportersPerCand {
+		if _, exists := candidate.reporters[ev.Spotter]; !exists && st.reporterAtCapacity(len(candidate.reporters), r.cfg.MaxReportersPerCand) {
 			r.capPressureReporters.Add(1)
 			evictReporter, ok := chooseResolverReporterEviction(candidate.reporters)
 			if !ok {
@@ -566,7 +573,7 @@ func (r *SignalResolver) applyEvidence(states map[ResolverSignalKey]*resolverKey
 			}
 			r.recordResolverCapLoss(st, candidate.reporters[evictReporter].observedAt)
 			capDiscard = true
-			removeResolverReporter(st, candidate, evictReporter)
+			removeResolverReporter(st, candidate, evictReporter, true)
 			r.evictedReporters.Add(1)
 		}
 		// Admission is complete after refusal checks, before evaluation. Sampling
@@ -663,11 +670,17 @@ func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 			return
 		}
 	} else {
+		if st.cwReporterBase > 0 && len(candidate.reporters) >= st.cwReporterBase {
+			st.cwExtraRows++
+		}
 		ref, exists := st.reporterRefs[reporter]
 		if !exists {
 			st.reporterRefs[reporter] = resolverReporterRef{
 				refCount:    1,
 				weightMilli: reporterWeightMilli,
+			}
+			if st.cwReporterBase > 0 {
+				st.reporterRefsPeak = max(st.reporterRefsPeak, len(st.reporterRefs))
 			}
 		} else {
 			ref.refCount++
@@ -675,26 +688,33 @@ func upsertResolverReporter(st *resolverKeyState, candidate *resolverCandidate, 
 		}
 	}
 	candidate.reporters[reporter] = incoming
+	if !exists && st.cwReporterBase > 0 {
+		candidate.reporterPeak = max(candidate.reporterPeak, len(candidate.reporters))
+	}
 	st.receiverEvidenceDirty = true
 }
 
-func removeResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string) {
+func removeResolverReporter(st *resolverKeyState, candidate *resolverCandidate, reporter string, refreshLastSeen bool) {
 	if st == nil || candidate == nil || reporter == "" {
 		return
 	}
-	if candidate.reporters == nil {
+	removed, exists := candidate.reporters[reporter]
+	if !exists {
 		return
 	}
-	if _, exists := candidate.reporters[reporter]; !exists {
-		return
+	if st.cwReporterBase > 0 && len(candidate.reporters) > st.cwReporterBase {
+		st.cwExtraRows--
 	}
 	delete(candidate.reporters, reporter)
 	st.receiverEvidenceDirty = true
-	// Ranking/eviction use the newest retained observation, never a removed row.
-	candidate.lastSeen = time.Time{}
-	for _, observation := range candidate.reporters {
-		if observation.observedAt.After(candidate.lastSeen) {
-			candidate.lastSeen = observation.observedAt
+	// Bulk expiry keeps the latest report or removes the candidate. Only a
+	// single cap eviction can remove the latest report from a surviving entry.
+	if refreshLastSeen && removed.observedAt.Equal(candidate.lastSeen) {
+		candidate.lastSeen = time.Time{}
+		for _, observation := range candidate.reporters {
+			if observation.observedAt.After(candidate.lastSeen) {
+				candidate.lastSeen = observation.observedAt
+			}
 		}
 	}
 	if st.reporterRefs == nil {
@@ -719,7 +739,7 @@ func removeResolverCandidate(st *resolverKeyState, call string) {
 	}
 	if candidate != nil {
 		for reporter := range candidate.reporters {
-			removeResolverReporter(st, candidate, reporter)
+			removeResolverReporter(st, candidate, reporter, false)
 		}
 	}
 	delete(st.candidates, call)
@@ -743,13 +763,18 @@ func (r *SignalResolver) pruneKeyState(st *resolverKeyState, now time.Time) {
 		}
 		for reporter, observation := range candidate.reporters {
 			if observation.observedAt.Before(cutoff) {
-				removeResolverReporter(st, candidate, reporter)
+				removeResolverReporter(st, candidate, reporter, false)
 			}
 		}
 		if len(candidate.reporters) == 0 || candidate.lastSeen.Before(cutoff) {
 			removeResolverCandidate(st, call)
+			continue
+		}
+		if st.cwReporterBase > 0 {
+			candidate.reporters = compactResolverReporterMap(candidate.reporters, &candidate.reporterPeak, st.cwReporterBase)
 		}
 	}
+	st.compactReporterRefs()
 }
 
 // invalidateResolverWinnerState keeps hysteresis state coupled to retained

@@ -27,6 +27,7 @@ This index tracks all architecture and workflow decisions recorded as ADRs.
 
 | ADR | Title | Status | Date | Area | Supersedes | Superseded By | Links |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| ADR-0384 | CW Resolver Receiver Budget | Accepted | 2026-11-27 | CW receiver capacity, demand allocation and map reclamation | extends capacity under ADR-0292 | none | [ADR-0384](decisions/ADR-0384-cw-resolver-receiver-budget.md) |
 | ADR-0383 | Pure-Go propprior sparse-path fallback and soft VOACAP cutover | Accepted | 2026-11-27 | Pure-Go HF fallback, reciprocal cache, SHOW PROP, Overview, staleness fix and shipped defaults | soft-retires default voacap_fallback enablement | none | [ADR-0383](decisions/ADR-0383-propprior-fallback-voacap-cutover.md) |
 | ADR-0382 | Opt-in live space-weather pollers for propagation prior | Accepted | 2026-11-27 | Propagation-prior HTTP feed ingestion, config contract, failover parity and shutdown | none | default enablement updated by ADR-0383 | [ADR-0382](decisions/ADR-0382-propprior-live-space-weather-pollers.md) |
 | ADR-0381 | Custom SCP 6-hour refresh cooldown and Pebble batching | Accepted | 2026-11-27 | Custom SCP persistence batching/cooldown and archive Pebble defaults | refines ADR-0279 and ADR-0285 | none | [ADR-0381](decisions/ADR-0381-custom-scp-refresh-cooldown-and-pebble-batching.md) |

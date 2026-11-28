@@ -31,11 +31,12 @@ import (
 )
 
 type replayRequest struct {
-	dateValue        string
-	replayConfigPath string
-	configDir        string
-	archiveDir       string
-	forceDownload    bool
+	frozenStudyResolverLimits bool // Study diagnostics use the versioned 16 × 64 input contract.
+	dateValue                 string
+	replayConfigPath          string
+	configDir                 string
+	archiveDir                string
+	forceDownload             bool
 }
 
 // replayRunner owns one deterministic day replay. The fields mirror the
@@ -321,6 +322,7 @@ func (r *replayRunner) buildReplayRuntime() error {
 
 	r.tracker = stats.NewTracker()
 	r.resolver = spot.NewSignalResolver(spot.SignalResolverConfig{
+		ExpandCWReporterCapacity:  !r.request.frozenStudyResolverLimits,
 		QueueSize:                 shadowResolverQueueSize,
 		MaxActiveKeys:             shadowResolverMaxActiveKeys,
 		MaxCandidatesPerKey:       shadowResolverMaxCandidatesPerKey,
