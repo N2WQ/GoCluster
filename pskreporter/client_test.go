@@ -2,11 +2,15 @@ package pskreporter
 
 import (
 	"encoding/json"
+	"fmt"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"dxcluster/config"
+	"dxcluster/internal/correctionflow"
+	"dxcluster/skew"
 	"dxcluster/spot"
 )
 
@@ -327,6 +331,56 @@ func TestHandlePayloadCorrectableModesCarrySourceGrids(t *testing.T) {
 			payload := reportPresencePayload(tc.mode, tc.frequency, observed, "fast", reportPresenceState{fields: `"rp":5`, present: true, report: 5})
 			client.handlePayload(payload)
 			assertReportPresenceOutput(t, client, reportPresenceNormal, tc.mode, tc.mode, tc.frequency, observed, 5)
+		})
+	}
+}
+
+func TestTaggedReceiverSkewFollowsPSKReporterModeRouting(t *testing.T) {
+	table, err := skew.NewTable([]skew.Entry{
+		{Callsign: "LB9KJ", CorrectionFactor: 1.000014694},
+		{Callsign: "LB9KJ-1", CorrectionFactor: 1.000014694},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := skew.NewStore()
+	store.Set(table)
+	registry := spot.NewFTDialRegistry([]spot.ModeSeed{{FrequencyKHz: 14074, Mode: "FT8"}})
+	observed := time.Now().Add(-time.Minute)
+	cfg := config.CallCorrectionConfig{Enabled: true, FrequencyToleranceHz: 400}
+	for _, tc := range []struct {
+		mode, incoming, receiver string
+		rawHz                    int
+		frequency, rawFT         float64
+		bucket                   int64
+	}{
+		{"CW", "LB9KJ", "LB9KJ-#", 14020000, 14020.21, 0, 35051},
+		{"RTTY", "LB9KJ-1-#", "LB9KJ-1-#", 14020000, 14020.21, 0, 35051},
+		{"CW", "LB9KJ-1", "LB9KJ-1", 14020000, 14020.21, 0, 35051},
+		{"CW", "LB9KJ-2", "LB9KJ-2", 14020000, 14020, 0, 35050},
+		{"FT8", "LB9KJ", "LB9KJ-#", 14076110, 14074, 14076.11, 0},
+	} {
+		t.Run(tc.mode+"/"+tc.incoming, func(t *testing.T) {
+			client := NewClient("localhost", 1883, nil, "", 1, 0, 0, 0, store, registry, true, 2, 0)
+			payload := fmt.Appendf(nil, `{"f":%d,"md":%q,"rp":5,"t":%d,"sc":"K1ABC","sl":"fn42","rc":%q,"rl":"em10"}`,
+				tc.rawHz, tc.mode, observed.Unix(), tc.incoming)
+			client.handlePayload(payload)
+			select {
+			case s := <-client.GetSpotChannel():
+				if s.DECallNorm != tc.receiver || s.DXCallNorm != "K1ABC" ||
+					s.Frequency != tc.frequency || s.ObservedFrequency != tc.rawFT {
+					t.Fatalf("unexpected spot receiver=%q DX=%q frequency=%.2f observed=%.2f",
+						s.DECallNorm, s.DXCallNorm, s.Frequency, s.ObservedFrequency)
+				}
+				if tc.bucket != 0 {
+					evidence, found := correctionflow.BuildResolverEvidenceSnapshot(s, cfg, nil, observed)
+					if !found || evidence.Key.Bucket != tc.bucket || evidence.Spotter != tc.receiver || evidence.FrequencyKHz != tc.frequency {
+						t.Fatalf("unexpected resolver evidence: found=%t evidence=%+v", found, evidence)
+					}
+				}
+			default:
+				t.Fatal("expected a spot from the normal route")
+			}
 		})
 	}
 }

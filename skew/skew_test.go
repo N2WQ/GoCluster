@@ -83,3 +83,63 @@ func TestApplyCorrectionRoundsTo10HzHalfUp(t *testing.T) {
 		})
 	}
 }
+
+func TestReceiverSkewLookupPreservesExactAndNumericIDs(t *testing.T) {
+	table, err := NewTable([]Entry{
+		{Callsign: "LB9KJ", CorrectionFactor: 1.001},
+		{Callsign: "LB9KJ-1", CorrectionFactor: 1.000014694},
+		{Callsign: "LB9KJ-2", CorrectionFactor: .999},
+		{Callsign: "LB9KJ-2-#", CorrectionFactor: 1.002},
+		{Callsign: "LB9KJ-3", CorrectionFactor: .998},
+		{Callsign: "LB9KJ-3-#", CorrectionFactor: 0},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		receiver string
+		factor   float64
+		found    bool
+	}{
+		{"LB9KJ-1", 1.000014694, true}, {" lb9kj-1-# ", 1.000014694, true},
+		{"LB9KJ-2-#", 1.002, true}, {"LB9KJ-3-#", 0, true},
+		{"LB9KJ-4-#", 0, false}, {"LB9KJ-2-#-#", 0, false},
+		{"LB9KJ-1#", 0, false}, {"LB9KJ-1-@", 0, false}, {"-#", 0, false}, {"", 0, false},
+	} {
+		if got, found := table.Lookup(tc.receiver); got != tc.factor || found != tc.found {
+			t.Errorf("Lookup(%q) = (%g, %t), want (%g, %t)", tc.receiver, got, found, tc.factor, tc.found)
+		}
+	}
+	store := NewStore()
+	if got := ApplyCorrection(store, "LB9KJ-1-#", 14020); got != 14020 {
+		t.Errorf("empty store: got %.2f, want 14020.00", got)
+	}
+	store.Set(table)
+	if got := ApplyCorrection(store, "LB9KJ-1-#", 14020); got != 14020.21 {
+		t.Errorf("fallback correction: got %.2f, want 14020.21", got)
+	}
+	if got := ApplyCorrection(store, "LB9KJ-3-#", 14020); got != 14020 {
+		t.Errorf("nonpositive exact factor: got %.2f, want 14020.00", got)
+	}
+}
+
+func BenchmarkReceiverSkewLookup(b *testing.B) {
+	table, err := NewTable([]Entry{
+		{Callsign: "LB9KJ-1", CorrectionFactor: 1.000014694},
+		{Callsign: "LB9KJ-2-#", CorrectionFactor: 1.002},
+	})
+	if err != nil {
+		b.Fatal(err)
+	}
+	for _, tc := range []struct{ name, receiver string }{
+		{"bare_hit", "LB9KJ-1"}, {"tagged_hit", "LB9KJ-2-#"}, {"miss", "LB9KJ-3"},
+		{"tagged_fallback", "LB9KJ-1-#"}, {"tagged_miss", "LB9KJ-3-#"},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			b.ReportAllocs()
+			for b.Loop() {
+				table.Lookup(tc.receiver)
+			}
+		})
+	}
+}

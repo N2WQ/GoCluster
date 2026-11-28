@@ -38,6 +38,11 @@ not infer meanings from other cluster software.
   counts, invalid edges and overflowing totals are refused. Weight zero still
   requires a valid enabled model; disabled models ignore their path. Valid finite
   inputs retain existing clamps/ranking, without proving scientific validity.
+- For excess `S` on CW or RTTY, check the reporting receiver's reliability
+  and frequency correction. Lookup prefers exact entries, then tries the receiver
+  without its terminal `-#`, keeping numeric IDs such as `-1`. Compare
+  reliability drops and candidate evictions alongside DIAG CONF. See
+  [TSR-0149](../../docs/troubleshooting/TSR-0149-receiver-reference-lookups.md).
 - Each receiver/candidate membership owns its timestamped SNR. Newer reports
   supersede older metadata; conflicting equal-time values or presence become
   unknown until a newer report arrives. Reported zero is present. Ordinary

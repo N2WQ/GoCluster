@@ -85,7 +85,8 @@ func (t *Table) Count() int {
 }
 
 // Lookup looks up the correction factor for a raw skimmer callsign.
-// Key aspects: Normalizes callsign; returns (0,false) when missing.
+// Key aspects: Exact keys win. On a miss, ignore a terminal -# marker while
+// preserving any numeric receiver ID. Returns (0,false) when neither key exists.
 // Upstream: Store.Lookup and ApplyCorrection.
 // Downstream: Table.entries map.
 func (t *Table) Lookup(call string) (float64, bool) {
@@ -97,10 +98,15 @@ func (t *Table) Lookup(call string) (float64, bool) {
 		return 0, false
 	}
 	entry, ok := t.entries[key]
-	if !ok {
+	if ok {
+		return entry.CorrectionFactor, true
+	}
+	bare, tagged := strings.CutSuffix(key, "-#")
+	if !tagged || bare == "" || strings.HasSuffix(bare, "-#") {
 		return 0, false
 	}
-	return entry.CorrectionFactor, true
+	entry, ok = t.entries[bare]
+	return entry.CorrectionFactor, ok
 }
 
 // Store provides atomic access to the latest skew table.
