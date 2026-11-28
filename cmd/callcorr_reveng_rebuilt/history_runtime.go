@@ -22,6 +22,7 @@ func newRevengHistoryOwners(c config.CallCorrectionConfig, reliability, cw, rtty
 		}
 	}
 	resolver := spot.NewSignalResolver(spot.SignalResolverConfig{
+		ExpandCWReporterCapacity:  true,
 		QueueSize:                 resolverQueueSize,
 		MaxActiveKeys:             resolverMaxActiveKeys,
 		MaxCandidatesPerKey:       resolverMaxCandidatesPerKey,

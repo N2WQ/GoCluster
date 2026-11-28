@@ -6,6 +6,7 @@ package cluster
 
 import (
 	"encoding/binary"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -339,6 +340,53 @@ func TestCorrectionLossDeliveredIndependentSFloor(t *testing.T) {
 				t.Fatal(err)
 			}
 			customSCPFreshnessAssertBytes(t, path, raw)
+		})
+	}
+}
+
+// Qualify the live CW resource bounds separately from the frozen 64-receiver
+// pace fixtures. An actual connected DIAG client must see both outcomes.
+func TestCWResolverCapacityQualifiedDelivery(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		receivers int
+		glyph     string
+	}{{"expanded", 256, "V"}, {"overflow", 257, "?"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			temporalDeliveryDirectory(t)
+			at := time.Now().UTC().Truncate(time.Second)
+			r := spot.NewSignalResolver(spot.SignalResolverConfig{
+				ExpandCWReporterCapacity: true, QueueSize: 512, MaxActiveKeys: 4,
+				MaxCandidatesPerKey: shadowResolverMaxCandidatesPerKey, MaxReportersPerCand: shadowResolverMaxReportersPerCand,
+				EvalMinInterval: time.Nanosecond, HysteresisWindows: 1,
+			})
+			d, err := spot.NewSignalResolverDriver(r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			key := spot.NewResolverSignalKey(14020, "20m", "CW", 500)
+			receivers := make([]string, tc.receivers)
+			for i := range receivers {
+				receivers[i] = fmt.Sprintf("N0R%03d", i)
+			}
+			receivers[0] = "N0AAA"
+			correctionLossAdmit(t, r, d, key, "K1ABC", 14020, at.Add(-time.Second), 2*time.Minute, receivers...)
+			snap := correctionLossPopulation(t, r, key, 256, map[string]int{"K1ABC": 256})
+			if snap.EvidenceLoss != (tc.receivers == 257) {
+				t.Fatal("fixture did not produce the expected cap authority")
+			}
+			t.Logf("CW capacity: base=%d raw candidate cap=%d shared extra=%d", shadowResolverMaxReportersPerCand,
+				spot.CWResolverReporterLimit, spot.CWResolverExtraRowsPerKey)
+			f := correctionLossFixture(t, r, correctionLossConfig())
+			s := newDeliveryTestSpot("K1ABC", "N0AAA", at)
+			s.SourceType = spot.SourceManual
+			f.pipeline.processSpot(s, nil)
+			want := correctionEvidenceDeliveryCase{subject: "K1ABC", wantCall: "K1ABC", wantGlyph: tc.glyph, wantPercent: 100}
+			if tc.glyph == "V" {
+				f.check(t, want, at)
+			} else {
+				temporalDeliveryCheckWithoutPercent(t, f, want, at, true)
+			}
 		})
 	}
 }

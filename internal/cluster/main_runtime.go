@@ -857,6 +857,7 @@ func (r *clusterRuntime) initializeSignalResolverAndRecentStore() bool {
 	}
 	if r.cfg.CallCorrection.Enabled {
 		r.signalResolver = spot.NewSignalResolver(spot.SignalResolverConfig{
+			ExpandCWReporterCapacity:  true,
 			CWDecayComparison:         cwBurstComparisonEnabled(&r.cfg.CallCorrection),
 			QueueSize:                 shadowResolverQueueSize,
 			MaxActiveKeys:             shadowResolverMaxActiveKeys,

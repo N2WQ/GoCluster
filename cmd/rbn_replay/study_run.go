@@ -274,7 +274,7 @@ func studyRunDayPreparedMethod(p studyPlan, digest string, req studyCLIRequest, 
 			return err
 		}
 	}
-	r := newReplayRunner(replayRequest{dateValue: in.DateUTC})
+	r := newReplayRunner(replayRequest{dateValue: in.DateUTC, frozenStudyResolverLimits: true})
 	r.ordinaryGuard = req.OrdinaryGuard
 	r.cfg, r.replayCfg, r.outDir = cfg, defaultReplayConfig(), req.Output
 	r.archiveDir, r.zipPath = req.Output, in.Archive.Path

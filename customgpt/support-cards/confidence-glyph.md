@@ -69,7 +69,12 @@ not infer meanings from other cluster software.
 - Known candidate/receiver-cap loss retains the entering call, blocks further
   correction/current-consensus promotion and withholds its percentage while
   lost evidence could still qualify. Independent static/history S recognition
-  survives. Loss is generation-scoped, can reactivate on window expansion, and
+  survives. In live CW, a bucket shares 256 memberships above each raw
+  callsign's 64-receiver base, with a maximum of 256 per raw callsign and 1,280
+  per bucket. RTTY and voice use the 64-receiver limit. Compare the receiver
+  evictions in **Resolver Pressure** and the callsign's
+  `reason=resolver_evidence_loss` event to separate cap loss from other holds.
+  Loss is generation-scoped, can reactivate on window expansion, and
   loses authority after 10 process-idle minutes without owner-admitted evidence.
   A later evaluation preserves an already accepted identity; retired temporal
   proposals cannot override fresh evidence. Queue-full/whole-key/FT loss and
