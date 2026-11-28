@@ -83,7 +83,13 @@ func renderScorecardMarkdown(sc loroScorecard) string {
 
 	b.WriteString("## 2. Per-Mode Residual Bias (`T_mode` Offset Check)\n\n")
 	b.WriteString("*`obs_ft8 - pred_rx` is residual bias under current `mode_offsets`; `raw_snr - pred_rx` is the implied empirical offset relative to each model's 100W FT8-equivalent scale.*\n\n")
-	writeModeTable(&b, "Regime A (Pure Prior)", sc.ByMode)
+	writeModeTable(&b, "Regime A (Pure Prior — All Paths)", sc.ByMode)
+	if len(sc.ByModeNonPolar) > 0 {
+		writeModeTable(&b, "Regime A (Non-Polar Only, max |geomag| < 60 deg)", sc.ByModeNonPolar)
+	}
+	if len(sc.ByModeNonPolarNAEU) > 0 {
+		writeModeTable(&b, "Regime A (Non-Polar NA <-> EU — Clean Station-Class Offset)", sc.ByModeNonPolarNAEU)
+	}
 	if len(sc.ByModeFallbackOnly) > 0 {
 		writeModeTable(&b, "Regime B (Fallback-Hit Only)", sc.ByModeFallbackOnly)
 	}
@@ -129,6 +135,31 @@ func renderScorecardMarkdown(sc loroScorecard) string {
 	}
 	writeH2HTable(&b, dxRows)
 
+	b.WriteString("### Geomagnetic Latitude Cliff & North-NA (VE3/NE) vs. Mid-NA (W3) <-> EEU\n\n")
+	cliffItems := []struct {
+		key   string
+		label string
+	}{
+		{"geomag_lt_50", "max |geomag| < 50 deg"},
+		{"geomag_50_55", "max |geomag| 50-55 deg"},
+		{"geomag_55_60", "max |geomag| 55-60 deg"},
+		{"geomag_60_65", "max |geomag| 60-65 deg"},
+		{"geomag_65_70", "max |geomag| 65-70 deg"},
+		{"geomag_ge_70", "max |geomag| >= 70 deg"},
+		{"north_na_eeu", "North-NA (VE3/NE, lat>=42N) <-> EEU"},
+		{"mid_na_eeu", "Mid-NA (W3, 34-42N) <-> EEU"},
+	}
+	var cliffRows []namedH2H
+	for _, item := range cliffItems {
+		if s, ok := sc.GeomagCliff[item.key]; ok && s.MatchedCount > 0 {
+			cliffRows = append(cliffRows, namedH2H{item.label + " (All HF)", s})
+		}
+		if s, ok := sc.GeomagCliff20m[item.key]; ok && s.MatchedCount > 0 {
+			cliffRows = append(cliffRows, namedH2H{item.label + " (20m)", s})
+		}
+	}
+	writeH2HTable(&b, cliffRows)
+
 	b.WriteString("## 5. `Rel` Discrimination & Active-Pair False-Open Calibration\n\n")
 	b.WriteString("| Model | Positives | Negatives (Active Non-Heard) | ROC-AUC | Brier | Mean Rel (Pos) | Mean Rel (Neg) | False-Open (`Rel>=0.50`) | False-Open (`Rel>=0.70`) |\n")
 	b.WriteString("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
@@ -138,6 +169,21 @@ func renderScorecardMarkdown(sc loroScorecard) string {
 	fmt.Fprintf(&b, "| `VOACAP` | %d | %d | %.4f | %.4f | %.4f | %.4f | %.2f%% | %.2f%% |\n\n",
 		sc.RelCalibrationVO.Positives, sc.RelCalibrationVO.Negatives, sc.RelCalibrationVO.ROCAUC, sc.RelCalibrationVO.BrierScore,
 		sc.RelCalibrationVO.MeanRelPos, sc.RelCalibrationVO.MeanRelNeg, 100*sc.RelCalibrationVO.FalseOpenGE50, 100*sc.RelCalibrationVO.FalseOpenGE70)
+
+	writeRelBySliceTable(&b, "Per-Band Active-Pair `Rel` Calibration (`80m`-`10m`)", hfBandOrder[:], sc.RelCalibrationByBandPP, sc.RelCalibrationByBandVO)
+	writeRelBySliceTable(&b, "High-Band N-S (`NA <-> SA/CA`: `15m`/`12m`/`10m`) Active-Pair `Rel` Calibration", highBandOrder, sc.RelCalibrationNASACAPP, sc.RelCalibrationNASACAVO)
+
+	var naSACARows []namedH2H
+	for _, band := range highBandOrder {
+		if s, ok := sc.NASACAHighBand[band]; ok && s.MatchedCount > 0 {
+			naSACARows = append(naSACARows, namedH2H{band + " NA <-> SA/CA (Pure Prior)", s})
+		}
+	}
+	if len(naSACARows) > 0 {
+		b.WriteString("### High-Band N-S (`NA <-> SA/CA`) Matched-Spot Accuracy\n\n")
+		b.WriteString("*Note: `12m` is a WARC band (no CQ WW CW traffic) and reflects casual FT8/non-contest volume rather than contest CW volume.*\n\n")
+		writeH2HTable(&b, naSACARows)
+	}
 
 	b.WriteString("## Scientific Caveats\n\n")
 	b.WriteString("- Decoded spots are left-censored at each mode's decode floor; positive-only residuals reflect decoded paths and station TX/antenna power relative to both models' 100W isotropic reference scale.\n")
@@ -197,6 +243,34 @@ func writeModeTable(b *bytes.Buffer, title string, m map[string]headToHeadSummar
 			p.MeanBias, p.MedianBias, v.MeanBias, v.MedianBias,
 			p.RawMeanResidual, p.RawMedResidual, v.RawMeanResidual, v.RawMedResidual,
 			100*p.FalseClosedRate, 100*v.FalseClosedRate)
+	}
+	b.WriteString("\n")
+}
+
+func writeRelBySliceTable(b *bytes.Buffer, title string, order []string, ppMap, voMap map[string]relCalibSummary) {
+	var rows []string
+	for _, k := range order {
+		p, okP := ppMap[k]
+		v, okV := voMap[k]
+		if (!okP || p.Positives+p.Negatives == 0) && (!okV || v.Positives+v.Negatives == 0) {
+			continue
+		}
+		rows = append(rows, k)
+	}
+	if len(rows) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "### %s\n\n", title)
+	b.WriteString("| Slice | Pos | Neg | v4.3 AUC | VOACAP AUC | v4.3 Rel Pos/Neg | VOACAP Rel Pos/Neg | v4.3 False-Open (>=0.50 / >=0.70) | VOACAP False-Open (>=0.50 / >=0.70) |\n")
+	b.WriteString("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |\n")
+	for _, k := range rows {
+		p := ppMap[k]
+		v := voMap[k]
+		fmt.Fprintf(b, "| %s | %d | %d | %.4f | %.4f | %.3f / %.3f | %.3f / %.3f | %.2f%% / %.2f%% | %.2f%% / %.2f%% |\n",
+			k, p.Positives, p.Negatives, p.ROCAUC, v.ROCAUC,
+			p.MeanRelPos, p.MeanRelNeg, v.MeanRelPos, v.MeanRelNeg,
+			100*p.FalseOpenGE50, 100*p.FalseOpenGE70,
+			100*v.FalseOpenGE50, 100*v.FalseOpenGE70)
 	}
 	b.WriteString("\n")
 }

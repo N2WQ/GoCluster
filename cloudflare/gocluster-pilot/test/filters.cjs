@@ -807,3 +807,138 @@ test("the current connection's IPv4 follows the version and a retired reply is i
   await version.filter({ hasText: "v261128" }).waitFor();
   assert.equal(await address.count(), 0);
 });
+
+test("spotsPerMinute tracks browser arrival rate in bounded buckets regardless of remote spot timestamps", async t => {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+  t.after(() => page.close());
+  page.setDefaultTimeout(7000);
+  await page.clock.install({ time: new Date("2026-11-27T12:00:00Z") });
+  await page.goto(site);
+  await page.evaluate(records => {
+    const session = cluster.session = new GCP.Session({
+      send() {},
+      emit(event, data) { cluster.onSession(session, event, data); },
+      parseYaml: JSON.parse,
+    });
+    session.state = cluster.mode = cluster.phase = "live";
+    session.mode = "json";
+    cluster.loginCall = "TEST-1";
+    cluster.changed();
+    records.filter(r => r[0] === "schema").forEach(r => session.feed(JSON.stringify(r) + "\n"));
+    window.feedAges = ages => {
+      const sample = records.find(r => r[0] === "s");
+      for (const [index, age] of ages.entries()) {
+        const record = [...sample];
+        record[1] = index + 1;
+        record[2] = String(BigInt(Date.now() - age) * 1_000_000n);
+        session.feed(JSON.stringify(record) + "\n");
+      }
+      cluster.flushSpots();
+    };
+    set({ connectOpen: false });
+  }, capture);
+
+  const allTile = page.locator(".bandstrip .bt.all");
+  const rateBadge = allTile.locator(".bt-rate");
+  const rateText = () => rateBadge.textContent();
+  await page.evaluate(() => feedAges([-3_600_000, -300_000, 120_000, 1_000]));
+  await page.clock.runFor(1000);
+  assert.equal(await allTile.locator(".bt-sub").textContent(), "15m");
+  assert.equal(await rateText(), "4/m");
+  assert.equal(await page.evaluate(() => S.rate.length), 1);
+
+  await page.clock.runFor(29_000);
+  await page.evaluate(() => feedAges([500, 500]));
+  await page.clock.runFor(1000);
+  assert.equal(await rateText(), "6/m");
+  assert.equal(await page.evaluate(() => S.rate.length), 2);
+  // Newly arriving spots (including near :00 with 500 ms age) never trigger a .row.fresh flash.
+  assert.equal(await page.locator(".tbody .row.fresh").count(), 0);
+  assert.deepEqual(
+    await page.locator(".tbody .row").evaluateAll(rows => [...new Set(rows.map(r => getComputedStyle(r).animationName))]),
+    ["none"],
+  );
+
+  // At 60 s after the first batch, future-stamped spots expire on arrival time
+  // rather than pinning S.rate.
+  await page.clock.runFor(30_000);
+  assert.equal(await rateText(), "2/m");
+  assert.equal(await page.evaluate(() => S.rate.length), 1);
+
+  await page.clock.runFor(31_000);
+  assert.equal(await rateText(), "0/m");
+  assert.equal(await page.evaluate(() => S.rate.length), 0);
+
+  // Sustained multi-minute stream stays strictly bounded to <= 60 1-second buckets
+  // and 4-digit contest rates fit cleanly inside the All tile without clipping.
+  for (let sec = 0; sec < 75; sec++) {
+    await page.clock.runFor(1000);
+    await page.evaluate(() => feedAges(Array.from({ length: 25 }, (_, i) => (i === 0 ? -600_000 : 1_000))));
+  }
+  await page.clock.runFor(400);
+  const steady = await page.evaluate(() => ({ rate: spotsPerMinute(), buckets: S.rate.length }));
+  assert.equal(steady.rate, 60 * 25);
+  assert.equal(steady.buckets, 60);
+  assert.equal(await rateText(), "1500/m");
+  const fits = await allTile.evaluate(el => el.scrollWidth <= el.clientWidth + 1);
+  assert.equal(fits, true);
+
+  // Delivery paused shows "paused" in the All tile; offline/Replay hides the live rate.
+  await page.evaluate(() => { cluster.pausedUntil = Date.now() + 60_000; cluster.changed(); });
+  await page.clock.runFor(1000);
+  assert.equal(await rateText(), "paused");
+  assert.equal(await rateBadge.evaluate(el => el.classList.contains("paused")), true);
+
+  await page.evaluate(() => { cluster.pausedUntil = 0; cluster.resetData(); cluster.changed(); });
+  await page.clock.runFor(1000);
+  assert.equal(await rateText(), "0/m");
+  assert.equal(await page.evaluate(() => S.rate.length), 0);
+
+  await page.evaluate(() => { cluster.mode = "replay"; cluster.setPhase("replaying"); });
+  await page.clock.runFor(1000);
+  assert.equal(await rateBadge.count(), 0);
+});
+
+test("header antenna icon color-codes connection state, removes the node pill, and opens login", async t => {
+  const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
+  t.after(() => page.close());
+  page.setDefaultTimeout(7000);
+  await page.goto(site);
+  await page.evaluate(() => set({ connectOpen: false }));
+
+  const brandBtn = page.locator(".topbar .brand-btn");
+  const bgFill = () => brandBtn.locator(".brand-bg").getAttribute("fill");
+
+  await brandBtn.waitFor({ state: "visible" });
+  assert.equal(await page.locator(".topbar .node").count(), 0);
+  assert.equal(await page.locator(".topbar .spark").count(), 0);
+  assert.equal(await bgFill(), "#ffffff");
+  assert.equal(await brandBtn.evaluate(el => el.classList.contains("conn-off")), true);
+  assert.equal(await page.locator(".bandstrip .bt.all .bt-rate").count(), 0);
+
+  for (const phase of ["connecting", "login", "negotiating"]) {
+    await page.evaluate(p => { cluster.mode = "live"; cluster.setPhase(p); }, phase);
+    await page.locator(".topbar .brand-btn.conn-connecting").waitFor();
+    assert.equal(await bgFill(), "#ffda67");
+  }
+
+  await page.evaluate(() => { cluster.mode = "live"; cluster.setPhase("live"); });
+  await page.locator(".topbar .brand-btn.conn-live").waitFor();
+  assert.equal(await bgFill(), "#176337");
+  assert.equal(await page.locator(".bandstrip .bt.all .bt-rate").textContent(), "0/m");
+
+  // Live session with delivery paused stays green (still connected).
+  await page.evaluate(() => { cluster.pausedUntil = Date.now() + 60_000; cluster.changed(); });
+  await page.locator(".bandstrip .bt.all .bt-rate.paused").waitFor();
+  assert.equal(await bgFill(), "#176337");
+
+  // Replay is not a live connection, so it displays white and hides the live rate.
+  await page.evaluate(() => { cluster.pausedUntil = 0; cluster.mode = "replay"; cluster.setPhase("replaying"); });
+  await page.locator(".topbar .brand-btn.conn-off").waitFor();
+  assert.equal(await bgFill(), "#ffffff");
+  assert.equal(await page.locator(".bandstrip .bt.all .bt-rate").count(), 0);
+
+  // Clicking the antenna icon opens the Connect / login dialog.
+  await brandBtn.click();
+  await page.getByRole("dialog", { name: "Connect to GoCluster", exact: true }).waitFor();
+});

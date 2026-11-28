@@ -71,15 +71,24 @@ type loroScorecard struct {
 	RegimeBFallbackSpP50 headToHeadSummary              `json:"regime_b_fallback_sparse_p50"`
 	RegimeBPPOutcomes    fallbackOutcomeCounts          `json:"regime_b_propprior_fallback_outcomes"`
 	RegimeBVOOutcomes    fallbackOutcomeCounts          `json:"regime_b_voacap_fallback_outcomes"`
-	ByMode               map[string]headToHeadSummary   `json:"by_mode"`
-	ByModeFallbackOnly   map[string]headToHeadSummary   `json:"by_mode_fallback_only"`
-	ByBand               map[string]headToHeadSummary   `json:"by_band"`
-	ByBandDayNight       map[string]headToHeadSummary   `json:"by_band_day_night"`
-	LongHaulPolar        map[string]headToHeadSummary   `json:"long_haul_and_polar"`
-	LongHaulPolarFBOnly  map[string]headToHeadSummary   `json:"long_haul_and_polar_fallback_only"`
-	Native160m           native160Summary               `json:"native_160m"`
-	RelCalibrationPP     relCalibSummary                `json:"rel_calibration_propprior"`
-	RelCalibrationVO     relCalibSummary                `json:"rel_calibration_voacap"`
+	ByMode                 map[string]headToHeadSummary `json:"by_mode"`
+	ByModeFallbackOnly     map[string]headToHeadSummary `json:"by_mode_fallback_only"`
+	ByModeNonPolar         map[string]headToHeadSummary `json:"by_mode_non_polar"`
+	ByModeNonPolarNAEU     map[string]headToHeadSummary `json:"by_mode_non_polar_na_eu"`
+	ByBand                 map[string]headToHeadSummary `json:"by_band"`
+	ByBandDayNight         map[string]headToHeadSummary `json:"by_band_day_night"`
+	LongHaulPolar          map[string]headToHeadSummary `json:"long_haul_and_polar"`
+	LongHaulPolarFBOnly    map[string]headToHeadSummary `json:"long_haul_and_polar_fallback_only"`
+	GeomagCliff            map[string]headToHeadSummary `json:"geomag_cliff"`
+	GeomagCliff20m         map[string]headToHeadSummary `json:"geomag_cliff_20m"`
+	NASACAHighBand         map[string]headToHeadSummary `json:"na_sa_ca_high_band"`
+	Native160m             native160Summary             `json:"native_160m"`
+	RelCalibrationPP       relCalibSummary              `json:"rel_calibration_propprior"`
+	RelCalibrationVO       relCalibSummary              `json:"rel_calibration_voacap"`
+	RelCalibrationByBandPP map[string]relCalibSummary   `json:"rel_calibration_by_band_propprior"`
+	RelCalibrationByBandVO map[string]relCalibSummary   `json:"rel_calibration_by_band_voacap"`
+	RelCalibrationNASACAPP map[string]relCalibSummary   `json:"rel_calibration_na_sa_ca_propprior"`
+	RelCalibrationNASACAVO map[string]relCalibSummary   `json:"rel_calibration_na_sa_ca_voacap"`
 }
 
 type ppCacheKey struct {
@@ -149,13 +158,22 @@ type loroEngine struct {
 	regimeBVOOut       fallbackOutcomeCounts
 	byMode             map[string]*headToHeadAccum
 	byModeFB           map[string]*headToHeadAccum
+	byModeNonPolar     map[string]*headToHeadAccum
+	byModeNonPolarNAEU map[string]*headToHeadAccum
 	byBand             map[string]*headToHeadAccum
 	byBandSolar        map[string]*headToHeadAccum
 	longHaulPolar      map[string]*headToHeadAccum
 	longHaulPolarFB    map[string]*headToHeadAccum
+	geomagCliff        map[string]*headToHeadAccum
+	geomagCliff20m     map[string]*headToHeadAccum
+	naSACAHighBand     map[string]*headToHeadAccum
 	native160          native160Summary
 	relPP              relCalibAccum
 	relVO              relCalibAccum
+	relByBandPP        map[string]*relCalibAccum
+	relByBandVO        map[string]*relCalibAccum
+	relNASACAPP        map[string]*relCalibAccum
+	relNASACAVO        map[string]*relCalibAccum
 }
 
 func newLOROEngine(
@@ -225,12 +243,21 @@ func newLOROEngine(
 		ppCache:         make(map[ppCacheKey]ppCacheVal, 4096),
 		pathHourAgg:     make(map[pathHourKey]*pathHourGroup, 4096),
 		activity:        make(map[string]*bandHourActivity, hfBandCount),
-		byMode:          make(map[string]*headToHeadAccum),
-		byModeFB:        make(map[string]*headToHeadAccum),
-		byBand:          make(map[string]*headToHeadAccum),
-		byBandSolar:     make(map[string]*headToHeadAccum),
-		longHaulPolar:   make(map[string]*headToHeadAccum),
-		longHaulPolarFB: make(map[string]*headToHeadAccum),
+		byMode:             make(map[string]*headToHeadAccum),
+		byModeFB:           make(map[string]*headToHeadAccum),
+		byModeNonPolar:     make(map[string]*headToHeadAccum),
+		byModeNonPolarNAEU: make(map[string]*headToHeadAccum),
+		byBand:             make(map[string]*headToHeadAccum),
+		byBandSolar:        make(map[string]*headToHeadAccum),
+		longHaulPolar:      make(map[string]*headToHeadAccum),
+		longHaulPolarFB:    make(map[string]*headToHeadAccum),
+		geomagCliff:        make(map[string]*headToHeadAccum),
+		geomagCliff20m:     make(map[string]*headToHeadAccum),
+		naSACAHighBand:     make(map[string]*headToHeadAccum),
+		relByBandPP:        make(map[string]*relCalibAccum),
+		relByBandVO:        make(map[string]*relCalibAccum),
+		relNASACAPP:        make(map[string]*relCalibAccum),
+		relNASACAVO:        make(map[string]*relCalibAccum),
 		manifest: loroManifest{
 			HoldoutUnit:    cfg.HoldoutUnit,
 			Folds:          cfg.Folds,
@@ -388,8 +415,34 @@ func (e *loroEngine) processSpot(ctx context.Context, rec capturedSpot) error {
 		addMatched(&e.regimeADerived)
 	}
 	addMatched(getOrInitAccum(e.byMode, rec.mode))
+	if !pf.isPolar {
+		addMatched(getOrInitAccum(e.byModeNonPolar, rec.mode))
+		if pf.isNAEU {
+			addMatched(getOrInitAccum(e.byModeNonPolarNAEU, rec.mode))
+		}
+	}
 	addMatched(getOrInitAccum(e.byBand, rec.band))
 	addMatched(getOrInitAccum(e.byBandSolar, rec.band+"_"+string(solar)))
+
+	addMatched(getOrInitAccum(e.geomagCliff, pf.geomagBin))
+	if rec.band == "20m" {
+		addMatched(getOrInitAccum(e.geomagCliff20m, pf.geomagBin))
+	}
+	if pf.isNorthNAEEU {
+		addMatched(getOrInitAccum(e.geomagCliff, "north_na_eeu"))
+		if rec.band == "20m" {
+			addMatched(getOrInitAccum(e.geomagCliff20m, "north_na_eeu"))
+		}
+	}
+	if pf.isMidNAEEU {
+		addMatched(getOrInitAccum(e.geomagCliff, "mid_na_eeu"))
+		if rec.band == "20m" {
+			addMatched(getOrInitAccum(e.geomagCliff20m, "mid_na_eeu"))
+		}
+	}
+	if pf.isNASACA && isHighBand(rec.band) {
+		addMatched(getOrInitAccum(e.naSACAHighBand, rec.band))
+	}
 
 	if pf.isLongHaul {
 		addMatched(getOrInitAccum(e.longHaulPolar, "dist_ge_6000km"))
@@ -410,6 +463,12 @@ func (e *loroEngine) processSpot(ctx context.Context, rec capturedSpot) error {
 	// Accumulate Rel positives (negatives are sampled on UTC hour rollover).
 	e.relPP.add(ppRel, true)
 	e.relVO.add(voRel, true)
+	getOrInitRelAccum(e.relByBandPP, rec.band).add(ppRel, true)
+	getOrInitRelAccum(e.relByBandVO, rec.band).add(voRel, true)
+	if pf.isNASACA && isHighBand(rec.band) {
+		getOrInitRelAccum(e.relNASACAPP, rec.band).add(ppRel, true)
+		getOrInitRelAccum(e.relNASACAVO, rec.band).add(voRel, true)
+	}
 
 	// Path-hour empirical p50 aggregator.
 	phKey := pathHourKey{deCell: deFine, dxCell: dxFine, band: rec.band}
@@ -756,6 +815,12 @@ func (e *loroEngine) flushHour(ctx context.Context) error {
 			voRel, _ := voFC.ReceiveReqSNRReliability()
 			e.relPP.add(ppRel, false)
 			e.relVO.add(voRel, false)
+			getOrInitRelAccum(e.relByBandPP, band).add(ppRel, false)
+			getOrInitRelAccum(e.relByBandVO, band).add(voRel, false)
+			if isHighBand(band) && isNASACACorridor(rx.lat, rx.lon, tx.lat, tx.lon) {
+				getOrInitRelAccum(e.relNASACAPP, band).add(ppRel, false)
+				getOrInitRelAccum(e.relNASACAVO, band).add(voRel, false)
+			}
 			sampled++
 		}
 	}
@@ -796,15 +861,24 @@ func (e *loroEngine) finalize(ctx context.Context, captureDir string, spotFiles,
 		RegimeBFallbackSpP50: e.regimeBFBSparseP50.summary(),
 		RegimeBPPOutcomes:    e.regimeBPPOut,
 		RegimeBVOOutcomes:    e.regimeBVOOut,
-		ByMode:               summarizeMap(e.byMode),
-		ByModeFallbackOnly:   summarizeMap(e.byModeFB),
-		ByBand:               summarizeMap(e.byBand),
-		ByBandDayNight:       summarizeMap(e.byBandSolar),
-		LongHaulPolar:        summarizeMap(e.longHaulPolar),
-		LongHaulPolarFBOnly:  summarizeMap(e.longHaulPolarFB),
-		Native160m:           e.native160,
-		RelCalibrationPP:     e.relPP.summary(),
-		RelCalibrationVO:     e.relVO.summary(),
+		ByMode:                 summarizeMap(e.byMode),
+		ByModeFallbackOnly:     summarizeMap(e.byModeFB),
+		ByModeNonPolar:         summarizeMap(e.byModeNonPolar),
+		ByModeNonPolarNAEU:     summarizeMap(e.byModeNonPolarNAEU),
+		ByBand:                 summarizeMap(e.byBand),
+		ByBandDayNight:         summarizeMap(e.byBandSolar),
+		LongHaulPolar:          summarizeMap(e.longHaulPolar),
+		LongHaulPolarFBOnly:    summarizeMap(e.longHaulPolarFB),
+		GeomagCliff:            summarizeMap(e.geomagCliff),
+		GeomagCliff20m:         summarizeMap(e.geomagCliff20m),
+		NASACAHighBand:         summarizeMap(e.naSACAHighBand),
+		Native160m:             e.native160,
+		RelCalibrationPP:       e.relPP.summary(),
+		RelCalibrationVO:       e.relVO.summary(),
+		RelCalibrationByBandPP: summarizeRelMap(e.relByBandPP),
+		RelCalibrationByBandVO: summarizeRelMap(e.relByBandVO),
+		RelCalibrationNASACAPP: summarizeRelMap(e.relNASACAPP),
+		RelCalibrationNASACAVO: summarizeRelMap(e.relNASACAVO),
 	}, nil
 }
 
@@ -817,10 +891,29 @@ func getOrInitAccum(m map[string]*headToHeadAccum, key string) *headToHeadAccum 
 	return acc
 }
 
+func getOrInitRelAccum(m map[string]*relCalibAccum, key string) *relCalibAccum {
+	acc := m[key]
+	if acc == nil {
+		acc = &relCalibAccum{}
+		m[key] = acc
+	}
+	return acc
+}
+
 func summarizeMap(m map[string]*headToHeadAccum) map[string]headToHeadSummary {
 	out := make(map[string]headToHeadSummary, len(m))
 	for k, v := range m {
 		if v.pp.count > 0 {
+			out[k] = v.summary()
+		}
+	}
+	return out
+}
+
+func summarizeRelMap(m map[string]*relCalibAccum) map[string]relCalibSummary {
+	out := make(map[string]relCalibSummary, len(m))
+	for k, v := range m {
+		if v.posCount+v.negCount > 0 {
 			out[k] = v.summary()
 		}
 	}

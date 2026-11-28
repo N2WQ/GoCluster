@@ -28,6 +28,13 @@ If Spots stays on the cell's band and continent or reopening the grid shows
 activity for only one continent, use the [Openings guide](../cloudflare/gocluster-pilot/README.md#read-the-openings-grid)
 and [TSR-0147](../docs/troubleshooting/TSR-0147-openings-cell-focus.md).
 
+If the browser console's top-bar `/min` spot counter climbs and drops at the
+top of each minute, the spot rows flash teal/green in waves at `:00`, or the
+top-bar sparkline disappears when skewed spots arrive, use
+[TSR-0148](../docs/troubleshooting/TSR-0148-browser-rate-counter-future-skew.md)
+and check the delivered `app.*.js` and `app.*.css` asset hashes against
+`asset-manifest.json`.
+
 ## Human spot comments and upstream wire times
 
 For split numbers displayed as dB reports, missing `CWT` or time phrases in

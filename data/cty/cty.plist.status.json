@@ -1,10 +1,10 @@
 {
   "url": "https://www.country-files.com/cty/cty.plist",
-  "last_modified": "Sat, 14 Nov 2026 14:20:53 GMT",
-  "downloaded_at": "2026-11-15T00:10:02.1629466Z",
-  "checked_at": "2026-11-19T00:10:01.3017871Z",
-  "size_bytes": 13344846,
-  "sha256": "dabc01d8ef1b7c65be5f7adff15897f885ba06f5902700b2a89a23874a6bb792",
+  "last_modified": "Thu, 26 Nov 2026 16:54:05 GMT",
+  "downloaded_at": "2026-11-28T00:10:01.563934Z",
+  "checked_at": "2026-11-28T00:10:01.563934Z",
+  "size_bytes": 13343831,
+  "sha256": "4f6c9eab4802f82326c86681e05db043d577cf066982365670d2abbc477731fe",
   "up_to_date": true,
   "processed_at": "0001-01-01T00:00:00Z",
   "validator_resource": "3aaff6a2b5cd823c9c5969b91d73bda2df12c0b43354fbc0f0c43d8642623b8a"

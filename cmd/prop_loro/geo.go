@@ -37,14 +37,21 @@ const (
 )
 
 type pathFeatures struct {
-	distKM        float64
-	maxAbsGeomag  float64
-	midLatDeg     float64
-	midLonDeg     float64
-	isLongHaul    bool
-	isPolar       bool
-	isNAJA        bool
+	distKM       float64
+	maxAbsGeomag float64
+	midLatDeg    float64
+	midLonDeg    float64
+	geomagBin    string
+	isLongHaul   bool
+	isPolar      bool
+	isNAJA       bool
+	isNAEU       bool
+	isNorthNAEEU bool
+	isMidNAEEU   bool
+	isNASACA     bool
 }
+
+var highBandOrder = []string{"15m", "12m", "10m"}
 
 func computePathFeatures(lat1Deg, lon1Deg, lat2Deg, lon2Deg float64) pathFeatures {
 	p1 := lat1Deg * geoDegToRad
@@ -112,10 +119,36 @@ func computePathFeatures(lat1Deg, lon1Deg, lat2Deg, lon2Deg float64) pathFeature
 		maxAbsGeomag: maxAbsGM,
 		midLatDeg:    midLatDeg,
 		midLonDeg:    midLonDeg,
+		geomagBin:    geomagCliffBin(maxAbsGM),
 		isLongHaul:   distKM >= geoLongHaulKM,
 		isPolar:      maxAbsGM >= geoPolarGeomagThresh,
 		isNAJA:       isNAJACorridor(lat1Deg, lon1Deg, lat2Deg, lon2Deg),
+		isNAEU:       isNAEUCorridor(lat1Deg, lon1Deg, lat2Deg, lon2Deg),
+		isNorthNAEEU: isNorthNAEEUCorridor(lat1Deg, lon1Deg, lat2Deg, lon2Deg),
+		isMidNAEEU:   isMidNAEEUCorridor(lat1Deg, lon1Deg, lat2Deg, lon2Deg),
+		isNASACA:     isNASACACorridor(lat1Deg, lon1Deg, lat2Deg, lon2Deg),
 	}
+}
+
+func geomagCliffBin(maxAbsGM float64) string {
+	switch {
+	case maxAbsGM < 50.0:
+		return "geomag_lt_50"
+	case maxAbsGM < 55.0:
+		return "geomag_50_55"
+	case maxAbsGM < 60.0:
+		return "geomag_55_60"
+	case maxAbsGM < 65.0:
+		return "geomag_60_65"
+	case maxAbsGM < 70.0:
+		return "geomag_65_70"
+	default:
+		return "geomag_ge_70"
+	}
+}
+
+func isHighBand(band string) bool {
+	return band == "15m" || band == "12m" || band == "10m"
 }
 
 func classifyMidpointSolar(midLatDeg, midLonDeg float64, at time.Time) pathSolarRegime {
@@ -145,6 +178,50 @@ func inNorthAmericaBox(lat, lon float64) bool {
 
 func inJapanBox(lat, lon float64) bool {
 	return lat >= 30.0 && lat <= 46.0 && lon >= 128.0 && lon <= 146.5
+}
+
+func isNAEUCorridor(lat1, lon1, lat2, lon2 float64) bool {
+	return (inNorthAmericaBox(lat1, lon1) && inEuropeBox(lat2, lon2)) ||
+		(inEuropeBox(lat1, lon1) && inNorthAmericaBox(lat2, lon2))
+}
+
+func isNorthNAEEUCorridor(lat1, lon1, lat2, lon2 float64) bool {
+	return (inNorthNABox(lat1, lon1) && inEasternEuropeBox(lat2, lon2)) ||
+		(inEasternEuropeBox(lat1, lon1) && inNorthNABox(lat2, lon2))
+}
+
+func isMidNAEEUCorridor(lat1, lon1, lat2, lon2 float64) bool {
+	return (inMidNABox(lat1, lon1) && inEasternEuropeBox(lat2, lon2)) ||
+		(inEasternEuropeBox(lat1, lon1) && inMidNABox(lat2, lon2))
+}
+
+func isNASACACorridor(lat1, lon1, lat2, lon2 float64) bool {
+	return (inNorthAmericaBox(lat1, lon1) && inSACABox(lat2, lon2)) ||
+		(inSACABox(lat1, lon1) && inNorthAmericaBox(lat2, lon2))
+}
+
+func inEuropeBox(lat, lon float64) bool {
+	return lat >= 35.0 && lat <= 71.0 && lon >= -11.0 && lon <= 40.0
+}
+
+func inEasternEuropeBox(lat, lon float64) bool {
+	return lat >= 39.0 && lat <= 55.0 && lon >= 18.0 && lon <= 40.0
+}
+
+// inNorthNABox covers VE3 / northeastern North America (lat >= 42N), strictly
+// disjoint from inMidNABox (W3 / Mid-Atlantic, 34N <= lat < 42N).
+func inNorthNABox(lat, lon float64) bool {
+	return lat >= 42.0 && lat <= 56.0 && lon >= -92.0 && lon <= -58.0
+}
+
+func inMidNABox(lat, lon float64) bool {
+	return lat >= 34.0 && lat < 42.0 && lon >= -84.0 && lon <= -70.0
+}
+
+// inSACABox covers Caribbean, Central, and South America (lat < 24N), strictly
+// disjoint from inNorthAmericaBox (lat >= 24N).
+func inSACABox(lat, lon float64) bool {
+	return lat >= -56.0 && lat < 24.0 && lon >= -118.0 && lon <= -34.0
 }
 
 func wrapLonDeg(lon float64) float64 {

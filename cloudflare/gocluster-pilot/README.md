@@ -2,7 +2,7 @@
 
 Open the [production console](https://ui.n2wq.com/). Choose **Live** and enter your callsign and SSID. Use the same callsign and SSID as your logger to share its profile. **Replay** opens recorded data without a cluster connection. Live is public and uses the same callsign login as Telnet.
 
-The blue globe beside the server version marks a browser-only session. Blue arrows mean a browser and a Telnet logger are connected on the same callsign and SSID and share one profile.
+The GoCluster antenna icon at the top left shows your cluster connection state: white means not connected (including Replay), yellow means connecting, and green means connected. Select the icon to open the login dialog. The blue globe beside the server version marks a browser-only session. Blue arrows mean a browser and a Telnet logger are connected on the same callsign and SSID and share one profile.
 
 A second browser using the same callsign and SSID takes over the browser connection. The logger stays connected. The displaced browser offers **Reconnect** so you can take over manually. For an ordinary connection loss the browser tries to reconnect automatically, with up to eight attempts shared across short-lived reconnects. A connection that stays live for 60 seconds earns a fresh set of attempts.
 
@@ -30,7 +30,9 @@ leaves both on the last confirmed rules.
 The band strip hides a band when the Show/Hide rules rule out the entire band.
 Quiet bands and bands whose eligibility depends on an actual spot stay in the
 strip. A count represents matching reports still in the browser's recent buffer
-with timestamps in the last 15 minutes. **All** adds the displayed band counts.
+with timestamps in the last 15 minutes. **All** adds the displayed band counts
+and, while connected live, shows the live spots-per-minute arrival rate (or
+`paused` while delivery is paused).
 A spot that gets through solely because of **SELF** can still appear in Spots.
 Band counts use ordinary matching
 with SELF bypass disabled. **Hidden** lets you inspect filtered spots while the

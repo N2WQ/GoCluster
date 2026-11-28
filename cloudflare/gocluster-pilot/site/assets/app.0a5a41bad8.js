@@ -2943,8 +2943,14 @@ const ICONS = {
 function Icon({ name, size = 18, stroke = 1.8, title }) {
   return html`<svg class="ic" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width=${stroke} stroke-linecap="round" stroke-linejoin="round" aria-hidden=${title ? undefined : "true"} role=${title ? "img" : undefined}>${title ? html`<title>${title}</title>` : null}<path d=${ICONS[name] || ""} /></svg>`;
 }
-function BrandMark({ size = 28 }) {
-  return html`<svg width=${size} height=${size} viewBox="0 0 64 64" aria-hidden="true"><defs><linearGradient id="gcg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5fd3ff"/><stop offset=".55" stop-color="#0a84d6"/><stop offset="1" stop-color="#7c6cf2"/></linearGradient></defs><rect width="64" height="64" rx="16" fill="url(#gcg)"/><g fill="none" stroke="#fff" stroke-width="4.2" stroke-linecap="round"><path d="M20 44a17 17 0 0 1 0-24" opacity=".55"/><path d="M44 20a17 17 0 0 1 0 24" opacity=".55"/><path d="M26 38a8.5 8.5 0 0 1 0-12"/><path d="M38 26a8.5 8.5 0 0 1 0 12"/></g><circle cx="32" cy="32" r="4.4" fill="#fff"/></svg>`;
+const BRAND_COLORS = {
+  off: ["#ffffff", "#0b1528"],
+  connecting: ["#ffda67", "#392b06"],
+  live: ["#176337", "#ffffff"],
+};
+function BrandMark({ size = 28, state = "off" }) {
+  const [bg, ink] = BRAND_COLORS[state] || BRAND_COLORS.off;
+  return html`<svg width=${size} height=${size} viewBox="0 0 64 64" aria-hidden="true"><rect class="brand-bg" width="64" height="64" rx="16" fill=${bg}/><g fill="none" stroke=${ink} stroke-width="4.4" stroke-linecap="round"><path d="M20 44a17 17 0 0 1 0-24" opacity=".6"/><path d="M44 20a17 17 0 0 1 0 24" opacity=".6"/><path d="M26 38a8.5 8.5 0 0 1 0-12"/><path d="M38 26a8.5 8.5 0 0 1 0 12"/></g><circle cx="32" cy="32" r="4.4" fill=${ink}/></svg>`;
 }
 
 // ---------------------------------------------------------------- small shared components
@@ -3704,11 +3710,30 @@ function FiltersDrawer() {
 const cluster = new CONN.Cluster();
 
 // ---------------------------------------------------------------- live data plumbing
+const RATE_WINDOW_SEC = 60;
+const rateSec = () => Math.floor(performance.now() / 1000);
+// Arrival-rate buckets: up to RATE_WINDOW_SEC coalesced 1-second monotonic slots
+// ({ sec, count }), independent of remote spot timestamps and bounded in O(1).
+function pruneRate(nowSec) {
+  const last = S.rate[S.rate.length - 1];
+  if (last && nowSec < last.sec) { S.rate = []; return; }
+  let drop = 0;
+  while (drop < S.rate.length && nowSec - S.rate[drop].sec >= RATE_WINDOW_SEC) drop++;
+  if (drop) S.rate.splice(0, drop);
+}
+function recordRate(count) {
+  if (!(count > 0)) return;
+  const sec = rateSec();
+  pruneRate(sec);
+  const last = S.rate[S.rate.length - 1];
+  if (last && last.sec === sec) last.count += count;
+  else S.rate.push({ sec, count });
+}
 cluster.on("reset", () => { S.spots = []; S.rate = []; S.selSpot = null; S.draft = null; S.editing = null; S.messages = []; if (S.drawer === "spot") S.drawer = null; notify(true); });
 cluster.on("spots", batch => {
   S.spots.push(...batch);
   if (S.spots.length > 1500) S.spots.splice(0, S.spots.length - 1500);
-  S.rate.push(...batch.map(s => s.t));
+  recordRate(batch.length);
   notify();
 });
 cluster.on("sample", () => notify());
@@ -3720,9 +3745,10 @@ cluster.on("history", () => notify(true));
 cluster.on("show-history", () => { location.hash = "history"; showView("history"); });
 
 function spotsPerMinute() {
-  const cut = Date.now() - 60e3;
-  while (S.rate.length && S.rate[0] < cut) S.rate.shift();
-  return S.rate.length;
+  pruneRate(rateSec());
+  let total = 0;
+  for (const b of S.rate) total += b.count;
+  return total;
 }
 
 // ---------------------------------------------------------------- derived lists
@@ -3748,41 +3774,6 @@ function rowsForView(focusBand = S.focusBand) {
 }
 
 // ---------------------------------------------------------------- top bar
-function Sparkline({ values, w = 64, h = 20 }) {
-  const max = Math.max(1, ...values);
-  const pts = values.map((v, i) => [(i / Math.max(1, values.length - 1)) * w, h - 2 - (v / max) * (h - 4)]);
-  const line = pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const last = pts[pts.length - 1] || [w, h];
-  return html`<svg class="spark" width=${w} height=${h} viewBox=${`0 0 ${w} ${h}`} aria-hidden="true">
-    <defs><linearGradient id="spk" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".35"/><stop offset="1" stop-color="currentColor" stop-opacity="0"/></linearGradient></defs>
-    <polygon points=${`0,${h} ${line} ${w},${h}`} fill="url(#spk)" />
-    <polyline points=${line} fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
-    <circle cx=${last[0]} cy=${last[1]} r="2.2" fill="currentColor" /></svg>`;
-}
-function perMinute(spots, minutes = 15) {
-  const out = new Array(minutes).fill(0), now = Date.now();
-  for (let i = spots.length - 1; i >= 0; i--) {
-    const age = Math.floor((now - spots[i].t) / 60e3);
-    if (age >= minutes) break;
-    out[minutes - 1 - age]++;
-  }
-  return out;
-}
-const PHASE_WORD = { idle: "offline", connecting: "connecting", login: "logging in", negotiating: "JSON…", disconnected: "offline", failed: "failed", replaying: "replay", "replay-done": "replay" };
-function NodeStatus() {
-  const snap = S.snap, c = snap.conn;
-  const paused = snap.session.pausedUntil > Date.now();
-  const rate = spotsPerMinute();
-  const live = c.phase === "live";
-  const word = live ? (paused ? "paused" : `${rate}`) : PHASE_WORD[c.phase] || c.phase;
-  const title = c.mode === "replay" ? "Replaying a captured session. Nothing here is live." : live ? `Live JSON session on ${snap.nodeCall}` : "Not connected. Select to connect.";
-  return html`<button type="button" class=${cls("node", paused && "paused", !live && "off", c.mode === "replay" && "replay")} title=${title} onClick=${() => set({ connectOpen: true })}>
-    <span class="live-dot"></span>
-    <span class="node-call mono">${snap.nodeCall}</span>
-    <${Sparkline} values=${perMinute(S.spots).slice(0, -1)} />
-    <span class="node-rate mono">${word}<small>${live && !paused ? "/min" : ""}</small></span>
-  </button>`;
-}
 function IconBtn({ icon, label, onClick, active, badge, dot, kbd }) {
   return html`<button type="button" class=${cls("icon-btn", "top", active && "on")} aria-label=${label} title=${kbd ? `${label} (${kbd})` : label} aria-pressed=${active ? "true" : "false"} onClick=${onClick}>
     <${Icon} name=${icon} size=${19} />${badge ? html`<span class="badge-n">${badge}</span>` : null}${dot ? html`<span class="badge-dot"></span>` : null}</button>`;
@@ -3821,17 +3812,25 @@ function TopBar() {
   const snap = S.snap;
   const n = workingCards().length;
   const toggleDrawer = d => set({ drawer: S.drawer === d ? null : d });
-  const { buildVersion, visitorIP, loggerConnected } = snap.conn;
+  const c = snap.conn;
+  const { buildVersion, visitorIP, loggerConnected } = c;
+  const paused = snap.session.pausedUntil > Date.now();
+  const connState = c.phase === "live" ? "live"
+    : c.mode === "live" && ["connecting", "login", "negotiating"].includes(c.phase) ? "connecting"
+    : "off";
+  const connLabel = c.mode === "replay" ? "Replaying a captured session. Select to connect."
+    : connState === "live" ? (paused ? `Connected to ${snap.nodeCall} (delivery paused). Select to manage login.` : `Connected to ${snap.nodeCall}. Select to manage login.`)
+    : connState === "connecting" ? "Connecting to cluster. Select to view login."
+    : "Not connected. Select to connect.";
   const versionLabel = buildVersion.replace(/^v?/i, "v");
   const subtitle = visitorIP ? `${versionLabel} ${visitorIP}` : versionLabel;
   const presenceLabel = loggerConnected ? "Browser and Telnet share this profile" : "Browser only";
   return html`<header class="topbar">
-    <div class="brand"><${BrandMark} size=${30} /><div class="bwords"><span class="bname">GoCluster by N2WQ</span>${buildVersion ? html`<span class="bsub mono" title=${subtitle}>
+    <div class="brand"><button type="button" class=${cls("brand-btn", "conn-" + connState)} aria-label=${connLabel} title=${connLabel} onClick=${() => set({ connectOpen: true })}><${BrandMark} size=${30} state=${connState} /></button><div class="bwords"><span class="bname">GoCluster by N2WQ</span>${buildVersion ? html`<span class="bsub mono" title=${subtitle}>
       <span class="bsub-version">${versionLabel}</span>
       <span class="bsub-presence" role="img" aria-label=${presenceLabel} title=${presenceLabel}><${Icon} name=${loggerConnected ? "sync" : "globe"} size=${13} /></span>
       ${visitorIP ? html`<span class="bsub-ip">${visitorIP}</span>` : null}
     </span>` : null}</div></div>
-    <${NodeStatus} />
     <nav class="views" aria-label="View">
       ${[["stream", "Spots", "list"], ["history", "History", "history"], ["bandmap", "Band map", "map"], ["openings", "Openings", "grid"]].map(([v, l, ic]) => html`<a href=${"#" + v} class="tool-btn" aria-label=${l} aria-current=${S.view === v ? "page" : undefined} onClick=${e => { e.preventDefault(); location.hash = v; showView(v); }}><${ToolbarIcon} icon=${ic} hint=${l} /></a>`)}
     </nav>
@@ -3935,11 +3934,19 @@ function FilterSummary({ profile }) {
 
 function SubBar({ profile, bands, focusBand }) {
   const activity = stripActivity(profile, bands, Date.now());
+  const rate = spotsPerMinute();
+  const live = S.snap.conn.phase === "live";
+  const paused = live && S.snap.session.pausedUntil > Date.now();
+  const allTitle = [
+    activity ? `All bands: ${activity.total} spots in 15 minutes` : "All bands: band count unavailable",
+    live ? (paused ? "live delivery paused" : `${rate} spots/min arriving`) : null,
+  ].filter(Boolean).join(" · ");
   return html`<div class="subbar">
     <${FilterSummary} profile=${profile} />
     <div class="bandstrip" role="tablist" aria-label="Focus on a band (display only)">
-      <button type="button" role="tab" aria-selected=${focusBand === "ALL" ? "true" : "false"} class=${cls("bt", "all", focusBand === "ALL" && "on")} onClick=${() => set({ focusBand: "ALL" })}>
-        <span class="bt-top"><span class="bl">All</span><span class="bc mono">${activity?.total ?? ""}</span></span><span class="bt-sub">15 min</span></button>
+      <button type="button" role="tab" aria-selected=${focusBand === "ALL" ? "true" : "false"} title=${allTitle} class=${cls("bt", "all", focusBand === "ALL" && "on")} onClick=${() => set({ focusBand: "ALL" })}>
+        <span class="bt-top"><span class="bl">All</span><span class="bc mono">${activity?.total ?? ""}</span></span>
+        <span class="bt-bot"><span class="bt-sub">15m</span>${live ? html`<span class=${cls("bt-rate", "mono", paused && "paused")}>${paused ? "paused" : `${rate}/m`}</span>` : null}</span></button>
       ${bands.map(b => {
         const stat = activity?.byBand.get(b);
         return html`<button type="button" role="tab" key=${b} aria-selected=${focusBand === b ? "true" : "false"} title=${stat ? `${b}: ${stat.count} spots in 15 minutes` : `${b}: band count unavailable`}
@@ -4053,7 +4060,7 @@ function moveCol(from, to, after) {
   setPrefs({ colOrder: o });
 }
 
-function SpotRow({ r, sel, fresh, cols, group, best, member, expanded, toggle }) {
+function SpotRow({ r, sel, cols, group, best, member, expanded, toggle }) {
   const s = r.s;
   const userGrid = S.snap.operatingGrid;
   const dxGrid = s.dxGrid || "";
@@ -4068,7 +4075,7 @@ function SpotRow({ r, sel, fresh, cols, group, best, member, expanded, toggle })
     cmt: (s.cwSpeeds && s.cwSpeeds.length ? fmtCw(s) + " " : "") + (s.comment || ""),
     group, best, member, expanded, toggle, openDetails, showSpotter: cols.includes("de"), geometry, derived,
   };
-  return html`<div role="row" tabindex=${group ? undefined : "0"} class=${cls("row", group && "repeat-summary", member && "repeat-member", !r.pass && "hidden", sel && "sel", fresh && "fresh", x.own && "own", x.watch && "watch", s.beacon && "beacon")} style=${`--bc:${BAND_COLOR[s.band] || "var(--line)"}`}
+  return html`<div role="row" tabindex=${group ? undefined : "0"} class=${cls("row", group && "repeat-summary", member && "repeat-member", !r.pass && "hidden", sel && "sel", x.own && "own", x.watch && "watch", s.beacon && "beacon")} style=${`--bc:${BAND_COLOR[s.band] || "var(--line)"}`}
       onClick=${group ? undefined : openDetails} onKeyDown=${group ? undefined : e => { if (e.key === "Enter") openDetails(); }}>
     ${cols.map(k => COLUMNS[k].cell(k === "freq" || k === "rep" || k === "de" || k === "via" ? reported : s, r, x))}
   </div>`;
@@ -4135,11 +4142,11 @@ function bestRepeatReports(group) {
   return best;
 }
 
-function RepeatGroup({ group, cols, fresh }) {
+function RepeatGroup({ group, cols }) {
   const [expanded, setExpanded] = useState(false);
   return html`<div role="presentation" class="repeat-group">
     <${SpotRow} r=${group[group.length - 1]} cols=${cols} group=${group} best=${bestRepeatReports(group)}
-      fresh=${fresh} expanded=${expanded} toggle=${() => setExpanded(!expanded)} />
+      expanded=${expanded} toggle=${() => setExpanded(!expanded)} />
     <div role="presentation" class="repeat-members" id=${"repeat-" + group[0].s.id} hidden=${!expanded}>
       ${expanded ? group.slice().reverse().map(r => html`<${SpotRow} key=${r.s.id} r=${r} cols=${cols}
         member=${true} sel=${S.selSpot && S.selSpot.id === r.s.id} />`) : null}
@@ -4254,7 +4261,6 @@ function StreamView({ focusBand }) {
     if (ref.current.scrollTop <= 60) updatePause(false);
     ref.current.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const mountT = useRef(Date.now());
   const preview = isDirty() || S.showHidden;
   const hiddenN = S.showHidden ? rows.filter(r => !r.pass).length : 0;
   const auto = mobile ? [] : colOrder().filter(k => colVisible(k) && COLUMNS[k].minW && w < COLUMNS[k].minW);
@@ -4265,10 +4271,9 @@ function StreamView({ focusBand }) {
     <div class="tbody" role="rowgroup">
       ${display.map(group => {
         const r = group[group.length - 1];
-        const fresh = r.s.t > mountT.current && Date.now() - r.s.t < 2500;
         return group.length > 1
-          ? html`<${RepeatGroup} key=${"group-" + group[0].s.id} group=${group} cols=${cols} fresh=${fresh} />`
-          : html`<${SpotRow} key=${r.s.id} cols=${cols} r=${r} sel=${S.selSpot && S.selSpot.id === r.s.id} fresh=${fresh} />`;
+          ? html`<${RepeatGroup} key=${"group-" + group[0].s.id} group=${group} cols=${cols} />`
+          : html`<${SpotRow} key=${r.s.id} cols=${cols} r=${r} sel=${S.selSpot && S.selSpot.id === r.s.id} />`;
       })}
       ${!rows.length ? html`<div class="empty"><${Icon} name="radio" size=${28} /><b>${S.snap.conn.phase === "live" || S.snap.conn.mode === "replay" || S.spots.length ? "No spots match right now" : "Not connected"}</b><span>${focusBand !== "ALL" || S.search || S.focusCont ? "Clear the band focus or search to see more." : S.snap.conn.phase === "live" ? "Spots appear here as the node sends them. Quiet periods are normal; if it stays empty, open Filters to check your rules." : S.snap.conn.mode === "replay" ? "The capture's spots appear as it plays." : "Connect to your cluster to see live spots."}</span>
         <button type="button" class="btn" onClick=${() => set(focusBand !== "ALL" || S.search || S.focusCont ? { focusBand: "ALL", search: "", focusCont: "" } : S.snap.conn.phase === "live" ? { drawer: "filters" } : { connectOpen: true })}>${focusBand !== "ALL" || S.search || S.focusCont ? "Show all" : S.snap.conn.phase === "live" ? "Open filters" : "Connect"}</button></div>` : null}
@@ -4747,7 +4752,7 @@ function HistoryView() {
     <div class="spot-scroll"><div class="spot-grid">
     <div class="thead" role="row">${cols.map(k => html`<${ColumnHead} key=${k} k=${k} drag=${drag} setDrag=${setDrag} />`)}</div>
     <div class="tbody" role="rowgroup">
-      ${rows.map(s => html`<${SpotRow} key=${s.id} cols=${cols} r=${{ s, pass: true, by: "" }} sel=${S.selSpot && S.selSpot.id === s.id} fresh=${false} />`)}
+      ${rows.map(s => html`<${SpotRow} key=${s.id} cols=${cols} r=${{ s, pass: true, by: "" }} sel=${S.selSpot && S.selSpot.id === s.id} />`)}
       ${!rows.length && !loading ? html`<div class="empty"><${Icon} name="history" size=${28} /><b>${last ? "No matching spots" : "No history loaded"}</b><span>${last ? "Try a different call or a larger count." : status}</span></div>` : null}
     </div></div></div>
     <footer class="tfoot muted small"><span>Newest first. Rows come from SH DX with your current filters; history rows carry no path rating.</span><span class="grow"></span>
